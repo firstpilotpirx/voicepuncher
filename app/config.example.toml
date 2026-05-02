@@ -1,0 +1,29 @@
+# ~/.voicepuncher/config.toml
+[hotkey]
+key = "RightOption"          # one of HotKey enum variants
+min_press_ms = 200
+
+[audio]
+input_device = "default"
+debug_save_wav = false
+
+[whisper]
+model_path = "~/.voicepuncher/models/ggml-large-v3-turbo-q5_0.bin"
+language = "auto"
+threads = 0
+
+[llm]
+model_path = "~/.voicepuncher/models/Qwen2.5-3B-Instruct-Q4_K_M.gguf"
+system_prompt = """\
+You clean up speech-to-text transcripts. Fix punctuation and casing, \
+remove filler words, keep meaning identical, do not rewrite, do not \
+translate. Reply with the cleaned text only."""
+max_tokens = 512
+temperature = 0.0
+context_size = 4096
+
+[paste]
+clipboard_restore_delay_ms = 120
+
+[logging]
+level = "info"
