@@ -4,7 +4,7 @@
 Usage:
     pip install datasets soundfile numpy
     python e2e-test/scripts/download_corpus.py --out e2e-test/corpus
-    python e2e-test/scripts/download_corpus.py --out e2e-test/corpus --datasets fleurs_ru --max-samples 10
+    python e2e-test/scripts/download_corpus.py --out e2e-test/corpus --datasets fleurs_ru podlodka --max-samples 10
 """
 import argparse
 import json
@@ -161,6 +161,77 @@ def download_librispeech(out_dir: Path, max_samples: int) -> None:
     print(f"LibriSpeech: saved {count} samples.")
 
 
+PODLODKA_SPLITS = ["train", "validation", "test"]
+
+
+def download_podlodka(out_dir: Path, max_samples: int) -> None:
+    try:
+        import numpy as np
+        from datasets import load_dataset
+    except ImportError as exc:
+        print(
+            f"\033[31mERROR: missing dependency ({exc}).\n"
+            "Install with:  pip install datasets soundfile numpy\033[0m"
+        )
+        raise SystemExit(1) from exc
+
+    print(f"\033[36m\033[1m── Downloading Podlodka (up to {max_samples} samples per run) \033[0m")
+    audio_dir = out_dir / "audio"
+    manifest_path = out_dir / "manifest.jsonl"
+    existing_ids = load_existing_ids(manifest_path)
+    count = 0
+
+    for split in PODLODKA_SPLITS:
+        if count >= max_samples:
+            break
+        ds = load_dataset(
+            "bond005/podlodka_speech",
+            split=split,
+            streaming=True,
+            trust_remote_code=True,
+        )
+        for i, item in enumerate(ds):
+            if count >= max_samples:
+                break
+            episode = item.get("episode", 0)
+            sample_id = f"podlodka_{episode}_{i}"
+            if sample_id in existing_ids:
+                continue
+
+            audio_field = item["audio"]
+            if isinstance(audio_field, dict):
+                audio_array = np.array(audio_field["array"], dtype=np.float32)
+                orig_rate = audio_field["sampling_rate"]
+            else:
+                audio_array = np.frombuffer(audio_field, dtype=np.int16).astype(np.float32) / 32768.0
+                orig_rate = TARGET_SAMPLE_RATE
+
+            audio_array = to_mono(audio_array)
+            audio_array = resample_to_16k(audio_array, orig_rate)
+
+            wav_path = audio_dir / f"{sample_id}.wav"
+            save_wav(wav_path, audio_array)
+
+            duration_s = len(audio_array) / TARGET_SAMPLE_RATE
+            reference = item.get("transcription", "")
+            if not reference:
+                print(f"  \033[33mWARNING: no reference text for {sample_id}, skipping\033[0m")
+                continue
+
+            append_manifest(manifest_path, {
+                "id": sample_id,
+                "path": f"audio/{sample_id}.wav",
+                "reference": reference,
+                "lang": "ru",
+                "duration_s": round(duration_s, 3),
+                "source": "podlodka",
+            })
+            count += 1
+            print(f"  \033[2m[{count}/{max_samples}]\033[0m {sample_id} ({duration_s:.1f}s)")
+
+    print(f"\033[32mPodlodka: saved {count} samples.\033[0m")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__,
@@ -180,9 +251,9 @@ def main() -> None:
     parser.add_argument(
         "--datasets",
         nargs="+",
-        choices=["fleurs_ru", "fleurs_en", "librispeech"],
-        default=["fleurs_ru", "fleurs_en", "librispeech"],
-        help="Which datasets to download (default: all three)",
+        choices=["fleurs_ru", "fleurs_en", "librispeech", "podlodka"],
+        default=["fleurs_ru", "fleurs_en", "librispeech", "podlodka"],
+        help="Which datasets to download (default: all four)",
     )
     args = parser.parse_args()
 
@@ -199,6 +270,8 @@ def main() -> None:
         download_fleurs(out_dir, "en_us", "en", args.max_samples)
     if "librispeech" in args.datasets:
         download_librispeech(out_dir, args.max_samples)
+    if "podlodka" in args.datasets:
+        download_podlodka(out_dir, args.max_samples)
 
     print(f"\nDone. Manifest: {manifest_path}")
 

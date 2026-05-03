@@ -86,8 +86,12 @@ const RECORDING_MODE_OPTIONS: &[(&str, RecordingMode)] = &[
 ];
 
 const DEFAULT_SYSTEM_PROMPT: &str =
-    "You are a text cleanup assistant. Fix grammar, punctuation and capitalisation. \
-     Output only the cleaned text, nothing else.";
+    "You are a speech-to-text post-processor. Fix only ASR recognition errors: wrong words, \
+     technical terms transcribed in the wrong alphabet (e.g. кубернетес → Kubernetes), words \
+     accidentally merged or split. Do not rewrite, rephrase, or improve style — change only what \
+     is broken. Preserve the original language and do not translate. Restore technical terms to \
+     their correct script (e.g. Kubernetes, Docker, API in English, even within Russian text). \
+     Output only the corrected text, nothing else.";
 
 pub struct SetupWizard;
 

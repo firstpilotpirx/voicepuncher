@@ -204,12 +204,7 @@ def ensure_models(models_dir: Path) -> None:
 
 
 def ensure_corpus(corpus_dir: Path, max_samples: int) -> None:
-    manifest = corpus_dir / "manifest.jsonl"
     print(_banner("Corpus"))
-    if manifest.exists():
-        n = sum(1 for line in manifest.read_text().splitlines() if line.strip())
-        print(f"  {GREEN}✓ {manifest} ({n} samples){RESET}")
-        return
     subprocess.run(
         [
             sys.executable,
@@ -219,6 +214,9 @@ def ensure_corpus(corpus_dir: Path, max_samples: int) -> None:
         ],
         check=True,
     )
+    manifest = corpus_dir / "manifest.jsonl"
+    n = sum(1 for line in manifest.read_text().splitlines() if line.strip())
+    print(f"  {GREEN}✓ {manifest} ({n} samples){RESET}")
 
 
 def build_binary() -> Path:
@@ -264,6 +262,7 @@ def _run_one(
         r = subprocess.run(
             [
                 str(binary),
+                "--config", "/dev/null",
                 "--input-file", str(wav),
                 "--whisper-model", str(whisper_path),
                 "--llm-model", str(llm_path),

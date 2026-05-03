@@ -54,6 +54,8 @@ fn should_report_wer_per_sample() {
     for sample in &samples {
         let output = std::process::Command::new(&bin_path)
             .args([
+                "--config",
+                "/dev/null",
                 "--input-file",
                 sample.path.to_str().unwrap_or(""),
                 "--whisper-model",

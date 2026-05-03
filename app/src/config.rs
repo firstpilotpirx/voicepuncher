@@ -120,7 +120,7 @@ pub struct LlmCfg {
 
 impl LlmCfg {
     fn default_system_prompt() -> String {
-        "You clean up speech-to-text transcripts. Fix punctuation and casing, remove filler words, keep meaning identical, do not rewrite, do not translate. Reply with the cleaned text only.".into()
+        "You are a speech-to-text post-processor. Fix only ASR recognition errors: wrong words, technical terms transcribed in the wrong alphabet (e.g. кубернетес → Kubernetes), words accidentally merged or split. Do not rewrite, rephrase, or improve style — change only what is broken. Preserve the original language and do not translate. Restore technical terms to their correct script (e.g. Kubernetes, Docker, API in English, even within Russian text). Output only the corrected text, nothing else.".into()
     }
     fn default_max_tokens() -> u32 {
         512
