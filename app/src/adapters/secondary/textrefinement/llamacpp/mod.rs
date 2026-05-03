@@ -83,11 +83,13 @@ impl TextRefiner for LlamaCppTextRefiner {
 
         let mut output = String::new();
         let mut pos = tokens.len() as i32;
+        let mut finished = false;
 
         for _ in 0..self.max_tokens {
             let token = sampler.sample(&ctx, -1);
 
             if self.model.is_eog_token(token) {
+                finished = true;
                 break;
             }
 
@@ -105,6 +107,7 @@ impl TextRefiner for LlamaCppTextRefiner {
 
             if output.contains("<|im_end|>") {
                 output = output.replace("<|im_end|>", "");
+                finished = true;
                 break;
             }
 
@@ -118,6 +121,16 @@ impl TextRefiner for LlamaCppTextRefiner {
                 .map_err(|e| anyhow!("decode failed: {e}"))?;
 
             pos += 1;
+        }
+
+        if !finished {
+            log::warn!(
+                "LLM hit max_tokens={} without reaching end-of-sequence — output may be truncated. \
+                 Input tokens: {}, generated: {} chars",
+                self.max_tokens,
+                tokens.len(),
+                output.len()
+            );
         }
 
         CleanedText::new(output).map_err(|e| anyhow!(e))

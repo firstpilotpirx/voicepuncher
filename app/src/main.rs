@@ -12,6 +12,7 @@ use voicepuncher::adapters::secondary::soundplaying::macos::MacosSoundPlayer;
 use voicepuncher::adapters::secondary::textpasting::macos::MacOsTextPaster;
 use voicepuncher::adapters::secondary::textpasting::stdio::StdioTextPaster;
 use voicepuncher::adapters::secondary::textrefinement::llamacpp::LlamaCppTextRefiner;
+use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::adapters::secondary::transcription::whispercpp::WhisperCppTranscriber;
 use voicepuncher::adapters::secondary::visualfeedback::macos::MacosVisualIndicator;
 use voicepuncher::core::application::hotkey_listener::HotkeyListener;
@@ -46,6 +47,7 @@ fn main() {
         .unwrap_or_else(|_| voicepuncher::config::Config::default());
 
     let input_file = cli.input_file.clone();
+    let no_llm = cli.no_llm;
     cli.overlay(&mut config);
 
     env_logger::Builder::new()
@@ -68,17 +70,24 @@ fn main() {
             log::error!("failed to load whisper model: {e:#}");
             std::process::exit(2);
         });
-        let refiner = LlamaCppTextRefiner::load(
-            &config.llm.model_path,
-            config.llm.system_prompt.clone(),
-            config.llm.max_tokens as i32,
-            config.llm.temperature,
-            config.llm.context_size,
-        )
-        .unwrap_or_else(|e| {
-            log::error!("failed to load llama model: {e:#}");
-            std::process::exit(2);
-        });
+        let refiner: Box<dyn voicepuncher::core::application::TextRefiner> = if no_llm {
+            log::info!("LLM disabled (--no-llm), using passthrough");
+            Box::new(PassthroughTextRefiner)
+        } else {
+            Box::new(
+                LlamaCppTextRefiner::load(
+                    &config.llm.model_path,
+                    config.llm.system_prompt.clone(),
+                    config.llm.max_tokens as i32,
+                    config.llm.temperature,
+                    config.llm.context_size,
+                )
+                .unwrap_or_else(|e| {
+                    log::error!("failed to load llama model: {e:#}");
+                    std::process::exit(2);
+                }),
+            )
+        };
         let audio = FileSystemAudioRecorder::load(input_path).unwrap_or_else(|e| {
             log::error!("file mode: {e:#}");
             std::process::exit(1);
@@ -88,7 +97,7 @@ fn main() {
         let mut pipeline = Pipeline::new(
             Box::new(FileSystemAudioRecorder::new(input_path.clone())),
             Box::new(transcriber),
-            Box::new(refiner),
+            refiner,
             Box::new(paster),
             Box::new(sound_player),
             Box::new(NoopVisualIndicator),
@@ -120,17 +129,24 @@ fn main() {
         std::process::exit(2);
     });
 
-    let refiner = LlamaCppTextRefiner::load(
-        &config.llm.model_path,
-        config.llm.system_prompt.clone(),
-        config.llm.max_tokens as i32,
-        config.llm.temperature,
-        config.llm.context_size,
-    )
-    .unwrap_or_else(|e| {
-        log::error!("failed to load llama model: {e:#}");
-        std::process::exit(2);
-    });
+    let refiner: Box<dyn voicepuncher::core::application::TextRefiner> = if no_llm {
+        log::info!("LLM disabled (--no-llm), using passthrough");
+        Box::new(PassthroughTextRefiner)
+    } else {
+        Box::new(
+            LlamaCppTextRefiner::load(
+                &config.llm.model_path,
+                config.llm.system_prompt.clone(),
+                config.llm.max_tokens as i32,
+                config.llm.temperature,
+                config.llm.context_size,
+            )
+            .unwrap_or_else(|e| {
+                log::error!("failed to load llama model: {e:#}");
+                std::process::exit(2);
+            }),
+        )
+    };
 
     let paster = MacOsTextPaster::new(config.paste.clipboard_restore_delay_ms);
 
@@ -139,6 +155,7 @@ fn main() {
             .audio
             .debug_save_wav
             .then(|| std::path::PathBuf::from("debug.wav")),
+        config.audio.max_recording_seconds,
     );
 
     let (tx, rx) = std::sync::mpsc::channel::<PttSignal>();
@@ -159,7 +176,7 @@ fn main() {
     let mut pipeline = Pipeline::new(
         Box::new(recorder),
         Box::new(transcriber),
-        Box::new(refiner),
+        refiner,
         Box::new(paster),
         Box::new(sound_player),
         Box::new(indicator),

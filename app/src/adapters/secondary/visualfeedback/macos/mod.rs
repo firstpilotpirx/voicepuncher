@@ -4,8 +4,9 @@ use std::sync::{Arc, Mutex};
 use objc2::rc::Retained;
 use objc2::MainThreadMarker;
 use objc2_app_kit::{
-    NSApplication, NSApplicationActivationPolicy, NSBackingStoreType, NSColor, NSControlSize,
-    NSFont, NSProgressIndicator, NSProgressIndicatorStyle, NSScreen, NSTextAlignment, NSTextField,
+    NSAppearance, NSAppearanceCustomization, NSAppearanceNameDarkAqua, NSApplication,
+    NSApplicationActivationPolicy, NSBackingStoreType, NSColor, NSControlSize, NSFont,
+    NSProgressIndicator, NSProgressIndicatorStyle, NSScreen, NSTextAlignment, NSTextField,
     NSWindow, NSWindowCollectionBehavior, NSWindowStyleMask,
 };
 use objc2_foundation::NSString;
@@ -66,7 +67,7 @@ pub struct MacosVisualIndicator {
 
 impl MacosVisualIndicator {
     pub fn initialize(mtm: MainThreadMarker) -> Self {
-        let window_width: f64 = 160.0;
+        let window_width: f64 = 112.0;
         let window_height: f64 = 44.0;
         let menu_bar_height: f64 = 24.0;
 
@@ -147,7 +148,7 @@ impl MacosVisualIndicator {
 
         content_view.addSubview(&label);
 
-        let spinner_size: f64 = 20.0;
+        let spinner_size: f64 = 26.0;
         let spinner_x = (window_width - spinner_size) / 2.0;
         let spinner_frame = objc2_foundation::NSRect {
             origin: objc2_foundation::NSPoint {
@@ -164,7 +165,11 @@ impl MacosVisualIndicator {
             NSProgressIndicator::initWithFrame(mtm.alloc::<NSProgressIndicator>(), spinner_frame);
         spinner.setStyle(NSProgressIndicatorStyle::Spinning);
         spinner.setIndeterminate(true);
-        spinner.setControlSize(NSControlSize::Small);
+        spinner.setControlSize(NSControlSize::Regular);
+        if let Some(appearance) = NSAppearance::appearanceNamed(unsafe { NSAppearanceNameDarkAqua })
+        {
+            spinner.setAppearance(Some(&appearance));
+        }
         spinner.setHidden(true);
 
         content_view.addSubview(&spinner);

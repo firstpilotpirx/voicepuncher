@@ -28,20 +28,13 @@ impl HotkeyListener for RdevHotkeyListener {
             .spawn(move || {
                 let sender = tx;
                 if let Err(e) = listen(move |event| {
-                    let kbd = matches!(
-                        event.event_type,
-                        EventType::KeyPress(_) | EventType::KeyRelease(_)
-                    );
-                    if kbd {
-                        log::info!("rdev raw: {:?}", event.event_type);
-                    }
                     let signal = match event.event_type {
                         EventType::KeyPress(k) if k == rdev_key => Some(PttSignal::Pressed),
                         EventType::KeyRelease(k) if k == rdev_key => Some(PttSignal::Released),
                         _ => None,
                     };
                     if let Some(s) = signal {
-                        log::info!("rdev forward: {s:?}");
+                        log::debug!("rdev forward: {s:?}");
                         let _ = sender.send(s);
                     }
                 }) {

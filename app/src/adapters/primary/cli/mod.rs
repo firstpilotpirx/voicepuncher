@@ -36,6 +36,9 @@ pub struct Cli {
     #[arg(long, help = "Re-run the setup wizard even if config already exists")]
     pub setup: bool,
 
+    #[arg(long, help = "Skip LLM post-processing; paste raw Whisper output")]
+    pub no_llm: bool,
+
     #[arg(short = 'v', long, action = ArgAction::Count)]
     pub verbose: u8,
 }
@@ -105,6 +108,7 @@ mod tests {
             debug_save_wav: Some(PathBuf::from("/tmp/debug.wav")),
             input_file: None,
             setup: false,
+            no_llm: false,
             verbose: 0,
         };
         let mut cfg = Config::default();
@@ -123,5 +127,13 @@ mod tests {
         let cli = Cli::parse_from(["voicepuncher", "--input-file", "/tmp/test.wav"]);
         // Then
         assert_eq!(cli.input_file, Some(PathBuf::from("/tmp/test.wav")));
+    }
+
+    #[test]
+    fn should_parse_no_llm_flag() {
+        // Given / When
+        let cli = Cli::parse_from(["voicepuncher", "--no-llm"]);
+        // Then
+        assert!(cli.no_llm);
     }
 }

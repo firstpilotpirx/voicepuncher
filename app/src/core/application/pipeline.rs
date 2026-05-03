@@ -78,8 +78,9 @@ impl Pipeline {
                 self.state = Recording;
             }
             (Recording, _) if stops => {
-                let audio = self.recorder.stop()?;
                 self.sound_player.play_stop();
+                self.visual_indicator.show_processing();
+                let audio = self.recorder.stop()?;
                 self.state = Idle;
                 if audio.is_empty() || audio.duration_ms() < self.cfg.min_press_ms {
                     log::info!("dropped: too short ({} ms)", audio.duration_ms());
@@ -102,7 +103,6 @@ impl Pipeline {
 
     fn run_transcribe_refine_paste(&mut self, audio: AudioBuffer16k) {
         self.state = PipelineState::Transcribing;
-        self.visual_indicator.show_processing();
         log::info!("transcribing…");
         let raw = match self.transcriber.transcribe(&audio) {
             Err(e) => {
@@ -622,7 +622,7 @@ mod tests {
 
         let mut visual = MockVisualIndicator::new();
         visual.expect_show_recording().once().return_const(());
-        visual.expect_show_processing().times(0).return_const(());
+        visual.expect_show_processing().once().return_const(());
         visual.expect_hide().once().return_const(());
 
         let mut pipeline = Pipeline::new(
@@ -640,6 +640,6 @@ mod tests {
         pipeline.step(PttSignal::Pressed).unwrap();
         // When
         pipeline.step(PttSignal::Pressed).unwrap();
-        // Then — MockVisualIndicator verifies hide was called, show_processing was not
+        // Then — show_processing fires immediately on stop, hide fires after too-short check
     }
 }

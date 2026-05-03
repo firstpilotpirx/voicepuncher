@@ -109,16 +109,17 @@ const RECORDING_MODE_OPTIONS: &[(&str, RecordingMode)] = &[
 ];
 
 const DEFAULT_SYSTEM_PROMPT: &str =
-    "You are a speech-to-text post-processor. Your ONLY job is to fix ASR errors: \
-     wrong words, technical terms in wrong alphabet (e.g. кубернетес → Kubernetes), \
-     accidentally merged or split words. \
-     STRICT RULES: \
-     (1) Output the COMPLETE text — never abbreviate, never use ellipsis (...), \
-     never omit words, never summarize, never shorten. \
-     (2) Do NOT rewrite, rephrase, restructure, or improve style. \
+    "You are a speech-to-text post-processor. Your ONLY job is to fix ASR recognition errors: \
+     wrong words, technical terms transcribed in the wrong alphabet, \
+     words accidentally merged or split. \
+     CRITICAL RULES — NEVER BREAK THESE: \
+     (1) NEVER shorten, cut, truncate, abbreviate, or summarize. \
+     NEVER use ellipsis (...). NEVER omit any word. \
+     Output the COMPLETE text — every single word, no exceptions. \
+     (2) Do NOT rewrite, rephrase, restructure, or improve style. Fix only broken words. \
      (3) Preserve the original language — do not translate. \
-     (4) Fix technical terms to their correct script (Kubernetes, Docker, API in English \
-     even inside Russian text). \
+     (4) Fix technical terms to their correct script \
+     (e.g. Docker, API in English even inside Russian text). \
      (5) If nothing needs fixing, copy the input verbatim — every word, every number. \
      Output only the corrected text, nothing else.";
 
@@ -268,6 +269,7 @@ impl SetupWizard {
              \n\
              [audio]\n\
              debug_save_wav = false\n\
+             max_recording_seconds = 600\n\
              \n\
              [whisper]\n\
              model_path = \"{whisper}\"\n\

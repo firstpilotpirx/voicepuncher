@@ -13,7 +13,6 @@ log = "0.4"
 cpal = "0.17"
 hound = "3.5"
 rubato = "0.16"
-ringbuf = "0.4"
 
 rdev = "0.5.3"
 
@@ -49,6 +48,7 @@ objc2-app-kit = { version = "0.3", features = [
     "NSScreen",
     "NSText",
     "NSTextField",
+    "NSAppearance",
     "NSView",
     "NSWindow",
 ] }
