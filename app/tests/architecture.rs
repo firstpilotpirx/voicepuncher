@@ -337,3 +337,42 @@ fn r8_no_ports_subfolder() {
         "R8: src/core/application/ports/ must not exist — ports live flat in core/application/"
     );
 }
+
+#[test]
+fn r9_every_primary_adapter_has_it() {
+    let mut violations: Vec<String> = Vec::new();
+
+    for (dir, stem) in leaf_adapter_dirs("src/adapters/primary")
+        .into_iter()
+        .map(|dir| {
+            let tech = dir
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_owned();
+            let feature = dir
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_owned();
+            let stem = format!("{feature}_{tech}");
+            (dir, stem)
+        })
+    {
+        let expected_it = format!("tests/{stem}_it.rs");
+        if !std::path::Path::new(&expected_it).exists() {
+            violations.push(format!(
+                "{}: missing integration test at {}",
+                dir.display(),
+                expected_it
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "R9 violations:\n{}",
+        violations.join("\n")
+    );
+}

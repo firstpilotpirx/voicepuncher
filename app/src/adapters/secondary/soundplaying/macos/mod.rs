@@ -59,3 +59,49 @@ impl SoundPlayer for MacosSoundPlayer {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_resolve_empty_name_to_none() {
+        // When
+        let result = MacosSoundPlayer::resolve("");
+        // Then
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn should_resolve_absolute_path_to_same_path() {
+        // Given
+        let absolute = "/tmp/test.aiff";
+        // When
+        let result = MacosSoundPlayer::resolve(absolute);
+        // Then
+        assert_eq!(result, Some(PathBuf::from(absolute)));
+    }
+
+    #[test]
+    fn should_resolve_relative_name_to_system_sounds_path() {
+        // Given
+        let name = "Glass";
+        // When
+        let result = MacosSoundPlayer::resolve(name);
+        // Then
+        let path = result.expect("non-empty name must resolve to Some");
+        assert_eq!(path, PathBuf::from("/System/Library/Sounds/Glass.aiff"));
+    }
+
+    #[test]
+    fn should_resolve_name_with_spaces_to_system_sounds_path() {
+        // Given — sound names on macOS may contain spaces
+        let name = "My Sound";
+        // When
+        let result = MacosSoundPlayer::resolve(name);
+        // Then
+        let path = result.expect("non-empty name must resolve to Some");
+        assert!(path.to_string_lossy().contains("My Sound"));
+        assert!(path.to_string_lossy().ends_with(".aiff"));
+    }
+}

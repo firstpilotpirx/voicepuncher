@@ -185,3 +185,63 @@ fn save_wav(path: &PathBuf, samples: &[i16]) -> Result<()> {
     writer.finalize()?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_convert_zero_float_to_zero_i16() {
+        assert_eq!(float_to_i16(0.0), 0);
+    }
+
+    #[test]
+    fn should_convert_positive_one_to_max_i16() {
+        assert_eq!(float_to_i16(1.0), 32_767);
+    }
+
+    #[test]
+    fn should_convert_negative_one_to_min_i16() {
+        assert_eq!(float_to_i16(-1.0), -32_767);
+    }
+
+    #[test]
+    fn should_clamp_above_one_to_max_i16() {
+        assert_eq!(float_to_i16(2.0), 32_767);
+    }
+
+    #[test]
+    fn should_clamp_below_minus_one_to_min_i16() {
+        assert_eq!(float_to_i16(-2.0), -32_767);
+    }
+
+    #[test]
+    fn should_return_err_when_stop_called_without_start() {
+        // Given
+        let mut recorder = CpalAudioRecorder::new(None);
+        // When
+        let result = recorder.stop();
+        // Then
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("recorder was not started"));
+    }
+
+    #[test]
+    fn should_produce_correct_sample_count_when_resampling_from_44100_to_16k() {
+        // Given — 1 second of 44100 Hz silence
+        let input: Vec<i16> = vec![0i16; 44_100];
+        // When
+        let result = resample_to_16k(input, 44_100).unwrap();
+        // Then — output should be approximately 16000 samples (within 5%)
+        let expected = 16_000usize;
+        let tolerance = expected / 20;
+        assert!(
+            result.len().abs_diff(expected) <= tolerance,
+            "expected ~{expected} samples, got {}",
+            result.len()
+        );
+    }
+}

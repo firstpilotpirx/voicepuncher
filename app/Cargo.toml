@@ -35,6 +35,24 @@ ureq = { version = "2", features = ["tls"] }
 
 core-foundation = "0.10"
 core-graphics = "0.25"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString"] }
+objc2-app-kit = { version = "0.3", features = [
+    "NSApplication",
+    "NSCell",
+    "NSColor",
+    "NSControl",
+    "NSFont",
+    "NSGraphics",
+    "NSProgressIndicator",
+    "NSRunningApplication",
+    "NSScreen",
+    "NSText",
+    "NSTextField",
+    "NSView",
+    "NSWindow",
+] }
+objc2-quartz-core = { version = "0.3", features = ["CALayer"] }
 
 [dev-dependencies]
 mockall = "0.13"

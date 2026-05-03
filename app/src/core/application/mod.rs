@@ -7,6 +7,7 @@ pub mod sound_player;
 pub mod text_paster;
 pub mod text_refiner;
 pub mod transcriber;
+pub mod visual_indicator;
 
 pub use audio_recorder::AudioRecorder;
 pub use hotkey_listener::HotkeyListener;
@@ -15,3 +16,4 @@ pub use sound_player::SoundPlayer;
 pub use text_paster::TextPaster;
 pub use text_refiner::TextRefiner;
 pub use transcriber::Transcriber;
+pub use visual_indicator::VisualIndicator;

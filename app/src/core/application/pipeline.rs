@@ -1,6 +1,8 @@
 use std::sync::mpsc;
 
-use crate::core::application::{AudioRecorder, SoundPlayer, TextPaster, TextRefiner, Transcriber};
+use crate::core::application::{
+    AudioRecorder, SoundPlayer, TextPaster, TextRefiner, Transcriber, VisualIndicator,
+};
 use crate::core::domain::{AudioBuffer16k, PttSignal, RecordingMode};
 
 #[derive(Debug, Clone, Copy)]
@@ -24,6 +26,7 @@ pub struct Pipeline {
     pub refiner: Box<dyn TextRefiner>,
     pub paster: Box<dyn TextPaster>,
     pub sound_player: Box<dyn SoundPlayer>,
+    pub visual_indicator: Box<dyn VisualIndicator>,
     pub cfg: PipelineConfig,
     state: PipelineState,
 }
@@ -35,6 +38,7 @@ impl Pipeline {
         refiner: Box<dyn TextRefiner>,
         paster: Box<dyn TextPaster>,
         sound_player: Box<dyn SoundPlayer>,
+        visual_indicator: Box<dyn VisualIndicator>,
         cfg: PipelineConfig,
     ) -> Self {
         Self {
@@ -43,6 +47,7 @@ impl Pipeline {
             refiner,
             paster,
             sound_player,
+            visual_indicator,
             cfg,
             state: PipelineState::Idle,
         }
@@ -69,6 +74,7 @@ impl Pipeline {
             (Idle, PttSignal::Pressed) => {
                 self.sound_player.play_start();
                 self.recorder.start()?;
+                self.visual_indicator.show_recording();
                 self.state = Recording;
             }
             (Recording, _) if stops => {
@@ -77,6 +83,7 @@ impl Pipeline {
                 self.state = Idle;
                 if audio.is_empty() || audio.duration_ms() < self.cfg.min_press_ms {
                     log::info!("dropped: too short ({} ms)", audio.duration_ms());
+                    self.visual_indicator.hide();
                     return Ok(());
                 }
                 self.run_transcribe_refine_paste(audio);
@@ -95,11 +102,13 @@ impl Pipeline {
 
     fn run_transcribe_refine_paste(&mut self, audio: AudioBuffer16k) {
         self.state = PipelineState::Transcribing;
+        self.visual_indicator.show_processing();
         log::info!("transcribing…");
         let raw = match self.transcriber.transcribe(&audio) {
             Err(e) => {
                 log::warn!("transcription failed, dropping cycle: {e:#}");
                 self.state = PipelineState::Idle;
+                self.visual_indicator.hide();
                 return;
             }
             Ok(r) => r,
@@ -111,6 +120,7 @@ impl Pipeline {
             Err(e) => {
                 log::error!("refinement failed, dropping cycle: {e:#}");
                 self.state = PipelineState::Idle;
+                self.visual_indicator.hide();
                 return;
             }
             Ok(c) => c,
@@ -122,6 +132,7 @@ impl Pipeline {
             log::error!("paste failed, dropping cycle: {e:#}");
         }
         self.state = PipelineState::Idle;
+        self.visual_indicator.hide();
         log::info!("done");
     }
 }
@@ -136,6 +147,7 @@ mod tests {
     use crate::core::application::text_paster::MockTextPaster;
     use crate::core::application::text_refiner::MockTextRefiner;
     use crate::core::application::transcriber::MockTranscriber;
+    use crate::core::application::visual_indicator::MockVisualIndicator;
     use crate::core::domain::{CleanedText, RawTranscript};
     use anyhow::anyhow;
 
@@ -148,6 +160,14 @@ mod tests {
         p.expect_play_start().times(..).return_const(());
         p.expect_play_stop().times(..).return_const(());
         p
+    }
+
+    fn noop_visual_indicator() -> MockVisualIndicator {
+        let mut v = MockVisualIndicator::new();
+        v.expect_show_recording().times(..).return_const(());
+        v.expect_show_processing().times(..).return_const(());
+        v.expect_hide().times(..).return_const(());
+        v
     }
 
     fn make_pipeline(
@@ -178,6 +198,7 @@ mod tests {
             Box::new(refiner),
             Box::new(paster),
             Box::new(noop_sound_player()),
+            Box::new(noop_visual_indicator()),
             PipelineConfig {
                 min_press_ms: 200,
                 recording_mode,
@@ -511,5 +532,114 @@ mod tests {
         let result = pipeline.run_once(one_second_audio());
         // Then
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn should_call_show_recording_when_transitioning_to_recording() {
+        // Given
+        let mut recorder = MockAudioRecorder::new();
+        recorder.expect_start().once().returning(|| Ok(()));
+
+        let mut visual = MockVisualIndicator::new();
+        visual.expect_show_recording().once().return_const(());
+        visual.expect_show_processing().times(..).return_const(());
+        visual.expect_hide().times(..).return_const(());
+
+        let mut pipeline = Pipeline::new(
+            Box::new(recorder),
+            Box::new(MockTranscriber::new()),
+            Box::new(MockTextRefiner::new()),
+            Box::new(MockTextPaster::new()),
+            Box::new(noop_sound_player()),
+            Box::new(visual),
+            PipelineConfig {
+                min_press_ms: 200,
+                recording_mode: RecordingMode::Toggle,
+            },
+        );
+        // When
+        pipeline.step(PttSignal::Pressed).unwrap();
+        // Then — MockVisualIndicator verifies exactly once show_recording was called
+    }
+
+    #[test]
+    fn should_call_show_processing_when_transcribing_starts() {
+        // Given
+        let mut recorder = MockAudioRecorder::new();
+        recorder.expect_start().once().returning(|| Ok(()));
+        recorder
+            .expect_stop()
+            .once()
+            .returning(|| Ok(one_second_audio()));
+
+        let mut transcriber = MockTranscriber::new();
+        transcriber
+            .expect_transcribe()
+            .once()
+            .returning(|_| Ok(RawTranscript::new("hello".to_owned()).unwrap()));
+
+        let mut refiner = MockTextRefiner::new();
+        refiner
+            .expect_refine()
+            .once()
+            .returning(|_| Ok(CleanedText::new("hello".to_owned()).unwrap()));
+
+        let mut paster = MockTextPaster::new();
+        paster.expect_paste().once().returning(|_| Ok(()));
+
+        let mut visual = MockVisualIndicator::new();
+        visual.expect_show_recording().once().return_const(());
+        visual.expect_show_processing().once().return_const(());
+        visual.expect_hide().once().return_const(());
+
+        let mut pipeline = Pipeline::new(
+            Box::new(recorder),
+            Box::new(transcriber),
+            Box::new(refiner),
+            Box::new(paster),
+            Box::new(noop_sound_player()),
+            Box::new(visual),
+            PipelineConfig {
+                min_press_ms: 200,
+                recording_mode: RecordingMode::Toggle,
+            },
+        );
+        pipeline.step(PttSignal::Pressed).unwrap();
+        // When
+        pipeline.step(PttSignal::Pressed).unwrap();
+        // Then — MockVisualIndicator verifies the exact call sequence
+    }
+
+    #[test]
+    fn should_call_hide_when_audio_too_short() {
+        // Given
+        let mut recorder = MockAudioRecorder::new();
+        recorder.expect_start().once().returning(|| Ok(()));
+        recorder
+            .expect_stop()
+            .once()
+            .returning(|| Ok(AudioBuffer16k::new(vec![0i16; 10])));
+
+        let mut visual = MockVisualIndicator::new();
+        visual.expect_show_recording().once().return_const(());
+        visual.expect_show_processing().times(0).return_const(());
+        visual.expect_hide().once().return_const(());
+
+        let mut pipeline = Pipeline::new(
+            Box::new(recorder),
+            Box::new(MockTranscriber::new()),
+            Box::new(MockTextRefiner::new()),
+            Box::new(MockTextPaster::new()),
+            Box::new(noop_sound_player()),
+            Box::new(visual),
+            PipelineConfig {
+                min_press_ms: 200,
+                recording_mode: RecordingMode::Toggle,
+            },
+        );
+        pipeline.step(PttSignal::Pressed).unwrap();
+        // When
+        pipeline.step(PttSignal::Pressed).unwrap();
+        // Then — MockVisualIndicator verifies hide was called, show_processing was not
     }
 }

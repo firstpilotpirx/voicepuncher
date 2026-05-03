@@ -1,4 +1,6 @@
 use clap::Parser;
+use objc2::MainThreadMarker;
+use objc2_app_kit::NSApplication;
 
 use voicepuncher::adapters::primary::cli::Cli;
 use voicepuncher::adapters::primary::ptt::rdev::RdevHotkeyListener;
@@ -11,10 +13,20 @@ use voicepuncher::adapters::secondary::textpasting::macos::MacOsTextPaster;
 use voicepuncher::adapters::secondary::textpasting::stdio::StdioTextPaster;
 use voicepuncher::adapters::secondary::textrefinement::llamacpp::LlamaCppTextRefiner;
 use voicepuncher::adapters::secondary::transcription::whispercpp::WhisperCppTranscriber;
+use voicepuncher::adapters::secondary::visualfeedback::macos::MacosVisualIndicator;
 use voicepuncher::core::application::hotkey_listener::HotkeyListener;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
 use voicepuncher::core::application::preflight::Preflight;
+use voicepuncher::core::application::visual_indicator::VisualIndicator;
 use voicepuncher::core::domain::PttSignal;
+
+struct NoopVisualIndicator;
+
+impl VisualIndicator for NoopVisualIndicator {
+    fn show_recording(&self) {}
+    fn show_processing(&self) {}
+    fn hide(&self) {}
+}
 
 fn main() {
     let cli = Cli::parse();
@@ -79,6 +91,7 @@ fn main() {
             Box::new(refiner),
             Box::new(paster),
             Box::new(sound_player),
+            Box::new(NoopVisualIndicator),
             PipelineConfig {
                 min_press_ms: config.hotkey.min_press_ms,
                 recording_mode: config.hotkey.recording_mode,
@@ -140,20 +153,34 @@ fn main() {
 
     let sound_player = MacosSoundPlayer::new(&config.sounds.start_sound, &config.sounds.stop_sound);
 
+    let mtm = MainThreadMarker::new().expect("main must run on the main thread");
+    let indicator = MacosVisualIndicator::initialize(mtm);
+
     let mut pipeline = Pipeline::new(
         Box::new(recorder),
         Box::new(transcriber),
         Box::new(refiner),
         Box::new(paster),
         Box::new(sound_player),
+        Box::new(indicator),
         PipelineConfig {
             min_press_ms: config.hotkey.min_press_ms,
             recording_mode: config.hotkey.recording_mode,
         },
     );
 
-    pipeline.run(rx).unwrap_or_else(|e| {
-        log::error!("fatal: {e:#}");
-        std::process::exit(1);
-    });
+    let pipeline_handle = std::thread::Builder::new()
+        .name("pipeline".into())
+        .spawn(move || {
+            pipeline.run(rx).unwrap_or_else(|e| {
+                log::error!("fatal: {e:#}");
+                std::process::exit(1);
+            });
+        })
+        .expect("failed to spawn pipeline thread");
+
+    let app = NSApplication::sharedApplication(mtm);
+    app.run();
+
+    pipeline_handle.join().ok();
 }
