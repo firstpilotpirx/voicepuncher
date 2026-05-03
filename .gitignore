@@ -2,3 +2,5 @@ target/
 .DS_Store
 *.swp
 .ai
+.env
+e2e-test/corpus/

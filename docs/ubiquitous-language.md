@@ -73,3 +73,20 @@
 | `whispercpp` | `whisper.cpp` C++ library (FFI'd via `whisper-rs`) | `WhisperCppTranscriber` |
 | `llamacpp` | `llama.cpp` C++ library (FFI'd via `llama-cpp-2`) | `LlamaCppTextRefiner` |
 | `macos` | macOS native APIs (`CGEventPost` via `enigo`, `NSPasteboard` via `arboard`, `AXIsProcessTrusted` via `core-foundation`) | `MacOsTextPaster`, `MacOsPermissionProbe` |
+| `filesystem` | WAV file I/O via `hound` | `FileSystemAudioRecorder` |
+| `stdio` | stdout via `println!` | `StdioTextPaster` |
+
+## E2E / Test vocabulary
+
+> These terms describe reference data used for accuracy measurement only. They are NOT part of the production domain.
+
+### Corpus
+- **Type:** E2E/test reference dataset (not a domain type)
+- **Definition:** A fixed set of audio files paired with GroundTruth transcripts, used for WER measurement in the E2E benchmark suite.
+- **Code:** `e2e-test/src/corpus.rs`
+
+### GroundTruth
+- **Type:** Value within Corpus (not a domain type)
+- **Definition:** The human-verified reference transcript for one corpus sample. Stored as the `reference` field in `manifest.jsonl`.
+- **Code:** `e2e-test/src/corpus.rs` (field `Sample.reference`)
+- **Synonyms to AVOID:** "label", "annotation", "transcript" (use `RawTranscript` for Whisper output, `GroundTruth` for reference data)

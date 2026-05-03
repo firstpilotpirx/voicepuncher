@@ -78,6 +78,13 @@ impl Pipeline {
         Ok(())
     }
 
+    pub fn run_once(&mut self, audio: AudioBuffer16k) -> anyhow::Result<()> {
+        let raw = self.transcriber.transcribe(&audio)?;
+        let cleaned = self.refiner.refine(&raw)?;
+        self.paster.paste(&cleaned)?;
+        Ok(())
+    }
+
     fn run_transcribe_refine_paste(&mut self, audio: AudioBuffer16k) {
         self.state = PipelineState::Transcribing;
         let raw = match self.transcriber.transcribe(&audio) {
@@ -437,5 +444,51 @@ mod tests {
         pipeline.step(PttSignal::Released).unwrap();
         // Then
         assert!(matches!(pipeline.state, PipelineState::Pasting));
+    }
+
+    #[test]
+    fn should_run_once_and_return_ok_for_successful_pipeline() {
+        // Given
+        let mut transcriber = MockTranscriber::new();
+        transcriber
+            .expect_transcribe()
+            .once()
+            .returning(|_| Ok(RawTranscript::new("hello".to_owned()).unwrap()));
+
+        let mut refiner = MockTextRefiner::new();
+        refiner
+            .expect_refine()
+            .once()
+            .returning(|_| Ok(CleanedText::new("hello".to_owned()).unwrap()));
+
+        let mut paster = MockTextPaster::new();
+        paster.expect_paste().once().returning(|_| Ok(()));
+
+        let mut pipeline = make_pipeline(MockAudioRecorder::new(), transcriber, refiner, paster);
+        // When
+        let result = pipeline.run_once(one_second_audio());
+        // Then
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn should_run_once_and_return_err_when_transcription_fails() {
+        // Given
+        let mut transcriber = MockTranscriber::new();
+        transcriber
+            .expect_transcribe()
+            .once()
+            .returning(|_| Err(anyhow::anyhow!("whisper failure")));
+
+        let mut pipeline = make_pipeline(
+            MockAudioRecorder::new(),
+            transcriber,
+            MockTextRefiner::new(),
+            MockTextPaster::new(),
+        );
+        // When
+        let result = pipeline.run_once(one_second_audio());
+        // Then
+        assert!(result.is_err());
     }
 }

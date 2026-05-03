@@ -26,6 +26,13 @@ pub struct Cli {
     #[arg(long)]
     pub debug_save_wav: Option<PathBuf>,
 
+    #[arg(
+        long,
+        value_name = "FILE",
+        help = "Transcribe a WAV file and print to stdout (no hotkey)"
+    )]
+    pub input_file: Option<PathBuf>,
+
     #[arg(long, help = "Re-run the setup wizard even if config already exists")]
     pub setup: bool,
 
@@ -96,6 +103,7 @@ mod tests {
             whisper_model: Some(PathBuf::from("/tmp/w.bin")),
             llm_model: Some(PathBuf::from("/tmp/l.gguf")),
             debug_save_wav: Some(PathBuf::from("/tmp/debug.wav")),
+            input_file: None,
             setup: false,
             verbose: 0,
         };
@@ -107,5 +115,13 @@ mod tests {
         assert_eq!(cfg.whisper.model_path, PathBuf::from("/tmp/w.bin"));
         assert_eq!(cfg.llm.model_path, PathBuf::from("/tmp/l.gguf"));
         assert!(cfg.audio.debug_save_wav);
+    }
+
+    #[test]
+    fn should_parse_input_file_flag() {
+        // Given / When
+        let cli = Cli::parse_from(["voicepuncher", "--input-file", "/tmp/test.wav"]);
+        // Then
+        assert_eq!(cli.input_file, Some(PathBuf::from("/tmp/test.wav")));
     }
 }
