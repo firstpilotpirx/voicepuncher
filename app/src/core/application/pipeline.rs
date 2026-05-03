@@ -1,6 +1,10 @@
-use std::sync::mpsc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+    mpsc,
+};
 
-use crate::core::application::ports::{AudioRecorder, TextPaster, TextRefiner, Transcriber};
+use crate::core::application::ports::{AudioRecorder, SoundPlayer, TextPaster, TextRefiner, Transcriber};
 use crate::core::domain::{AudioBuffer16k, PttSignal, RecordingMode};
 
 #[derive(Debug, Clone, Copy)]
@@ -18,13 +22,23 @@ enum PipelineState {
     Pasting,
 }
 
+struct ProcessingGuard<'a>(&'a AtomicBool);
+
+impl Drop for ProcessingGuard<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Relaxed);
+    }
+}
+
 pub struct Pipeline {
     pub recorder: Box<dyn AudioRecorder>,
     pub transcriber: Box<dyn Transcriber>,
     pub refiner: Box<dyn TextRefiner>,
     pub paster: Box<dyn TextPaster>,
+    pub sound_player: Box<dyn SoundPlayer>,
     pub cfg: PipelineConfig,
     state: PipelineState,
+    processing: Arc<AtomicBool>,
 }
 
 impl Pipeline {
@@ -33,23 +47,29 @@ impl Pipeline {
         transcriber: Box<dyn Transcriber>,
         refiner: Box<dyn TextRefiner>,
         paster: Box<dyn TextPaster>,
+        sound_player: Box<dyn SoundPlayer>,
         cfg: PipelineConfig,
+        processing: Arc<AtomicBool>,
     ) -> Self {
         Self {
             recorder,
             transcriber,
             refiner,
             paster,
+            sound_player,
             cfg,
             state: PipelineState::Idle,
+            processing,
         }
     }
 
     pub fn run(&mut self, rx: mpsc::Receiver<PttSignal>) -> anyhow::Result<()> {
-        for signal in rx {
+        loop {
+            let signal = rx
+                .recv()
+                .map_err(|_| anyhow::anyhow!("hotkey listener channel closed"))?;
             self.step(signal)?;
         }
-        anyhow::bail!("hotkey listener channel closed")
     }
 
     fn step(&mut self, signal: PttSignal) -> anyhow::Result<()> {
@@ -61,11 +81,13 @@ impl Pipeline {
         );
         match (self.state, signal) {
             (Idle, PttSignal::Pressed) => {
+                self.sound_player.play_start();
                 self.recorder.start()?;
                 self.state = Recording;
             }
             (Recording, _) if stops => {
                 let audio = self.recorder.stop()?;
+                self.sound_player.play_stop();
                 self.state = Idle;
                 if audio.is_empty() || audio.duration_ms() < self.cfg.min_press_ms {
                     log::info!("dropped: too short ({} ms)", audio.duration_ms());
@@ -86,7 +108,10 @@ impl Pipeline {
     }
 
     fn run_transcribe_refine_paste(&mut self, audio: AudioBuffer16k) {
+        self.processing.store(true, Ordering::Relaxed);
+        let _guard = ProcessingGuard(&self.processing);
         self.state = PipelineState::Transcribing;
+        log::info!("transcribing…");
         let raw = match self.transcriber.transcribe(&audio) {
             Err(e) => {
                 log::warn!("transcription failed, dropping cycle: {e:#}");
@@ -97,6 +122,7 @@ impl Pipeline {
         };
 
         self.state = PipelineState::Refining;
+        log::info!("refining…");
         let cleaned = match self.refiner.refine(&raw) {
             Err(e) => {
                 log::error!("refinement failed, dropping cycle: {e:#}");
@@ -107,19 +133,22 @@ impl Pipeline {
         };
 
         self.state = PipelineState::Pasting;
+        log::info!("pasting…");
         if let Err(e) = self.paster.paste(&cleaned) {
             log::error!("paste failed, dropping cycle: {e:#}");
         }
         self.state = PipelineState::Idle;
+        log::info!("done");
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::mpsc;
+    use std::sync::{Arc, atomic::AtomicBool, mpsc};
 
     use super::*;
     use crate::core::application::ports::audio_recorder::MockAudioRecorder;
+    use crate::core::application::ports::sound_player::MockSoundPlayer;
     use crate::core::application::ports::text_paster::MockTextPaster;
     use crate::core::application::ports::text_refiner::MockTextRefiner;
     use crate::core::application::ports::transcriber::MockTranscriber;
@@ -128,6 +157,13 @@ mod tests {
 
     fn one_second_audio() -> AudioBuffer16k {
         AudioBuffer16k::new(vec![0i16; 16_000])
+    }
+
+    fn noop_sound_player() -> MockSoundPlayer {
+        let mut p = MockSoundPlayer::new();
+        p.expect_play_start().times(..).return_const(());
+        p.expect_play_stop().times(..).return_const(());
+        p
     }
 
     fn make_pipeline(
@@ -157,10 +193,12 @@ mod tests {
             Box::new(transcriber),
             Box::new(refiner),
             Box::new(paster),
+            Box::new(noop_sound_player()),
             PipelineConfig {
                 min_press_ms: 200,
                 recording_mode,
             },
+            Arc::new(AtomicBool::new(false)),
         )
     }
 

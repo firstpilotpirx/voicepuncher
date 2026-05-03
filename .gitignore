@@ -4,3 +4,4 @@ target/
 .ai
 .env
 e2e-test/corpus/
+.idea

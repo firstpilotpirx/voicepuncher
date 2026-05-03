@@ -2388,6 +2388,7 @@ dependencies = [
  "anyhow",
  "arboard",
  "clap",
+ "console",
  "core-foundation 0.10.1",
  "cpal",
  "dialoguer",

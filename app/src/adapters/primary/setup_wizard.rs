@@ -1,8 +1,10 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use console::{Key, Term};
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 
+use crate::adapters::secondary::macos_sound_player::MacosSoundPlayer;
 use crate::adapters::secondary::model_downloader::ModelDownloader;
 use crate::core::domain::{HotKey, RecordingMode};
 
@@ -74,6 +76,11 @@ const HOTKEY_OPTIONS: &[(&str, HotKey)] = &[
     ("F19", HotKey::F19),
 ];
 
+const SOUND_OPTIONS: &[&str] = &[
+    "Glass", "Pop", "Ping", "Tink", "Bottle", "Frog", "Funk", "Hero", "Morse", "Purr", "Sosumi",
+    "Submarine", "Basso", "Blow", "(none)",
+];
+
 const RECORDING_MODE_OPTIONS: &[(&str, RecordingMode)] = &[
     (
         "Toggle — press once to start, press again to stop  (recommended)",
@@ -86,11 +93,17 @@ const RECORDING_MODE_OPTIONS: &[(&str, RecordingMode)] = &[
 ];
 
 const DEFAULT_SYSTEM_PROMPT: &str =
-    "You are a speech-to-text post-processor. Fix only ASR recognition errors: wrong words, \
-     technical terms transcribed in the wrong alphabet (e.g. кубернетес → Kubernetes), words \
-     accidentally merged or split. Do not rewrite, rephrase, or improve style — change only what \
-     is broken. Preserve the original language and do not translate. Restore technical terms to \
-     their correct script (e.g. Kubernetes, Docker, API in English, even within Russian text). \
+    "You are a speech-to-text post-processor. Your ONLY job is to fix ASR errors: \
+     wrong words, technical terms in wrong alphabet (e.g. кубернетес → Kubernetes), \
+     accidentally merged or split words. \
+     STRICT RULES: \
+     (1) Output the COMPLETE text — never abbreviate, never use ellipsis (...), \
+     never omit words, never summarize, never shorten. \
+     (2) Do NOT rewrite, rephrase, restructure, or improve style. \
+     (3) Preserve the original language — do not translate. \
+     (4) Fix technical terms to their correct script (Kubernetes, Docker, API in English \
+     even inside Russian text). \
+     (5) If nothing needs fixing, copy the input verbatim — every word, every number. \
      Output only the corrected text, nothing else.";
 
 pub struct SetupWizard;
@@ -162,6 +175,17 @@ impl SetupWizard {
         let whisper_path = data_dir.join(whisper.filename);
         let llm_path = data_dir.join(llm.filename);
 
+        let start_sound = sound_select(
+            "Recording start sound",
+            SOUND_OPTIONS,
+            SOUND_OPTIONS.iter().position(|&s| s == "Glass").unwrap_or(0),
+        )?;
+        let stop_sound = sound_select(
+            "Recording stop sound",
+            SOUND_OPTIONS,
+            SOUND_OPTIONS.iter().position(|&s| s == "Pop").unwrap_or(1),
+        )?;
+
         let do_download = Confirm::with_theme(&theme)
             .with_prompt("Download selected models now?")
             .default(true)
@@ -179,11 +203,15 @@ impl SetupWizard {
 
         Self::write_config(
             config_path,
-            &whisper_path,
-            &llm_path,
-            &lang,
-            hotkey,
-            recording_mode,
+            WriteConfigParams {
+                whisper_path: &whisper_path,
+                llm_path: &llm_path,
+                lang: &lang,
+                hotkey,
+                recording_mode,
+                start_sound: &start_sound,
+                stop_sound: &stop_sound,
+            },
         )?;
 
         println!();
@@ -209,14 +237,7 @@ impl SetupWizard {
         ModelDownloader::download(url, dest)
     }
 
-    fn write_config(
-        config_path: &Path,
-        whisper_path: &Path,
-        llm_path: &Path,
-        lang: &str,
-        hotkey: HotKey,
-        recording_mode: RecordingMode,
-    ) -> Result<()> {
+    fn write_config(config_path: &Path, p: WriteConfigParams<'_>) -> Result<()> {
         if let Some(parent) = config_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -244,16 +265,102 @@ impl SetupWizard {
              [paste]\n\
              clipboard_restore_delay_ms = 120\n\
              \n\
+             [sounds]\n\
+             start_sound = \"{start_sound}\"\n\
+             stop_sound = \"{stop_sound}\"\n\
+             \n\
              [logging]\n\
              level = \"info\"\n",
-            key = hotkey,
-            mode = recording_mode,
-            whisper = whisper_path.display(),
-            lang = lang,
-            llm = llm_path.display(),
+            key = p.hotkey,
+            mode = p.recording_mode,
+            whisper = p.whisper_path.display(),
+            lang = p.lang,
+            llm = p.llm_path.display(),
             prompt = DEFAULT_SYSTEM_PROMPT,
+            start_sound = p.start_sound,
+            stop_sound = p.stop_sound,
         );
         std::fs::write(config_path, content)?;
         Ok(())
     }
+}
+
+struct WriteConfigParams<'a> {
+    whisper_path: &'a Path,
+    llm_path: &'a Path,
+    lang: &'a str,
+    hotkey: HotKey,
+    recording_mode: RecordingMode,
+    start_sound: &'a str,
+    stop_sound: &'a str,
+}
+
+fn sound_select(prompt: &str, options: &[&str], default_idx: usize) -> Result<String> {
+    let term = Term::stderr();
+    let n = options.len();
+    let mut sel = default_idx;
+    let mut child: Option<std::process::Child> = None;
+
+    let draw = |term: &Term, sel: usize| -> Result<()> {
+        term.write_line(&format!("? {prompt} (↑↓ to preview, Enter to confirm):"))?;
+        for (i, &opt) in options.iter().enumerate() {
+            if i == sel {
+                term.write_line(&format!("  \x1b[36;1m❯ {opt}\x1b[0m"))?;
+            } else {
+                term.write_line(&format!("    {opt}"))?;
+            }
+        }
+        Ok(())
+    };
+
+    draw(&term, sel)?;
+
+    if options[sel] != "(none)" {
+        child = MacosSoundPlayer::preview_async(options[sel]);
+    }
+
+    loop {
+        match term.read_key()? {
+            Key::ArrowUp => {
+                sel = sel.saturating_sub(1);
+            }
+            Key::ArrowDown => {
+                if sel < n - 1 {
+                    sel += 1;
+                }
+            }
+            Key::Enter => break,
+            Key::Escape => {
+                sel = default_idx;
+                break;
+            }
+            _ => continue,
+        }
+
+        if let Some(mut c) = child.take() {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
+        if options[sel] != "(none)" {
+            child = MacosSoundPlayer::preview_async(options[sel]);
+        }
+
+        term.clear_last_lines(n + 1)?;
+        draw(&term, sel)?;
+    }
+
+    if let Some(mut c) = child.take() {
+        let _ = c.kill();
+        let _ = c.wait();
+    }
+
+    term.clear_last_lines(n + 1)?;
+    let selected = options[sel];
+    if selected == "(none)" {
+        term.write_line(&format!("  {prompt} · (none)"))?;
+        return Ok(String::new());
+    }
+    term.write_line(&format!("  {prompt} · {selected}"))?;
+
+    Ok(selected.to_string())
 }

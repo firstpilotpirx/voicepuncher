@@ -1,4 +1,8 @@
-use std::sync::mpsc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+    mpsc,
+};
 use std::thread::JoinHandle;
 
 use anyhow::Result;
@@ -21,6 +25,7 @@ impl HotkeyListener for RdevHotkeyListener {
         self: Box<Self>,
         target: HotKey,
         tx: mpsc::Sender<PttSignal>,
+        processing: Arc<AtomicBool>,
     ) -> Result<JoinHandle<()>> {
         let rdev_key = hotkey_to_rdev_key(target);
         let handle = std::thread::Builder::new()
@@ -34,7 +39,9 @@ impl HotkeyListener for RdevHotkeyListener {
                         _ => None,
                     };
                     if let Some(s) = signal {
-                        let _ = sender.send(s);
+                        if !processing.load(Ordering::Relaxed) {
+                            let _ = sender.send(s);
+                        }
                     }
                 }) {
                     log::error!("hotkey listener stopped unexpectedly: {e:?}");

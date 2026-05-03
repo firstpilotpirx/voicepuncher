@@ -19,6 +19,8 @@ pub struct Config {
     #[serde(default)]
     pub paste: PasteCfg,
     #[serde(default)]
+    pub sounds: SoundsCfg,
+    #[serde(default)]
     pub logging: LoggingCfg,
 }
 
@@ -120,7 +122,18 @@ pub struct LlmCfg {
 
 impl LlmCfg {
     fn default_system_prompt() -> String {
-        "You are a speech-to-text post-processor. Fix only ASR recognition errors: wrong words, technical terms transcribed in the wrong alphabet (e.g. кубернетес → Kubernetes), words accidentally merged or split. Do not rewrite, rephrase, or improve style — change only what is broken. Preserve the original language and do not translate. Restore technical terms to their correct script (e.g. Kubernetes, Docker, API in English, even within Russian text). Output only the corrected text, nothing else.".into()
+        "You are a speech-to-text post-processor. Your ONLY job is to fix ASR errors: \
+         wrong words, technical terms in wrong alphabet (e.g. кубернетес → Kubernetes), \
+         accidentally merged or split words. \
+         STRICT RULES: \
+         (1) Output the COMPLETE text — never abbreviate, never use ellipsis (...), \
+         never omit words, never summarize, never shorten. \
+         (2) Do NOT rewrite, rephrase, restructure, or improve style. \
+         (3) Preserve the original language — do not translate. \
+         (4) Fix technical terms to their correct script (Kubernetes, Docker, API in English \
+         even inside Russian text). \
+         (5) If nothing needs fixing, copy the input verbatim — every word, every number. \
+         Output only the corrected text, nothing else.".into()
     }
     fn default_max_tokens() -> u32 {
         512
@@ -159,6 +172,34 @@ impl Default for PasteCfg {
     fn default() -> Self {
         Self {
             clipboard_restore_delay_ms: Self::default_clipboard_restore_delay_ms(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SoundsCfg {
+    #[serde(default = "SoundsCfg::default_start_sound")]
+    pub start_sound: String,
+    #[serde(default = "SoundsCfg::default_stop_sound")]
+    pub stop_sound: String,
+}
+
+impl SoundsCfg {
+    fn default_start_sound() -> String {
+        "Glass".into()
+    }
+
+    fn default_stop_sound() -> String {
+        "Pop".into()
+    }
+}
+
+impl Default for SoundsCfg {
+    fn default() -> Self {
+        Self {
+            start_sound: Self::default_start_sound(),
+            stop_sound: Self::default_stop_sound(),
         }
     }
 }

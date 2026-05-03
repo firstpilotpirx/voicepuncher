@@ -6,6 +6,7 @@ use voicepuncher::adapters::secondary::cpal_audio_recorder::CpalAudioRecorder;
 use voicepuncher::adapters::secondary::file_system_audio_recorder::FileSystemAudioRecorder;
 use voicepuncher::adapters::secondary::llamacpp_text_refiner::LlamaCppTextRefiner;
 use voicepuncher::adapters::secondary::macos_permission_probe::MacOsPermissionProbe;
+use voicepuncher::adapters::secondary::macos_sound_player::MacosSoundPlayer;
 use voicepuncher::adapters::secondary::macos_text_paster::MacOsTextPaster;
 use voicepuncher::adapters::secondary::stdio_text_paster::StdioTextPaster;
 use voicepuncher::adapters::secondary::whispercpp_transcriber::WhisperCppTranscriber;
@@ -14,6 +15,7 @@ use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
 use voicepuncher::core::application::ports::hotkey_listener::HotkeyListener;
 use voicepuncher::core::application::preflight::Preflight;
 use voicepuncher::core::domain::PttSignal;
+use std::sync::{Arc, atomic::AtomicBool};
 
 fn main() {
     let cli = Cli::parse();
@@ -71,15 +73,18 @@ fn main() {
             std::process::exit(1);
         });
         let paster = StdioTextPaster::new();
+        let sound_player = MacosSoundPlayer::new("", "");
         let mut pipeline = Pipeline::new(
             Box::new(FileSystemAudioRecorder::new(input_path.clone())),
             Box::new(transcriber),
             Box::new(refiner),
             Box::new(paster),
+            Box::new(sound_player),
             PipelineConfig {
                 min_press_ms: config.hotkey.min_press_ms,
                 recording_mode: config.hotkey.recording_mode,
             },
+            Arc::new(AtomicBool::new(false)),
         );
         pipeline.run_once(audio).unwrap_or_else(|e| {
             log::error!("file mode failed: {e:#}");
@@ -127,23 +132,32 @@ fn main() {
 
     let (tx, rx) = std::sync::mpsc::channel::<PttSignal>();
 
+    let processing = Arc::new(AtomicBool::new(false));
+
     let listener = RdevHotkeyListener::new();
     let _handle = Box::new(listener)
-        .spawn(config.hotkey.key, tx)
+        .spawn(config.hotkey.key, tx, Arc::clone(&processing))
         .unwrap_or_else(|e| {
             log::error!("failed to spawn hotkey listener: {e:#}");
             std::process::exit(2);
         });
+
+    let sound_player = MacosSoundPlayer::new(
+        &config.sounds.start_sound,
+        &config.sounds.stop_sound,
+    );
 
     let mut pipeline = Pipeline::new(
         Box::new(recorder),
         Box::new(transcriber),
         Box::new(refiner),
         Box::new(paster),
+        Box::new(sound_player),
         PipelineConfig {
             min_press_ms: config.hotkey.min_press_ms,
             recording_mode: config.hotkey.recording_mode,
         },
+        Arc::clone(&processing),
     );
 
     pipeline.run(rx).unwrap_or_else(|e| {

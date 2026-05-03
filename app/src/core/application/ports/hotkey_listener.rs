@@ -1,4 +1,8 @@
 use std::sync::mpsc;
+use std::sync::{
+    Arc,
+    atomic::AtomicBool,
+};
 use std::thread::JoinHandle;
 
 use anyhow::Result;
@@ -11,5 +15,6 @@ pub trait HotkeyListener: Send + 'static {
         self: Box<Self>,
         target: HotKey,
         tx: mpsc::Sender<PttSignal>,
+        processing: Arc<AtomicBool>,
     ) -> Result<JoinHandle<()>>;
 }

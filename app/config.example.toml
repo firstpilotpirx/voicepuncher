@@ -25,5 +25,9 @@ context_size = 4096
 [paste]
 clipboard_restore_delay_ms = 120
 
+[sounds]
+start_sound = "Glass"   # macOS system sound name, or "" to disable
+stop_sound = "Pop"      # macOS system sound name, or "" to disable
+
 [logging]
 level = "info"

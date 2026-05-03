@@ -12,7 +12,7 @@ use rubato::{
 use crate::core::application::ports::audio_recorder::AudioRecorder;
 use crate::core::domain::AudioBuffer16k;
 
-const RINGBUF_CAPACITY: usize = 480_000;
+const RINGBUF_CAPACITY: usize = 1_920_000;
 
 pub struct CpalAudioRecorder {
     debug_save_wav: Option<PathBuf>,
