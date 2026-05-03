@@ -1,4 +1,4 @@
-use crate::core::application::ports::PermissionProbe;
+use crate::core::application::PermissionProbe;
 use anyhow::anyhow;
 
 pub struct Preflight;
@@ -24,7 +24,7 @@ impl Preflight {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::application::ports::permission_probe::MockPermissionProbe;
+    use crate::core::application::permission_probe::MockPermissionProbe;
     use anyhow::anyhow;
 
     #[test]

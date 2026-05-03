@@ -60,21 +60,41 @@
 - **Code:** `app/src/core/application/ports/permission_probe.rs`
 - **Synonyms to AVOID:** "PermissionChecker", "PermissionService"
 
+### SoundPlayer
+- **Type:** Driven Port (trait in `core/application/`)
+- **Definition:** Plays an auditory cue at the start and stop of a recording cycle. Abstracts macOS `afplay` so `Pipeline` stays platform-agnostic. Implementations may be no-ops (e.g. in tests or file mode).
+- **Code:** `app/src/core/application/sound_player.rs`
+- **Synonyms to AVOID:** "AudioPlayer", "BeepService"
+
+### RecordingMode
+- **Type:** Value Object (enum)
+- **Definition:** Controls how the user triggers a recording cycle. `Toggle` — one press starts, a second press stops. `Hold` — hold the key while speaking, release to stop.
+- **Code:** `app/src/core/domain/recording_mode.rs`
+- **Variants:** `Toggle` (default), `Hold`
+- **Synonyms to AVOID:** "TriggerMode", "CaptureMode"
+
+### SetupWizard
+- **Type:** Primary Adapter (interactive CLI wizard)
+- **Definition:** Runs on first launch (or when `--setup` is passed) to guide the user through selecting models, downloading them, and writing the initial config file. Lives in `adapters/primary/setup/cli/`. Not a Use Case — it contains user interaction logic, not domain logic.
+- **Code:** `app/src/adapters/primary/setup/cli/mod.rs`
+- **Synonyms to AVOID:** "Installer", "Bootstrapper", "Onboarding"
+
 ### HotkeyListener / AudioRecorder / Transcriber / TextRefiner / TextPaster
-- **Type:** Driving / Driven Ports (traits in `core/application/ports/`)
-- **Code:** `app/src/core/application/ports/*.rs`
+- **Type:** Driving / Driven Ports (traits in `core/application/`)
+- **Code:** `app/src/core/application/{hotkey_listener,audio_recorder,transcriber,text_refiner,text_paster}.rs`
 
 ### Project-local tech vocabulary
 
 | `<tech>` segment | Refers to | Used in |
 |---|---|---|
-| `rdev` | `rdev` crate | `RdevHotkeyListener` |
-| `cpal` | `cpal` crate | `CpalAudioRecorder` |
-| `whispercpp` | `whisper.cpp` C++ library (FFI'd via `whisper-rs`) | `WhisperCppTranscriber` |
-| `llamacpp` | `llama.cpp` C++ library (FFI'd via `llama-cpp-2`) | `LlamaCppTextRefiner` |
-| `macos` | macOS native APIs (`CGEventPost` via `enigo`, `NSPasteboard` via `arboard`, `AXIsProcessTrusted` via `core-foundation`) | `MacOsTextPaster`, `MacOsPermissionProbe` |
-| `filesystem` | WAV file I/O via `hound` | `FileSystemAudioRecorder` |
-| `stdio` | stdout via `println!` | `StdioTextPaster` |
+| `rdev` | `rdev` crate | `adapters/primary/ptt/rdev/` — `RdevHotkeyListener` |
+| `cpal` | `cpal` crate | `adapters/secondary/recording/cpal/` — `CpalAudioRecorder` |
+| `whispercpp` | `whisper.cpp` C++ library (FFI'd via `whisper-rs`) | `adapters/secondary/transcription/whispercpp/` — `WhisperCppTranscriber` |
+| `llamacpp` | `llama.cpp` C++ library (FFI'd via `llama-cpp-2`) | `adapters/secondary/textrefinement/llamacpp/` — `LlamaCppTextRefiner` |
+| `macos` | macOS native APIs (`CGEventPost` via `enigo`, `NSPasteboard` via `arboard`, `AXIsProcessTrusted` via `core-foundation`) | `adapters/secondary/textpasting/macos/`, `adapters/secondary/soundplaying/macos/`, `adapters/secondary/permissions/macos/` |
+| `filesystem` | WAV file I/O via `hound` | `adapters/secondary/recording/filesystem/` — `FileSystemAudioRecorder` |
+| `stdio` | stdout via `println!` | `adapters/secondary/textpasting/stdio/` — `StdioTextPaster` |
+| `cli` | interactive terminal UI via `dialoguer` + `console` | `adapters/primary/setup/cli/` — `SetupWizard` |
 
 ## E2E / Test vocabulary
 

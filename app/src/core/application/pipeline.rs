@@ -1,10 +1,6 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-    mpsc,
-};
+use std::sync::mpsc;
 
-use crate::core::application::ports::{AudioRecorder, SoundPlayer, TextPaster, TextRefiner, Transcriber};
+use crate::core::application::{AudioRecorder, SoundPlayer, TextPaster, TextRefiner, Transcriber};
 use crate::core::domain::{AudioBuffer16k, PttSignal, RecordingMode};
 
 #[derive(Debug, Clone, Copy)]
@@ -22,14 +18,6 @@ enum PipelineState {
     Pasting,
 }
 
-struct ProcessingGuard<'a>(&'a AtomicBool);
-
-impl Drop for ProcessingGuard<'_> {
-    fn drop(&mut self) {
-        self.0.store(false, Ordering::Relaxed);
-    }
-}
-
 pub struct Pipeline {
     pub recorder: Box<dyn AudioRecorder>,
     pub transcriber: Box<dyn Transcriber>,
@@ -38,7 +26,6 @@ pub struct Pipeline {
     pub sound_player: Box<dyn SoundPlayer>,
     pub cfg: PipelineConfig,
     state: PipelineState,
-    processing: Arc<AtomicBool>,
 }
 
 impl Pipeline {
@@ -49,7 +36,6 @@ impl Pipeline {
         paster: Box<dyn TextPaster>,
         sound_player: Box<dyn SoundPlayer>,
         cfg: PipelineConfig,
-        processing: Arc<AtomicBool>,
     ) -> Self {
         Self {
             recorder,
@@ -59,7 +45,6 @@ impl Pipeline {
             sound_player,
             cfg,
             state: PipelineState::Idle,
-            processing,
         }
     }
 
@@ -74,6 +59,7 @@ impl Pipeline {
 
     fn step(&mut self, signal: PttSignal) -> anyhow::Result<()> {
         use PipelineState::*;
+        log::info!("pipeline recv {signal:?} in state {:?}", self.state);
         let stops = matches!(
             (self.state, signal, self.cfg.recording_mode),
             (Recording, PttSignal::Released, RecordingMode::Hold)
@@ -108,8 +94,6 @@ impl Pipeline {
     }
 
     fn run_transcribe_refine_paste(&mut self, audio: AudioBuffer16k) {
-        self.processing.store(true, Ordering::Relaxed);
-        let _guard = ProcessingGuard(&self.processing);
         self.state = PipelineState::Transcribing;
         log::info!("transcribing…");
         let raw = match self.transcriber.transcribe(&audio) {
@@ -144,14 +128,14 @@ impl Pipeline {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, atomic::AtomicBool, mpsc};
+    use std::sync::mpsc;
 
     use super::*;
-    use crate::core::application::ports::audio_recorder::MockAudioRecorder;
-    use crate::core::application::ports::sound_player::MockSoundPlayer;
-    use crate::core::application::ports::text_paster::MockTextPaster;
-    use crate::core::application::ports::text_refiner::MockTextRefiner;
-    use crate::core::application::ports::transcriber::MockTranscriber;
+    use crate::core::application::audio_recorder::MockAudioRecorder;
+    use crate::core::application::sound_player::MockSoundPlayer;
+    use crate::core::application::text_paster::MockTextPaster;
+    use crate::core::application::text_refiner::MockTextRefiner;
+    use crate::core::application::transcriber::MockTranscriber;
     use crate::core::domain::{CleanedText, RawTranscript};
     use anyhow::anyhow;
 
@@ -198,7 +182,6 @@ mod tests {
                 min_press_ms: 200,
                 recording_mode,
             },
-            Arc::new(AtomicBool::new(false)),
         )
     }
 

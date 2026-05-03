@@ -1,0 +1,110 @@
+# System Overview
+
+voicepuncher is an offline push-to-talk voice-to-text CLI for macOS Apple Silicon. The user holds a configurable hotkey, speaks, releases — the spoken text is transcribed by whisper.cpp, cleaned by a local Qwen2.5 LLM via llama.cpp, and pasted at the cursor. No network call is made at runtime. All inference runs on the Apple Silicon GPU via Metal.
+
+## Hexagonal Architecture
+
+```mermaid
+flowchart TB
+    subgraph external["External actors"]
+        USER["User\n(keyboard + voice)"]
+        MACOS["macOS\n(TCC, CoreAudio,\nCGEventPost)"]
+        FS["File system\n(model files, WAV,\nconfig)"]
+    end
+
+    subgraph primary["Primary adapters (driving)"]
+        RDEV["RdevHotkeyListener\n(rdev crate)"]
+        WIZARD["SetupWizard\n(first-run config)"]
+        CLI["Cli\n(clap)"]
+    end
+
+    subgraph app["core/application"]
+        PIPELINE["Pipeline\n(use case)"]
+        PREFLIGHT["Preflight\n(use case)"]
+        PORTS["Ports\n(traits: AudioRecorder,\nTranscriber, TextRefiner,\nTextPaster, HotkeyListener,\nSoundPlayer, PermissionProbe)"]
+    end
+
+    subgraph domain["core/domain"]
+        VO["Value Objects\nAudioBuffer16k · RawTranscript\nCleanedText · HotKey\nPttSignal · RecordingMode"]
+    end
+
+    subgraph secondary["Secondary adapters (driven)"]
+        CPAL["CpalAudioRecorder\n(cpal)"]
+        WHISPER["WhisperCppTranscriber\n(whisper-rs FFI)"]
+        LLAMA["LlamaCppTextRefiner\n(llama-cpp-2 FFI)"]
+        PASTER["MacOsTextPaster\n(arboard + CGEventPost)"]
+        SOUND["MacosSoundPlayer\n(macOS audio)"]
+        PROBE["MacOsPermissionProbe\n(AXIsProcessTrusted + cpal)"]
+        FSREC["FileSystemAudioRecorder\n(hound, WAV I/O)"]
+        STDIO["StdioTextPaster\n(stdout)"]
+    end
+
+    USER -->|hotkey press/release| RDEV
+    USER -->|voice| MACOS
+    MACOS -->|audio stream| CPAL
+    MACOS <-->|TCC probe| PROBE
+    MACOS <--|paste text| PASTER
+    FS -->|model binary| WHISPER
+    FS -->|model binary| LLAMA
+    FS -->|WAV file| FSREC
+
+    RDEV -->|PttSignal| PIPELINE
+    CLI --> PIPELINE
+    WIZARD --> PREFLIGHT
+    PIPELINE --> PORTS
+    PREFLIGHT --> PORTS
+    PORTS -.implements.-> CPAL
+    PORTS -.implements.-> WHISPER
+    PORTS -.implements.-> LLAMA
+    PORTS -.implements.-> PASTER
+    PORTS -.implements.-> SOUND
+    PORTS -.implements.-> PROBE
+    PORTS -.implements.-> FSREC
+    PORTS -.implements.-> STDIO
+    PIPELINE --> domain
+    PREFLIGHT --> domain
+```
+
+The domain ring contains only pure Rust value objects with zero external dependencies. The application ring holds the two use cases (`Pipeline`, `Preflight`) and the port traits. All technology — audio, inference, clipboard, hotkey — lives exclusively in adapters and never crosses into `core/`.
+
+## Pipeline State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Recording : PttSignal::Pressed
+    Recording --> Transcribing : PttSignal::Released\n(press ≥ min_press_ms)
+    Recording --> Idle : PttSignal::Released\n(press < min_press_ms, drop)
+    Transcribing --> Refining : RawTranscript produced
+    Refining --> Pasting : CleanedText produced
+    Pasting --> Idle : text pasted
+    Transcribing --> Idle : error (logged)
+    Refining --> Idle : error (logged)
+    Pasting --> Idle : error (logged)
+```
+
+Signals received while the pipeline is in any non-Idle state (except `Recording` waiting for `Released`) are silently discarded. This prevents double-triggers from key bounce or slow inference.
+
+## Technology Choices
+
+| Concern | Library / API | Reason |
+|---|---|---|
+| Hotkey capture | `rdev` | Global key listener without a visible window; works in terminal |
+| Audio recording | `cpal` | Cross-platform abstraction; picks CoreAudio on macOS |
+| Speech-to-text | `whisper-rs` (whisper.cpp FFI) | State-of-the-art offline STT; Metal acceleration |
+| Text refinement | `llama-cpp-2` (llama.cpp FFI) | Runs Qwen2.5-3B-Instruct locally; Metal acceleration |
+| Clipboard paste | `arboard` + `CGEventPost` | `arboard` writes to NSPasteboard; `CGEventPost` sends Cmd+V |
+| Audio playback | macOS `NSSound` / `AVAudioPlayer` | Start/stop beeps via macOS native sound API |
+| Permission probe | `core-foundation` (`AXIsProcessTrusted`) | Checks Accessibility TCC before first key capture |
+| Config | `serde` + `toml` | TOML config file at `~/.voicepuncher/config.toml` |
+| CLI args | `clap` | Derive-based arg parser; overlays on top of TOML config |
+
+## Quality Goals
+
+| Goal | Target | Notes |
+|---|---|---|
+| Fully offline | Zero network I/O at runtime | Both models run locally via Metal; no telemetry |
+| Latency | < 3 s end-to-end (press → paste) | On Apple M-series with `large-v3-turbo-q5` + `Qwen2.5-3B-Q4` |
+| Multilingual | English + Russian validated | FLEURS en/ru corpus in the benchmark suite |
+| Accuracy (WER) | < 35% WER on mixed corpus | Measured by `just bench` over 100+ samples |
+| macOS-only | Apple Silicon + Metal required | No Intel support; no Linux/Windows port planned at PoC stage |

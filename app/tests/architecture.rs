@@ -20,7 +20,7 @@ fn r1_domain_no_adapter_imports() {
         "whisper_rs",
         "llama_cpp_2",
         "arboard",
-        "enigo",
+        "core_graphics",
     ];
 
     let mut violations: Vec<String> = Vec::new();
@@ -63,7 +63,7 @@ fn r2_application_no_adapter_imports() {
         "whisper_rs",
         "llama_cpp_2",
         "arboard",
-        "enigo",
+        "core_graphics",
     ];
 
     let mut violations: Vec<String> = Vec::new();
@@ -97,40 +97,53 @@ fn r2_application_no_adapter_imports() {
     );
 }
 
+fn leaf_adapter_dirs(root: &str) -> Vec<std::path::PathBuf> {
+    WalkDir::new(root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_dir())
+        .filter(|e| {
+            let path = e.path();
+            let has_mod_rs = path.join("mod.rs").exists();
+            let depth = path
+                .strip_prefix(root)
+                .map(|p| p.components().count())
+                .unwrap_or(0);
+            has_mod_rs && depth == 2
+        })
+        .map(|e| e.path().to_path_buf())
+        .collect()
+}
+
 #[test]
-fn r3_adapter_filenames_match_naming_convention() {
-    let naming_re = Regex::new(r"^[a-z][a-z0-9]*(_[a-z][a-z0-9]*)*$").unwrap();
-    let adapter_dirs = ["src/adapters/primary", "src/adapters/secondary"];
+fn r3_adapter_dirs_match_naming_convention() {
+    let naming_re = Regex::new(r"^[a-z][a-z0-9]*$").unwrap();
+    let adapter_roots = ["src/adapters/primary", "src/adapters/secondary"];
     let mut violations: Vec<String> = Vec::new();
 
-    for dir in &adapter_dirs {
-        let entries = match fs::read_dir(dir) {
-            Ok(e) => e,
-            Err(err) => {
-                violations.push(format!("cannot read {dir}: {err}"));
-                continue;
-            }
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            if path.extension().and_then(|s| s.to_str()) != Some("rs") {
-                continue;
-            }
-            let stem = path
-                .file_stem()
+    for root in &adapter_roots {
+        for leaf_dir in leaf_adapter_dirs(root) {
+            let feature = leaf_dir
+                .parent()
+                .and_then(|p| p.file_name())
                 .and_then(|s| s.to_str())
                 .unwrap_or_default();
-            if stem == "mod" {
-                continue;
-            }
-            if !naming_re.is_match(stem) {
+            let tech = leaf_dir
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default();
+            if !naming_re.is_match(feature) {
                 violations.push(format!(
-                    "{}: filename stem '{}' does not match snake_case pattern",
-                    path.display(),
-                    stem
+                    "{}: feature segment '{}' must be a single lowercase word",
+                    leaf_dir.display(),
+                    feature
+                ));
+            }
+            if !naming_re.is_match(tech) {
+                violations.push(format!(
+                    "{}: tech segment '{}' must be a single lowercase word",
+                    leaf_dir.display(),
+                    tech
                 ));
             }
         }
@@ -143,37 +156,37 @@ fn r3_adapter_filenames_match_naming_convention() {
     );
 }
 
+fn secondary_leaf_adapter_names() -> Vec<(std::path::PathBuf, String)> {
+    leaf_adapter_dirs("src/adapters/secondary")
+        .into_iter()
+        .map(|dir| {
+            let tech = dir
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_owned();
+            let feature = dir
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_owned();
+            let stem = format!("{feature}_{tech}");
+            (dir, stem)
+        })
+        .collect()
+}
+
 #[test]
 fn r4_every_secondary_adapter_has_it() {
     let mut violations: Vec<String> = Vec::new();
 
-    let entries = match fs::read_dir("src/adapters/secondary") {
-        Ok(e) => e,
-        Err(err) => {
-            panic!("cannot read src/adapters/secondary: {err}");
-        }
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        if path.extension().and_then(|s| s.to_str()) != Some("rs") {
-            continue;
-        }
-        let stem = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or_default();
-        if stem == "mod" {
-            continue;
-        }
+    for (dir, stem) in secondary_leaf_adapter_names() {
         let expected_it = format!("tests/{stem}_it.rs");
         if !std::path::Path::new(&expected_it).exists() {
             violations.push(format!(
                 "{}: missing integration test at {}",
-                path.display(),
+                dir.display(),
                 expected_it
             ));
         }
@@ -277,5 +290,50 @@ fn r6_core_only_whitelisted_external_crates() {
         violations.is_empty(),
         "R6 violations:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn r7_adapters_in_feature_tech_structure() {
+    let adapter_roots = ["src/adapters/primary", "src/adapters/secondary"];
+    let mut violations: Vec<String> = Vec::new();
+
+    for root in &adapter_roots {
+        let entries = match fs::read_dir(root) {
+            Ok(e) => e,
+            Err(err) => {
+                violations.push(format!("cannot read {root}: {err}"));
+                continue;
+            }
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let stem = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or_default();
+                if stem != "mod" {
+                    violations.push(format!(
+                        "{}: flat .rs adapter file not allowed — must be in <feature>/<tech>/mod.rs",
+                        path.display()
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "R7 violations:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn r8_no_ports_subfolder() {
+    assert!(
+        !std::path::Path::new("src/core/application/ports").exists(),
+        "R8: src/core/application/ports/ must not exist — ports live flat in core/application/"
     );
 }

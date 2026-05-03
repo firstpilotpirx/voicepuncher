@@ -133,7 +133,8 @@ impl LlmCfg {
          (4) Fix technical terms to their correct script (Kubernetes, Docker, API in English \
          even inside Russian text). \
          (5) If nothing needs fixing, copy the input verbatim — every word, every number. \
-         Output only the corrected text, nothing else.".into()
+         Output only the corrected text, nothing else."
+            .into()
     }
     fn default_max_tokens() -> u32 {
         512

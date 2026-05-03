@@ -1,7 +1,7 @@
 use std::env;
 
 use tempfile::tempdir;
-use voicepuncher::adapters::secondary::model_downloader::ModelDownloader;
+use voicepuncher::adapters::primary::setup::cli::model_downloader::ModelDownloader;
 
 #[test]
 fn should_fail_on_unreachable_url() {
