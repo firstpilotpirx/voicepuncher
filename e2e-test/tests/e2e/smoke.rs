@@ -1,5 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
+use std::time::Instant;
+
+use owo_colors::{OwoColorize, Stream};
 
 #[test]
 fn should_load_models_and_run_pipeline_for_silence_wav() {
@@ -34,11 +37,7 @@ fn should_load_models_and_run_pipeline_for_silence_wav() {
     // Exit 0: transcript produced. Exit 1: pipeline error (e.g. empty transcript from silence).
     // Both are acceptable — they prove models loaded and the pipeline executed.
     // Exit 2 means model/binary setup failed, which is the only failure we care about here.
-    assert_ne!(
-        status.code(),
-        Some(2),
-        "model or binary setup failed"
-    );
+    assert_ne!(status.code(), Some(2), "model or binary setup failed");
 }
 
 #[test]
@@ -63,6 +62,149 @@ fn should_handle_sixty_second_silence_without_crash() {
     let status = run_pipeline(&wav_path);
     // Then
     assert_ne!(status.code(), Some(2), "pipeline crashed on model load");
+}
+
+/// Runs 1 s / 10 s / 60 s silence through both pipeline modes and prints a
+/// side-by-side table so you can see whether LLM post-processing adds latency.
+/// Only `VOICEPUNCHER_WHISPER_MODEL` is required; with-LLM rows are added only
+/// when `VOICEPUNCHER_LLM_MODEL` is also set.
+/// Run with `-- --nocapture` to see the table.
+#[test]
+fn should_compare_pipeline_modes_for_silence() {
+    let Some(bin_path) = resolve_bin() else {
+        eprintln!("GATED: binary not found, skipping mode comparison");
+        return;
+    };
+    let Ok(whisper_model) = std::env::var("VOICEPUNCHER_WHISPER_MODEL") else {
+        eprintln!("GATED: VOICEPUNCHER_WHISPER_MODEL not set, skipping mode comparison");
+        return;
+    };
+    let llm_model = std::env::var("VOICEPUNCHER_LLM_MODEL").ok();
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    struct Row {
+        silence: &'static str,
+        mode: &'static str,
+        exit_code: Option<i32>,
+        elapsed_ms: u128,
+    }
+
+    let mut rows: Vec<Row> = Vec::new();
+
+    for &(label, secs) in &[("1 s", 1u32), ("10 s", 10), ("60 s", 60)] {
+        let wav = tmp.path().join(format!("silence_{secs}s.wav"));
+        write_silence_wav(&wav, secs);
+
+        let t = Instant::now();
+        let status = std::process::Command::new(&bin_path)
+            .args([
+                "--input-file",
+                wav.to_str().unwrap(),
+                "--whisper-model",
+                &whisper_model,
+                "--no-llm",
+            ])
+            .output()
+            .expect("failed to spawn voicepuncher binary")
+            .status;
+        rows.push(Row {
+            silence: label,
+            mode: "no-llm",
+            exit_code: status.code(),
+            elapsed_ms: t.elapsed().as_millis(),
+        });
+
+        if let Some(ref llm) = llm_model {
+            let t = Instant::now();
+            let status = run_pipeline_with_models(&bin_path, &wav, &whisper_model, llm);
+            rows.push(Row {
+                silence: label,
+                mode: "with-llm",
+                exit_code: status.code(),
+                elapsed_ms: t.elapsed().as_millis(),
+            });
+        }
+    }
+
+    const SEP: usize = 50;
+
+    eprintln!();
+    eprintln!(
+        "  {}",
+        "Pipeline mode comparison — synthetic silence"
+            .if_supports_color(Stream::Stderr, |t| t.bold())
+    );
+    eprintln!("  {}", "─".repeat(SEP));
+    eprintln!(
+        "  {} {} {} {}",
+        format!("{:<8}", "silence").if_supports_color(Stream::Stderr, |t| t.dimmed()),
+        format!("{:<12}", "mode").if_supports_color(Stream::Stderr, |t| t.dimmed()),
+        format!("{:>8}", "exit").if_supports_color(Stream::Stderr, |t| t.dimmed()),
+        format!("{:>14}", "elapsed").if_supports_color(Stream::Stderr, |t| t.dimmed()),
+    );
+    eprintln!("  {}", "─".repeat(SEP));
+
+    let mut prev_silence = "";
+    for row in &rows {
+        if !prev_silence.is_empty() && row.silence != prev_silence {
+            eprintln!(
+                "  {}",
+                "·".repeat(SEP)
+                    .if_supports_color(Stream::Stderr, |t| t.dimmed())
+            );
+        }
+        prev_silence = row.silence;
+
+        let mode_padded = format!("{:<12}", row.mode);
+        let mode_display = if row.mode == "with-llm" {
+            format!(
+                "{}",
+                mode_padded.if_supports_color(Stream::Stderr, |t| t.green())
+            )
+        } else {
+            format!(
+                "{}",
+                mode_padded.if_supports_color(Stream::Stderr, |t| t.cyan())
+            )
+        };
+
+        let exit_raw = match row.exit_code {
+            Some(2) => "crash".to_string(),
+            Some(n) => n.to_string(),
+            None => "—".to_string(),
+        };
+        let exit_padded = format!("{exit_raw:>8}");
+        let exit_display = if row.exit_code == Some(2) {
+            format!(
+                "{}",
+                exit_padded.if_supports_color(Stream::Stderr, |t| t.red())
+            )
+        } else {
+            format!(
+                "{}",
+                exit_padded.if_supports_color(Stream::Stderr, |t| t.green())
+            )
+        };
+
+        let elapsed_padded = format!("{:>12}ms", row.elapsed_ms);
+
+        eprintln!(
+            "  {:<8} {} {} {}",
+            row.silence, mode_display, exit_display, elapsed_padded
+        );
+
+        assert_ne!(
+            row.exit_code,
+            Some(2),
+            "binary setup failed in {} mode for {}",
+            row.mode,
+            row.silence,
+        );
+    }
+
+    eprintln!("  {}", "─".repeat(SEP));
+    eprintln!();
 }
 
 fn run_pipeline(wav_path: &Path) -> ExitStatus {

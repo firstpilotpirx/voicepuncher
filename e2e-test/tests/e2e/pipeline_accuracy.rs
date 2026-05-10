@@ -1,11 +1,13 @@
 use std::path::PathBuf;
 
+use owo_colors::{OwoColorize, Stream};
+
 use voicepuncher_e2e_test::corpus::load_manifest;
 use voicepuncher_e2e_test::wer::{cer, wer};
 
 #[test]
 fn should_report_wer_per_sample() {
-    // Given — gate on all four env vars
+    // Given — gate on all required env vars
     let bin_path = match resolve_bin() {
         Some(p) => p,
         None => {
@@ -43,48 +45,161 @@ fn should_report_wer_per_sample() {
         return;
     }
 
-    // When — run binary per sample
-    let mut total_wer = 0.0f64;
-    let mut count = 0usize;
+    struct SampleResult {
+        id: String,
+        lang: String,
+        duration_s: f32,
+        wer_raw: f64,
+        #[allow(dead_code)]
+        cer_raw: f64,
+        wer_llm: f64,
+        cer_llm: f64,
+    }
 
-    eprintln!(
-        "{:<20} {:<5} {:>10} {:>8} {:>8}",
-        "id", "lang", "duration_s", "wer", "cer"
-    );
+    // When — run each sample in both modes
+    let mut results: Vec<SampleResult> = Vec::with_capacity(samples.len());
+
     for sample in &samples {
-        let output = std::process::Command::new(&bin_path)
+        let path = sample.path.to_str().unwrap_or("");
+
+        let raw_output = std::process::Command::new(&bin_path)
             .args([
                 "--config",
                 "/dev/null",
                 "--input-file",
-                sample.path.to_str().unwrap_or(""),
+                path,
+                "--whisper-model",
+                &whisper_model,
+                "--no-llm",
+            ])
+            .output()
+            .expect("failed to spawn voicepuncher binary (no-llm)");
+
+        let llm_output = std::process::Command::new(&bin_path)
+            .args([
+                "--config",
+                "/dev/null",
+                "--input-file",
+                path,
                 "--whisper-model",
                 &whisper_model,
                 "--llm-model",
                 &llm_model,
             ])
             .output()
-            .expect("failed to spawn voicepuncher binary");
+            .expect("failed to spawn voicepuncher binary (with-llm)");
 
-        let hypothesis = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-        let w = wer(&sample.reference, &hypothesis);
-        let c = cer(&sample.reference, &hypothesis);
-        eprintln!(
-            "{:<20} {:<5} {:>10.1} {:>8.3} {:>8.3}",
-            &sample.id, &sample.lang, sample.duration_s, w, c
-        );
+        let hyp_raw = String::from_utf8_lossy(&raw_output.stdout)
+            .trim()
+            .to_owned();
+        let hyp_llm = String::from_utf8_lossy(&llm_output.stdout)
+            .trim()
+            .to_owned();
 
-        total_wer += w;
-        count += 1;
+        results.push(SampleResult {
+            id: sample.id.clone(),
+            lang: sample.lang.clone(),
+            duration_s: sample.duration_s,
+            wer_raw: wer(&sample.reference, &hyp_raw),
+            cer_raw: cer(&sample.reference, &hyp_raw),
+            wer_llm: wer(&sample.reference, &hyp_llm),
+            cer_llm: cer(&sample.reference, &hyp_llm),
+        });
     }
 
-    // Then — assert mean WER < 30%
-    let mean_wer = total_wer / count as f64;
-    eprintln!("Mean WER over {} samples: {:.3}", count, mean_wer);
+    // Then — print comparison table
+    const SEP: usize = 74;
+
+    eprintln!();
+    eprintln!(
+        "  {}",
+        format!(
+            "WER comparison — raw Whisper vs LLM post-processed  ({} samples)",
+            results.len()
+        )
+        .if_supports_color(Stream::Stderr, |t| t.bold())
+    );
+    eprintln!("  {}", "─".repeat(SEP));
+    eprintln!(
+        "  {} {} {} {} {} {} {}",
+        format!("{:<20}", "id").if_supports_color(Stream::Stderr, |t| t.dimmed()),
+        format!("{:<4}", "lang").if_supports_color(Stream::Stderr, |t| t.dimmed()),
+        format!("{:>7}", "dur").if_supports_color(Stream::Stderr, |t| t.dimmed()),
+        format!("{:>8}", "wer_raw").if_supports_color(Stream::Stderr, |t| t.dimmed()),
+        format!("{:>8}", "wer_llm").if_supports_color(Stream::Stderr, |t| t.dimmed()),
+        format!("{:>7}", "Δwer").if_supports_color(Stream::Stderr, |t| t.dimmed()),
+        format!("{:>8}", "cer_llm").if_supports_color(Stream::Stderr, |t| t.dimmed()),
+    );
+    eprintln!("  {}", "─".repeat(SEP));
+
+    for r in &results {
+        let delta = r.wer_llm - r.wer_raw;
+        let delta_padded = format!("{delta:>+7.3}");
+        let delta_display = if delta < -0.01 {
+            format!(
+                "{}",
+                delta_padded.if_supports_color(Stream::Stderr, |t| t.green())
+            )
+        } else if delta > 0.01 {
+            format!(
+                "{}",
+                delta_padded.if_supports_color(Stream::Stderr, |t| t.red())
+            )
+        } else {
+            format!(
+                "{}",
+                delta_padded.if_supports_color(Stream::Stderr, |t| t.dimmed())
+            )
+        };
+
+        eprintln!(
+            "  {:<20} {:<4} {:>7.1} {:>8.3} {:>8.3} {} {:>8.3}",
+            &r.id, &r.lang, r.duration_s, r.wer_raw, r.wer_llm, delta_display, r.cer_llm,
+        );
+    }
+
+    eprintln!("  {}", "─".repeat(SEP));
+
+    let n = results.len() as f64;
+    let mean_wer_raw = results.iter().map(|r| r.wer_raw).sum::<f64>() / n;
+    let mean_wer_llm = results.iter().map(|r| r.wer_llm).sum::<f64>() / n;
+    let mean_cer_llm = results.iter().map(|r| r.cer_llm).sum::<f64>() / n;
+    let mean_delta = mean_wer_llm - mean_wer_raw;
+
+    let mean_delta_padded = format!("{mean_delta:>+7.3}");
+    let mean_delta_display = if mean_delta < -0.01 {
+        format!(
+            "{}",
+            mean_delta_padded.if_supports_color(Stream::Stderr, |t| t.green())
+        )
+    } else if mean_delta > 0.01 {
+        format!(
+            "{}",
+            mean_delta_padded.if_supports_color(Stream::Stderr, |t| t.red())
+        )
+    } else {
+        format!(
+            "{}",
+            mean_delta_padded.if_supports_color(Stream::Stderr, |t| t.dimmed())
+        )
+    };
+
+    let mean_label = format!("{:<20}", "MEAN");
+    let mean_label_display = format!(
+        "{}",
+        mean_label.if_supports_color(Stream::Stderr, |t| t.bold())
+    );
+    eprintln!(
+        "  {mean_label_display} {:<4} {:>7} {mean_wer_raw:>8.3} {mean_wer_llm:>8.3} {mean_delta_display} {mean_cer_llm:>8.3}",
+        "",
+        "",
+    );
+    eprintln!("  {}", "─".repeat(SEP));
+    eprintln!();
+
     assert!(
-        mean_wer < 0.30,
-        "mean WER {:.3} exceeds 30% threshold — check model wiring or resampling",
-        mean_wer
+        mean_wer_llm < 0.30,
+        "mean WER (with LLM) {mean_wer_llm:.3} exceeds 30% threshold — check model wiring or resampling",
     );
 }
 

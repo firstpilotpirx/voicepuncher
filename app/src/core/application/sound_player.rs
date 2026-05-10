@@ -2,4 +2,5 @@
 pub trait SoundPlayer: Send {
     fn play_start(&self);
     fn play_stop(&self);
+    fn play_cancel(&self);
 }

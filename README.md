@@ -60,9 +60,11 @@ Result pasted at cursor: `Hello world, I think the API is fine.`
 
 ```
 --config <PATH>           Config file path  [default: ~/.voicepuncher/config.toml]
+--setup                   Re-run the setup wizard even if config already exists
 --hotkey <KEY>            Override [hotkey].key
 --whisper-model <PATH>    Override [whisper].model_path
 --llm-model <PATH>        Override [llm].model_path
+--no-llm                  Skip LLM post-processing; paste raw Whisper output
 --debug-save-wav          Save recorded WAV for debugging
 -v                        Verbose logging
 -vv                       Trace logging

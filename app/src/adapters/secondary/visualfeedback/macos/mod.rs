@@ -4,9 +4,9 @@ use std::sync::{Arc, Mutex};
 use objc2::rc::Retained;
 use objc2::MainThreadMarker;
 use objc2_app_kit::{
-    NSAppearance, NSAppearanceCustomization, NSAppearanceNameDarkAqua, NSApplication,
-    NSApplicationActivationPolicy, NSBackingStoreType, NSColor, NSControlSize, NSFont,
-    NSProgressIndicator, NSProgressIndicatorStyle, NSScreen, NSTextAlignment, NSTextField,
+    NSApplication, NSApplicationActivationPolicy, NSBackingStoreType, NSColor, NSControlSize,
+    NSFont, NSProgressIndicator, NSProgressIndicatorStyle, NSScreen, NSTextAlignment, NSTextField,
+    NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView,
     NSWindow, NSWindowCollectionBehavior, NSWindowStyleMask,
 };
 use objc2_foundation::NSString;
@@ -57,139 +57,178 @@ unsafe extern "C" fn trampoline(ptr: *mut std::ffi::c_void) {
     (*boxed)();
 }
 
-pub struct MacosVisualIndicator {
-    state: Arc<Mutex<OverlayState>>,
+#[derive(Clone)]
+struct WindowSet {
     window_ptr: usize,
     label_ptr: usize,
     spinner_ptr: usize,
+}
+
+pub struct MacosVisualIndicator {
+    state: Arc<Mutex<OverlayState>>,
+    windows: Vec<WindowSet>,
     pulse_generation: Arc<AtomicU64>,
+}
+
+fn build_window_set(
+    mtm: MainThreadMarker,
+    screen_visible_frame: objc2_foundation::NSRect,
+) -> WindowSet {
+    let window_width: f64 = 140.0;
+    let window_height: f64 = 55.0;
+
+    let x = screen_visible_frame.origin.x
+        + (screen_visible_frame.size.width - window_width) / 2.0;
+    let y = screen_visible_frame.origin.y + screen_visible_frame.size.height
+        - window_height
+        - 4.0;
+
+    let frame = objc2_foundation::NSRect {
+        origin: objc2_foundation::NSPoint { x, y },
+        size: objc2_foundation::NSSize {
+            width: window_width,
+            height: window_height,
+        },
+    };
+
+    let window = unsafe {
+        NSWindow::initWithContentRect_styleMask_backing_defer(
+            mtm.alloc::<NSWindow>(),
+            frame,
+            NSWindowStyleMask::Borderless,
+            NSBackingStoreType::Buffered,
+            false,
+        )
+    };
+
+    window.setLevel(3);
+    window.setOpaque(false);
+    window.setBackgroundColor(Some(&NSColor::clearColor()));
+    window.setIgnoresMouseEvents(true);
+    window.setCollectionBehavior(
+        NSWindowCollectionBehavior::CanJoinAllSpaces
+            | NSWindowCollectionBehavior::Stationary
+            | NSWindowCollectionBehavior::IgnoresCycle
+            | NSWindowCollectionBehavior::FullScreenAuxiliary,
+    );
+
+    let content_frame = objc2_foundation::NSRect {
+        origin: objc2_foundation::NSPoint { x: 0.0, y: 0.0 },
+        size: objc2_foundation::NSSize {
+            width: window_width,
+            height: window_height,
+        },
+    };
+    let effect_view = NSVisualEffectView::initWithFrame(
+        mtm.alloc::<NSVisualEffectView>(),
+        content_frame,
+    );
+    effect_view.setMaterial(NSVisualEffectMaterial::HUDWindow);
+    effect_view.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
+    effect_view.setState(NSVisualEffectState::Active);
+    effect_view.setWantsLayer(true);
+    if let Some(layer) = effect_view.layer() {
+        layer.setCornerRadius(28.0);
+        layer.setMasksToBounds(true);
+        let dark_fill = NSColor::colorWithSRGBRed_green_blue_alpha(0.0, 0.0, 0.0, 0.28);
+        layer.setBackgroundColor(Some(&dark_fill.CGColor()));
+        let border = NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 1.0, 1.0, 0.25);
+        layer.setBorderColor(Some(&border.CGColor()));
+        layer.setBorderWidth(0.5);
+    }
+    window.setContentView(Some(&*effect_view));
+
+    let font = NSFont::boldSystemFontOfSize(28.0);
+    let label_height = (font.ascender() - font.descender()).ceil() + 4.0;
+    let label_y = (window_height / 2.0 - font.capHeight() / 2.0 - (label_height - font.ascender())).floor();
+    let label_frame = objc2_foundation::NSRect {
+        origin: objc2_foundation::NSPoint {
+            x: 12.0,
+            y: label_y,
+        },
+        size: objc2_foundation::NSSize {
+            width: window_width - 24.0,
+            height: label_height,
+        },
+    };
+
+    let label = NSTextField::initWithFrame(mtm.alloc::<NSTextField>(), label_frame);
+    label.setBezeled(false);
+    label.setEditable(false);
+    label.setDrawsBackground(false);
+    label.setAlignment(NSTextAlignment::Center);
+    label.setFont(Some(&font));
+    label.setTextColor(Some(&NSColor::whiteColor()));
+    let empty = NSString::from_str("");
+    label.setStringValue(&empty);
+
+    effect_view.addSubview(&label);
+
+    let spinner_size: f64 = 32.0;
+    let spinner_x = (window_width - spinner_size) / 2.0;
+    let spinner_frame = objc2_foundation::NSRect {
+        origin: objc2_foundation::NSPoint {
+            x: spinner_x,
+            y: (window_height - spinner_size) / 2.0,
+        },
+        size: objc2_foundation::NSSize {
+            width: spinner_size,
+            height: spinner_size,
+        },
+    };
+
+    let spinner =
+        NSProgressIndicator::initWithFrame(mtm.alloc::<NSProgressIndicator>(), spinner_frame);
+    spinner.setStyle(NSProgressIndicatorStyle::Spinning);
+    spinner.setIndeterminate(true);
+    spinner.setControlSize(NSControlSize::Regular);
+    spinner.setHidden(true);
+
+    effect_view.addSubview(&spinner);
+
+    let window_ptr = Retained::as_ptr(&window) as usize;
+    let label_ptr = Retained::as_ptr(&label) as usize;
+    let spinner_ptr = Retained::as_ptr(&spinner) as usize;
+
+    let _ = Retained::into_raw(window);
+    let _ = Retained::into_raw(label);
+    let _ = Retained::into_raw(spinner);
+
+    WindowSet {
+        window_ptr,
+        label_ptr,
+        spinner_ptr,
+    }
 }
 
 impl MacosVisualIndicator {
     pub fn initialize(mtm: MainThreadMarker) -> Self {
-        let window_width: f64 = 112.0;
-        let window_height: f64 = 44.0;
-        let menu_bar_height: f64 = 24.0;
-
-        let screen_frame = NSScreen::mainScreen(mtm)
-            .map(|s| s.frame())
-            .unwrap_or_else(|| objc2_foundation::NSRect {
-                origin: objc2_foundation::NSPoint { x: 0.0, y: 0.0 },
-                size: objc2_foundation::NSSize {
-                    width: 1440.0,
-                    height: 900.0,
-                },
-            });
-
-        let x = (screen_frame.size.width - window_width) / 2.0;
-        let y = screen_frame.size.height - menu_bar_height - window_height - 4.0;
-
-        let frame = objc2_foundation::NSRect {
-            origin: objc2_foundation::NSPoint { x, y },
+        let fallback_rect = objc2_foundation::NSRect {
+            origin: objc2_foundation::NSPoint { x: 0.0, y: 0.0 },
             size: objc2_foundation::NSSize {
-                width: window_width,
-                height: window_height,
+                width: 1440.0,
+                height: 900.0,
             },
         };
 
-        let window = unsafe {
-            NSWindow::initWithContentRect_styleMask_backing_defer(
-                mtm.alloc::<NSWindow>(),
-                frame,
-                NSWindowStyleMask::Borderless,
-                NSBackingStoreType::Buffered,
-                false,
-            )
+        let screens = NSScreen::screens(mtm);
+        let windows: Vec<WindowSet> = if screens.is_empty() {
+            vec![build_window_set(mtm, fallback_rect)]
+        } else {
+            (0..screens.count())
+                .map(|i| {
+                    let screen = screens.objectAtIndex(i);
+                    build_window_set(mtm, screen.visibleFrame())
+                })
+                .collect()
         };
-
-        window.setLevel(3);
-        window.setOpaque(false);
-        window.setBackgroundColor(Some(&NSColor::clearColor()));
-        window.setIgnoresMouseEvents(true);
-        window.setCollectionBehavior(
-            NSWindowCollectionBehavior::CanJoinAllSpaces
-                | NSWindowCollectionBehavior::Stationary
-                | NSWindowCollectionBehavior::IgnoresCycle
-                | NSWindowCollectionBehavior::FullScreenAuxiliary,
-        );
-
-        let content_view = window.contentView().unwrap();
-        content_view.setWantsLayer(true);
-
-        if let Some(layer) = content_view.layer() {
-            let bg = NSColor::colorWithSRGBRed_green_blue_alpha(0.08, 0.08, 0.08, 0.88);
-            layer.setBackgroundColor(Some(&bg.CGColor()));
-            layer.setCornerRadius(22.0);
-            layer.setMasksToBounds(true);
-        }
-
-        let label_height: f64 = 34.0;
-        let label_frame = objc2_foundation::NSRect {
-            origin: objc2_foundation::NSPoint {
-                x: 8.0,
-                y: (window_height - label_height) / 2.0,
-            },
-            size: objc2_foundation::NSSize {
-                width: window_width - 16.0,
-                height: label_height,
-            },
-        };
-
-        let label = NSTextField::initWithFrame(mtm.alloc::<NSTextField>(), label_frame);
-        label.setBezeled(false);
-        label.setEditable(false);
-        label.setDrawsBackground(false);
-        label.setAlignment(NSTextAlignment::Center);
-        let font = NSFont::systemFontOfSize(28.0);
-        label.setFont(Some(&font));
-        label.setTextColor(Some(&NSColor::whiteColor()));
-        let empty = NSString::from_str("");
-        label.setStringValue(&empty);
-
-        content_view.addSubview(&label);
-
-        let spinner_size: f64 = 26.0;
-        let spinner_x = (window_width - spinner_size) / 2.0;
-        let spinner_frame = objc2_foundation::NSRect {
-            origin: objc2_foundation::NSPoint {
-                x: spinner_x,
-                y: (window_height - spinner_size) / 2.0,
-            },
-            size: objc2_foundation::NSSize {
-                width: spinner_size,
-                height: spinner_size,
-            },
-        };
-
-        let spinner =
-            NSProgressIndicator::initWithFrame(mtm.alloc::<NSProgressIndicator>(), spinner_frame);
-        spinner.setStyle(NSProgressIndicatorStyle::Spinning);
-        spinner.setIndeterminate(true);
-        spinner.setControlSize(NSControlSize::Regular);
-        if let Some(appearance) = NSAppearance::appearanceNamed(unsafe { NSAppearanceNameDarkAqua })
-        {
-            spinner.setAppearance(Some(&appearance));
-        }
-        spinner.setHidden(true);
-
-        content_view.addSubview(&spinner);
-
-        let window_ptr = Retained::as_ptr(&window) as usize;
-        let label_ptr = Retained::as_ptr(&label) as usize;
-        let spinner_ptr = Retained::as_ptr(&spinner) as usize;
-
-        let _ = Retained::into_raw(window);
-        let _ = Retained::into_raw(label);
-        let _ = Retained::into_raw(spinner);
 
         let app = NSApplication::sharedApplication(mtm);
         app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
 
         Self {
             state: Arc::new(Mutex::new(OverlayState::Hidden)),
-            window_ptr,
-            label_ptr,
-            spinner_ptr,
+            windows,
             pulse_generation: Arc::new(AtomicU64::new(0)),
         }
     }
@@ -199,39 +238,35 @@ impl VisualIndicator for MacosVisualIndicator {
     fn show_recording(&self) {
         let generation = self.pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
         let pulse_gen = Arc::clone(&self.pulse_generation);
-        let window_ptr = self.window_ptr;
-        let label_ptr = self.label_ptr;
-        let spinner_ptr = self.spinner_ptr;
+        let windows = self.windows.clone();
 
         *self.state.lock().unwrap() = OverlayState::Recording;
 
         dispatch_to_main(move || {
-            apply_recording_state(window_ptr, label_ptr, spinner_ptr, generation, pulse_gen);
+            apply_recording_state(windows, generation, pulse_gen);
         });
     }
 
     fn show_processing(&self) {
-        self.pulse_generation.fetch_add(1, Ordering::SeqCst);
-        let window_ptr = self.window_ptr;
-        let label_ptr = self.label_ptr;
-        let spinner_ptr = self.spinner_ptr;
+        let generation = self.pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let pulse_gen = Arc::clone(&self.pulse_generation);
+        let windows = self.windows.clone();
 
         *self.state.lock().unwrap() = OverlayState::Processing;
 
         dispatch_to_main(move || {
-            apply_processing_state(window_ptr, label_ptr, spinner_ptr);
+            apply_processing_state(windows, generation, pulse_gen);
         });
     }
 
     fn hide(&self) {
         self.pulse_generation.fetch_add(1, Ordering::SeqCst);
-        let window_ptr = self.window_ptr;
-        let spinner_ptr = self.spinner_ptr;
+        let windows = self.windows.clone();
 
         *self.state.lock().unwrap() = OverlayState::Hidden;
 
         dispatch_to_main(move || {
-            apply_hidden_state(window_ptr, spinner_ptr);
+            apply_hidden_state(windows);
         });
     }
 }
@@ -239,41 +274,48 @@ impl VisualIndicator for MacosVisualIndicator {
 unsafe impl Send for MacosVisualIndicator {}
 
 fn apply_recording_state(
-    window_ptr: usize,
-    label_ptr: usize,
-    spinner_ptr: usize,
+    windows: Vec<WindowSet>,
     generation: u64,
     pulse_gen: Arc<AtomicU64>,
 ) {
-    let window = unsafe { (window_ptr as *const NSWindow).as_ref().unwrap() };
-    let label = unsafe { (label_ptr as *const NSTextField).as_ref().unwrap() };
-    let spinner = unsafe {
-        (spinner_ptr as *const NSProgressIndicator)
-            .as_ref()
-            .unwrap()
-    };
-
     let text = NSString::from_str("◉ REC");
-    label.setStringValue(&text);
-    label.setTextColor(Some(&NSColor::redColor()));
-    label.setHidden(false);
-    spinner.setHidden(true);
-    unsafe { spinner.stopAnimation(None) };
-    window.orderFrontRegardless();
+    for ws in &windows {
+        let window = unsafe { (ws.window_ptr as *const NSWindow).as_ref().unwrap() };
+        let label = unsafe { (ws.label_ptr as *const NSTextField).as_ref().unwrap() };
+        let spinner = unsafe {
+            (ws.spinner_ptr as *const NSProgressIndicator)
+                .as_ref()
+                .unwrap()
+        };
 
-    schedule_pulse(window_ptr, label_ptr, generation, pulse_gen, true);
+        label.setStringValue(&text);
+        label.setTextColor(Some(&NSColor::redColor()));
+        label.setHidden(false);
+        spinner.setHidden(true);
+        unsafe { spinner.stopAnimation(None) };
+        window.orderFrontRegardless();
+        window.setCollectionBehavior(
+            NSWindowCollectionBehavior::CanJoinAllSpaces
+                | NSWindowCollectionBehavior::Stationary
+                | NSWindowCollectionBehavior::IgnoresCycle
+                | NSWindowCollectionBehavior::FullScreenAuxiliary,
+        );
+    }
+
+    schedule_heartbeat(windows.clone(), generation, Arc::clone(&pulse_gen));
+    schedule_pulse(windows, generation, pulse_gen, false);
 }
 
 fn schedule_pulse(
-    window_ptr: usize,
-    label_ptr: usize,
+    windows: Vec<WindowSet>,
     generation: u64,
     pulse_gen: Arc<AtomicU64>,
     bright: bool,
 ) {
     let pulse_ms: i64 = 600;
     let when = unsafe { dispatch_time(DISPATCH_TIME_NOW, pulse_ms * NSEC_PER_SEC / 1000) };
-    let data = Box::new((window_ptr, label_ptr, generation, pulse_gen, bright));
+    let data: Box<(Vec<WindowSet>, u64, Arc<AtomicU64>, bool)> =
+        Box::new((windows, generation, pulse_gen, bright));
     let ctx = Box::into_raw(data) as *mut std::ffi::c_void;
     unsafe {
         dispatch_after_f(when, main_queue(), ctx, pulse_trampoline);
@@ -281,44 +323,92 @@ fn schedule_pulse(
 }
 
 unsafe extern "C" fn pulse_trampoline(ptr: *mut std::ffi::c_void) {
-    let data: Box<(usize, usize, u64, Arc<AtomicU64>, bool)> =
-        Box::from_raw(ptr as *mut (usize, usize, u64, Arc<AtomicU64>, bool));
-    let (window_ptr, label_ptr, generation, pulse_gen, bright) = *data;
+    let data: Box<(Vec<WindowSet>, u64, Arc<AtomicU64>, bool)> =
+        Box::from_raw(ptr as *mut (Vec<WindowSet>, u64, Arc<AtomicU64>, bool));
+    let (windows, generation, pulse_gen, bright) = *data;
 
     if pulse_gen.load(Ordering::SeqCst) != generation {
         return;
     }
 
-    let label = (label_ptr as *const NSTextField).as_ref().unwrap();
     let alpha: f64 = if bright { 1.0 } else { 0.35 };
-    label.setAlphaValue(alpha);
+    for ws in &windows {
+        let label = (ws.label_ptr as *const NSTextField).as_ref().unwrap();
+        label.setAlphaValue(alpha);
+    }
 
-    schedule_pulse(window_ptr, label_ptr, generation, pulse_gen, !bright);
+    schedule_pulse(windows, generation, pulse_gen, !bright);
 }
 
-fn apply_processing_state(window_ptr: usize, label_ptr: usize, spinner_ptr: usize) {
-    let window = unsafe { (window_ptr as *const NSWindow).as_ref().unwrap() };
-    let label = unsafe { (label_ptr as *const NSTextField).as_ref().unwrap() };
-    let spinner = unsafe {
-        (spinner_ptr as *const NSProgressIndicator)
-            .as_ref()
-            .unwrap()
-    };
+fn apply_processing_state(windows: Vec<WindowSet>, generation: u64, pulse_gen: Arc<AtomicU64>) {
+    for ws in &windows {
+        let window = unsafe { (ws.window_ptr as *const NSWindow).as_ref().unwrap() };
+        let label = unsafe { (ws.label_ptr as *const NSTextField).as_ref().unwrap() };
+        let spinner = unsafe {
+            (ws.spinner_ptr as *const NSProgressIndicator)
+                .as_ref()
+                .unwrap()
+        };
 
-    label.setHidden(true);
-    spinner.setHidden(false);
-    unsafe { spinner.startAnimation(None) };
-    window.orderFrontRegardless();
+        label.setHidden(true);
+        spinner.setHidden(false);
+        unsafe { spinner.startAnimation(None) };
+        window.orderFrontRegardless();
+        window.setCollectionBehavior(
+            NSWindowCollectionBehavior::CanJoinAllSpaces
+                | NSWindowCollectionBehavior::Stationary
+                | NSWindowCollectionBehavior::IgnoresCycle
+                | NSWindowCollectionBehavior::FullScreenAuxiliary,
+        );
+    }
+
+    schedule_heartbeat(windows, generation, pulse_gen);
 }
 
-fn apply_hidden_state(window_ptr: usize, spinner_ptr: usize) {
-    let window = unsafe { (window_ptr as *const NSWindow).as_ref().unwrap() };
-    let spinner = unsafe {
-        (spinner_ptr as *const NSProgressIndicator)
-            .as_ref()
-            .unwrap()
-    };
+fn schedule_heartbeat(windows: Vec<WindowSet>, generation: u64, pulse_gen: Arc<AtomicU64>) {
+    let when = unsafe { dispatch_time(DISPATCH_TIME_NOW, 200 * NSEC_PER_SEC / 1000) };
+    let data: Box<(Vec<WindowSet>, u64, Arc<AtomicU64>)> =
+        Box::new((windows, generation, pulse_gen));
+    let ctx = Box::into_raw(data) as *mut std::ffi::c_void;
+    unsafe {
+        dispatch_after_f(when, main_queue(), ctx, heartbeat_trampoline);
+    }
+}
 
-    unsafe { spinner.stopAnimation(None) };
-    window.orderOut(None);
+unsafe extern "C" fn heartbeat_trampoline(ptr: *mut std::ffi::c_void) {
+    let data: Box<(Vec<WindowSet>, u64, Arc<AtomicU64>)> =
+        Box::from_raw(ptr as *mut (Vec<WindowSet>, u64, Arc<AtomicU64>));
+    let (windows, generation, pulse_gen) = *data;
+
+    if pulse_gen.load(Ordering::SeqCst) != generation {
+        return;
+    }
+
+    for ws in &windows {
+        let window = (ws.window_ptr as *const NSWindow).as_ref().unwrap();
+        window.setLevel(3);
+        window.orderFrontRegardless();
+        window.setCollectionBehavior(
+            NSWindowCollectionBehavior::CanJoinAllSpaces
+                | NSWindowCollectionBehavior::Stationary
+                | NSWindowCollectionBehavior::IgnoresCycle
+                | NSWindowCollectionBehavior::FullScreenAuxiliary,
+        );
+    }
+
+    schedule_heartbeat(windows, generation, pulse_gen);
+}
+
+fn apply_hidden_state(windows: Vec<WindowSet>) {
+    for ws in &windows {
+        let window = unsafe { (ws.window_ptr as *const NSWindow).as_ref().unwrap() };
+        let spinner = unsafe {
+            (ws.spinner_ptr as *const NSProgressIndicator)
+                .as_ref()
+                .unwrap()
+        };
+
+        unsafe { spinner.stopAnimation(None) };
+        window.orderOut(None);
+    }
 }

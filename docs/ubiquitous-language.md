@@ -13,7 +13,7 @@
 - **Type:** Boundary signal (NOT a Domain Event — nothing in the domain has changed state yet)
 - **Definition:** A momentary observation that the configured hotkey was pressed or released. Emitted by the hotkey adapter; consumed by the `Pipeline` orchestrator.
 - **Code:** `app/src/core/domain/ptt_signal.rs`
-- **Variants:** `Pressed`, `Released`
+- **Variants:** `Pressed`, `Released`, `Cancel`
 - **Synonyms to AVOID:** "key event", "keystroke" (too generic), "trigger" (collides with non-hotkey triggers)
 
 ### HotKey

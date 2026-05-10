@@ -16,54 +16,130 @@ impl RdevHotkeyListener {
     }
 }
 
+enum RdevTarget {
+    Single(Key),
+    /// Chord: either modifier_a or modifier_b held, then key pressed.
+    Chord {
+        modifier_a: Key,
+        modifier_b: Key,
+        key: Key,
+    },
+}
+
+fn hotkey_to_rdev(hotkey: HotKey) -> RdevTarget {
+    match hotkey {
+        HotKey::RightOption => RdevTarget::Single(Key::AltGr),
+        HotKey::RightControl => RdevTarget::Single(Key::ControlRight),
+        HotKey::RightShift => RdevTarget::Single(Key::ShiftRight),
+        HotKey::RightCommand => RdevTarget::Single(Key::MetaRight),
+        HotKey::LeftOption => RdevTarget::Single(Key::Alt),
+        HotKey::LeftControl => RdevTarget::Single(Key::ControlLeft),
+        HotKey::Fn => RdevTarget::Single(Key::Function),
+        HotKey::CapsLock => RdevTarget::Single(Key::CapsLock),
+        HotKey::Space => RdevTarget::Single(Key::Space),
+        HotKey::CmdE => RdevTarget::Chord {
+            modifier_a: Key::MetaLeft,
+            modifier_b: Key::MetaRight,
+            key: Key::KeyE,
+        },
+        HotKey::F13 => RdevTarget::Single(Key::Unknown(105)),
+        HotKey::F14 => RdevTarget::Single(Key::Unknown(107)),
+        HotKey::F15 => RdevTarget::Single(Key::Unknown(113)),
+        HotKey::F16 => RdevTarget::Single(Key::Unknown(106)),
+        HotKey::F17 => RdevTarget::Single(Key::Unknown(64)),
+        HotKey::F18 => RdevTarget::Single(Key::Unknown(79)),
+        HotKey::F19 => RdevTarget::Single(Key::Unknown(80)),
+    }
+}
+
 impl HotkeyListener for RdevHotkeyListener {
     fn spawn(
         self: Box<Self>,
         target: HotKey,
         tx: mpsc::Sender<PttSignal>,
     ) -> Result<JoinHandle<()>> {
-        let rdev_key = hotkey_to_rdev_key(target);
-        let handle = std::thread::Builder::new()
-            .name("rdev-hotkey".into())
-            .spawn(move || {
-                let sender = tx;
-                if let Err(e) = listen(move |event| {
-                    let signal = match event.event_type {
-                        EventType::KeyPress(k) if k == rdev_key => Some(PttSignal::Pressed),
-                        EventType::KeyRelease(k) if k == rdev_key => Some(PttSignal::Released),
-                        _ => None,
-                    };
-                    if let Some(s) = signal {
-                        log::debug!("rdev forward: {s:?}");
-                        let _ = sender.send(s);
-                    }
-                }) {
-                    log::error!("hotkey listener stopped unexpectedly: {e:?}");
-                }
-            })?;
-        Ok(handle)
+        match hotkey_to_rdev(target) {
+            RdevTarget::Single(rdev_key) => spawn_single(rdev_key, tx),
+            RdevTarget::Chord {
+                modifier_a,
+                modifier_b,
+                key,
+            } => spawn_chord(modifier_a, modifier_b, key, tx),
+        }
     }
 }
 
-fn hotkey_to_rdev_key(hotkey: HotKey) -> Key {
-    match hotkey {
-        HotKey::RightOption => Key::AltGr,
-        HotKey::RightControl => Key::ControlRight,
-        HotKey::RightShift => Key::ShiftRight,
-        HotKey::RightCommand => Key::MetaRight,
-        HotKey::LeftOption => Key::Alt,
-        HotKey::LeftControl => Key::ControlLeft,
-        HotKey::Fn => Key::Function,
-        HotKey::CapsLock => Key::CapsLock,
-        HotKey::Space => Key::Space,
-        HotKey::F13 => Key::Unknown(105),
-        HotKey::F14 => Key::Unknown(107),
-        HotKey::F15 => Key::Unknown(113),
-        HotKey::F16 => Key::Unknown(106),
-        HotKey::F17 => Key::Unknown(64),
-        HotKey::F18 => Key::Unknown(79),
-        HotKey::F19 => Key::Unknown(80),
-    }
+fn spawn_single(rdev_key: Key, tx: mpsc::Sender<PttSignal>) -> Result<JoinHandle<()>> {
+    let handle = std::thread::Builder::new()
+        .name("rdev-hotkey".into())
+        .spawn(move || {
+            let sender = tx;
+            if let Err(e) = listen(move |event| {
+                let signal = match event.event_type {
+                    EventType::KeyPress(k) if k == rdev_key => Some(PttSignal::Pressed),
+                    EventType::KeyRelease(k) if k == rdev_key => Some(PttSignal::Released),
+                    EventType::KeyPress(Key::Escape) => Some(PttSignal::Cancel),
+                    _ => None,
+                };
+                if let Some(s) = signal {
+                    log::debug!("rdev forward: {s:?}");
+                    let _ = sender.send(s);
+                }
+            }) {
+                log::error!("hotkey listener stopped unexpectedly: {e:?}");
+            }
+        })?;
+    Ok(handle)
+}
+
+fn spawn_chord(
+    modifier_a: Key,
+    modifier_b: Key,
+    key: Key,
+    tx: mpsc::Sender<PttSignal>,
+) -> Result<JoinHandle<()>> {
+    let handle = std::thread::Builder::new()
+        .name("rdev-hotkey".into())
+        .spawn(move || {
+            let sender = tx;
+            let mut modifier_held = false;
+            let mut triggered = false;
+
+            if let Err(e) = listen(move |event| {
+                let is_modifier = |k: Key| k == modifier_a || k == modifier_b;
+                match event.event_type {
+                    EventType::KeyPress(k) if is_modifier(k) => {
+                        modifier_held = true;
+                    }
+                    EventType::KeyRelease(k) if is_modifier(k) => {
+                        modifier_held = false;
+                        if triggered {
+                            triggered = false;
+                            log::debug!("rdev forward: Released (modifier up)");
+                            let _ = sender.send(PttSignal::Released);
+                        }
+                    }
+                    EventType::KeyPress(k) if k == key && modifier_held && !triggered => {
+                        triggered = true;
+                        log::debug!("rdev forward: Pressed (chord)");
+                        let _ = sender.send(PttSignal::Pressed);
+                    }
+                    EventType::KeyRelease(k) if k == key && triggered => {
+                        triggered = false;
+                        log::debug!("rdev forward: Released (key up)");
+                        let _ = sender.send(PttSignal::Released);
+                    }
+                    EventType::KeyPress(Key::Escape) => {
+                        log::debug!("rdev forward: Cancel (Escape)");
+                        let _ = sender.send(PttSignal::Cancel);
+                    }
+                    _ => {}
+                }
+            }) {
+                log::error!("hotkey listener stopped unexpectedly: {e:?}");
+            }
+        })?;
+    Ok(handle)
 }
 
 #[cfg(test)]
@@ -71,89 +147,110 @@ mod tests {
     use super::*;
 
     #[test]
-    fn should_map_right_option_to_alt_gr() {
-        assert_eq!(hotkey_to_rdev_key(HotKey::RightOption), Key::AltGr);
+    fn should_map_right_option_to_single_alt_gr() {
+        assert!(matches!(
+            hotkey_to_rdev(HotKey::RightOption),
+            RdevTarget::Single(Key::AltGr)
+        ));
     }
 
     #[test]
-    fn should_map_right_control_to_control_right() {
-        assert_eq!(hotkey_to_rdev_key(HotKey::RightControl), Key::ControlRight);
+    fn should_map_right_control_to_single_control_right() {
+        assert!(matches!(
+            hotkey_to_rdev(HotKey::RightControl),
+            RdevTarget::Single(Key::ControlRight)
+        ));
     }
 
     #[test]
-    fn should_map_right_shift_to_shift_right() {
-        assert_eq!(hotkey_to_rdev_key(HotKey::RightShift), Key::ShiftRight);
+    fn should_map_right_shift_to_single_shift_right() {
+        assert!(matches!(
+            hotkey_to_rdev(HotKey::RightShift),
+            RdevTarget::Single(Key::ShiftRight)
+        ));
     }
 
     #[test]
-    fn should_map_right_command_to_meta_right() {
-        assert_eq!(hotkey_to_rdev_key(HotKey::RightCommand), Key::MetaRight);
+    fn should_map_right_command_to_single_meta_right() {
+        assert!(matches!(
+            hotkey_to_rdev(HotKey::RightCommand),
+            RdevTarget::Single(Key::MetaRight)
+        ));
     }
 
     #[test]
-    fn should_map_left_option_to_alt() {
-        assert_eq!(hotkey_to_rdev_key(HotKey::LeftOption), Key::Alt);
+    fn should_map_left_option_to_single_alt() {
+        assert!(matches!(
+            hotkey_to_rdev(HotKey::LeftOption),
+            RdevTarget::Single(Key::Alt)
+        ));
     }
 
     #[test]
-    fn should_map_left_control_to_control_left() {
-        assert_eq!(hotkey_to_rdev_key(HotKey::LeftControl), Key::ControlLeft);
+    fn should_map_left_control_to_single_control_left() {
+        assert!(matches!(
+            hotkey_to_rdev(HotKey::LeftControl),
+            RdevTarget::Single(Key::ControlLeft)
+        ));
     }
 
     #[test]
-    fn should_map_fn_to_function() {
-        assert_eq!(hotkey_to_rdev_key(HotKey::Fn), Key::Function);
+    fn should_map_fn_to_single_function() {
+        assert!(matches!(
+            hotkey_to_rdev(HotKey::Fn),
+            RdevTarget::Single(Key::Function)
+        ));
     }
 
     #[test]
-    fn should_map_caps_lock_to_caps_lock() {
-        assert_eq!(hotkey_to_rdev_key(HotKey::CapsLock), Key::CapsLock);
+    fn should_map_caps_lock_to_single_caps_lock() {
+        assert!(matches!(
+            hotkey_to_rdev(HotKey::CapsLock),
+            RdevTarget::Single(Key::CapsLock)
+        ));
     }
 
     #[test]
-    fn should_map_space_to_space() {
-        assert_eq!(hotkey_to_rdev_key(HotKey::Space), Key::Space);
+    fn should_map_space_to_single_space() {
+        assert!(matches!(
+            hotkey_to_rdev(HotKey::Space),
+            RdevTarget::Single(Key::Space)
+        ));
+    }
+
+    #[test]
+    fn should_map_cmd_e_to_chord_meta_e() {
+        let target = hotkey_to_rdev(HotKey::CmdE);
+        assert!(matches!(
+            target,
+            RdevTarget::Chord {
+                modifier_a: Key::MetaLeft,
+                modifier_b: Key::MetaRight,
+                key: Key::KeyE,
+            }
+        ));
     }
 
     #[test]
     fn should_map_f13_to_unknown_105() {
-        assert_eq!(hotkey_to_rdev_key(HotKey::F13), Key::Unknown(105));
-    }
-
-    #[test]
-    fn should_map_f14_to_unknown_107() {
-        assert_eq!(hotkey_to_rdev_key(HotKey::F14), Key::Unknown(107));
-    }
-
-    #[test]
-    fn should_map_f15_to_unknown_113() {
-        assert_eq!(hotkey_to_rdev_key(HotKey::F15), Key::Unknown(113));
-    }
-
-    #[test]
-    fn should_map_f16_to_unknown_106() {
-        assert_eq!(hotkey_to_rdev_key(HotKey::F16), Key::Unknown(106));
-    }
-
-    #[test]
-    fn should_map_f17_to_unknown_64() {
-        assert_eq!(hotkey_to_rdev_key(HotKey::F17), Key::Unknown(64));
-    }
-
-    #[test]
-    fn should_map_f18_to_unknown_79() {
-        assert_eq!(hotkey_to_rdev_key(HotKey::F18), Key::Unknown(79));
+        assert!(matches!(
+            hotkey_to_rdev(HotKey::F13),
+            RdevTarget::Single(Key::Unknown(105))
+        ));
     }
 
     #[test]
     fn should_map_f19_to_unknown_80() {
-        assert_eq!(hotkey_to_rdev_key(HotKey::F19), Key::Unknown(80));
+        assert!(matches!(
+            hotkey_to_rdev(HotKey::F19),
+            RdevTarget::Single(Key::Unknown(80))
+        ));
     }
 
     #[test]
-    fn should_map_all_hotkeys_to_distinct_rdev_keys() {
-        // Given
-        let all_hotkeys = [
+    fn should_map_all_single_hotkeys_to_distinct_rdev_keys() {
+        // Given — only single-key hotkeys (CmdE is a chord and intentionally excluded)
+        let single_hotkeys = [
             HotKey::RightOption,
             HotKey::RightControl,
             HotKey::RightShift,
@@ -172,10 +269,12 @@ mod tests {
             HotKey::F19,
         ];
         // When
-        let keys: Vec<Key> = all_hotkeys
+        let keys: Vec<Key> = single_hotkeys
             .iter()
-            .copied()
-            .map(hotkey_to_rdev_key)
+            .map(|&hk| match hotkey_to_rdev(hk) {
+                RdevTarget::Single(k) => k,
+                RdevTarget::Chord { .. } => panic!("unexpected chord for {hk:?}"),
+            })
             .collect();
         // Then — no two hotkeys may map to the same rdev key
         for i in 0..keys.len() {
@@ -183,7 +282,7 @@ mod tests {
                 assert_ne!(
                     keys[i], keys[j],
                     "{:?} and {:?} both map to {:?}",
-                    all_hotkeys[i], all_hotkeys[j], keys[i]
+                    single_hotkeys[i], single_hotkeys[j], keys[i]
                 );
             }
         }

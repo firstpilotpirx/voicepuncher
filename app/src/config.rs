@@ -93,11 +93,53 @@ pub struct WhisperCfg {
     pub language: String,
     #[serde(default)]
     pub threads: usize,
+    /// Beam size for beam search decoding. 1 = greedy (fastest). 5 = good quality/speed tradeoff.
+    #[serde(default = "WhisperCfg::default_beam_size")]
+    pub beam_size: i32,
+    /// Beam search patience factor. Higher = more thorough, slower.
+    #[serde(default = "WhisperCfg::default_patience")]
+    pub patience: f32,
+    /// Starting temperature for decoding. Raised by temperature_inc on fallback.
+    #[serde(default)]
+    pub temperature: f32,
+    /// Temperature increment used when resampling due to failed quality checks.
+    #[serde(default = "WhisperCfg::default_temperature_inc")]
+    pub temperature_inc: f32,
+    /// Entropy (compression ratio) threshold for fallback resampling.
+    #[serde(default = "WhisperCfg::default_entropy_thold")]
+    pub entropy_thold: f32,
+    /// Log-probability threshold for fallback resampling.
+    #[serde(default = "WhisperCfg::default_logprob_thold")]
+    pub logprob_thold: f32,
+    /// No-speech probability threshold. Higher = more aggressive silence detection.
+    #[serde(default = "WhisperCfg::default_no_speech_thold")]
+    pub no_speech_thold: f32,
+    /// Optional initial prompt fed to the decoder (domain terms, punctuation style, etc.).
+    #[serde(default)]
+    pub initial_prompt: String,
 }
 
 impl WhisperCfg {
     fn default_language() -> String {
         "auto".into()
+    }
+    fn default_beam_size() -> i32 {
+        5
+    }
+    fn default_patience() -> f32 {
+        1.0
+    }
+    fn default_temperature_inc() -> f32 {
+        0.2
+    }
+    fn default_entropy_thold() -> f32 {
+        2.4
+    }
+    fn default_logprob_thold() -> f32 {
+        -1.0
+    }
+    fn default_no_speech_thold() -> f32 {
+        0.6
     }
 }
 
@@ -107,6 +149,14 @@ impl Default for WhisperCfg {
             model_path: PathBuf::new(),
             language: Self::default_language(),
             threads: 0,
+            beam_size: Self::default_beam_size(),
+            patience: Self::default_patience(),
+            temperature: 0.0,
+            temperature_inc: Self::default_temperature_inc(),
+            entropy_thold: Self::default_entropy_thold(),
+            logprob_thold: Self::default_logprob_thold(),
+            no_speech_thold: Self::default_no_speech_thold(),
+            initial_prompt: String::new(),
         }
     }
 }
@@ -191,6 +241,8 @@ pub struct SoundsCfg {
     pub start_sound: String,
     #[serde(default = "SoundsCfg::default_stop_sound")]
     pub stop_sound: String,
+    #[serde(default = "SoundsCfg::default_cancel_sound")]
+    pub cancel_sound: String,
 }
 
 impl SoundsCfg {
@@ -201,6 +253,10 @@ impl SoundsCfg {
     fn default_stop_sound() -> String {
         "Pop".into()
     }
+
+    fn default_cancel_sound() -> String {
+        "Basso".into()
+    }
 }
 
 impl Default for SoundsCfg {
@@ -208,6 +264,7 @@ impl Default for SoundsCfg {
         Self {
             start_sound: Self::default_start_sound(),
             stop_sound: Self::default_stop_sound(),
+            cancel_sound: Self::default_cancel_sound(),
         }
     }
 }

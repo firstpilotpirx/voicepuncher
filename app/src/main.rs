@@ -30,6 +30,7 @@ impl VisualIndicator for NoopVisualIndicator {
 }
 
 fn main() {
+    whisper_rs::install_logging_hooks();
     let cli = Cli::parse();
 
     let config_path = cli.config.clone().unwrap_or_else(|| {
@@ -58,18 +59,17 @@ fn main() {
                 .parse()
                 .unwrap_or(log::LevelFilter::Info),
         )
+        .filter_module("whisper_rs", log::LevelFilter::Warn)
+        .filter_module("ggml", log::LevelFilter::Warn)
         .init();
 
     if let Some(ref input_path) = input_file {
-        let transcriber = WhisperCppTranscriber::load(
-            &config.whisper.model_path,
-            &config.whisper.language,
-            config.whisper.threads,
-        )
-        .unwrap_or_else(|e| {
-            log::error!("failed to load whisper model: {e:#}");
-            std::process::exit(2);
-        });
+        let transcriber =
+            WhisperCppTranscriber::load(&config.whisper.model_path, config.whisper.clone())
+                .unwrap_or_else(|e| {
+                    log::error!("failed to load whisper model: {e:#}");
+                    std::process::exit(2);
+                });
         let refiner: Box<dyn voicepuncher::core::application::TextRefiner> = if no_llm {
             log::info!("LLM disabled (--no-llm), using passthrough");
             Box::new(PassthroughTextRefiner)
@@ -93,7 +93,7 @@ fn main() {
             std::process::exit(1);
         });
         let paster = StdioTextPaster::new();
-        let sound_player = MacosSoundPlayer::new("", "");
+        let sound_player = MacosSoundPlayer::new("", "", "");
         let mut pipeline = Pipeline::new(
             Box::new(FileSystemAudioRecorder::new(input_path.clone())),
             Box::new(transcriber),
@@ -119,15 +119,12 @@ fn main() {
         std::process::exit(2);
     });
 
-    let transcriber = WhisperCppTranscriber::load(
-        &config.whisper.model_path,
-        &config.whisper.language,
-        config.whisper.threads,
-    )
-    .unwrap_or_else(|e| {
-        log::error!("failed to load whisper model: {e:#}");
-        std::process::exit(2);
-    });
+    let transcriber =
+        WhisperCppTranscriber::load(&config.whisper.model_path, config.whisper.clone())
+            .unwrap_or_else(|e| {
+                log::error!("failed to load whisper model: {e:#}");
+                std::process::exit(2);
+            });
 
     let refiner: Box<dyn voicepuncher::core::application::TextRefiner> = if no_llm {
         log::info!("LLM disabled (--no-llm), using passthrough");
@@ -168,7 +165,11 @@ fn main() {
             std::process::exit(2);
         });
 
-    let sound_player = MacosSoundPlayer::new(&config.sounds.start_sound, &config.sounds.stop_sound);
+    let sound_player = MacosSoundPlayer::new(
+        &config.sounds.start_sound,
+        &config.sounds.stop_sound,
+        &config.sounds.cancel_sound,
+    );
 
     let mtm = MainThreadMarker::new().expect("main must run on the main thread");
     let indicator = MacosVisualIndicator::initialize(mtm);

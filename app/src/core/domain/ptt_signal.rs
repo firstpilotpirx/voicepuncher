@@ -2,6 +2,7 @@
 pub enum PttSignal {
     Pressed,
     Released,
+    Cancel,
 }
 
 #[cfg(test)]

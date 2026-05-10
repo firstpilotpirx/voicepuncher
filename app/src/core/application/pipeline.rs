@@ -89,6 +89,13 @@ impl Pipeline {
                 }
                 self.run_transcribe_refine_paste(audio);
             }
+            (Recording, PttSignal::Cancel) => {
+                let _ = self.recorder.stop()?;
+                self.sound_player.play_cancel();
+                self.visual_indicator.hide();
+                self.state = Idle;
+                log::info!("recording cancelled");
+            }
             (s, sig) => log::warn!("ignoring {sig:?} in state {s:?}"),
         }
         Ok(())
@@ -98,6 +105,7 @@ impl Pipeline {
         let raw = self.transcriber.transcribe(&audio)?;
         let cleaned = self.refiner.refine(&raw)?;
         self.paster.paste(&cleaned)?;
+        eprintln!("{} {}", console::style("▸").dim(), cleaned.as_str());
         Ok(())
     }
 
@@ -128,8 +136,9 @@ impl Pipeline {
 
         self.state = PipelineState::Pasting;
         log::info!("pasting…");
-        if let Err(e) = self.paster.paste(&cleaned) {
-            log::error!("paste failed, dropping cycle: {e:#}");
+        match self.paster.paste(&cleaned) {
+            Ok(()) => eprintln!("{} {}", console::style("▸").dim(), cleaned.as_str()),
+            Err(e) => log::error!("paste failed, dropping cycle: {e:#}"),
         }
         self.state = PipelineState::Idle;
         self.visual_indicator.hide();
@@ -159,6 +168,7 @@ mod tests {
         let mut p = MockSoundPlayer::new();
         p.expect_play_start().times(..).return_const(());
         p.expect_play_stop().times(..).return_const(());
+        p.expect_play_cancel().times(..).return_const(());
         p
     }
 
@@ -486,6 +496,109 @@ mod tests {
         pipeline.step(PttSignal::Released).unwrap();
         // Then
         assert!(matches!(pipeline.state, PipelineState::Pasting));
+    }
+
+    #[test]
+    fn should_cancel_recording_and_return_to_idle_on_cancel_signal() {
+        // Given
+        let mut recorder = MockAudioRecorder::new();
+        recorder.expect_start().once().returning(|| Ok(()));
+        recorder
+            .expect_stop()
+            .once()
+            .returning(|| Ok(one_second_audio()));
+        let mut pipeline = make_pipeline(
+            recorder,
+            MockTranscriber::new(),
+            MockTextRefiner::new(),
+            MockTextPaster::new(),
+        );
+        pipeline.step(PttSignal::Pressed).unwrap();
+        // When
+        pipeline.step(PttSignal::Cancel).unwrap();
+        // Then — no transcription, back to Idle
+        assert!(matches!(pipeline.state, PipelineState::Idle));
+    }
+
+    #[test]
+    fn should_call_hide_when_recording_cancelled() {
+        // Given
+        let mut recorder = MockAudioRecorder::new();
+        recorder.expect_start().once().returning(|| Ok(()));
+        recorder
+            .expect_stop()
+            .once()
+            .returning(|| Ok(one_second_audio()));
+
+        let mut visual = MockVisualIndicator::new();
+        visual.expect_show_recording().once().return_const(());
+        visual.expect_show_processing().never();
+        visual.expect_hide().once().return_const(());
+
+        let mut pipeline = Pipeline::new(
+            Box::new(recorder),
+            Box::new(MockTranscriber::new()),
+            Box::new(MockTextRefiner::new()),
+            Box::new(MockTextPaster::new()),
+            Box::new(noop_sound_player()),
+            Box::new(visual),
+            PipelineConfig {
+                min_press_ms: 200,
+                recording_mode: RecordingMode::Toggle,
+            },
+        );
+        pipeline.step(PttSignal::Pressed).unwrap();
+        // When
+        pipeline.step(PttSignal::Cancel).unwrap();
+        // Then — show_processing never called, hide called once
+    }
+
+    #[test]
+    fn should_play_cancel_sound_when_recording_cancelled() {
+        // Given
+        let mut recorder = MockAudioRecorder::new();
+        recorder.expect_start().once().returning(|| Ok(()));
+        recorder
+            .expect_stop()
+            .once()
+            .returning(|| Ok(one_second_audio()));
+
+        let mut sound = MockSoundPlayer::new();
+        sound.expect_play_start().once().return_const(());
+        sound.expect_play_stop().never();
+        sound.expect_play_cancel().once().return_const(());
+
+        let mut pipeline = Pipeline::new(
+            Box::new(recorder),
+            Box::new(MockTranscriber::new()),
+            Box::new(MockTextRefiner::new()),
+            Box::new(MockTextPaster::new()),
+            Box::new(sound),
+            Box::new(noop_visual_indicator()),
+            PipelineConfig {
+                min_press_ms: 200,
+                recording_mode: RecordingMode::Toggle,
+            },
+        );
+        pipeline.step(PttSignal::Pressed).unwrap();
+        // When
+        pipeline.step(PttSignal::Cancel).unwrap();
+        // Then — play_cancel called once, play_stop never called
+    }
+
+    #[test]
+    fn should_ignore_cancel_signal_while_idle() {
+        // Given
+        let mut pipeline = make_pipeline(
+            MockAudioRecorder::new(),
+            MockTranscriber::new(),
+            MockTextRefiner::new(),
+            MockTextPaster::new(),
+        );
+        // When
+        pipeline.step(PttSignal::Cancel).unwrap();
+        // Then
+        assert!(matches!(pipeline.state, PipelineState::Idle));
     }
 
     #[test]

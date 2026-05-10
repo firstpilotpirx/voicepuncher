@@ -70,6 +70,7 @@ const HOTKEY_OPTIONS: &[(&str, HotKey)] = &[
     ("LeftControl   (left ⌃)", HotKey::LeftControl),
     ("Fn", HotKey::Fn),
     ("CapsLock", HotKey::CapsLock),
+    ("CmdE         (⌘E chord)", HotKey::CmdE),
     ("F13", HotKey::F13),
     ("F14", HotKey::F14),
     ("F15", HotKey::F15),

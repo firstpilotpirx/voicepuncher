@@ -52,7 +52,7 @@ impl LlamaCppTextRefiner {
 impl TextRefiner for LlamaCppTextRefiner {
     fn refine(&mut self, raw: &RawTranscript) -> Result<CleanedText> {
         let prompt = format!(
-            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n<transcript>\n{}\n</transcript><|im_end|>\n<|im_start|>assistant\n",
             self.system_prompt,
             raw.as_str()
         );
@@ -69,6 +69,11 @@ impl TextRefiner for LlamaCppTextRefiner {
             .str_to_token(&prompt, AddBos::Always)
             .map_err(|e| anyhow!("tokenization failed: {e}"))?;
 
+        let transcript_tokens = self
+            .model
+            .str_to_token(raw.as_str(), AddBos::Never)
+            .map_err(|e| anyhow!("transcript tokenization failed: {e}"))?;
+
         let mut batch = LlamaBatch::new(tokens.len(), 1);
         batch
             .add_sequence(&tokens, 0, false)
@@ -81,11 +86,17 @@ impl TextRefiner for LlamaCppTextRefiner {
             LlamaSampler::dist(42),
         ]);
 
+        let budget_by_transcript = ((transcript_tokens.len() as f32 * 1.5).ceil() as i32).max(64);
+        let budget_by_context = (self.context_size as i32) - (tokens.len() as i32);
+        let actual_max = budget_by_transcript
+            .min(self.max_tokens)
+            .min(budget_by_context.max(1));
+
         let mut output = String::new();
         let mut pos = tokens.len() as i32;
         let mut finished = false;
 
-        for _ in 0..self.max_tokens {
+        for _ in 0..actual_max {
             let token = sampler.sample(&ctx, -1);
 
             if self.model.is_eog_token(token) {
@@ -125,11 +136,14 @@ impl TextRefiner for LlamaCppTextRefiner {
 
         if !finished {
             log::warn!(
-                "LLM hit max_tokens={} without reaching end-of-sequence — output may be truncated. \
-                 Input tokens: {}, generated: {} chars",
+                "LLM hit token limit ({} = min(ceil({transcript} * 1.5)={}, context_budget={}, max_tokens={})) \
+                 without EOS — output may be truncated. Generated: {} chars",
+                actual_max,
+                budget_by_transcript,
+                budget_by_context,
                 self.max_tokens,
-                tokens.len(),
-                output.len()
+                output.len(),
+                transcript = transcript_tokens.len()
             );
         }
 

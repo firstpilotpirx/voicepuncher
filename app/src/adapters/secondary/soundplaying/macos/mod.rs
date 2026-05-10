@@ -5,13 +5,15 @@ use crate::core::application::SoundPlayer;
 pub struct MacosSoundPlayer {
     start_path: Option<PathBuf>,
     stop_path: Option<PathBuf>,
+    cancel_path: Option<PathBuf>,
 }
 
 impl MacosSoundPlayer {
-    pub fn new(start_sound: &str, stop_sound: &str) -> Self {
+    pub fn new(start_sound: &str, stop_sound: &str, cancel_sound: &str) -> Self {
         Self {
             start_path: Self::resolve(start_sound),
             stop_path: Self::resolve(stop_sound),
+            cancel_path: Self::resolve(cancel_sound),
         }
     }
 
@@ -55,6 +57,12 @@ impl SoundPlayer for MacosSoundPlayer {
 
     fn play_stop(&self) {
         if let Some(ref path) = self.stop_path {
+            Self::play_async(path);
+        }
+    }
+
+    fn play_cancel(&self) {
+        if let Some(ref path) = self.cancel_path {
             Self::play_async(path);
         }
     }
