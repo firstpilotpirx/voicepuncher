@@ -12,6 +12,10 @@ model_path = "~/.voicepuncher/models/ggml-large-v3-turbo-q5_0.bin"
 language = "auto"
 threads = 0
 initial_prompt = "Docker, Kubernetes, GitHub, CI/CD, API, WEB3, WEB3 node, service, controller, terminal, pnpm, qa:fix, fix, staging, prod, test, E2E, integration, Jira, Slack, PR."
+chunk_threshold_secs = 15  # recordings longer than this (seconds) trigger parallel chunked transcription; 0 = always single-pass
+chunk_overlap_secs = 2     # seconds of audio repeated at the start of each subsequent chunk (boundary guard)
+vad_rms_threshold = 0.01   # energy-based VAD: per-20ms-frame RMS below this is treated as silence (0.0..1.0)
+vad_lookback_secs = 5      # max seconds to look back from hard chunk boundary when searching for a silence cut point
 
 [llm]
 model_path = "~/.voicepuncher/models/Qwen2.5-3B-Instruct-Q4_K_M.gguf"

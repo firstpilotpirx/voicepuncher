@@ -1,4 +1,5 @@
 pub mod audio_recorder;
+pub mod chunking;
 pub mod hotkey_listener;
 pub mod permission_probe;
 pub mod pipeline;
@@ -10,6 +11,7 @@ pub mod transcriber;
 pub mod visual_indicator;
 
 pub use audio_recorder::AudioRecorder;
+pub use chunking::ChunkingCfg;
 pub use hotkey_listener::HotkeyListener;
 pub use permission_probe::PermissionProbe;
 pub use sound_player::SoundPlayer;

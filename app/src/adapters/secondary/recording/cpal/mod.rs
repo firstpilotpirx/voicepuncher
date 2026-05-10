@@ -1,5 +1,7 @@
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -8,7 +10,8 @@ use rubato::{
     Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
 };
 
-use crate::core::application::audio_recorder::AudioRecorder;
+use crate::core::application::audio_recorder::{AudioRecorder, LiveChunk};
+use crate::core::application::chunking::ChunkingCfg;
 use crate::core::domain::AudioBuffer16k;
 
 const I16_MAX_F32: f32 = i16::MAX as f32;
@@ -18,10 +21,14 @@ const RESAMPLER_SINC_LEN: usize = 256;
 const RESAMPLER_F_CUTOFF: f32 = 0.95;
 const RESAMPLER_OVERSAMPLING: usize = 128;
 
+const VAD_FRAME_MS: u64 = 20;
+
 pub struct CpalAudioRecorder {
     debug_save_wav: Option<PathBuf>,
     max_recording_seconds: u64,
     active: Option<ActiveRecording>,
+    shared_buffer: Option<Arc<Mutex<Vec<i16>>>>,
+    native_rate_out: Option<Arc<AtomicU32>>,
 }
 
 struct ActiveRecording {
@@ -31,6 +38,9 @@ struct ActiveRecording {
     channels: u16,
     buffer: Arc<Mutex<Vec<i16>>>,
     max_samples: usize,
+    live_stop_tx: Option<std::sync::mpsc::Sender<()>>,
+    live_watcher: Option<std::thread::JoinHandle<()>>,
+    used_live: bool,
 }
 
 impl CpalAudioRecorder {
@@ -39,6 +49,23 @@ impl CpalAudioRecorder {
             debug_save_wav,
             max_recording_seconds,
             active: None,
+            shared_buffer: None,
+            native_rate_out: None,
+        }
+    }
+
+    pub fn new_with_live_buffer(
+        debug_save_wav: Option<PathBuf>,
+        max_recording_seconds: u64,
+        shared_buffer: Arc<Mutex<Vec<i16>>>,
+        native_rate_out: Arc<AtomicU32>,
+    ) -> Self {
+        Self {
+            debug_save_wav,
+            max_recording_seconds,
+            active: None,
+            shared_buffer: Some(shared_buffer),
+            native_rate_out: Some(native_rate_out),
         }
     }
 }
@@ -62,9 +89,18 @@ impl AudioRecorder for CpalAudioRecorder {
 
         let max_samples = self.max_recording_seconds as usize * native_sample_rate as usize;
 
-        let buffer: Arc<Mutex<Vec<i16>>> = Arc::new(Mutex::new(Vec::new()));
-        let buffer_write = Arc::clone(&buffer);
+        if let Some(ref rate_arc) = self.native_rate_out {
+            rate_arc.store(native_sample_rate, Ordering::Relaxed);
+        }
 
+        let buffer: Arc<Mutex<Vec<i16>>> = if let Some(ref shared) = self.shared_buffer {
+            shared.lock().unwrap().clear();
+            Arc::clone(shared)
+        } else {
+            Arc::new(Mutex::new(Vec::new()))
+        };
+
+        let buffer_write = Arc::clone(&buffer);
         let channels_usize = channels as usize;
         let stream = device.build_input_stream(
             &stream_config,
@@ -99,6 +135,9 @@ impl AudioRecorder for CpalAudioRecorder {
             channels,
             buffer,
             max_samples,
+            live_stop_tx: None,
+            live_watcher: None,
+            used_live: false,
         });
 
         Ok(())
@@ -111,6 +150,10 @@ impl AudioRecorder for CpalAudioRecorder {
             .ok_or_else(|| anyhow!("recorder was not started"))?;
 
         drop(recording.stream);
+
+        if recording.used_live {
+            return Ok(AudioBuffer16k::new(Vec::new()));
+        }
 
         let raw_samples = Arc::try_unwrap(recording.buffer)
             .map(|m| m.into_inner().unwrap())
@@ -127,7 +170,8 @@ impl AudioRecorder for CpalAudioRecorder {
         let resampled = if recording.native_sample_rate == AudioBuffer16k::SAMPLE_RATE_HZ {
             raw_samples
         } else {
-            resample_to_16k(raw_samples, recording.native_sample_rate)?
+            let mut resampler = Resampler16k::new(recording.native_sample_rate)?;
+            resampler.resample(&raw_samples)?
         };
 
         if let Some(ref path) = self.debug_save_wav {
@@ -136,53 +180,258 @@ impl AudioRecorder for CpalAudioRecorder {
 
         Ok(AudioBuffer16k::new(resampled))
     }
+
+    fn start_live_chunks(
+        &mut self,
+        cfg: ChunkingCfg,
+    ) -> Result<Option<std::sync::mpsc::Receiver<LiveChunk>>> {
+        if cfg.chunk_threshold_secs == 0 {
+            return Ok(None);
+        }
+        let active = self
+            .active
+            .as_mut()
+            .ok_or_else(|| anyhow!("recorder was not started"))?;
+
+        let (chunk_tx, chunk_rx) = std::sync::mpsc::channel::<LiveChunk>();
+        let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
+
+        let buffer = Arc::clone(&active.buffer);
+        let native_sample_rate = active.native_sample_rate;
+
+        let handle = std::thread::Builder::new()
+            .name("live-watcher".into())
+            .spawn(move || {
+                live_watcher_thread(buffer, native_sample_rate, cfg, chunk_tx, stop_rx);
+            })
+            .map_err(|e| anyhow!("failed to spawn live-watcher thread: {e}"))?;
+
+        active.live_stop_tx = Some(stop_tx);
+        active.live_watcher = Some(handle);
+        active.used_live = true;
+
+        Ok(Some(chunk_rx))
+    }
+
+    fn flush_live_chunks(&mut self) {
+        if let Some(active) = self.active.as_mut() {
+            drop(active.live_stop_tx.take());
+            if let Some(handle) = active.live_watcher.take() {
+                if handle.join().is_err() {
+                    log::warn!("live-watcher thread panicked");
+                }
+            }
+        }
+    }
+}
+
+fn vad_cut_point_native(
+    buf: &[i16],
+    lookback_start: usize,
+    hard_boundary: usize,
+    frame_samples: usize,
+    rms_threshold: f32,
+) -> usize {
+    if frame_samples == 0 {
+        return hard_boundary;
+    }
+    let lookback_start = lookback_start.min(hard_boundary);
+    let hard_boundary = hard_boundary.min(buf.len());
+
+    let first_frame = lookback_start / frame_samples;
+    let last_frame = hard_boundary / frame_samples;
+
+    for frame_idx in (first_frame..last_frame).rev() {
+        let start = frame_idx * frame_samples;
+        let end = (start + frame_samples).min(buf.len());
+        let frame = &buf[start..end];
+        if frame.is_empty() {
+            continue;
+        }
+        let mean_sq = frame
+            .iter()
+            .map(|&s| {
+                let f = s as f32 / 32_768.0;
+                f * f
+            })
+            .sum::<f32>()
+            / frame.len() as f32;
+        if mean_sq.sqrt() < rms_threshold {
+            return start;
+        }
+    }
+    hard_boundary
+}
+
+struct Resampler16k {
+    inner: SincFixedIn<f32>,
+    ratio: f64,
+}
+
+impl Resampler16k {
+    fn new(native_rate: u32) -> Result<Self> {
+        let ratio = AudioBuffer16k::SAMPLE_RATE_HZ as f64 / native_rate as f64;
+        let params = SincInterpolationParameters {
+            sinc_len: RESAMPLER_SINC_LEN,
+            f_cutoff: RESAMPLER_F_CUTOFF,
+            oversampling_factor: RESAMPLER_OVERSAMPLING,
+            interpolation: SincInterpolationType::Linear,
+            window: WindowFunction::BlackmanHarris2,
+        };
+        let inner = SincFixedIn::<f32>::new(ratio, 1.0, params, RESAMPLER_CHUNK_SIZE, 1)
+            .map_err(|e| anyhow!("resampler construction failed: {e}"))?;
+        Ok(Self { inner, ratio })
+    }
+
+    fn resample(&mut self, mono_i16: &[i16]) -> Result<Vec<i16>> {
+        self.inner.reset();
+
+        let input_f32: Vec<f32> = mono_i16.iter().map(|&s| s as f32 / I16_MAX_F32).collect();
+        let total_frames = input_f32.len();
+        let mut output_samples: Vec<f32> = Vec::with_capacity(
+            ((total_frames as f64) * self.ratio).ceil() as usize + RESAMPLER_CHUNK_SIZE,
+        );
+
+        let mut pos = 0usize;
+        while pos < total_frames {
+            let end = (pos + RESAMPLER_CHUNK_SIZE).min(total_frames);
+            let chunk = &input_f32[pos..end];
+
+            let padded: Vec<f32> = if chunk.len() < RESAMPLER_CHUNK_SIZE {
+                let mut p = chunk.to_vec();
+                p.resize(RESAMPLER_CHUNK_SIZE, 0.0);
+                p
+            } else {
+                chunk.to_vec()
+            };
+
+            let output = self
+                .inner
+                .process(&[padded], None)
+                .map_err(|e| anyhow!("resampler process failed: {e}"))?;
+
+            output_samples.extend_from_slice(&output[0]);
+            pos += RESAMPLER_CHUNK_SIZE;
+        }
+
+        Ok(output_samples.into_iter().map(float_to_i16).collect())
+    }
+}
+
+fn live_watcher_thread(
+    buffer: Arc<Mutex<Vec<i16>>>,
+    native_sample_rate: u32,
+    cfg: ChunkingCfg,
+    chunk_tx: std::sync::mpsc::Sender<LiveChunk>,
+    stop_rx: std::sync::mpsc::Receiver<()>,
+) {
+    let chunk_samples = cfg.chunk_threshold_secs as usize * native_sample_rate as usize;
+    let overlap_samples = cfg.chunk_overlap_secs as usize * native_sample_rate as usize;
+    let lookback_samples = cfg.vad_lookback_secs as usize * native_sample_rate as usize;
+    let frame_samples = (native_sample_rate as u64 * VAD_FRAME_MS / 1000) as usize;
+
+    let mut resampler: Option<Resampler16k> =
+        if native_sample_rate == AudioBuffer16k::SAMPLE_RATE_HZ {
+            None
+        } else {
+            match Resampler16k::new(native_sample_rate) {
+                Ok(r) => Some(r),
+                Err(e) => {
+                    log::error!("live-watcher: resampler init failed: {e:#}");
+                    return;
+                }
+            }
+        };
+
+    let mut last_cut: usize = 0;
+    let mut next_start: usize = 0;
+
+    loop {
+        let should_stop = match stop_rx.try_recv() {
+            Ok(()) | Err(std::sync::mpsc::TryRecvError::Disconnected) => true,
+            Err(std::sync::mpsc::TryRecvError::Empty) => false,
+        };
+
+        let current_len = buffer.lock().unwrap().len();
+        let available = current_len.saturating_sub(last_cut);
+
+        if !should_stop && available < chunk_samples {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            continue;
+        }
+
+        if should_stop && next_start >= current_len {
+            break;
+        }
+
+        let t_detect = Instant::now();
+
+        let (chunk, cut_point) = if should_stop {
+            let chunk = buffer.lock().unwrap()[next_start..current_len].to_vec();
+            let cut = current_len;
+            (chunk, cut)
+        } else {
+            let hard_boundary = last_cut + chunk_samples;
+            let hard_boundary = hard_boundary.min(current_len);
+            let lookback_start = hard_boundary.saturating_sub(lookback_samples);
+            let buf_guard = buffer.lock().unwrap();
+            let cut = vad_cut_point_native(
+                &buf_guard,
+                lookback_start,
+                hard_boundary,
+                frame_samples,
+                cfg.vad_rms_threshold,
+            );
+            let chunk = buf_guard[next_start..cut].to_vec();
+            (chunk, cut)
+        };
+
+        let t_after_slice = Instant::now();
+        let chunk_secs = chunk.len() as f32 / native_sample_rate as f32;
+
+        let resampled_result: Result<AudioBuffer16k> = match resampler.as_mut() {
+            None => Ok(AudioBuffer16k::new(chunk)),
+            Some(r) => r.resample(&chunk).map(AudioBuffer16k::new),
+        };
+
+        match resampled_result {
+            Ok(audio) => {
+                let t_after_resample = Instant::now();
+                let enqueued_at = Instant::now();
+                let send_failed = chunk_tx.send(LiveChunk { audio, enqueued_at }).is_err();
+                let t_after_send = Instant::now();
+
+                if should_stop {
+                    log::info!(
+                        "live-watcher final-chunk: chunk_secs={:.2} slice={}ms resample={}ms send={}ms total={}ms",
+                        chunk_secs,
+                        (t_after_slice - t_detect).as_millis(),
+                        (t_after_resample - t_after_slice).as_millis(),
+                        (t_after_send - t_after_resample).as_millis(),
+                        (t_after_send - t_detect).as_millis(),
+                    );
+                }
+
+                if send_failed {
+                    break;
+                }
+            }
+            Err(e) => {
+                log::warn!("live-watcher: resample failed: {e:#}");
+            }
+        }
+
+        last_cut = cut_point;
+        next_start = last_cut.saturating_sub(overlap_samples);
+
+        if should_stop {
+            break;
+        }
+    }
 }
 
 fn float_to_i16(sample: f32) -> i16 {
     (sample.clamp(-1.0, 1.0) * I16_MAX_F32) as i16
-}
-
-fn resample_to_16k(mono_i16: Vec<i16>, native_rate: u32) -> Result<Vec<i16>> {
-    let ratio = AudioBuffer16k::SAMPLE_RATE_HZ as f64 / native_rate as f64;
-    let params = SincInterpolationParameters {
-        sinc_len: RESAMPLER_SINC_LEN,
-        f_cutoff: RESAMPLER_F_CUTOFF,
-        oversampling_factor: RESAMPLER_OVERSAMPLING,
-        interpolation: SincInterpolationType::Linear,
-        window: WindowFunction::BlackmanHarris2,
-    };
-
-    let mut resampler = SincFixedIn::<f32>::new(ratio, 1.0, params, RESAMPLER_CHUNK_SIZE, 1)
-        .map_err(|e| anyhow!("resampler construction failed: {e}"))?;
-
-    let input_f32: Vec<f32> = mono_i16.iter().map(|&s| s as f32 / I16_MAX_F32).collect();
-
-    let total_frames = input_f32.len();
-    let mut output_samples: Vec<f32> =
-        Vec::with_capacity(((total_frames as f64) * ratio).ceil() as usize + RESAMPLER_CHUNK_SIZE);
-
-    let mut pos = 0usize;
-    while pos < total_frames {
-        let end = (pos + RESAMPLER_CHUNK_SIZE).min(total_frames);
-        let chunk = &input_f32[pos..end];
-
-        let padded: Vec<f32> = if chunk.len() < RESAMPLER_CHUNK_SIZE {
-            let mut p = chunk.to_vec();
-            p.resize(RESAMPLER_CHUNK_SIZE, 0.0);
-            p
-        } else {
-            chunk.to_vec()
-        };
-
-        let output = resampler
-            .process(&[padded], None)
-            .map_err(|e| anyhow!("resampler process failed: {e}"))?;
-
-        output_samples.extend_from_slice(&output[0]);
-        pos += RESAMPLER_CHUNK_SIZE;
-    }
-
-    Ok(output_samples.into_iter().map(float_to_i16).collect())
 }
 
 fn save_wav(path: &PathBuf, samples: &[i16]) -> Result<()> {
@@ -247,8 +496,9 @@ mod tests {
     fn should_produce_correct_sample_count_when_resampling_from_44100_to_16k() {
         // Given — 1 second of 44100 Hz silence
         let input: Vec<i16> = vec![0i16; 44_100];
+        let mut resampler = Resampler16k::new(44_100).unwrap();
         // When
-        let result = resample_to_16k(input, 44_100).unwrap();
+        let result = resampler.resample(&input).unwrap();
         // Then — output should be approximately 16000 samples (within 5%)
         let expected = 16_000usize;
         let tolerance = expected / 20;
@@ -257,5 +507,53 @@ mod tests {
             "expected ~{expected} samples, got {}",
             result.len()
         );
+    }
+
+    #[test]
+    fn should_produce_consistent_results_across_repeated_resamples() {
+        // Given — same buffer resampled twice through the same resampler
+        let input: Vec<i16> = (0..44_100).map(|i| ((i % 1000) as i16) * 10).collect();
+        let mut resampler = Resampler16k::new(44_100).unwrap();
+        // When
+        let first = resampler.resample(&input).unwrap();
+        let second = resampler.resample(&input).unwrap();
+        // Then — reset() between calls means identical inputs produce identical outputs
+        assert_eq!(
+            first.len(),
+            second.len(),
+            "output length should be stable across repeated resamples"
+        );
+        assert_eq!(
+            first, second,
+            "samples should be byte-identical when reset() is called between buffers"
+        );
+    }
+
+    #[test]
+    fn should_cut_at_hard_boundary_when_no_silence_found() {
+        // Given — all non-silent samples
+        let buf: Vec<i16> = vec![10_000i16; 48_000];
+        let frame_samples = 960;
+        // When
+        let cut = vad_cut_point_native(&buf, 0, 48_000, frame_samples, 0.01);
+        // Then — falls back to hard boundary
+        assert_eq!(cut, 48_000);
+    }
+
+    #[test]
+    fn should_find_silence_frame_within_lookback_window() {
+        // Given — 48000 samples, last 960 are silence
+        let mut buf: Vec<i16> = vec![10_000i16; 48_000];
+        let silence_start = 47_040usize;
+        for s in &mut buf[silence_start..] {
+            *s = 0;
+        }
+        let frame_samples = 960;
+        let hard_boundary = 48_000;
+        let lookback_start = 44_160;
+        // When
+        let cut = vad_cut_point_native(&buf, lookback_start, hard_boundary, frame_samples, 0.01);
+        // Then — snaps to the silent frame start
+        assert_eq!(cut, silence_start);
     }
 }

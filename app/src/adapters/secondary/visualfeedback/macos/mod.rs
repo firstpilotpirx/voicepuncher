@@ -77,11 +77,8 @@ fn build_window_set(
     let window_width: f64 = 140.0;
     let window_height: f64 = 55.0;
 
-    let x = screen_visible_frame.origin.x
-        + (screen_visible_frame.size.width - window_width) / 2.0;
-    let y = screen_visible_frame.origin.y + screen_visible_frame.size.height
-        - window_height
-        - 4.0;
+    let x = screen_visible_frame.origin.x + (screen_visible_frame.size.width - window_width) / 2.0;
+    let y = screen_visible_frame.origin.y + screen_visible_frame.size.height - window_height - 4.0;
 
     let frame = objc2_foundation::NSRect {
         origin: objc2_foundation::NSPoint { x, y },
@@ -119,10 +116,8 @@ fn build_window_set(
             height: window_height,
         },
     };
-    let effect_view = NSVisualEffectView::initWithFrame(
-        mtm.alloc::<NSVisualEffectView>(),
-        content_frame,
-    );
+    let effect_view =
+        NSVisualEffectView::initWithFrame(mtm.alloc::<NSVisualEffectView>(), content_frame);
     effect_view.setMaterial(NSVisualEffectMaterial::HUDWindow);
     effect_view.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
     effect_view.setState(NSVisualEffectState::Active);
@@ -140,7 +135,8 @@ fn build_window_set(
 
     let font = NSFont::boldSystemFontOfSize(28.0);
     let label_height = (font.ascender() - font.descender()).ceil() + 4.0;
-    let label_y = (window_height / 2.0 - font.capHeight() / 2.0 - (label_height - font.ascender())).floor();
+    let label_y =
+        (window_height / 2.0 - font.capHeight() / 2.0 - (label_height - font.ascender())).floor();
     let label_frame = objc2_foundation::NSRect {
         origin: objc2_foundation::NSPoint {
             x: 12.0,
@@ -273,11 +269,7 @@ impl VisualIndicator for MacosVisualIndicator {
 
 unsafe impl Send for MacosVisualIndicator {}
 
-fn apply_recording_state(
-    windows: Vec<WindowSet>,
-    generation: u64,
-    pulse_gen: Arc<AtomicU64>,
-) {
+fn apply_recording_state(windows: Vec<WindowSet>, generation: u64, pulse_gen: Arc<AtomicU64>) {
     let text = NSString::from_str("◉ REC");
     for ws in &windows {
         let window = unsafe { (ws.window_ptr as *const NSWindow).as_ref().unwrap() };

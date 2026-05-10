@@ -1,14 +1,17 @@
 use std::sync::mpsc;
 
+use crate::core::application::audio_recorder::LiveChunk;
+use crate::core::application::chunking::{merge_chunk_texts, ChunkingCfg};
 use crate::core::application::{
     AudioRecorder, SoundPlayer, TextPaster, TextRefiner, Transcriber, VisualIndicator,
 };
-use crate::core::domain::{AudioBuffer16k, PttSignal, RecordingMode};
+use crate::core::domain::{AudioBuffer16k, PttSignal, RawTranscript, RecordingMode};
 
 #[derive(Debug, Clone, Copy)]
 pub struct PipelineConfig {
     pub min_press_ms: u64,
     pub recording_mode: RecordingMode,
+    pub chunking: ChunkingCfg,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -20,15 +23,25 @@ enum PipelineState {
     Pasting,
 }
 
+struct LiveTranscriptionSession {
+    results_rx: mpsc::Receiver<LiveSessionResult>,
+}
+
+struct LiveSessionResult {
+    texts: Vec<String>,
+    transcriber: Box<dyn Transcriber>,
+}
+
 pub struct Pipeline {
     pub recorder: Box<dyn AudioRecorder>,
-    pub transcriber: Box<dyn Transcriber>,
+    pub transcriber: Option<Box<dyn Transcriber>>,
     pub refiner: Box<dyn TextRefiner>,
     pub paster: Box<dyn TextPaster>,
     pub sound_player: Box<dyn SoundPlayer>,
     pub visual_indicator: Box<dyn VisualIndicator>,
     pub cfg: PipelineConfig,
     state: PipelineState,
+    live_session: Option<LiveTranscriptionSession>,
 }
 
 impl Pipeline {
@@ -43,13 +56,14 @@ impl Pipeline {
     ) -> Self {
         Self {
             recorder,
-            transcriber,
+            transcriber: Some(transcriber),
             refiner,
             paster,
             sound_player,
             visual_indicator,
             cfg,
             state: PipelineState::Idle,
+            live_session: None,
         }
     }
 
@@ -74,23 +88,105 @@ impl Pipeline {
             (Idle, PttSignal::Pressed) => {
                 self.sound_player.play_start();
                 self.recorder.start()?;
+                if self.cfg.chunking.chunk_threshold_secs > 0 {
+                    if let Some(chunk_rx) = self.recorder.start_live_chunks(self.cfg.chunking)? {
+                        let target_chunk_secs = self.cfg.chunking.chunk_threshold_secs
+                            + self.cfg.chunking.chunk_overlap_secs;
+                        log::info!(
+                            "live chunking: threshold={}s overlap={}s → target chunk duration ≈ {}s",
+                            self.cfg.chunking.chunk_threshold_secs,
+                            self.cfg.chunking.chunk_overlap_secs,
+                            target_chunk_secs,
+                        );
+                        let transcriber =
+                            self.transcriber.take().expect("transcriber already taken");
+                        let (results_tx, results_rx) = mpsc::sync_channel(1);
+                        std::thread::Builder::new()
+                            .name("live-transcription".into())
+                            .spawn(move || run_live_worker(transcriber, chunk_rx, results_tx))
+                            .expect("failed to spawn live transcription thread");
+                        self.live_session = Some(LiveTranscriptionSession { results_rx });
+                    }
+                }
                 self.visual_indicator.show_recording();
                 self.state = Recording;
             }
             (Recording, _) if stops => {
+                let t_user_stop = std::time::Instant::now();
                 self.sound_player.play_stop();
                 self.visual_indicator.show_processing();
-                let audio = self.recorder.stop()?;
-                self.state = Idle;
-                if audio.is_empty() || audio.duration_ms() < self.cfg.min_press_ms {
-                    log::info!("dropped: too short ({} ms)", audio.duration_ms());
-                    self.visual_indicator.hide();
-                    return Ok(());
+                if let Some(session) = self.live_session.take() {
+                    self.state = Idle;
+                    let t_drain_start = std::time::Instant::now();
+                    self.recorder.flush_live_chunks();
+                    match session.results_rx.recv() {
+                        Ok(result) => {
+                            let drain_ms = t_drain_start.elapsed().as_millis() as u64;
+                            let t_stop_start = std::time::Instant::now();
+                            let _ = self.recorder.stop();
+                            let stop_ms = t_stop_start.elapsed().as_millis() as u64;
+                            self.transcriber = Some(result.transcriber);
+                            if result.texts.is_empty() {
+                                log::info!(
+                                    "live session: no text (drain {drain_ms}ms stop {stop_ms}ms)"
+                                );
+                                self.visual_indicator.hide();
+                            } else {
+                                let overlap_fraction = self.cfg.chunking.chunk_overlap_secs as f64
+                                    / self.cfg.chunking.chunk_threshold_secs as f64;
+                                let t_merge_start = std::time::Instant::now();
+                                let merged = merge_chunk_texts(result.texts, overlap_fraction);
+                                let merge_ms = t_merge_start.elapsed().as_millis() as u64;
+                                log::info!(
+                                    "live session: {} chars merged (drain {drain_ms}ms stop {stop_ms}ms merge {merge_ms}ms)",
+                                    merged.len()
+                                );
+                                match RawTranscript::new(merged) {
+                                    Ok(raw) => self.run_refine_paste(
+                                        raw,
+                                        t_user_stop,
+                                        drain_ms,
+                                        stop_ms,
+                                        merge_ms,
+                                    ),
+                                    Err(e) => {
+                                        log::warn!("live session: bad transcript: {e}");
+                                        self.visual_indicator.hide();
+                                    }
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            log::error!("live transcription worker channel closed unexpectedly");
+                            let _ = self.recorder.stop();
+                            self.visual_indicator.hide();
+                        }
+                    }
+                } else {
+                    let t_stop_start = std::time::Instant::now();
+                    let audio = self.recorder.stop()?;
+                    let stop_ms = t_stop_start.elapsed().as_millis() as u64;
+                    self.state = Idle;
+                    if audio.is_empty() || audio.duration_ms() < self.cfg.min_press_ms {
+                        log::info!("dropped: too short ({} ms)", audio.duration_ms());
+                        self.visual_indicator.hide();
+                        return Ok(());
+                    }
+                    self.run_transcribe_refine_paste(audio, t_user_stop, stop_ms);
                 }
-                self.run_transcribe_refine_paste(audio);
             }
             (Recording, PttSignal::Cancel) => {
-                let _ = self.recorder.stop()?;
+                if let Some(session) = self.live_session.take() {
+                    self.recorder.flush_live_chunks();
+                    let _ = self.recorder.stop();
+                    if let Ok(result) = session.results_rx.recv() {
+                        self.transcriber = Some(result.transcriber);
+                    } else {
+                        log::error!("live worker channel closed on cancel");
+                    }
+                } else {
+                    let _ = self.recorder.stop()?;
+                }
                 self.sound_player.play_cancel();
                 self.visual_indicator.hide();
                 self.state = Idle;
@@ -102,28 +198,54 @@ impl Pipeline {
     }
 
     pub fn run_once(&mut self, audio: AudioBuffer16k) -> anyhow::Result<()> {
-        let raw = self.transcriber.transcribe(&audio)?;
+        let Some(raw) = self
+            .transcriber
+            .as_mut()
+            .expect("transcriber not available")
+            .transcribe(&audio)?
+        else {
+            return Ok(());
+        };
         let cleaned = self.refiner.refine(&raw)?;
         self.paster.paste(&cleaned)?;
         eprintln!("{} {}", console::style("▸").dim(), cleaned.as_str());
         Ok(())
     }
 
-    fn run_transcribe_refine_paste(&mut self, audio: AudioBuffer16k) {
+    fn run_transcribe_refine_paste(
+        &mut self,
+        audio: AudioBuffer16k,
+        t_user_stop: std::time::Instant,
+        stop_ms: u64,
+    ) {
+        let duration_s = audio.duration_ms() as f32 / 1000.0;
         self.state = PipelineState::Transcribing;
         log::info!("transcribing…");
-        let raw = match self.transcriber.transcribe(&audio) {
+        let t_transcribe = std::time::Instant::now();
+        let raw = match self
+            .transcriber
+            .as_mut()
+            .expect("transcriber not available")
+            .transcribe(&audio)
+        {
             Err(e) => {
                 log::warn!("transcription failed, dropping cycle: {e:#}");
                 self.state = PipelineState::Idle;
                 self.visual_indicator.hide();
                 return;
             }
-            Ok(r) => r,
+            Ok(None) => {
+                self.state = PipelineState::Idle;
+                self.visual_indicator.hide();
+                return;
+            }
+            Ok(Some(r)) => r,
         };
+        let transcribe_ms = t_transcribe.elapsed().as_millis() as u64;
 
         self.state = PipelineState::Refining;
         log::info!("refining…");
+        let t_refine = std::time::Instant::now();
         let cleaned = match self.refiner.refine(&raw) {
             Err(e) => {
                 log::error!("refinement failed, dropping cycle: {e:#}");
@@ -133,17 +255,100 @@ impl Pipeline {
             }
             Ok(c) => c,
         };
+        let refine_ms = t_refine.elapsed().as_millis() as u64;
 
         self.state = PipelineState::Pasting;
-        log::info!("pasting…");
+        log::info!("pasting… ({duration_s:.1}s)");
+        let t_paste = std::time::Instant::now();
         match self.paster.paste(&cleaned) {
             Ok(()) => eprintln!("{} {}", console::style("▸").dim(), cleaned.as_str()),
             Err(e) => log::error!("paste failed, dropping cycle: {e:#}"),
         }
+        let paste_ms = t_paste.elapsed().as_millis() as u64;
+        let total_ms = t_user_stop.elapsed().as_millis() as u64;
         self.state = PipelineState::Idle;
         self.visual_indicator.hide();
-        log::info!("done");
+        log::info!(
+            "stop→paste: stop={stop_ms}ms transcribe={transcribe_ms}ms refine={refine_ms}ms paste={paste_ms}ms total={total_ms}ms"
+        );
     }
+
+    fn run_refine_paste(
+        &mut self,
+        raw: RawTranscript,
+        t_user_stop: std::time::Instant,
+        drain_ms: u64,
+        stop_ms: u64,
+        merge_ms: u64,
+    ) {
+        self.state = PipelineState::Refining;
+        log::info!("refining…");
+        let t_refine = std::time::Instant::now();
+        let cleaned = match self.refiner.refine(&raw) {
+            Err(e) => {
+                log::error!("refinement failed, dropping cycle: {e:#}");
+                self.state = PipelineState::Idle;
+                self.visual_indicator.hide();
+                return;
+            }
+            Ok(c) => c,
+        };
+        let refine_ms = t_refine.elapsed().as_millis() as u64;
+        self.state = PipelineState::Pasting;
+        log::info!("pasting… (live)");
+        let t_paste = std::time::Instant::now();
+        match self.paster.paste(&cleaned) {
+            Ok(()) => eprintln!("{} {}", console::style("▸").dim(), cleaned.as_str()),
+            Err(e) => log::error!("paste failed, dropping cycle: {e:#}"),
+        }
+        let paste_ms = t_paste.elapsed().as_millis() as u64;
+        let total_ms = t_user_stop.elapsed().as_millis() as u64;
+        self.state = PipelineState::Idle;
+        self.visual_indicator.hide();
+        log::info!(
+            "stop→paste: drain={drain_ms}ms stop={stop_ms}ms merge={merge_ms}ms refine={refine_ms}ms paste={paste_ms}ms total={total_ms}ms"
+        );
+    }
+}
+
+fn run_live_worker(
+    mut transcriber: Box<dyn Transcriber>,
+    chunk_rx: mpsc::Receiver<LiveChunk>,
+    results_tx: mpsc::SyncSender<LiveSessionResult>,
+) {
+    let mut texts = Vec::new();
+    let mut chunk_num = 0usize;
+    while let Ok(chunk) = chunk_rx.recv() {
+        let t_recv = std::time::Instant::now();
+        let t_queued_ms = t_recv
+            .saturating_duration_since(chunk.enqueued_at)
+            .as_millis();
+        let audio = chunk.audio;
+        chunk_num += 1;
+        let duration_secs = audio.duration_ms() as f32 / 1000.0;
+        let t0 = std::time::Instant::now();
+        match transcriber.transcribe(&audio) {
+            Ok(Some(raw)) => {
+                log::info!(
+                    "chunk {} | {:.1}s audio | queued {}ms | transcribed in {:.2}s",
+                    chunk_num,
+                    duration_secs,
+                    t_queued_ms,
+                    t0.elapsed().as_secs_f32(),
+                );
+                texts.push(raw.as_str().to_owned());
+            }
+            Ok(None) => {
+                log::info!(
+                    "chunk {chunk_num} | {duration_secs:.1}s audio | queued {t_queued_ms}ms | hallucination dropped in {:.2}s",
+                    t0.elapsed().as_secs_f32(),
+                );
+            }
+            Err(e) => log::warn!("chunk {chunk_num} failed: {e:#}"),
+        }
+    }
+    log::info!("live worker: {chunk_num} chunks done, returning transcriber");
+    let _ = results_tx.send(LiveSessionResult { texts, transcriber });
 }
 
 #[cfg(test)]
@@ -152,6 +357,7 @@ mod tests {
 
     use super::*;
     use crate::core::application::audio_recorder::MockAudioRecorder;
+    use crate::core::application::chunking::ChunkingCfg;
     use crate::core::application::sound_player::MockSoundPlayer;
     use crate::core::application::text_paster::MockTextPaster;
     use crate::core::application::text_refiner::MockTextRefiner;
@@ -178,6 +384,24 @@ mod tests {
         v.expect_show_processing().times(..).return_const(());
         v.expect_hide().times(..).return_const(());
         v
+    }
+
+    fn make_recorder_with_start_stop(audio: AudioBuffer16k) -> MockAudioRecorder {
+        let mut recorder = MockAudioRecorder::new();
+        recorder.expect_start().once().returning(|| Ok(()));
+        recorder
+            .expect_stop()
+            .once()
+            .returning(move || Ok(audio.clone()));
+        recorder
+            .expect_start_live_chunks()
+            .times(..)
+            .returning(|_| Ok(None));
+        recorder
+            .expect_flush_live_chunks()
+            .times(..)
+            .return_const(());
+        recorder
     }
 
     fn make_pipeline(
@@ -212,6 +436,7 @@ mod tests {
             PipelineConfig {
                 min_press_ms: 200,
                 recording_mode,
+                chunking: ChunkingCfg::default(),
             },
         )
     }
@@ -219,8 +444,17 @@ mod tests {
     #[test]
     fn should_start_in_idle_state() {
         // Given
+        let mut recorder = MockAudioRecorder::new();
+        recorder
+            .expect_start_live_chunks()
+            .times(..)
+            .returning(|_| Ok(None));
+        recorder
+            .expect_flush_live_chunks()
+            .times(..)
+            .return_const(());
         let pipeline = make_pipeline(
-            MockAudioRecorder::new(),
+            recorder,
             MockTranscriber::new(),
             MockTextRefiner::new(),
             MockTextPaster::new(),
@@ -236,6 +470,14 @@ mod tests {
         // Given
         let mut recorder = MockAudioRecorder::new();
         recorder.expect_start().once().returning(|| Ok(()));
+        recorder
+            .expect_start_live_chunks()
+            .times(..)
+            .returning(|_| Ok(None));
+        recorder
+            .expect_flush_live_chunks()
+            .times(..)
+            .return_const(());
         let mut pipeline = make_pipeline(
             recorder,
             MockTranscriber::new(),
@@ -251,12 +493,7 @@ mod tests {
     #[test]
     fn should_drop_cycle_when_audio_too_short() {
         // Given
-        let mut recorder = MockAudioRecorder::new();
-        recorder.expect_start().once().returning(|| Ok(()));
-        recorder
-            .expect_stop()
-            .once()
-            .returning(|| Ok(AudioBuffer16k::new(vec![0i16; 10])));
+        let recorder = make_recorder_with_start_stop(AudioBuffer16k::new(vec![0i16; 10]));
         let mut pipeline = make_pipeline(
             recorder,
             MockTranscriber::new(),
@@ -273,18 +510,13 @@ mod tests {
     #[test]
     fn should_complete_full_pipeline_and_return_to_idle() {
         // Given
-        let mut recorder = MockAudioRecorder::new();
-        recorder.expect_start().once().returning(|| Ok(()));
-        recorder
-            .expect_stop()
-            .once()
-            .returning(|| Ok(one_second_audio()));
+        let recorder = make_recorder_with_start_stop(one_second_audio());
 
         let mut transcriber = MockTranscriber::new();
         transcriber
             .expect_transcribe()
             .once()
-            .returning(|_| Ok(RawTranscript::new("hello world".to_owned()).unwrap()));
+            .returning(|_| Ok(Some(RawTranscript::new("hello world".to_owned()).unwrap())));
 
         let mut refiner = MockTextRefiner::new();
         refiner
@@ -306,12 +538,7 @@ mod tests {
     #[test]
     fn should_drop_cycle_and_not_paste_when_transcription_fails() {
         // Given
-        let mut recorder = MockAudioRecorder::new();
-        recorder.expect_start().once().returning(|| Ok(()));
-        recorder
-            .expect_stop()
-            .once()
-            .returning(|| Ok(one_second_audio()));
+        let recorder = make_recorder_with_start_stop(one_second_audio());
 
         let mut transcriber = MockTranscriber::new();
         transcriber
@@ -335,18 +562,13 @@ mod tests {
     #[test]
     fn should_drop_cycle_and_not_paste_when_refinement_fails() {
         // Given
-        let mut recorder = MockAudioRecorder::new();
-        recorder.expect_start().once().returning(|| Ok(()));
-        recorder
-            .expect_stop()
-            .once()
-            .returning(|| Ok(one_second_audio()));
+        let recorder = make_recorder_with_start_stop(one_second_audio());
 
         let mut transcriber = MockTranscriber::new();
         transcriber
             .expect_transcribe()
             .once()
-            .returning(|_| Ok(RawTranscript::new("hello".to_owned()).unwrap()));
+            .returning(|_| Ok(Some(RawTranscript::new("hello".to_owned()).unwrap())));
 
         let mut refiner = MockTextRefiner::new();
         refiner
@@ -365,18 +587,13 @@ mod tests {
     #[test]
     fn should_drop_cycle_when_paste_fails() {
         // Given
-        let mut recorder = MockAudioRecorder::new();
-        recorder.expect_start().once().returning(|| Ok(()));
-        recorder
-            .expect_stop()
-            .once()
-            .returning(|| Ok(one_second_audio()));
+        let recorder = make_recorder_with_start_stop(one_second_audio());
 
         let mut transcriber = MockTranscriber::new();
         transcriber
             .expect_transcribe()
             .once()
-            .returning(|_| Ok(RawTranscript::new("hello".to_owned()).unwrap()));
+            .returning(|_| Ok(Some(RawTranscript::new("hello".to_owned()).unwrap())));
 
         let mut refiner = MockTextRefiner::new();
         refiner
@@ -401,18 +618,13 @@ mod tests {
     #[test]
     fn should_stop_recording_on_released_in_hold_mode() {
         // Given
-        let mut recorder = MockAudioRecorder::new();
-        recorder.expect_start().once().returning(|| Ok(()));
-        recorder
-            .expect_stop()
-            .once()
-            .returning(|| Ok(one_second_audio()));
+        let recorder = make_recorder_with_start_stop(one_second_audio());
 
         let mut transcriber = MockTranscriber::new();
         transcriber
             .expect_transcribe()
             .once()
-            .returning(|_| Ok(RawTranscript::new("hello".to_owned()).unwrap()));
+            .returning(|_| Ok(Some(RawTranscript::new("hello".to_owned()).unwrap())));
 
         let mut refiner = MockTextRefiner::new();
         refiner
@@ -435,8 +647,17 @@ mod tests {
     #[test]
     fn should_warn_and_stay_idle_on_released_while_idle() {
         // Given
+        let mut recorder = MockAudioRecorder::new();
+        recorder
+            .expect_start_live_chunks()
+            .times(..)
+            .returning(|_| Ok(None));
+        recorder
+            .expect_flush_live_chunks()
+            .times(..)
+            .return_const(());
         let mut pipeline = make_pipeline(
-            MockAudioRecorder::new(),
+            recorder,
             MockTranscriber::new(),
             MockTextRefiner::new(),
             MockTextPaster::new(),
@@ -453,8 +674,17 @@ mod tests {
         let (tx, rx) = mpsc::channel::<PttSignal>();
         drop(tx);
 
+        let mut recorder = MockAudioRecorder::new();
+        recorder
+            .expect_start_live_chunks()
+            .times(..)
+            .returning(|_| Ok(None));
+        recorder
+            .expect_flush_live_chunks()
+            .times(..)
+            .return_const(());
         let mut pipeline = make_pipeline(
-            MockAudioRecorder::new(),
+            recorder,
             MockTranscriber::new(),
             MockTextRefiner::new(),
             MockTextPaster::new(),
@@ -469,8 +699,17 @@ mod tests {
     #[test]
     fn should_ignore_pressed_signal_while_transcribing() {
         // Given
+        let mut recorder = MockAudioRecorder::new();
+        recorder
+            .expect_start_live_chunks()
+            .times(..)
+            .returning(|_| Ok(None));
+        recorder
+            .expect_flush_live_chunks()
+            .times(..)
+            .return_const(());
         let mut pipeline = make_pipeline(
-            MockAudioRecorder::new(),
+            recorder,
             MockTranscriber::new(),
             MockTextRefiner::new(),
             MockTextPaster::new(),
@@ -485,8 +724,17 @@ mod tests {
     #[test]
     fn should_ignore_released_signal_while_pasting() {
         // Given
+        let mut recorder = MockAudioRecorder::new();
+        recorder
+            .expect_start_live_chunks()
+            .times(..)
+            .returning(|_| Ok(None));
+        recorder
+            .expect_flush_live_chunks()
+            .times(..)
+            .return_const(());
         let mut pipeline = make_pipeline(
-            MockAudioRecorder::new(),
+            recorder,
             MockTranscriber::new(),
             MockTextRefiner::new(),
             MockTextPaster::new(),
@@ -501,12 +749,7 @@ mod tests {
     #[test]
     fn should_cancel_recording_and_return_to_idle_on_cancel_signal() {
         // Given
-        let mut recorder = MockAudioRecorder::new();
-        recorder.expect_start().once().returning(|| Ok(()));
-        recorder
-            .expect_stop()
-            .once()
-            .returning(|| Ok(one_second_audio()));
+        let recorder = make_recorder_with_start_stop(one_second_audio());
         let mut pipeline = make_pipeline(
             recorder,
             MockTranscriber::new(),
@@ -523,12 +766,7 @@ mod tests {
     #[test]
     fn should_call_hide_when_recording_cancelled() {
         // Given
-        let mut recorder = MockAudioRecorder::new();
-        recorder.expect_start().once().returning(|| Ok(()));
-        recorder
-            .expect_stop()
-            .once()
-            .returning(|| Ok(one_second_audio()));
+        let recorder = make_recorder_with_start_stop(one_second_audio());
 
         let mut visual = MockVisualIndicator::new();
         visual.expect_show_recording().once().return_const(());
@@ -545,6 +783,7 @@ mod tests {
             PipelineConfig {
                 min_press_ms: 200,
                 recording_mode: RecordingMode::Toggle,
+                chunking: ChunkingCfg::default(),
             },
         );
         pipeline.step(PttSignal::Pressed).unwrap();
@@ -556,12 +795,7 @@ mod tests {
     #[test]
     fn should_play_cancel_sound_when_recording_cancelled() {
         // Given
-        let mut recorder = MockAudioRecorder::new();
-        recorder.expect_start().once().returning(|| Ok(()));
-        recorder
-            .expect_stop()
-            .once()
-            .returning(|| Ok(one_second_audio()));
+        let recorder = make_recorder_with_start_stop(one_second_audio());
 
         let mut sound = MockSoundPlayer::new();
         sound.expect_play_start().once().return_const(());
@@ -578,6 +812,7 @@ mod tests {
             PipelineConfig {
                 min_press_ms: 200,
                 recording_mode: RecordingMode::Toggle,
+                chunking: ChunkingCfg::default(),
             },
         );
         pipeline.step(PttSignal::Pressed).unwrap();
@@ -589,8 +824,17 @@ mod tests {
     #[test]
     fn should_ignore_cancel_signal_while_idle() {
         // Given
+        let mut recorder = MockAudioRecorder::new();
+        recorder
+            .expect_start_live_chunks()
+            .times(..)
+            .returning(|_| Ok(None));
+        recorder
+            .expect_flush_live_chunks()
+            .times(..)
+            .return_const(());
         let mut pipeline = make_pipeline(
-            MockAudioRecorder::new(),
+            recorder,
             MockTranscriber::new(),
             MockTextRefiner::new(),
             MockTextPaster::new(),
@@ -608,7 +852,7 @@ mod tests {
         transcriber
             .expect_transcribe()
             .once()
-            .returning(|_| Ok(RawTranscript::new("hello".to_owned()).unwrap()));
+            .returning(|_| Ok(Some(RawTranscript::new("hello".to_owned()).unwrap())));
 
         let mut refiner = MockTextRefiner::new();
         refiner
@@ -619,7 +863,16 @@ mod tests {
         let mut paster = MockTextPaster::new();
         paster.expect_paste().once().returning(|_| Ok(()));
 
-        let mut pipeline = make_pipeline(MockAudioRecorder::new(), transcriber, refiner, paster);
+        let mut recorder = MockAudioRecorder::new();
+        recorder
+            .expect_start_live_chunks()
+            .times(..)
+            .returning(|_| Ok(None));
+        recorder
+            .expect_flush_live_chunks()
+            .times(..)
+            .return_const(());
+        let mut pipeline = make_pipeline(recorder, transcriber, refiner, paster);
         // When
         let result = pipeline.run_once(one_second_audio());
         // Then
@@ -635,8 +888,17 @@ mod tests {
             .once()
             .returning(|_| Err(anyhow::anyhow!("whisper failure")));
 
+        let mut recorder = MockAudioRecorder::new();
+        recorder
+            .expect_start_live_chunks()
+            .times(..)
+            .returning(|_| Ok(None));
+        recorder
+            .expect_flush_live_chunks()
+            .times(..)
+            .return_const(());
         let mut pipeline = make_pipeline(
-            MockAudioRecorder::new(),
+            recorder,
             transcriber,
             MockTextRefiner::new(),
             MockTextPaster::new(),
@@ -652,6 +914,14 @@ mod tests {
         // Given
         let mut recorder = MockAudioRecorder::new();
         recorder.expect_start().once().returning(|| Ok(()));
+        recorder
+            .expect_start_live_chunks()
+            .times(..)
+            .returning(|_| Ok(None));
+        recorder
+            .expect_flush_live_chunks()
+            .times(..)
+            .return_const(());
 
         let mut visual = MockVisualIndicator::new();
         visual.expect_show_recording().once().return_const(());
@@ -668,6 +938,7 @@ mod tests {
             PipelineConfig {
                 min_press_ms: 200,
                 recording_mode: RecordingMode::Toggle,
+                chunking: ChunkingCfg::default(),
             },
         );
         // When
@@ -678,18 +949,13 @@ mod tests {
     #[test]
     fn should_call_show_processing_when_transcribing_starts() {
         // Given
-        let mut recorder = MockAudioRecorder::new();
-        recorder.expect_start().once().returning(|| Ok(()));
-        recorder
-            .expect_stop()
-            .once()
-            .returning(|| Ok(one_second_audio()));
+        let recorder = make_recorder_with_start_stop(one_second_audio());
 
         let mut transcriber = MockTranscriber::new();
         transcriber
             .expect_transcribe()
             .once()
-            .returning(|_| Ok(RawTranscript::new("hello".to_owned()).unwrap()));
+            .returning(|_| Ok(Some(RawTranscript::new("hello".to_owned()).unwrap())));
 
         let mut refiner = MockTextRefiner::new();
         refiner
@@ -715,6 +981,7 @@ mod tests {
             PipelineConfig {
                 min_press_ms: 200,
                 recording_mode: RecordingMode::Toggle,
+                chunking: ChunkingCfg::default(),
             },
         );
         pipeline.step(PttSignal::Pressed).unwrap();
@@ -726,12 +993,7 @@ mod tests {
     #[test]
     fn should_call_hide_when_audio_too_short() {
         // Given
-        let mut recorder = MockAudioRecorder::new();
-        recorder.expect_start().once().returning(|| Ok(()));
-        recorder
-            .expect_stop()
-            .once()
-            .returning(|| Ok(AudioBuffer16k::new(vec![0i16; 10])));
+        let recorder = make_recorder_with_start_stop(AudioBuffer16k::new(vec![0i16; 10]));
 
         let mut visual = MockVisualIndicator::new();
         visual.expect_show_recording().once().return_const(());
@@ -748,6 +1010,7 @@ mod tests {
             PipelineConfig {
                 min_press_ms: 200,
                 recording_mode: RecordingMode::Toggle,
+                chunking: ChunkingCfg::default(),
             },
         );
         pipeline.step(PttSignal::Pressed).unwrap();

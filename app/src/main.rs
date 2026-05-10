@@ -19,6 +19,7 @@ use voicepuncher::core::application::hotkey_listener::HotkeyListener;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
 use voicepuncher::core::application::preflight::Preflight;
 use voicepuncher::core::application::visual_indicator::VisualIndicator;
+use voicepuncher::core::application::ChunkingCfg;
 use voicepuncher::core::domain::PttSignal;
 
 struct NoopVisualIndicator;
@@ -104,6 +105,12 @@ fn main() {
             PipelineConfig {
                 min_press_ms: config.hotkey.min_press_ms,
                 recording_mode: config.hotkey.recording_mode,
+                chunking: ChunkingCfg {
+                    chunk_threshold_secs: config.whisper.chunk_threshold_secs,
+                    chunk_overlap_secs: config.whisper.chunk_overlap_secs,
+                    vad_rms_threshold: config.whisper.vad_rms_threshold,
+                    vad_lookback_secs: config.whisper.vad_lookback_secs,
+                },
             },
         );
         pipeline.run_once(audio).unwrap_or_else(|e| {
@@ -184,6 +191,12 @@ fn main() {
         PipelineConfig {
             min_press_ms: config.hotkey.min_press_ms,
             recording_mode: config.hotkey.recording_mode,
+            chunking: ChunkingCfg {
+                chunk_threshold_secs: config.whisper.chunk_threshold_secs,
+                chunk_overlap_secs: config.whisper.chunk_overlap_secs,
+                vad_rms_threshold: config.whisper.vad_rms_threshold,
+                vad_lookback_secs: config.whisper.vad_lookback_secs,
+            },
         },
     );
 

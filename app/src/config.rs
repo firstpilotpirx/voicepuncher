@@ -117,20 +117,33 @@ pub struct WhisperCfg {
     /// Optional initial prompt fed to the decoder (domain terms, punctuation style, etc.).
     #[serde(default)]
     pub initial_prompt: String,
+    #[serde(default = "WhisperCfg::default_flash_attn")]
+    pub flash_attn: bool,
+    #[serde(default = "WhisperCfg::default_chunk_threshold_secs")]
+    pub chunk_threshold_secs: u32,
+    #[serde(default = "WhisperCfg::default_chunk_overlap_secs")]
+    pub chunk_overlap_secs: u32,
+    #[serde(default = "WhisperCfg::default_vad_rms_threshold")]
+    pub vad_rms_threshold: f32,
+    #[serde(default = "WhisperCfg::default_vad_lookback_secs")]
+    pub vad_lookback_secs: u32,
 }
 
 impl WhisperCfg {
     fn default_language() -> String {
-        "auto".into()
+        "ru".into()
     }
     fn default_beam_size() -> i32 {
-        5
+        1
     }
     fn default_patience() -> f32 {
         1.0
     }
     fn default_temperature_inc() -> f32 {
-        0.2
+        0.0
+    }
+    fn default_flash_attn() -> bool {
+        true
     }
     fn default_entropy_thold() -> f32 {
         2.4
@@ -140,6 +153,18 @@ impl WhisperCfg {
     }
     fn default_no_speech_thold() -> f32 {
         0.6
+    }
+    fn default_chunk_threshold_secs() -> u32 {
+        30
+    }
+    fn default_chunk_overlap_secs() -> u32 {
+        2
+    }
+    fn default_vad_rms_threshold() -> f32 {
+        0.01
+    }
+    fn default_vad_lookback_secs() -> u32 {
+        5
     }
 }
 
@@ -157,6 +182,11 @@ impl Default for WhisperCfg {
             logprob_thold: Self::default_logprob_thold(),
             no_speech_thold: Self::default_no_speech_thold(),
             initial_prompt: String::new(),
+            flash_attn: Self::default_flash_attn(),
+            chunk_threshold_secs: Self::default_chunk_threshold_secs(),
+            chunk_overlap_secs: Self::default_chunk_overlap_secs(),
+            vad_rms_threshold: Self::default_vad_rms_threshold(),
+            vad_lookback_secs: Self::default_vad_lookback_secs(),
         }
     }
 }
@@ -354,5 +384,108 @@ mod tests {
         // Then
         let home = dirs::home_dir().unwrap();
         assert_eq!(cfg.whisper.model_path, home.join("models/ggml.bin"));
+    }
+
+    #[test]
+    fn should_default_flash_attn_to_true() {
+        assert!(WhisperCfg::default().flash_attn);
+    }
+
+    #[test]
+    fn should_default_language_to_ru() {
+        assert_eq!(WhisperCfg::default().language, "ru");
+    }
+
+    #[test]
+    fn should_default_beam_size_to_one() {
+        assert_eq!(WhisperCfg::default().beam_size, 1);
+    }
+
+    #[test]
+    fn should_default_temperature_inc_to_zero() {
+        assert_eq!(WhisperCfg::default().temperature_inc, 0.0_f32);
+    }
+
+    #[test]
+    fn should_parse_flash_attn_from_toml() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut f, b"[whisper]\nflash_attn = false\n").unwrap();
+        // When
+        let cfg = load(f.path()).unwrap();
+        // Then
+        assert!(!cfg.whisper.flash_attn);
+    }
+
+    #[test]
+    fn should_default_flash_attn_when_absent_from_toml() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut f, b"[whisper]\nmodel_path = \"/tmp/model.bin\"\n").unwrap();
+        // When
+        let cfg = load(f.path()).unwrap();
+        // Then
+        assert!(cfg.whisper.flash_attn);
+    }
+
+    #[test]
+    fn should_default_chunk_threshold_secs_to_30() {
+        // Given
+        // When
+        let cfg = WhisperCfg::default();
+        // Then
+        assert_eq!(cfg.chunk_threshold_secs, 30);
+    }
+
+    #[test]
+    fn should_default_chunk_overlap_secs_to_2() {
+        // Given
+        // When
+        let cfg = WhisperCfg::default();
+        // Then
+        assert_eq!(cfg.chunk_overlap_secs, 2);
+    }
+
+    #[test]
+    fn should_default_vad_rms_threshold_to_point_zero_one() {
+        // Given
+        // When
+        let cfg = WhisperCfg::default();
+        // Then
+        assert_eq!(cfg.vad_rms_threshold, 0.01_f32);
+    }
+
+    #[test]
+    fn should_default_vad_lookback_secs_to_5() {
+        // Given
+        // When
+        let cfg = WhisperCfg::default();
+        // Then
+        assert_eq!(cfg.vad_lookback_secs, 5);
+    }
+
+    #[test]
+    fn should_parse_chunk_threshold_secs_from_toml() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut f, b"[whisper]\nchunk_threshold_secs = 60\n").unwrap();
+        // When
+        let cfg = load(f.path()).unwrap();
+        // Then
+        assert_eq!(cfg.whisper.chunk_threshold_secs, 60);
+    }
+
+    #[test]
+    fn should_default_chunk_fields_when_absent_from_toml() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut f, b"[whisper]\nmodel_path = \"/tmp/m\"\n").unwrap();
+        // When
+        let cfg = load(f.path()).unwrap();
+        // Then
+        assert_eq!(cfg.whisper.chunk_threshold_secs, 30);
+        assert_eq!(cfg.whisper.chunk_overlap_secs, 2);
+        assert_eq!(cfg.whisper.vad_rms_threshold, 0.01_f32);
+        assert_eq!(cfg.whisper.vad_lookback_secs, 5);
     }
 }

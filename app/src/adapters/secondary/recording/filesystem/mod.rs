@@ -1,8 +1,10 @@
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 
 use anyhow::{anyhow, Result};
 
-use crate::core::application::audio_recorder::AudioRecorder;
+use crate::core::application::audio_recorder::{AudioRecorder, LiveChunk};
+use crate::core::application::chunking::ChunkingCfg;
 use crate::core::domain::AudioBuffer16k;
 
 pub struct FileSystemAudioRecorder {
@@ -48,6 +50,15 @@ impl AudioRecorder for FileSystemAudioRecorder {
     fn stop(&mut self) -> Result<AudioBuffer16k> {
         Self::load(&self.path)
     }
+
+    fn start_live_chunks(
+        &mut self,
+        _cfg: ChunkingCfg,
+    ) -> Result<Option<mpsc::Receiver<LiveChunk>>> {
+        Ok(None)
+    }
+
+    fn flush_live_chunks(&mut self) {}
 }
 
 #[cfg(test)]
