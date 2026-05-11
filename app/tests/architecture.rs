@@ -339,6 +339,36 @@ fn r8_no_ports_subfolder() {
 }
 
 #[test]
+fn r10_no_retained_into_raw_under_visualfeedback_macos() {
+    let mut violations: Vec<String> = Vec::new();
+
+    for entry in WalkDir::new("src/adapters/secondary/visualfeedback/macos")
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("rs"))
+    {
+        let path = entry.path();
+        for (line_no, line) in read_lines(path).iter().enumerate() {
+            if line.contains("Retained::into_raw") {
+                violations.push(format!(
+                    "{}:{}: forbidden raw-pointer escape — {}",
+                    path.display(),
+                    line_no + 1,
+                    line.trim()
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "R10 violations — Retained::into_raw is banned under visualfeedback/macos:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn r9_every_primary_adapter_has_it() {
     let mut violations: Vec<String> = Vec::new();
 

@@ -79,6 +79,15 @@
 - **Code:** `app/src/adapters/primary/setup/cli/mod.rs`
 - **Synonyms to AVOID:** "Installer", "Bootstrapper", "Onboarding"
 
+### VisualIndicator
+- **Type:** Driven Port (trait in `core/application/`)
+- **Definition:** Surfaces the current `Pipeline` state to the user as
+  an on-screen widget — three discrete signals: recording in progress,
+  processing in progress, hidden. Abstracts the platform-specific
+  always-on-top overlay so `Pipeline` stays platform-agnostic.
+- **Code:** `app/src/core/application/visual_indicator.rs`
+- **Synonyms to AVOID:** "Overlay", "HUD", "StatusBadge", "Toast", "Indicator" (alone — too generic)
+
 ### HotkeyListener / AudioRecorder / Transcriber / TextRefiner / TextPaster
 - **Type:** Driving / Driven Ports (traits in `core/application/`)
 - **Code:** `app/src/core/application/{hotkey_listener,audio_recorder,transcriber,text_refiner,text_paster}.rs`

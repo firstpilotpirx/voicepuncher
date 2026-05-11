@@ -1,17 +1,21 @@
+mod screen_watcher;
+mod topology;
+mod window_set;
+
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use objc2::rc::Retained;
 use objc2::MainThreadMarker;
-use objc2_app_kit::{
-    NSApplication, NSApplicationActivationPolicy, NSBackingStoreType, NSColor, NSControlSize,
-    NSFont, NSProgressIndicator, NSProgressIndicatorStyle, NSScreen, NSTextAlignment, NSTextField,
-    NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView,
-    NSWindow, NSWindowCollectionBehavior, NSWindowStyleMask,
-};
-use objc2_foundation::NSString;
+use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSScreen};
 
 use crate::core::application::VisualIndicator;
+
+use screen_watcher::ScreenWatcher;
+use topology::{diff_screens, ScreenChange, ScreenTopology};
+use window_set::WindowSet;
+
+type PulseData = (Vec<Arc<WindowSet>>, u64, Arc<AtomicU64>, bool);
+type HeartbeatData = (Vec<Arc<WindowSet>>, u64, Arc<AtomicU64>);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OverlayState {
@@ -57,144 +61,13 @@ unsafe extern "C" fn trampoline(ptr: *mut std::ffi::c_void) {
     (*boxed)();
 }
 
-#[derive(Clone)]
-struct WindowSet {
-    window_ptr: usize,
-    label_ptr: usize,
-    spinner_ptr: usize,
-}
-
 pub struct MacosVisualIndicator {
     state: Arc<Mutex<OverlayState>>,
-    windows: Vec<WindowSet>,
+    windows: Arc<Mutex<Vec<Arc<WindowSet>>>>,
     pulse_generation: Arc<AtomicU64>,
-}
-
-fn build_window_set(
-    mtm: MainThreadMarker,
-    screen_visible_frame: objc2_foundation::NSRect,
-) -> WindowSet {
-    let window_width: f64 = 140.0;
-    let window_height: f64 = 55.0;
-
-    let x = screen_visible_frame.origin.x + (screen_visible_frame.size.width - window_width) / 2.0;
-    let y = screen_visible_frame.origin.y + screen_visible_frame.size.height - window_height - 4.0;
-
-    let frame = objc2_foundation::NSRect {
-        origin: objc2_foundation::NSPoint { x, y },
-        size: objc2_foundation::NSSize {
-            width: window_width,
-            height: window_height,
-        },
-    };
-
-    let window = unsafe {
-        NSWindow::initWithContentRect_styleMask_backing_defer(
-            mtm.alloc::<NSWindow>(),
-            frame,
-            NSWindowStyleMask::Borderless,
-            NSBackingStoreType::Buffered,
-            false,
-        )
-    };
-
-    window.setLevel(3);
-    window.setOpaque(false);
-    window.setBackgroundColor(Some(&NSColor::clearColor()));
-    window.setIgnoresMouseEvents(true);
-    window.setCollectionBehavior(
-        NSWindowCollectionBehavior::CanJoinAllSpaces
-            | NSWindowCollectionBehavior::Stationary
-            | NSWindowCollectionBehavior::IgnoresCycle
-            | NSWindowCollectionBehavior::FullScreenAuxiliary,
-    );
-
-    let content_frame = objc2_foundation::NSRect {
-        origin: objc2_foundation::NSPoint { x: 0.0, y: 0.0 },
-        size: objc2_foundation::NSSize {
-            width: window_width,
-            height: window_height,
-        },
-    };
-    let effect_view =
-        NSVisualEffectView::initWithFrame(mtm.alloc::<NSVisualEffectView>(), content_frame);
-    effect_view.setMaterial(NSVisualEffectMaterial::HUDWindow);
-    effect_view.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
-    effect_view.setState(NSVisualEffectState::Active);
-    effect_view.setWantsLayer(true);
-    if let Some(layer) = effect_view.layer() {
-        layer.setCornerRadius(28.0);
-        layer.setMasksToBounds(true);
-        let dark_fill = NSColor::colorWithSRGBRed_green_blue_alpha(0.0, 0.0, 0.0, 0.28);
-        layer.setBackgroundColor(Some(&dark_fill.CGColor()));
-        let border = NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 1.0, 1.0, 0.25);
-        layer.setBorderColor(Some(&border.CGColor()));
-        layer.setBorderWidth(0.5);
-    }
-    window.setContentView(Some(&*effect_view));
-
-    let font = NSFont::boldSystemFontOfSize(28.0);
-    let label_height = (font.ascender() - font.descender()).ceil() + 4.0;
-    let label_y =
-        (window_height / 2.0 - font.capHeight() / 2.0 - (label_height - font.ascender())).floor();
-    let label_frame = objc2_foundation::NSRect {
-        origin: objc2_foundation::NSPoint {
-            x: 12.0,
-            y: label_y,
-        },
-        size: objc2_foundation::NSSize {
-            width: window_width - 24.0,
-            height: label_height,
-        },
-    };
-
-    let label = NSTextField::initWithFrame(mtm.alloc::<NSTextField>(), label_frame);
-    label.setBezeled(false);
-    label.setEditable(false);
-    label.setDrawsBackground(false);
-    label.setAlignment(NSTextAlignment::Center);
-    label.setFont(Some(&font));
-    label.setTextColor(Some(&NSColor::whiteColor()));
-    let empty = NSString::from_str("");
-    label.setStringValue(&empty);
-
-    effect_view.addSubview(&label);
-
-    let spinner_size: f64 = 32.0;
-    let spinner_x = (window_width - spinner_size) / 2.0;
-    let spinner_frame = objc2_foundation::NSRect {
-        origin: objc2_foundation::NSPoint {
-            x: spinner_x,
-            y: (window_height - spinner_size) / 2.0,
-        },
-        size: objc2_foundation::NSSize {
-            width: spinner_size,
-            height: spinner_size,
-        },
-    };
-
-    let spinner =
-        NSProgressIndicator::initWithFrame(mtm.alloc::<NSProgressIndicator>(), spinner_frame);
-    spinner.setStyle(NSProgressIndicatorStyle::Spinning);
-    spinner.setIndeterminate(true);
-    spinner.setControlSize(NSControlSize::Regular);
-    spinner.setHidden(true);
-
-    effect_view.addSubview(&spinner);
-
-    let window_ptr = Retained::as_ptr(&window) as usize;
-    let label_ptr = Retained::as_ptr(&label) as usize;
-    let spinner_ptr = Retained::as_ptr(&spinner) as usize;
-
-    let _ = Retained::into_raw(window);
-    let _ = Retained::into_raw(label);
-    let _ = Retained::into_raw(spinner);
-
-    WindowSet {
-        window_ptr,
-        label_ptr,
-        spinner_ptr,
-    }
+    #[allow(dead_code)]
+    last_topology: Arc<Mutex<ScreenTopology>>,
+    _watcher: ScreenWatcher,
 }
 
 impl MacosVisualIndicator {
@@ -208,25 +81,134 @@ impl MacosVisualIndicator {
         };
 
         let screens = NSScreen::screens(mtm);
-        let windows: Vec<WindowSet> = if screens.is_empty() {
-            vec![build_window_set(mtm, fallback_rect)]
+        let initial_windows: Vec<Arc<WindowSet>> = if screens.is_empty() {
+            vec![WindowSet::build(mtm, fallback_rect)]
         } else {
             (0..screens.count())
                 .map(|i| {
                     let screen = screens.objectAtIndex(i);
-                    build_window_set(mtm, screen.visibleFrame())
+                    WindowSet::build(mtm, screen.visibleFrame())
                 })
                 .collect()
         };
 
+        let initial_topology = collect_topology(mtm);
+
         let app = NSApplication::sharedApplication(mtm);
         app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
 
+        let state = Arc::new(Mutex::new(OverlayState::Hidden));
+        let windows = Arc::new(Mutex::new(initial_windows));
+        let pulse_generation = Arc::new(AtomicU64::new(0));
+        let last_topology = Arc::new(Mutex::new(initial_topology));
+
+        let state_for_watcher = Arc::clone(&state);
+        let windows_for_watcher = Arc::clone(&windows);
+        let pulse_generation_for_watcher = Arc::clone(&pulse_generation);
+        let last_topology_for_watcher = Arc::clone(&last_topology);
+
+        let handler: Arc<dyn Fn() + Send + Sync + 'static> = Arc::new(move || {
+            let state = Arc::clone(&state_for_watcher);
+            let windows = Arc::clone(&windows_for_watcher);
+            let pulse_generation = Arc::clone(&pulse_generation_for_watcher);
+            let last_topology = Arc::clone(&last_topology_for_watcher);
+
+            dispatch_to_main(move || {
+                let Some(mtm) = MainThreadMarker::new() else {
+                    return;
+                };
+                rebuild_window_set_inner(mtm, &state, &windows, &pulse_generation, &last_topology);
+            });
+        });
+
+        let watcher = ScreenWatcher::install(handler);
+
         Self {
-            state: Arc::new(Mutex::new(OverlayState::Hidden)),
+            state,
             windows,
-            pulse_generation: Arc::new(AtomicU64::new(0)),
+            pulse_generation,
+            last_topology,
+            _watcher: watcher,
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn rebuild_window_set(&self, mtm: MainThreadMarker) {
+        rebuild_window_set_inner(
+            mtm,
+            &self.state,
+            &self.windows,
+            &self.pulse_generation,
+            &self.last_topology,
+        );
+    }
+}
+
+fn collect_topology(mtm: MainThreadMarker) -> ScreenTopology {
+    let screens = NSScreen::screens(mtm);
+    let frames: Vec<objc2_foundation::NSRect> = (0..screens.count())
+        .map(|i| screens.objectAtIndex(i).visibleFrame())
+        .collect();
+    ScreenTopology { frames }
+}
+
+fn rebuild_window_set_inner(
+    mtm: MainThreadMarker,
+    state: &Arc<Mutex<OverlayState>>,
+    windows: &Arc<Mutex<Vec<Arc<WindowSet>>>>,
+    pulse_generation: &Arc<AtomicU64>,
+    last_topology: &Arc<Mutex<ScreenTopology>>,
+) {
+    let new_topology = collect_topology(mtm);
+
+    {
+        let current = last_topology.lock().unwrap();
+        if diff_screens(&current, &new_topology) == ScreenChange::Identical {
+            return;
+        }
+    }
+
+    let generation = pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
+
+    let fallback_rect = objc2_foundation::NSRect {
+        origin: objc2_foundation::NSPoint { x: 0.0, y: 0.0 },
+        size: objc2_foundation::NSSize {
+            width: 1440.0,
+            height: 900.0,
+        },
+    };
+
+    let screens = NSScreen::screens(mtm);
+    let new_windows: Vec<Arc<WindowSet>> = if screens.is_empty() {
+        vec![WindowSet::build(mtm, fallback_rect)]
+    } else {
+        (0..screens.count())
+            .map(|i| WindowSet::build(mtm, screens.objectAtIndex(i).visibleFrame()))
+            .collect()
+    };
+
+    {
+        let mut guard = windows.lock().unwrap();
+        let old_windows = std::mem::replace(&mut *guard, new_windows);
+        drop(guard);
+        drop(old_windows);
+    }
+
+    *last_topology.lock().unwrap() = new_topology;
+
+    let current_state = *state.lock().unwrap();
+    match current_state {
+        OverlayState::Recording => {
+            let ws_vec = windows.lock().unwrap().clone();
+            let pg = Arc::clone(pulse_generation);
+            apply_recording_state(ws_vec, generation, pg);
+        }
+        OverlayState::Processing => {
+            let ws_vec = windows.lock().unwrap().clone();
+            let pg = Arc::clone(pulse_generation);
+            apply_processing_state(ws_vec, generation, pg);
+        }
+        OverlayState::Hidden => {}
     }
 }
 
@@ -234,7 +216,7 @@ impl VisualIndicator for MacosVisualIndicator {
     fn show_recording(&self) {
         let generation = self.pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
         let pulse_gen = Arc::clone(&self.pulse_generation);
-        let windows = self.windows.clone();
+        let windows = self.windows.lock().unwrap().clone();
 
         *self.state.lock().unwrap() = OverlayState::Recording;
 
@@ -246,7 +228,7 @@ impl VisualIndicator for MacosVisualIndicator {
     fn show_processing(&self) {
         let generation = self.pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
         let pulse_gen = Arc::clone(&self.pulse_generation);
-        let windows = self.windows.clone();
+        let windows = self.windows.lock().unwrap().clone();
 
         *self.state.lock().unwrap() = OverlayState::Processing;
 
@@ -257,7 +239,7 @@ impl VisualIndicator for MacosVisualIndicator {
 
     fn hide(&self) {
         self.pulse_generation.fetch_add(1, Ordering::SeqCst);
-        let windows = self.windows.clone();
+        let windows = self.windows.lock().unwrap().clone();
 
         *self.state.lock().unwrap() = OverlayState::Hidden;
 
@@ -269,24 +251,19 @@ impl VisualIndicator for MacosVisualIndicator {
 
 unsafe impl Send for MacosVisualIndicator {}
 
-fn apply_recording_state(windows: Vec<WindowSet>, generation: u64, pulse_gen: Arc<AtomicU64>) {
+fn apply_recording_state(windows: Vec<Arc<WindowSet>>, generation: u64, pulse_gen: Arc<AtomicU64>) {
+    use objc2_app_kit::{NSColor, NSWindowCollectionBehavior};
+    use objc2_foundation::NSString;
+
     let text = NSString::from_str("◉ REC");
     for ws in &windows {
-        let window = unsafe { (ws.window_ptr as *const NSWindow).as_ref().unwrap() };
-        let label = unsafe { (ws.label_ptr as *const NSTextField).as_ref().unwrap() };
-        let spinner = unsafe {
-            (ws.spinner_ptr as *const NSProgressIndicator)
-                .as_ref()
-                .unwrap()
-        };
-
-        label.setStringValue(&text);
-        label.setTextColor(Some(&NSColor::redColor()));
-        label.setHidden(false);
-        spinner.setHidden(true);
-        unsafe { spinner.stopAnimation(None) };
-        window.orderFrontRegardless();
-        window.setCollectionBehavior(
+        ws.label.setStringValue(&text);
+        ws.label.setTextColor(Some(&NSColor::redColor()));
+        ws.label.setHidden(false);
+        ws.spinner.setHidden(true);
+        unsafe { ws.spinner.stopAnimation(None) };
+        ws.window.orderFrontRegardless();
+        ws.window.setCollectionBehavior(
             NSWindowCollectionBehavior::CanJoinAllSpaces
                 | NSWindowCollectionBehavior::Stationary
                 | NSWindowCollectionBehavior::IgnoresCycle
@@ -299,15 +276,14 @@ fn apply_recording_state(windows: Vec<WindowSet>, generation: u64, pulse_gen: Ar
 }
 
 fn schedule_pulse(
-    windows: Vec<WindowSet>,
+    windows: Vec<Arc<WindowSet>>,
     generation: u64,
     pulse_gen: Arc<AtomicU64>,
     bright: bool,
 ) {
     let pulse_ms: i64 = 600;
     let when = unsafe { dispatch_time(DISPATCH_TIME_NOW, pulse_ms * NSEC_PER_SEC / 1000) };
-    let data: Box<(Vec<WindowSet>, u64, Arc<AtomicU64>, bool)> =
-        Box::new((windows, generation, pulse_gen, bright));
+    let data: Box<PulseData> = Box::new((windows, generation, pulse_gen, bright));
     let ctx = Box::into_raw(data) as *mut std::ffi::c_void;
     unsafe {
         dispatch_after_f(when, main_queue(), ctx, pulse_trampoline);
@@ -315,8 +291,7 @@ fn schedule_pulse(
 }
 
 unsafe extern "C" fn pulse_trampoline(ptr: *mut std::ffi::c_void) {
-    let data: Box<(Vec<WindowSet>, u64, Arc<AtomicU64>, bool)> =
-        Box::from_raw(ptr as *mut (Vec<WindowSet>, u64, Arc<AtomicU64>, bool));
+    let data: Box<PulseData> = Box::from_raw(ptr as *mut PulseData);
     let (windows, generation, pulse_gen, bright) = *data;
 
     if pulse_gen.load(Ordering::SeqCst) != generation {
@@ -325,28 +300,25 @@ unsafe extern "C" fn pulse_trampoline(ptr: *mut std::ffi::c_void) {
 
     let alpha: f64 = if bright { 1.0 } else { 0.35 };
     for ws in &windows {
-        let label = (ws.label_ptr as *const NSTextField).as_ref().unwrap();
-        label.setAlphaValue(alpha);
+        ws.label.setAlphaValue(alpha);
     }
 
     schedule_pulse(windows, generation, pulse_gen, !bright);
 }
 
-fn apply_processing_state(windows: Vec<WindowSet>, generation: u64, pulse_gen: Arc<AtomicU64>) {
-    for ws in &windows {
-        let window = unsafe { (ws.window_ptr as *const NSWindow).as_ref().unwrap() };
-        let label = unsafe { (ws.label_ptr as *const NSTextField).as_ref().unwrap() };
-        let spinner = unsafe {
-            (ws.spinner_ptr as *const NSProgressIndicator)
-                .as_ref()
-                .unwrap()
-        };
+fn apply_processing_state(
+    windows: Vec<Arc<WindowSet>>,
+    generation: u64,
+    pulse_gen: Arc<AtomicU64>,
+) {
+    use objc2_app_kit::NSWindowCollectionBehavior;
 
-        label.setHidden(true);
-        spinner.setHidden(false);
-        unsafe { spinner.startAnimation(None) };
-        window.orderFrontRegardless();
-        window.setCollectionBehavior(
+    for ws in &windows {
+        ws.label.setHidden(true);
+        ws.spinner.setHidden(false);
+        unsafe { ws.spinner.startAnimation(None) };
+        ws.window.orderFrontRegardless();
+        ws.window.setCollectionBehavior(
             NSWindowCollectionBehavior::CanJoinAllSpaces
                 | NSWindowCollectionBehavior::Stationary
                 | NSWindowCollectionBehavior::IgnoresCycle
@@ -357,10 +329,9 @@ fn apply_processing_state(windows: Vec<WindowSet>, generation: u64, pulse_gen: A
     schedule_heartbeat(windows, generation, pulse_gen);
 }
 
-fn schedule_heartbeat(windows: Vec<WindowSet>, generation: u64, pulse_gen: Arc<AtomicU64>) {
+fn schedule_heartbeat(windows: Vec<Arc<WindowSet>>, generation: u64, pulse_gen: Arc<AtomicU64>) {
     let when = unsafe { dispatch_time(DISPATCH_TIME_NOW, 200 * NSEC_PER_SEC / 1000) };
-    let data: Box<(Vec<WindowSet>, u64, Arc<AtomicU64>)> =
-        Box::new((windows, generation, pulse_gen));
+    let data: Box<HeartbeatData> = Box::new((windows, generation, pulse_gen));
     let ctx = Box::into_raw(data) as *mut std::ffi::c_void;
     unsafe {
         dispatch_after_f(when, main_queue(), ctx, heartbeat_trampoline);
@@ -368,19 +339,18 @@ fn schedule_heartbeat(windows: Vec<WindowSet>, generation: u64, pulse_gen: Arc<A
 }
 
 unsafe extern "C" fn heartbeat_trampoline(ptr: *mut std::ffi::c_void) {
-    let data: Box<(Vec<WindowSet>, u64, Arc<AtomicU64>)> =
-        Box::from_raw(ptr as *mut (Vec<WindowSet>, u64, Arc<AtomicU64>));
+    let data: Box<HeartbeatData> = Box::from_raw(ptr as *mut HeartbeatData);
     let (windows, generation, pulse_gen) = *data;
 
     if pulse_gen.load(Ordering::SeqCst) != generation {
         return;
     }
 
+    use objc2_app_kit::NSWindowCollectionBehavior;
     for ws in &windows {
-        let window = (ws.window_ptr as *const NSWindow).as_ref().unwrap();
-        window.setLevel(3);
-        window.orderFrontRegardless();
-        window.setCollectionBehavior(
+        ws.window.setLevel(3);
+        ws.window.orderFrontRegardless();
+        ws.window.setCollectionBehavior(
             NSWindowCollectionBehavior::CanJoinAllSpaces
                 | NSWindowCollectionBehavior::Stationary
                 | NSWindowCollectionBehavior::IgnoresCycle
@@ -391,16 +361,9 @@ unsafe extern "C" fn heartbeat_trampoline(ptr: *mut std::ffi::c_void) {
     schedule_heartbeat(windows, generation, pulse_gen);
 }
 
-fn apply_hidden_state(windows: Vec<WindowSet>) {
+fn apply_hidden_state(windows: Vec<Arc<WindowSet>>) {
     for ws in &windows {
-        let window = unsafe { (ws.window_ptr as *const NSWindow).as_ref().unwrap() };
-        let spinner = unsafe {
-            (ws.spinner_ptr as *const NSProgressIndicator)
-                .as_ref()
-                .unwrap()
-        };
-
-        unsafe { spinner.stopAnimation(None) };
-        window.orderOut(None);
+        unsafe { ws.spinner.stopAnimation(None) };
+        ws.window.orderOut(None);
     }
 }
