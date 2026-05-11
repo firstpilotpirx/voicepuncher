@@ -21,7 +21,7 @@ pub(super) struct WindowSet {
 
 impl WindowSet {
     pub(super) fn build(mtm: MainThreadMarker, visible_frame: NSRect) -> Arc<Self> {
-        let window_width: f64 = 149.0;
+        let window_width: f64 = 174.0;
         let window_height: f64 = 55.0;
 
         let x = visible_frame.origin.x + (visible_frame.size.width - window_width) / 2.0;
@@ -111,7 +111,7 @@ impl WindowSet {
         let eq_font =
             unsafe { NSFont::monospacedSystemFontOfSize_weight(16.0, NSFontWeightRegular) };
         let eq_label_x = 56.0;
-        let eq_baseline_drop = 4.0;
+        let eq_baseline_drop = 7.0;
         let eq_frame = NSRect {
             origin: NSPoint {
                 x: eq_label_x,

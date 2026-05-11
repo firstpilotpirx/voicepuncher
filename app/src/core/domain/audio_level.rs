@@ -26,28 +26,35 @@ impl AudioLevel {
     }
 }
 
-pub fn level_to_block(v: f32) -> char {
-    const BLOCKS: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
-    let idx = if v < 0.002 {
+pub const PILL_COUNT: usize = 10;
+
+pub fn level_to_pills(v: f32) -> String {
+    let active = if v < 0.006 {
         0
-    } else if v < 0.004 {
+    } else if v < 0.012 {
         1
-    } else if v < 0.008 {
+    } else if v < 0.018 {
         2
-    } else if v < 0.014 {
+    } else if v < 0.024 {
         3
-    } else if v < 0.022 {
+    } else if v < 0.030 {
         4
-    } else if v < 0.032 {
+    } else if v < 0.036 {
         5
-    } else if v < 0.045 {
+    } else if v < 0.042 {
         6
-    } else if v < 0.060 {
+    } else if v < 0.048 {
         7
-    } else {
+    } else if v < 0.054 {
         8
+    } else if v < 0.060 {
+        9
+    } else {
+        PILL_COUNT
     };
-    BLOCKS[idx]
+    (0..PILL_COUNT)
+        .map(|i| if i < active { '┃' } else { '┊' })
+        .collect()
 }
 
 #[cfg(test)]
@@ -107,62 +114,78 @@ mod tests {
     }
 
     #[test]
-    fn should_map_zero_to_silence() {
-        assert_eq!(level_to_block(0.0), ' ');
+    fn should_render_ten_pills() {
+        assert_eq!(level_to_pills(0.0).chars().count(), PILL_COUNT);
+        assert_eq!(level_to_pills(1.0).chars().count(), PILL_COUNT);
     }
 
     #[test]
-    fn should_map_below_silence_threshold_to_space() {
-        assert_eq!(level_to_block(0.001), ' ');
+    fn should_render_all_empty_for_silence() {
+        assert_eq!(level_to_pills(0.0), "┊┊┊┊┊┊┊┊┊┊");
     }
 
     #[test]
-    fn should_map_0_003_to_lowest_block() {
-        assert_eq!(level_to_block(0.003), '▁');
+    fn should_render_all_empty_below_threshold() {
+        assert_eq!(level_to_pills(0.005), "┊┊┊┊┊┊┊┊┊┊");
     }
 
     #[test]
-    fn should_map_0_006_to_second_block() {
-        assert_eq!(level_to_block(0.006), '▂');
+    fn should_light_one_pill_at_0_009() {
+        assert_eq!(level_to_pills(0.009), "┃┊┊┊┊┊┊┊┊┊");
     }
 
     #[test]
-    fn should_map_0_011_to_third_block() {
-        assert_eq!(level_to_block(0.011), '▃');
+    fn should_light_two_pills_at_0_015() {
+        assert_eq!(level_to_pills(0.015), "┃┃┊┊┊┊┊┊┊┊");
     }
 
     #[test]
-    fn should_map_0_018_to_fourth_block() {
-        assert_eq!(level_to_block(0.018), '▄');
+    fn should_light_three_pills_at_0_021() {
+        assert_eq!(level_to_pills(0.021), "┃┃┃┊┊┊┊┊┊┊");
     }
 
     #[test]
-    fn should_map_0_027_to_fifth_block() {
-        assert_eq!(level_to_block(0.027), '▅');
+    fn should_light_four_pills_at_0_027() {
+        assert_eq!(level_to_pills(0.027), "┃┃┃┃┊┊┊┊┊┊");
     }
 
     #[test]
-    fn should_map_0_038_to_sixth_block() {
-        assert_eq!(level_to_block(0.038), '▆');
+    fn should_light_five_pills_at_0_033() {
+        assert_eq!(level_to_pills(0.033), "┃┃┃┃┃┊┊┊┊┊");
     }
 
     #[test]
-    fn should_map_0_052_to_seventh_block() {
-        assert_eq!(level_to_block(0.052), '▇');
+    fn should_light_six_pills_at_0_039() {
+        assert_eq!(level_to_pills(0.039), "┃┃┃┃┃┃┊┊┊┊");
     }
 
     #[test]
-    fn should_map_0_07_to_full_block() {
-        assert_eq!(level_to_block(0.07), '█');
+    fn should_light_seven_pills_at_0_045() {
+        assert_eq!(level_to_pills(0.045), "┃┃┃┃┃┃┃┊┊┊");
     }
 
     #[test]
-    fn should_map_0_5_to_full_block() {
-        assert_eq!(level_to_block(0.5), '█');
+    fn should_light_eight_pills_at_0_051() {
+        assert_eq!(level_to_pills(0.051), "┃┃┃┃┃┃┃┃┊┊");
     }
 
     #[test]
-    fn should_map_1_0_to_full_block() {
-        assert_eq!(level_to_block(1.0), '█');
+    fn should_light_nine_pills_at_0_057() {
+        assert_eq!(level_to_pills(0.057), "┃┃┃┃┃┃┃┃┃┊");
+    }
+
+    #[test]
+    fn should_saturate_at_0_060() {
+        assert_eq!(level_to_pills(0.060), "┃┃┃┃┃┃┃┃┃┃");
+    }
+
+    #[test]
+    fn should_saturate_at_0_5() {
+        assert_eq!(level_to_pills(0.5), "┃┃┃┃┃┃┃┃┃┃");
+    }
+
+    #[test]
+    fn should_saturate_at_1_0() {
+        assert_eq!(level_to_pills(1.0), "┃┃┃┃┃┃┃┃┃┃");
     }
 }

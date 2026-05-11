@@ -9,7 +9,7 @@ use objc2::MainThreadMarker;
 use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSScreen};
 
 use crate::core::application::{AudioLevelSource, VisualIndicator};
-use crate::core::domain::{level_to_block, AudioLevel};
+use crate::core::domain::{level_to_pills, AudioLevel};
 
 use screen_watcher::ScreenWatcher;
 use topology::{diff_screens, ScreenChange, ScreenTopology};
@@ -17,13 +17,7 @@ use window_set::WindowSet;
 
 type PulseData = (Vec<Arc<WindowSet>>, u64, Arc<AtomicU64>, bool);
 type HeartbeatData = (Vec<Arc<WindowSet>>, u64, Arc<AtomicU64>);
-type EqualizerData = (
-    Vec<Arc<WindowSet>>,
-    u64,
-    Arc<AtomicU64>,
-    Arc<AtomicU32>,
-    [f32; 10],
-);
+type EqualizerData = (Vec<Arc<WindowSet>>, u64, Arc<AtomicU64>, Arc<AtomicU32>);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OverlayState {
@@ -322,7 +316,7 @@ fn apply_recording_state(
 
     schedule_heartbeat(windows.clone(), generation, Arc::clone(&pulse_gen));
     schedule_pulse(windows.clone(), generation, Arc::clone(&pulse_gen), false);
-    schedule_equalizer_tick(windows, generation, pulse_gen, level_register, [0.0f32; 10]);
+    schedule_equalizer_tick(windows, generation, pulse_gen, level_register);
 }
 
 fn schedule_pulse(
@@ -425,12 +419,10 @@ fn schedule_equalizer_tick(
     generation: u64,
     pulse_gen: Arc<AtomicU64>,
     level_register: Arc<AtomicU32>,
-    eq_history: [f32; 10],
 ) {
     let tick_ms: i64 = 80;
     let when = unsafe { dispatch_time(DISPATCH_TIME_NOW, tick_ms * NSEC_PER_SEC / 1000) };
-    let data: Box<EqualizerData> =
-        Box::new((windows, generation, pulse_gen, level_register, eq_history));
+    let data: Box<EqualizerData> = Box::new((windows, generation, pulse_gen, level_register));
     let ctx = Box::into_raw(data) as *mut std::ffi::c_void;
     unsafe {
         dispatch_after_f(when, main_queue(), ctx, equalizer_trampoline);
@@ -439,7 +431,7 @@ fn schedule_equalizer_tick(
 
 unsafe extern "C" fn equalizer_trampoline(ptr: *mut std::ffi::c_void) {
     let data: Box<EqualizerData> = Box::from_raw(ptr as *mut EqualizerData);
-    let (windows, generation, pulse_gen, level_register, eq_history) = *data;
+    let (windows, generation, pulse_gen, level_register) = *data;
 
     if pulse_gen.load(Ordering::SeqCst) != generation {
         return;
@@ -450,22 +442,17 @@ unsafe extern "C" fn equalizer_trampoline(ptr: *mut std::ffi::c_void) {
     let bits = level_register.load(Ordering::Relaxed);
     let level = AudioLevel::from_bits(bits);
 
-    let mut new_history = [0_f32; 10];
-    new_history[..9].copy_from_slice(&eq_history[1..]);
-    new_history[9] = level.value();
+    let pills = level_to_pills(level.value());
+    let pills_str = NSString::from_str(&pills);
 
-    let blocks: String = new_history.iter().map(|&v| level_to_block(v)).collect();
-    let blocks_str = NSString::from_str(&blocks);
-
-    let any_active = new_history.iter().any(|&v| v >= 0.01);
-    let alpha: f64 = if any_active { 1.0 } else { 0.55 };
+    let alpha: f64 = if level.value() >= 0.01 { 1.0 } else { 0.55 };
 
     for ws in &windows {
-        ws.eq_label.setStringValue(&blocks_str);
+        ws.eq_label.setStringValue(&pills_str);
         ws.eq_label.setAlphaValue(alpha);
     }
 
-    schedule_equalizer_tick(windows, generation, pulse_gen, level_register, new_history);
+    schedule_equalizer_tick(windows, generation, pulse_gen, level_register);
 }
 
 #[cfg(test)]

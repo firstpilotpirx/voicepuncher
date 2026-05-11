@@ -88,7 +88,7 @@ fn level_propagation_to_eq_label() {
         return;
     };
 
-    // Given — RMS 0.5 is above the 0.45 saturation threshold → level_to_block maps to █
+    // Given — RMS 0.5 is well above the 0.060 saturation threshold → all 10 pills active (┃)
     let level_register = Arc::new(AtomicU32::new(0.5f32.to_bits()));
     let indicator = MacosVisualIndicator::initialize(mtm, Arc::clone(&level_register));
 
@@ -101,7 +101,7 @@ fn level_propagation_to_eq_label() {
     // Then
     let label_value = indicator.first_eq_label_value();
     assert!(
-        label_value.contains('\u{2588}'),
-        "eq_label must contain █ (U+2588) for AudioLevel 0.5, got: {label_value:?}"
+        label_value.contains('\u{2503}'),
+        "eq_label must contain ┃ (U+2503) for AudioLevel 0.5, got: {label_value:?}"
     );
 }
