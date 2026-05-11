@@ -369,6 +369,55 @@ fn r10_no_retained_into_raw_under_visualfeedback_macos() {
 }
 
 #[test]
+fn r_core_no_atomic_register() {
+    let forbidden_patterns = [
+        "AtomicU8",
+        "AtomicU16",
+        "AtomicU32",
+        "AtomicU64",
+        "AtomicUsize",
+        "AtomicU128",
+    ];
+
+    let mut violations: Vec<String> = Vec::new();
+
+    for entry in WalkDir::new("src/core")
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("rs"))
+    {
+        let path = entry.path();
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or_default();
+        if stem == "mod" {
+            continue;
+        }
+        for (line_no, line) in read_lines(path).iter().enumerate() {
+            for pattern in &forbidden_patterns {
+                if line.contains(pattern) {
+                    violations.push(format!(
+                        "{}:{}: forbidden '{}' — {}",
+                        path.display(),
+                        line_no + 1,
+                        pattern,
+                        line.trim()
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "R-core-no-atomic-register violations:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn r9_every_primary_adapter_has_it() {
     let mut violations: Vec<String> = Vec::new();
 

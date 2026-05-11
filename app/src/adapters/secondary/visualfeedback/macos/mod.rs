@@ -2,13 +2,14 @@ mod screen_watcher;
 mod topology;
 mod window_set;
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use objc2::MainThreadMarker;
 use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSScreen};
 
-use crate::core::application::VisualIndicator;
+use crate::core::application::{AudioLevelSource, VisualIndicator};
+use crate::core::domain::{level_to_block, AudioLevel};
 
 use screen_watcher::ScreenWatcher;
 use topology::{diff_screens, ScreenChange, ScreenTopology};
@@ -16,6 +17,13 @@ use window_set::WindowSet;
 
 type PulseData = (Vec<Arc<WindowSet>>, u64, Arc<AtomicU64>, bool);
 type HeartbeatData = (Vec<Arc<WindowSet>>, u64, Arc<AtomicU64>);
+type EqualizerData = (
+    Vec<Arc<WindowSet>>,
+    u64,
+    Arc<AtomicU64>,
+    Arc<AtomicU32>,
+    [f32; 10],
+);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OverlayState {
@@ -65,13 +73,14 @@ pub struct MacosVisualIndicator {
     state: Arc<Mutex<OverlayState>>,
     windows: Arc<Mutex<Vec<Arc<WindowSet>>>>,
     pulse_generation: Arc<AtomicU64>,
+    level_register: Arc<AtomicU32>,
     #[allow(dead_code)]
     last_topology: Arc<Mutex<ScreenTopology>>,
     _watcher: ScreenWatcher,
 }
 
 impl MacosVisualIndicator {
-    pub fn initialize(mtm: MainThreadMarker) -> Self {
+    pub fn initialize(mtm: MainThreadMarker, level_register: Arc<AtomicU32>) -> Self {
         let fallback_rect = objc2_foundation::NSRect {
             origin: objc2_foundation::NSPoint { x: 0.0, y: 0.0 },
             size: objc2_foundation::NSSize {
@@ -106,18 +115,27 @@ impl MacosVisualIndicator {
         let windows_for_watcher = Arc::clone(&windows);
         let pulse_generation_for_watcher = Arc::clone(&pulse_generation);
         let last_topology_for_watcher = Arc::clone(&last_topology);
+        let level_register_for_watcher = Arc::clone(&level_register);
 
         let handler: Arc<dyn Fn() + Send + Sync + 'static> = Arc::new(move || {
             let state = Arc::clone(&state_for_watcher);
             let windows = Arc::clone(&windows_for_watcher);
             let pulse_generation = Arc::clone(&pulse_generation_for_watcher);
             let last_topology = Arc::clone(&last_topology_for_watcher);
+            let level_register = Arc::clone(&level_register_for_watcher);
 
             dispatch_to_main(move || {
                 let Some(mtm) = MainThreadMarker::new() else {
                     return;
                 };
-                rebuild_window_set_inner(mtm, &state, &windows, &pulse_generation, &last_topology);
+                rebuild_window_set_inner(
+                    mtm,
+                    &state,
+                    &windows,
+                    &pulse_generation,
+                    &last_topology,
+                    &level_register,
+                );
             });
         });
 
@@ -127,6 +145,7 @@ impl MacosVisualIndicator {
             state,
             windows,
             pulse_generation,
+            level_register,
             last_topology,
             _watcher: watcher,
         }
@@ -140,7 +159,22 @@ impl MacosVisualIndicator {
             &self.windows,
             &self.pulse_generation,
             &self.last_topology,
+            &self.level_register,
         );
+    }
+
+    pub fn generation_count(&self) -> u64 {
+        self.pulse_generation
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    pub fn first_eq_label_value(&self) -> String {
+        self.windows
+            .lock()
+            .unwrap()
+            .first()
+            .map(|ws| ws.eq_label.stringValue().to_string())
+            .unwrap_or_default()
     }
 }
 
@@ -158,6 +192,7 @@ fn rebuild_window_set_inner(
     windows: &Arc<Mutex<Vec<Arc<WindowSet>>>>,
     pulse_generation: &Arc<AtomicU64>,
     last_topology: &Arc<Mutex<ScreenTopology>>,
+    level_register: &Arc<AtomicU32>,
 ) {
     let new_topology = collect_topology(mtm);
 
@@ -201,7 +236,8 @@ fn rebuild_window_set_inner(
         OverlayState::Recording => {
             let ws_vec = windows.lock().unwrap().clone();
             let pg = Arc::clone(pulse_generation);
-            apply_recording_state(ws_vec, generation, pg);
+            let lr = Arc::clone(level_register);
+            apply_recording_state(ws_vec, generation, pg, lr);
         }
         OverlayState::Processing => {
             let ws_vec = windows.lock().unwrap().clone();
@@ -217,11 +253,12 @@ impl VisualIndicator for MacosVisualIndicator {
         let generation = self.pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
         let pulse_gen = Arc::clone(&self.pulse_generation);
         let windows = self.windows.lock().unwrap().clone();
+        let level_register = Arc::clone(&self.level_register);
 
         *self.state.lock().unwrap() = OverlayState::Recording;
 
         dispatch_to_main(move || {
-            apply_recording_state(windows, generation, pulse_gen);
+            apply_recording_state(windows, generation, pulse_gen, level_register);
         });
     }
 
@@ -249,9 +286,20 @@ impl VisualIndicator for MacosVisualIndicator {
     }
 }
 
+impl AudioLevelSource for MacosVisualIndicator {
+    fn read_level(&self) -> AudioLevel {
+        AudioLevel::from_bits(self.level_register.load(Ordering::Relaxed))
+    }
+}
+
 unsafe impl Send for MacosVisualIndicator {}
 
-fn apply_recording_state(windows: Vec<Arc<WindowSet>>, generation: u64, pulse_gen: Arc<AtomicU64>) {
+fn apply_recording_state(
+    windows: Vec<Arc<WindowSet>>,
+    generation: u64,
+    pulse_gen: Arc<AtomicU64>,
+    level_register: Arc<AtomicU32>,
+) {
     use objc2_app_kit::{NSColor, NSWindowCollectionBehavior};
     use objc2_foundation::NSString;
 
@@ -260,6 +308,7 @@ fn apply_recording_state(windows: Vec<Arc<WindowSet>>, generation: u64, pulse_ge
         ws.label.setStringValue(&text);
         ws.label.setTextColor(Some(&NSColor::redColor()));
         ws.label.setHidden(false);
+        ws.eq_label.setHidden(false);
         ws.spinner.setHidden(true);
         unsafe { ws.spinner.stopAnimation(None) };
         ws.window.orderFrontRegardless();
@@ -272,7 +321,8 @@ fn apply_recording_state(windows: Vec<Arc<WindowSet>>, generation: u64, pulse_ge
     }
 
     schedule_heartbeat(windows.clone(), generation, Arc::clone(&pulse_gen));
-    schedule_pulse(windows, generation, pulse_gen, false);
+    schedule_pulse(windows.clone(), generation, Arc::clone(&pulse_gen), false);
+    schedule_equalizer_tick(windows, generation, pulse_gen, level_register, [0.0f32; 10]);
 }
 
 fn schedule_pulse(
@@ -315,6 +365,7 @@ fn apply_processing_state(
 
     for ws in &windows {
         ws.label.setHidden(true);
+        ws.eq_label.setHidden(true);
         ws.spinner.setHidden(false);
         unsafe { ws.spinner.startAnimation(None) };
         ws.window.orderFrontRegardless();
@@ -363,7 +414,68 @@ unsafe extern "C" fn heartbeat_trampoline(ptr: *mut std::ffi::c_void) {
 
 fn apply_hidden_state(windows: Vec<Arc<WindowSet>>) {
     for ws in &windows {
+        ws.eq_label.setHidden(true);
         unsafe { ws.spinner.stopAnimation(None) };
         ws.window.orderOut(None);
+    }
+}
+
+fn schedule_equalizer_tick(
+    windows: Vec<Arc<WindowSet>>,
+    generation: u64,
+    pulse_gen: Arc<AtomicU64>,
+    level_register: Arc<AtomicU32>,
+    eq_history: [f32; 10],
+) {
+    let tick_ms: i64 = 80;
+    let when = unsafe { dispatch_time(DISPATCH_TIME_NOW, tick_ms * NSEC_PER_SEC / 1000) };
+    let data: Box<EqualizerData> =
+        Box::new((windows, generation, pulse_gen, level_register, eq_history));
+    let ctx = Box::into_raw(data) as *mut std::ffi::c_void;
+    unsafe {
+        dispatch_after_f(when, main_queue(), ctx, equalizer_trampoline);
+    }
+}
+
+unsafe extern "C" fn equalizer_trampoline(ptr: *mut std::ffi::c_void) {
+    let data: Box<EqualizerData> = Box::from_raw(ptr as *mut EqualizerData);
+    let (windows, generation, pulse_gen, level_register, eq_history) = *data;
+
+    if pulse_gen.load(Ordering::SeqCst) != generation {
+        return;
+    }
+
+    use objc2_foundation::NSString;
+
+    let bits = level_register.load(Ordering::Relaxed);
+    let level = AudioLevel::from_bits(bits);
+
+    let mut new_history = [0_f32; 10];
+    new_history[..9].copy_from_slice(&eq_history[1..]);
+    new_history[9] = level.value();
+
+    let blocks: String = new_history.iter().map(|&v| level_to_block(v)).collect();
+    let blocks_str = NSString::from_str(&blocks);
+
+    let any_active = new_history.iter().any(|&v| v >= 0.01);
+    let alpha: f64 = if any_active { 1.0 } else { 0.55 };
+
+    for ws in &windows {
+        ws.eq_label.setStringValue(&blocks_str);
+        ws.eq_label.setAlphaValue(alpha);
+    }
+
+    schedule_equalizer_tick(windows, generation, pulse_gen, level_register, new_history);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_read_level_from_register_via_audio_level_source() {
+        let reg = Arc::new(AtomicU32::new(0.5f32.to_bits()));
+        let level = AudioLevel::from_bits(reg.load(Ordering::Relaxed));
+        assert!((level.value() - 0.5).abs() < 1e-6);
     }
 }

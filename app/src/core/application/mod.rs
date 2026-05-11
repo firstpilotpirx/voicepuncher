@@ -1,3 +1,5 @@
+pub mod audio_level_sink;
+pub mod audio_level_source;
 pub mod audio_recorder;
 pub mod chunking;
 pub mod hotkey_listener;
@@ -10,6 +12,8 @@ pub mod text_refiner;
 pub mod transcriber;
 pub mod visual_indicator;
 
+pub use audio_level_sink::AudioLevelSink;
+pub use audio_level_source::AudioLevelSource;
 pub use audio_recorder::AudioRecorder;
 pub use chunking::ChunkingCfg;
 pub use hotkey_listener::HotkeyListener;

@@ -10,8 +10,10 @@ use rubato::{
     Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
 };
 
+use crate::core::application::audio_level_sink::AudioLevelSink;
 use crate::core::application::audio_recorder::{AudioRecorder, LiveChunk};
 use crate::core::application::chunking::ChunkingCfg;
+use crate::core::domain::audio_level::AudioLevel;
 use crate::core::domain::AudioBuffer16k;
 
 const I16_MAX_F32: f32 = i16::MAX as f32;
@@ -29,6 +31,7 @@ pub struct CpalAudioRecorder {
     active: Option<ActiveRecording>,
     shared_buffer: Option<Arc<Mutex<Vec<i16>>>>,
     native_rate_out: Option<Arc<AtomicU32>>,
+    level_register: Arc<AtomicU32>,
 }
 
 struct ActiveRecording {
@@ -44,13 +47,18 @@ struct ActiveRecording {
 }
 
 impl CpalAudioRecorder {
-    pub fn new(debug_save_wav: Option<PathBuf>, max_recording_seconds: u64) -> Self {
+    pub fn new(
+        debug_save_wav: Option<PathBuf>,
+        max_recording_seconds: u64,
+        level_register: Arc<AtomicU32>,
+    ) -> Self {
         Self {
             debug_save_wav,
             max_recording_seconds,
             active: None,
             shared_buffer: None,
             native_rate_out: None,
+            level_register,
         }
     }
 
@@ -59,6 +67,7 @@ impl CpalAudioRecorder {
         max_recording_seconds: u64,
         shared_buffer: Arc<Mutex<Vec<i16>>>,
         native_rate_out: Arc<AtomicU32>,
+        level_register: Arc<AtomicU32>,
     ) -> Self {
         Self {
             debug_save_wav,
@@ -66,6 +75,7 @@ impl CpalAudioRecorder {
             active: None,
             shared_buffer: Some(shared_buffer),
             native_rate_out: Some(native_rate_out),
+            level_register,
         }
     }
 }
@@ -102,6 +112,7 @@ impl AudioRecorder for CpalAudioRecorder {
 
         let buffer_write = Arc::clone(&buffer);
         let channels_usize = channels as usize;
+        let level_reg = Arc::clone(&self.level_register);
         let stream = device.build_input_stream(
             &stream_config,
             move |data: &[f32], _: &cpal::InputCallbackInfo| {
@@ -115,6 +126,16 @@ impl AudioRecorder for CpalAudioRecorder {
                         })
                         .collect()
                 };
+                let mean_sq: f32 = mono_frames
+                    .iter()
+                    .map(|&s| {
+                        let f = s as f32 / 32_768.0;
+                        f * f
+                    })
+                    .sum::<f32>()
+                    / mono_frames.len().max(1) as f32;
+                let rms = mean_sq.sqrt();
+                level_reg.store(f32::to_bits(rms.clamp(0.0, 1.0)), Ordering::Relaxed);
                 if let Ok(mut buf) = buffer_write.lock() {
                     let remaining = max_samples.saturating_sub(buf.len());
                     let to_push = mono_frames.len().min(remaining);
@@ -222,6 +243,13 @@ impl AudioRecorder for CpalAudioRecorder {
                 }
             }
         }
+    }
+}
+
+impl AudioLevelSink for CpalAudioRecorder {
+    fn write_level(&self, level: AudioLevel) {
+        self.level_register
+            .store(level.to_bits(), Ordering::Relaxed);
     }
 }
 
@@ -481,7 +509,7 @@ mod tests {
     #[test]
     fn should_return_err_when_stop_called_without_start() {
         // Given
-        let mut recorder = CpalAudioRecorder::new(None, 600);
+        let mut recorder = CpalAudioRecorder::new(None, 600, Arc::new(AtomicU32::new(0)));
         // When
         let result = recorder.stop();
         // Then
@@ -555,5 +583,16 @@ mod tests {
         let cut = vad_cut_point_native(&buf, lookback_start, hard_boundary, frame_samples, 0.01);
         // Then — snaps to the silent frame start
         assert_eq!(cut, silence_start);
+    }
+
+    #[test]
+    fn should_store_level_bits_via_audio_level_sink() {
+        // Given
+        let reg = Arc::new(AtomicU32::new(0));
+        let recorder = CpalAudioRecorder::new(None, 600, Arc::clone(&reg));
+        // When
+        recorder.write_level(AudioLevel::from_rms(0.5));
+        // Then
+        assert_eq!(reg.load(Ordering::Relaxed), 0.5f32.to_bits());
     }
 }

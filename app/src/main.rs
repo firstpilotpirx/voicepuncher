@@ -154,12 +154,15 @@ fn main() {
 
     let paster = MacOsTextPaster::new(config.paste.clipboard_restore_delay_ms);
 
+    let level_register = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+
     let recorder = CpalAudioRecorder::new(
         config
             .audio
             .debug_save_wav
             .then(|| std::path::PathBuf::from("debug.wav")),
         config.audio.max_recording_seconds,
+        std::sync::Arc::clone(&level_register),
     );
 
     let (tx, rx) = std::sync::mpsc::channel::<PttSignal>();
@@ -179,7 +182,7 @@ fn main() {
     );
 
     let mtm = MainThreadMarker::new().expect("main must run on the main thread");
-    let indicator = MacosVisualIndicator::initialize(mtm);
+    let indicator = MacosVisualIndicator::initialize(mtm, level_register);
 
     let mut pipeline = Pipeline::new(
         Box::new(recorder),

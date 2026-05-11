@@ -105,6 +105,13 @@
 | `stdio` | stdout via `println!` | `adapters/secondary/textpasting/stdio/` — `StdioTextPaster` |
 | `cli` | interactive terminal UI via `dialoguer` + `console` | `adapters/primary/setup/cli/` — `SetupWizard` |
 
+### AudioLevel
+- **Type:** Value Object
+- **Definition:** Normalised RMS audio level of a single audio frame, in range [0.0, 1.0]. Computed by the recorder adapter on every CPAL buffer callback and consumed by the visual feedback adapter to drive the equalizer display.
+- **Code:** `app/src/core/domain/audio_level.rs`
+- **Invariants:** value ∈ [0.0, 1.0]; NaN and ±Inf are clamped to 0.0 (SILENT).
+- **Synonyms to AVOID:** "volume", "loudness", "amplitude" (alone — too generic), "rms_value"
+
 ## E2E / Test vocabulary
 
 > These terms describe reference data used for accuracy measurement only. They are NOT part of the production domain.

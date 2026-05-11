@@ -3,7 +3,7 @@ use std::sync::Arc;
 use objc2::rc::Retained;
 use objc2::MainThreadMarker;
 use objc2_app_kit::{
-    NSBackingStoreType, NSColor, NSControlSize, NSFont, NSProgressIndicator,
+    NSBackingStoreType, NSColor, NSControlSize, NSFont, NSFontWeightRegular, NSProgressIndicator,
     NSProgressIndicatorStyle, NSTextAlignment, NSTextField, NSVisualEffectBlendingMode,
     NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView, NSWindow,
     NSWindowCollectionBehavior, NSWindowStyleMask,
@@ -14,12 +14,14 @@ use objc2_quartz_core::kCACornerCurveContinuous;
 pub(super) struct WindowSet {
     pub(super) window: Retained<NSWindow>,
     pub(super) label: Retained<NSTextField>,
+    #[allow(dead_code)]
+    pub(super) eq_label: Retained<NSTextField>,
     pub(super) spinner: Retained<NSProgressIndicator>,
 }
 
 impl WindowSet {
     pub(super) fn build(mtm: MainThreadMarker, visible_frame: NSRect) -> Arc<Self> {
-        let window_width: f64 = 140.0;
+        let window_width: f64 = 149.0;
         let window_height: f64 = 55.0;
 
         let x = visible_frame.origin.x + (visible_frame.size.width - window_width) / 2.0;
@@ -63,7 +65,7 @@ impl WindowSet {
         };
         let effect_view =
             NSVisualEffectView::initWithFrame(mtm.alloc::<NSVisualEffectView>(), content_frame);
-        effect_view.setMaterial(NSVisualEffectMaterial::HUDWindow);
+        effect_view.setMaterial(NSVisualEffectMaterial::Menu);
         effect_view.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
         effect_view.setState(NSVisualEffectState::Active);
         effect_view.setWantsLayer(true);
@@ -72,9 +74,8 @@ impl WindowSet {
             layer.setCornerCurve(continuous_curve);
             layer.setCornerRadius(20.0);
             layer.setMasksToBounds(true);
-            let dark_fill = NSColor::colorWithSRGBRed_green_blue_alpha(0.0, 0.0, 0.0, 0.28);
-            layer.setBackgroundColor(Some(&dark_fill.CGColor()));
-            let border = NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 1.0, 1.0, 0.25);
+            layer.setBackgroundColor(None);
+            let border = NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 1.0, 1.0, 0.18);
             layer.setBorderColor(Some(&border.CGColor()));
             layer.setBorderWidth(0.5);
         }
@@ -87,11 +88,11 @@ impl WindowSet {
                 .floor();
         let label_frame = NSRect {
             origin: NSPoint {
-                x: 12.0,
+                x: 6.0,
                 y: label_y,
             },
             size: NSSize {
-                width: window_width - 24.0,
+                width: 64.0,
                 height: label_height,
             },
         };
@@ -103,16 +104,41 @@ impl WindowSet {
         label.setAlignment(NSTextAlignment::Center);
         label.setFont(Some(&font));
         label.setTextColor(Some(&NSColor::whiteColor()));
-        let empty = NSString::from_str("");
-        label.setStringValue(&empty);
+        label.setStringValue(&NSString::from_str(""));
 
         effect_view.addSubview(&label);
 
+        let eq_font =
+            unsafe { NSFont::monospacedSystemFontOfSize_weight(16.0, NSFontWeightRegular) };
+        let eq_label_x = 56.0;
+        let eq_baseline_drop = 4.0;
+        let eq_frame = NSRect {
+            origin: NSPoint {
+                x: eq_label_x,
+                y: label_y - eq_baseline_drop,
+            },
+            size: NSSize {
+                width: window_width - eq_label_x - 18.0,
+                height: label_height,
+            },
+        };
+
+        let eq_label = NSTextField::initWithFrame(mtm.alloc::<NSTextField>(), eq_frame);
+        eq_label.setBezeled(false);
+        eq_label.setEditable(false);
+        eq_label.setDrawsBackground(false);
+        eq_label.setAlignment(NSTextAlignment::Left);
+        eq_label.setFont(Some(&eq_font));
+        eq_label.setTextColor(Some(&NSColor::whiteColor()));
+        eq_label.setStringValue(&NSString::from_str(""));
+        eq_label.setHidden(true);
+
+        effect_view.addSubview(&eq_label);
+
         let spinner_size: f64 = 32.0;
-        let spinner_x = (window_width - spinner_size) / 2.0;
         let spinner_frame = NSRect {
             origin: NSPoint {
-                x: spinner_x,
+                x: (window_width - spinner_size) / 2.0,
                 y: (window_height - spinner_size) / 2.0,
             },
             size: NSSize {
@@ -133,6 +159,7 @@ impl WindowSet {
         Arc::new(Self {
             window,
             label,
+            eq_label,
             spinner,
         })
     }
