@@ -27,23 +27,25 @@ impl AudioLevel {
 }
 
 pub fn level_to_block(v: f32) -> char {
-    const BLOCKS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
-    let idx = if v < 0.01 {
+    const BLOCKS: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+    let idx = if v < 0.002 {
         0
-    } else if v < 0.025 {
+    } else if v < 0.004 {
         1
-    } else if v < 0.05 {
+    } else if v < 0.008 {
         2
-    } else if v < 0.09 {
+    } else if v < 0.014 {
         3
-    } else if v < 0.15 {
+    } else if v < 0.022 {
         4
-    } else if v < 0.22 {
+    } else if v < 0.032 {
         5
-    } else if v < 0.32 {
+    } else if v < 0.045 {
         6
-    } else {
+    } else if v < 0.060 {
         7
+    } else {
+        8
     };
     BLOCKS[idx]
 }
@@ -105,48 +107,53 @@ mod tests {
     }
 
     #[test]
-    fn should_map_zero_to_lowest_block() {
-        assert_eq!(level_to_block(0.0), '▁');
+    fn should_map_zero_to_silence() {
+        assert_eq!(level_to_block(0.0), ' ');
     }
 
     #[test]
-    fn should_map_below_threshold_to_lowest_block() {
-        assert_eq!(level_to_block(0.005), '▁');
+    fn should_map_below_silence_threshold_to_space() {
+        assert_eq!(level_to_block(0.001), ' ');
     }
 
     #[test]
-    fn should_map_0_018_to_second_block() {
-        assert_eq!(level_to_block(0.018), '▂');
+    fn should_map_0_003_to_lowest_block() {
+        assert_eq!(level_to_block(0.003), '▁');
     }
 
     #[test]
-    fn should_map_0_035_to_third_block() {
-        assert_eq!(level_to_block(0.035), '▃');
+    fn should_map_0_006_to_second_block() {
+        assert_eq!(level_to_block(0.006), '▂');
     }
 
     #[test]
-    fn should_map_0_07_to_fourth_block() {
-        assert_eq!(level_to_block(0.07), '▄');
+    fn should_map_0_011_to_third_block() {
+        assert_eq!(level_to_block(0.011), '▃');
     }
 
     #[test]
-    fn should_map_0_12_to_fifth_block() {
-        assert_eq!(level_to_block(0.12), '▅');
+    fn should_map_0_018_to_fourth_block() {
+        assert_eq!(level_to_block(0.018), '▄');
     }
 
     #[test]
-    fn should_map_0_18_to_sixth_block() {
-        assert_eq!(level_to_block(0.18), '▆');
+    fn should_map_0_027_to_fifth_block() {
+        assert_eq!(level_to_block(0.027), '▅');
     }
 
     #[test]
-    fn should_map_0_27_to_seventh_block() {
-        assert_eq!(level_to_block(0.27), '▇');
+    fn should_map_0_038_to_sixth_block() {
+        assert_eq!(level_to_block(0.038), '▆');
     }
 
     #[test]
-    fn should_map_0_4_to_full_block() {
-        assert_eq!(level_to_block(0.4), '█');
+    fn should_map_0_052_to_seventh_block() {
+        assert_eq!(level_to_block(0.052), '▇');
+    }
+
+    #[test]
+    fn should_map_0_07_to_full_block() {
+        assert_eq!(level_to_block(0.07), '█');
     }
 
     #[test]
