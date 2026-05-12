@@ -103,7 +103,7 @@ impl WindowSet {
         label.setDrawsBackground(false);
         label.setAlignment(NSTextAlignment::Center);
         label.setFont(Some(&font));
-        label.setTextColor(Some(&NSColor::whiteColor()));
+        label.setTextColor(Some(&NSColor::labelColor()));
         label.setStringValue(&NSString::from_str(""));
 
         effect_view.addSubview(&label);
@@ -129,7 +129,7 @@ impl WindowSet {
         eq_label.setDrawsBackground(false);
         eq_label.setAlignment(NSTextAlignment::Left);
         eq_label.setFont(Some(&eq_font));
-        eq_label.setTextColor(Some(&NSColor::whiteColor()));
+        eq_label.setTextColor(Some(&NSColor::labelColor()));
         eq_label.setStringValue(&NSString::from_str(""));
         eq_label.setHidden(true);
 
