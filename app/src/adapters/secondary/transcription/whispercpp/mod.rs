@@ -330,6 +330,7 @@ mod tests {
         assert!(!is_whisper_hallucination("   "));
     }
 
+
     #[test]
     fn should_detect_repeated_phrase_loop() {
         let repeated = "и сайта, ".repeat(20);
