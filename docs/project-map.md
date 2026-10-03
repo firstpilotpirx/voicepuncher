@@ -7,9 +7,8 @@
 | `app/` | Rust CLI application — hexagonal architecture (Ports & Adapters + DDD) |
 | `e2e-test/` | Rust benchmark and E2E tests against the compiled binary |
 | `docs/` | Documentation (ubiquitous language, architecture, E2E benchmark design) |
-| `scripts/` | Repo-level automation (`full-check-fresh.sh`) |
 | `Cargo.toml` | Cargo workspace (members: `app`, `e2e-test`) |
-| `justfile` | Task runner (`build`, `bench`, `bench-smoke`, `corpus`, `e2e`, `e2e-smoke`) |
+| `justfile` | Task runner — all checks (`check`, `e2e`, `release-check`), setup (`models`, `corpus`), benchmarks (`bench`) |
 
 ## App structure (`app/`)
 

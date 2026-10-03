@@ -13,9 +13,8 @@ voicepuncher/
   app/          ← Rust CLI crate (hexagonal architecture)
   e2e-test/     ← Rust crate: accuracy benchmark + smoke E2E
   docs/         ← Architecture documentation + ubiquitous language
-  scripts/      ← Repo-level automation
   Cargo.toml    ← Cargo workspace (members: app, e2e-test)
-  justfile      ← Task runner (build, bench, corpus, e2e)
+  justfile      ← Task runner: all checks, E2E, benchmarks (`just` lists recipes)
 ```
 
 ## Workflow — OpenSpec
@@ -33,57 +32,20 @@ CLI: `openspec list` (changes), `openspec list --specs`, `openspec view` (dashbo
 
 ## How to verify a change
 
-Run these levels in order. A change is "verified" only when every level that applies has run and passed — say which levels ran and which did not.
+All checks are `just` recipes (see `justfile`; no other scripts). A change is "verified" only when every level that applies has run and passed — say which levels ran and which did not.
 
-### Environment
+| Level | Command | When |
+|---|---|---|
+| 1. Code | `just check` — fmt, clippy `-D warnings`, all app tests, release build | every change |
+| 2. E2E | `just e2e` — smoke + WER accuracy on the corpus (~20 min, fails if mean WER > 30 %) | transcription, refinement, chunking, pipeline |
+| 3. Manual | user runs the app — `README.md` § Release checklist | hotkey, recording, overlay, paste, permissions |
+| Release | `just release-check` (cargo clean + 1 + 2), then level 3 | before every release |
 
-- Models live in `~/.voicepuncher/` (not `~/.voicepuncher/models/`). Always export them explicitly; without them model-dependent tests print `GATED: … skipping` and pass without testing anything:
-  ```bash
-  export VOICEPUNCHER_WHISPER_MODEL=$HOME/.voicepuncher/ggml-large-v3-turbo.bin
-  export VOICEPUNCHER_LLM_MODEL=$HOME/.voicepuncher/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf
-  export VOICEPUNCHER_BENCH_CORPUS=$PWD/e2e-test/corpus   # directory with manifest.jsonl, absolute path
-  ```
-- The benchmark corpus `e2e-test/corpus/` is gitignored: it exists only in the main checkout (or after `just corpus`). In a worktree, point `VOICEPUNCHER_BENCH_CORPUS` at the main checkout's `e2e-test/corpus`.
-- If `llama-cpp-sys` fails with `'openssl/err.h' file not found`, export Homebrew OpenSSL for the build:
-  ```bash
-  export CPATH=/opt/homebrew/opt/openssl@3/include LIBRARY_PATH=/opt/homebrew/opt/openssl@3/lib
-  ```
+`just bench` is a model comparison, not a gate — only when a model, decoding params or the prompt changed.
 
-Before a release run all three: `just release-check` (levels 1–2) plus the manual checklist in `README.md` § Release checklist (level 3). `just bench` is a model comparison, not a gate — only when a model, decoding params or the prompt changed.
-
-### Level 1 — code checks (every change)
-
-`just check` — runs:
-
-```bash
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test -p voicepuncher --tests --no-fail-fast   # unit + architecture + integration
-cargo build --release
-```
-
-`./scripts/full-check-fresh.sh` and `just release-check` start with `cargo clean`: it deletes `target/release/voicepuncher`, which the user may be running. Ask before running it; prefer the commands above.
-
-### Level 2 — E2E on real models (changes to transcription, refinement, chunking, pipeline)
-
-`just e2e` — runs:
-
-```bash
-cargo test -p voicepuncher-e2e-test --test smoke --release -- --nocapture             # models load, file mode works
-cargo test -p voicepuncher-e2e-test --test pipeline_accuracy --release -- --nocapture # WER on corpus, fails if mean WER > 30 %
-```
-
-Both drive the release binary in file mode (`--input-file`), so build it first. Model comparison (`just bench`, `just bench-smoke`) is described in `README.md` § End-to-end tests; it downloads missing models.
-
-### Level 3 — manual run (changes to hotkey, recording, overlay, paste, permissions)
-
-Hotkey capture, microphone, overlay and paste need macOS TCC permissions that an agent sandbox does not have — `voicepuncher` exits with `permission denied for accessibility` there. Ask the user to run it from their terminal, walk through `README.md` § Release checklist, and paste the log:
-
-```bash
-cargo run --release -p voicepuncher            # add --no-llm to skip the LLM
-```
-
-A healthy cycle logs `pipeline recv Pressed` → `chunk 1 | … transcribed` → `pasting…` → `stop→paste: … total=…ms`. Test with and without `--no-llm` when refinement changed.
+- **Models and corpus** are auto-discovered by the `justfile` (largest model in `~/.voicepuncher/` or `~/.voicepuncher/models/`; corpus in `e2e-test/corpus/`). The corpus is gitignored, so in a worktree set `VOICEPUNCHER_BENCH_CORPUS` to the main checkout's `e2e-test/corpus`.
+- **`release-check` runs `cargo clean`** and deletes `target/release/voicepuncher`, which the user may be running. In the main checkout, ask first; in a worktree it only cleans that worktree's `target/`.
+- **Level 3 cannot run in an agent sandbox**: it lacks macOS TCC permissions (`permission denied for accessibility`). Ask the user to run `cargo run --release -p voicepuncher` (with and without `--no-llm` when refinement changed) and paste the log. A healthy cycle logs `pipeline recv Pressed` → `chunk 1 | … transcribed` → `pasting…` → `stop→paste: … total=…ms`.
 
 ## Test layout (inside `app/`)
 

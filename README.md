@@ -95,20 +95,41 @@ Feed a pre-recorded WAV instead of using the hotkey. Output goes to stdout — u
 
 WAV must be 16 kHz, mono, 16-bit PCM.
 
-## End-to-end tests
+## Testing
 
-Requires [`just`](https://github.com/casey/just): `brew install just`.
+All checks run through [`just`](https://github.com/casey/just) (`brew install just`). `just` with no arguments lists every recipe.
 
-### Benchmark commands
-
-Two modes:
-
-| Command | Samples | When to use |
+| Command | What it runs | When |
 |---|---|---|
-| `just bench` | all (100+) | compare model combos — only when changing a model, decoding params or the prompt |
-| `just bench-smoke` | 10 | quick sanity check after each change (~2 min) |
+| `just check` | fmt, clippy, all app tests (unit + architecture + integration), release build | every change |
+| `just e2e` | E2E smoke + WER accuracy on real models and the corpus (~20 min) | changes to transcription, refinement, chunking, pipeline |
+| `just release-check` | `cargo clean` + `just check` + `just e2e` (~30 min) | before every release |
 
-Both download models and corpus automatically on first run.
+Each step also has its own recipe: `fmt`, `lint`, `test`, `build`, `e2e-smoke`, `e2e-bench`.
+
+**Models and corpus** are found automatically: the largest `ggml-*.bin` and `*.gguf` in `~/.voicepuncher/` or `~/.voicepuncher/models/`, and the corpus in `e2e-test/corpus/`. Override with `VOICEPUNCHER_WHISPER_MODEL`, `VOICEPUNCHER_LLM_MODEL`, `VOICEPUNCHER_BENCH_CORPUS` (env or `.env`). If they are missing, E2E recipes stop with an error instead of skipping. First-time setup: `just models`, `just corpus`.
+
+`release-check` runs `cargo clean`, so `target/release/voicepuncher` is gone until the build finishes.
+
+### Release checklist
+
+1. `just release-check` passes.
+2. Manual run — `cargo run --release -p voicepuncher`, then check:
+   - [ ] Short phrase: press, speak, release → text is pasted.
+   - [ ] Long dictation (> 30 s, crosses a chunk boundary) → no repeated or missing words at the seam.
+   - [ ] Mixed Russian + English ("задеплой в Docker") → each language kept as spoken, terms in Latin script.
+   - [ ] Same with `--no-llm` → raw Whisper text is pasted.
+   - [ ] Overlay shows while recording and while processing, also on a second display if present.
+   - [ ] A tap shorter than the minimum press time is ignored.
+
+### Model comparison (not a release gate)
+
+Run only when changing a model, decoding params or the prompt. Missing models and corpus are downloaded automatically.
+
+| Command | Samples | Time |
+|---|---|---|
+| `just bench` | full corpus | long |
+| `just bench-smoke` | 10 | ~2 min |
 
 Example output:
 
@@ -121,39 +142,4 @@ Example output:
 +--------------------+---------------+--------+--------+----------+
 ```
 
-To add a new model to the matrix, add an entry to `WHISPER_MODELS` or `LLM_MODELS` in `e2e-test/scripts/bench.py`.
-
-Models are stored in `~/.voicepuncher/models/` — shared with the main app, no re-download needed.
-
-### Other recipes
-
-| Recipe | Description |
-|---|---|
-| `just check` | fmt, clippy, all app tests, release build (keeps `target/`) |
-| `just release-check` | Pre-release gate: `cargo clean` + `just check` + `just e2e` |
-| `just build` | Build the release binary |
-| `just corpus` | Download benchmark corpus only (FLEURS ru/en + LibriSpeech) |
-| `just e2e-smoke` | Smoke test — models load, pipeline runs |
-| `just e2e-bench` | Rust WER test against corpus (single model combo via env) |
-| `just e2e` | Smoke + Rust benchmark |
-| `just bench` | Full benchmark — all model combos on full corpus |
-| `just bench-smoke` | Quick benchmark — 10 samples, ~2 min |
-
-## Release checklist
-
-1. **Automated gate.** Export model paths (or put them in `.env`, which `just` loads), then run:
-   ```bash
-   export VOICEPUNCHER_WHISPER_MODEL=~/.voicepuncher/ggml-large-v3-turbo.bin
-   export VOICEPUNCHER_LLM_MODEL=~/.voicepuncher/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf
-   just release-check
-   ```
-   It runs `cargo clean`, so `target/release/voicepuncher` is gone until the build finishes. E2E accuracy fails if mean WER exceeds 30 %.
-2. **Manual run** — `cargo run --release -p voicepuncher`, then check:
-   - [ ] Short phrase: press, speak, release → text is pasted.
-   - [ ] Long dictation (> 30 s, crosses a chunk boundary) → no repeated or missing words at the seam.
-   - [ ] Mixed Russian + English ("задеплой в Docker") → each language kept as spoken, terms in Latin script.
-   - [ ] Same with `--no-llm` → raw Whisper text is pasted.
-   - [ ] Overlay shows while recording and while processing, also on a second display if present.
-   - [ ] A tap shorter than the minimum press time is ignored.
-3. **Model benchmark** (`just bench`) — skip unless a model, decoding params or the prompt changed.
-
+To add a model to the matrix, add an entry to `WHISPER_MODELS` or `LLM_MODELS` in `e2e-test/scripts/bench.py`.
