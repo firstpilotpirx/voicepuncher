@@ -147,6 +147,14 @@ impl TextRefiner for LlamaCppTextRefiner {
             );
         }
 
+        if output.len() * 2 < raw.as_str().len() {
+            return Err(anyhow!(
+                "LLM output appears truncated ({} chars output vs {} chars input) — discarding",
+                output.len(),
+                raw.as_str().len()
+            ));
+        }
+
         CleanedText::new(output).map_err(|e| anyhow!(e))
     }
 }

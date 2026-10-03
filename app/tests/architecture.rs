@@ -109,7 +109,25 @@ fn leaf_adapter_dirs(root: &str) -> Vec<std::path::PathBuf> {
                 .strip_prefix(root)
                 .map(|p| p.components().count())
                 .unwrap_or(0);
-            has_mod_rs && depth == 2
+            if !has_mod_rs {
+                return false;
+            }
+            if depth == 2 {
+                return true;
+            }
+            if depth == 1 {
+                let has_deeper = WalkDir::new(path)
+                    .max_depth(1)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                    .any(|e| {
+                        e.file_type().is_dir()
+                            && e.path() != path
+                            && e.path().join("mod.rs").exists()
+                    });
+                return !has_deeper;
+            }
+            false
         })
         .map(|e| e.path().to_path_buf())
         .collect()
@@ -429,13 +447,24 @@ fn r9_every_primary_adapter_has_it() {
                 .and_then(|s| s.to_str())
                 .unwrap_or_default()
                 .to_owned();
-            let feature = dir
-                .parent()
-                .and_then(|p| p.file_name())
-                .and_then(|s| s.to_str())
-                .unwrap_or_default()
-                .to_owned();
-            let stem = format!("{feature}_{tech}");
+            let depth = dir
+                .strip_prefix("src/adapters/primary")
+                .map(|p| p.components().count())
+                .unwrap_or(0);
+            let feature = if depth == 2 {
+                dir.parent()
+                    .and_then(|p| p.file_name())
+                    .and_then(|s| s.to_str())
+                    .unwrap_or_default()
+                    .to_owned()
+            } else {
+                String::new()
+            };
+            let stem = if feature.is_empty() {
+                tech.clone()
+            } else {
+                format!("{feature}_{tech}")
+            };
             (dir, stem)
         })
     {

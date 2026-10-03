@@ -1,3 +1,5 @@
+use log;
+
 #[derive(Debug, Clone, Copy)]
 pub struct ChunkingCfg {
     pub chunk_threshold_secs: u32,
@@ -17,20 +19,39 @@ impl Default for ChunkingCfg {
     }
 }
 
-pub fn merge_chunk_texts(texts: Vec<String>, overlap_word_fraction: f64) -> String {
-    let mut all_words: Vec<&str> = Vec::new();
-    for (chunk_index, text) in texts.iter().enumerate() {
-        let words: Vec<&str> = text.split_whitespace().collect();
-        let words_to_keep = if chunk_index == 0 {
-            &words[..]
-        } else {
-            let drop_count = (words.len() as f64 * overlap_word_fraction).ceil() as usize;
-            let drop_count = drop_count.min(words.len());
-            &words[drop_count..]
-        };
-        all_words.extend_from_slice(words_to_keep);
+const OVERLAP_SEARCH_WINDOW: usize = 20;
+
+fn find_overlap_len(accumulated: &[&str], new_words: &[&str]) -> usize {
+    let tail_len = accumulated.len().min(OVERLAP_SEARCH_WINDOW);
+    let tail = &accumulated[accumulated.len() - tail_len..];
+    let max_possible = tail.len().min(new_words.len());
+    for len in (1..=max_possible).rev() {
+        if tail[tail.len() - len..] == new_words[..len] {
+            return len;
+        }
     }
-    all_words.join(" ")
+    0
+}
+
+pub fn merge_chunk_texts(texts: Vec<String>, _overlap_word_fraction: f64) -> String {
+    if texts.is_empty() {
+        return String::new();
+    }
+    let chunk_words: Vec<Vec<&str>> = texts
+        .iter()
+        .map(|t| t.split_whitespace().collect())
+        .collect();
+    let mut result: Vec<&str> = chunk_words[0].clone();
+    for new_words in chunk_words.iter().skip(1) {
+        let overlap = find_overlap_len(&result, new_words);
+        if overlap > 0 {
+            log::debug!("chunk merge: dropping {overlap} overlapping word(s)");
+        }
+        let drop = overlap.min(new_words.len());
+        let words_to_add = &new_words[drop..];
+        result.extend_from_slice(words_to_add);
+    }
+    result.join(" ")
 }
 
 #[cfg(test)]
@@ -39,47 +60,35 @@ mod tests {
 
     #[test]
     fn should_return_single_chunk_unchanged() {
-        // Given
         let texts = vec!["hello world foo".to_string()];
-        // When
         let merged = merge_chunk_texts(texts, 0.5);
-        // Then
         assert_eq!(merged, "hello world foo");
     }
 
     #[test]
-    fn should_drop_overlap_words_from_subsequent_chunks() {
-        // Given — overlap_word_fraction 0.5, chunk2 has 4 words → drop ceil(4*0.5)=2
+    fn should_drop_only_actual_overlap_words() {
         let texts = vec![
             "alpha beta gamma".to_string(),
             "gamma delta epsilon zeta".to_string(),
         ];
-        // When
         let merged = merge_chunk_texts(texts, 0.5);
-        // Then — chunk1 kept whole, 2 words dropped from chunk2
-        assert_eq!(merged, "alpha beta gamma epsilon zeta");
+        assert_eq!(merged, "alpha beta gamma delta epsilon zeta");
     }
 
     #[test]
     fn should_produce_empty_string_from_all_empty_chunks() {
-        // Given
         let texts = vec![String::new(), String::new(), String::new()];
-        // When
         let merged = merge_chunk_texts(texts, 0.3);
-        // Then
         assert_eq!(merged, "");
     }
 
     #[test]
     fn should_keep_all_words_from_first_chunk() {
-        // Given
         let texts = vec![
             "one two three four five".to_string(),
             "five six seven".to_string(),
         ];
-        // When
         let merged = merge_chunk_texts(texts, 0.33);
-        // Then — all 5 words from first chunk present
         let first_five: Vec<&str> = merged.split_whitespace().take(5).collect();
         assert_eq!(first_five, vec!["one", "two", "three", "four", "five"]);
     }
@@ -88,26 +97,14 @@ mod tests {
         s.split_whitespace().filter(|w| *w == word).count()
     }
 
-    // The four tests below characterize the chunk-stitching duplication artifact
-    // reported in transcripts (spurious 2–3 word repeats). They use the realistic
-    // default config: 2 s overlap inside a 30 s chunk → overlap_fraction ≈ 0.067.
-    // Each test fails on the current naïve positional-drop implementation; they
-    // serve as the spec for a content-aware merge.
-
     #[test]
-    fn should_not_duplicate_overlap_word_when_actual_overlap_exceeds_fraction() {
-        // Given — Whisper transcribed the 2 s boundary twice; chunk2 starts with
-        //   2 words that already appear at the tail of chunk1. The positional
-        //   drop with fraction 0.067 removes only ceil(6 * 0.067) = 1 word from
-        //   chunk2, so "fox" survives a second time.
+    fn should_drop_actual_overlap_even_if_exceeds_fraction() {
         let texts = vec![
             "the quick brown fox".to_string(),
             "brown fox jumps over lazy dog".to_string(),
         ];
         let overlap_fraction = 2.0 / 30.0;
-        // When
         let merged = merge_chunk_texts(texts, overlap_fraction);
-        // Then
         assert_eq!(
             word_count(&merged, "brown"),
             1,
@@ -121,18 +118,13 @@ mod tests {
     }
 
     #[test]
-    fn should_not_duplicate_three_word_phrase_at_chunk_boundary() {
-        // Given — chunks share a 3-word overlap phrase ("it is great").
-        //   With fraction 0.067 over chunk2's 7 words, only 1 word is dropped,
-        //   leaving "is great" duplicated.
+    fn should_drop_multi_word_phrase_overlap() {
         let texts = vec![
             "I think it is great".to_string(),
             "it is great that we are here".to_string(),
         ];
         let overlap_fraction = 2.0 / 30.0;
-        // When
         let merged = merge_chunk_texts(texts, overlap_fraction);
-        // Then
         assert_eq!(
             word_count(&merged, "is"),
             1,
@@ -146,18 +138,13 @@ mod tests {
     }
 
     #[test]
-    fn should_not_remove_real_words_when_actual_overlap_smaller_than_fraction() {
-        // Given — the 2 s overlap window contained silence (no spoken words),
-        //   so chunk2 starts with brand-new content. The positional drop still
-        //   removes the legitimate first word.
+    fn should_keep_all_words_when_no_actual_overlap() {
         let texts = vec![
             "first sentence ends with a long pause".to_string(),
             "second sentence starts after the pause continues here for more".to_string(),
         ];
         let overlap_fraction = 2.0 / 30.0;
-        // When
         let merged = merge_chunk_texts(texts, overlap_fraction);
-        // Then — chunk2's opening must survive intact
         assert!(
             merged.contains("second sentence"),
             "first word of chunk2 wrongly dropped: {merged:?}"
@@ -165,19 +152,14 @@ mod tests {
     }
 
     #[test]
-    fn should_not_duplicate_overlap_across_three_chunks() {
-        // Given — three chunks where each consecutive pair shares a 3-word
-        //   overlap phrase. The positional drop fails to remove enough words
-        //   at both boundaries.
+    fn should_drop_overlap_across_three_chunks() {
         let texts = vec![
             "good morning everyone today we will discuss".to_string(),
             "we will discuss the architecture of our system".to_string(),
             "of our system and how it scales".to_string(),
         ];
         let overlap_fraction = 2.0 / 30.0;
-        // When
         let merged = merge_chunk_texts(texts, overlap_fraction);
-        // Then — overlap words must not duplicate across the seams
         assert_eq!(
             word_count(&merged, "will"),
             1,
@@ -198,5 +180,34 @@ mod tests {
             1,
             "word 'system' duplicated across seam 2: {merged:?}"
         );
+    }
+
+    #[test]
+    fn should_handle_completely_disjoint_chunks() {
+        let texts = vec!["hello world".to_string(), "foo bar baz".to_string()];
+        let merged = merge_chunk_texts(texts, 0.1);
+        assert_eq!(merged, "hello world foo bar baz");
+    }
+
+    #[test]
+    fn should_handle_identical_chunks() {
+        let texts = vec![
+            "alpha beta gamma".to_string(),
+            "alpha beta gamma".to_string(),
+        ];
+        let merged = merge_chunk_texts(texts, 0.02);
+        assert_eq!(merged, "alpha beta gamma");
+    }
+
+    #[test]
+    fn should_handle_inner_empty_chunks() {
+        let texts = vec![
+            "first chunk text".to_string(),
+            String::new(),
+            "third chunk here".to_string(),
+        ];
+        let merged = merge_chunk_texts(texts, 0.1);
+        assert!(merged.starts_with("first chunk text"));
+        assert!(merged.ends_with("third chunk here"));
     }
 }

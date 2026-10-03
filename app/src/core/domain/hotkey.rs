@@ -10,6 +10,7 @@ pub enum HotKey {
     CapsLock,
     Space,
     CmdE,
+    LeftOptionE,
     F13,
     F14,
     F15,
@@ -32,6 +33,7 @@ impl std::fmt::Display for HotKey {
             HotKey::CapsLock => "CapsLock",
             HotKey::Space => "Space",
             HotKey::CmdE => "CmdE",
+            HotKey::LeftOptionE => "LeftOptionE",
             HotKey::F13 => "F13",
             HotKey::F14 => "F14",
             HotKey::F15 => "F15",
@@ -59,6 +61,7 @@ impl std::str::FromStr for HotKey {
             "CapsLock" => Ok(HotKey::CapsLock),
             "Space" => Ok(HotKey::Space),
             "CmdE" => Ok(HotKey::CmdE),
+            "LeftOptionE" => Ok(HotKey::LeftOptionE),
             "F13" => Ok(HotKey::F13),
             "F14" => Ok(HotKey::F14),
             "F15" => Ok(HotKey::F15),
@@ -78,6 +81,14 @@ mod tests {
     #[derive(serde::Deserialize)]
     struct Wrapper {
         key: HotKey,
+    }
+
+    #[test]
+    fn should_parse_left_option_e_from_config_and_cli() {
+        let wrapper: Wrapper = toml::from_str(r#"key = "LeftOptionE""#).unwrap();
+        assert_eq!(wrapper.key, HotKey::LeftOptionE);
+        assert_eq!("LeftOptionE".parse::<HotKey>().unwrap(), wrapper.key);
+        assert_eq!(wrapper.key.to_string(), "LeftOptionE");
     }
 
     #[test]

@@ -42,7 +42,7 @@ All domain terms are defined in `docs/ubiquitous-language.md`. Read it before na
 ## Architecture rules
 
 - Dependency direction: `adapters → core/application → core/domain`. Reverse direction is forbidden.
-- Ports (traits) live in `app/src/core/application/ports/`.
+- Ports (traits) live flat in `app/src/core/application/`.
 - No framework imports inside `app/src/core/`.
 - Adapter placement: `app/src/adapters/primary/<tech>/` and `app/src/adapters/secondary/<tech>/`.
 

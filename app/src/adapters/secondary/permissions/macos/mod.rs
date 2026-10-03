@@ -3,9 +3,30 @@ use cpal::traits::{DeviceTrait, HostTrait};
 
 use crate::core::application::permission_probe::PermissionProbe;
 
+type CGEventTapProxy = *mut std::ffi::c_void;
+type CGEventRef = *mut std::ffi::c_void;
+type CFMachPortRef = *mut std::ffi::c_void;
+
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {
     fn AXIsProcessTrustedWithOptions(options: *const std::ffi::c_void) -> bool;
+    fn CGEventTapCreate(
+        tap: std::ffi::c_uint,
+        place: std::ffi::c_uint,
+        options: std::ffi::c_uint,
+        eventsOfInterest: u64,
+        callback: Option<
+            unsafe extern "C" fn(
+                CGEventTapProxy,
+                std::ffi::c_uint,
+                CGEventRef,
+                *mut std::ffi::c_void,
+            ) -> CGEventRef,
+        >,
+        userInfo: *mut std::ffi::c_void,
+    ) -> CFMachPortRef;
+    fn CFMachPortInvalidate(port: CFMachPortRef);
+    fn CFRelease(cf: *const std::ffi::c_void);
 }
 
 pub struct MacOsPermissionProbe;
@@ -46,6 +67,44 @@ impl PermissionProbe for MacOsPermissionProbe {
         if !trusted {
             return Err(anyhow!("Accessibility permission not granted"));
         }
+        Ok(())
+    }
+
+    fn check_input_monitoring(&self) -> Result<()> {
+        const K_CG_HID_EVENT_TAP: std::ffi::c_uint = 0;
+        const K_CG_HEAD_INSERT_EVENT_TAP: std::ffi::c_uint = 0;
+        const K_CG_EVENT_TAP_OPTION_DEFAULT: std::ffi::c_uint = 0;
+        const K_CG_EVENT_KEY_DOWN: std::ffi::c_uint = 10;
+
+        unsafe extern "C" fn dummy_callback(
+            _proxy: CGEventTapProxy,
+            _event_type: std::ffi::c_uint,
+            _event: CGEventRef,
+            _user_info: *mut std::ffi::c_void,
+        ) -> CGEventRef {
+            _event
+        }
+
+        let tap = unsafe {
+            CGEventTapCreate(
+                K_CG_HID_EVENT_TAP,
+                K_CG_HEAD_INSERT_EVENT_TAP,
+                K_CG_EVENT_TAP_OPTION_DEFAULT,
+                1u64 << K_CG_EVENT_KEY_DOWN,
+                Some(dummy_callback),
+                std::ptr::null_mut(),
+            )
+        };
+
+        if tap.is_null() {
+            return Err(anyhow!("Input Monitoring permission not granted"));
+        }
+
+        unsafe {
+            CFMachPortInvalidate(tap);
+            CFRelease(tap as *const std::ffi::c_void);
+        }
+
         Ok(())
     }
 

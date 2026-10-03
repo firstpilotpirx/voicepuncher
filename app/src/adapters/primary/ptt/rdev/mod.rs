@@ -37,6 +37,11 @@ fn hotkey_to_rdev(hotkey: HotKey) -> RdevTarget {
         HotKey::Fn => RdevTarget::Single(Key::Function),
         HotKey::CapsLock => RdevTarget::Single(Key::CapsLock),
         HotKey::Space => RdevTarget::Single(Key::Space),
+        HotKey::LeftOptionE => RdevTarget::Chord {
+            modifier_a: Key::Alt,
+            modifier_b: Key::Alt,
+            key: Key::KeyE,
+        },
         HotKey::CmdE => RdevTarget::Chord {
             modifier_a: Key::MetaLeft,
             modifier_b: Key::MetaRight,
@@ -219,6 +224,18 @@ mod tests {
     }
 
     #[test]
+    fn should_map_left_option_e_to_left_alt_only() {
+        assert!(matches!(
+            hotkey_to_rdev(HotKey::LeftOptionE),
+            RdevTarget::Chord {
+                modifier_a: Key::Alt,
+                modifier_b: Key::Alt,
+                key: Key::KeyE,
+            }
+        ));
+    }
+
+    #[test]
     fn should_map_cmd_e_to_chord_meta_e() {
         let target = hotkey_to_rdev(HotKey::CmdE);
         assert!(matches!(
@@ -249,7 +266,7 @@ mod tests {
 
     #[test]
     fn should_map_all_single_hotkeys_to_distinct_rdev_keys() {
-        // Given — only single-key hotkeys (CmdE is a chord and intentionally excluded)
+        // Given — only single-key hotkeys (chords are intentionally excluded)
         let single_hotkeys = [
             HotKey::RightOption,
             HotKey::RightControl,

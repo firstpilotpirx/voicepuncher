@@ -118,9 +118,11 @@ const DEFAULT_SYSTEM_PROMPT: &str =
      NEVER use ellipsis (...). NEVER omit any word. \
      Output the COMPLETE text — every single word, no exceptions. \
      (2) Do NOT rewrite, rephrase, restructure, or improve style. Fix only broken words. \
-     (3) Preserve the original language — do not translate. \
+     (3) Preserve the original language exactly — do not translate between languages. \
+     If the input contains multiple languages or code-switching (e.g. Russian + English), \
+     preserve each language exactly as spoken. \
      (4) Fix technical terms to their correct script \
-     (e.g. Docker, API in English even inside Russian text). \
+     (e.g. Docker, API, Kubernetes in English even inside Russian text). \
      (5) If nothing needs fixing, copy the input verbatim — every word, every number. \
      Output only the corrected text, nothing else.";
 
@@ -166,7 +168,7 @@ impl SetupWizard {
 
         let lang: String = Input::with_theme(&theme)
             .with_prompt("Whisper language (ru / en / auto / …)")
-            .default("ru".to_string())
+            .default("auto".to_string())
             .interact_text()?;
 
         let hotkey_idx = Select::with_theme(&theme)

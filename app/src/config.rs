@@ -131,7 +131,7 @@ pub struct WhisperCfg {
 
 impl WhisperCfg {
     fn default_language() -> String {
-        "ru".into()
+        "auto".into()
     }
     fn default_beam_size() -> i32 {
         1
@@ -216,9 +216,11 @@ impl LlmCfg {
          NEVER use ellipsis (...). NEVER omit any word. \
          Output the COMPLETE text — every single word, no exceptions. \
          (2) Do NOT rewrite, rephrase, restructure, or improve style. Fix only broken words. \
-         (3) Preserve the original language — do not translate. \
+         (3) Preserve the original language exactly — do not translate between languages. \
+         If the input contains multiple languages or code-switching (e.g. Russian + English), \
+         preserve each language exactly as spoken. \
          (4) Fix technical terms to their correct script \
-         (e.g. Docker, API in English even inside Russian text). \
+         (e.g. Docker, API, Kubernetes in English even inside Russian text). \
          (5) If nothing needs fixing, copy the input verbatim — every word, every number. \
          Output only the corrected text, nothing else."
             .into()
@@ -392,8 +394,30 @@ mod tests {
     }
 
     #[test]
-    fn should_default_language_to_ru() {
-        assert_eq!(WhisperCfg::default().language, "ru");
+    fn should_default_language_to_auto() {
+        assert_eq!(WhisperCfg::default().language, "auto");
+    }
+
+    #[test]
+    fn should_parse_language_from_toml() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut f, b"[whisper]\nlanguage = \"en\"\n").unwrap();
+        // When
+        let cfg = load(f.path()).unwrap();
+        // Then
+        assert_eq!(cfg.whisper.language, "en");
+    }
+
+    #[test]
+    fn should_default_language_when_absent_from_toml() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut f, b"[whisper]\nmodel_path = \"/tmp/m\"\n").unwrap();
+        // When
+        let cfg = load(f.path()).unwrap();
+        // Then
+        assert_eq!(cfg.whisper.language, "auto");
     }
 
     #[test]

@@ -5,7 +5,7 @@ use crate::core::application::chunking::{merge_chunk_texts, ChunkingCfg};
 use crate::core::application::{
     AudioRecorder, SoundPlayer, TextPaster, TextRefiner, Transcriber, VisualIndicator,
 };
-use crate::core::domain::{AudioBuffer16k, PttSignal, RawTranscript, RecordingMode};
+use crate::core::domain::{AudioBuffer16k, CleanedText, PttSignal, RawTranscript, RecordingMode};
 
 #[derive(Debug, Clone, Copy)]
 pub struct PipelineConfig {
@@ -248,10 +248,16 @@ impl Pipeline {
         let t_refine = std::time::Instant::now();
         let cleaned = match self.refiner.refine(&raw) {
             Err(e) => {
-                log::error!("refinement failed, dropping cycle: {e:#}");
-                self.state = PipelineState::Idle;
-                self.visual_indicator.hide();
-                return;
+                log::warn!("refinement failed, falling back to raw transcript: {e:#}");
+                match CleanedText::new(raw.as_str().to_owned()) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        log::error!("raw transcript fallback failed, dropping cycle: {e}");
+                        self.state = PipelineState::Idle;
+                        self.visual_indicator.hide();
+                        return;
+                    }
+                }
             }
             Ok(c) => c,
         };
@@ -286,10 +292,16 @@ impl Pipeline {
         let t_refine = std::time::Instant::now();
         let cleaned = match self.refiner.refine(&raw) {
             Err(e) => {
-                log::error!("refinement failed, dropping cycle: {e:#}");
-                self.state = PipelineState::Idle;
-                self.visual_indicator.hide();
-                return;
+                log::warn!("refinement failed, falling back to raw transcript: {e:#}");
+                match CleanedText::new(raw.as_str().to_owned()) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        log::error!("raw transcript fallback failed, dropping cycle: {e}");
+                        self.state = PipelineState::Idle;
+                        self.visual_indicator.hide();
+                        return;
+                    }
+                }
             }
             Ok(c) => c,
         };
@@ -560,7 +572,7 @@ mod tests {
     }
 
     #[test]
-    fn should_drop_cycle_and_not_paste_when_refinement_fails() {
+    fn should_paste_raw_transcript_when_refinement_fails() {
         // Given
         let recorder = make_recorder_with_start_stop(one_second_audio());
 
@@ -576,7 +588,14 @@ mod tests {
             .once()
             .returning(|_| Err(anyhow!("llm failure")));
 
-        let mut pipeline = make_pipeline(recorder, transcriber, refiner, MockTextPaster::new());
+        let mut paster = MockTextPaster::new();
+        paster
+            .expect_paste()
+            .withf(|text| text.as_str() == "hello")
+            .once()
+            .returning(|_| Ok(()));
+
+        let mut pipeline = make_pipeline(recorder, transcriber, refiner, paster);
         pipeline.step(PttSignal::Pressed).unwrap();
         // When — second Pressed stops in Toggle mode
         pipeline.step(PttSignal::Pressed).unwrap();

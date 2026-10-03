@@ -18,7 +18,7 @@
 
 ### HotKey
 - **Type:** Value Object (immutable enum)
-- **Definition:** The keyboard key the user holds for push-to-talk. Curated subset of macOS keys (modifiers + F-row + a few others).
+- **Definition:** The keyboard key or chord used to control recording. Curated subset of macOS keys, including CmdE and LeftOptionE (left Option + E).
 - **Code:** `app/src/core/domain/hotkey.rs`
 - **Synonyms to AVOID:** "shortcut" (implies a combo), "binding"
 
@@ -55,9 +55,9 @@
 - **Synonyms to AVOID:** "permission check", "bootstrap", "startup hook"
 
 ### PermissionProbe
-- **Type:** Driven Port (trait in `core/application/ports/`)
+- **Type:** Driven Port (trait in `core/application/`)
 - **Definition:** Abstracts macOS-specific permission probing (`AXIsProcessTrusted`, opening the default `cpal` input device, parent process discovery via `ps`) so `Preflight` stays platform-agnostic.
-- **Code:** `app/src/core/application/ports/permission_probe.rs`
+- **Code:** `app/src/core/application/permission_probe.rs`
 - **Synonyms to AVOID:** "PermissionChecker", "PermissionService"
 
 ### SoundPlayer

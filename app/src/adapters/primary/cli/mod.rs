@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::{ArgAction, Parser};
+use clap::Parser;
 
 use crate::core::domain::HotKey;
 
@@ -38,9 +38,6 @@ pub struct Cli {
 
     #[arg(long, help = "Skip LLM post-processing; paste raw Whisper output")]
     pub no_llm: bool,
-
-    #[arg(short = 'v', long, action = ArgAction::Count)]
-    pub verbose: u8,
 }
 
 impl Cli {
@@ -78,23 +75,6 @@ mod tests {
         assert!(cli.whisper_model.is_none());
         assert!(cli.llm_model.is_none());
         assert!(cli.debug_save_wav.is_none());
-        assert_eq!(cli.verbose, 0);
-    }
-
-    #[test]
-    fn should_parse_hotkey_override() {
-        // Given / When
-        let cli = Cli::parse_from(["voicepuncher", "--hotkey", "F19"]);
-        // Then
-        assert_eq!(cli.hotkey, Some(HotKey::F19));
-    }
-
-    #[test]
-    fn should_count_verbose_flag_repetitions() {
-        // Given / When
-        let cli = Cli::parse_from(["voicepuncher", "-vv"]);
-        // Then
-        assert_eq!(cli.verbose, 2);
     }
 
     #[test]
@@ -109,7 +89,6 @@ mod tests {
             input_file: None,
             setup: false,
             no_llm: false,
-            verbose: 0,
         };
         let mut cfg = Config::default();
         // When

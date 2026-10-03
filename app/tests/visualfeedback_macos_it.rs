@@ -105,3 +105,76 @@ fn level_propagation_to_eq_label() {
         "eq_label must contain ┃ (U+2503) for AudioLevel 0.5, got: {label_value:?}"
     );
 }
+
+#[test]
+fn show_recording_survives_manual_rebuild() {
+    use objc2::MainThreadMarker;
+
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    let indicator = MacosVisualIndicator::initialize(mtm, Arc::new(AtomicU32::new(0)));
+    indicator.show_recording();
+    pump_run_loop(0.2);
+    indicator.rebuild_window_set(mtm);
+    indicator.show_recording();
+    pump_run_loop(0.2);
+    assert!(
+        indicator.generation_count() >= 2,
+        "generation count should be at least 2 after show + rebuild + show"
+    );
+}
+
+#[test]
+fn show_recording_rebuilds_unconditionally() {
+    use objc2::MainThreadMarker;
+
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    let indicator = MacosVisualIndicator::initialize(mtm, Arc::new(AtomicU32::new(0)));
+
+    indicator.show_recording();
+    pump_run_loop(0.2);
+    let after_first = indicator.generation_count();
+
+    indicator.show_recording();
+    pump_run_loop(0.2);
+    let after_second = indicator.generation_count();
+
+    assert_eq!(
+        after_first, 1,
+        "first show_recording should bump generation to 1"
+    );
+    assert_eq!(
+        after_second, 2,
+        "second show_recording should bump generation to 2 (unconditional rebuild)"
+    );
+}
+
+#[test]
+fn show_processing_rebuilds_unconditionally() {
+    use objc2::MainThreadMarker;
+
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    let indicator = MacosVisualIndicator::initialize(mtm, Arc::new(AtomicU32::new(0)));
+
+    indicator.show_recording();
+    pump_run_loop(0.2);
+    let after_recording = indicator.generation_count();
+
+    indicator.show_processing();
+    pump_run_loop(0.2);
+    let after_processing = indicator.generation_count();
+
+    assert_eq!(
+        after_recording, 1,
+        "show_recording should bump generation to 1"
+    );
+    assert_eq!(
+        after_processing, 2,
+        "show_processing should bump generation to 2 (unconditional rebuild)"
+    );
+}

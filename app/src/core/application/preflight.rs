@@ -17,6 +17,12 @@ impl Preflight {
             anyhow!("permission denied for accessibility; grant Accessibility to {parent_name}")
         })?;
 
+        probe.check_input_monitoring().map_err(|_| {
+            anyhow!(
+                "permission denied for Input Monitoring; grant Input Monitoring to {parent_name}"
+            )
+        })?;
+
         Ok(())
     }
 }
@@ -35,6 +41,7 @@ mod tests {
             .returning(|| Ok("iTerm2".to_string()));
         mock.expect_check_microphone().returning(|| Ok(()));
         mock.expect_check_accessibility().returning(|| Ok(()));
+        mock.expect_check_input_monitoring().returning(|| Ok(()));
 
         // When
         let result = Preflight::run(&mock);
@@ -82,6 +89,29 @@ mod tests {
         assert!(
             msg.contains("accessibility"),
             "expected 'accessibility' in: {msg}"
+        );
+        assert!(msg.contains("iTerm2"), "expected 'iTerm2' in: {msg}");
+    }
+
+    #[test]
+    fn should_return_err_with_parent_name_when_input_monitoring_denied() {
+        // Given
+        let mut mock = MockPermissionProbe::new();
+        mock.expect_parent_process_name()
+            .returning(|| Ok("iTerm2".to_string()));
+        mock.expect_check_microphone().returning(|| Ok(()));
+        mock.expect_check_accessibility().returning(|| Ok(()));
+        mock.expect_check_input_monitoring()
+            .returning(|| Err(anyhow!("denied")));
+
+        // When
+        let result = Preflight::run(&mock);
+
+        // Then
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("Input Monitoring"),
+            "expected 'Input Monitoring' in: {msg}"
         );
         assert!(msg.contains("iTerm2"), "expected 'iTerm2' in: {msg}");
     }

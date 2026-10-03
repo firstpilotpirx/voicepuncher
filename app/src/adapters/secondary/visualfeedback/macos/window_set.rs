@@ -87,10 +87,7 @@ impl WindowSet {
             (window_height / 2.0 - font.capHeight() / 2.0 - (label_height - font.ascender()))
                 .floor();
         let label_frame = NSRect {
-            origin: NSPoint {
-                x: 6.0,
-                y: label_y,
-            },
+            origin: NSPoint { x: 6.0, y: label_y },
             size: NSSize {
                 width: 64.0,
                 height: label_height,

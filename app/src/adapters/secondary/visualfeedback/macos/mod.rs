@@ -122,14 +122,28 @@ impl MacosVisualIndicator {
                 let Some(mtm) = MainThreadMarker::new() else {
                     return;
                 };
-                rebuild_window_set_inner(
-                    mtm,
-                    &state,
-                    &windows,
-                    &pulse_generation,
-                    &last_topology,
-                    &level_register,
-                );
+
+                let generation = pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
+
+                do_rebuild(mtm, &windows, &last_topology);
+
+                let current_state = *state.lock().unwrap();
+                match current_state {
+                    OverlayState::Recording => {
+                        let ws_vec = windows.lock().unwrap().clone();
+                        apply_recording_state(
+                            ws_vec,
+                            generation,
+                            Arc::clone(&pulse_generation),
+                            Arc::clone(&level_register),
+                        );
+                    }
+                    OverlayState::Processing => {
+                        let ws_vec = windows.lock().unwrap().clone();
+                        apply_processing_state(ws_vec, generation, Arc::clone(&pulse_generation));
+                    }
+                    OverlayState::Hidden => {}
+                }
             });
         });
 
@@ -172,6 +186,49 @@ impl MacosVisualIndicator {
     }
 }
 
+#[allow(dead_code)]
+fn windows_are_usable(windows: &[Arc<WindowSet>]) -> bool {
+    if windows.is_empty() {
+        return false;
+    }
+    let ws = &windows[0];
+    ws.window.windowNumber() > 0 || ws.window.screen().is_some()
+}
+
+fn do_rebuild(
+    mtm: MainThreadMarker,
+    windows: &Arc<Mutex<Vec<Arc<WindowSet>>>>,
+    last_topology: &Arc<Mutex<ScreenTopology>>,
+) {
+    let new_topology = collect_topology(mtm);
+
+    let fallback_rect = objc2_foundation::NSRect {
+        origin: objc2_foundation::NSPoint { x: 0.0, y: 0.0 },
+        size: objc2_foundation::NSSize {
+            width: 1440.0,
+            height: 900.0,
+        },
+    };
+
+    let screens = NSScreen::screens(mtm);
+    let new_windows: Vec<Arc<WindowSet>> = if screens.is_empty() {
+        vec![WindowSet::build(mtm, fallback_rect)]
+    } else {
+        (0..screens.count())
+            .map(|i| WindowSet::build(mtm, screens.objectAtIndex(i).visibleFrame()))
+            .collect()
+    };
+
+    {
+        let mut guard = windows.lock().unwrap();
+        let old_windows = std::mem::replace(&mut *guard, new_windows);
+        drop(guard);
+        drop(old_windows);
+    }
+
+    *last_topology.lock().unwrap() = new_topology;
+}
+
 fn collect_topology(mtm: MainThreadMarker) -> ScreenTopology {
     let screens = NSScreen::screens(mtm);
     let frames: Vec<objc2_foundation::NSRect> = (0..screens.count())
@@ -199,31 +256,7 @@ fn rebuild_window_set_inner(
 
     let generation = pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
 
-    let fallback_rect = objc2_foundation::NSRect {
-        origin: objc2_foundation::NSPoint { x: 0.0, y: 0.0 },
-        size: objc2_foundation::NSSize {
-            width: 1440.0,
-            height: 900.0,
-        },
-    };
-
-    let screens = NSScreen::screens(mtm);
-    let new_windows: Vec<Arc<WindowSet>> = if screens.is_empty() {
-        vec![WindowSet::build(mtm, fallback_rect)]
-    } else {
-        (0..screens.count())
-            .map(|i| WindowSet::build(mtm, screens.objectAtIndex(i).visibleFrame()))
-            .collect()
-    };
-
-    {
-        let mut guard = windows.lock().unwrap();
-        let old_windows = std::mem::replace(&mut *guard, new_windows);
-        drop(guard);
-        drop(old_windows);
-    }
-
-    *last_topology.lock().unwrap() = new_topology;
+    do_rebuild(mtm, windows, last_topology);
 
     let current_state = *state.lock().unwrap();
     match current_state {
@@ -246,25 +279,37 @@ impl VisualIndicator for MacosVisualIndicator {
     fn show_recording(&self) {
         let generation = self.pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
         let pulse_gen = Arc::clone(&self.pulse_generation);
-        let windows = self.windows.lock().unwrap().clone();
+        let windows = Arc::clone(&self.windows);
+        let last_topology = Arc::clone(&self.last_topology);
         let level_register = Arc::clone(&self.level_register);
 
         *self.state.lock().unwrap() = OverlayState::Recording;
 
         dispatch_to_main(move || {
-            apply_recording_state(windows, generation, pulse_gen, level_register);
+            if let Some(mtm) = MainThreadMarker::new() {
+                do_rebuild(mtm, &windows, &last_topology);
+
+                let ws_vec = windows.lock().unwrap().clone();
+                apply_recording_state(ws_vec, generation, pulse_gen, level_register);
+            }
         });
     }
 
     fn show_processing(&self) {
         let generation = self.pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
         let pulse_gen = Arc::clone(&self.pulse_generation);
-        let windows = self.windows.lock().unwrap().clone();
+        let windows = Arc::clone(&self.windows);
+        let last_topology = Arc::clone(&self.last_topology);
 
         *self.state.lock().unwrap() = OverlayState::Processing;
 
         dispatch_to_main(move || {
-            apply_processing_state(windows, generation, pulse_gen);
+            if let Some(mtm) = MainThreadMarker::new() {
+                do_rebuild(mtm, &windows, &last_topology);
+
+                let ws_vec = windows.lock().unwrap().clone();
+                apply_processing_state(ws_vec, generation, pulse_gen);
+            }
         });
     }
 

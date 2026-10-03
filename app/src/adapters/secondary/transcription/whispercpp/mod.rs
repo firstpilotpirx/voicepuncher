@@ -72,7 +72,12 @@ impl Transcriber for WhisperCppTranscriber {
         };
 
         let mut params = FullParams::new(strategy);
-        params.set_language(Some(&self.cfg.language));
+        if self.cfg.language == "auto" {
+            params.set_language(None);
+            params.set_detect_language(true);
+        } else {
+            params.set_language(Some(&self.cfg.language));
+        }
         params.set_n_threads(self.threads);
         params.set_print_special(false);
         params.set_print_progress(false);
@@ -217,7 +222,12 @@ fn transcribe_chunk_with_state(
     };
 
     let mut params = FullParams::new(strategy);
-    params.set_language(Some(&cfg.language));
+    if cfg.language == "auto" {
+        params.set_language(None);
+        params.set_detect_language(true);
+    } else {
+        params.set_language(Some(&cfg.language));
+    }
     params.set_n_threads(threads);
     params.set_print_special(false);
     params.set_print_progress(false);
@@ -329,7 +339,6 @@ mod tests {
         assert!(!is_whisper_hallucination(""));
         assert!(!is_whisper_hallucination("   "));
     }
-
 
     #[test]
     fn should_detect_repeated_phrase_loop() {
@@ -487,12 +496,9 @@ mod tests {
 
     #[test]
     fn should_merge_chunk_texts_keeping_all_words_from_first_chunk() {
-        // Given
         let texts = vec!["hello world".to_string(), "world foo bar".to_string()];
-        // When
         let merged = merge_chunk_texts(texts, 0.5);
-        // Then
-        assert_eq!(merged, "hello world bar");
+        assert_eq!(merged, "hello world foo bar");
     }
 
     #[test]
