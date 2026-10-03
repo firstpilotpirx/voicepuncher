@@ -18,6 +18,19 @@ voicepuncher/
   justfile      ← Task runner (build, bench, corpus, e2e)
 ```
 
+## Workflow — OpenSpec
+
+Every feature, bug fix and behavior change goes through OpenSpec. Skip it only for changes without behavior change: typos, formatting, renames, docs, dependency bumps, tooling. When unsure, use OpenSpec.
+
+1. `/opsx:explore` — optional: think the idea through without creating files.
+2. `/opsx:propose "<idea>"` — creates `openspec/changes/<name>/` with proposal, specs, design, tasks. Step by step instead: `/opsx:new`, then `/opsx:continue` per artifact or `/opsx:ff` for all.
+3. Get the user's approval of the proposal before step 4.
+4. `/opsx:apply` — implement `tasks.md` on a `<type>/<name>` branch.
+5. `/opsx:verify` — check the code against the change specs, then run § How to verify a change.
+6. `/opsx:archive` — merge the change specs into `openspec/specs/` and archive the change, in the same PR as the code.
+
+CLI: `openspec list` (changes), `openspec list --specs`, `openspec view` (dashboard), `openspec validate`.
+
 ## How to verify a change
 
 Run these levels in order. A change is "verified" only when every level that applies has run and passed — say which levels ran and which did not.
