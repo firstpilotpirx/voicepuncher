@@ -105,7 +105,7 @@ Two modes:
 
 | Command | Samples | When to use |
 |---|---|---|
-| `just bench` | all (100+) | full accuracy measurement, before tagging a release |
+| `just bench` | all (100+) | compare model combos — only when changing a model, decoding params or the prompt |
 | `just bench-smoke` | 10 | quick sanity check after each change (~2 min) |
 
 Both download models and corpus automatically on first run.
@@ -129,6 +129,8 @@ Models are stored in `~/.voicepuncher/models/` — shared with the main app, no 
 
 | Recipe | Description |
 |---|---|
+| `just check` | fmt, clippy, all app tests, release build (keeps `target/`) |
+| `just release-check` | Pre-release gate: `cargo clean` + `just check` + `just e2e` |
 | `just build` | Build the release binary |
 | `just corpus` | Download benchmark corpus only (FLEURS ru/en + LibriSpeech) |
 | `just e2e-smoke` | Smoke test — models load, pipeline runs |
@@ -136,3 +138,22 @@ Models are stored in `~/.voicepuncher/models/` — shared with the main app, no 
 | `just e2e` | Smoke + Rust benchmark |
 | `just bench` | Full benchmark — all model combos on full corpus |
 | `just bench-smoke` | Quick benchmark — 10 samples, ~2 min |
+
+## Release checklist
+
+1. **Automated gate.** Export model paths (or put them in `.env`, which `just` loads), then run:
+   ```bash
+   export VOICEPUNCHER_WHISPER_MODEL=~/.voicepuncher/ggml-large-v3-turbo.bin
+   export VOICEPUNCHER_LLM_MODEL=~/.voicepuncher/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf
+   just release-check
+   ```
+   It runs `cargo clean`, so `target/release/voicepuncher` is gone until the build finishes. E2E accuracy fails if mean WER exceeds 30 %.
+2. **Manual run** — `cargo run --release -p voicepuncher`, then check:
+   - [ ] Short phrase: press, speak, release → text is pasted.
+   - [ ] Long dictation (> 30 s, crosses a chunk boundary) → no repeated or missing words at the seam.
+   - [ ] Mixed Russian + English ("задеплой в Docker") → each language kept as spoken, terms in Latin script.
+   - [ ] Same with `--no-llm` → raw Whisper text is pasted.
+   - [ ] Overlay shows while recording and while processing, also on a second display if present.
+   - [ ] A tap shorter than the minimum press time is ignored.
+3. **Model benchmark** (`just bench`) — skip unless a model, decoding params or the prompt changed.
+

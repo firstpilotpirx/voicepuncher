@@ -1,6 +1,7 @@
 set dotenv-load
 
-corpus_manifest := env_var_or_default("VOICEPUNCHER_BENCH_CORPUS", "e2e-test/corpus/manifest.jsonl")
+# Corpus directory containing manifest.jsonl — absolute, because cargo runs tests from e2e-test/
+corpus_dir := env_var_or_default("VOICEPUNCHER_BENCH_CORPUS", justfile_directory() / "e2e-test/corpus")
 
 # List all recipes
 default:
@@ -9,6 +10,35 @@ default:
 # Build the release binary
 build:
     cargo build --release
+
+# Code checks — fmt, clippy, all app tests, release build. Keeps target/ (no cargo clean)
+check:
+    cargo fmt --all -- --check
+    cargo clippy --workspace --all-targets -- -D warnings
+    cargo test -p voicepuncher --tests --no-fail-fast
+    cargo build --release
+
+# Pre-release gate — clean build, code checks, E2E smoke + WER accuracy; then README § Release checklist
+release-check: _require-models
+    cargo clean
+    just check
+    just e2e
+
+# Fail fast when model env vars are missing — otherwise E2E tests skip silently (GATED)
+_require-models:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for var in VOICEPUNCHER_WHISPER_MODEL VOICEPUNCHER_LLM_MODEL; do
+        path="${!var:-}"
+        if [[ -z "$path" ]]; then
+            echo "✗ $var is not set — export it (or put it in .env) with the path to the model file" >&2
+            exit 1
+        fi
+        if [[ ! -f "$path" ]]; then
+            echo "✗ $var points to a missing file: $path" >&2
+            exit 1
+        fi
+    done
 
 # Download benchmark corpus — idempotent, ~500 MB, one-time setup
 corpus max_samples="50":
@@ -23,7 +53,7 @@ e2e-smoke: build
 
 # WER accuracy benchmark — run pipeline on corpus, assert mean WER < 30 %
 e2e-bench: build
-    VOICEPUNCHER_BENCH_CORPUS="{{corpus_manifest}}" \
+    VOICEPUNCHER_BENCH_CORPUS="{{corpus_dir}}" \
         cargo test -p voicepuncher-e2e-test --test pipeline_accuracy --release -- --nocapture
 
 # Run all E2E tests (smoke + accuracy benchmark)
