@@ -87,8 +87,8 @@ All checks are `just` recipes (see `justfile`; no other scripts). A change is "v
 | When | Command | What it runs |
 |---|---|---|
 | After every edit | `just test` (~1 min) | unit + architecture + integration tests |
-| After every task, before every push | `just check` (~6 min) | fmt, clippy `-D warnings`, `test`, release build, E2E smoke (with the chunk seam sweep against the real service), WER accuracy on 10 samples |
-| Before merging a branch, before a release | `just full-check` (~35 min) | `cargo clean` + everything in `check`, plus the chunk seam matrix (`e2e-seams`), with WER accuracy on the whole corpus |
+| After every task, before every push | `just check` (~2 min) | fmt, clippy `-D warnings`, `test`, release build, E2E smoke, WER accuracy on 10 samples |
+| Before merging a branch, before a release | `just full-check` (~10 min) | `cargo clean` + everything in `check`, plus the chunk seams (`e2e-seams`: seam sweep and seam matrix), with WER accuracy on a fixed sample of 100 recordings |
 | Before merging a change to hotkey, recording, overlay, paste, permissions | manual run by the user | `README.md` § Release checklist |
 
 Build inputs are `app/`, `e2e-test/`, `Cargo.toml`, `Cargo.lock` and `justfile`. A branch that changes none of them (docs, `AGENTS.md`, `openspec/`, `.claude/`) needs `just test` only; never `just check` or `just full-check` for it. Do not merge a branch that changed a build input until `just full-check` has passed on its final commit; say in the PR which checks ran.

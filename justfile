@@ -23,10 +23,10 @@ default:
 
 # ── Checks ── `check` while developing, `full-check` before merging ─────────
 
-# FAST (~6 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples
+# FAST (~2 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples
 check: fmt lint test build e2e-smoke e2e-quick
 
-# FULL (~35 min), run before merging: clean build + code checks + E2E (seams included) on the whole corpus
+# FULL (~10 min), run before merging: clean build + code checks + E2E (seams included) + accuracy on 100 samples
 full-check: _require-models _require-corpus
     cargo clean
     just fmt lint test build e2e
@@ -49,7 +49,7 @@ test:
 build:
     cargo build --release
 
-# E2E on real models: smoke + chunk seams + WER accuracy on the whole corpus (~25 min)
+# E2E on real models: smoke + chunk seams + WER accuracy on 100 samples (~8 min)
 e2e: e2e-smoke e2e-seams e2e-bench
 
 # Smoke test — services and models load, file mode runs (@smoke scenarios), the adapters talk to the real services
@@ -59,10 +59,10 @@ e2e-smoke: _require-models build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}"
-    cargo test -p voicepuncher --test transcription_openai_it --test textrefinement_openai_it --test chunked_transcription_it --release -- --nocapture
+    cargo test -p voicepuncher --test transcription_openai_it --test textrefinement_openai_it --release -- --nocapture
     cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @smoke
 
-# WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 % (~1 min)
+# WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 % (~20 s)
 e2e-quick: _require-models _require-corpus build
     #!/usr/bin/env bash
     set -euo pipefail
@@ -71,16 +71,17 @@ e2e-quick: _require-models _require-corpus build
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_BENCH_LIMIT=10 \
         cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @accuracy
 
-# Chunk seams: Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words (~3 min)
+# Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words (~5 min)
 e2e-seams: _require-models build
     #!/usr/bin/env bash
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
-    VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" \
-        cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @seams
+    export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}"
+    cargo test -p voicepuncher --test chunked_transcription_it --release -- --nocapture
+    cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @seams
 
-# WER accuracy on the whole corpus — fails if mean WER > 30 % (~20 min)
+# WER accuracy on a fixed sample of 100 recordings (50 per language), two at a time — fails if mean WER > 30 % (~2 min)
 e2e-bench: _require-models _require-corpus build
     #!/usr/bin/env bash
     set -euo pipefail

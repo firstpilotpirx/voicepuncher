@@ -9,7 +9,7 @@ context: |
   Workflow: every change runs the stages of AGENTS.md § Workflow in order: explore -> propose -> user approval -> branch -> apply -> verify -> archive -> full-check -> PR -> manual run -> merge -> release. No code before the user approved the proposal.
   Development is test-first, Red -> Green -> Refactor (AGENTS.md § TDD). A bug gets a failing reproduction test, committed on its own, before any fix.
   Business tests are Gherkin: slice, component and E2E tests are .feature files run by cucumber-rs, one per capability, each written from a spec scenario: same meaning, wording may differ (AGENTS.md § Gherkin). Unit and adapter integration tests stay plain Rust.
-  Verification: `just test` (~1 min) after every edit, `just check` (~4 min) after every task group, `just full-check` (~30 min) before merging; the `spec-test-reviewer` subagent checks at verify that every test (.feature and plain Rust) matches the change's OpenSpec documents; manual run by the user for hotkey, recording, overlay, paste and permissions (AGENTS.md § How to verify a change).
+  Verification: `just test` (~1 min) after every edit, `just check` (~2 min) after every task group, `just full-check` (~10 min) before merging; the `spec-test-reviewer` subagent checks at verify that every test (.feature and plain Rust) matches the change's OpenSpec documents; manual run by the user for hotkey, recording, overlay, paste and permissions (AGENTS.md § How to verify a change).
   Versioning: SemVer in app/Cargo.toml; pre-1.0 a breaking change or new capability is MINOR, a bug fix is PATCH. `just release` tags vX.Y.Z and publishes the GitHub Release with the binary (AGENTS.md § Release).
   Write all artifacts in English.
 

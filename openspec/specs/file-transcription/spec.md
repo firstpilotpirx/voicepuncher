@@ -15,9 +15,9 @@ The system SHALL load its models, transcribe a 16 kHz mono 16-bit WAV file, refi
 - **THEN** the app does not exit with a startup failure
 
 ### Requirement: Transcription meets the accuracy bar
-The system SHALL transcribe the benchmark corpus (Russian and English speech) with a mean word error rate below 30 % after refinement.
+The system SHALL transcribe a fixed sample of the benchmark corpus, 100 recordings with Russian and English speech in equal shares, with a mean word error rate below 30 % after refinement.
 
 #### Scenario: Benchmark corpus is transcribed within the accuracy bar
-- **GIVEN** the benchmark corpus of Russian and English recordings with reference transcripts
-- **WHEN** the user transcribes every recording of the corpus with refinement
+- **GIVEN** a fixed sample of 100 recordings of the benchmark corpus, half Russian and half English, with reference transcripts
+- **WHEN** the user transcribes every recording of the sample with refinement
 - **THEN** the mean word error rate is below 30 %

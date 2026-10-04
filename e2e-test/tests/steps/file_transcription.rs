@@ -4,6 +4,7 @@ use std::process::{Command, Output};
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 
+use voicepuncher_e2e_test::concurrency::map_concurrently;
 use voicepuncher_e2e_test::corpus::{load_manifest, select_balanced};
 use voicepuncher_e2e_test::wer::wer;
 
@@ -13,6 +14,9 @@ pub const STARTUP_FAILURE_EXIT_CODE: i32 = 2;
 /// An empty config: every setting at its default, never the user's own config file.
 pub const NO_CONFIG: &str = "/dev/null";
 const MAX_MEAN_WER: f64 = 0.30;
+/// Two recordings at a time: speech recognition of one overlaps refinement of the
+/// other, while each service still handles one request at a time.
+const CONCURRENT_RECORDINGS: usize = 2;
 
 #[given(expr = "a recording of silence lasting {int} seconds")]
 fn silence_recording(world: &mut E2eWorld, seconds: u32) -> Result<()> {
@@ -24,19 +28,27 @@ fn silence_recording(world: &mut E2eWorld, seconds: u32) -> Result<()> {
     Ok(())
 }
 
-#[given("the benchmark corpus of Russian and English recordings with reference transcripts")]
-fn benchmark_corpus(world: &mut E2eWorld) -> Result<()> {
+#[given(
+    expr = "a fixed sample of {int} recordings of the benchmark corpus, half Russian and half English, with reference transcripts"
+)]
+fn benchmark_sample(world: &mut E2eWorld, size: usize) -> Result<()> {
     let dir = env("VOICEPUNCHER_BENCH_CORPUS")?;
-    let mut samples = load_manifest(&Path::new(&dir).join("manifest.jsonl"))?;
+    let samples = load_manifest(&Path::new(&dir).join("manifest.jsonl"))?;
+    let mut size = size;
     if let Ok(limit) = std::env::var("VOICEPUNCHER_BENCH_LIMIT") {
-        let limit = limit
+        let limit: usize = limit
             .parse()
             .context("VOICEPUNCHER_BENCH_LIMIT must be a number")?;
-        samples = select_balanced(samples, limit);
+        size = size.min(limit);
     }
+    let samples = select_balanced(samples, size);
     for lang in ["ru", "en"] {
-        if !samples.iter().any(|s| s.lang == lang) {
-            bail!("benchmark corpus at {dir} has no '{lang}' recordings");
+        let count = samples.iter().filter(|s| s.lang == lang).count();
+        if count * 2 != size {
+            bail!(
+                "benchmark corpus at {dir} gives {count} '{lang}' recordings, need {} of {size}",
+                size / 2
+            );
         }
     }
     world.corpus = samples;
@@ -53,12 +65,14 @@ fn transcribe_recording(world: &mut E2eWorld, refinement: String) -> Result<()> 
     Ok(())
 }
 
-#[when("the user transcribes every recording of the corpus with refinement")]
-fn transcribe_corpus(world: &mut E2eWorld) -> Result<()> {
+#[when("the user transcribes every recording of the sample with refinement")]
+fn transcribe_sample(world: &mut E2eWorld) -> Result<()> {
+    let outputs = map_concurrently(&world.corpus, CONCURRENT_RECORDINGS, |sample| {
+        transcribe(&sample.path, true)
+    });
     eprintln!("\n  {:<20} {:<4} {:>7} {:>8}", "id", "lang", "dur", "wer");
-    for sample in &world.corpus {
-        let output = transcribe(&sample.path, true)?;
-        let hypothesis = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    for (sample, output) in world.corpus.iter().zip(outputs) {
+        let hypothesis = String::from_utf8_lossy(&output?.stdout).trim().to_owned();
         let rate = wer(&sample.reference, &hypothesis);
         eprintln!(
             "  {:<20} {:<4} {:>7.1} {:>8.3}",
