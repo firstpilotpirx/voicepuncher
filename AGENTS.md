@@ -42,7 +42,7 @@ Every feature, bug fix and behavior change runs through all stages below, in ord
 - **Update the main checkout after every merge.** The user runs the app from the main checkout (`cargo watch`), not from a worktree, and a merge on GitHub does not change it. Right after `gh pr merge` run `git -C "$(git worktree list | head -1 | cut -d' ' -f1)" pull --ff-only origin main` when that checkout is on `main` and clean; otherwise tell the user it is behind. Say in the report that it is updated.
 - A change is not done until stage 11 (or 12, when the version moved) is done. Report which stages ran.
 
-Skills: `/create-change` files a change for later (stages 2–3 only, landed on `main`); `/proceed-change <name> [--stop <gates>]` runs stages 1–12 for one change with gates (`.claude/skills/`).
+Skills: `/create-change` files a change for later (stages 2–3 only, landed on `main`); `/proceed-change <name>` runs stages 1–12 for one change, stopping only at the gates picked at start (`.claude/skills/`).
 
 CLI: `openspec list` (changes), `openspec list --specs`, `openspec status --change <name>`, `openspec view` (dashboard), `openspec validate`.
 
