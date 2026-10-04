@@ -37,6 +37,7 @@ The user reviews the artifact and approves or edits it before the next stage.
 | Gate | Fires |
 |---|---|
 | `explore` | after stage 2: the user confirms the idea is clear |
+| `proposal` | after stage 4 |
 | `specs` | after stage 5 |
 | `design` | after stage 6 |
 
