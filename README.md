@@ -99,21 +99,21 @@ WAV must be 16 kHz, mono, 16-bit PCM.
 
 All checks run through [`just`](https://github.com/casey/just) (`brew install just`). `just` with no arguments lists every recipe.
 
-| Command | What it runs | When |
-|---|---|---|
-| `just check` | fmt, clippy, all app tests (unit + architecture + integration), release build | every change |
-| `just e2e` | E2E smoke + WER accuracy on real models and the corpus (~20 min) | changes to transcription, refinement, chunking, pipeline |
-| `just release-check` | `cargo clean` + `just check` + `just e2e` (~30 min) | before every release |
+| Command | What it runs | Time | When |
+|---|---|---|---|
+| `just test` | unit + architecture + integration tests | ~1 min | after every edit |
+| `just check` | fmt, clippy, `test`, release build, E2E smoke, WER accuracy on 10 samples | ~4 min | often while developing, before every commit you push |
+| `just full-check` | `cargo clean`, fmt, clippy, `test`, release build, E2E smoke, WER accuracy on the whole corpus | ~30 min | before merging a branch and before every release |
 
-Each step also has its own recipe: `fmt`, `lint`, `test`, `build`, `e2e-smoke`, `e2e-bench`.
+Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-quick` (10 samples), `e2e-bench` (whole corpus), `e2e` (smoke + whole corpus).
 
-**Models and corpus** are found automatically: the largest `ggml-*.bin` and `*.gguf` in `~/.voicepuncher/` or `~/.voicepuncher/models/`, and the corpus in `e2e-test/corpus/`. Override with `VOICEPUNCHER_WHISPER_MODEL`, `VOICEPUNCHER_LLM_MODEL`, `VOICEPUNCHER_BENCH_CORPUS` (env or `.env`). If they are missing, E2E recipes stop with an error instead of skipping. First-time setup: `just models`, `just corpus`.
+**Models and corpus** are found automatically: the largest `ggml-*.bin` and `*.gguf` in `~/.voicepuncher/` or `~/.voicepuncher/models/`, and the corpus in `e2e-test/corpus/`. Override with `VOICEPUNCHER_WHISPER_MODEL`, `VOICEPUNCHER_LLM_MODEL`, `VOICEPUNCHER_BENCH_CORPUS` (env or `.env`). If they are missing, `check`, `full-check` and the E2E recipes stop with an error instead of skipping. First-time setup: `just models`, `just corpus`.
 
-`release-check` runs `cargo clean`, so `target/release/voicepuncher` is gone until the build finishes.
+`full-check` runs `cargo clean`, so `target/release/voicepuncher` is gone until the build finishes.
 
 ### Release checklist
 
-1. `just release-check` passes.
+1. `just full-check` passes.
 2. Manual run — `cargo run --release -p voicepuncher`, then check:
    - [ ] Short phrase: press, speak, release → text is pasted.
    - [ ] Long dictation (> 30 s, crosses a chunk boundary) → no repeated or missing words at the seam.

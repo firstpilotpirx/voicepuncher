@@ -6,7 +6,7 @@ context: |
   Privacy: audio and text never leave the machine; no internet access at runtime.
   One Rust crate app/ with hexagonal architecture: adapters -> core/application -> core/domain. Ports are traits in app/src/core/application/. No framework imports in app/src/core/. Adapters live in app/src/adapters/{primary,secondary}/<feature>/<tech>/.
   Domain terms come from docs/ubiquitous-language.md; a change that introduces a term adds it there.
-  Verification commands: CLAUDE.md § How to verify a change (just check, just e2e, manual run by the user).
+  Verification: `just test` (~1 min) after every edit, `just check` (~4 min) after every task group, `just full-check` (~30 min) before merging; manual run by the user for hotkey, recording, overlay, paste and permissions (CLAUDE.md § How to verify a change).
   Write all artifacts in English.
 
 rules:
@@ -16,7 +16,16 @@ rules:
   specs:
     - Scenarios state business intent; never name a type, endpoint, JSON field, config key or env var in WHEN/THEN.
   tasks:
-    - End with verification tasks that name the just recipes to run and the manual checks the user performs.
+    - End each task group with `just check`; end the list with `just full-check` and the manual checks the user performs.
+
+operations:
+  apply:
+    guidance:
+      - Run `just test` after every edit and `just check` after every task group; fix failures before the next task.
+      - Run `just full-check` before reporting the change as done or opening the PR for merge.
+  archive:
+    guidance:
+      - Archive only after `just full-check` passed on the final commit.
 
 # Project context (optional)
 # Add only constraints that should guide OpenSpec artifacts and workflows.

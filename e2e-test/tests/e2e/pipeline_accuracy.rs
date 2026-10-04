@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use owo_colors::{OwoColorize, Stream};
 
-use voicepuncher_e2e_test::corpus::load_manifest;
+use voicepuncher_e2e_test::corpus::{load_manifest, select_balanced};
 use voicepuncher_e2e_test::wer::{cer, wer};
 
 #[test]
@@ -38,7 +38,13 @@ fn should_report_wer_per_sample() {
     };
 
     let manifest_path = corpus_dir.join("manifest.jsonl");
-    let samples = load_manifest(&manifest_path).expect("load manifest");
+    let mut samples = load_manifest(&manifest_path).expect("load manifest");
+    if let Ok(limit) = std::env::var("VOICEPUNCHER_BENCH_LIMIT") {
+        let limit: usize = limit
+            .parse()
+            .expect("VOICEPUNCHER_BENCH_LIMIT must be a number");
+        samples = select_balanced(samples, limit);
+    }
 
     if samples.is_empty() {
         eprintln!("WARNING: manifest is empty, skipping accuracy assertions");

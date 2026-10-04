@@ -17,10 +17,16 @@ export LIBRARY_PATH := env_var_or_default("LIBRARY_PATH", "/opt/homebrew/opt/ope
 default:
     @just --list --unsorted
 
-# ── Checks ── release-check runs all of them ──────────────────────────────────
+# ── Checks ── `check` while developing, `full-check` before merging ─────────
 
-# 1. Code checks: fmt, clippy, all app tests, release build (keeps target/)
-check: fmt lint test build
+# FAST (~4 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples
+check: fmt lint test build e2e-smoke e2e-quick
+
+# FULL (~30 min), run before merging: clean build + code checks + E2E on the whole corpus
+full-check: _require-models _require-corpus
+    cargo clean
+    just fmt lint test build e2e
+    @echo "✓ full-check passed — before a release also walk through README.md § Release checklist (manual run)"
 
 # Formatting check
 fmt:
@@ -30,31 +36,29 @@ fmt:
 lint:
     cargo clippy --workspace --all-targets -- -D warnings
 
-# Unit + architecture + integration tests of the app
+# Unit + architecture + integration tests of the app, unit tests of the E2E harness (~1 min)
 test:
     cargo test -p voicepuncher --tests --no-fail-fast
+    cargo test -p voicepuncher-e2e-test --lib
 
 # Build the release binary
 build:
     cargo build --release
 
-# 2. E2E on real models: smoke + WER accuracy (~20 min)
+# E2E on real models: smoke + WER accuracy on the whole corpus (~20 min)
 e2e: e2e-smoke e2e-bench
 
-# Smoke test — models load, file mode transcribes
+# Smoke test — models load, file mode runs
 e2e-smoke: _require-models build
     cargo test -p voicepuncher-e2e-test --test smoke --release -- --nocapture
 
-# WER accuracy on the corpus — fails if mean WER > 30 %
+# WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 % (~1 min)
+e2e-quick: _require-models _require-corpus build
+    VOICEPUNCHER_BENCH_LIMIT=10 cargo test -p voicepuncher-e2e-test --test pipeline_accuracy --release -- --nocapture
+
+# WER accuracy on the whole corpus — fails if mean WER > 30 % (~20 min)
 e2e-bench: _require-models _require-corpus build
     cargo test -p voicepuncher-e2e-test --test pipeline_accuracy --release -- --nocapture
-
-# 3. Pre-release gate: cargo clean + check + e2e (~30 min), then README § Release checklist
-release-check: _require-models _require-corpus
-    cargo clean
-    just check
-    just e2e
-    @echo "✓ release-check passed — now walk through README.md § Release checklist (manual run)"
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
