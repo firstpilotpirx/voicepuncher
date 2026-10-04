@@ -21,7 +21,7 @@ Thin wrapper over `opsx:explore`, `opsx:new` and `opsx:continue`. Done criteria:
 | # | Stage | How |
 |---|---|---|
 | 1 | `choose` | ask with `AskUserQuestion`: explore first (yes / no), and the artifacts: `proposal` only (default) / + `specs` / + `specs` + `design` / all (+ `tasks`) |
-| 2 | `explore` | `opsx:explore`, only when picked in stage 1; ends when the user says the idea is clear |
+| 2 | `explore` | `opsx:explore`, only when picked in stage 1 |
 | 3 | `branch` | `git fetch origin && git switch -c chore/propose-<name> origin/main` |
 | 4 | `proposal` | `opsx:new <name>`, then `opsx:continue <name>` |
 | 5 | `specs` | `opsx:continue <name>`, only when picked |
@@ -36,6 +36,7 @@ The user reviews the artifact and approves or edits it before the next stage.
 
 | Gate | Fires |
 |---|---|
+| `explore` | after stage 2: the user confirms the idea is clear |
 | `specs` | after stage 5 |
 | `design` | after stage 6 |
 
