@@ -2,8 +2,9 @@
 
 mod steps;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
+use std::time::Duration;
 
 use cucumber::World;
 
@@ -14,6 +15,24 @@ pub struct E2eWorld {
     pub exit_status: Option<ExitStatus>,
     pub corpus: Vec<voicepuncher_e2e_test::corpus::Sample>,
     pub word_error_rates: Vec<f64>,
+    pub config: Option<PathBuf>,
+    pub transcription_url: Option<String>,
+    pub stderr: String,
+    pub elapsed: Option<Duration>,
+}
+
+impl E2eWorld {
+    /// Temporary directory owned by the scenario, created on first use.
+    pub fn workdir(&mut self) -> anyhow::Result<&Path> {
+        if self.workdir.is_none() {
+            self.workdir = Some(tempfile::tempdir()?);
+        }
+        Ok(self
+            .workdir
+            .as_ref()
+            .expect("workdir was just created")
+            .path())
+    }
 }
 
 fn main() {

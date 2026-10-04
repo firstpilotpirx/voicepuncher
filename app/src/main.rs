@@ -13,8 +13,9 @@ use voicepuncher::adapters::secondary::textpasting::macos::MacOsTextPaster;
 use voicepuncher::adapters::secondary::textpasting::stdio::StdioTextPaster;
 use voicepuncher::adapters::secondary::textrefinement::llamacpp::LlamaCppTextRefiner;
 use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
-use voicepuncher::adapters::secondary::transcription::whispercpp::WhisperCppTranscriber;
+use voicepuncher::adapters::secondary::transcription::openai::OpenAiTranscriber;
 use voicepuncher::adapters::secondary::visualfeedback::macos::MacosVisualIndicator;
+use voicepuncher::config::{Config, TranscriptionCfg};
 use voicepuncher::core::application::hotkey_listener::HotkeyListener;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
 use voicepuncher::core::application::preflight::Preflight;
@@ -31,7 +32,6 @@ impl VisualIndicator for NoopVisualIndicator {
 }
 
 fn main() {
-    whisper_rs::install_logging_hooks();
     let cli = Cli::parse();
 
     let config_path = cli.config.clone().unwrap_or_else(|| {
@@ -45,12 +45,18 @@ fn main() {
         std::process::exit(2);
     });
 
-    let mut config = voicepuncher::config::load(&config_path)
-        .unwrap_or_else(|_| voicepuncher::config::Config::default());
+    let mut config = voicepuncher::config::load(&config_path).unwrap_or_else(|e| {
+        eprintln!("config error: {e:#}");
+        std::process::exit(2);
+    });
 
     let input_file = cli.input_file.clone();
     let no_llm = cli.no_llm;
     cli.overlay(&mut config);
+    voicepuncher::config::validate(&config).unwrap_or_else(|e| {
+        eprintln!("config error: {e:#}");
+        std::process::exit(2);
+    });
 
     env_logger::Builder::new()
         .filter_level(
@@ -60,17 +66,11 @@ fn main() {
                 .parse()
                 .unwrap_or(log::LevelFilter::Info),
         )
-        .filter_module("whisper_rs", log::LevelFilter::Warn)
         .filter_module("ggml", log::LevelFilter::Warn)
         .init();
 
     if let Some(ref input_path) = input_file {
-        let transcriber =
-            WhisperCppTranscriber::load(&config.whisper.model_path, config.whisper.clone())
-                .unwrap_or_else(|e| {
-                    log::error!("failed to load whisper model: {e:#}");
-                    std::process::exit(2);
-                });
+        let transcriber = connect_transcriber(&config);
         let refiner: Box<dyn voicepuncher::core::application::TextRefiner> = if no_llm {
             log::info!("LLM disabled (--no-llm), using passthrough");
             Box::new(PassthroughTextRefiner)
@@ -105,12 +105,7 @@ fn main() {
             PipelineConfig {
                 min_press_ms: config.hotkey.min_press_ms,
                 recording_mode: config.hotkey.recording_mode,
-                chunking: ChunkingCfg {
-                    chunk_threshold_secs: config.whisper.chunk_threshold_secs,
-                    chunk_overlap_secs: config.whisper.chunk_overlap_secs,
-                    vad_rms_threshold: config.whisper.vad_rms_threshold,
-                    vad_lookback_secs: config.whisper.vad_lookback_secs,
-                },
+                chunking: chunking_cfg(&config.transcription),
             },
         );
         pipeline.run_once(audio).unwrap_or_else(|e| {
@@ -126,12 +121,7 @@ fn main() {
         std::process::exit(2);
     });
 
-    let transcriber =
-        WhisperCppTranscriber::load(&config.whisper.model_path, config.whisper.clone())
-            .unwrap_or_else(|e| {
-                log::error!("failed to load whisper model: {e:#}");
-                std::process::exit(2);
-            });
+    let transcriber = connect_transcriber(&config);
 
     let refiner: Box<dyn voicepuncher::core::application::TextRefiner> = if no_llm {
         log::info!("LLM disabled (--no-llm), using passthrough");
@@ -194,12 +184,7 @@ fn main() {
         PipelineConfig {
             min_press_ms: config.hotkey.min_press_ms,
             recording_mode: config.hotkey.recording_mode,
-            chunking: ChunkingCfg {
-                chunk_threshold_secs: config.whisper.chunk_threshold_secs,
-                chunk_overlap_secs: config.whisper.chunk_overlap_secs,
-                vad_rms_threshold: config.whisper.vad_rms_threshold,
-                vad_lookback_secs: config.whisper.vad_lookback_secs,
-            },
+            chunking: chunking_cfg(&config.transcription),
         },
     );
 
@@ -217,4 +202,20 @@ fn main() {
     app.run();
 
     pipeline_handle.join().ok();
+}
+
+fn connect_transcriber(config: &Config) -> OpenAiTranscriber {
+    OpenAiTranscriber::connect(config.transcription.clone()).unwrap_or_else(|e| {
+        log::error!("{e:#}");
+        std::process::exit(2);
+    })
+}
+
+fn chunking_cfg(cfg: &TranscriptionCfg) -> ChunkingCfg {
+    ChunkingCfg {
+        chunk_threshold_secs: cfg.chunk_threshold_secs,
+        chunk_overlap_secs: cfg.chunk_overlap_secs,
+        vad_rms_threshold: cfg.vad_rms_threshold,
+        vad_lookback_secs: cfg.vad_lookback_secs,
+    }
 }

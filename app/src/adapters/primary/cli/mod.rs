@@ -8,7 +8,7 @@ use crate::core::domain::HotKey;
 #[command(
     name = "voicepuncher",
     version,
-    about = "Push-to-talk voice→text for macOS Apple Silicon. Fully offline."
+    about = "Push-to-talk voice→text for macOS Apple Silicon. Fully offline: talks only to local services."
 )]
 pub struct Cli {
     #[arg(long)]
@@ -17,8 +17,12 @@ pub struct Cli {
     #[arg(long, value_parser = clap::value_parser!(HotKey))]
     pub hotkey: Option<HotKey>,
 
-    #[arg(long)]
-    pub whisper_model: Option<PathBuf>,
+    #[arg(
+        long,
+        value_name = "URL",
+        help = "Speech recognition service address (overrides [transcription].base_url)"
+    )]
+    pub transcription_url: Option<String>,
 
     #[arg(long)]
     pub llm_model: Option<PathBuf>,
@@ -36,7 +40,7 @@ pub struct Cli {
     #[arg(long, help = "Re-run the setup wizard even if config already exists")]
     pub setup: bool,
 
-    #[arg(long, help = "Skip LLM post-processing; paste raw Whisper output")]
+    #[arg(long, help = "Skip LLM post-processing; paste the raw transcript")]
     pub no_llm: bool,
 }
 
@@ -45,8 +49,8 @@ impl Cli {
         if let Some(key) = self.hotkey {
             cfg.hotkey.key = key;
         }
-        if let Some(path) = self.whisper_model {
-            cfg.whisper.model_path = path;
+        if let Some(url) = self.transcription_url {
+            cfg.transcription.base_url = url;
         }
         if let Some(path) = self.llm_model {
             cfg.llm.model_path = path;
@@ -72,7 +76,7 @@ mod tests {
         // Then
         assert!(cli.config.is_none());
         assert!(cli.hotkey.is_none());
-        assert!(cli.whisper_model.is_none());
+        assert!(cli.transcription_url.is_none());
         assert!(cli.llm_model.is_none());
         assert!(cli.debug_save_wav.is_none());
     }
@@ -83,7 +87,7 @@ mod tests {
         let cli = Cli {
             config: None,
             hotkey: Some(HotKey::F18),
-            whisper_model: Some(PathBuf::from("/tmp/w.bin")),
+            transcription_url: Some("http://localhost:9000/v1".into()),
             llm_model: Some(PathBuf::from("/tmp/l.gguf")),
             debug_save_wav: Some(PathBuf::from("/tmp/debug.wav")),
             input_file: None,
@@ -95,7 +99,7 @@ mod tests {
         cli.overlay(&mut cfg);
         // Then
         assert_eq!(cfg.hotkey.key, HotKey::F18);
-        assert_eq!(cfg.whisper.model_path, PathBuf::from("/tmp/w.bin"));
+        assert_eq!(cfg.transcription.base_url, "http://localhost:9000/v1");
         assert_eq!(cfg.llm.model_path, PathBuf::from("/tmp/l.gguf"));
         assert!(cfg.audio.debug_save_wav);
     }

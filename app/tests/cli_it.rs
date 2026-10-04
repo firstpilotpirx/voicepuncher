@@ -10,8 +10,8 @@ fn should_parse_and_overlay_all_modifiable_flags_onto_config() {
         "voicepuncher",
         "--hotkey",
         "F19",
-        "--whisper-model",
-        "/tmp/whisper.bin",
+        "--transcription-url",
+        "http://localhost:9000/v1",
         "--llm-model",
         "/tmp/llm.gguf",
         "--debug-save-wav",
@@ -24,7 +24,7 @@ fn should_parse_and_overlay_all_modifiable_flags_onto_config() {
     cli.overlay(&mut cfg);
 
     assert_eq!(cfg.hotkey.key, HotKey::F19);
-    assert_eq!(cfg.whisper.model_path, PathBuf::from("/tmp/whisper.bin"));
+    assert_eq!(cfg.transcription.base_url, "http://localhost:9000/v1");
     assert_eq!(cfg.llm.model_path, PathBuf::from("/tmp/llm.gguf"));
     assert!(cfg.audio.debug_save_wav);
     assert!(no_llm);

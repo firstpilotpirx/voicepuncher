@@ -9,6 +9,12 @@ export VOICEPUNCHER_LLM_MODEL := env_var_or_default("VOICEPUNCHER_LLM_MODEL", `f
 # Corpus directory containing manifest.jsonl — absolute, because cargo runs tests from e2e-test/
 export VOICEPUNCHER_BENCH_CORPUS := env_var_or_default("VOICEPUNCHER_BENCH_CORPUS", justfile_directory() / "e2e-test/corpus")
 
+# Local speech recognition service (whisper-server) started by `start-services`; the app's default [transcription].base_url
+stt_port := env_var_or_default("VOICEPUNCHER_STT_PORT", "8081")
+stt_url := "http://127.0.0.1:" + stt_port + "/v1"
+services_run_dir := home_directory() / ".voicepuncher/run"
+services_log_dir := home_directory() / ".voicepuncher/logs"
+
 # Homebrew OpenSSL headers — llama-cpp-sys fails with 'openssl/err.h' not found without them
 export CPATH := env_var_or_default("CPATH", "/opt/homebrew/opt/openssl@3/include")
 export LIBRARY_PATH := env_var_or_default("LIBRARY_PATH", "/opt/homebrew/opt/openssl@3/lib")
@@ -48,21 +54,37 @@ build:
 # E2E on real models: smoke + WER accuracy on the whole corpus (~20 min)
 e2e: e2e-smoke e2e-bench
 
-# Smoke test — models load, file mode runs (@smoke scenarios)
+# Smoke test — services and models load, file mode runs (@smoke scenarios), the adapter talks to the real service
 e2e-smoke: _require-models build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    trap '{{just_executable()}} stop-services' EXIT
+    {{just_executable()}} start-services
+    export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}"
+    cargo test -p voicepuncher --test transcription_openai_it --release -- --nocapture
     cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @smoke
 
 # WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 % (~1 min)
 e2e-quick: _require-models _require-corpus build
-    VOICEPUNCHER_BENCH_LIMIT=10 cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @accuracy
+    #!/usr/bin/env bash
+    set -euo pipefail
+    trap '{{just_executable()}} stop-services' EXIT
+    {{just_executable()}} start-services
+    VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_BENCH_LIMIT=10 \
+        cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @accuracy
+
+# WER accuracy on the whole corpus — fails if mean WER > 30 % (~20 min)
+e2e-bench: _require-models _require-corpus build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    trap '{{just_executable()}} stop-services' EXIT
+    {{just_executable()}} start-services
+    VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" \
+        cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @accuracy
 
 # Manual: @real_keyboard scenarios drive the real hotkey + paste — needs Accessibility and Input Monitoring for the terminal, a GUI session, hands off the keyboard
 test-real-keyboard:
     VOICEPUNCHER_REAL_KEYBOARD_IT=1 cargo test -p voicepuncher --test cucumber_integration -- --tags @real_keyboard
-
-# WER accuracy on the whole corpus — fails if mean WER > 30 % (~20 min)
-e2e-bench: _require-models _require-corpus build
-    cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @accuracy
 
 # ── Release ── after the merge, on a clean checkout of origin/main ──────────
 
@@ -83,6 +105,88 @@ release: _require-release-head test build
     gh release create "$tag" "$dist/$name.tar.gz" "$dist/$name.tar.gz.sha256" \
         --title "voicepuncher $tag" --generate-notes --verify-tag
     echo "✓ released $tag"
+
+# ── Services ── local processes the app talks to over loopback ────────────────
+
+# Start the speech recognition service (whisper-server) unless one already answers on its port
+start-services:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    port="{{stt_port}}"
+    pid_file="{{services_run_dir}}/whisper-server.pid"
+    log_file="{{services_log_dir}}/whisper-server.log"
+    port_open() { nc -z 127.0.0.1 "$port" >/dev/null 2>&1; }
+    if ! command -v whisper-server >/dev/null 2>&1; then
+        if [[ -t 0 ]]; then
+            read -r -p "whisper-server not found. Install whisper-cpp with Homebrew? [y/N] " answer
+            if [[ ! "$answer" =~ ^[Yy]$ ]]; then
+                echo "✗ whisper-server not found — run 'brew install whisper-cpp'" >&2
+                exit 1
+            fi
+            brew install whisper-cpp
+        else
+            echo "✗ whisper-server not found — run 'brew install whisper-cpp'" >&2
+            exit 1
+        fi
+    fi
+    if port_open; then
+        echo "✓ speech recognition service already running at {{stt_url}}"
+        exit 0
+    fi
+    model="${VOICEPUNCHER_WHISPER_MODEL:-}"
+    if [[ -z "$model" || ! -f "$model" ]]; then
+        echo "✗ VOICEPUNCHER_WHISPER_MODEL: no model file (got '$model'). Run 'just models' or set it in .env" >&2
+        exit 1
+    fi
+    mkdir -p "{{services_run_dir}}" "{{services_log_dir}}"
+    # Same decoding as the former in-process engine: greedy, no temperature fallback,
+    # no cross-request text context, non-speech tokens suppressed
+    nohup whisper-server -m "$model" --host 127.0.0.1 --port "$port" \
+        --inference-path /v1/audio/transcriptions -l auto -t "$(sysctl -n hw.ncpu)" \
+        -bo 1 -nf -sns -mc 0 -nt >"$log_file" 2>&1 &
+    pid=$!
+    echo "$pid" >"$pid_file"
+    echo "… starting whisper-server (pid $pid, model $(basename "$model")), log: $log_file"
+    for _ in $(seq 1 240); do
+        if port_open; then
+            echo "✓ speech recognition service ready at {{stt_url}}"
+            exit 0
+        fi
+        if ! kill -0 "$pid" 2>/dev/null; then
+            echo "✗ whisper-server exited during startup — last log lines:" >&2
+            tail -n 20 "$log_file" >&2
+            rm -f "$pid_file"
+            exit 1
+        fi
+        sleep 0.25
+    done
+    echo "✗ whisper-server did not open port $port within 60 s — see $log_file" >&2
+    kill "$pid" 2>/dev/null || true
+    rm -f "$pid_file"
+    exit 1
+
+# Stop the services that start-services launched; services started by hand keep running
+stop-services:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pid_file="{{services_run_dir}}/whisper-server.pid"
+    if [[ ! -f "$pid_file" ]]; then
+        echo "· no speech recognition service started by start-services"
+        exit 0
+    fi
+    pid="$(cat "$pid_file")"
+    if ps -p "$pid" -o comm= 2>/dev/null | grep -q whisper-server; then
+        kill "$pid"
+        for _ in $(seq 1 40); do
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 0.25
+        done
+        kill -0 "$pid" 2>/dev/null && kill -9 "$pid"
+        echo "✓ stopped whisper-server (pid $pid)"
+    else
+        echo "· whisper-server (pid $pid) is no longer running"
+    fi
+    rm -f "$pid_file"
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 

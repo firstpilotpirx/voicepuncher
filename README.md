@@ -2,7 +2,7 @@
 
 ## Overview
 
-Push-to-talk voice-to-text CLI for macOS Apple Silicon. Hold a hotkey, speak, release — cleaned text is pasted at the cursor. Fully offline: whisper.cpp for transcription, Qwen2.5 for cleanup, both running locally via Metal.
+Push-to-talk voice-to-text CLI for macOS Apple Silicon. Hold a hotkey, speak, release — cleaned text is pasted at the cursor. Fully offline: a local whisper.cpp `whisper-server` for transcription, Qwen2.5 for cleanup, both running locally via Metal. Nothing leaves the machine — the app talks only to services on `127.0.0.1`.
 
 ## Hardware requirements
 
@@ -21,30 +21,52 @@ Three TCC permissions are required. Grant each to the terminal app you launch vo
 
 ## Install
 
-Prerequisites: Rust ≥ 1.88, CMake.
+Prerequisites: Rust ≥ 1.88, CMake, [`just`](https://github.com/casey/just), Homebrew `whisper-cpp` (`just start-services` offers to install it).
 
 ```bash
 git clone https://github.com/pirx/voicepuncher
-cd voicepuncher/app
+cd voicepuncher
 cargo build --release
 ```
 
 Binary: `target/release/voicepuncher`
 
+## Speech recognition service
+
+voicepuncher does not run Whisper itself. It sends each recording to a **speech recognition service** on this machine over the OpenAI Audio Transcriptions API and pastes what comes back. The supported service is whisper.cpp `whisper-server`.
+
+```bash
+just start-services   # starts whisper-server on 127.0.0.1:8081 with your Whisper model
+just stop-services    # stops it again
+```
+
+`start-services` checks that `whisper-server` is installed (offers `brew install whisper-cpp`), skips the start if something already answers on port 8081, uses the largest `ggml-*.bin` in `~/.voicepuncher/` or `~/.voicepuncher/models/` (override with `VOICEPUNCHER_WHISPER_MODEL`), and waits until the model is loaded. Log: `~/.voicepuncher/logs/whisper-server.log`. `stop-services` stops only a server that `start-services` launched.
+
+To run the service by hand instead:
+
+```bash
+whisper-server -m ~/.voicepuncher/models/ggml-large-v3-turbo.bin \
+  --host 127.0.0.1 --port 8081 --inference-path /v1/audio/transcriptions \
+  -l auto -bo 1 -nf -sns -mc 0 -nt
+```
+
+The app checks the service at startup and exits with code 2 if it is not reachable. Only addresses on this machine are accepted (`localhost`, `127.0.0.0/8`, `[::1]`).
+
 ## Models
 
-Download to `~/.voicepuncher/models/`:
+Download to `~/.voicepuncher/models/` (`just models` fetches a small default pair):
 
-| Model | File | Source |
-|---|---|---|
-| Whisper | `ggml-large-v3-turbo-q5_0.bin` | https://huggingface.co/ggerganov/whisper.cpp |
-| LLM | `Qwen2.5-3B-Instruct-Q4_K_M.gguf` | https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF |
+| Model | Used by | File | Source |
+|---|---|---|---|
+| Whisper | speech recognition service | `ggml-large-v3-turbo.bin` | https://huggingface.co/ggerganov/whisper.cpp |
+| LLM | voicepuncher | `Qwen2.5-3B-Instruct-Q4_K_M.gguf` | https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF |
 
 ## Quick start
 
 ```bash
 cp app/config.example.toml ~/.voicepuncher/config.toml
-# edit model paths in ~/.voicepuncher/config.toml
+# edit the LLM model path in ~/.voicepuncher/config.toml
+just start-services
 ./target/release/voicepuncher
 ```
 
@@ -62,9 +84,9 @@ Result pasted at cursor: `Hello world, I think the API is fine.`
 --config <PATH>           Config file path  [default: ~/.voicepuncher/config.toml]
 --setup                   Re-run the setup wizard even if config already exists
 --hotkey <KEY>            Override [hotkey].key
---whisper-model <PATH>    Override [whisper].model_path
+--transcription-url <URL> Override [transcription].base_url (speech recognition service, loopback only)
 --llm-model <PATH>        Override [llm].model_path
---no-llm                  Skip LLM post-processing; paste raw Whisper output
+--no-llm                  Skip LLM post-processing; paste the raw transcript
 --debug-save-wav          Save recorded WAV for debugging
 -v                        Verbose logging
 -vv                       Trace logging
@@ -76,7 +98,23 @@ Result pasted at cursor: `Hello world, I think the API is fine.`
 |---|---|
 | 0 | Clean shutdown (SIGTERM / SIGINT) |
 | 1 | Runtime crash (hotkey listener died) |
-| 2 | Startup misconfiguration (bad config, missing model, permission denied) |
+| 2 | Startup misconfiguration (bad or outdated config, speech recognition service not reachable, missing model, permission denied) |
+
+## Upgrading from the in-process Whisper engine
+
+The `[whisper]` config section and `--whisper-model` are gone. A config that still has `[whisper]` makes the app exit with a message naming each key's replacement. Rename the section and move the decoder settings to the service:
+
+```toml
+# before                                   # after
+[whisper]                                  [transcription]
+model_path = "~/.voicepuncher/ggml.bin"    base_url = "http://127.0.0.1:8081/v1"   # model: whisper-server -m
+language = "ru"                            language = "ru"
+initial_prompt = "Docker, API"             prompt = "Docker, API"
+threads = 4                                # whisper-server -t 4
+chunk_threshold_secs = 15                  chunk_threshold_secs = 15
+```
+
+`beam_size`, `patience`, `temperature_inc`, `entropy_thold`, `logprob_thold`, `no_speech_thold` and `flash_attn` are now `whisper-server` launch flags. New keys: `model` (sent as-is), `temperature`, `timeout_secs` (per request, default 60). Then run `just start-services`.
 
 ## Minimum press time
 
@@ -87,10 +125,10 @@ Recordings shorter than `min_press_ms` (default 200 ms) are silently dropped. Th
 Feed a pre-recorded WAV instead of using the hotkey. Output goes to stdout — useful for scripting and E2E tests.
 
 ```bash
+just start-services
 ./target/release/voicepuncher \
   --input-file recording.wav \
-  --whisper-model ~/.voicepuncher/models/ggml-large-v3-turbo-q5_0.bin \
-  --llm-model    ~/.voicepuncher/models/Qwen2.5-3B-Instruct-Q4_K_M.gguf
+  --llm-model ~/.voicepuncher/models/Qwen2.5-3B-Instruct-Q4_K_M.gguf
 ```
 
 WAV must be 16 kHz, mono, 16-bit PCM.
@@ -105,7 +143,7 @@ All checks run through [`just`](https://github.com/casey/just) (`brew install ju
 | `just check` | fmt, clippy, `test`, release build, E2E smoke, WER accuracy on 10 samples | ~4 min | often while developing, before every commit you push |
 | `just full-check` | `cargo clean`, fmt, clippy, `test`, release build, E2E smoke, WER accuracy on the whole corpus | ~30 min | before merging a branch and before every release |
 
-Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-quick` (10 samples), `e2e-bench` (whole corpus), `e2e` (smoke + whole corpus).
+Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-quick` (10 samples), `e2e-bench` (whole corpus), `e2e` (smoke + whole corpus). The E2E recipes run `start-services` before the tests and `stop-services` after them, also when a test fails; a service you started yourself is reused and left running.
 
 **Models and corpus** are found automatically: the largest `ggml-*.bin` and `*.gguf` in `~/.voicepuncher/` or `~/.voicepuncher/models/`, and the corpus in `e2e-test/corpus/`. Override with `VOICEPUNCHER_WHISPER_MODEL`, `VOICEPUNCHER_LLM_MODEL`, `VOICEPUNCHER_BENCH_CORPUS` (env or `.env`). If they are missing, `check`, `full-check` and the E2E recipes stop with an error instead of skipping. First-time setup: `just models`, `just corpus`.
 
@@ -118,7 +156,9 @@ Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-qui
    - [ ] Short phrase: press, speak, release → text is pasted.
    - [ ] Long dictation (> 30 s, crosses a chunk boundary) → no repeated or missing words at the seam.
    - [ ] Mixed Russian + English ("задеплой в Docker") → each language kept as spoken, terms in Latin script.
-   - [ ] Same with `--no-llm` → raw Whisper text is pasted.
+   - [ ] Same with `--no-llm` → the raw transcript is pasted.
+   - [ ] `just stop-services`, then start the app → it exits naming the service address and `just start-services`.
+   - [ ] Stop the service while the app runs and record → nothing is pasted, the failure is logged; after `just start-services` the next recording works.
    - [ ] Overlay shows while recording and while processing, also on a second display if present.
    - [ ] A tap shorter than the minimum press time is ignored.
    - [ ] `just test-real-keyboard` passes (hotkey still registered after a paste).
@@ -126,7 +166,7 @@ Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-qui
 
 ### Model comparison (not a release gate)
 
-Run only when changing a model, decoding params or the prompt. Missing models and corpus are downloaded automatically.
+Run only when changing a model, decoding params or the prompt. Missing models and corpus are downloaded automatically. For each Whisper model the script starts its own `whisper-server` on port 8091 with the `start-services` decoding flags.
 
 | Command | Samples | Time |
 |---|---|---|

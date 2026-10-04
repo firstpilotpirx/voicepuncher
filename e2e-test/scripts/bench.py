@@ -4,6 +4,8 @@ Automated E2E accuracy benchmark for voicepuncher.
 
 Downloads models and corpus automatically on first run.
 Runs all Whisper × LLM combinations and prints a Score/RTF comparison table.
+For each Whisper model it starts its own whisper-server (Homebrew whisper-cpp)
+on a separate port and stops it after that model's combinations.
 
 Metrics:
   Score = 1 - (WER + CER) / 2   quality, 0..1, higher is better
@@ -15,17 +17,28 @@ Usage:
     python e2e-test/scripts/bench.py --models-dir /custom/path
 """
 import argparse
+import contextlib
 import json
 import math
+import os
 import re
+import shutil
+import socket
 import subprocess
 import sys
 import time
 import urllib.request
 from pathlib import Path
-from typing import NamedTuple, Optional
+from typing import Iterator, NamedTuple, Optional
 
 ROOT = Path(__file__).resolve().parents[2]
+
+# Separate from the 8081 port `just start-services` uses, so a running service is left alone
+BENCH_STT_PORT = 8091
+STT_READY_TIMEOUT_S = 120
+STT_STOP_TIMEOUT_S = 10
+# Same decoding flags as `just start-services`
+STT_DECODING_FLAGS = ["-l", "auto", "-bo", "1", "-nf", "-sns", "-mc", "0", "-nt"]
 
 # ── Model matrix ── add entries here to include new models in the benchmark ────
 
@@ -254,8 +267,49 @@ def load_manifest(manifest_path: Path) -> list:
     return samples
 
 
+# ── Speech recognition service ─────────────────────────────────────────────────
+
+def _port_open(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.5)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+@contextlib.contextmanager
+def whisper_server(model_path: Path, port: int = BENCH_STT_PORT) -> Iterator[str]:
+    """Runs whisper-server with one model for the duration of the block; yields its base URL."""
+    if _port_open(port):
+        raise SystemExit(f"{RED}✗ port {port} is already in use — stop whatever listens there{RESET}")
+    cmd = [
+        "whisper-server", "-m", str(model_path), "--host", "127.0.0.1", "--port", str(port),
+        "--inference-path", "/v1/audio/transcriptions", "-t", str(os.cpu_count() or 4),
+        *STT_DECODING_FLAGS,
+    ]
+    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        deadline = time.monotonic() + STT_READY_TIMEOUT_S
+        while not _port_open(port):
+            if proc.poll() is not None:
+                raise SystemExit(f"{RED}✗ whisper-server exited while loading {model_path.name}{RESET}")
+            if time.monotonic() > deadline:
+                raise SystemExit(f"{RED}✗ whisper-server did not start within {STT_READY_TIMEOUT_S}s{RESET}")
+            time.sleep(0.25)
+        yield f"http://127.0.0.1:{port}/v1"
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=STT_STOP_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
+def ensure_whisper_server() -> None:
+    if shutil.which("whisper-server") is None:
+        raise SystemExit(f"{RED}✗ whisper-server not found — run 'brew install whisper-cpp'{RESET}")
+
+
 def _run_one(
-    binary: Path, whisper_path: Path, llm_path: Path, wav: Path
+    binary: Path, transcription_url: str, llm_path: Path, wav: Path
 ) -> tuple[Optional[str], float]:
     t0 = time.monotonic()
     try:
@@ -264,7 +318,7 @@ def _run_one(
                 str(binary),
                 "--config", "/dev/null",
                 "--input-file", str(wav),
-                "--whisper-model", str(whisper_path),
+                "--transcription-url", transcription_url,
                 "--llm-model", str(llm_path),
             ],
             capture_output=True,
@@ -291,17 +345,17 @@ class ComboResult(NamedTuple):
 
 def run_combo(
     binary: Path,
+    transcription_url: str,
     whisper: dict,
     llm: dict,
     samples: list,
     models_dir: Path,
 ) -> ComboResult:
-    wp = models_dir / whisper["file"]
     lp = models_dir / llm["file"]
     wers, cers, times, rtfs = [], [], [], []
     for i, s in enumerate(samples, 1):
         print(f"  {DIM}[{i:>3}/{len(samples)}]{RESET} {s.id:<50}", end=" ", flush=True)
-        hyp, elapsed = _run_one(binary, wp, lp, s.path)
+        hyp, elapsed = _run_one(binary, transcription_url, lp, s.path)
         if hyp is None:
             print(f"{DIM}—{RESET}")
             continue
@@ -393,6 +447,7 @@ def main() -> None:
     models_dir = Path(args.models_dir)
     corpus_dir = Path(args.corpus_dir)
 
+    ensure_whisper_server()
     ensure_models(models_dir)
     print()
     ensure_corpus(corpus_dir, args.max_samples)
@@ -406,9 +461,10 @@ def main() -> None:
 
     results = []
     for whisper in WHISPER_MODELS:
-        for llm in LLM_MODELS:
-            print(f"\n{MAGENTA}{BOLD}── {whisper['name']} × {llm['name']} {'─' * 40}{RESET}")
-            results.append(run_combo(binary, whisper, llm, samples, models_dir))
+        with whisper_server(models_dir / whisper["file"]) as transcription_url:
+            for llm in LLM_MODELS:
+                print(f"\n{MAGENTA}{BOLD}── {whisper['name']} × {llm['name']} {'─' * 40}{RESET}")
+                results.append(run_combo(binary, transcription_url, whisper, llm, samples, models_dir))
 
     print_table(results)
 

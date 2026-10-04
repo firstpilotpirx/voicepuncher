@@ -5,6 +5,7 @@ use console::{Key, Term};
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 
 use crate::adapters::secondary::soundplaying::macos::MacosSoundPlayer;
+use crate::config::{ensure_loopback, TranscriptionCfg};
 
 use self::model_downloader::ModelDownloader;
 
@@ -16,29 +17,6 @@ struct ModelSpec {
     url: &'static str,
     filename: &'static str,
 }
-
-const WHISPER_MODELS: &[ModelSpec] = &[
-    ModelSpec {
-        label: "large-v3-turbo — multilingual, 1.6 GB  (recommended: best quality/speed)",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
-        filename: "ggml-large-v3-turbo.bin",
-    },
-    ModelSpec {
-        label: "small          — multilingual, 460 MB",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
-        filename: "ggml-small.bin",
-    },
-    ModelSpec {
-        label: "medium         — multilingual, 1.5 GB",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin",
-        filename: "ggml-medium.bin",
-    },
-    ModelSpec {
-        label: "large-v3       — multilingual, 3.1 GB  (highest accuracy)",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin",
-        filename: "ggml-large-v3.bin",
-    },
-];
 
 const LLM_MODELS: &[ModelSpec] = &[
     ModelSpec {
@@ -154,11 +132,11 @@ impl SetupWizard {
             .interact_text()?;
         let data_dir = PathBuf::from(data_dir_str);
 
-        let whisper_idx = Select::with_theme(&theme)
-            .with_prompt("Whisper model")
-            .items(&WHISPER_MODELS.iter().map(|m| m.label).collect::<Vec<_>>())
-            .default(0)
-            .interact()?;
+        let transcription_url: String = Input::with_theme(&theme)
+            .with_prompt("Speech recognition service address")
+            .default(TranscriptionCfg::default().base_url)
+            .validate_with(|url: &String| ensure_loopback(url).map_err(|e| e.to_string()))
+            .interact_text()?;
 
         let llm_idx = Select::with_theme(&theme)
             .with_prompt("LLM model")
@@ -167,7 +145,7 @@ impl SetupWizard {
             .interact()?;
 
         let lang: String = Input::with_theme(&theme)
-            .with_prompt("Whisper language (ru / en / auto / …)")
+            .with_prompt("Spoken language (ru / en / auto / …)")
             .default("auto".to_string())
             .interact_text()?;
 
@@ -188,11 +166,9 @@ impl SetupWizard {
             .default(0)
             .interact()?;
 
-        let whisper = &WHISPER_MODELS[whisper_idx];
         let llm = &LLM_MODELS[llm_idx];
         let hotkey = HOTKEY_OPTIONS[hotkey_idx].1;
         let recording_mode = RECORDING_MODE_OPTIONS[mode_idx].1;
-        let whisper_path = data_dir.join(whisper.filename);
         let llm_path = data_dir.join(llm.filename);
 
         let start_sound = sound_select(
@@ -210,24 +186,22 @@ impl SetupWizard {
         )?;
 
         let do_download = Confirm::with_theme(&theme)
-            .with_prompt("Download selected models now?")
+            .with_prompt("Download the selected LLM model now?")
             .default(true)
             .interact()?;
 
         if do_download {
-            Self::download_if_missing(whisper.url, &whisper_path, "whisper")?;
             Self::download_if_missing(llm.url, &llm_path, "LLM")?;
         } else {
             println!();
-            println!("  Skipping download. Place models at:");
-            println!("    {}", whisper_path.display());
+            println!("  Skipping download. Place the LLM model at:");
             println!("    {}", llm_path.display());
         }
 
         Self::write_config(
             config_path,
-            WriteConfigParams {
-                whisper_path: &whisper_path,
+            &SetupAnswers {
+                transcription_url: &transcription_url,
                 llm_path: &llm_path,
                 lang: &lang,
                 hotkey,
@@ -239,10 +213,11 @@ impl SetupWizard {
 
         println!();
         println!("  Config written: {}", config_path.display());
+        println!("  Speech recognition runs in a separate service — start it with 'just start-services'.");
         if do_download {
             println!("  Starting voicepuncher…");
         } else {
-            println!("  Add models at the paths above, then run voicepuncher again.");
+            println!("  Add the model at the path above, then run voicepuncher again.");
             std::process::exit(0);
         }
         println!();
@@ -260,7 +235,8 @@ impl SetupWizard {
         ModelDownloader::download(url, dest)
     }
 
-    fn write_config(config_path: &Path, p: WriteConfigParams<'_>) -> Result<()> {
+    /// Writes the answers as a config file, creating its directory if needed.
+    pub fn write_config(config_path: &Path, p: &SetupAnswers<'_>) -> Result<()> {
         if let Some(parent) = config_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -274,10 +250,9 @@ impl SetupWizard {
              debug_save_wav = false\n\
              max_recording_seconds = 600\n\
              \n\
-             [whisper]\n\
-             model_path = \"{whisper}\"\n\
+             [transcription]\n\
+             base_url = \"{transcription_url}\"\n\
              language = \"{lang}\"\n\
-             threads = 4\n\
              \n\
              [llm]\n\
              model_path = \"{llm}\"\n\
@@ -297,7 +272,7 @@ impl SetupWizard {
              level = \"info\"\n",
             key = p.hotkey,
             mode = p.recording_mode,
-            whisper = p.whisper_path.display(),
+            transcription_url = p.transcription_url,
             lang = p.lang,
             llm = p.llm_path.display(),
             prompt = DEFAULT_SYSTEM_PROMPT,
@@ -309,14 +284,14 @@ impl SetupWizard {
     }
 }
 
-struct WriteConfigParams<'a> {
-    whisper_path: &'a Path,
-    llm_path: &'a Path,
-    lang: &'a str,
-    hotkey: HotKey,
-    recording_mode: RecordingMode,
-    start_sound: &'a str,
-    stop_sound: &'a str,
+pub struct SetupAnswers<'a> {
+    pub transcription_url: &'a str,
+    pub llm_path: &'a Path,
+    pub lang: &'a str,
+    pub hotkey: HotKey,
+    pub recording_mode: RecordingMode,
+    pub start_sound: &'a str,
+    pub stop_sound: &'a str,
 }
 
 fn sound_select(prompt: &str, options: &[&str], default_idx: usize) -> Result<String> {

@@ -25,7 +25,7 @@
 *Alternatives:* whisper.cpp's native `/inference` (one server only); the Wyoming protocol (Home Assistant ecosystem, needs a TCP event protocol client).
 
 ### D2. Adapter `transcription/openai/` with `ureq`
-`OpenAiTranscriber` encodes `AudioBuffer16k` as an in-memory 16 kHz mono 16-bit WAV with `hound`, builds the multipart body by hand (ureq 2 has no multipart builder; the body is three text fields plus one file), and sets a per-request timeout. The tech segment `openai` names the wire protocol, not the vendor.
+`OpenAiTranscriber` encodes `AudioBuffer16k` as an in-memory 16 kHz mono 16-bit WAV with `hound`, builds the multipart body by hand (ureq 2 has no multipart builder; the body is a few text fields plus one file), and sets a per-request timeout. The tech segment `openai` names the wire protocol, not the vendor.
 *Alternatives:* `reqwest` (pulls in tokio for a blocking pipeline); upgrading to ureq 3 for multipart (unrelated churn).
 
 ### D3. Transcript normalization
@@ -49,28 +49,41 @@ The filter is application policy about Whisper-family output, not transport. `tr
 
 The removed keys are listed in one table; `config::load` checks for them before strict parsing and returns an error naming the replacement ("set it when starting the service" or the new key). Port 8081 avoids the 8080 default that `llama-server` uses.
 
-### D6. Loopback check at config load
-`base_url` host must be `localhost`, an IPv4 address in `127.0.0.0/8` or `::1`; anything else is a config error. Done at load time so both modes and the setup wizard share it.
+### D6. Loopback check on the effective config
+`base_url` host must be `localhost`, an IPv4 address in `127.0.0.0/8` or `::1`; anything else is a config error. `config::load` checks it, and `main.rs` checks it again after `--transcription-url` is overlaid, so a CLI value cannot bypass it. The URL is parsed with the `url` crate (already in the tree through `ureq`).
 
 ### D7. Reachability check at startup
-`OpenAiTranscriber::connect(cfg)` opens a TCP connection to the host and port with a 2 s timeout (whisper-server has no `/v1/models`, so a TCP probe is the portable check). On failure `main.rs` exits with code 2: `speech recognition service is not reachable at <url> — start it with 'just stt-server'`.
+`OpenAiTranscriber::connect(cfg)` opens a TCP connection to the host and port with a 2 s timeout (whisper-server has no `/v1/models`, so a TCP probe is the portable check). On failure `main.rs` exits with code 2: `speech recognition service is not reachable at <url> — start it with 'just start-services'`.
 
-### D8. The user runs the service
-README documents the launch command; `just stt-server` runs:
-`whisper-server -m <model> --host 127.0.0.1 --port 8081 --inference-path /v1/audio/transcriptions -l auto -nt`.
-`just e2e` starts it in the background, waits for the port, runs the tests and stops it.
-*Alternative:* the app spawns the server as a child process (lifecycle, ports and logs become the app's job again).
+### D8. `just start-services` / `just stop-services`
+The user runs the service; the recipes make that one command. `start-services`:
+1. Checks `whisper-server` is on `PATH`. If not and stdin is a terminal, asks `Install whisper-cpp with Homebrew? [y/N]` and runs `brew install whisper-cpp`; otherwise fails with `✗ whisper-server not found — run 'brew install whisper-cpp'`.
+2. Skips the service if `127.0.0.1:8081` already accepts connections (started by hand or by an earlier run).
+3. Otherwise starts, in the background, `whisper-server -m $VOICEPUNCHER_WHISPER_MODEL --host 127.0.0.1 --port 8081 --inference-path /v1/audio/transcriptions -l auto -t <cores> -bo 1 -nf -sns -mc 0 -nt` — today's decoding (greedy, no temperature fallback, no cross-chunk context, non-speech tokens suppressed; the no-speech threshold default is already 0.6). The model is the one `justfile` already discovers. It writes the PID to `~/.voicepuncher/run/whisper-server.pid` and the log to `~/.voicepuncher/logs/whisper-server.log`.
+4. Waits up to 60 s for the port (whisper-server listens only after the model is loaded); if the process exits first, prints the log tail and fails.
+
+`stop-services` kills the process in the PID file only if it is still a `whisper-server`, then removes the file. A service without a PID file is left alone.
+
+`e2e-smoke`, `e2e-quick` and `e2e-bench` run `start-services` before the tests and `stop-services` on exit (`trap … EXIT`), so a failing test still stops what it started. `externalize-text-refinement` adds `llama-server` to the same two recipes.
+*Alternatives:* the app spawns the server as a child process (lifecycle, ports and logs become the app's job again); a `launchd` agent (survives reboots, but harder to inspect and remove in a PoC).
+
+### D9. Config errors are fatal
+`main.rs` today falls back to the default config when `config::load` fails, which would silently ignore the migration error from D5. It now exits with code 2 and the error. E2E tests pass `--config /dev/null` (all defaults) so they never read the user's own config.
+
+### D10. `bench.py` launches one server per Whisper model
+The model comparison changes the Whisper model per combination, so `bench.py` starts `whisper-server` for each Whisper model on a separate port (8091) with the D8 flags, passes `--transcription-url`, and stops it after that model's combinations.
 
 ## Risks / Trade-offs
 
-- [Accuracy shifts because decoder settings now come from server defaults] → `just stt-server` passes today's values (greedy decoding, no-speech threshold 0.6); the acceptance bar requires WER ≤ 6.5 %.
+- [Accuracy shifts because decoder settings now come from server defaults] → `just start-services` passes today's decoding flags (D8); the acceptance bar requires WER ≤ 6.5 %.
 - [Added latency from HTTP and WAV encoding] → both are loopback and in memory (a few ms per chunk); the `stop→paste` log line keeps reporting totals so regressions show up.
 - [whisper-server handles one request at a time] → live chunks are already sent sequentially from a single worker.
 - [Users forget to start the service] → D7 fails fast with the exact command.
+- [Two checkouts run E2E at once and one stops the server the other uses] → `stop-services` only stops what that run started; a server already running is reused and left alone. Concurrent E2E runs stay unsupported, as today.
 - [Breaking config for existing users] → D5 migration error names every replacement; the README changelog note shows the before/after.
 
 ## Migration Plan
 
 1. Land the change with the migration error and README instructions.
-2. Users start `whisper-server` (or `just stt-server`) with the model they already downloaded and rename `[whisper]` to `[transcription]`.
+2. Users start `whisper-server` (or `just start-services`) with the model they already downloaded and rename `[whisper]` to `[transcription]`.
 3. Rollback: revert the PR; old configs work again because the removed keys are the old ones.

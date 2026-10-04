@@ -10,6 +10,7 @@ pub mod sound_player;
 pub mod text_paster;
 pub mod text_refiner;
 pub mod transcriber;
+pub mod transcript_filter;
 pub mod visual_indicator;
 
 pub use audio_level_sink::AudioLevelSink;

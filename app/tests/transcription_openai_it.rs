@@ -1,0 +1,247 @@
+// Integration tests for OpenAiTranscriber against an in-test HTTP stub.
+// One test is gated on VOICEPUNCHER_TRANSCRIPTION_URL (+ VOICEPUNCHER_BENCH_CORPUS)
+// and transcribes a corpus WAV through a real speech recognition service.
+
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::path::PathBuf;
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
+
+use voicepuncher::adapters::secondary::recording::filesystem::FileSystemAudioRecorder;
+use voicepuncher::adapters::secondary::transcription::openai::OpenAiTranscriber;
+use voicepuncher::config::TranscriptionCfg;
+use voicepuncher::core::application::Transcriber;
+use voicepuncher::core::domain::AudioBuffer16k;
+
+struct StubReply {
+    status: u16,
+    body: &'static str,
+    delay: Duration,
+}
+
+impl StubReply {
+    fn ok(body: &'static str) -> Self {
+        Self {
+            status: 200,
+            body,
+            delay: Duration::ZERO,
+        }
+    }
+}
+
+struct CapturedRequest {
+    request_line: String,
+    content_type: String,
+    body: String,
+}
+
+/// Serves exactly one HTTP request; connections that close without sending
+/// anything (the reachability probe) are skipped.
+fn spawn_stub(reply: StubReply) -> (TranscriptionCfg, mpsc::Receiver<CapturedRequest>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Some(request) = read_request(&mut stream.unwrap(), &reply) else {
+                continue;
+            };
+            let _ = tx.send(request);
+            return;
+        }
+    });
+    let cfg = TranscriptionCfg {
+        base_url: format!("http://127.0.0.1:{port}/v1"),
+        ..TranscriptionCfg::default()
+    };
+    (cfg, rx)
+}
+
+fn read_request(stream: &mut TcpStream, reply: &StubReply) -> Option<CapturedRequest> {
+    let mut reader = BufReader::new(stream.try_clone().unwrap());
+    let mut request_line = String::new();
+    if reader.read_line(&mut request_line).ok()? == 0 {
+        return None;
+    }
+    let (mut content_length, mut content_type) = (0usize, String::new());
+    loop {
+        let mut line = String::new();
+        reader.read_line(&mut line).ok()?;
+        let line = line.trim_end();
+        if line.is_empty() {
+            break;
+        }
+        let (name, value) = line.split_once(':')?;
+        match name.to_ascii_lowercase().as_str() {
+            "content-length" => content_length = value.trim().parse().ok()?,
+            "content-type" => content_type = value.trim().to_owned(),
+            _ => {}
+        }
+    }
+    let mut body = vec![0u8; content_length];
+    reader.read_exact(&mut body).ok()?;
+    thread::sleep(reply.delay);
+    let response = format!(
+        "HTTP/1.1 {} STUB\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        reply.status,
+        reply.body.len(),
+        reply.body
+    );
+    let _ = stream.write_all(response.as_bytes());
+    Some(CapturedRequest {
+        request_line: request_line.trim_end().to_owned(),
+        content_type,
+        body: String::from_utf8_lossy(&body).into_owned(),
+    })
+}
+
+fn half_second() -> AudioBuffer16k {
+    AudioBuffer16k::new(vec![100i16; 8_000])
+}
+
+fn transcribe(cfg: TranscriptionCfg) -> anyhow::Result<Option<String>> {
+    let mut transcriber = OpenAiTranscriber::connect(cfg)?;
+    let transcript = transcriber.transcribe(&half_second())?;
+    Ok(transcript.map(|t| t.as_str().to_owned()))
+}
+
+#[test]
+fn should_post_multipart_request_and_return_transcript() {
+    // Given
+    let (cfg, requests) = spawn_stub(StubReply::ok(r#"{"text": " hello world\n"}"#));
+    let cfg = TranscriptionCfg {
+        language: "en".into(),
+        ..cfg
+    };
+    // When
+    let transcript = transcribe(cfg).unwrap();
+    // Then
+    assert_eq!(transcript.as_deref(), Some("hello world"));
+    let request = requests.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert_eq!(
+        request.request_line,
+        "POST /v1/audio/transcriptions HTTP/1.1"
+    );
+    assert!(request
+        .content_type
+        .starts_with("multipart/form-data; boundary="));
+    for field in ["model", "language", "temperature", "response_format"] {
+        assert!(
+            request.body.contains(&format!("name=\"{field}\"")),
+            "missing {field}"
+        );
+    }
+    assert!(request.body.contains("name=\"language\"\r\n\r\nen\r\n"));
+    assert!(request.body.contains("filename=\"audio.wav\""));
+    assert!(request.body.contains("RIFF"));
+}
+
+#[test]
+fn should_omit_language_when_auto() {
+    // Given
+    let (cfg, requests) = spawn_stub(StubReply::ok(r#"{"text": "привет"}"#));
+    // When
+    transcribe(cfg).unwrap();
+    // Then
+    let request = requests.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert!(!request.body.contains("name=\"language\""));
+}
+
+#[test]
+fn should_join_word_split_across_segments() {
+    // Given
+    let (cfg, _requests) = spawn_stub(StubReply::ok(r#"{"text": " наход\nившаяся у власти"}"#));
+    // When
+    let transcript = transcribe(cfg).unwrap();
+    // Then
+    assert_eq!(transcript.as_deref(), Some("находившаяся у власти"));
+}
+
+#[test]
+fn should_discard_known_hallucination() {
+    // Given
+    let (cfg, _requests) = spawn_stub(StubReply::ok(
+        r#"{"text": " Субтитры создавал DimaTorzok"}"#,
+    ));
+    // When
+    let transcript = transcribe(cfg).unwrap();
+    // Then
+    assert_eq!(transcript, None);
+}
+
+#[test]
+fn should_fail_on_server_error() {
+    // Given
+    let (cfg, _requests) = spawn_stub(StubReply {
+        status: 500,
+        ..StubReply::ok(r#"{"error": "boom"}"#)
+    });
+    // When / Then
+    assert!(transcribe(cfg).is_err());
+}
+
+#[test]
+fn should_fail_on_malformed_json() {
+    // Given
+    let (cfg, _requests) = spawn_stub(StubReply::ok("not json"));
+    // When / Then
+    let message = format!("{:#}", transcribe(cfg).unwrap_err());
+    assert!(
+        message.contains("unexpected speech recognition response"),
+        "{message}"
+    );
+}
+
+#[test]
+fn should_fail_when_service_answers_after_timeout() {
+    // Given
+    let (cfg, _requests) = spawn_stub(StubReply {
+        delay: Duration::from_secs(3),
+        ..StubReply::ok(r#"{"text": "late"}"#)
+    });
+    let cfg = TranscriptionCfg {
+        timeout_secs: 1,
+        ..cfg
+    };
+    // When / Then
+    assert!(transcribe(cfg).is_err());
+}
+
+#[test]
+fn should_transcribe_corpus_sample_through_real_service() {
+    // Given — gated on a running service and the corpus
+    let Ok(base_url) = std::env::var("VOICEPUNCHER_TRANSCRIPTION_URL") else {
+        eprintln!("GATED: VOICEPUNCHER_TRANSCRIPTION_URL not set, skipping");
+        return;
+    };
+    let Ok(corpus) = std::env::var("VOICEPUNCHER_BENCH_CORPUS") else {
+        eprintln!("GATED: VOICEPUNCHER_BENCH_CORPUS not set, skipping");
+        return;
+    };
+    let manifest = std::fs::read_to_string(PathBuf::from(&corpus).join("manifest.jsonl")).unwrap();
+    let first: serde_json::Value = serde_json::from_str(manifest.lines().next().unwrap()).unwrap();
+    let wav = PathBuf::from(&corpus).join(first["path"].as_str().unwrap());
+    let audio = FileSystemAudioRecorder::load(&wav).unwrap();
+    let cfg = TranscriptionCfg {
+        base_url,
+        ..TranscriptionCfg::default()
+    };
+    // When
+    let transcript = OpenAiTranscriber::connect(cfg)
+        .unwrap()
+        .transcribe(&audio)
+        .unwrap();
+    // Then
+    let text = transcript
+        .expect("speech should not be discarded")
+        .as_str()
+        .to_lowercase();
+    let reference = first["reference"].as_str().unwrap();
+    let last_word = reference.split_whitespace().last().unwrap();
+    assert!(
+        text.contains(last_word),
+        "expected '{last_word}' in '{text}'"
+    );
+}

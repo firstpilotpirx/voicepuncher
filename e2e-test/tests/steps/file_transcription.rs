@@ -9,7 +9,9 @@ use voicepuncher_e2e_test::wer::wer;
 
 use crate::E2eWorld;
 
-const STARTUP_FAILURE_EXIT_CODE: i32 = 2;
+pub const STARTUP_FAILURE_EXIT_CODE: i32 = 2;
+/// An empty config: every setting at its default, never the user's own config file.
+pub const NO_CONFIG: &str = "/dev/null";
 const MAX_MEAN_WER: f64 = 0.30;
 
 #[given(expr = "a recording of silence lasting {int} seconds")]
@@ -87,10 +89,10 @@ fn mean_wer_below_bar(world: &mut E2eWorld) -> Result<()> {
 
 fn transcribe(recording: &Path, with_refinement: bool) -> Result<Output> {
     let mut cmd = Command::new(sut_bin());
-    cmd.args(["--config", "/dev/null", "--input-file"])
+    cmd.args(["--config", NO_CONFIG, "--input-file"])
         .arg(recording)
-        .arg("--whisper-model")
-        .arg(env("VOICEPUNCHER_WHISPER_MODEL")?);
+        .arg("--transcription-url")
+        .arg(env("VOICEPUNCHER_TRANSCRIPTION_URL")?);
     if with_refinement {
         cmd.arg("--llm-model").arg(env("VOICEPUNCHER_LLM_MODEL")?);
     } else {
@@ -100,7 +102,7 @@ fn transcribe(recording: &Path, with_refinement: bool) -> Result<Output> {
         .with_context(|| format!("failed to spawn {:?}", cmd.get_program()))
 }
 
-fn sut_bin() -> PathBuf {
+pub fn sut_bin() -> PathBuf {
     std::env::var("VOICEPUNCHER_BIN")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
@@ -108,11 +110,11 @@ fn sut_bin() -> PathBuf {
         })
 }
 
-fn env(name: &str) -> Result<String> {
+pub fn env(name: &str) -> Result<String> {
     std::env::var(name).with_context(|| format!("{name} is not set — run it through `just`"))
 }
 
-fn write_silence_wav(path: &Path, seconds: u32) -> Result<()> {
+pub fn write_silence_wav(path: &Path, seconds: u32) -> Result<()> {
     let spec = hound::WavSpec {
         channels: 1,
         sample_rate: 16_000,

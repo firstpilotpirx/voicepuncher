@@ -1,4 +1,5 @@
-use voicepuncher::adapters::primary::setup::cli::SetupWizard;
+use voicepuncher::adapters::primary::setup::cli::{SetupAnswers, SetupWizard};
+use voicepuncher::core::domain::{HotKey, RecordingMode};
 
 #[test]
 fn should_skip_run_when_config_already_exists_and_force_is_false() {
@@ -24,4 +25,30 @@ fn should_skip_run_when_config_does_not_exist_but_force_is_false() {
     // The important contract: it must not panic.
     let _ = SetupWizard::run_if_needed(&path, false);
     // No assert — just confirm no panic.
+}
+
+#[test]
+fn should_write_transcription_section_that_loads_back() {
+    // Given
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    let answers = SetupAnswers {
+        transcription_url: "http://localhost:9000/v1",
+        llm_path: std::path::Path::new("/models/qwen.gguf"),
+        lang: "ru",
+        hotkey: HotKey::F13,
+        recording_mode: RecordingMode::Toggle,
+        start_sound: "Glass",
+        stop_sound: "Pop",
+    };
+    // When
+    SetupWizard::write_config(&path, &answers).unwrap();
+    // Then
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert!(written
+        .contains("[transcription]\nbase_url = \"http://localhost:9000/v1\"\nlanguage = \"ru\"\n"));
+    assert!(!written.contains("[whisper]"));
+    let cfg = voicepuncher::config::load(&path).unwrap();
+    assert_eq!(cfg.transcription.base_url, "http://localhost:9000/v1");
+    assert_eq!(cfg.transcription.language, "ru");
 }

@@ -15,6 +15,7 @@ flowchart LR
     CLIPBOARD["macOS Clipboard\n(NSPasteboard)"]
     CURSOR["Target Application\n(editor, browser, IDE,\nSlack, etc.)"]
     MODELFS["Local file system\n(~/.voicepuncher/models/)"]
+    STT["Speech recognition service\n(whisper-server on 127.0.0.1:8081)"]
 
     USER -- "holds hotkey\n(RightOption by default)" --> vp
     USER -- "speaks into microphone" --> vp
@@ -25,11 +26,12 @@ flowchart LR
     vp -- "writes CleanedText\nto NSPasteboard" --> CLIPBOARD
     vp -- "sends CGEventPost(Cmd+V)" --> CURSOR
     CLIPBOARD -- "Cmd+V pastes\nclipboard content" --> CURSOR
-    MODELFS -- "whisper.cpp model\n(ggml-large-v3-turbo-q5_0.bin)" --> vp
+    vp -- "WAV audio\n(OpenAI Audio Transcriptions API,\nloopback HTTP)" --> STT
+    STT -- "raw transcript (JSON)" --> vp
     MODELFS -- "llama.cpp model\n(Qwen2.5-3B-Instruct-Q4_K_M.gguf)" --> vp
 ```
 
-voicepuncher is a single OS process with no server side. It reads audio from CoreAudio, runs inference fully in-process on Apple Silicon Metal, and delivers the result by writing to the system clipboard and synthesizing a Cmd+V keystroke. The three macOS TCC permissions must be granted to the terminal emulator that launches the process — the process inherits them from its parent.
+voicepuncher is a single OS process with no server side of its own. It reads audio from CoreAudio, sends it to a speech recognition service on the same machine (loopback only), runs text refinement in-process on Apple Silicon Metal, and delivers the result by writing to the system clipboard and synthesizing a Cmd+V keystroke. The three macOS TCC permissions must be granted to the terminal emulator that launches the process — the process inherits them from its parent.
 
 ## External Systems
 
@@ -38,7 +40,8 @@ voicepuncher is a single OS process with no server side. It reads audio from Cor
 | macOS TCC (Transparency Consent Control) | voicepuncher → macOS | Permission probe at startup (`AXIsProcessTrusted`, `cpal` device open, `rdev` key-event subscription); returns grant or denial per permission |
 | CoreAudio (via `cpal`) | macOS → voicepuncher | Raw PCM audio frames from the default input device; streamed during the `Recording` state |
 | `rdev` global key listener | macOS → voicepuncher | Raw keyboard events delivered as `PttSignal::Pressed` / `PttSignal::Released` when the configured hotkey changes state |
-| Local model files (`~/.voicepuncher/models/`) | file system → voicepuncher | Whisper GGML binary and Qwen2.5 GGUF binary, loaded once at startup and kept resident in RAM |
+| Speech recognition service (`whisper-server`, started with `just start-services`) | voicepuncher ↔ service over loopback HTTP | One `POST /v1/audio/transcriptions` per recording or live chunk (16 kHz mono WAV); returns the raw transcript. Checked for reachability at startup |
+| Local model files (`~/.voicepuncher/models/`) | file system → voicepuncher | Qwen2.5 GGUF binary, loaded once at startup and kept resident in RAM (the Whisper model is loaded by the speech recognition service) |
 | NSPasteboard (macOS clipboard) | voicepuncher → macOS | `CleanedText` written as a plain-text clipboard entry via `arboard` |
 | CGEventPost (macOS event injection) | voicepuncher → macOS | Synthetic Cmd+V key-down/key-up pair injected into the global event stream to trigger paste in the frontmost application |
 | Target application (editor, browser, etc.) | macOS → target app | Receives the synthetic Cmd+V and reads the clipboard; voicepuncher has no direct channel to the target application |

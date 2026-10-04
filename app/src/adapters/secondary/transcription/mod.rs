@@ -1,1 +1,1 @@
-pub mod whispercpp;
+pub mod openai;

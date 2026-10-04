@@ -1,6 +1,6 @@
 # System Overview
 
-voicepuncher is an offline push-to-talk voice-to-text CLI for macOS Apple Silicon. The user holds a configurable hotkey, speaks, releases — the spoken text is transcribed by whisper.cpp, cleaned by a local Qwen2.5 LLM via llama.cpp, and pasted at the cursor. No network call is made at runtime. All inference runs on the Apple Silicon GPU via Metal.
+voicepuncher is an offline push-to-talk voice-to-text CLI for macOS Apple Silicon. The user holds a configurable hotkey, speaks, releases — the spoken text is transcribed by a local speech recognition service (whisper.cpp `whisper-server`, reached over loopback HTTP), cleaned by a local Qwen2.5 LLM via llama.cpp, and pasted at the cursor. Nothing leaves the machine: the app only opens loopback connections. All inference runs on the Apple Silicon GPU via Metal.
 
 ## Hexagonal Architecture
 
@@ -30,7 +30,7 @@ flowchart TB
 
     subgraph secondary["Secondary adapters (driven)"]
         CPAL["CpalAudioRecorder\n(cpal)"]
-        WHISPER["WhisperCppTranscriber\n(whisper-rs FFI)"]
+        WHISPER["OpenAiTranscriber\n(HTTP via ureq, loopback)"]
         LLAMA["LlamaCppTextRefiner\n(llama-cpp-2 FFI)"]
         PASTER["MacOsTextPaster\n(arboard + CGEventPost)"]
         SOUND["MacosSoundPlayer\n(macOS audio)"]
@@ -44,7 +44,7 @@ flowchart TB
     MACOS -->|audio stream| CPAL
     MACOS <-->|TCC probe| PROBE
     MACOS <--|paste text| PASTER
-    FS -->|model binary| WHISPER
+    WHISPER -->|WAV over loopback HTTP| STT[("whisper-server\n(separate process)")]
     FS -->|model binary| LLAMA
     FS -->|WAV file| FSREC
 
@@ -91,7 +91,7 @@ Signals received while the pipeline is in any non-Idle state (except `Recording`
 |---|---|---|
 | Hotkey capture | `rdev` | Global key listener without a visible window; works in terminal |
 | Audio recording | `cpal` | Cross-platform abstraction; picks CoreAudio on macOS |
-| Speech-to-text | `whisper-rs` (whisper.cpp FFI) | State-of-the-art offline STT; Metal acceleration |
+| Speech-to-text | local `whisper-server` (whisper.cpp) over the OpenAI Audio Transcriptions API, via `ureq` | The engine runs outside the app (Metal acceleration, any `ggml-*.bin` model); the app stays engine-agnostic and builds without C++ |
 | Text refinement | `llama-cpp-2` (llama.cpp FFI) | Runs Qwen2.5-3B-Instruct locally; Metal acceleration |
 | Clipboard paste | `arboard` + `CGEventPost` | `arboard` writes to NSPasteboard; `CGEventPost` sends Cmd+V |
 | Audio playback | macOS `NSSound` / `AVAudioPlayer` | Start/stop beeps via macOS native sound API |
