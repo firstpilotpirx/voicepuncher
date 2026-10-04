@@ -39,5 +39,5 @@ No release: no app behavior changes.
 
 ## Impact
 
-- `.claude/skills/` (new orchestrator skill, maybe changes to `/proceed-change`), `AGENTS.md` § Workflow, possibly `justfile` (a planner recipe), a dependency file per change or per backlog.
+- agent-kit `claude-code/skills/` (new orchestrator skill, maybe changes to `/proceed-change`; both live in agent-kit per `kit-placement.md`), `AGENTS.md` § Workflow, possibly `justfile` (a planner recipe), a dependency file per change or per backlog.
 - Shared E2E ports 8080/8081 and the version bump in `app/Cargo.toml` limit what can run in parallel.
