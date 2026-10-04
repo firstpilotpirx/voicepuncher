@@ -17,6 +17,11 @@ llm_url := "http://127.0.0.1:" + llm_port + "/v1"
 services_run_dir := home_directory() / ".voicepuncher/run"
 services_log_dir := home_directory() / ".voicepuncher/logs"
 
+# Every check, test and benchmark recipe runs its private `_<name>` body under the machine-wide test lock
+# (agent-kit `with-machine-lock`): one run at a time on this machine, a hung run is killed after its time limit
+machine_lock := env_var_or_default("MACHINE_LOCK", home_directory() / ".claude/bin/with-machine-lock")
+locked := quote(machine_lock) + " " + quote(just_executable()) + " --justfile " + quote(justfile())
+
 # List all recipes
 default:
     @just --list --unsorted
@@ -24,36 +29,60 @@ default:
 # ── Checks ── `check` while developing, `full-check` before merging ─────────
 
 # FAST (~3 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples + refinement evaluation
-check: fmt lint test build e2e-smoke e2e-quick refine-eval
+check:
+    @{{locked}} _check
+
+_check: _fmt _lint _test _build _e2e-smoke _e2e-quick _refine-eval
 
 # FULL (~10 min), run before merging: clean build + code checks + E2E (seams included) + accuracy on 100 samples
-full-check: _require-models _require-corpus
+full-check:
+    @{{locked}} _full-check
+
+_full-check: _require-models _require-corpus
     cargo clean
-    just fmt lint test build e2e
+    {{just_executable()}} _fmt _lint _test _build _e2e
     @echo "✓ full-check passed — before a release also walk through README.md § Release checklist (manual run)"
 
 # Formatting check
 fmt:
+    @{{locked}} _fmt
+
+_fmt:
     cargo fmt --all -- --check
 
 # Clippy on the whole workspace, warnings are errors
 lint:
+    @{{locked}} _lint
+
+_lint:
     cargo clippy --workspace --all-targets -- -D warnings
 
 # Unit + architecture + integration tests (plain and .feature) of the app, unit tests of the E2E harness (~1 min)
 test:
+    @{{locked}} _test
+
+_test:
     cargo test -p voicepuncher --tests --no-fail-fast
     cargo test -p voicepuncher-e2e-test --lib
 
 # Build the release binary
 build:
+    @{{locked}} _build
+
+_build:
     cargo build --release
 
 # E2E on real models: smoke + chunk seams + WER accuracy on 100 samples + refinement evaluation (~9 min)
-e2e: e2e-smoke e2e-seams e2e-bench refine-eval
+e2e:
+    @{{locked}} _e2e
+
+_e2e: _e2e-smoke _e2e-seams _e2e-bench _refine-eval
 
 # Smoke test — services and models load, file mode runs (@smoke scenarios), the adapters talk to the real services
-e2e-smoke: _require-models build
+e2e-smoke:
+    @{{locked}} _e2e-smoke
+
+_e2e-smoke: _require-models _build
     #!/usr/bin/env bash
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
@@ -63,7 +92,10 @@ e2e-smoke: _require-models build
     cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @smoke
 
 # WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 % (~20 s)
-e2e-quick: _require-models _require-corpus build
+e2e-quick:
+    @{{locked}} _e2e-quick
+
+_e2e-quick: _require-models _require-corpus _build
     #!/usr/bin/env bash
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
@@ -72,7 +104,10 @@ e2e-quick: _require-models _require-corpus build
         cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @accuracy
 
 # Text refinement on the live services: dictated commands, normalization, evaluation per category (@refinement) (~1 min)
-refine-eval: _require-models build
+refine-eval:
+    @{{locked}} _refine-eval
+
+_refine-eval: _require-models _build
     #!/usr/bin/env bash
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
@@ -81,7 +116,10 @@ refine-eval: _require-models build
         cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @refinement
 
 # Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words (~5 min)
-e2e-seams: _require-models build
+e2e-seams:
+    @{{locked}} _e2e-seams
+
+_e2e-seams: _require-models _build
     #!/usr/bin/env bash
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
@@ -91,7 +129,10 @@ e2e-seams: _require-models build
     cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @seams
 
 # WER accuracy on a fixed sample of 100 recordings (50 per language), two at a time — fails if mean WER > 30 % (~2 min)
-e2e-bench: _require-models _require-corpus build
+e2e-bench:
+    @{{locked}} _e2e-bench
+
+_e2e-bench: _require-models _require-corpus _build
     #!/usr/bin/env bash
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
@@ -101,12 +142,18 @@ e2e-bench: _require-models _require-corpus build
 
 # Manual: @real_keyboard scenarios drive the real hotkey + paste — needs Accessibility and Input Monitoring for the terminal, a GUI session, hands off the keyboard
 test-real-keyboard:
+    @{{locked}} _test-real-keyboard
+
+_test-real-keyboard:
     VOICEPUNCHER_REAL_KEYBOARD_IT=1 cargo test -p voicepuncher --test cucumber_integration -- --tags @real_keyboard
 
 # ── Release ── after the merge, on a clean checkout of origin/main ──────────
 
 # Tag v<app version>, build, publish a GitHub Release with the binary tarball + sha256
-release: _require-release-head test build
+release:
+    @{{locked}} _release
+
+_release: _require-release-head _test _build
     #!/usr/bin/env bash
     set -euo pipefail
     version=$(sed -n 's/^version = "\(.*\)"/\1/p' app/Cargo.toml | head -1)
@@ -293,11 +340,17 @@ corpus max_samples="50":
 
 # Full benchmark — all Whisper × LLM combos on the full corpus
 bench:
+    @MACHINE_LOCK_TIMEOUT=14400 {{locked}} _bench
+
+_bench:
     uv run --python 3.11 --with "datasets<3.0.0" --with soundfile --with numpy --with librosa \
         python3 e2e-test/scripts/bench.py
 
 # Quick benchmark — 10 samples, ~2 min
 bench-smoke:
+    @{{locked}} _bench-smoke
+
+_bench-smoke:
     uv run --python 3.11 --with "datasets<3.0.0" --with soundfile --with numpy --with librosa \
         python3 e2e-test/scripts/bench.py --limit 10
 
