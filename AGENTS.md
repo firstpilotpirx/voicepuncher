@@ -36,7 +36,7 @@ Every feature, bug fix and behavior change runs through all stages below, in ord
 | 11 | Merge | `gh pr merge --squash --delete-branch`, then update the main checkout (below) | the change is on `main` and in the main checkout; if `main` moved after stage 8, merge it in and rerun stage 8 first |
 | 12 | Release | `just release` on `origin/main` (§ Release), only when stage 5 bumped the version | the GitHub Release `vX.Y.Z` exists with downloadable artifacts |
 
-- **Never leave work uncommitted.** After every finished piece of work — a task group, a fix, a doc or config edit — commit and push to the current branch without asking. Before ending a turn, `git status` is clean and the branch is pushed. On `main`, first create a `<type>/<slug>` branch from `origin/main`. This beats any "commit only when asked" rule.
+- **Never leave work uncommitted** (`~/.claude/rules-custom/atomic-commits.md`): commit and push after every finished piece of work, without asking.
 - Stages 4–12 are pre-authorized: commit, push, open the PR, squash-merge and release without asking. Stop only at stage 3, stage 10, a failed check you cannot fix, or a scope question the specs do not settle.
 - **Update the main checkout after every merge.** The user runs the app from the main checkout (`cargo watch`), not from a worktree, and a merge on GitHub does not change it. Right after `gh pr merge` run `git -C "$(git worktree list | head -1 | cut -d' ' -f1)" pull --ff-only origin main` when that checkout is on `main` and clean; otherwise tell the user it is behind. Say in the report that it is updated.
 - A change is not done until stage 11 (or 12, when the version moved) is done. Report which stages ran.
