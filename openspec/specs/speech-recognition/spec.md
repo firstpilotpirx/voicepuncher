@@ -100,3 +100,21 @@ The system SHALL refuse a configuration that still uses the removed in-process r
 #### Scenario: Config still points at a model file
 - **WHEN** the user starts the app with a configuration that sets a speech recognition model file path
 - **THEN** the app exits with a message saying the model is now chosen when starting the service and naming the service address setting
+
+### Requirement: Dropped connection to the service is retried
+The system SHALL send the recording again, up to 3 more times with a growing pause of at most 1.5 seconds in total, when the speech recognition service refuses or drops the connection before it answers, and SHALL log each dropped attempt; only when every attempt fails is the cycle dropped as a service failure. An error answer, an unusable answer or a timeout SHALL NOT be retried.
+
+#### Scenario: Service is briefly busy
+- **GIVEN** the speech recognition service drops the first two connections and then answers normally
+- **WHEN** the user finishes a recording
+- **THEN** the transcript the service returns is passed on for refinement and pasting, and each of the two dropped attempts is logged
+
+#### Scenario: Service keeps dropping the connection
+- **GIVEN** the speech recognition service drops every connection
+- **WHEN** the user finishes a recording
+- **THEN** the recording is sent 4 times in total and then the cycle is dropped as a service failure
+
+#### Scenario: Service answers with an error
+- **GIVEN** the speech recognition service answers every request with an error
+- **WHEN** the user finishes a recording
+- **THEN** the recording is sent once and the cycle is dropped as a service failure

@@ -1,4 +1,6 @@
+use std::io;
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -18,6 +20,13 @@ const TRANSCRIPTIONS_PATH: &str = "audio/transcriptions";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 const SLOW_REQUEST_LOG_MS: u128 = 600;
 const START_HINT: &str = "start it with 'just start-model-servers'";
+/// Pauses before each new attempt when the service drops the connection before it
+/// answers (a busy service resets connections it has no room for).
+const RETRY_PAUSES: [Duration; 3] = [
+    Duration::from_millis(200),
+    Duration::from_millis(400),
+    Duration::from_millis(800),
+];
 
 #[derive(Deserialize)]
 struct TranscriptionResponse {
@@ -62,17 +71,7 @@ impl OpenAiTranscriber {
     fn request_text(&self, audio: &AudioBuffer16k) -> Result<String> {
         let wav = encode_wav(audio)?;
         let body = multipart_body(&self.cfg, &wav);
-        let response = self
-            .agent
-            .post(&self.endpoint)
-            .set("Content-Type", &request::content_type())
-            .send_bytes(&body)
-            .map_err(|e| {
-                anyhow!(
-                    "speech recognition request to {} failed: {e}",
-                    self.endpoint
-                )
-            })?;
+        let response = self.post_with_retries(&body)?;
         let json = response
             .into_string()
             .context("read speech recognition response")?;
@@ -80,6 +79,67 @@ impl OpenAiTranscriber {
             .with_context(|| format!("unexpected speech recognition response: {json}"))?;
         Ok(normalize_transcript(&parsed.text))
     }
+
+    fn post_with_retries(&self, body: &[u8]) -> Result<ureq::Response> {
+        let mut pauses = RETRY_PAUSES.iter();
+        let mut attempt = 1;
+        loop {
+            let result = self
+                .agent
+                .post(&self.endpoint)
+                .set("Content-Type", &request::content_type())
+                .send_bytes(body);
+            match (result, pauses.next()) {
+                (Err(e), Some(pause)) if is_dropped_connection(&e) => {
+                    log::warn!(
+                        "speech recognition service dropped the connection (attempt {attempt}): \
+                         {e} — retrying in {}ms",
+                        pause.as_millis()
+                    );
+                    thread::sleep(*pause);
+                    attempt += 1;
+                }
+                (result, _) => {
+                    return result.map_err(|e| {
+                        anyhow!(
+                            "speech recognition request to {} failed: {e}",
+                            self.endpoint
+                        )
+                    })
+                }
+            }
+        }
+    }
+}
+
+/// True when the service refused or dropped the connection before it answered; an
+/// error answer or a timeout is not a dropped connection.
+fn is_dropped_connection(error: &ureq::Error) -> bool {
+    let ureq::Error::Transport(transport) = error else {
+        return false;
+    };
+    if transport.kind() == ureq::ErrorKind::ConnectionFailed {
+        return true;
+    }
+    let mut source = std::error::Error::source(transport);
+    while let Some(cause) = source {
+        if let Some(io_error) = cause.downcast_ref::<io::Error>() {
+            return is_dropped_io(io_error.kind());
+        }
+        source = cause.source();
+    }
+    false
+}
+
+fn is_dropped_io(kind: io::ErrorKind) -> bool {
+    matches!(
+        kind,
+        io::ErrorKind::ConnectionRefused
+            | io::ErrorKind::ConnectionReset
+            | io::ErrorKind::ConnectionAborted
+            | io::ErrorKind::BrokenPipe
+            | io::ErrorKind::UnexpectedEof
+    )
 }
 
 fn socket_addrs(base_url: &str) -> Result<Vec<SocketAddr>> {
@@ -162,6 +222,31 @@ mod tests {
             "{message}"
         );
         assert!(message.contains("just start-model-servers"), "{message}");
+    }
+
+    #[test]
+    fn should_treat_reset_refused_and_closed_connections_as_dropped() {
+        for kind in [
+            io::ErrorKind::ConnectionRefused,
+            io::ErrorKind::ConnectionReset,
+            io::ErrorKind::ConnectionAborted,
+            io::ErrorKind::BrokenPipe,
+            io::ErrorKind::UnexpectedEof,
+        ] {
+            assert!(is_dropped_io(kind), "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn should_not_treat_timeout_as_dropped() {
+        assert!(!is_dropped_io(io::ErrorKind::TimedOut));
+        assert!(!is_dropped_io(io::ErrorKind::WouldBlock));
+    }
+
+    #[test]
+    fn should_not_treat_error_answer_as_dropped() {
+        let response = ureq::Response::new(500, "Internal Server Error", "boom").unwrap();
+        assert!(!is_dropped_connection(&ureq::Error::Status(500, response)));
     }
 
     #[test]

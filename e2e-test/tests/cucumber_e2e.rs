@@ -8,6 +8,10 @@ use std::time::Duration;
 
 use cucumber::World;
 
+/// The local services are shared with the user's live session; more concurrent
+/// clients make the speech recognition service reset connections it has no room for.
+const MAX_CONCURRENT_SCENARIOS: usize = 4;
+
 #[derive(Debug, Default, World)]
 pub struct E2eWorld {
     pub workdir: Option<tempfile::TempDir>,
@@ -40,11 +44,13 @@ impl E2eWorld {
 }
 
 fn main() {
-    futures::executor::block_on(E2eWorld::cucumber().fail_on_skipped().filter_run_and_exit(
-        "tests/features",
-        |feature, rule, scenario| {
-            let wip = |tags: &[String]| tags.iter().any(|t| t == "wip");
-            !wip(&feature.tags) && !rule.is_some_and(|r| wip(&r.tags)) && !wip(&scenario.tags)
-        },
-    ));
+    futures::executor::block_on(
+        E2eWorld::cucumber()
+            .max_concurrent_scenarios(MAX_CONCURRENT_SCENARIOS)
+            .fail_on_skipped()
+            .filter_run_and_exit("tests/features", |feature, rule, scenario| {
+                let wip = |tags: &[String]| tags.iter().any(|t| t == "wip");
+                !wip(&feature.tags) && !rule.is_some_and(|r| wip(&r.tags)) && !wip(&scenario.tags)
+            }),
+    );
 }

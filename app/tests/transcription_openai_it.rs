@@ -5,8 +5,9 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::sync::mpsc;
-use std::thread;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{mpsc, Arc, Mutex, OnceLock};
+use std::thread::{self, ThreadId};
 use std::time::Duration;
 
 use voicepuncher::adapters::secondary::recording::filesystem::FileSystemAudioRecorder;
@@ -95,6 +96,71 @@ fn read_request(stream: &mut TcpStream, reply: &StubReply) -> Option<CapturedReq
         content_type,
         body: String::from_utf8_lossy(&body).into_owned(),
     })
+}
+
+/// Resets the first `drops` requests (closes them without reading the body, so the OS
+/// sends RST, as a busy service does), then answers with `reply`. Counts requests;
+/// the reachability probe sends nothing and is not counted.
+fn spawn_dropping_stub(drops: usize, reply: StubReply) -> (TranscriptionCfg, Arc<AtomicUsize>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&attempts);
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let mut stream = stream.unwrap();
+            let mut first = [0u8; 1];
+            if stream.peek(&mut first).unwrap_or(0) == 0 {
+                continue;
+            }
+            if counter.fetch_add(1, Ordering::SeqCst) < drops {
+                drop(stream);
+                continue;
+            }
+            read_request(&mut stream, &reply);
+        }
+    });
+    let cfg = TranscriptionCfg {
+        base_url: format!("http://127.0.0.1:{port}/v1"),
+        ..TranscriptionCfg::default()
+    };
+    (cfg, attempts)
+}
+
+/// Keeps every log message with the thread that logged it, so parallel tests read
+/// only their own messages.
+struct CapturingLogger(Mutex<Vec<(ThreadId, String)>>);
+
+impl log::Log for CapturingLogger {
+    fn enabled(&self, _: &log::Metadata) -> bool {
+        true
+    }
+    fn log(&self, record: &log::Record) {
+        let line = format!("{} {}", record.level(), record.args());
+        self.0.lock().unwrap().push((thread::current().id(), line));
+    }
+    fn flush(&self) {}
+}
+
+fn capturing_logger() -> &'static CapturingLogger {
+    static LOGGER: OnceLock<&'static CapturingLogger> = OnceLock::new();
+    LOGGER.get_or_init(|| {
+        let logger = Box::leak(Box::new(CapturingLogger(Mutex::new(Vec::new()))));
+        log::set_logger(logger).unwrap();
+        log::set_max_level(log::LevelFilter::Trace);
+        logger
+    })
+}
+
+fn logged_by_this_thread(fragment: &str) -> usize {
+    let me = thread::current().id();
+    capturing_logger()
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(thread, line)| *thread == me && line.contains(fragment))
+        .count()
 }
 
 fn half_second() -> AudioBuffer16k {
@@ -207,6 +273,50 @@ fn should_fail_when_service_answers_after_timeout() {
     };
     // When / Then
     assert!(transcribe(cfg).is_err());
+}
+
+#[test]
+fn should_retry_when_service_drops_connection() {
+    // Given
+    capturing_logger();
+    let (cfg, attempts) = spawn_dropping_stub(2, StubReply::ok(r#"{"text": "hello"}"#));
+    // When
+    let transcript = transcribe(cfg).unwrap();
+    // Then
+    assert_eq!(transcript.as_deref(), Some("hello"));
+    assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    assert_eq!(
+        logged_by_this_thread("WARN speech recognition service dropped the connection"),
+        2
+    );
+}
+
+#[test]
+fn should_give_up_after_four_attempts_when_service_keeps_dropping() {
+    // Given
+    let (cfg, attempts) = spawn_dropping_stub(usize::MAX, StubReply::ok(r#"{"text": "x"}"#));
+    // When
+    let result = transcribe(cfg);
+    // Then
+    assert!(result.is_err());
+    assert_eq!(attempts.load(Ordering::SeqCst), 4);
+}
+
+#[test]
+fn should_not_retry_error_answer() {
+    // Given
+    let (cfg, attempts) = spawn_dropping_stub(
+        0,
+        StubReply {
+            status: 500,
+            ..StubReply::ok(r#"{"error": "boom"}"#)
+        },
+    );
+    // When
+    let result = transcribe(cfg);
+    // Then
+    assert!(result.is_err());
+    assert_eq!(attempts.load(Ordering::SeqCst), 1);
 }
 
 #[test]
