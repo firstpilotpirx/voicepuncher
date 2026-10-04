@@ -28,7 +28,7 @@ Thin wrapper over `opsx:explore`, `opsx:new` and `opsx:continue`. Done criteria:
 | 6 | `design` | `opsx:continue <name>`, only when picked |
 | 7 | `tasks` | `opsx:continue <name>`, only when picked |
 | 8 | `validate` | `openspec validate <name>`, only when `specs` exist (a proposal-only change has no deltas and fails by design) |
-| 9 | `land` | commit `docs(openspec): propose <name>`, `just test`, `git push -u origin HEAD`, `gh pr create`, `gh pr merge --squash --delete-branch` |
+| 9 | `land` | commit `docs(openspec): propose <name>`, `just test`, `git push -u origin HEAD`, `gh pr create`, `gh pr merge --squash --delete-branch`, then update the main checkout (`AGENTS.md` § Workflow, "Update the main checkout after every merge") |
 
 ## Gates
 

@@ -31,7 +31,7 @@ Thin wrapper over the `opsx:*` skills. Stage order, done criteria and checks: `A
 | 10 | `full-check` | `just full-check`, only when a build input changed |
 | 11 | `pr` | `git push -u origin HEAD`, `gh pr create` |
 | 12 | `manual-run` | the user runs the app (`AGENTS.md` § How to verify a change) |
-| 13 | `merge` | `gh pr merge --squash --delete-branch` |
+| 13 | `merge` | `gh pr merge --squash --delete-branch`, then update the main checkout (`AGENTS.md` § Workflow, "Update the main checkout after every merge") |
 | 14 | `release` | `just release` on `origin/main`, only when `apply` bumped the version |
 
 ## Gates
@@ -68,7 +68,7 @@ Find the first stage whose fact is missing and start there:
 | every task in `tasks.md` is `[x]` | `apply` |
 | `openspec/changes/archive/*-<name>/` exists | `verify`, `archive` |
 | PR for the branch exists | `pr` |
-| PR is merged | `merge` |
+| PR is merged and the main checkout is at `origin/main` | `merge` |
 | tag `v<version in app/Cargo.toml>` exists | `release` |
 
 ## Output

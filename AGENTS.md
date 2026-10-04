@@ -33,12 +33,13 @@ Every feature, bug fix and behavior change runs through all stages below, in ord
 | 8 | Full check | `just full-check`, only when the branch changed a build input | passes on the final commit |
 | 9 | Pull request | `git push -u origin HEAD`, `gh pr create` | the PR body lists the checks that ran |
 | 10 | Manual run | the user, only when hotkey, recording, overlay, paste or permissions changed (§ How to verify a change) | the user pasted a healthy log |
-| 11 | Merge | `gh pr merge --squash --delete-branch` | the change is on `main`; if `main` moved after stage 8, merge it in and rerun stage 8 first |
+| 11 | Merge | `gh pr merge --squash --delete-branch`, then update the main checkout (below) | the change is on `main` and in the main checkout; if `main` moved after stage 8, merge it in and rerun stage 8 first |
 | 12 | Release | `just release` on `origin/main` (§ Release), only when stage 5 bumped the version | the GitHub Release `vX.Y.Z` exists with downloadable artifacts |
 
 - **Never leave work uncommitted.** After every finished piece of work — a task group, a fix, a doc or config edit — commit and push to the current branch without asking. Before ending a turn, `git status` is clean and the branch is pushed. On `main`, first create a `<type>/<slug>` branch from `origin/main`. This beats any "commit only when asked" rule.
 - Stages 4–12 are pre-authorized: commit, push, open the PR, squash-merge and release without asking. Stop only at stage 3, stage 10, a failed check you cannot fix, or a scope question the specs do not settle.
 - **One session per change.** After stage 11 (or 12) end the session and start the next change in a new one with a handoff of ≤ 10 lines (branch, PR, what is left). Do not resume a session idle for more than 1 h; start a new one with a handoff. A long session re-reads its whole history on every call.
+- **Update the main checkout after every merge.** The user runs the app from the main checkout (`cargo watch`), not from a worktree, and a merge on GitHub does not change it. Right after `gh pr merge` run `git -C "$(git worktree list | head -1 | cut -d' ' -f1)" pull --ff-only origin main` when that checkout is on `main` and clean; otherwise tell the user it is behind. Say in the report that it is updated.
 - A change is not done until stage 11 (or 12, when the version moved) is done. Report which stages ran.
 
 Skills: `/create-change` files a change for later (stages 2–3 only, landed on `main`); `/proceed-change <name> [--stop <gates>]` runs stages 1–12 for one change with gates (`.claude/skills/`).
