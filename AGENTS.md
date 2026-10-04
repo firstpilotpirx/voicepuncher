@@ -28,7 +28,7 @@ Every feature, bug fix and behavior change runs through all stages below, in ord
 | 3 | Approval | show the proposal to the user | the user approved it — **stop and wait**; no code before this |
 | 4 | Branch | `git fetch origin && git switch -c <type>/<name> origin/main` (`feat`, `fix`, `chore`) | |
 | 5 | Apply | `/opsx:apply`, test-first (§ TDD) | every task in `tasks.md` is checked; `just test` after every edit; one Conventional Commit after every task group, with `just check` when the group changed a build input |
-| 6 | Verify | `/opsx:verify`, then the `spec-test-reviewer` subagent on the change (§ Gherkin) | no CRITICAL issues and the reviewer reports `RESULT: PASS`; fix every PARTIAL, CONTRADICTS and ORPHAN row and rerun it |
+| 6 | Verify | `/opsx:verify`, then the `spec-test-reviewer` subagent on the change (§ Gherkin) | no CRITICAL issues and the reviewer reports `RESULT: PASS`; fix every PARTIAL, CONTRADICTS, UNTRACED, ORPHAN and CONFLICT entry and rerun it |
 | 7 | Archive | `/opsx:archive`, then commit | specs merged into `openspec/specs/`, change moved to `openspec/changes/archive/` |
 | 8 | Full check | `just full-check`, only when the branch changed a build input | passes on the final commit |
 | 9 | Pull request | `git push -u origin HEAD`, `gh pr create` | the PR body lists the checks that ran |
@@ -74,7 +74,7 @@ Business behavior is tested in Gherkin `.feature` files executed by cucumber-rs,
 - Never add a `.feature` scenario that no spec scenario covers; when the test needs new wording, change the spec first.
 - Tag the feature with its capability (`@file_transcription`) and level (`@component`, `@slice`, `@e2e`); `@wip` scenarios are not run; `@smoke` / `@accuracy` / `@seams` pick the E2E subsets `just e2e-smoke` / `just e2e-quick` / `just e2e-seams` run.
 - Steps hold no assertions in `Given`/`When`; types, flags, env vars and file paths live in step code, never in the `.feature` text.
-- The `spec-test-reviewer` subagent (`.claude/agents/spec-test-reviewer.md`) compares meaning: it reads the spec scenarios, the `.feature` scenarios and the step code, and rates each spec scenario MATCH / PARTIAL / CONTRADICTS / NOT COVERED plus orphan `.feature` scenarios. Run it at stage 6 and again before stage 7 when tests or specs changed after it.
+- The `spec-test-reviewer` subagent (`.claude/agents/spec-test-reviewer.md`) compares meaning: it reads the change's OpenSpec documents (proposal, specs, design, tasks) and every test in scope — `.feature` scenarios with step code and plain Rust tests — and reports tests that miss or contradict a document, orphan `.feature` scenarios and conflicts between documents. Run it at stage 6 and again before stage 7 when tests or OpenSpec documents changed after it.
 
 ## Release
 
