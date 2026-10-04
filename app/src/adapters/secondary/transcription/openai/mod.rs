@@ -17,7 +17,7 @@ use request::{encode_wav, multipart_body, normalize_transcript};
 const TRANSCRIPTIONS_PATH: &str = "audio/transcriptions";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 const SLOW_REQUEST_LOG_MS: u128 = 600;
-const START_HINT: &str = "start it with 'just start-services'";
+const START_HINT: &str = "start it with 'just start-model-servers'";
 
 #[derive(Deserialize)]
 struct TranscriptionResponse {
@@ -161,7 +161,7 @@ mod tests {
             message.contains(&format!("127.0.0.1:{port}/v1")),
             "{message}"
         );
-        assert!(message.contains("just start-services"), "{message}");
+        assert!(message.contains("just start-model-servers"), "{message}");
     }
 
     #[test]

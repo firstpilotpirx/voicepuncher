@@ -13,7 +13,7 @@ use crate::E2eWorld;
 
 const MAX_STARTUP_FAILURE: Duration = Duration::from_secs(3);
 const REMOTE_SERVICE_URL: &str = "http://192.168.1.10:8080/v1";
-const START_COMMAND: &str = "just start-services";
+const START_COMMAND: &str = "just start-model-servers";
 const OUTDATED_CONFIG: &str = "[llm]\nmodel_path = \"/models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf\"\n";
 const OFFERED_MODELS: [&str; 2] = ["qwen2.5-7b-instruct", "llama-3.1-8b-instruct"];
 

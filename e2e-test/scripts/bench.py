@@ -34,16 +34,16 @@ from typing import Iterator, NamedTuple, Optional
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# Separate from the 8081 port `just start-services` uses, so a running service is left alone
+# Separate from the 8081 port `just start-model-servers` uses, so a running service is left alone
 BENCH_STT_PORT = 8091
 STT_READY_TIMEOUT_S = 120
 STT_STOP_TIMEOUT_S = 10
-# Same decoding flags as `just start-services`
+# Same decoding flags as `just start-model-servers`
 STT_DECODING_FLAGS = ["-l", "auto", "-bo", "1", "-nf", "-sns", "-mc", "0", "-nt"]
-# Separate from the 8080 port `just start-services` uses
+# Separate from the 8080 port `just start-model-servers` uses
 BENCH_LLM_PORT = 8090
 LLM_READY_TIMEOUT_S = 120
-# Same flags as `just start-services`
+# Same flags as `just start-model-servers`
 LLM_SERVER_FLAGS = ["-c", "4096", "-np", "1"]
 
 # ── Model matrix ── add entries here to include new models in the benchmark ────

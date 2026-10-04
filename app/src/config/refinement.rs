@@ -95,7 +95,7 @@ pub fn reject_removed_llm_section(raw: &toml::Table) -> Result<()> {
         .collect();
     bail!(
         "the [llm] section was replaced by [refinement]; text refinement now runs in a \
-         separate service (start it with 'just start-services'):\n{}",
+         separate service (start it with 'just start-model-servers'):\n{}",
         hints.join("\n")
     )
 }

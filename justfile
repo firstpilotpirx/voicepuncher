@@ -9,7 +9,7 @@ export VOICEPUNCHER_LLM_MODEL := env_var_or_default("VOICEPUNCHER_LLM_MODEL", `f
 # Corpus directory containing manifest.jsonl — absolute, because cargo runs tests from e2e-test/
 export VOICEPUNCHER_BENCH_CORPUS := env_var_or_default("VOICEPUNCHER_BENCH_CORPUS", justfile_directory() / "e2e-test/corpus")
 
-# Local services started by `start-services`; their URLs are the app's default [transcription].base_url and [refinement].base_url
+# Local services started by `start-model-servers`; their URLs are the app's default [transcription].base_url and [refinement].base_url
 stt_port := env_var_or_default("VOICEPUNCHER_STT_PORT", "8081")
 stt_url := "http://127.0.0.1:" + stt_port + "/v1"
 llm_port := env_var_or_default("VOICEPUNCHER_LLM_PORT", "8080")
@@ -56,8 +56,8 @@ e2e: e2e-smoke e2e-bench
 e2e-smoke: _require-models build
     #!/usr/bin/env bash
     set -euo pipefail
-    trap '{{just_executable()}} _stop-services-for-e2e' EXIT
-    {{just_executable()}} _start-services-for-e2e
+    trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
+    {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}"
     cargo test -p voicepuncher --test transcription_openai_it --test textrefinement_openai_it --release -- --nocapture
     cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @smoke
@@ -66,8 +66,8 @@ e2e-smoke: _require-models build
 e2e-quick: _require-models _require-corpus build
     #!/usr/bin/env bash
     set -euo pipefail
-    trap '{{just_executable()}} _stop-services-for-e2e' EXIT
-    {{just_executable()}} _start-services-for-e2e
+    trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
+    {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_BENCH_LIMIT=10 \
         cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @accuracy
 
@@ -75,8 +75,8 @@ e2e-quick: _require-models _require-corpus build
 e2e-bench: _require-models _require-corpus build
     #!/usr/bin/env bash
     set -euo pipefail
-    trap '{{just_executable()}} _stop-services-for-e2e' EXIT
-    {{just_executable()}} _start-services-for-e2e
+    trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
+    {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" \
         cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @accuracy
 
@@ -107,7 +107,7 @@ release: _require-release-head test build
 # ── Services ── local processes the app talks to over loopback ────────────────
 
 # Start the services for an E2E recipe; a service that already runs (yours) is reused and left running
-_start-services-for-e2e:
+_start-model-servers-for-e2e:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p "{{services_run_dir}}"
@@ -118,22 +118,22 @@ _start-services-for-e2e:
             touch "{{services_run_dir}}/${service%%:*}-${service#*:}.e2e"
         fi
     done
-    {{just_executable()}} start-services
+    {{just_executable()}} start-model-servers
 
-# Stop the services that _start-services-for-e2e started in this run
-_stop-services-for-e2e:
+# Stop the services that _start-model-servers-for-e2e started in this run
+_stop-model-servers-for-e2e:
     #!/usr/bin/env bash
     set -euo pipefail
     for service in whisper-server:{{stt_port}} llama-server:{{llm_port}}; do
         marker="{{services_run_dir}}/${service%%:*}-${service#*:}.e2e"
         if [[ -f "$marker" ]]; then
             rm -f "$marker"
-            {{just_executable()}} stop-services "${service%%:*}"
+            {{just_executable()}} stop-model-servers "${service%%:*}"
         fi
     done
 
 # Start the speech recognition (whisper-server) and text refinement (llama-server) services; one that already answers on its port is skipped
-start-services:
+start-model-servers:
     #!/usr/bin/env bash
     set -euo pipefail
     run_dir="{{services_run_dir}}"
@@ -211,15 +211,15 @@ start-services:
             llama-server -m "$VOICEPUNCHER_LLM_MODEL" --host 127.0.0.1 --port "{{llm_port}}" -c 4096 -np 1
     fi
 
-# Stop the services that start-services launched (all, or the named ones: whisper-server, llama-server); services started by hand keep running
-stop-services *services:
+# Stop the services that start-model-servers launched (all, or the named ones: whisper-server, llama-server); services started by hand keep running
+stop-model-servers *services:
     #!/usr/bin/env bash
     set -euo pipefail
     stop_service() {
         local binary=$1 port=$2 label=$3
         local pid_file="{{services_run_dir}}/$binary-$port.pid"
         if [[ ! -f "$pid_file" ]]; then
-            echo "· no $label started by start-services"
+            echo "· no $label started by start-model-servers"
             return 0
         fi
         local pid

@@ -21,7 +21,7 @@ Three TCC permissions are required. Grant each to the terminal app you launch vo
 
 ## Install
 
-Prerequisites: Rust ≥ 1.88, [`just`](https://github.com/casey/just), Homebrew `whisper-cpp` and `llama.cpp` (`just start-services` offers to install them).
+Prerequisites: Rust ≥ 1.88, [`just`](https://github.com/casey/just), Homebrew `whisper-cpp` and `llama.cpp` (`just start-model-servers` offers to install them).
 
 ```bash
 git clone https://github.com/pirx/voicepuncher
@@ -36,11 +36,11 @@ Binary: `target/release/voicepuncher`
 voicepuncher runs no model itself. It sends each recording to a **speech recognition service** (OpenAI Audio Transcriptions API) and each raw transcript to a **text refinement service** (OpenAI Chat Completions API), both on this machine, and pastes what comes back. The supported services are whisper.cpp `whisper-server` and llama.cpp `llama-server`.
 
 ```bash
-just start-services   # starts whisper-server on 127.0.0.1:8081 and llama-server on 127.0.0.1:8080
-just stop-services    # stops both again (or one: just stop-services llama-server)
+just start-model-servers   # starts whisper-server on 127.0.0.1:8081 and llama-server on 127.0.0.1:8080
+just stop-model-servers    # stops both again (or one: just stop-model-servers llama-server)
 ```
 
-`start-services` checks that `whisper-server` and `llama-server` are installed (offers `brew install whisper-cpp` / `brew install llama.cpp`), skips a service if something already answers on its port, uses the largest `ggml-*.bin` and `*.gguf` in `~/.voicepuncher/` or `~/.voicepuncher/models/` (override with `VOICEPUNCHER_WHISPER_MODEL`, `VOICEPUNCHER_LLM_MODEL`), and waits until each model is loaded. Logs: `~/.voicepuncher/logs/whisper-server-8081.log`, `~/.voicepuncher/logs/llama-server-8080.log`. Set `VOICEPUNCHER_STT_PORT` / `VOICEPUNCHER_LLM_PORT` to use other ports; PID and log files are per port. `stop-services` stops only servers that `start-services` launched.
+`start-model-servers` checks that `whisper-server` and `llama-server` are installed (offers `brew install whisper-cpp` / `brew install llama.cpp`), skips a service if something already answers on its port, uses the largest `ggml-*.bin` and `*.gguf` in `~/.voicepuncher/` or `~/.voicepuncher/models/` (override with `VOICEPUNCHER_WHISPER_MODEL`, `VOICEPUNCHER_LLM_MODEL`), and waits until each model is loaded. Logs: `~/.voicepuncher/logs/whisper-server-8081.log`, `~/.voicepuncher/logs/llama-server-8080.log`. Set `VOICEPUNCHER_STT_PORT` / `VOICEPUNCHER_LLM_PORT` to use other ports; PID and log files are per port. `stop-model-servers` stops only servers that `start-model-servers` launched.
 
 To run the services by hand instead:
 
@@ -67,7 +67,7 @@ Download to `~/.voicepuncher/models/` (`just models` fetches a small default pai
 
 ```bash
 cp app/config.example.toml ~/.voicepuncher/config.toml
-just start-services
+just start-model-servers
 ./target/release/voicepuncher
 ```
 
@@ -115,7 +115,7 @@ threads = 4                                # whisper-server -t 4
 chunk_threshold_secs = 15                  chunk_threshold_secs = 15
 ```
 
-`beam_size`, `patience`, `temperature_inc`, `entropy_thold`, `logprob_thold`, `no_speech_thold` and `flash_attn` are now `whisper-server` launch flags. New keys: `model` (sent as-is), `temperature`, `timeout_secs` (per request, default 60). Then run `just start-services`.
+`beam_size`, `patience`, `temperature_inc`, `entropy_thold`, `logprob_thold`, `no_speech_thold` and `flash_attn` are now `whisper-server` launch flags. New keys: `model` (sent as-is), `temperature`, `timeout_secs` (per request, default 60). Then run `just start-model-servers`.
 
 ## Upgrading from the in-process LLM
 
@@ -131,7 +131,7 @@ max_tokens = 512                           max_tokens = 512
 temperature = 0.0                          temperature = 0.0
 ```
 
-New keys: `model` (default `local`; `llama-server` accepts any name), `api_key` (sent as a bearer token when not empty), `timeout_secs` (per request, default 30). Then run `just start-services`.
+New keys: `model` (default `local`; `llama-server` accepts any name), `api_key` (sent as a bearer token when not empty), `timeout_secs` (per request, default 30). Then run `just start-model-servers`.
 
 ## Minimum press time
 
@@ -142,7 +142,7 @@ Recordings shorter than `min_press_ms` (default 200 ms) are silently dropped. Th
 Feed a pre-recorded WAV instead of using the hotkey. Output goes to stdout — useful for scripting and E2E tests.
 
 ```bash
-just start-services
+just start-model-servers
 ./target/release/voicepuncher --input-file recording.wav
 ```
 
@@ -172,9 +172,9 @@ Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-qui
    - [ ] Long dictation (> 30 s, crosses a chunk boundary) → no repeated or missing words at the seam.
    - [ ] Mixed Russian + English ("задеплой в Docker") → each language kept as spoken, terms in Latin script.
    - [ ] Same with `--no-llm` → the raw transcript is pasted.
-   - [ ] `just stop-services whisper-server`, then start the app → it exits naming the speech recognition service address and `just start-services`.
-   - [ ] Stop the speech recognition service while the app runs and record → nothing is pasted, the failure is logged; after `just start-services` the next recording works.
-   - [ ] `just stop-services llama-server`, then start the app → it exits naming the text refinement service address and `just start-services`.
+   - [ ] `just stop-model-servers whisper-server`, then start the app → it exits naming the speech recognition service address and `just start-model-servers`.
+   - [ ] Stop the speech recognition service while the app runs and record → nothing is pasted, the failure is logged; after `just start-model-servers` the next recording works.
+   - [ ] `just stop-model-servers llama-server`, then start the app → it exits naming the text refinement service address and `just start-model-servers`.
    - [ ] With the text refinement service stopped, start with `--no-llm` → the raw transcript is pasted.
    - [ ] Stop the text refinement service while the app runs and record → the raw transcript is pasted, the failure is logged.
    - [ ] Overlay shows while recording and while processing, also on a second display if present.
@@ -184,7 +184,7 @@ Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-qui
 
 ### Model comparison (not a release gate)
 
-Run only when changing a model, decoding params or the prompt. Missing models and corpus are downloaded automatically. For each Whisper model the script starts its own `whisper-server` on port 8091, and for each LLM its own `llama-server` on port 8090, with the `start-services` flags.
+Run only when changing a model, decoding params or the prompt. Missing models and corpus are downloaded automatically. For each Whisper model the script starts its own `whisper-server` on port 8091, and for each LLM its own `llama-server` on port 8090, with the `start-model-servers` flags.
 
 | Command | Samples | Time |
 |---|---|---|

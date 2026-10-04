@@ -40,7 +40,7 @@ voicepuncher is a single OS process with no server side of its own. It reads aud
 | macOS TCC (Transparency Consent Control) | voicepuncher → macOS | Permission probe at startup (`AXIsProcessTrusted`, `cpal` device open, `rdev` key-event subscription); returns grant or denial per permission |
 | CoreAudio (via `cpal`) | macOS → voicepuncher | Raw PCM audio frames from the default input device; streamed during the `Recording` state |
 | `rdev` global key listener | macOS → voicepuncher | Raw keyboard events delivered as `PttSignal::Pressed` / `PttSignal::Released` when the configured hotkey changes state |
-| Speech recognition service (`whisper-server`, started with `just start-services`) | voicepuncher ↔ service over loopback HTTP | One `POST /v1/audio/transcriptions` per recording or live chunk (16 kHz mono WAV); returns the raw transcript. Checked for reachability at startup |
+| Speech recognition service (`whisper-server`, started with `just start-model-servers`) | voicepuncher ↔ service over loopback HTTP | One `POST /v1/audio/transcriptions` per recording or live chunk (16 kHz mono WAV); returns the raw transcript. Checked for reachability at startup |
 | Local model files (`~/.voicepuncher/models/`) | file system → voicepuncher | Qwen2.5 GGUF binary, loaded once at startup and kept resident in RAM (the Whisper model is loaded by the speech recognition service) |
 | NSPasteboard (macOS clipboard) | voicepuncher → macOS | `CleanedText` written as a plain-text clipboard entry via `arboard` |
 | CGEventPost (macOS event injection) | voicepuncher → macOS | Synthetic Cmd+V key-down/key-up pair injected into the global event stream to trigger paste in the frontmost application |

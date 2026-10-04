@@ -90,13 +90,13 @@
 
 ### Speech recognition service
 - **Type:** External system (outside the app process)
-- **Definition:** A process on the same machine that turns audio into a `RawTranscript` over the OpenAI Audio Transcriptions API — whisper.cpp `whisper-server` is the supported one. The user starts it (normally with `just start-services`); the app only connects to it, checks it is reachable at startup, and rejects any address that is not loopback.
+- **Definition:** A process on the same machine that turns audio into a `RawTranscript` over the OpenAI Audio Transcriptions API — whisper.cpp `whisper-server` is the supported one. The user starts it (normally with `just start-model-servers`); the app only connects to it, checks it is reachable at startup, and rejects any address that is not loopback.
 - **Code:** `app/src/adapters/secondary/transcription/openai/` — `OpenAiTranscriber`; config section `[transcription]` (`app/src/config/transcription.rs`)
 - **Synonyms to AVOID:** "STT server", "Whisper server" (names one implementation), "backend", "engine"
 
 ### Text refinement service
 - **Type:** External system (outside the app process)
-- **Definition:** A process on the same machine that corrects a `RawTranscript` into `CleanedText` over the OpenAI Chat Completions API — llama.cpp `llama-server` is the supported one. The app sends the configured system prompt as the instruction and the transcript as delimited data. The user starts it (normally with `just start-services`); the app only connects to it, checks at startup that it answers and offers the configured model (unless refinement is disabled), rejects any address that is not loopback, and pastes the raw transcript when it fails.
+- **Definition:** A process on the same machine that corrects a `RawTranscript` into `CleanedText` over the OpenAI Chat Completions API — llama.cpp `llama-server` is the supported one. The app sends the configured system prompt as the instruction and the transcript as delimited data. The user starts it (normally with `just start-model-servers`); the app only connects to it, checks at startup that it answers and offers the configured model (unless refinement is disabled), rejects any address that is not loopback, and pastes the raw transcript when it fails.
 - **Code:** `app/src/adapters/secondary/textrefinement/openai/` — `OpenAiTextRefiner`; config section `[refinement]` (`app/src/config/refinement.rs`)
 - **Synonyms to AVOID:** "LLM server", "llama server" (names one implementation), "backend", "engine"
 

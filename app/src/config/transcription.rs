@@ -108,7 +108,7 @@ pub fn reject_removed_whisper_section(raw: &toml::Table) -> Result<()> {
         .collect();
     bail!(
         "the [whisper] section was replaced by [transcription]; speech recognition now runs \
-         in a separate service (start it with 'just start-services'):\n{}",
+         in a separate service (start it with 'just start-model-servers'):\n{}",
         hints.join("\n")
     )
 }

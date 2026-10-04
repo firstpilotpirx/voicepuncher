@@ -9,7 +9,7 @@ debug_save_wav = false
 
 [transcription]
 # Local speech recognition service (OpenAI Audio Transcriptions API). Start it with
-# `just start-services`; the model and decoder flags are set when starting the service.
+# `just start-model-servers`; the model and decoder flags are set when starting the service.
 base_url = "http://127.0.0.1:8081/v1"   # must be on this machine: localhost, 127.0.0.0/8 or [::1]
 model = "whisper-1"                     # sent as-is; whisper-server ignores it
 language = "auto"                       # "ru", "en", … or "auto" to let the service detect it
@@ -23,7 +23,7 @@ vad_lookback_secs = 5      # max seconds to look back from hard chunk boundary w
 
 [refinement]
 # Local text refinement service (OpenAI Chat Completions API). Start it with
-# `just start-services`; the model and its context size are set when starting the service.
+# `just start-model-servers`; the model and its context size are set when starting the service.
 base_url = "http://127.0.0.1:8080/v1"   # must be on this machine: localhost, 127.0.0.0/8 or [::1]
 model = "local"                         # llama-server serves one model and accepts any name
 api_key = ""                            # sent as a bearer token when not empty (llama-server --api-key)

@@ -12,7 +12,7 @@ use crate::E2eWorld;
 
 const MAX_STARTUP_FAILURE: Duration = Duration::from_secs(3);
 const REMOTE_SERVICE_URL: &str = "http://192.168.1.10:8081/v1";
-const START_COMMAND: &str = "just start-services";
+const START_COMMAND: &str = "just start-model-servers";
 const OUTDATED_CONFIG: &str = "[whisper]\nmodel_path = \"/models/ggml-large-v3-turbo.bin\"\n";
 
 #[given("the speech recognition service is running")]

@@ -154,7 +154,7 @@ impl SetupWizard {
         println!();
         println!("  Config written: {}", config_path.display());
         println!(
-            "  Speech recognition and text refinement run in separate services — start them with 'just start-services'."
+            "  Speech recognition and text refinement run in separate services — start them with 'just start-model-servers'."
         );
         println!("  Starting voicepuncher…");
         println!();

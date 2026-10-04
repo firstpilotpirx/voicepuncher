@@ -14,7 +14,7 @@ use request::{chat_body, cleaned_answer};
 const CHAT_COMPLETIONS_PATH: &str = "chat/completions";
 const MODELS_PATH: &str = "models";
 const STARTUP_CHECK_TIMEOUT: Duration = Duration::from_secs(2);
-const START_HINT: &str = "start it with 'just start-services'";
+const START_HINT: &str = "start it with 'just start-model-servers'";
 
 #[derive(Deserialize)]
 struct ModelList {
@@ -198,7 +198,7 @@ mod tests {
             "{message}"
         );
         assert!(message.contains(&url), "{message}");
-        assert!(message.contains("just start-services"), "{message}");
+        assert!(message.contains("just start-model-servers"), "{message}");
     }
 
     #[test]
