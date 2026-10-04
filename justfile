@@ -58,8 +58,8 @@ e2e: e2e-smoke e2e-bench
 e2e-smoke: _require-models build
     #!/usr/bin/env bash
     set -euo pipefail
-    trap '{{just_executable()}} stop-services' EXIT
-    {{just_executable()}} start-services
+    trap '{{just_executable()}} _stop-services-for-e2e' EXIT
+    {{just_executable()}} _start-services-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}"
     cargo test -p voicepuncher --test transcription_openai_it --release -- --nocapture
     cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @smoke
@@ -68,8 +68,8 @@ e2e-smoke: _require-models build
 e2e-quick: _require-models _require-corpus build
     #!/usr/bin/env bash
     set -euo pipefail
-    trap '{{just_executable()}} stop-services' EXIT
-    {{just_executable()}} start-services
+    trap '{{just_executable()}} _stop-services-for-e2e' EXIT
+    {{just_executable()}} _start-services-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_BENCH_LIMIT=10 \
         cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @accuracy
 
@@ -77,8 +77,8 @@ e2e-quick: _require-models _require-corpus build
 e2e-bench: _require-models _require-corpus build
     #!/usr/bin/env bash
     set -euo pipefail
-    trap '{{just_executable()}} stop-services' EXIT
-    {{just_executable()}} start-services
+    trap '{{just_executable()}} _stop-services-for-e2e' EXIT
+    {{just_executable()}} _start-services-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" \
         cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @accuracy
 
@@ -108,13 +108,34 @@ release: _require-release-head test build
 
 # ── Services ── local processes the app talks to over loopback ────────────────
 
+# Start the service for an E2E recipe; a service that already runs (yours) is reused and left running
+_start-services-for-e2e:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if nc -z 127.0.0.1 {{stt_port}} >/dev/null 2>&1; then
+        echo "✓ reusing the speech recognition service already running at {{stt_url}}; it stays running"
+        exit 0
+    fi
+    {{just_executable()}} start-services
+    touch "{{services_run_dir}}/whisper-server-{{stt_port}}.e2e"
+
+# Stop the service only if _start-services-for-e2e started it in this run
+_stop-services-for-e2e:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    marker="{{services_run_dir}}/whisper-server-{{stt_port}}.e2e"
+    if [[ -f "$marker" ]]; then
+        rm -f "$marker"
+        {{just_executable()}} stop-services
+    fi
+
 # Start the speech recognition service (whisper-server) unless one already answers on its port
 start-services:
     #!/usr/bin/env bash
     set -euo pipefail
     port="{{stt_port}}"
-    pid_file="{{services_run_dir}}/whisper-server.pid"
-    log_file="{{services_log_dir}}/whisper-server.log"
+    pid_file="{{services_run_dir}}/whisper-server-{{stt_port}}.pid"
+    log_file="{{services_log_dir}}/whisper-server-{{stt_port}}.log"
     port_open() { nc -z 127.0.0.1 "$port" >/dev/null 2>&1; }
     if ! command -v whisper-server >/dev/null 2>&1; then
         if [[ -t 0 ]]; then
@@ -169,7 +190,7 @@ start-services:
 stop-services:
     #!/usr/bin/env bash
     set -euo pipefail
-    pid_file="{{services_run_dir}}/whisper-server.pid"
+    pid_file="{{services_run_dir}}/whisper-server-{{stt_port}}.pid"
     if [[ ! -f "$pid_file" ]]; then
         echo "· no speech recognition service started by start-services"
         exit 0
