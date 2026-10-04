@@ -41,6 +41,8 @@ Every feature, bug fix and behavior change runs through all stages below, in ord
 - **One session per change.** After stage 11 (or 12) end the session and start the next change in a new one with a handoff of ≤ 10 lines (branch, PR, what is left). Do not resume a session idle for more than 1 h; start a new one with a handoff. A long session re-reads its whole history on every call.
 - A change is not done until stage 11 (or 12, when the version moved) is done. Report which stages ran.
 
+Skills: `/create-change` files a change for later (stages 2–3 only, landed on `main`); `/proceed-change <name> [--stop <gates>]` runs stages 1–12 for one change with gates (`.claude/skills/`).
+
 CLI: `openspec list` (changes), `openspec list --specs`, `openspec status --change <name>`, `openspec view` (dashboard), `openspec validate`.
 
 ## TDD — Red, Green, Refactor
