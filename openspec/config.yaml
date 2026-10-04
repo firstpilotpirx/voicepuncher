@@ -6,54 +6,42 @@ context: |
   Privacy: audio and text never leave the machine; no internet access at runtime.
   One Rust crate app/ with hexagonal architecture: adapters -> core/application -> core/domain. Ports are traits in app/src/core/application/. No framework imports in app/src/core/. Adapters live in app/src/adapters/{primary,secondary}/<feature>/<tech>/.
   Domain terms come from docs/ubiquitous-language.md; a change that introduces a term adds it there.
-  Verification: `just test` (~1 min) after every edit, `just check` (~4 min) after every task group, `just full-check` (~30 min) before merging; manual run by the user for hotkey, recording, overlay, paste and permissions (CLAUDE.md § How to verify a change).
+  Workflow: every change runs the stages of AGENTS.md § Workflow in order: explore -> propose -> user approval -> branch -> apply -> verify -> archive -> full-check -> PR -> manual run -> merge -> release. No code before the user approved the proposal.
+  Development is test-first, Red -> Green -> Refactor (AGENTS.md § TDD). A bug gets a failing reproduction test, committed on its own, before any fix.
+  Business tests are Gherkin: slice, component and E2E tests are .feature files run by cucumber-rs, one per capability, each written from a spec scenario: same meaning, wording may differ (AGENTS.md § Gherkin). Unit and adapter integration tests stay plain Rust.
+  Verification: `just test` (~1 min) after every edit, `just check` (~4 min) after every task group, `just full-check` (~30 min) before merging; the `spec-test-reviewer` subagent compares the meaning of spec scenarios and .feature scenarios at verify; manual run by the user for hotkey, recording, overlay, paste and permissions (AGENTS.md § How to verify a change).
+  Versioning: SemVer in app/Cargo.toml; pre-1.0 a breaking change or new capability is MINOR, a bug fix is PATCH. `just release` tags vX.Y.Z and publishes the GitHub Release with the binary (AGENTS.md § Release).
   Write all artifacts in English.
 
 rules:
   proposal:
     - State current stage, target stage, scope and acceptance bar.
     - List what is out of scope.
+    - State the SemVer bump (MAJOR, MINOR or PATCH) and the target version, or "no release" for a change without behavior change.
   specs:
-    - Scenarios state business intent; never name a type, endpoint, JSON field, config key or env var in WHEN/THEN.
+    - Scenarios state business intent; never name a type, endpoint, JSON field, config key or env var in GIVEN/WHEN/THEN.
+    - Write each scenario so it reads as a Gherkin scenario, with preconditions in GIVEN, exactly one WHEN, observable outcomes in THEN.
+    - Give every scenario a name unique within its capability.
+    - For a bug fix, add a scenario that reproduces the bug.
+  design:
+    - State the test level of every spec scenario (unit, adapter integration, slice/component .feature, E2E .feature, manual run).
   tasks:
-    - End each task group with `just check`; end the list with `just full-check` and the manual checks the user performs.
+    - For each behavior, list a Red task (write the failing test, run it, see it fail) before its Green task (make it pass); for a bug, the Red task is the reproduction test.
+    - For a scenario tested at slice, component or E2E level, the Red task adds a scenario with the same meaning to `<capability>.feature`, plus its step definitions.
+    - End each task group with `just check` and a commit.
+    - End the list with a group that bumps `version` in app/Cargo.toml to the version the proposal states, then lists the manual checks the user performs (AGENTS.md § How to verify a change), or "none".
 
 operations:
   apply:
     guidance:
+      - Work on a `<type>/<change-name>` branch created from origin/main; never on main.
+      - Follow Red -> Green -> Refactor (`tdd` skill); run the new test and see it fail before writing the code that makes it pass.
+      - For a bug, commit the failing reproduction test on its own (message says it is intentionally red) before the fix commit.
+      - Write slice, component and E2E tests as .feature scenarios written from the change specs (AGENTS.md § Gherkin); unit tests stay plain Rust.
       - Run `just test` after every edit and `just check` after every task group; fix failures before the next task.
-      - Run `just full-check` before reporting the change as done or opening the PR for merge.
+      - Commit after every task group with a Conventional Commit message.
   archive:
     guidance:
-      - Archive only after `just full-check` passed on the final commit.
-
-# Project context (optional)
-# Add only constraints that should guide OpenSpec artifacts and workflows.
-# Include constraints an agent cannot infer by reading the code.
-# Keep general project documentation and discoverable codebase facts out.
-# Example:
-#   context: |
-#     Designs and tasks must cover Windows, macOS, and Linux
-#     Write all artifacts in Spanish
-
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always state what is out of scope
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
-
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+      - "Before archiving, make sure the `spec-test-reviewer` subagent reported `RESULT: PASS` for this change after the last change to its specs or .feature files; otherwise run it and fix every gap first."
+      - Archive on the change branch, in the same PR as the code, and commit the archive.
+      - After archiving, continue with AGENTS.md § Workflow stage 8.

@@ -35,7 +35,7 @@
 ## 7. Tooling, E2E and docs
 
 - [ ] 7.1 Add `just stt-server` (D8) and make `e2e-smoke`/`e2e-bench` start the server, wait for its port, run, and stop it; verify `just e2e-smoke` passes from a state where no server runs
-- [ ] 7.2 Pass `--transcription-url` instead of `--whisper-model` in `e2e-test/tests/e2e/*.rs`; verify `just e2e-smoke`
+- [ ] 7.2 Pass `--transcription-url` instead of `--whisper-model` in `e2e-test/tests/steps/*.rs`; verify `just e2e-smoke`
 - [ ] 7.3 Document running the service, the new `[transcription]` section and the migration from `[whisper]` in `README.md`; change CLAUDE.md "Zero network I/O" to "No internet; loopback connections only"; verify the README commands run as written
 
 ## 8. Verification

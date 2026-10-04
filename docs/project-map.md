@@ -39,6 +39,7 @@
 | `app/src/main.rs` | Composition root | Wires adapters + use cases into a runnable; no business logic |
 | `app/tests/architecture.rs` | Architecture test | Import-graph assertions (layer dependency rule, naming rules, structure rules) |
 | `app/tests/{feature}_{tech}_it.rs` | Integration tests | One file per secondary adapter; named `<feature>_<tech>_it.rs` |
+| `app/tests/features/{slice,component}/<capability>.feature` | Slice / component tests | Gherkin scenarios written from `openspec/specs/<capability>/spec.md`; run by `app/tests/cucumber_integration.rs`, steps in `app/tests/steps/<capability>.rs` |
 
 ## E2E test structure (`e2e-test/`)
 
@@ -46,8 +47,9 @@
 |---|---|
 | `e2e-test/src/corpus.rs` | `Corpus` loader — reads `manifest.jsonl`, pairs WAV files with `GroundTruth` |
 | `e2e-test/src/wer.rs` | WER / CER metric computation |
-| `e2e-test/tests/e2e/smoke.rs` | Smoke test — binary loads, single file runs end-to-end |
-| `e2e-test/tests/e2e/pipeline_accuracy.rs` | Accuracy benchmark — WER over full corpus |
+| `e2e-test/tests/features/<capability>.feature` | E2E scenarios in Gherkin, written from `openspec/specs/<capability>/spec.md`; `@smoke` = binary loads and file mode runs, `@accuracy` = WER over the corpus |
+| `e2e-test/tests/steps/<capability>.rs` | Step definitions, one module per capability |
+| `e2e-test/tests/cucumber_e2e.rs` | cucumber-rs harness: `E2eWorld` + `main()` |
 | `e2e-test/corpus/` | Benchmark audio files (FLEURS en/ru, LibriSpeech, Podlodka) + `manifest.jsonl` |
 | `e2e-test/scripts/bench.py` | Multi-model benchmark matrix runner |
 | `e2e-test/scripts/download_corpus.py` | Corpus downloader |

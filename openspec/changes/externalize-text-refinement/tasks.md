@@ -33,7 +33,7 @@
 ## 6. Tooling, E2E and docs
 
 - [ ] 6.1 Add `just llm-server` (D7) and make `e2e-smoke`/`e2e-bench` start the server, wait for `/v1/models`, run, and stop it; verify `just e2e-smoke` passes from a state where no server runs
-- [ ] 6.2 Pass `--refinement-url` instead of `--llm-model` in `e2e-test/tests/e2e/*.rs`; verify `just e2e-smoke`
+- [ ] 6.2 Pass `--refinement-url` instead of `--llm-model` in `e2e-test/tests/steps/*.rs`; verify `just e2e-smoke`
 - [ ] 6.3 Document running `llama-server`, LM Studio and Ollama, the `[refinement]` section and the migration from `[llm]` in `README.md`; change CLAUDE.md "Zero network I/O" to "No internet; loopback connections only" if not already changed; verify the README commands run as written
 
 ## 7. Verification

@@ -36,7 +36,7 @@ fmt:
 lint:
     cargo clippy --workspace --all-targets -- -D warnings
 
-# Unit + architecture + integration tests of the app, unit tests of the E2E harness (~1 min)
+# Unit + architecture + integration tests (plain and .feature) of the app, unit tests of the E2E harness (~1 min)
 test:
     cargo test -p voicepuncher --tests --no-fail-fast
     cargo test -p voicepuncher-e2e-test --lib
@@ -48,17 +48,41 @@ build:
 # E2E on real models: smoke + WER accuracy on the whole corpus (~20 min)
 e2e: e2e-smoke e2e-bench
 
-# Smoke test — models load, file mode runs
+# Smoke test — models load, file mode runs (@smoke scenarios)
 e2e-smoke: _require-models build
-    cargo test -p voicepuncher-e2e-test --test smoke --release -- --nocapture
+    cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @smoke
 
 # WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 % (~1 min)
 e2e-quick: _require-models _require-corpus build
-    VOICEPUNCHER_BENCH_LIMIT=10 cargo test -p voicepuncher-e2e-test --test pipeline_accuracy --release -- --nocapture
+    VOICEPUNCHER_BENCH_LIMIT=10 cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @accuracy
+
+# Manual: @real_keyboard scenarios drive the real hotkey + paste — needs Accessibility and Input Monitoring for the terminal, a GUI session, hands off the keyboard
+test-real-keyboard:
+    VOICEPUNCHER_REAL_KEYBOARD_IT=1 cargo test -p voicepuncher --test cucumber_integration -- --tags @real_keyboard
 
 # WER accuracy on the whole corpus — fails if mean WER > 30 % (~20 min)
 e2e-bench: _require-models _require-corpus build
-    cargo test -p voicepuncher-e2e-test --test pipeline_accuracy --release -- --nocapture
+    cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @accuracy
+
+# ── Release ── after the merge, on a clean checkout of origin/main ──────────
+
+# Tag v<app version>, build, publish a GitHub Release with the binary tarball + sha256
+release: _require-release-head test build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version=$(sed -n 's/^version = "\(.*\)"/\1/p' app/Cargo.toml | head -1)
+    tag="v$version"
+    name="voicepuncher-$tag-aarch64-apple-darwin"
+    dist=target/dist
+    rm -rf "$dist" && mkdir -p "$dist/$name"
+    cp target/release/voicepuncher README.md "$dist/$name/"
+    tar -C "$dist" -czf "$dist/$name.tar.gz" "$name"
+    (cd "$dist" && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
+    git tag -a "$tag" -m "voicepuncher $tag"
+    git push origin "$tag"
+    gh release create "$tag" "$dist/$name.tar.gz" "$dist/$name.tar.gz.sha256" \
+        --title "voicepuncher $tag" --generate-notes --verify-tag
+    echo "✓ released $tag"
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
@@ -110,6 +134,22 @@ _require-models:
     done
     echo "whisper: $VOICEPUNCHER_WHISPER_MODEL"
     echo "llm:     $VOICEPUNCHER_LLM_MODEL"
+
+_require-release-head:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git fetch --tags origin
+    if [[ -n "$(git status --porcelain)" ]]; then
+        echo "✗ working tree is dirty — release only from a clean checkout" >&2; exit 1
+    fi
+    if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+        echo "✗ HEAD is not origin/main. Run: git fetch origin && git switch --detach origin/main" >&2; exit 1
+    fi
+    version=$(sed -n 's/^version = "\(.*\)"/\1/p' app/Cargo.toml | head -1)
+    if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+        echo "✗ tag v$version already exists — bump version in app/Cargo.toml first" >&2; exit 1
+    fi
+    echo "release: v$version from $(git rev-parse --short HEAD)"
 
 _require-corpus:
     #!/usr/bin/env bash
