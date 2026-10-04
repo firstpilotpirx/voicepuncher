@@ -120,9 +120,15 @@
 
 ### Chunk threshold
 - **Type:** Configuration value (`[transcription].chunk_threshold_secs`)
-- **Definition:** Recording length above which the `Pipeline` splits audio into overlapping chunks, transcribes each through the speech recognition service, and merges the texts without duplicating words at the seams.
-- **Code:** `app/src/core/application/chunking.rs` — `ChunkingCfg`, `merge_chunk_texts`
+- **Definition:** Recording length above which a dictation or a recording file is split into overlapping chunks, each transcribed through the speech recognition service, and the texts merged at the chunk seams.
+- **Code:** `app/src/core/application/chunking.rs` — `ChunkingCfg`, `next_cut`, `split_into_chunks`
 - **Synonyms to AVOID:** "segment size", "window"
+
+### Chunk seam
+- **Type:** Domain concept
+- **Definition:** Where two neighbouring chunks meet: the next chunk starts with the last seconds of the previous one (the overlap), so both transcripts contain those words, often worded a little differently. The merge aligns the two transcripts, keeps the overlap once and drops nothing where they share no words.
+- **Code:** `app/src/core/application/chunking.rs` — `merge_chunk_texts`
+- **Synonyms to AVOID:** "boundary" (the cut point is only one side of a seam), "join"
 
 ### HotkeyListener / AudioRecorder / Transcriber / TextRefiner / TextPaster
 - **Type:** Driving / Driven Ports (traits in `core/application/`)

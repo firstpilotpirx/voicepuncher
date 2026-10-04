@@ -70,7 +70,7 @@ Business behavior is tested in Gherkin `.feature` files executed by cucumber-rs,
 - One `.feature` per OpenSpec capability, named after it with `-` and `/` → `_` (`file-transcription` → `file_transcription.feature`); `Feature:` is the capability id, one `Rule:` per `### Requirement:`.
 - Write each `.feature` scenario from a spec scenario: same precondition, same user action, every outcome asserted. Wording, step split and level of detail may differ; meaning may not. Reuse the spec's scenario name unless a clearer one helps. This beats `~/.claude/rules-custom/gherkin.md` § Traceability, which demands verbatim copies.
 - Never add a `.feature` scenario that no spec scenario covers; when the test needs new wording, change the spec first.
-- Tag the feature with its capability (`@file_transcription`) and level (`@component`, `@slice`, `@e2e`); `@wip` scenarios are not run; `@smoke` / `@accuracy` pick the E2E subsets `just e2e-smoke` / `just e2e-quick` run.
+- Tag the feature with its capability (`@file_transcription`) and level (`@component`, `@slice`, `@e2e`); `@wip` scenarios are not run; `@smoke` / `@accuracy` / `@seams` pick the E2E subsets `just e2e-smoke` / `just e2e-quick` / `just e2e-seams` run.
 - Steps hold no assertions in `Given`/`When`; types, flags, env vars and file paths live in step code, never in the `.feature` text.
 - The `spec-test-reviewer` subagent (`.claude/agents/spec-test-reviewer.md`) compares meaning: it reads the spec scenarios, the `.feature` scenarios and the step code, and rates each spec scenario MATCH / PARTIAL / CONTRADICTS / NOT COVERED plus orphan `.feature` scenarios. Run it at stage 6 and again before stage 7 when tests or specs changed after it.
 
@@ -86,8 +86,8 @@ All checks are `just` recipes (see `justfile`; no other scripts). A change is "v
 | When | Command | What it runs |
 |---|---|---|
 | After every edit | `just test` (~1 min) | unit + architecture + integration tests |
-| After every task, before every push | `just check` (~4 min) | fmt, clippy `-D warnings`, `test`, release build, E2E smoke, WER accuracy on 10 samples |
-| Before merging a branch, before a release | `just full-check` (~30 min) | `cargo clean` + everything in `check`, with WER accuracy on the whole corpus |
+| After every task, before every push | `just check` (~6 min) | fmt, clippy `-D warnings`, `test`, release build, E2E smoke (with the chunk seam sweep against the real service), WER accuracy on 10 samples |
+| Before merging a branch, before a release | `just full-check` (~35 min) | `cargo clean` + everything in `check`, plus the chunk seam matrix (`e2e-seams`), with WER accuracy on the whole corpus |
 | Before merging a change to hotkey, recording, overlay, paste, permissions | manual run by the user | `README.md` § Release checklist |
 
 Build inputs are `app/`, `e2e-test/`, `Cargo.toml`, `Cargo.lock` and `justfile`. A branch that changes none of them (docs, `AGENTS.md`, `openspec/`, `.claude/`) needs `just test` only; never `just check` or `just full-check` for it. Do not merge a branch that changed a build input until `just full-check` has passed on its final commit; say in the PR which checks ran.

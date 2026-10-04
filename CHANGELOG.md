@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); before 1.0.0 a breaking change bumps the minor version.
 
+## [0.3.1] — 2026-10-04
+
+### Fixed
+
+- Dictations longer than the chunk threshold (30 s) no longer paste a phrase twice at a chunk seam when the speech recognition service transcribes the overlapping two seconds differently in the two chunks (punctuation, case, spelling, a word cut at the chunk edge, a misread word).
+
+### Changed
+
+- Recording files (`--input-file`) longer than the chunk threshold are transcribed in chunks, like a dictation.
+
 ## [0.2.0] — 2026-10-04
 
 ### Changed — BREAKING

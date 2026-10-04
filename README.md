@@ -155,10 +155,10 @@ All checks run through [`just`](https://github.com/casey/just) (`brew install ju
 | Command | What it runs | Time | When |
 |---|---|---|---|
 | `just test` | unit + architecture + integration tests | ~1 min | after every edit |
-| `just check` | fmt, clippy, `test`, release build, E2E smoke, WER accuracy on 10 samples | ~4 min | often while developing, before every commit you push |
-| `just full-check` | `cargo clean`, fmt, clippy, `test`, release build, E2E smoke, WER accuracy on the whole corpus | ~30 min | before merging a branch and before every release |
+| `just check` | fmt, clippy, `test`, release build, E2E smoke (with the chunk seam sweep), WER accuracy on 10 samples | ~6 min | often while developing, before every commit you push |
+| `just full-check` | `cargo clean`, fmt, clippy, `test`, release build, E2E smoke, chunk seams, WER accuracy on the whole corpus | ~35 min | before merging a branch and before every release |
 
-Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-quick` (10 samples), `e2e-bench` (whole corpus), `e2e` (smoke + whole corpus). The E2E recipes start each local service that is not running and stop it afterwards, also when a test fails; a service that is already running — your everyday one included — is reused and left running.
+Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-quick` (10 samples), `e2e-seams` (Russian and English speech under 11 recording conditions, transcribed in chunks), `e2e-bench` (whole corpus), `e2e` (smoke + seams + whole corpus). The E2E recipes start each local service that is not running and stop it afterwards, also when a test fails; a service that is already running — your everyday one included — is reused and left running.
 
 **Models and corpus** are found automatically: the largest `ggml-*.bin` and `*.gguf` in `~/.voicepuncher/` or `~/.voicepuncher/models/`, and the corpus in `e2e-test/corpus/`. Override with `VOICEPUNCHER_WHISPER_MODEL`, `VOICEPUNCHER_LLM_MODEL`, `VOICEPUNCHER_BENCH_CORPUS` (env or `.env`). If they are missing, `check`, `full-check` and the E2E recipes stop with an error instead of skipping. First-time setup: `just models`, `just corpus`.
 

@@ -12,7 +12,7 @@ use rubato::{
 
 use crate::core::application::audio_level_sink::AudioLevelSink;
 use crate::core::application::audio_recorder::{AudioRecorder, LiveChunk};
-use crate::core::application::chunking::ChunkingCfg;
+use crate::core::application::chunking::{next_cut, ChunkingCfg};
 use crate::core::domain::audio_level::AudioLevel;
 use crate::core::domain::AudioBuffer16k;
 
@@ -22,8 +22,6 @@ const RESAMPLER_CHUNK_SIZE: usize = 1024;
 const RESAMPLER_SINC_LEN: usize = 256;
 const RESAMPLER_F_CUTOFF: f32 = 0.95;
 const RESAMPLER_OVERSAMPLING: usize = 128;
-
-const VAD_FRAME_MS: u64 = 20;
 
 pub struct CpalAudioRecorder {
     debug_save_wav: Option<PathBuf>,
@@ -253,44 +251,6 @@ impl AudioLevelSink for CpalAudioRecorder {
     }
 }
 
-fn vad_cut_point_native(
-    buf: &[i16],
-    lookback_start: usize,
-    hard_boundary: usize,
-    frame_samples: usize,
-    rms_threshold: f32,
-) -> usize {
-    if frame_samples == 0 {
-        return hard_boundary;
-    }
-    let lookback_start = lookback_start.min(hard_boundary);
-    let hard_boundary = hard_boundary.min(buf.len());
-
-    let first_frame = lookback_start / frame_samples;
-    let last_frame = hard_boundary / frame_samples;
-
-    for frame_idx in (first_frame..last_frame).rev() {
-        let start = frame_idx * frame_samples;
-        let end = (start + frame_samples).min(buf.len());
-        let frame = &buf[start..end];
-        if frame.is_empty() {
-            continue;
-        }
-        let mean_sq = frame
-            .iter()
-            .map(|&s| {
-                let f = s as f32 / 32_768.0;
-                f * f
-            })
-            .sum::<f32>()
-            / frame.len() as f32;
-        if mean_sq.sqrt() < rms_threshold {
-            return start;
-        }
-    }
-    hard_boundary
-}
-
 struct Resampler16k {
     inner: SincFixedIn<f32>,
     ratio: f64,
@@ -355,8 +315,6 @@ fn live_watcher_thread(
 ) {
     let chunk_samples = cfg.chunk_threshold_secs as usize * native_sample_rate as usize;
     let overlap_samples = cfg.chunk_overlap_secs as usize * native_sample_rate as usize;
-    let lookback_samples = cfg.vad_lookback_secs as usize * native_sample_rate as usize;
-    let frame_samples = (native_sample_rate as u64 * VAD_FRAME_MS / 1000) as usize;
 
     let mut resampler: Option<Resampler16k> =
         if native_sample_rate == AudioBuffer16k::SAMPLE_RATE_HZ {
@@ -399,17 +357,8 @@ fn live_watcher_thread(
             let cut = current_len;
             (chunk, cut)
         } else {
-            let hard_boundary = last_cut + chunk_samples;
-            let hard_boundary = hard_boundary.min(current_len);
-            let lookback_start = hard_boundary.saturating_sub(lookback_samples);
             let buf_guard = buffer.lock().unwrap();
-            let cut = vad_cut_point_native(
-                &buf_guard,
-                lookback_start,
-                hard_boundary,
-                frame_samples,
-                cfg.vad_rms_threshold,
-            );
+            let cut = next_cut(&buf_guard, native_sample_rate, last_cut, cfg);
             let chunk = buf_guard[next_start..cut].to_vec();
             (chunk, cut)
         };
@@ -555,34 +504,6 @@ mod tests {
             first, second,
             "samples should be byte-identical when reset() is called between buffers"
         );
-    }
-
-    #[test]
-    fn should_cut_at_hard_boundary_when_no_silence_found() {
-        // Given — all non-silent samples
-        let buf: Vec<i16> = vec![10_000i16; 48_000];
-        let frame_samples = 960;
-        // When
-        let cut = vad_cut_point_native(&buf, 0, 48_000, frame_samples, 0.01);
-        // Then — falls back to hard boundary
-        assert_eq!(cut, 48_000);
-    }
-
-    #[test]
-    fn should_find_silence_frame_within_lookback_window() {
-        // Given — 48000 samples, last 960 are silence
-        let mut buf: Vec<i16> = vec![10_000i16; 48_000];
-        let silence_start = 47_040usize;
-        for s in &mut buf[silence_start..] {
-            *s = 0;
-        }
-        let frame_samples = 960;
-        let hard_boundary = 48_000;
-        let lookback_start = 44_160;
-        // When
-        let cut = vad_cut_point_native(&buf, lookback_start, hard_boundary, frame_samples, 0.01);
-        // Then — snaps to the silent frame start
-        assert_eq!(cut, silence_start);
     }
 
     #[test]

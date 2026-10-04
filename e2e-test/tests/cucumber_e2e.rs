@@ -12,6 +12,7 @@ use cucumber::World;
 pub struct E2eWorld {
     pub workdir: Option<tempfile::TempDir>,
     pub recording: Option<PathBuf>,
+    pub spoken: Option<voicepuncher_e2e_test::speech::Lang>,
     pub exit_status: Option<ExitStatus>,
     pub corpus: Vec<voicepuncher_e2e_test::corpus::Sample>,
     pub word_error_rates: Vec<f64>,

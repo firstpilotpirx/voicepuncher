@@ -4,6 +4,11 @@ use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
+use regex::Regex;
+
+use voicepuncher_e2e_test::speech::{
+    missing_word_share, repeated_phrases, synthesize, write_wav, Condition, Lang,
+};
 
 use crate::steps::file_transcription::{
     env, sut_bin, write_silence_wav, NO_CONFIG, STARTUP_FAILURE_EXIT_CODE,
@@ -13,6 +18,8 @@ use crate::E2eWorld;
 const MAX_STARTUP_FAILURE: Duration = Duration::from_secs(3);
 const REMOTE_SERVICE_URL: &str = "http://192.168.1.10:8081/v1";
 const START_COMMAND: &str = "just start-model-servers";
+/// A chunk seam may lose a word or two; more means the merge dropped real speech.
+const MAX_MISSING_WORD_SHARE: f64 = 0.10;
 const OUTDATED_CONFIG: &str = "[whisper]\nmodel_path = \"/models/ggml-large-v3-turbo.bin\"\n";
 
 #[given("the speech recognition service is running")]
@@ -118,5 +125,96 @@ pub fn expect_message(world: &E2eWorld, fragment: &str) -> Result<()> {
             world.stderr
         );
     }
+    Ok(())
+}
+
+#[given(regex = r"^a recording file of (Russian|English) speech longer than the chunk threshold$")]
+fn long_speech_recording(world: &mut E2eWorld, language: String) -> Result<()> {
+    record_speech(world, language_of(&language)?, Condition::Normal)
+}
+
+#[then("the recording is transcribed in chunks")]
+fn transcribed_in_chunks(world: &mut E2eWorld) -> Result<()> {
+    let chunks = Regex::new(r"file mode: (\d+) chunks")?
+        .captures(&world.stderr)
+        .and_then(|c| c[1].parse::<usize>().ok());
+    match chunks {
+        Some(n) if n >= 2 => Ok(()),
+        _ => bail!(
+            "the recording was not transcribed in chunks — stderr:\n{}",
+            world.stderr
+        ),
+    }
+}
+
+#[then("the printed text repeats no phrase of the speech")]
+fn no_repeated_phrase(world: &mut E2eWorld) -> Result<()> {
+    let spoken = world.spoken.context("no speech was recorded")?.text();
+    let repeated = repeated_phrases(spoken, &world.stdout);
+    if !repeated.is_empty() {
+        bail!(
+            "phrases repeated at a chunk seam: {repeated:?}\n  printed: {}",
+            world.stdout
+        );
+    }
+    Ok(())
+}
+
+#[then("the printed text misses at most one spoken word in ten")]
+fn few_missing_words(world: &mut E2eWorld) -> Result<()> {
+    let spoken = world.spoken.context("no speech was recorded")?.text();
+    let missing = missing_word_share(spoken, &world.stdout);
+    if missing > MAX_MISSING_WORD_SHARE {
+        bail!(
+            "{:.0} % of the spoken words are missing\n  printed: {}",
+            missing * 100.0,
+            world.stdout
+        );
+    }
+    Ok(())
+}
+
+#[given(
+    regex = r"^a recording file of (Russian|English) speech longer than the chunk threshold, (.+)$"
+)]
+fn long_speech_under_condition(
+    world: &mut E2eWorld,
+    language: String,
+    condition: String,
+) -> Result<()> {
+    record_speech(world, language_of(&language)?, condition_of(&condition)?)
+}
+
+fn condition_of(name: &str) -> Result<Condition> {
+    Ok(match name {
+        "spoken at a normal pace" => Condition::Normal,
+        "spoken slowly" => Condition::Slow,
+        "spoken fast" => Condition::Fast,
+        "with pauses between sentences" => Condition::SentencePauses,
+        "with pauses between words" => Condition::WordPauses,
+        "with low background noise" => Condition::NoiseLow,
+        "with high background noise" => Condition::NoiseHigh,
+        "through a phone-quality line" => Condition::PhoneBand,
+        "spoken quietly" => Condition::Quiet,
+        "clipped" => Condition::Clipped,
+        "with short audio dropouts" => Condition::Dropouts,
+        other => bail!("no recording condition '{other}'"),
+    })
+}
+
+fn language_of(name: &str) -> Result<Lang> {
+    match name {
+        "Russian" => Ok(Lang::Ru),
+        "English" => Ok(Lang::En),
+        other => bail!("no test speech in {other}"),
+    }
+}
+
+fn record_speech(world: &mut E2eWorld, lang: Lang, condition: Condition) -> Result<()> {
+    let samples = synthesize(lang, condition, 0.0)?;
+    let path = world.workdir()?.join("speech.wav");
+    write_wav(&path, &samples)?;
+    world.recording = Some(path);
+    world.spoken = Some(lang);
     Ok(())
 }

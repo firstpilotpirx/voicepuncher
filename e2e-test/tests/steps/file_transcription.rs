@@ -48,6 +48,8 @@ fn transcribe_recording(world: &mut E2eWorld, refinement: String) -> Result<()> 
     let recording = world.recording.as_deref().context("no recording")?;
     let output = transcribe(recording, refinement == "with")?;
     world.exit_status = Some(output.status);
+    world.stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
     Ok(())
 }
 

@@ -12,6 +12,9 @@ use voicepuncher::core::domain::PttSignal;
 #[derive(Debug, Default, World)]
 pub struct IntegrationWorld {
     pub ptt_signals: Option<Receiver<PttSignal>>,
+    pub dictation_language: Option<String>,
+    pub dictation: Option<steps::speech_recognition::Dictation>,
+    pub pasted: Option<String>,
 }
 
 fn main() {

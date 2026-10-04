@@ -1,7 +1,7 @@
 use std::sync::mpsc;
 
 use crate::core::application::audio_recorder::LiveChunk;
-use crate::core::application::chunking::{merge_chunk_texts, ChunkingCfg};
+use crate::core::application::chunking::{merge_chunk_texts, split_into_chunks, ChunkingCfg};
 use crate::core::application::{
     AudioRecorder, SoundPlayer, TextPaster, TextRefiner, Transcriber, VisualIndicator,
 };
@@ -132,10 +132,8 @@ impl Pipeline {
                                 );
                                 self.visual_indicator.hide();
                             } else {
-                                let overlap_fraction = self.cfg.chunking.chunk_overlap_secs as f64
-                                    / self.cfg.chunking.chunk_threshold_secs as f64;
                                 let t_merge_start = std::time::Instant::now();
-                                let merged = merge_chunk_texts(result.texts, overlap_fraction);
+                                let merged = merge_chunk_texts(result.texts);
                                 let merge_ms = t_merge_start.elapsed().as_millis() as u64;
                                 log::info!(
                                     "live session: {} chars merged (drain {drain_ms}ms stop {stop_ms}ms merge {merge_ms}ms)",
@@ -198,14 +196,24 @@ impl Pipeline {
     }
 
     pub fn run_once(&mut self, audio: AudioBuffer16k) -> anyhow::Result<()> {
-        let Some(raw) = self
+        let chunks = split_into_chunks(&audio, self.cfg.chunking);
+        if chunks.len() > 1 {
+            log::info!("file mode: {} chunks", chunks.len());
+        }
+        let transcriber = self
             .transcriber
             .as_mut()
-            .expect("transcriber not available")
-            .transcribe(&audio)?
-        else {
+            .expect("transcriber not available");
+        let mut texts = Vec::with_capacity(chunks.len());
+        for chunk in &chunks {
+            if let Some(raw) = transcriber.transcribe(chunk)? {
+                texts.push(raw.as_str().to_owned());
+            }
+        }
+        if texts.is_empty() {
             return Ok(());
-        };
+        }
+        let raw = RawTranscript::new(merge_chunk_texts(texts))?;
         let Some(cleaned) = self.refine_or_raw(&raw) else {
             return Ok(());
         };
@@ -886,6 +894,35 @@ mod tests {
         pipeline.step(PttSignal::Cancel).unwrap();
         // Then
         assert!(matches!(pipeline.state, PipelineState::Idle));
+    }
+
+    #[test]
+    fn should_run_once_in_chunks_when_the_recording_is_longer_than_the_threshold() {
+        // Given — 70 s of sound and a 30 s chunk threshold: chunks end at 30 s, 60 s, 70 s
+        let mut texts = ["one two three", "three four five", "five six"].into_iter();
+        let mut transcriber = MockTranscriber::new();
+        transcriber
+            .expect_transcribe()
+            .times(3)
+            .returning(move |_| Ok(Some(RawTranscript::new(texts.next().unwrap().to_owned())?)));
+        let mut refiner = MockTextRefiner::new();
+        refiner
+            .expect_refine()
+            .once()
+            .returning(|raw| Ok(CleanedText::new(raw.as_str().to_owned()).unwrap()));
+        let mut paster = MockTextPaster::new();
+        paster
+            .expect_paste()
+            .once()
+            .withf(|text| text.as_str() == "one two three four five six")
+            .returning(|_| Ok(()));
+        let mut pipeline = make_pipeline(MockAudioRecorder::new(), transcriber, refiner, paster);
+        pipeline.cfg.chunking.chunk_threshold_secs = 30;
+        // When
+        pipeline
+            .run_once(AudioBuffer16k::new(vec![10_000i16; 70 * 16_000]))
+            .unwrap();
+        // Then — three transcriptions (checked by the mock) and one merged paste
     }
 
     #[test]

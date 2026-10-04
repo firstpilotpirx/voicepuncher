@@ -1,0 +1,35 @@
+# The pipeline runs with stand-ins for the microphone and the speech recognition service:
+# the recorder delivers live chunks, the service answers each chunk with a fixed transcript.
+@speech_recognition @component
+Feature: speech-recognition
+
+  Rule: Long recordings are transcribed in chunks
+
+    Scenario: Dictation longer than the chunk threshold
+      Given the user dictates for longer than the chunk threshold
+      And the service transcribes the overlap of every two chunks the same way
+      When the user stops the dictation
+      Then the pasted text contains every spoken word once, in order
+
+    Scenario Outline: Chunks transcribe the overlap differently
+      Given a <language> dictation longer than the chunk threshold
+      And the service transcribes the overlap differently in the two chunks: <difference>
+      When the user stops the dictation
+      Then the overlapping words appear once in the pasted text
+      And the words before and after the overlap are kept
+
+      Examples:
+        | language | difference                         |
+        | Russian  | other punctuation and case         |
+        | Russian  | another spelling                   |
+        | Russian  | a word cut short at the chunk edge |
+        | Russian  | a different reading of a word      |
+        | English  | other punctuation and case         |
+        | English  | another spelling                   |
+        | English  | a word cut short at the chunk edge |
+        | English  | a different reading of a word      |
+
+    Scenario: Chunks share no words
+      Given a dictation longer than the chunk threshold whose chunk transcripts share no words at the seam
+      When the user stops the dictation
+      Then the pasted text contains every word of every chunk, in order
