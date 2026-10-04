@@ -1,5 +1,23 @@
 schema: spec-driven
 
+context: |
+  voicepuncher: push-to-talk voice-to-text CLI for macOS on Apple Silicon only (Metal, CoreAudio, TCC permissions: Microphone, Accessibility, Input Monitoring).
+  Product stage: PoC.
+  Privacy: audio and text never leave the machine; no internet access at runtime.
+  One Rust crate app/ with hexagonal architecture: adapters -> core/application -> core/domain. Ports are traits in app/src/core/application/. No framework imports in app/src/core/. Adapters live in app/src/adapters/{primary,secondary}/<feature>/<tech>/.
+  Domain terms come from docs/ubiquitous-language.md; a change that introduces a term adds it there.
+  Verification commands: CLAUDE.md § How to verify a change (just check, just e2e, manual run by the user).
+  Write all artifacts in English.
+
+rules:
+  proposal:
+    - State current stage, target stage, scope and acceptance bar.
+    - List what is out of scope.
+  specs:
+    - Scenarios state business intent; never name a type, endpoint, JSON field, config key or env var in WHEN/THEN.
+  tasks:
+    - End with verification tasks that name the just recipes to run and the manual checks the user performs.
+
 # Project context (optional)
 # Add only constraints that should guide OpenSpec artifacts and workflows.
 # Include constraints an agent cannot infer by reading the code.
