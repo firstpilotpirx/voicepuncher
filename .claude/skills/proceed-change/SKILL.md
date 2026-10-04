@@ -14,6 +14,8 @@ Thin wrapper over the `opsx:*` skills. Stage order, done criteria and checks: `A
 - Never show the user anything but the questions in § Start, the gates they picked, the calls in § Call the user and the § Output.
 - Never stop at a stage the user did not pick as a gate; run it and go on.
 - At a gate or a call: show the result or the problem in ≤ 10 lines, ask with `AskUserQuestion`, send a `PushNotification` when the tool exists, and wait.
+- Every question to the user goes through `AskUserQuestion`, never as plain text — also after a denied tool call.
+- The user's answers in § Start and at a gate are the confirmation `opsx:explore` asks for before it writes: never ask again whether to create the change or its artifacts.
 - After any gate or interruption, resume by rerunning this skill: derive the stage from the facts in § Resume, never from memory.
 
 ## Start
@@ -29,7 +31,7 @@ Run all in order, end to end; skip the ones § Resume shows done.
 
 | # | Stage | How |
 |---|---|---|
-| 1 | `explore` | `opsx:explore`, only when picked; the gate asks whether the idea is clear |
+| 1 | `explore` | `opsx:explore`, only when picked; the gate asks which scope goes into the change — that answer is the go-ahead to create it, so stage 2 starts without another question |
 | 2 | `proposal` | `opsx:new`, then `opsx:continue` |
 | 3 | `specs` | `opsx:continue` |
 | 4 | `design` | `opsx:continue` |
