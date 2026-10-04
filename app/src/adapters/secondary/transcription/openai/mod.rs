@@ -121,25 +121,29 @@ fn is_dropped_connection(error: &ureq::Error) -> bool {
     if transport.kind() == ureq::ErrorKind::ConnectionFailed {
         return true;
     }
+    // ureq may rewrap the OS error, so any I/O error in the chain can carry the drop
     let mut source = std::error::Error::source(transport);
     while let Some(cause) = source {
-        if let Some(io_error) = cause.downcast_ref::<io::Error>() {
-            return is_dropped_io(io_error.kind());
+        if cause.downcast_ref::<io::Error>().is_some_and(is_dropped_io) {
+            return true;
         }
         source = cause.source();
     }
     false
 }
 
-fn is_dropped_io(kind: io::ErrorKind) -> bool {
-    matches!(
-        kind,
+/// macOS reports a socket call on a connection the peer already reset as EINVAL; an
+/// invalid-input error raised by a library has no OS code and is not a drop.
+fn is_dropped_io(error: &io::Error) -> bool {
+    match error.kind() {
         io::ErrorKind::ConnectionRefused
-            | io::ErrorKind::ConnectionReset
-            | io::ErrorKind::ConnectionAborted
-            | io::ErrorKind::BrokenPipe
-            | io::ErrorKind::UnexpectedEof
-    )
+        | io::ErrorKind::ConnectionReset
+        | io::ErrorKind::ConnectionAborted
+        | io::ErrorKind::BrokenPipe
+        | io::ErrorKind::UnexpectedEof => true,
+        io::ErrorKind::InvalidInput => error.raw_os_error().is_some(),
+        _ => false,
+    }
 }
 
 fn socket_addrs(base_url: &str) -> Result<Vec<SocketAddr>> {
@@ -233,14 +237,36 @@ mod tests {
             io::ErrorKind::BrokenPipe,
             io::ErrorKind::UnexpectedEof,
         ] {
-            assert!(is_dropped_io(kind), "{kind:?}");
+            assert!(is_dropped_io(&io::Error::from(kind)), "{kind:?}");
         }
     }
 
     #[test]
     fn should_not_treat_timeout_as_dropped() {
-        assert!(!is_dropped_io(io::ErrorKind::TimedOut));
-        assert!(!is_dropped_io(io::ErrorKind::WouldBlock));
+        assert!(!is_dropped_io(&io::Error::from(io::ErrorKind::TimedOut)));
+        assert!(!is_dropped_io(&io::Error::from(io::ErrorKind::WouldBlock)));
+    }
+
+    #[test]
+    fn should_treat_os_invalid_argument_as_dropped() {
+        // macOS reports a connection the service already reset as EINVAL (os error 22)
+        let einval = io::Error::from_raw_os_error(22);
+        assert_eq!(einval.kind(), io::ErrorKind::InvalidInput);
+        assert!(is_dropped_io(&einval));
+    }
+
+    #[test]
+    fn should_treat_os_invalid_argument_wrapped_by_http_client_as_dropped() {
+        // ureq rewraps a status-line read error in an io::Error without the OS code
+        let einval = io::Error::from_raw_os_error(22);
+        let rewrapped = io::Error::new(einval.kind(), ureq::Error::from(einval));
+        assert!(is_dropped_connection(&ureq::Error::from(rewrapped)));
+    }
+
+    #[test]
+    fn should_not_treat_library_invalid_input_as_dropped() {
+        let invalid = io::Error::new(io::ErrorKind::InvalidInput, "bad header");
+        assert!(!is_dropped_io(&invalid));
     }
 
     #[test]
