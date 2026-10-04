@@ -12,27 +12,27 @@ Thin wrapper over `opsx:explore`, `opsx:new` and `opsx:continue`. Done criteria:
 ## Rules
 
 - Never write code, tests or `tasks.md` checkmarks; never run `opsx:apply`.
-- Never create an artifact the user did not pick in stage 1.
-- Stop only at the gates in § Gates; run every other stage without asking.
+- Never run a stage the user did not pick in stage 1; `proposal`, `branch`, `validate` and `land` always run.
+- Stop only at the gates the user picked in stage 1; run every other stage without asking.
 - Write the proposal from the user's words about *what* and *why*; leave *how* to `design.md`.
 
 ## Stages
 
-| # | Stage | How |
-|---|---|---|
-| 1 | `choose` | ask with `AskUserQuestion`: explore first (yes / no), and the artifacts: `proposal` only (default) / + `specs` / + `specs` + `design` / all (+ `tasks`) |
-| 2 | `explore` | `opsx:explore`, only when picked in stage 1 |
-| 3 | `branch` | `git fetch origin && git switch -c chore/propose-<name> origin/main` |
-| 4 | `proposal` | `opsx:new <name>`, then `opsx:continue <name>` |
-| 5 | `specs` | `opsx:continue <name>`, only when picked |
-| 6 | `design` | `opsx:continue <name>`, only when picked |
-| 7 | `tasks` | `opsx:continue <name>`, only when picked |
-| 8 | `validate` | `openspec validate <name>`, only when `specs` exist (a proposal-only change has no deltas and fails by design) |
-| 9 | `land` | commit `docs(openspec): propose <name>`, `just test`, `git push -u origin HEAD`, `gh pr create`, `gh pr merge --squash --delete-branch`, then update the main checkout (`AGENTS.md` § Workflow, "Update the main checkout after every merge") |
+| # | Stage | Runs | How |
+|---|---|---|---|
+| 1 | `choose` | always | ask with `AskUserQuestion`, both multi-select: (a) stages to run: `explore`, `specs`, `design`, `tasks`; (b) gates: one per picked stage among `explore`, `proposal`, `specs`, `design`. A picked `tasks` adds the artifacts `openspec status` says it needs |
+| 2 | `explore` | when picked | `opsx:explore` |
+| 3 | `branch` | always | `git fetch origin && git switch -c chore/propose-<name> origin/main` |
+| 4 | `proposal` | always | `opsx:new <name>`, then `opsx:continue <name>` |
+| 5 | `specs` | when picked | `opsx:continue <name>` |
+| 6 | `design` | when picked | `opsx:continue <name>` |
+| 7 | `tasks` | when picked | `opsx:continue <name>` |
+| 8 | `validate` | always | `openspec validate <name>` when `specs` exist; a proposal-only change has no deltas and fails by design, so skip it then |
+| 9 | `land` | always | commit `docs(openspec): propose <name>`, `just test`, `git push -u origin HEAD`, `gh pr create`, `gh pr merge --squash --delete-branch` |
 
 ## Gates
 
-The user reviews the artifact and approves or edits it before the next stage.
+Picked in stage 1. At a gate the user reviews the stage result and approves or edits it before the next stage.
 
 | Gate | Fires |
 |---|---|
