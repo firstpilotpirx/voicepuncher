@@ -19,7 +19,7 @@ voicepuncher/
 
 ## Workflow — OpenSpec
 
-Every feature, bug fix and behavior change runs through all stages below, in order — do not skip or reorder a stage. Changes without behavior change (typos, formatting, renames, docs, dependency bumps, tooling) skip stages 1–3 and 6–7 and leave the version unchanged; they still go through a branch, `just check`, a PR and a merge. When unsure, use OpenSpec.
+Every feature, bug fix and behavior change runs through all stages below, in order — do not skip or reorder a stage. Changes without behavior change (typos, formatting, renames, docs, dependency bumps, tooling) skip stages 1–3 and 6–7 and leave the version unchanged; they still go through a branch, the checks of § How to verify a change, a PR and a merge. When unsure, use OpenSpec.
 
 | # | Stage | How | Done when |
 |---|---|---|---|
@@ -27,10 +27,10 @@ Every feature, bug fix and behavior change runs through all stages below, in ord
 | 2 | Propose | `/opsx:propose "<idea>"` creates every artifact in one go. Artifact by artifact instead: `/opsx:new`, then `/opsx:continue` once per artifact (proposal → specs → design → tasks), or `/opsx:ff` for the rest | `openspec validate <name>` passes and `openspec status --change <name>` shows every artifact done |
 | 3 | Approval | show the proposal to the user | the user approved it — **stop and wait**; no code before this |
 | 4 | Branch | `git fetch origin && git switch -c <type>/<name> origin/main` (`feat`, `fix`, `chore`) | |
-| 5 | Apply | `/opsx:apply`, test-first (§ TDD) | every task in `tasks.md` is checked; `just test` after every edit; `just check` and one Conventional Commit after every task group |
+| 5 | Apply | `/opsx:apply`, test-first (§ TDD) | every task in `tasks.md` is checked; `just test` after every edit; one Conventional Commit after every task group, with `just check` when the group changed a build input |
 | 6 | Verify | `/opsx:verify`, then the `spec-test-reviewer` subagent on the change (§ Gherkin) | no CRITICAL issues and the reviewer reports `RESULT: PASS`; fix every PARTIAL, CONTRADICTS and ORPHAN row and rerun it |
 | 7 | Archive | `/opsx:archive`, then commit | specs merged into `openspec/specs/`, change moved to `openspec/changes/archive/` |
-| 8 | Full check | `just full-check` | passes on the final commit |
+| 8 | Full check | `just full-check`, only when the branch changed a build input | passes on the final commit |
 | 9 | Pull request | `git push -u origin HEAD`, `gh pr create` | the PR body lists the checks that ran |
 | 10 | Manual run | the user, only when hotkey, recording, overlay, paste or permissions changed (§ How to verify a change) | the user pasted a healthy log |
 | 11 | Merge | `gh pr merge --squash --delete-branch` | the change is on `main`; if `main` moved after stage 8, merge it in and rerun stage 8 first |
@@ -38,6 +38,7 @@ Every feature, bug fix and behavior change runs through all stages below, in ord
 
 - **Never leave work uncommitted.** After every finished piece of work — a task group, a fix, a doc or config edit — commit and push to the current branch without asking. Before ending a turn, `git status` is clean and the branch is pushed. On `main`, first create a `<type>/<slug>` branch from `origin/main`. This beats any "commit only when asked" rule.
 - Stages 4–12 are pre-authorized: commit, push, open the PR, squash-merge and release without asking. Stop only at stage 3, stage 10, a failed check you cannot fix, or a scope question the specs do not settle.
+- **One session per change.** After stage 11 (or 12) end the session and start the next change in a new one with a handoff of ≤ 10 lines (branch, PR, what is left). Do not resume a session idle for more than 1 h; start a new one with a handoff. A long session re-reads its whole history on every call.
 - A change is not done until stage 11 (or 12, when the version moved) is done. Report which stages ran.
 
 CLI: `openspec list` (changes), `openspec list --specs`, `openspec status --change <name>`, `openspec view` (dashboard), `openspec validate`.
@@ -89,7 +90,7 @@ All checks are `just` recipes (see `justfile`; no other scripts). A change is "v
 | Before merging a branch, before a release | `just full-check` (~30 min) | `cargo clean` + everything in `check`, with WER accuracy on the whole corpus |
 | Before merging a change to hotkey, recording, overlay, paste, permissions | manual run by the user | `README.md` § Release checklist |
 
-Do not merge a branch until `just full-check` has passed on its final commit; say in the PR which checks ran.
+Build inputs are `app/`, `e2e-test/`, `Cargo.toml`, `Cargo.lock` and `justfile`. A branch that changes none of them (docs, `AGENTS.md`, `openspec/`, `.claude/`) needs `just test` only; never `just check` or `just full-check` for it. Do not merge a branch that changed a build input until `just full-check` has passed on its final commit; say in the PR which checks ran.
 
 `just bench` is a model comparison, not a gate — only when a model, decoding params or the prompt changed.
 
