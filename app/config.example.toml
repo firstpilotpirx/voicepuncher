@@ -21,8 +21,12 @@ chunk_overlap_secs = 2     # seconds of audio repeated at the start of each subs
 vad_rms_threshold = 0.01   # energy-based VAD: per-20ms-frame RMS below this is treated as silence (0.0..1.0)
 vad_lookback_secs = 5      # max seconds to look back from hard chunk boundary when searching for a silence cut point
 
-[llm]
-model_path = "~/.voicepuncher/models/Qwen2.5-3B-Instruct-Q4_K_M.gguf"
+[refinement]
+# Local text refinement service (OpenAI Chat Completions API). Start it with
+# `just start-services`; the model and its context size are set when starting the service.
+base_url = "http://127.0.0.1:8080/v1"   # must be on this machine: localhost, 127.0.0.0/8 or [::1]
+model = "local"                         # llama-server serves one model and accepts any name
+api_key = ""                            # sent as a bearer token when not empty (llama-server --api-key)
 system_prompt = """\
 You are a speech-to-text post-processor. Your ONLY job is to fix ASR recognition errors: \
 wrong words, technical terms transcribed in the wrong alphabet, \
@@ -39,9 +43,9 @@ preserve each language exactly as spoken. \
 (e.g. Docker, API, Kubernetes in English even inside Russian text). \
 (5) If nothing needs fixing, copy the input verbatim — every word, every number. \
 Reply with the corrected text only, nothing else."""
-max_tokens = 4096
+max_tokens = 512           # upper bound for the cleaned text; the budget also scales with the transcript
 temperature = 0.0
-context_size = 4096
+timeout_secs = 30          # per request
 
 [paste]
 clipboard_restore_delay_ms = 120

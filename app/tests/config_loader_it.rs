@@ -18,12 +18,13 @@ base_url = "http://127.0.0.1:8081/v1"
 language = "auto"
 timeout_secs = 30
 
-[llm]
-model_path = "~/.voicepuncher/models/Qwen2.5-3B-Instruct-Q4_K_M.gguf"
+[refinement]
+base_url = "http://127.0.0.1:8080/v1"
+model = "qwen"
 system_prompt = "You clean up speech-to-text transcripts."
-max_tokens = 512
+max_tokens = 256
 temperature = 0.0
-context_size = 4096
+timeout_secs = 20
 
 [paste]
 clipboard_restore_delay_ms = 120
@@ -45,27 +46,29 @@ level = "info"
     assert_eq!(cfg.transcription.base_url, "http://127.0.0.1:8081/v1");
     assert_eq!(cfg.transcription.language, "auto");
     assert_eq!(cfg.transcription.timeout_secs, 30);
-    assert_eq!(cfg.llm.max_tokens, 512);
-    assert_eq!(cfg.llm.temperature, 0.0_f32);
-    assert_eq!(cfg.llm.context_size, 4096);
+    assert_eq!(cfg.refinement.base_url, "http://127.0.0.1:8080/v1");
+    assert_eq!(cfg.refinement.model, "qwen");
+    assert_eq!(cfg.refinement.max_tokens, 256);
+    assert_eq!(cfg.refinement.temperature, 0.0_f32);
+    assert_eq!(cfg.refinement.timeout_secs, 20);
     assert_eq!(cfg.paste.clipboard_restore_delay_ms, 120);
     assert_eq!(cfg.logging.level, "info");
 }
 
 #[test]
-fn should_expand_tilde_in_llm_model_path() {
+fn should_reject_old_llm_section_naming_replacement() {
     // Given
-    let toml_str = "[hotkey]\nkey = \"F13\"\n[llm]\nmodel_path = \"~/bar\"\n";
+    let toml_str = "[llm]\nmodel_path = \"~/qwen.gguf\"\ncontext_size = 4096\n";
     let temp = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(temp.path(), toml_str).unwrap();
 
     // When
-    let cfg = load(temp.path()).unwrap();
+    let msg = format!("{:#}", load(temp.path()).unwrap_err());
 
     // Then
-    let home = dirs::home_dir().expect("home dir must be available");
-    assert!(cfg.llm.model_path.starts_with(&home));
-    assert!(cfg.llm.model_path.ends_with("bar"));
+    assert!(msg.contains("llm.model_path"), "{msg}");
+    assert!(msg.contains("llm.context_size"), "{msg}");
+    assert!(msg.contains("[refinement].base_url"), "{msg}");
 }
 
 #[test]
@@ -79,6 +82,7 @@ fn should_load_shipped_example_config() {
     // Then
     assert_eq!(cfg.transcription.base_url, "http://127.0.0.1:8081/v1");
     assert_eq!(cfg.transcription.chunk_threshold_secs, 15);
+    assert_eq!(cfg.refinement.base_url, "http://127.0.0.1:8080/v1");
 }
 
 #[test]
@@ -129,5 +133,5 @@ fn should_load_with_only_hotkey_section() {
     // Then
     assert_eq!(cfg.hotkey.key, HotKey::F13);
     assert_eq!(cfg.audio.input_device, "default");
-    assert_eq!(cfg.llm.context_size, 4096);
+    assert_eq!(cfg.refinement.max_tokens, 512);
 }

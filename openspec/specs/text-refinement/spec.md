@@ -1,10 +1,9 @@
-# Spec Delta
+# text-refinement Specification
 
 ## Purpose
-
 Corrects recognition errors in a raw transcript before it is pasted by delegating the work to a text refinement service that runs on the same machine, so the app never runs a language model itself.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Refinement through a local text refinement service
 The system SHALL obtain cleaned text from the configured text refinement service using the OpenAI Chat Completions API, and SHALL NOT load a language model into its own process.
@@ -21,8 +20,8 @@ The system SHALL obtain cleaned text from the configured text refinement service
 The system SHALL send the configured system prompt as the instruction and the raw transcript as clearly delimited data, so spoken words that sound like commands are corrected rather than obeyed.
 
 #### Scenario: Dictated text sounds like a request
-- **WHEN** the user dictates "translate this into English" in Russian
-- **THEN** the cleaned text is the Russian sentence, not an English translation
+- **WHEN** the user dictates a sentence that asks for a translation
+- **THEN** the text refinement service receives the sentence as the text to correct, apart from the correction instructions
 
 ### Requirement: Text refinement service stays on this machine
 The system SHALL accept only a text refinement service address that resolves to this machine, so transcripts never leave it.

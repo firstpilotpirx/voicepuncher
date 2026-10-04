@@ -9,15 +9,13 @@ export VOICEPUNCHER_LLM_MODEL := env_var_or_default("VOICEPUNCHER_LLM_MODEL", `f
 # Corpus directory containing manifest.jsonl — absolute, because cargo runs tests from e2e-test/
 export VOICEPUNCHER_BENCH_CORPUS := env_var_or_default("VOICEPUNCHER_BENCH_CORPUS", justfile_directory() / "e2e-test/corpus")
 
-# Local speech recognition service (whisper-server) started by `start-services`; the app's default [transcription].base_url
+# Local services started by `start-services`; their URLs are the app's default [transcription].base_url and [refinement].base_url
 stt_port := env_var_or_default("VOICEPUNCHER_STT_PORT", "8081")
 stt_url := "http://127.0.0.1:" + stt_port + "/v1"
+llm_port := env_var_or_default("VOICEPUNCHER_LLM_PORT", "8080")
+llm_url := "http://127.0.0.1:" + llm_port + "/v1"
 services_run_dir := home_directory() / ".voicepuncher/run"
 services_log_dir := home_directory() / ".voicepuncher/logs"
-
-# Homebrew OpenSSL headers — llama-cpp-sys fails with 'openssl/err.h' not found without them
-export CPATH := env_var_or_default("CPATH", "/opt/homebrew/opt/openssl@3/include")
-export LIBRARY_PATH := env_var_or_default("LIBRARY_PATH", "/opt/homebrew/opt/openssl@3/lib")
 
 # List all recipes
 default:
@@ -54,14 +52,14 @@ build:
 # E2E on real models: smoke + WER accuracy on the whole corpus (~20 min)
 e2e: e2e-smoke e2e-bench
 
-# Smoke test — services and models load, file mode runs (@smoke scenarios), the adapter talks to the real service
+# Smoke test — services and models load, file mode runs (@smoke scenarios), the adapters talk to the real services
 e2e-smoke: _require-models build
     #!/usr/bin/env bash
     set -euo pipefail
     trap '{{just_executable()}} _stop-services-for-e2e' EXIT
     {{just_executable()}} _start-services-for-e2e
-    export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}"
-    cargo test -p voicepuncher --test transcription_openai_it --release -- --nocapture
+    export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}"
+    cargo test -p voicepuncher --test transcription_openai_it --test textrefinement_openai_it --release -- --nocapture
     cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @smoke
 
 # WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 % (~1 min)
@@ -70,7 +68,7 @@ e2e-quick: _require-models _require-corpus build
     set -euo pipefail
     trap '{{just_executable()}} _stop-services-for-e2e' EXIT
     {{just_executable()}} _start-services-for-e2e
-    VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_BENCH_LIMIT=10 \
+    VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_BENCH_LIMIT=10 \
         cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @accuracy
 
 # WER accuracy on the whole corpus — fails if mean WER > 30 % (~20 min)
@@ -79,7 +77,7 @@ e2e-bench: _require-models _require-corpus build
     set -euo pipefail
     trap '{{just_executable()}} _stop-services-for-e2e' EXIT
     {{just_executable()}} _start-services-for-e2e
-    VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" \
+    VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" \
         cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @accuracy
 
 # Manual: @real_keyboard scenarios drive the real hotkey + paste — needs Accessibility and Input Monitoring for the terminal, a GUI session, hands off the keyboard
@@ -108,106 +106,145 @@ release: _require-release-head test build
 
 # ── Services ── local processes the app talks to over loopback ────────────────
 
-# Start the service for an E2E recipe; a service that already runs (yours) is reused and left running
+# Start the services for an E2E recipe; a service that already runs (yours) is reused and left running
 _start-services-for-e2e:
     #!/usr/bin/env bash
     set -euo pipefail
-    if nc -z 127.0.0.1 {{stt_port}} >/dev/null 2>&1; then
-        echo "✓ reusing the speech recognition service already running at {{stt_url}}; it stays running"
-        exit 0
-    fi
+    mkdir -p "{{services_run_dir}}"
+    for service in whisper-server:{{stt_port}} llama-server:{{llm_port}}; do
+        if nc -z 127.0.0.1 "${service#*:}" >/dev/null 2>&1; then
+            echo "✓ reusing ${service%%:*} already running on port ${service#*:}; it stays running"
+        else
+            touch "{{services_run_dir}}/${service%%:*}-${service#*:}.e2e"
+        fi
+    done
     {{just_executable()}} start-services
-    touch "{{services_run_dir}}/whisper-server-{{stt_port}}.e2e"
 
-# Stop the service only if _start-services-for-e2e started it in this run
+# Stop the services that _start-services-for-e2e started in this run
 _stop-services-for-e2e:
     #!/usr/bin/env bash
     set -euo pipefail
-    marker="{{services_run_dir}}/whisper-server-{{stt_port}}.e2e"
-    if [[ -f "$marker" ]]; then
-        rm -f "$marker"
-        {{just_executable()}} stop-services
-    fi
+    for service in whisper-server:{{stt_port}} llama-server:{{llm_port}}; do
+        marker="{{services_run_dir}}/${service%%:*}-${service#*:}.e2e"
+        if [[ -f "$marker" ]]; then
+            rm -f "$marker"
+            {{just_executable()}} stop-services "${service%%:*}"
+        fi
+    done
 
-# Start the speech recognition service (whisper-server) unless one already answers on its port
+# Start the speech recognition (whisper-server) and text refinement (llama-server) services; one that already answers on its port is skipped
 start-services:
     #!/usr/bin/env bash
     set -euo pipefail
-    port="{{stt_port}}"
-    pid_file="{{services_run_dir}}/whisper-server-{{stt_port}}.pid"
-    log_file="{{services_log_dir}}/whisper-server-{{stt_port}}.log"
-    port_open() { nc -z 127.0.0.1 "$port" >/dev/null 2>&1; }
-    if ! command -v whisper-server >/dev/null 2>&1; then
+    run_dir="{{services_run_dir}}"
+    log_dir="{{services_log_dir}}"
+    mkdir -p "$run_dir" "$log_dir"
+    port_open() { nc -z 127.0.0.1 "$1" >/dev/null 2>&1; }
+    whisper_ready() { port_open "{{stt_port}}"; }
+    llama_ready() { curl -sf -o /dev/null --max-time 1 "http://127.0.0.1:{{llm_port}}/health"; }
+    require_binary() {
+        local binary=$1 formula=$2
+        command -v "$binary" >/dev/null 2>&1 && return 0
         if [[ -t 0 ]]; then
-            read -r -p "whisper-server not found. Install whisper-cpp with Homebrew? [y/N] " answer
-            if [[ ! "$answer" =~ ^[Yy]$ ]]; then
-                echo "✗ whisper-server not found — run 'brew install whisper-cpp'" >&2
+            read -r -p "$binary not found. Install $formula with Homebrew? [y/N] " answer
+            if [[ "$answer" =~ ^[Yy]$ ]]; then
+                brew install "$formula"
+                return 0
+            fi
+        fi
+        echo "✗ $binary not found — run 'brew install $formula'" >&2
+        exit 1
+    }
+    require_model() {
+        local path="${!1:-}"
+        if [[ -z "$path" || ! -f "$path" ]]; then
+            echo "✗ $1: no model file (got '$path'). Run 'just models' or set it in .env" >&2
+            exit 1
+        fi
+    }
+    # start_service <binary> <port> <label> <readiness check> <command…>
+    start_service() {
+        local binary=$1 port=$2 label=$3 ready=$4
+        shift 4
+        local pid_file="$run_dir/$binary-$port.pid" log_file="$log_dir/$binary-$port.log"
+        nohup "$@" >"$log_file" 2>&1 &
+        local pid=$!
+        echo "$pid" >"$pid_file"
+        echo "… starting $binary (pid $pid), log: $log_file"
+        for _ in $(seq 1 240); do
+            if "$ready"; then
+                echo "✓ $label ready at http://127.0.0.1:$port/v1"
+                return 0
+            fi
+            if ! kill -0 "$pid" 2>/dev/null; then
+                echo "✗ $binary exited during startup — last log lines:" >&2
+                tail -n 20 "$log_file" >&2
+                rm -f "$pid_file"
                 exit 1
             fi
-            brew install whisper-cpp
-        else
-            echo "✗ whisper-server not found — run 'brew install whisper-cpp'" >&2
-            exit 1
-        fi
-    fi
-    if port_open; then
-        echo "✓ speech recognition service already running at {{stt_url}}"
-        exit 0
-    fi
-    model="${VOICEPUNCHER_WHISPER_MODEL:-}"
-    if [[ -z "$model" || ! -f "$model" ]]; then
-        echo "✗ VOICEPUNCHER_WHISPER_MODEL: no model file (got '$model'). Run 'just models' or set it in .env" >&2
-        exit 1
-    fi
-    mkdir -p "{{services_run_dir}}" "{{services_log_dir}}"
-    # Same decoding as the former in-process engine: greedy, no temperature fallback,
-    # no cross-request text context, non-speech tokens suppressed
-    nohup whisper-server -m "$model" --host 127.0.0.1 --port "$port" \
-        --inference-path /v1/audio/transcriptions -l auto -t "$(sysctl -n hw.ncpu)" \
-        -bo 1 -nf -sns -mc 0 -nt >"$log_file" 2>&1 &
-    pid=$!
-    echo "$pid" >"$pid_file"
-    echo "… starting whisper-server (pid $pid, model $(basename "$model")), log: $log_file"
-    for _ in $(seq 1 240); do
-        if port_open; then
-            echo "✓ speech recognition service ready at {{stt_url}}"
-            exit 0
-        fi
-        if ! kill -0 "$pid" 2>/dev/null; then
-            echo "✗ whisper-server exited during startup — last log lines:" >&2
-            tail -n 20 "$log_file" >&2
-            rm -f "$pid_file"
-            exit 1
-        fi
-        sleep 0.25
-    done
-    echo "✗ whisper-server did not open port $port within 60 s — see $log_file" >&2
-    kill "$pid" 2>/dev/null || true
-    rm -f "$pid_file"
-    exit 1
-
-# Stop the services that start-services launched; services started by hand keep running
-stop-services:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    pid_file="{{services_run_dir}}/whisper-server-{{stt_port}}.pid"
-    if [[ ! -f "$pid_file" ]]; then
-        echo "· no speech recognition service started by start-services"
-        exit 0
-    fi
-    pid="$(cat "$pid_file")"
-    if ps -p "$pid" -o comm= 2>/dev/null | grep -q whisper-server; then
-        kill "$pid"
-        for _ in $(seq 1 40); do
-            kill -0 "$pid" 2>/dev/null || break
             sleep 0.25
         done
-        kill -0 "$pid" 2>/dev/null && kill -9 "$pid"
-        echo "✓ stopped whisper-server (pid $pid)"
+        echo "✗ $binary was not ready on port $port within 60 s — see $log_file" >&2
+        kill "$pid" 2>/dev/null || true
+        rm -f "$pid_file"
+        exit 1
+    }
+    require_binary whisper-server whisper-cpp
+    require_binary llama-server llama.cpp
+    if port_open "{{stt_port}}"; then
+        echo "✓ speech recognition service already running at {{stt_url}}"
     else
-        echo "· whisper-server (pid $pid) is no longer running"
+        require_model VOICEPUNCHER_WHISPER_MODEL
+        # Same decoding as the former in-process engine: greedy, no temperature fallback,
+        # no cross-request text context, non-speech tokens suppressed
+        start_service whisper-server "{{stt_port}}" "speech recognition service" whisper_ready \
+            whisper-server -m "$VOICEPUNCHER_WHISPER_MODEL" --host 127.0.0.1 --port "{{stt_port}}" \
+            --inference-path /v1/audio/transcriptions -l auto -t "$(sysctl -n hw.ncpu)" \
+            -bo 1 -nf -sns -mc 0 -nt
     fi
-    rm -f "$pid_file"
+    if port_open "{{llm_port}}"; then
+        echo "✓ text refinement service already running at {{llm_url}}"
+    else
+        require_model VOICEPUNCHER_LLM_MODEL
+        # One slot, so a request gets the whole context, as the former in-process engine did
+        start_service llama-server "{{llm_port}}" "text refinement service" llama_ready \
+            llama-server -m "$VOICEPUNCHER_LLM_MODEL" --host 127.0.0.1 --port "{{llm_port}}" -c 4096 -np 1
+    fi
+
+# Stop the services that start-services launched (all, or the named ones: whisper-server, llama-server); services started by hand keep running
+stop-services *services:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    stop_service() {
+        local binary=$1 port=$2 label=$3
+        local pid_file="{{services_run_dir}}/$binary-$port.pid"
+        if [[ ! -f "$pid_file" ]]; then
+            echo "· no $label started by start-services"
+            return 0
+        fi
+        local pid
+        pid="$(cat "$pid_file")"
+        if ps -p "$pid" -o comm= 2>/dev/null | grep -q "$binary"; then
+            kill "$pid"
+            for _ in $(seq 1 40); do
+                kill -0 "$pid" 2>/dev/null || break
+                sleep 0.25
+            done
+            kill -0 "$pid" 2>/dev/null && kill -9 "$pid"
+            echo "✓ stopped $binary (pid $pid)"
+        else
+            echo "· $binary (pid $pid) is no longer running"
+        fi
+        rm -f "$pid_file"
+    }
+    selected="{{services}}"
+    for service in ${selected:-whisper-server llama-server}; do
+        case "$service" in
+            whisper-server) stop_service whisper-server "{{stt_port}}" "speech recognition service" ;;
+            llama-server) stop_service llama-server "{{llm_port}}" "text refinement service" ;;
+            *) echo "✗ unknown service '$service' — use whisper-server or llama-server" >&2; exit 1 ;;
+        esac
+    done
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 

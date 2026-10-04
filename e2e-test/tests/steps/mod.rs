@@ -1,2 +1,4 @@
 pub mod file_transcription;
-mod speech_recognition;
+pub mod refinement_service_stub;
+pub mod speech_recognition;
+mod text_refinement;

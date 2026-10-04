@@ -24,8 +24,12 @@ pub struct Cli {
     )]
     pub transcription_url: Option<String>,
 
-    #[arg(long)]
-    pub llm_model: Option<PathBuf>,
+    #[arg(
+        long,
+        value_name = "URL",
+        help = "Text refinement service address (overrides [refinement].base_url)"
+    )]
+    pub refinement_url: Option<String>,
 
     #[arg(long)]
     pub debug_save_wav: Option<PathBuf>,
@@ -40,7 +44,10 @@ pub struct Cli {
     #[arg(long, help = "Re-run the setup wizard even if config already exists")]
     pub setup: bool,
 
-    #[arg(long, help = "Skip LLM post-processing; paste the raw transcript")]
+    #[arg(
+        long,
+        help = "Skip text refinement; paste the raw transcript without contacting the text refinement service"
+    )]
     pub no_llm: bool,
 }
 
@@ -52,8 +59,8 @@ impl Cli {
         if let Some(url) = self.transcription_url {
             cfg.transcription.base_url = url;
         }
-        if let Some(path) = self.llm_model {
-            cfg.llm.model_path = path;
+        if let Some(url) = self.refinement_url {
+            cfg.refinement.base_url = url;
         }
         if self.debug_save_wav.is_some() {
             cfg.audio.debug_save_wav = true;
@@ -77,7 +84,7 @@ mod tests {
         assert!(cli.config.is_none());
         assert!(cli.hotkey.is_none());
         assert!(cli.transcription_url.is_none());
-        assert!(cli.llm_model.is_none());
+        assert!(cli.refinement_url.is_none());
         assert!(cli.debug_save_wav.is_none());
     }
 
@@ -88,7 +95,7 @@ mod tests {
             config: None,
             hotkey: Some(HotKey::F18),
             transcription_url: Some("http://localhost:9000/v1".into()),
-            llm_model: Some(PathBuf::from("/tmp/l.gguf")),
+            refinement_url: Some("http://localhost:9090/v1".into()),
             debug_save_wav: Some(PathBuf::from("/tmp/debug.wav")),
             input_file: None,
             setup: false,
@@ -100,7 +107,7 @@ mod tests {
         // Then
         assert_eq!(cfg.hotkey.key, HotKey::F18);
         assert_eq!(cfg.transcription.base_url, "http://localhost:9000/v1");
-        assert_eq!(cfg.llm.model_path, PathBuf::from("/tmp/l.gguf"));
+        assert_eq!(cfg.refinement.base_url, "http://localhost:9090/v1");
         assert!(cfg.audio.debug_save_wav);
     }
 

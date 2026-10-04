@@ -31,13 +31,13 @@
 
 ### RawTranscript
 - **Type:** Value Object
-- **Definition:** The speech recognition service's output before LLM cleanup. May contain filler words, missing punctuation, casing inconsistencies. Constructor rejects empty/whitespace.
+- **Definition:** The speech recognition service's output before text refinement. May contain filler words, missing punctuation, casing inconsistencies. Constructor rejects empty/whitespace.
 - **Code:** `app/src/core/domain/raw_transcript.rs`
 - **Synonyms to AVOID:** "transcription", "STT output", "text"
 
 ### CleanedText
 - **Type:** Value Object
-- **Definition:** Final text ready to paste — punctuation fixed, filler words removed, casing normalized, semantic content unchanged. Constructor rejects empty/whitespace.
+- **Definition:** Final text ready to paste — the text refinement service's correction of a `RawTranscript` (recognition errors fixed, semantic content unchanged, reasoning removed), or the raw transcript itself when refinement is disabled or fails. Constructor rejects empty/whitespace.
 - **Code:** `app/src/core/domain/cleaned_text.rs`
 - **Synonyms to AVOID:** "refined transcript", "polished text", "corrected text", "LLM output"
 
@@ -75,7 +75,7 @@
 
 ### SetupWizard
 - **Type:** Primary Adapter (interactive CLI wizard)
-- **Definition:** Runs on first launch (or when `--setup` is passed) to guide the user through selecting models, downloading them, and writing the initial config file. Lives in `adapters/primary/setup/cli/`. Not a Use Case — it contains user interaction logic, not domain logic.
+- **Definition:** Runs on first launch (or when `--setup` is passed) to ask for the local service addresses, language, hotkey, recording mode and sounds, and writes the initial config file. Downloads nothing. Lives in `adapters/primary/setup/cli/`. Not a Use Case — it contains user interaction logic, not domain logic.
 - **Code:** `app/src/adapters/primary/setup/cli/mod.rs`
 - **Synonyms to AVOID:** "Installer", "Bootstrapper", "Onboarding"
 
@@ -93,6 +93,24 @@
 - **Definition:** A process on the same machine that turns audio into a `RawTranscript` over the OpenAI Audio Transcriptions API — whisper.cpp `whisper-server` is the supported one. The user starts it (normally with `just start-services`); the app only connects to it, checks it is reachable at startup, and rejects any address that is not loopback.
 - **Code:** `app/src/adapters/secondary/transcription/openai/` — `OpenAiTranscriber`; config section `[transcription]` (`app/src/config/transcription.rs`)
 - **Synonyms to AVOID:** "STT server", "Whisper server" (names one implementation), "backend", "engine"
+
+### Text refinement service
+- **Type:** External system (outside the app process)
+- **Definition:** A process on the same machine that corrects a `RawTranscript` into `CleanedText` over the OpenAI Chat Completions API — llama.cpp `llama-server` is the supported one. The app sends the configured system prompt as the instruction and the transcript as delimited data. The user starts it (normally with `just start-services`); the app only connects to it, checks at startup that it answers and offers the configured model (unless refinement is disabled), rejects any address that is not loopback, and pastes the raw transcript when it fails.
+- **Code:** `app/src/adapters/secondary/textrefinement/openai/` — `OpenAiTextRefiner`; config section `[refinement]` (`app/src/config/refinement.rs`)
+- **Synonyms to AVOID:** "LLM server", "llama server" (names one implementation), "backend", "engine"
+
+### Text refinement
+- **Type:** Pipeline step
+- **Definition:** Correcting recognition errors in a `RawTranscript` before it is pasted, done by the text refinement service. Disabled with `--no-llm`: the raw transcript is pasted unchanged.
+- **Code:** `app/src/core/application/text_refiner.rs` — `TextRefiner` port; `Pipeline::refine_or_raw`
+- **Synonyms to AVOID:** "LLM cleanup", "post-processing", "polishing"
+
+### Reasoning block
+- **Type:** Part of a text refinement service answer
+- **Definition:** The `<think>…</think>` text a reasoning model puts before its answer. Removed before the answer becomes `CleanedText`, so it is never pasted.
+- **Code:** `app/src/adapters/secondary/textrefinement/openai/request.rs` — `without_reasoning`
+- **Synonyms to AVOID:** "thoughts", "chain of thought"
 
 ### Recognition hallucination
 - **Type:** Application policy (pure functions in `core/application/`)
@@ -116,8 +134,8 @@
 |---|---|---|
 | `rdev` | `rdev` crate | `adapters/primary/ptt/rdev/` — `RdevHotkeyListener` |
 | `cpal` | `cpal` crate | `adapters/secondary/recording/cpal/` — `CpalAudioRecorder` |
-| `openai` | OpenAI-compatible HTTP API (wire protocol, not the vendor) via `ureq`, on loopback only | `adapters/secondary/transcription/openai/` — `OpenAiTranscriber` |
-| `llamacpp` | `llama.cpp` C++ library (FFI'd via `llama-cpp-2`) | `adapters/secondary/textrefinement/llamacpp/` — `LlamaCppTextRefiner` |
+| `openai` | OpenAI-compatible HTTP API (wire protocol, not the vendor) via `ureq`, on loopback only | `adapters/secondary/transcription/openai/` — `OpenAiTranscriber`; `adapters/secondary/textrefinement/openai/` — `OpenAiTextRefiner` |
+| `passthrough` | no technology: hands the input on unchanged | `adapters/secondary/textrefinement/passthrough/` — `PassthroughTextRefiner` |
 | `macos` | macOS native APIs (`CGEventPost` via `enigo`, `NSPasteboard` via `arboard`, `AXIsProcessTrusted` via `core-foundation`) | `adapters/secondary/textpasting/macos/`, `adapters/secondary/soundplaying/macos/`, `adapters/secondary/permissions/macos/` |
 | `filesystem` | WAV file I/O via `hound` | `adapters/secondary/recording/filesystem/` — `FileSystemAudioRecorder` |
 | `stdio` | stdout via `println!` | `adapters/secondary/textpasting/stdio/` — `StdioTextPaster` |

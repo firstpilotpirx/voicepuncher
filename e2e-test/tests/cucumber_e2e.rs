@@ -17,6 +17,9 @@ pub struct E2eWorld {
     pub word_error_rates: Vec<f64>,
     pub config: Option<PathBuf>,
     pub transcription_url: Option<String>,
+    pub refinement_url: Option<String>,
+    pub refinement_stub: Option<steps::refinement_service_stub::RefinementServiceStub>,
+    pub stdout: String,
     pub stderr: String,
     pub elapsed: Option<Duration>,
 }

@@ -100,7 +100,7 @@ fn reported_outdated(world: &mut E2eWorld) -> Result<()> {
     expect_message(world, "[transcription].base_url")
 }
 
-fn expect_startup_failure(world: &E2eWorld) -> Result<()> {
+pub fn expect_startup_failure(world: &E2eWorld) -> Result<()> {
     let status = world.exit_status.context("the app did not run")?;
     if status.code() != Some(STARTUP_FAILURE_EXIT_CODE) {
         bail!(
@@ -111,7 +111,7 @@ fn expect_startup_failure(world: &E2eWorld) -> Result<()> {
     Ok(())
 }
 
-fn expect_message(world: &E2eWorld, fragment: &str) -> Result<()> {
+pub fn expect_message(world: &E2eWorld, fragment: &str) -> Result<()> {
     if !world.stderr.contains(fragment) {
         bail!(
             "expected '{fragment}' in the app's message, got: {}",

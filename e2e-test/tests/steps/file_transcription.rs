@@ -94,7 +94,8 @@ fn transcribe(recording: &Path, with_refinement: bool) -> Result<Output> {
         .arg("--transcription-url")
         .arg(env("VOICEPUNCHER_TRANSCRIPTION_URL")?);
     if with_refinement {
-        cmd.arg("--llm-model").arg(env("VOICEPUNCHER_LLM_MODEL")?);
+        cmd.arg("--refinement-url")
+            .arg(env("VOICEPUNCHER_REFINEMENT_URL")?);
     } else {
         cmd.arg("--no-llm");
     }

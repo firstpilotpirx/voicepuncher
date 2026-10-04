@@ -4,8 +4,9 @@ Automated E2E accuracy benchmark for voicepuncher.
 
 Downloads models and corpus automatically on first run.
 Runs all Whisper × LLM combinations and prints a Score/RTF comparison table.
-For each Whisper model it starts its own whisper-server (Homebrew whisper-cpp)
-on a separate port and stops it after that model's combinations.
+For each Whisper model it starts its own whisper-server (Homebrew whisper-cpp),
+and for each LLM its own llama-server (Homebrew llama.cpp), on separate ports,
+and stops them after that model's combinations.
 
 Metrics:
   Score = 1 - (WER + CER) / 2   quality, 0..1, higher is better
@@ -39,6 +40,11 @@ STT_READY_TIMEOUT_S = 120
 STT_STOP_TIMEOUT_S = 10
 # Same decoding flags as `just start-services`
 STT_DECODING_FLAGS = ["-l", "auto", "-bo", "1", "-nf", "-sns", "-mc", "0", "-nt"]
+# Separate from the 8080 port `just start-services` uses
+BENCH_LLM_PORT = 8090
+LLM_READY_TIMEOUT_S = 120
+# Same flags as `just start-services`
+LLM_SERVER_FLAGS = ["-c", "4096", "-np", "1"]
 
 # ── Model matrix ── add entries here to include new models in the benchmark ────
 
@@ -275,24 +281,28 @@ def _port_open(port: int) -> bool:
         return sock.connect_ex(("127.0.0.1", port)) == 0
 
 
+def _health_ok(port: int) -> bool:
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=1) as response:
+            return response.status == 200
+    except OSError:
+        return False
+
+
 @contextlib.contextmanager
-def whisper_server(model_path: Path, port: int = BENCH_STT_PORT) -> Iterator[str]:
-    """Runs whisper-server with one model for the duration of the block; yields its base URL."""
+def _local_server(cmd: list, port: int, ready, ready_timeout_s: int, model_path: Path) -> Iterator[str]:
+    """Runs one local service for the duration of the block; yields its base URL."""
+    name = cmd[0]
     if _port_open(port):
         raise SystemExit(f"{RED}✗ port {port} is already in use — stop whatever listens there{RESET}")
-    cmd = [
-        "whisper-server", "-m", str(model_path), "--host", "127.0.0.1", "--port", str(port),
-        "--inference-path", "/v1/audio/transcriptions", "-t", str(os.cpu_count() or 4),
-        *STT_DECODING_FLAGS,
-    ]
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
-        deadline = time.monotonic() + STT_READY_TIMEOUT_S
-        while not _port_open(port):
+        deadline = time.monotonic() + ready_timeout_s
+        while not ready(port):
             if proc.poll() is not None:
-                raise SystemExit(f"{RED}✗ whisper-server exited while loading {model_path.name}{RESET}")
+                raise SystemExit(f"{RED}✗ {name} exited while loading {model_path.name}{RESET}")
             if time.monotonic() > deadline:
-                raise SystemExit(f"{RED}✗ whisper-server did not start within {STT_READY_TIMEOUT_S}s{RESET}")
+                raise SystemExit(f"{RED}✗ {name} did not start within {ready_timeout_s}s{RESET}")
             time.sleep(0.25)
         yield f"http://127.0.0.1:{port}/v1"
     finally:
@@ -303,13 +313,33 @@ def whisper_server(model_path: Path, port: int = BENCH_STT_PORT) -> Iterator[str
             proc.kill()
 
 
-def ensure_whisper_server() -> None:
-    if shutil.which("whisper-server") is None:
-        raise SystemExit(f"{RED}✗ whisper-server not found — run 'brew install whisper-cpp'{RESET}")
+def whisper_server(model_path: Path, port: int = BENCH_STT_PORT):
+    """Speech recognition service with one Whisper model."""
+    cmd = [
+        "whisper-server", "-m", str(model_path), "--host", "127.0.0.1", "--port", str(port),
+        "--inference-path", "/v1/audio/transcriptions", "-t", str(os.cpu_count() or 4),
+        *STT_DECODING_FLAGS,
+    ]
+    return _local_server(cmd, port, _port_open, STT_READY_TIMEOUT_S, model_path)
+
+
+def llama_server(model_path: Path, port: int = BENCH_LLM_PORT):
+    """Text refinement service with one LLM."""
+    cmd = [
+        "llama-server", "-m", str(model_path), "--host", "127.0.0.1", "--port", str(port),
+        *LLM_SERVER_FLAGS,
+    ]
+    return _local_server(cmd, port, _health_ok, LLM_READY_TIMEOUT_S, model_path)
+
+
+def ensure_servers() -> None:
+    for binary, formula in [("whisper-server", "whisper-cpp"), ("llama-server", "llama.cpp")]:
+        if shutil.which(binary) is None:
+            raise SystemExit(f"{RED}✗ {binary} not found — run 'brew install {formula}'{RESET}")
 
 
 def _run_one(
-    binary: Path, transcription_url: str, llm_path: Path, wav: Path
+    binary: Path, transcription_url: str, refinement_url: str, wav: Path
 ) -> tuple[Optional[str], float]:
     t0 = time.monotonic()
     try:
@@ -319,7 +349,7 @@ def _run_one(
                 "--config", "/dev/null",
                 "--input-file", str(wav),
                 "--transcription-url", transcription_url,
-                "--llm-model", str(llm_path),
+                "--refinement-url", refinement_url,
             ],
             capture_output=True,
             text=True,
@@ -346,16 +376,15 @@ class ComboResult(NamedTuple):
 def run_combo(
     binary: Path,
     transcription_url: str,
+    refinement_url: str,
     whisper: dict,
     llm: dict,
     samples: list,
-    models_dir: Path,
 ) -> ComboResult:
-    lp = models_dir / llm["file"]
     wers, cers, times, rtfs = [], [], [], []
     for i, s in enumerate(samples, 1):
         print(f"  {DIM}[{i:>3}/{len(samples)}]{RESET} {s.id:<50}", end=" ", flush=True)
-        hyp, elapsed = _run_one(binary, transcription_url, lp, s.path)
+        hyp, elapsed = _run_one(binary, transcription_url, refinement_url, s.path)
         if hyp is None:
             print(f"{DIM}—{RESET}")
             continue
@@ -447,7 +476,7 @@ def main() -> None:
     models_dir = Path(args.models_dir)
     corpus_dir = Path(args.corpus_dir)
 
-    ensure_whisper_server()
+    ensure_servers()
     ensure_models(models_dir)
     print()
     ensure_corpus(corpus_dir, args.max_samples)
@@ -464,7 +493,8 @@ def main() -> None:
         with whisper_server(models_dir / whisper["file"]) as transcription_url:
             for llm in LLM_MODELS:
                 print(f"\n{MAGENTA}{BOLD}── {whisper['name']} × {llm['name']} {'─' * 40}{RESET}")
-                results.append(run_combo(binary, transcription_url, whisper, llm, samples, models_dir))
+                with llama_server(models_dir / llm["file"]) as refinement_url:
+                    results.append(run_combo(binary, transcription_url, refinement_url, whisper, llm, samples))
 
     print_table(results)
 

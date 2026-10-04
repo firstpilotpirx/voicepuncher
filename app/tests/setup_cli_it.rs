@@ -28,13 +28,14 @@ fn should_skip_run_when_config_does_not_exist_but_force_is_false() {
 }
 
 #[test]
-fn should_write_transcription_section_that_loads_back() {
+fn should_write_service_sections_that_load_back() {
     // Given
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("config.toml");
     let answers = SetupAnswers {
         transcription_url: "http://localhost:9000/v1",
-        llm_path: std::path::Path::new("/models/qwen.gguf"),
+        refinement_url: "http://localhost:9090/v1",
+        refinement_model: "qwen2.5",
         lang: "ru",
         hotkey: HotKey::F13,
         recording_mode: RecordingMode::Toggle,
@@ -47,8 +48,13 @@ fn should_write_transcription_section_that_loads_back() {
     let written = std::fs::read_to_string(&path).unwrap();
     assert!(written
         .contains("[transcription]\nbase_url = \"http://localhost:9000/v1\"\nlanguage = \"ru\"\n"));
+    assert!(written
+        .contains("[refinement]\nbase_url = \"http://localhost:9090/v1\"\nmodel = \"qwen2.5\"\n"));
     assert!(!written.contains("[whisper]"));
+    assert!(!written.contains("[llm]"));
     let cfg = voicepuncher::config::load(&path).unwrap();
     assert_eq!(cfg.transcription.base_url, "http://localhost:9000/v1");
     assert_eq!(cfg.transcription.language, "ru");
+    assert_eq!(cfg.refinement.base_url, "http://localhost:9090/v1");
+    assert_eq!(cfg.refinement.model, "qwen2.5");
 }

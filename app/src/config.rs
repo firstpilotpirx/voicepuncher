@@ -1,13 +1,17 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
 use crate::core::domain::{HotKey, RecordingMode};
 
+mod loopback;
+mod refinement;
 mod transcription;
 
-pub use transcription::{ensure_loopback, TranscriptionCfg};
+pub use loopback::ensure_loopback;
+pub use refinement::RefinementCfg;
+pub use transcription::TranscriptionCfg;
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -19,7 +23,7 @@ pub struct Config {
     #[serde(default)]
     pub transcription: TranscriptionCfg,
     #[serde(default)]
-    pub llm: LlmCfg,
+    pub refinement: RefinementCfg,
     #[serde(default)]
     pub paste: PasteCfg,
     #[serde(default)]
@@ -84,60 +88,6 @@ impl Default for AudioCfg {
             input_device: Self::default_input_device(),
             debug_save_wav: false,
             max_recording_seconds: Self::default_max_recording_seconds(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct LlmCfg {
-    #[serde(default)]
-    pub model_path: PathBuf,
-    #[serde(default = "LlmCfg::default_system_prompt")]
-    pub system_prompt: String,
-    #[serde(default = "LlmCfg::default_max_tokens")]
-    pub max_tokens: u32,
-    #[serde(default)]
-    pub temperature: f32,
-    #[serde(default = "LlmCfg::default_context_size")]
-    pub context_size: u32,
-}
-
-impl LlmCfg {
-    fn default_system_prompt() -> String {
-        "You are a speech-to-text post-processor. Your ONLY job is to fix ASR recognition errors: \
-         wrong words, technical terms transcribed in the wrong alphabet, \
-         words accidentally merged or split. \
-         CRITICAL RULES — NEVER BREAK THESE: \
-         (1) NEVER shorten, cut, truncate, abbreviate, or summarize. \
-         NEVER use ellipsis (...). NEVER omit any word. \
-         Output the COMPLETE text — every single word, no exceptions. \
-         (2) Do NOT rewrite, rephrase, restructure, or improve style. Fix only broken words. \
-         (3) Preserve the original language exactly — do not translate between languages. \
-         If the input contains multiple languages or code-switching (e.g. Russian + English), \
-         preserve each language exactly as spoken. \
-         (4) Fix technical terms to their correct script \
-         (e.g. Docker, API, Kubernetes in English even inside Russian text). \
-         (5) If nothing needs fixing, copy the input verbatim — every word, every number. \
-         Output only the corrected text, nothing else."
-            .into()
-    }
-    fn default_max_tokens() -> u32 {
-        512
-    }
-    fn default_context_size() -> u32 {
-        4096
-    }
-}
-
-impl Default for LlmCfg {
-    fn default() -> Self {
-        Self {
-            model_path: PathBuf::new(),
-            system_prompt: Self::default_system_prompt(),
-            max_tokens: Self::default_max_tokens(),
-            temperature: 0.0,
-            context_size: Self::default_context_size(),
         }
     }
 }
@@ -225,31 +175,18 @@ pub fn load(path: &Path) -> Result<Config> {
     let table: toml::Table =
         toml::from_str(&raw).with_context(|| format!("parse config: {}", path.display()))?;
     transcription::reject_removed_whisper_section(&table)
+        .and_then(|()| refinement::reject_removed_llm_section(&table))
         .with_context(|| format!("outdated config: {}", path.display()))?;
-    let mut cfg: Config =
+    let cfg: Config =
         toml::from_str(&raw).with_context(|| format!("parse config: {}", path.display()))?;
-    expand_tilde(&mut cfg.llm.model_path);
     validate(&cfg).with_context(|| format!("invalid config: {}", path.display()))?;
     Ok(cfg)
 }
 
 /// Checks rules that span the effective config; run again after CLI flags are overlaid.
 pub fn validate(cfg: &Config) -> Result<()> {
-    ensure_loopback(&cfg.transcription.base_url)
-}
-
-fn expand_tilde(p: &mut PathBuf) {
-    if let Ok(s) = p.to_path_buf().into_os_string().into_string() {
-        if let Some(rest) = s.strip_prefix("~/") {
-            if let Some(home) = dirs::home_dir() {
-                *p = home.join(rest);
-            }
-        } else if s == "~" {
-            if let Some(home) = dirs::home_dir() {
-                *p = home;
-            }
-        }
-    }
+    ensure_loopback("transcription.base_url", &cfg.transcription.base_url)?;
+    ensure_loopback("refinement.base_url", &cfg.refinement.base_url)
 }
 
 #[cfg(test)]
@@ -283,15 +220,15 @@ mod tests {
     }
 
     #[test]
-    fn should_expand_tilde_in_model_path() {
+    fn should_report_removed_llm_section_with_replacement() {
         // Given
         let mut f = tempfile::NamedTempFile::new().unwrap();
         writeln!(f, "[llm]\nmodel_path = \"~/models/qwen.gguf\"").unwrap();
         // When
-        let cfg = load(f.path()).unwrap();
+        let message = format!("{:#}", load(f.path()).unwrap_err());
         // Then
-        let home = dirs::home_dir().unwrap();
-        assert_eq!(cfg.llm.model_path, home.join("models/qwen.gguf"));
+        assert!(message.contains("[refinement]"), "{message}");
+        assert!(message.contains("llm.model_path"), "{message}");
     }
 
     #[test]
@@ -347,11 +284,63 @@ mod tests {
     }
 
     #[test]
+    fn should_parse_refinement_section_from_toml() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            f,
+            "[refinement]\nbase_url = \"http://localhost:9090/v1\"\nmodel = \"qwen\"\n\
+             api_key = \"secret\"\nsystem_prompt = \"Fix it.\"\ntemperature = 0.1\n\
+             max_tokens = 256\ntimeout_secs = 5"
+        )
+        .unwrap();
+        // When
+        let cfg = load(f.path()).unwrap();
+        // Then
+        let r = &cfg.refinement;
+        assert_eq!(r.base_url, "http://localhost:9090/v1");
+        assert_eq!(r.model, "qwen");
+        assert_eq!(r.api_key, "secret");
+        assert_eq!(r.system_prompt, "Fix it.");
+        assert_eq!(r.temperature, 0.1_f32);
+        assert_eq!(r.max_tokens, 256);
+        assert_eq!(r.timeout_secs, 5);
+    }
+
+    #[test]
     fn should_reject_remote_service_set_after_load() {
         // Given
         let mut cfg = Config::default();
         cfg.transcription.base_url = "https://example.com/v1".into();
         // When / Then
         assert!(validate(&cfg).is_err());
+    }
+
+    #[test]
+    fn should_reject_remote_refinement_service_at_load() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(f, "[refinement]\nbase_url = \"https://api.openai.com/v1\"").unwrap();
+        // When
+        let message = format!("{:#}", load(f.path()).unwrap_err());
+        // Then
+        assert!(message.contains("refinement.base_url"), "{message}");
+        assert!(message.contains("not on this machine"), "{message}");
+    }
+
+    #[test]
+    fn should_reject_remote_refinement_service_set_after_load() {
+        // Given
+        let mut cfg = Config::default();
+        cfg.refinement.base_url = "http://192.168.1.10:8080/v1".into();
+        // When
+        let message = format!("{:#}", validate(&cfg).unwrap_err());
+        // Then
+        assert!(message.contains("refinement.base_url"), "{message}");
+    }
+
+    #[test]
+    fn should_accept_default_service_addresses() {
+        assert!(validate(&Config::default()).is_ok());
     }
 }

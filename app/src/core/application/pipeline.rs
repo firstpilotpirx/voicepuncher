@@ -206,10 +206,28 @@ impl Pipeline {
         else {
             return Ok(());
         };
-        let cleaned = self.refiner.refine(&raw)?;
+        let Some(cleaned) = self.refine_or_raw(&raw) else {
+            return Ok(());
+        };
         self.paster.paste(&cleaned)?;
         eprintln!("{} {}", console::style("▸").dim(), cleaned.as_str());
         Ok(())
+    }
+
+    /// Refined text, or the raw transcript when refinement fails; `None` only when even
+    /// the raw transcript cannot be pasted.
+    fn refine_or_raw(&mut self, raw: &RawTranscript) -> Option<CleanedText> {
+        match self.refiner.refine(raw) {
+            Ok(cleaned) => Some(cleaned),
+            Err(e) => {
+                log::warn!("refinement failed, falling back to raw transcript: {e:#}");
+                CleanedText::new(raw.as_str().to_owned())
+                    .inspect_err(|e| {
+                        log::error!("raw transcript fallback failed, dropping cycle: {e}")
+                    })
+                    .ok()
+            }
+        }
     }
 
     fn run_transcribe_refine_paste(
@@ -246,20 +264,10 @@ impl Pipeline {
         self.state = PipelineState::Refining;
         log::info!("refining…");
         let t_refine = std::time::Instant::now();
-        let cleaned = match self.refiner.refine(&raw) {
-            Err(e) => {
-                log::warn!("refinement failed, falling back to raw transcript: {e:#}");
-                match CleanedText::new(raw.as_str().to_owned()) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        log::error!("raw transcript fallback failed, dropping cycle: {e}");
-                        self.state = PipelineState::Idle;
-                        self.visual_indicator.hide();
-                        return;
-                    }
-                }
-            }
-            Ok(c) => c,
+        let Some(cleaned) = self.refine_or_raw(&raw) else {
+            self.state = PipelineState::Idle;
+            self.visual_indicator.hide();
+            return;
         };
         let refine_ms = t_refine.elapsed().as_millis() as u64;
 
@@ -290,20 +298,10 @@ impl Pipeline {
         self.state = PipelineState::Refining;
         log::info!("refining…");
         let t_refine = std::time::Instant::now();
-        let cleaned = match self.refiner.refine(&raw) {
-            Err(e) => {
-                log::warn!("refinement failed, falling back to raw transcript: {e:#}");
-                match CleanedText::new(raw.as_str().to_owned()) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        log::error!("raw transcript fallback failed, dropping cycle: {e}");
-                        self.state = PipelineState::Idle;
-                        self.visual_indicator.hide();
-                        return;
-                    }
-                }
-            }
-            Ok(c) => c,
+        let Some(cleaned) = self.refine_or_raw(&raw) else {
+            self.state = PipelineState::Idle;
+            self.visual_indicator.hide();
+            return;
         };
         let refine_ms = t_refine.elapsed().as_millis() as u64;
         self.state = PipelineState::Pasting;
@@ -601,6 +599,32 @@ mod tests {
         pipeline.step(PttSignal::Pressed).unwrap();
         // Then
         assert!(matches!(pipeline.state, PipelineState::Idle));
+    }
+
+    #[test]
+    fn should_paste_raw_transcript_in_file_mode_when_refinement_fails() {
+        // Given
+        let mut transcriber = MockTranscriber::new();
+        transcriber
+            .expect_transcribe()
+            .once()
+            .returning(|_| Ok(Some(RawTranscript::new("hello".to_owned()).unwrap())));
+        let mut refiner = MockTextRefiner::new();
+        refiner
+            .expect_refine()
+            .once()
+            .returning(|_| Err(anyhow!("text refinement stopped at its output limit")));
+        let mut paster = MockTextPaster::new();
+        paster
+            .expect_paste()
+            .withf(|text| text.as_str() == "hello")
+            .once()
+            .returning(|_| Ok(()));
+        let mut pipeline = make_pipeline(MockAudioRecorder::new(), transcriber, refiner, paster);
+        // When
+        let result = pipeline.run_once(one_second_audio());
+        // Then
+        assert!(result.is_ok(), "{result:?}");
     }
 
     #[test]

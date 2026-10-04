@@ -1,11 +1,5 @@
-use std::net::IpAddr;
-
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, bail, Result};
 use serde::Deserialize;
-use url::{Host, Url};
-
-const LOCALHOST: &str = "localhost";
-const ALLOWED_SCHEMES: &[&str] = &["http", "https"];
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -81,29 +75,6 @@ impl Default for TranscriptionCfg {
             vad_lookback_secs: Self::default_vad_lookback_secs(),
         }
     }
-}
-
-/// Rejects a speech recognition service address that is not on this machine,
-/// so recorded audio never leaves it.
-pub fn ensure_loopback(base_url: &str) -> Result<()> {
-    let url = Url::parse(base_url)
-        .with_context(|| format!("transcription.base_url is not a valid URL: {base_url}"))?;
-    if !ALLOWED_SCHEMES.contains(&url.scheme()) {
-        bail!("transcription.base_url must use http or https, got: {base_url}");
-    }
-    let is_loopback = match url.host() {
-        Some(Host::Domain(domain)) => domain.eq_ignore_ascii_case(LOCALHOST),
-        Some(Host::Ipv4(ip)) => IpAddr::V4(ip).is_loopback(),
-        Some(Host::Ipv6(ip)) => IpAddr::V6(ip).is_loopback(),
-        None => false,
-    };
-    if !is_loopback {
-        bail!(
-            "transcription.base_url {base_url} is not on this machine — only a local speech \
-             recognition service (localhost, 127.0.0.0/8 or [::1]) is allowed, so audio never leaves it"
-        );
-    }
-    Ok(())
 }
 
 const RENAMED_SECTION: &str = "whisper";
@@ -189,39 +160,6 @@ mod tests {
         assert_eq!(cfg.chunk_overlap_secs, 2);
         assert_eq!(cfg.vad_rms_threshold, 0.01_f32);
         assert_eq!(cfg.vad_lookback_secs, 5);
-    }
-
-    #[test]
-    fn should_accept_loopback_hosts() {
-        for url in [
-            "http://localhost:8081/v1",
-            "http://127.0.0.1:8081/v1",
-            "http://127.1.2.3/v1",
-            "http://[::1]:8081/v1",
-        ] {
-            assert!(
-                ensure_loopback(url).is_ok(),
-                "expected {url} to be accepted"
-            );
-        }
-    }
-
-    #[test]
-    fn should_reject_hosts_on_other_machines() {
-        for url in ["http://192.168.1.10:8081/v1", "https://example.com/v1"] {
-            let message = format!("{:#}", ensure_loopback(url).unwrap_err());
-            assert!(message.contains("not on this machine"), "{url}: {message}");
-        }
-    }
-
-    #[test]
-    fn should_reject_malformed_url() {
-        assert!(ensure_loopback("not a url").is_err());
-    }
-
-    #[test]
-    fn should_reject_non_http_scheme() {
-        assert!(ensure_loopback("ftp://127.0.0.1/v1").is_err());
     }
 
     #[test]

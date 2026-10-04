@@ -1,5 +1,4 @@
 use clap::Parser;
-use std::path::PathBuf;
 use voicepuncher::adapters::primary::cli::Cli;
 use voicepuncher::config::Config;
 use voicepuncher::core::domain::HotKey;
@@ -12,8 +11,8 @@ fn should_parse_and_overlay_all_modifiable_flags_onto_config() {
         "F19",
         "--transcription-url",
         "http://localhost:9000/v1",
-        "--llm-model",
-        "/tmp/llm.gguf",
+        "--refinement-url",
+        "http://localhost:9090/v1",
         "--debug-save-wav",
         "/tmp/debug.wav",
         "--no-llm",
@@ -25,7 +24,7 @@ fn should_parse_and_overlay_all_modifiable_flags_onto_config() {
 
     assert_eq!(cfg.hotkey.key, HotKey::F19);
     assert_eq!(cfg.transcription.base_url, "http://localhost:9000/v1");
-    assert_eq!(cfg.llm.model_path, PathBuf::from("/tmp/llm.gguf"));
+    assert_eq!(cfg.refinement.base_url, "http://localhost:9090/v1");
     assert!(cfg.audio.debug_save_wav);
     assert!(no_llm);
 }

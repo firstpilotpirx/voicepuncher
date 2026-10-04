@@ -2,7 +2,7 @@
 
 ## What this project is
 
-Push-to-talk voice-to-text CLI for macOS Apple Silicon. Single Rust crate at `app/`. Fully offline: a local whisper.cpp `whisper-server` for transcription (reached over loopback HTTP, started with `just start-services`), Qwen2.5 (via llama.cpp) for text cleanup, both running on Metal. No internet at runtime; loopback connections only.
+Push-to-talk voice-to-text CLI for macOS Apple Silicon. Single Rust crate at `app/`. Fully offline: a local whisper.cpp `whisper-server` for transcription and a local llama.cpp `llama-server` (Qwen2.5) for text cleanup, both reached over loopback HTTP, started with `just start-services` and running on Metal. No internet at runtime; loopback connections only.
 
 **Product lifecycle stage:** PoC (Proof of Concept). The core workflow is demonstrated but the codebase is not yet hardened for daily use.
 
@@ -94,7 +94,7 @@ Do not merge a branch until `just full-check` has passed on its final commit; sa
 `just bench` is a model comparison, not a gate — only when a model, decoding params or the prompt changed.
 
 - **Models and corpus** are auto-discovered by the `justfile` (largest model in `~/.voicepuncher/` or `~/.voicepuncher/models/`; corpus in `e2e-test/corpus/`). The corpus is gitignored, so in a worktree set `VOICEPUNCHER_BENCH_CORPUS` to the main checkout's `e2e-test/corpus`.
-- **Speech recognition service:** the E2E recipes start `whisper-server` (`just start-services`) and stop it afterwards; `just test` needs no service. The service is shared across checkouts on port 8081, so do not run E2E in two checkouts at once.
+- **Local services:** the E2E recipes start `whisper-server` and `llama-server` (`just start-services`) and stop what they started afterwards; `just test` needs no service. The services are shared across checkouts on ports 8081 and 8080, so do not run E2E in two checkouts at once. E2E business scenarios synthesize speech with macOS `say`.
 - **`full-check` runs `cargo clean`** and deletes `target/release/voicepuncher`, which the user may be running. In the main checkout, ask first; in a worktree it only cleans that worktree's `target/`.
 - **The manual run cannot happen in an agent sandbox**: it lacks macOS TCC permissions (`permission denied for accessibility`). Ask the user to run `cargo run --release -p voicepuncher` (with and without `--no-llm` when refinement changed) and paste the log; `just start-services` must run first. A healthy cycle logs `pipeline recv Pressed` → `chunk 1 | … transcribed` → `pasting…` → `stop→paste: … total=…ms`.
 
@@ -121,5 +121,5 @@ All domain terms are defined in `docs/ubiquitous-language.md`. Read it before na
 ## Key constraints
 
 - macOS + Apple Silicon only (Metal GPU, CoreAudio, macOS TCC permissions).
-- No internet at runtime; loopback connections only — all inference is local (speech recognition in a separate local service).
+- No internet at runtime; loopback connections only — all inference is local, in separate local services (speech recognition, text refinement).
 - Three macOS TCC permissions required: Microphone, Accessibility, Input Monitoring.

@@ -11,7 +11,7 @@ use voicepuncher::adapters::secondary::recording::filesystem::FileSystemAudioRec
 use voicepuncher::adapters::secondary::soundplaying::macos::MacosSoundPlayer;
 use voicepuncher::adapters::secondary::textpasting::macos::MacOsTextPaster;
 use voicepuncher::adapters::secondary::textpasting::stdio::StdioTextPaster;
-use voicepuncher::adapters::secondary::textrefinement::llamacpp::LlamaCppTextRefiner;
+use voicepuncher::adapters::secondary::textrefinement::openai::OpenAiTextRefiner;
 use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::adapters::secondary::transcription::openai::OpenAiTranscriber;
 use voicepuncher::adapters::secondary::visualfeedback::macos::MacosVisualIndicator;
@@ -20,7 +20,7 @@ use voicepuncher::core::application::hotkey_listener::HotkeyListener;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
 use voicepuncher::core::application::preflight::Preflight;
 use voicepuncher::core::application::visual_indicator::VisualIndicator;
-use voicepuncher::core::application::ChunkingCfg;
+use voicepuncher::core::application::{ChunkingCfg, TextRefiner};
 use voicepuncher::core::domain::PttSignal;
 
 struct NoopVisualIndicator;
@@ -66,29 +66,11 @@ fn main() {
                 .parse()
                 .unwrap_or(log::LevelFilter::Info),
         )
-        .filter_module("ggml", log::LevelFilter::Warn)
         .init();
 
     if let Some(ref input_path) = input_file {
         let transcriber = connect_transcriber(&config);
-        let refiner: Box<dyn voicepuncher::core::application::TextRefiner> = if no_llm {
-            log::info!("LLM disabled (--no-llm), using passthrough");
-            Box::new(PassthroughTextRefiner)
-        } else {
-            Box::new(
-                LlamaCppTextRefiner::load(
-                    &config.llm.model_path,
-                    config.llm.system_prompt.clone(),
-                    config.llm.max_tokens as i32,
-                    config.llm.temperature,
-                    config.llm.context_size,
-                )
-                .unwrap_or_else(|e| {
-                    log::error!("failed to load llama model: {e:#}");
-                    std::process::exit(2);
-                }),
-            )
-        };
+        let refiner = connect_refiner(&config, no_llm);
         let audio = FileSystemAudioRecorder::load(input_path).unwrap_or_else(|e| {
             log::error!("file mode: {e:#}");
             std::process::exit(1);
@@ -123,24 +105,7 @@ fn main() {
 
     let transcriber = connect_transcriber(&config);
 
-    let refiner: Box<dyn voicepuncher::core::application::TextRefiner> = if no_llm {
-        log::info!("LLM disabled (--no-llm), using passthrough");
-        Box::new(PassthroughTextRefiner)
-    } else {
-        Box::new(
-            LlamaCppTextRefiner::load(
-                &config.llm.model_path,
-                config.llm.system_prompt.clone(),
-                config.llm.max_tokens as i32,
-                config.llm.temperature,
-                config.llm.context_size,
-            )
-            .unwrap_or_else(|e| {
-                log::error!("failed to load llama model: {e:#}");
-                std::process::exit(2);
-            }),
-        )
-    };
+    let refiner = connect_refiner(&config, no_llm);
 
     let paster = MacOsTextPaster::new(config.paste.clipboard_restore_delay_ms);
 
@@ -209,6 +174,18 @@ fn connect_transcriber(config: &Config) -> OpenAiTranscriber {
         log::error!("{e:#}");
         std::process::exit(2);
     })
+}
+
+fn connect_refiner(config: &Config, no_llm: bool) -> Box<dyn TextRefiner> {
+    if no_llm {
+        log::info!("text refinement disabled (--no-llm), pasting raw transcripts");
+        return Box::new(PassthroughTextRefiner);
+    }
+    let refiner = OpenAiTextRefiner::connect(config.refinement.clone()).unwrap_or_else(|e| {
+        log::error!("{e:#}");
+        std::process::exit(2);
+    });
+    Box::new(refiner)
 }
 
 fn chunking_cfg(cfg: &TranscriptionCfg) -> ChunkingCfg {

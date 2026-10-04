@@ -19,7 +19,6 @@ fn r1_domain_no_adapter_imports() {
         "rdev",
         "ureq",
         "serde_json",
-        "llama_cpp_2",
         "arboard",
         "core_graphics",
     ];
@@ -63,7 +62,6 @@ fn r2_application_no_adapter_imports() {
         "rdev",
         "ureq",
         "serde_json",
-        "llama_cpp_2",
         "arboard",
         "core_graphics",
     ];
