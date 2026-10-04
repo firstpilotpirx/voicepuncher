@@ -9,6 +9,9 @@ use std::thread;
 use anyhow::Result;
 
 const SINGLE_MODEL: &str = "stub-model";
+const STOP_FINISH_REASON: &str = "stop";
+const TRANSCRIPT_OPEN: &str = "<transcript>\n";
+const TRANSCRIPT_CLOSE: &str = "\n</transcript>";
 
 #[derive(Debug, Clone)]
 pub enum StubBehavior {
@@ -17,6 +20,8 @@ pub enum StubBehavior {
         content: String,
         finish_reason: &'static str,
     },
+    /// Answers every chat request with its transcript followed by `suffix`.
+    AppendToTranscript { suffix: &'static str },
     /// Offers these models; never receives a chat request.
     OfferModels(Vec<&'static str>),
     /// Answers the startup model list, then stops listening.
@@ -61,16 +66,33 @@ fn serve(listener: TcpListener, behavior: &StubBehavior, recorded: &Mutex<Vec<St
             continue;
         }
         if let Ok(mut log) = recorded.lock() {
-            log.push(body);
+            log.push(body.clone());
         }
-        if let StubBehavior::Answer {
-            content,
-            finish_reason,
-        } = behavior
-        {
-            respond(&mut stream, &chat_answer(content, finish_reason));
+        match behavior {
+            StubBehavior::Answer {
+                content,
+                finish_reason,
+            } => respond(&mut stream, &chat_answer(content, finish_reason)),
+            StubBehavior::AppendToTranscript { suffix } => {
+                let content = format!("{}{suffix}", last_transcript(&body));
+                respond(&mut stream, &chat_answer(&content, STOP_FINISH_REASON));
+            }
+            _ => {}
         }
     }
+}
+
+/// The delimited transcript of the request's last message.
+fn last_transcript(body: &str) -> String {
+    let request: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+    let last = request["messages"]
+        .as_array()
+        .and_then(|messages| messages.last())
+        .and_then(|message| message["content"].as_str())
+        .unwrap_or_default();
+    last.trim_start_matches(TRANSCRIPT_OPEN)
+        .trim_end_matches(TRANSCRIPT_CLOSE)
+        .to_owned()
 }
 
 fn models_answer(behavior: &StubBehavior) -> String {

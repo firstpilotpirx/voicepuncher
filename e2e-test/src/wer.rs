@@ -30,7 +30,7 @@ fn normalize_chars(s: &str) -> Vec<String> {
         .collect()
 }
 
-fn edit_distance_rate<T: PartialEq>(reference: &[T], hypothesis: &[T]) -> f64 {
+pub(crate) fn edit_distance_rate<T: PartialEq>(reference: &[T], hypothesis: &[T]) -> f64 {
     let n = reference.len();
     let m = hypothesis.len();
     if n == 0 {

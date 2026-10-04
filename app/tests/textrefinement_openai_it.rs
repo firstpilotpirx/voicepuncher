@@ -128,8 +128,10 @@ fn should_post_chat_request_and_return_cleaned_text() {
     assert_eq!(request.request_line, "POST /v1/chat/completions HTTP/1.1");
     let body: serde_json::Value = serde_json::from_str(&request.body).unwrap();
     assert_eq!(body["model"], "qwen");
+    let messages = body["messages"].as_array().unwrap();
+    assert_eq!(messages.first().unwrap()["role"], "system");
     assert_eq!(
-        body["messages"][1]["content"],
+        messages.last().unwrap()["content"],
         format!("<transcript>\n{TRANSCRIPT}\n</transcript>")
     );
     assert_eq!(request.authorization, None);

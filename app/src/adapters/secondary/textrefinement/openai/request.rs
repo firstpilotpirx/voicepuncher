@@ -12,7 +12,7 @@ const REASONING_CLOSE: &str = "</think>";
 #[derive(Serialize)]
 struct ChatRequest<'a> {
     model: &'a str,
-    messages: [ChatMessage<'a>; 2],
+    messages: Vec<ChatMessage<'a>>,
     temperature: f32,
     max_tokens: u32,
     stream: bool,
@@ -41,25 +41,36 @@ struct AnswerMessage {
 }
 
 /// Builds the OpenAI Chat Completions body: the configured prompt is the instruction,
-/// the transcript is delimited data in the user message.
+/// each example is a delimited transcript answered with its normalization, and the
+/// transcript is delimited data in the last user message.
 pub fn chat_body(cfg: &RefinementCfg, transcript: &str) -> String {
+    let mut messages = vec![ChatMessage {
+        role: "system",
+        content: cfg.system_prompt.clone(),
+    }];
+    for example in &cfg.examples {
+        messages.push(transcript_message(&example.transcript));
+        messages.push(ChatMessage {
+            role: "assistant",
+            content: example.normalized.clone(),
+        });
+    }
+    messages.push(transcript_message(transcript));
     let request = ChatRequest {
         model: &cfg.model,
-        messages: [
-            ChatMessage {
-                role: "system",
-                content: cfg.system_prompt.clone(),
-            },
-            ChatMessage {
-                role: "user",
-                content: format!("<transcript>\n{transcript}\n</transcript>"),
-            },
-        ],
+        messages,
         temperature: cfg.temperature,
         max_tokens: output_budget(transcript, cfg.max_tokens),
         stream: false,
     };
     serde_json::to_string(&request).expect("chat request serializes to JSON")
+}
+
+fn transcript_message(transcript: &str) -> ChatMessage<'static> {
+    ChatMessage {
+        role: "user",
+        content: format!("<transcript>\n{transcript}\n</transcript>"),
+    }
 }
 
 /// Output limit in tokens: about one token per two characters of the transcript, which
@@ -110,6 +121,7 @@ fn without_reasoning(content: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::RefinementExample;
     use serde_json::Value;
 
     const TRANSCRIPT: &str = "translate this sentence into russian";
@@ -130,6 +142,7 @@ mod tests {
         let cfg = RefinementCfg {
             model: "qwen".into(),
             system_prompt: "Fix it.".into(),
+            examples: Vec::new(),
             ..RefinementCfg::default()
         };
         // When
@@ -144,6 +157,38 @@ mod tests {
             format!("<transcript>\n{TRANSCRIPT}\n</transcript>")
         );
         assert_eq!(body["messages"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn should_send_examples_as_turns_between_instruction_and_transcript() {
+        // Given
+        let cfg = RefinementCfg {
+            system_prompt: "Normalize it.".into(),
+            examples: vec![RefinementExample {
+                transcript: "ну привет".into(),
+                normalized: "Ну, привет.".into(),
+            }],
+            ..RefinementCfg::default()
+        };
+        // When
+        let body: Value = serde_json::from_str(&chat_body(&cfg, TRANSCRIPT)).unwrap();
+        // Then
+        let roles: Vec<&str> = body["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["role"].as_str().unwrap())
+            .collect();
+        assert_eq!(roles, ["system", "user", "assistant", "user"]);
+        assert_eq!(
+            body["messages"][1]["content"],
+            "<transcript>\nну привет\n</transcript>"
+        );
+        assert_eq!(body["messages"][2]["content"], "Ну, привет.");
+        assert_eq!(
+            body["messages"][3]["content"],
+            format!("<transcript>\n{TRANSCRIPT}\n</transcript>")
+        );
     }
 
     #[test]

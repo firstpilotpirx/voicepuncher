@@ -2,10 +2,11 @@ use std::sync::mpsc;
 
 use crate::core::application::audio_recorder::LiveChunk;
 use crate::core::application::chunking::{merge_chunk_texts, split_into_chunks, ChunkingCfg};
+use crate::core::application::text_refiner::refine_or_raw;
 use crate::core::application::{
     AudioRecorder, SoundPlayer, TextPaster, TextRefiner, Transcriber, VisualIndicator,
 };
-use crate::core::domain::{AudioBuffer16k, CleanedText, PttSignal, RawTranscript, RecordingMode};
+use crate::core::domain::{AudioBuffer16k, PttSignal, RawTranscript, RecordingMode};
 
 #[derive(Debug, Clone, Copy)]
 pub struct PipelineConfig {
@@ -214,28 +215,12 @@ impl Pipeline {
             return Ok(());
         }
         let raw = RawTranscript::new(merge_chunk_texts(texts))?;
-        let Some(cleaned) = self.refine_or_raw(&raw) else {
+        let Some(cleaned) = refine_or_raw(self.refiner.as_mut(), &raw) else {
             return Ok(());
         };
         self.paster.paste(&cleaned)?;
         eprintln!("{} {}", console::style("▸").dim(), cleaned.as_str());
         Ok(())
-    }
-
-    /// Refined text, or the raw transcript when refinement fails; `None` only when even
-    /// the raw transcript cannot be pasted.
-    fn refine_or_raw(&mut self, raw: &RawTranscript) -> Option<CleanedText> {
-        match self.refiner.refine(raw) {
-            Ok(cleaned) => Some(cleaned),
-            Err(e) => {
-                log::warn!("refinement failed, falling back to raw transcript: {e:#}");
-                CleanedText::new(raw.as_str().to_owned())
-                    .inspect_err(|e| {
-                        log::error!("raw transcript fallback failed, dropping cycle: {e}")
-                    })
-                    .ok()
-            }
-        }
     }
 
     fn run_transcribe_refine_paste(
@@ -272,7 +257,7 @@ impl Pipeline {
         self.state = PipelineState::Refining;
         log::info!("refining…");
         let t_refine = std::time::Instant::now();
-        let Some(cleaned) = self.refine_or_raw(&raw) else {
+        let Some(cleaned) = refine_or_raw(self.refiner.as_mut(), &raw) else {
             self.state = PipelineState::Idle;
             self.visual_indicator.hide();
             return;
@@ -306,7 +291,7 @@ impl Pipeline {
         self.state = PipelineState::Refining;
         log::info!("refining…");
         let t_refine = std::time::Instant::now();
-        let Some(cleaned) = self.refine_or_raw(&raw) else {
+        let Some(cleaned) = refine_or_raw(self.refiner.as_mut(), &raw) else {
             self.state = PipelineState::Idle;
             self.visual_indicator.hide();
             return;

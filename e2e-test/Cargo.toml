@@ -18,6 +18,7 @@ serde_json = "1"
 anyhow = "1"
 tempfile = "3"
 hound = "3.5"
+voicepuncher = { path = "../app" }
 
 [dev-dependencies]
 cucumber = "=0.23.0"

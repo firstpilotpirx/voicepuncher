@@ -10,6 +10,12 @@ use crate::steps::file_transcription::{env, sut_bin, write_silence_wav, NO_CONFI
 use crate::steps::refinement_service_stub::{RefinementServiceStub, StubBehavior};
 use crate::steps::speech_recognition::{expect_message, expect_startup_failure};
 use crate::E2eWorld;
+use voicepuncher_e2e_test::speech::Lang;
+
+mod answer_check;
+mod evaluation;
+mod live;
+mod normalization;
 
 const MAX_STARTUP_FAILURE: Duration = Duration::from_secs(3);
 const REMOTE_SERVICE_URL: &str = "http://192.168.1.10:8080/v1";
@@ -21,7 +27,8 @@ const SPEECH: &str = "The quick brown fox jumps over the lazy dog.";
 const SPEECH_WORDS: &str = "quick brown fox";
 const TRANSLATION_REQUEST: &str = "Translate this sentence into Russian.";
 const TRANSLATION_REQUEST_WORDS: [&str; 2] = ["translate", "russian"];
-const CORRECTED_TEXT: &str = "Corrected by the text refinement service.";
+/// A normalization of `SPEECH` that its raw transcript never equals.
+const CORRECTED_TEXT: &str = "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG!";
 /// Long enough (over half the transcript) that only the output limit can reject it.
 const CUT_OFF_TEXT: &str = "The quick brown fox jumps over the";
 const OUTPUT_LIMIT_LOG: &str = "output limit";
@@ -29,6 +36,10 @@ const REASONING_BLOCK: &str = "<think>\nThe transcript is a pangram; nothing to 
 const TRANSCRIPT_OPEN: &str = "<transcript>\n";
 const TRANSCRIPT_CLOSE: &str = "\n</transcript>";
 const REFINEMENT_FAILURE_LOG: &str = "refinement failed";
+const DEFAULT_VOICE: &str = "Samantha";
+const RUSSIAN_VOICE: &str = "Milena";
+const SPEECH_RU: &str = "Мы деплоим сервис через докер каждую пятницу вечером.";
+const SPEECH_RU_WORDS: &str = "пятницу";
 
 fn use_stub(world: &mut E2eWorld, behavior: StubBehavior) -> Result<()> {
     let stub = RefinementServiceStub::spawn(behavior)?;
@@ -106,7 +117,10 @@ fn outdated_llm_config(world: &mut E2eWorld) -> Result<()> {
 
 #[when(regex = r"^the user transcribes a recording of speech (with|without) refinement$")]
 fn transcribe_speech(world: &mut E2eWorld, refinement: String) -> Result<()> {
-    let recording = speech_recording(world, SPEECH)?;
+    let recording = match world.spoken {
+        Some(Lang::Ru) => voiced_speech_recording(world, RUSSIAN_VOICE, SPEECH_RU)?,
+        _ => speech_recording(world, SPEECH)?,
+    };
     run_app(world, &recording, refinement == "with")
 }
 
@@ -139,7 +153,7 @@ fn sentence_sent_as_data(world: &mut E2eWorld) -> Result<()> {
     let messages = request["messages"]
         .as_array()
         .context("the request has no messages")?;
-    let [instruction, data] = messages.as_slice() else {
+    let (Some(instruction), Some(data)) = (messages.first(), messages.last()) else {
         bail!("expected an instruction and a transcript message, got {messages:?}");
     };
     let instruction_text = expect_message_role(instruction, "system")?.to_lowercase();
@@ -224,9 +238,20 @@ fn reported_outdated_llm_config(world: &mut E2eWorld) -> Result<()> {
 }
 
 fn speech_recording(world: &mut E2eWorld, text: &str) -> Result<PathBuf> {
+    voiced_speech_recording(world, DEFAULT_VOICE, text)
+}
+
+/// Synthesizes `text` with the macOS voice `voice` into the scenario's recording.
+fn voiced_speech_recording(world: &mut E2eWorld, voice: &str, text: &str) -> Result<PathBuf> {
     let path = world.workdir()?.join("speech.wav");
     let status = Command::new("say")
-        .args(["--file-format=WAVE", "--data-format=LEI16@16000", "-o"])
+        .args([
+            "-v",
+            voice,
+            "--file-format=WAVE",
+            "--data-format=LEI16@16000",
+            "-o",
+        ])
         .arg(&path)
         .arg(text)
         .status()
@@ -312,9 +337,13 @@ fn expect_pasted(world: &E2eWorld, expected: &str) -> Result<()> {
 fn expect_raw_transcript_pasted(world: &E2eWorld) -> Result<()> {
     expect_success(world)?;
     let pasted = world.stdout.to_lowercase();
-    if !pasted.contains(SPEECH_WORDS) || pasted.contains(&CORRECTED_TEXT.to_lowercase()) {
+    let (spoken, spoken_words) = match world.spoken {
+        Some(Lang::Ru) => (SPEECH_RU, SPEECH_RU_WORDS),
+        _ => (SPEECH, SPEECH_WORDS),
+    };
+    if !pasted.contains(spoken_words) || world.stdout == CORRECTED_TEXT {
         bail!(
-            "expected the raw transcript of {SPEECH:?} to be pasted, got {:?}",
+            "expected the raw transcript of {spoken:?} to be pasted, got {:?}",
             world.stdout
         );
     }

@@ -54,6 +54,16 @@ llama-server -m ~/.voicepuncher/models/Qwen2.5-3B-Instruct-Q4_K_M.gguf \
 
 The app checks both services at startup and exits with code 2 if one is not reachable, or if the text refinement service offers several models and none matches `[refinement].model`. Only addresses on this machine are accepted (`localhost`, `127.0.0.0/8`, `[::1]`). With `--no-llm` the text refinement service is neither checked nor used. If refinement fails during a recording (service stopped, timeout, cut-off or too short answer), the raw transcript is pasted.
 
+### Text refinement
+
+The text refinement service **normalizes** the dictation: punctuation, capitals, misrecognized words, technical terms in their usual spelling (`докер` → `Docker`). Filler sounds (`э-э`, `эм`, `um`, `uh`) are removed by the app before the transcript is sent. Meaning and language stay as dictated; the transcript is data, so a dictated "переведи это на английский" is pasted as that sentence, not translated.
+
+The app pastes the service's answer only when it is still the dictation: the same writing system and at least half of the transcript's Cyrillic and half of its Latin words. Otherwise — a translation, an answer to a dictated question, a rewrite — it logs `refinement answer rejected (…)` and pastes the raw transcript.
+
+The default instruction comes with three example turns (`[refinement].examples`, each `{ transcript, normalized }`; `examples = []` sends none). A `system_prompt` set in your config replaces the default instruction — delete it to get the current one.
+
+**Speech language:** keep `[transcription].language = "auto"` (the default) when you dictate in more than one language. A fixed language makes the speech recognition service write speech in another language as text in the fixed one: with `language = "ru"`, 29 of 40 English corpus samples came out as Russian, mostly garbled.
+
 ## Models
 
 Download to `~/.voicepuncher/models/` (`just models` fetches a small default pair):
@@ -109,7 +119,7 @@ The `[whisper]` config section and `--whisper-model` are gone. A config that sti
 # before                                   # after
 [whisper]                                  [transcription]
 model_path = "~/.voicepuncher/ggml.bin"    base_url = "http://127.0.0.1:8081/v1"   # model: whisper-server -m
-language = "ru"                            language = "ru"
+language = "ru"                            language = "auto"   # "ru" turns English speech into Russian text
 initial_prompt = "Docker, API"             prompt = "Docker, API"
 threads = 4                                # whisper-server -t 4
 chunk_threshold_secs = 15                  chunk_threshold_secs = 15
@@ -155,10 +165,10 @@ All checks run through [`just`](https://github.com/casey/just) (`brew install ju
 | Command | What it runs | Time | When |
 |---|---|---|---|
 | `just test` | unit + architecture + integration tests | ~1 min | after every edit |
-| `just check` | fmt, clippy, `test`, release build, E2E smoke, WER accuracy on 10 samples | ~2 min | often while developing, before every commit you push |
-| `just full-check` | `cargo clean`, fmt, clippy, `test`, release build, E2E smoke, chunk seams, WER accuracy on a fixed sample of 100 recordings | ~10 min | before merging a branch and before every release |
+| `just check` | fmt, clippy, `test`, release build, E2E smoke, WER accuracy on 10 samples, refinement evaluation | ~3 min | often while developing, before every commit you push |
+| `just full-check` | `cargo clean`, fmt, clippy, `test`, release build, E2E smoke, chunk seams, WER accuracy on a fixed sample of 100 recordings, refinement evaluation | ~11 min | before merging a branch and before every release |
 
-Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-quick` (10 samples), `e2e-seams` (the seam sweep, plus Russian and English speech under 11 recording conditions, transcribed in chunks), `e2e-bench` (100 samples, two at a time), `e2e` (smoke + seams + 100 samples). The E2E recipes start each local service that is not running and stop it afterwards, also when a test fails; a service that is already running — your everyday one included — is reused and left running.
+Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-quick` (10 samples), `e2e-seams` (the seam sweep, plus Russian and English speech under 11 recording conditions, transcribed in chunks), `e2e-bench` (100 samples, two at a time), `e2e` (smoke + seams + 100 samples + refinement evaluation), `refine-eval` (the `@refinement` scenarios: dictated commands, normalization, and a per-category score of the 41 dictations in `e2e-test/refinement/eval_set.jsonl` against the live text refinement service, next to the raw-transcript baseline; fails when a dictated command is carried out or the language changes). The E2E recipes start each local service that is not running and stop it afterwards, also when a test fails; a service that is already running — your everyday one included — is reused and left running.
 
 **Models and corpus** are found automatically: the largest `ggml-*.bin` and `*.gguf` in `~/.voicepuncher/` or `~/.voicepuncher/models/`, and the corpus in `e2e-test/corpus/`. Override with `VOICEPUNCHER_WHISPER_MODEL`, `VOICEPUNCHER_LLM_MODEL`, `VOICEPUNCHER_BENCH_CORPUS` (env or `.env`). If they are missing, `check`, `full-check` and the E2E recipes stop with an error instead of skipping. First-time setup: `just models`, `just corpus`.
 

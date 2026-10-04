@@ -10,7 +10,7 @@ mod refinement;
 mod transcription;
 
 pub use loopback::ensure_loopback;
-pub use refinement::RefinementCfg;
+pub use refinement::{RefinementCfg, RefinementExample};
 pub use transcription::TranscriptionCfg;
 
 #[derive(Debug, Clone, Default, Deserialize)]

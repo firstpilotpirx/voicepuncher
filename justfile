@@ -23,8 +23,8 @@ default:
 
 # ── Checks ── `check` while developing, `full-check` before merging ─────────
 
-# FAST (~2 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples
-check: fmt lint test build e2e-smoke e2e-quick
+# FAST (~3 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples + refinement evaluation
+check: fmt lint test build e2e-smoke e2e-quick refine-eval
 
 # FULL (~10 min), run before merging: clean build + code checks + E2E (seams included) + accuracy on 100 samples
 full-check: _require-models _require-corpus
@@ -49,8 +49,8 @@ test:
 build:
     cargo build --release
 
-# E2E on real models: smoke + chunk seams + WER accuracy on 100 samples (~8 min)
-e2e: e2e-smoke e2e-seams e2e-bench
+# E2E on real models: smoke + chunk seams + WER accuracy on 100 samples + refinement evaluation (~9 min)
+e2e: e2e-smoke e2e-seams e2e-bench refine-eval
 
 # Smoke test — services and models load, file mode runs (@smoke scenarios), the adapters talk to the real services
 e2e-smoke: _require-models build
@@ -70,6 +70,15 @@ e2e-quick: _require-models _require-corpus build
     {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_BENCH_LIMIT=10 \
         cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @accuracy
+
+# Text refinement on the live services: dictated commands, normalization, evaluation per category (@refinement) (~1 min)
+refine-eval: _require-models build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
+    {{just_executable()}} _start-model-servers-for-e2e
+    VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" \
+        cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @refinement
 
 # Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words (~5 min)
 e2e-seams: _require-models build
