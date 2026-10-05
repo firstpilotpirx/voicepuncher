@@ -50,11 +50,21 @@ The system SHALL send the configured spoken language with every request; the val
 - **THEN** the raw transcript contains the English words that were spoken
 
 ### Requirement: Known recognition hallucinations are discarded
-The system SHALL discard a transcript that consists only of a known recognition hallucination (subtitle credits, subscription calls, blank-audio markers, a phrase repeated in a loop) instead of pasting it.
+The system SHALL discard a transcript that consists only of a known recognition hallucination (subtitle credits, subscription calls, blank-audio markers, a phrase repeated in a loop, the word "you" alone or repeated, ignoring case and punctuation) instead of pasting it.
 
 #### Scenario: Silence produces a subtitle credit
 - **WHEN** the user records silence and the service returns a subtitle credit line
 - **THEN** nothing is pasted
+
+#### Scenario: Silence produces a lone "you"
+- **GIVEN** a recording of silence lasting 1, 10 or 60 seconds
+- **AND** the service detects the spoken language automatically
+- **WHEN** the user transcribes the recording
+- **THEN** no text is produced
+
+#### Scenario: Speech containing "you" is kept
+- **WHEN** the service returns a transcript in which "you" appears together with other words
+- **THEN** the transcript is passed on for refinement and pasting
 
 ### Requirement: Long recordings are transcribed in chunks
 The system SHALL split a dictation or a recording file longer than the chunk threshold into overlapping chunks, transcribe each through the service, and merge the results without duplicating words at the seams, even when the service transcribes the overlapping audio differently in the two chunks. Where two chunks share no words, the merge SHALL keep every word of both.

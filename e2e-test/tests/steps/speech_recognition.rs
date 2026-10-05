@@ -21,6 +21,7 @@ const START_COMMAND: &str = "just start-model-servers";
 /// A chunk seam may lose a word or two; more means the merge dropped real speech.
 const MAX_MISSING_WORD_SHARE: f64 = 0.10;
 const OUTDATED_CONFIG: &str = "[whisper]\nmodel_path = \"/models/ggml-large-v3-turbo.bin\"\n";
+const AUTO_LANGUAGE_CONFIG: &str = "[transcription]\nlanguage = \"auto\"\n";
 
 #[given("the speech recognition service is running")]
 fn service_running(world: &mut E2eWorld) -> Result<()> {
@@ -50,6 +51,14 @@ fn outdated_config(world: &mut E2eWorld) -> Result<()> {
     let dir = world.workdir()?;
     let path = dir.join("config.toml");
     std::fs::write(&path, OUTDATED_CONFIG)?;
+    world.config = Some(path);
+    Ok(())
+}
+
+#[given("the service detects the spoken language automatically")]
+fn auto_language(world: &mut E2eWorld) -> Result<()> {
+    let path = world.workdir()?.join("config.toml");
+    std::fs::write(&path, AUTO_LANGUAGE_CONFIG)?;
     world.config = Some(path);
     Ok(())
 }
@@ -105,6 +114,21 @@ fn reported_outdated(world: &mut E2eWorld) -> Result<()> {
     expect_startup_failure(world)?;
     expect_message(world, "starting the speech recognition service")?;
     expect_message(world, "[transcription].base_url")
+}
+
+#[then("no text is produced")]
+fn no_text(world: &mut E2eWorld) -> Result<()> {
+    let status = world.exit_status.context("the app did not run")?;
+    if status.code() == Some(STARTUP_FAILURE_EXIT_CODE) {
+        bail!(
+            "the app exited with a startup failure; stderr: {}",
+            world.stderr
+        );
+    }
+    if !world.stdout.is_empty() {
+        bail!("expected no text, got: {:?}", world.stdout);
+    }
+    Ok(())
 }
 
 pub fn expect_startup_failure(world: &E2eWorld) -> Result<()> {

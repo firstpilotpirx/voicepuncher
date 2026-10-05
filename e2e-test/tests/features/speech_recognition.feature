@@ -34,6 +34,21 @@ Feature: speech-recognition
       When the user starts the app
       Then the app exits with a message saying the model is now chosen when starting the service and naming the service address setting
 
+  Rule: Known recognition hallucinations are discarded
+
+    @smoke
+    Scenario Outline: Silence produces a lone "you"
+      Given a recording of silence lasting <seconds> seconds
+      And the service detects the spoken language automatically
+      When the user transcribes the recording file without refinement
+      Then no text is produced
+
+      Examples:
+        | seconds |
+        | 1       |
+        | 10      |
+        | 60      |
+
   Rule: Long recordings are transcribed in chunks
 
     @smoke

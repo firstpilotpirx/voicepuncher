@@ -58,7 +58,7 @@ fn benchmark_sample(world: &mut E2eWorld, size: usize) -> Result<()> {
 #[when(regex = r"^the user transcribes the recording file (with|without) refinement$")]
 fn transcribe_recording(world: &mut E2eWorld, refinement: String) -> Result<()> {
     let recording = world.recording.as_deref().context("no recording")?;
-    let output = transcribe(recording, refinement == "with")?;
+    let output = transcribe(recording, world.config.as_deref(), refinement == "with")?;
     world.exit_status = Some(output.status);
     world.stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -68,7 +68,7 @@ fn transcribe_recording(world: &mut E2eWorld, refinement: String) -> Result<()> 
 #[when("the user transcribes every recording of the sample with refinement")]
 fn transcribe_sample(world: &mut E2eWorld) -> Result<()> {
     let outputs = map_concurrently(&world.corpus, CONCURRENT_RECORDINGS, |sample| {
-        transcribe(&sample.path, true)
+        transcribe(&sample.path, None, true)
     });
     eprintln!("\n  {:<20} {:<4} {:>7} {:>8}", "id", "lang", "dur", "wer");
     for (sample, output) in world.corpus.iter().zip(outputs) {
@@ -103,9 +103,11 @@ fn mean_wer_below_bar(world: &mut E2eWorld) -> Result<()> {
     Ok(())
 }
 
-fn transcribe(recording: &Path, with_refinement: bool) -> Result<Output> {
+fn transcribe(recording: &Path, config: Option<&Path>, with_refinement: bool) -> Result<Output> {
     let mut cmd = Command::new(sut_bin());
-    cmd.args(["--config", NO_CONFIG, "--input-file"])
+    cmd.arg("--config")
+        .arg(config.unwrap_or(Path::new(NO_CONFIG)))
+        .arg("--input-file")
         .arg(recording)
         .arg("--transcription-url")
         .arg(env("VOICEPUNCHER_TRANSCRIPTION_URL")?);

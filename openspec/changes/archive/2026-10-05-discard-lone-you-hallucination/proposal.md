@@ -33,4 +33,4 @@ _None._
 
 ## Release
 
-PATCH — bug fix. Based on PR #11 (`feat/externalize-speech-recognition`, version 0.2.0); target version **0.2.1**.
+PATCH — bug fix; target version **0.4.2**.

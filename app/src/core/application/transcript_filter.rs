@@ -20,19 +20,40 @@ const HALLUCINATION_PATTERNS: &[&str] = &[
     "(applause)",
 ];
 
+/// Whisper returns this word alone, or repeated, for a recording of silence.
+const SILENCE_WORD: &str = "you";
+
 const MIN_WORDS_FOR_LOOP_CHECK: usize = 10;
 /// A transcript is a loop when one word makes up more than this share of all words.
 const LOOP_WORD_SHARE_NUMERATOR: usize = 4;
 const LOOP_WORD_SHARE_DENOMINATOR: usize = 10;
 
 /// True when a Whisper-family transcript is a known hallucination (subtitle credits,
-/// subscription calls, blank-audio markers, a phrase repeated in a loop) rather than speech.
+/// subscription calls, blank-audio markers, a phrase repeated in a loop, a lone "you")
+/// rather than speech.
 pub fn is_whisper_hallucination(text: &str) -> bool {
     let lower = text.trim().to_lowercase();
     if lower.is_empty() {
         return false;
     }
-    HALLUCINATION_PATTERNS.iter().any(|p| lower.contains(p)) || has_repetition_loop(&lower)
+    HALLUCINATION_PATTERNS.iter().any(|p| lower.contains(p))
+        || has_repetition_loop(&lower)
+        || is_only_silence_word(&lower)
+}
+
+/// True when every word is "you"; tokens made only of punctuation are ignored.
+fn is_only_silence_word(text: &str) -> bool {
+    let mut words = text
+        .split_whitespace()
+        .map(|token| {
+            token
+                .chars()
+                .filter(|c| c.is_alphanumeric())
+                .collect::<String>()
+        })
+        .filter(|word| !word.is_empty())
+        .peekable();
+    words.peek().is_some() && words.all(|word| word == SILENCE_WORD)
 }
 
 fn has_repetition_loop(text: &str) -> bool {
@@ -76,6 +97,20 @@ mod tests {
     fn should_not_filter_real_speech() {
         assert!(!is_whisper_hallucination("Hello, how are you doing?"));
         assert!(!is_whisper_hallucination("Привет, как дела?"));
+    }
+
+    #[test]
+    fn should_detect_lone_you() {
+        for text in ["you", " You.", "you you", "YOU, you!", "You. - You."] {
+            assert!(is_whisper_hallucination(text), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn should_not_filter_speech_containing_you() {
+        for text in ["you know", "Thank you", "Hello, how are you doing?"] {
+            assert!(!is_whisper_hallucination(text), "{text:?}");
+        }
     }
 
     #[test]
