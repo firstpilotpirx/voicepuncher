@@ -181,6 +181,7 @@ pub fn load(path: &Path) -> Result<Config> {
     let table: toml::Table =
         toml::from_str(&raw).with_context(|| format!("parse config: {}", path.display()))?;
     transcription::reject_removed_whisper_section(&table)
+        .and_then(|()| transcription::reject_removed_transcription_keys(&table))
         .and_then(|()| refinement::reject_removed_llm_section(&table))
         .with_context(|| format!("outdated config: {}", path.display()))?;
     let cfg: Config =

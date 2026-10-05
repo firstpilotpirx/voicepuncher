@@ -34,6 +34,12 @@ Feature: speech-recognition
       When the user starts the app
       Then the app exits with a message saying the model is now chosen when starting the service and naming the service address setting
 
+    @smoke
+    Scenario: Config still sets a fixed silence level
+      Given the configuration sets a fixed silence level for chunking
+      When the user starts the app
+      Then the app exits with a message saying pauses now follow the recording's background noise and the setting can be deleted
+
   Rule: Known recognition hallucinations are discarded
 
     @smoke

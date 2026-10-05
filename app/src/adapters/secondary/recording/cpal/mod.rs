@@ -12,7 +12,7 @@ use rubato::{
 
 use crate::core::application::audio_level_sink::AudioLevelSink;
 use crate::core::application::audio_recorder::{AudioRecorder, LiveChunk};
-use crate::core::application::chunking::{next_cut, ChunkingCfg};
+use crate::core::application::chunking::{next_chunk_start, next_cut, ChunkingCfg};
 use crate::core::domain::audio_level::AudioLevel;
 use crate::core::domain::AudioBuffer16k;
 
@@ -329,26 +329,29 @@ fn live_watcher_thread(
             }
         };
 
-    let mut last_cut: usize = 0;
     let mut next_start: usize = 0;
+    let mut stopping = false;
 
     loop {
-        let should_stop = match stop_rx.try_recv() {
+        stopping |= match stop_rx.try_recv() {
             Ok(()) | Err(std::sync::mpsc::TryRecvError::Disconnected) => true,
             Err(std::sync::mpsc::TryRecvError::Empty) => false,
         };
 
         let current_len = buffer.lock().unwrap().len();
-        let available = current_len.saturating_sub(last_cut);
+        let available = current_len.saturating_sub(next_start);
 
-        if !should_stop && available < chunk_samples {
+        if !stopping && available <= chunk_samples {
             std::thread::sleep(std::time::Duration::from_millis(20));
             continue;
         }
 
-        if should_stop && next_start >= current_len {
+        if stopping && next_start >= current_len {
             break;
         }
+        // After the stop, audio longer than a chunk threshold is still cut first, so the final
+        // chunk fits the threshold too.
+        let should_stop = stopping && available <= chunk_samples;
 
         let t_detect = Instant::now();
 
@@ -358,7 +361,7 @@ fn live_watcher_thread(
             (chunk, cut)
         } else {
             let buf_guard = buffer.lock().unwrap();
-            let cut = next_cut(&buf_guard, native_sample_rate, last_cut, cfg);
+            let cut = next_cut(&buf_guard, native_sample_rate, next_start, cfg);
             let chunk = buf_guard[next_start..cut].to_vec();
             (chunk, cut)
         };
@@ -398,8 +401,7 @@ fn live_watcher_thread(
             }
         }
 
-        last_cut = cut_point;
-        next_start = last_cut.saturating_sub(overlap_samples);
+        next_start = next_chunk_start(next_start, cut_point, overlap_samples);
 
         if should_stop {
             break;

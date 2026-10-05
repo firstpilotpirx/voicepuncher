@@ -132,7 +132,7 @@
 
 ### Chunk threshold
 - **Type:** Configuration value (`[transcription].chunk_threshold_secs`)
-- **Definition:** Recording length above which a dictation or a recording file is split into overlapping chunks, each transcribed through the speech recognition service, and the texts merged at the chunk seams.
+- **Definition:** Recording length above which a dictation or a recording file is split into overlapping chunks, each transcribed through the speech recognition service, and the texts merged at the chunk seams. It also bounds every chunk, its overlap with the previous chunk included: the service hears at most 30 s at a time.
 - **Code:** `app/src/core/application/chunking.rs` — `ChunkingCfg`, `next_cut`, `split_into_chunks`
 - **Synonyms to AVOID:** "segment size", "window"
 
@@ -141,6 +141,18 @@
 - **Definition:** Where two neighbouring chunks meet: the next chunk starts with the last seconds of the previous one (the overlap), so both transcripts contain those words, often worded a little differently. The merge aligns the two transcripts, keeps the overlap once and drops nothing where they share no words.
 - **Code:** `app/src/core/application/chunking.rs` — `merge_chunk_texts`
 - **Synonyms to AVOID:** "boundary" (the cut point is only one side of a seam), "join"
+
+### Pause
+- **Type:** Domain concept
+- **Definition:** A stretch of at least 160 ms in which every 20 ms frame is quieter than the noise floor allows: a gap between words or phrases, longer than a microphone dropout. A chunk ends in the middle of the longest pause within the lookback before the chunk threshold (the latest of equally long ones); without one it ends at the threshold.
+- **Code:** `app/src/core/application/chunking.rs` — `next_cut`, `MIN_PAUSE_MS`
+- **Synonyms to AVOID:** "silence" (a single quiet frame inside a word is not a pause), "VAD"
+
+### Noise floor
+- **Type:** Domain concept
+- **Definition:** The background loudness of a chunk, taken as the 10th percentile of its 20 ms frame loudness. A frame is quiet below twice the noise floor, but never above half the median frame; a frame below an RMS of 0.002 is always quiet. So pauses are found in noisy and in quiet recordings without a configured level.
+- **Code:** `app/src/core/application/chunking.rs` — `quiet_level`
+- **Synonyms to AVOID:** "threshold", "VAD level"
 
 ### Text input focus
 - **Type:** Value Object (`TextFocus`) decided from a `FocusedElement` (role, text selection, settable value)

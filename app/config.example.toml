@@ -18,8 +18,7 @@ temperature = 0.0
 timeout_secs = 60          # per request
 chunk_threshold_secs = 15  # recordings longer than this (seconds) are transcribed in chunks; 0 = always single-pass
 chunk_overlap_secs = 2     # seconds of audio repeated at the start of each subsequent chunk (boundary guard)
-vad_rms_threshold = 0.01   # energy-based VAD: per-20ms-frame RMS below this is treated as silence (0.0..1.0)
-vad_lookback_secs = 5      # max seconds to look back from hard chunk boundary when searching for a silence cut point
+vad_lookback_secs = 5      # max seconds to look back from hard chunk boundary when searching for a pause to cut in
 
 [refinement]
 # Local text refinement service (OpenAI Chat Completions API). Start it with

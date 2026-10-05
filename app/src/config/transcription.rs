@@ -25,8 +25,6 @@ pub struct TranscriptionCfg {
     pub chunk_threshold_secs: u32,
     #[serde(default = "TranscriptionCfg::default_chunk_overlap_secs")]
     pub chunk_overlap_secs: u32,
-    #[serde(default = "TranscriptionCfg::default_vad_rms_threshold")]
-    pub vad_rms_threshold: f32,
     #[serde(default = "TranscriptionCfg::default_vad_lookback_secs")]
     pub vad_lookback_secs: u32,
 }
@@ -52,9 +50,6 @@ impl TranscriptionCfg {
     fn default_chunk_overlap_secs() -> u32 {
         2
     }
-    fn default_vad_rms_threshold() -> f32 {
-        0.01
-    }
     fn default_vad_lookback_secs() -> u32 {
         5
     }
@@ -71,7 +66,6 @@ impl Default for TranscriptionCfg {
             timeout_secs: Self::default_timeout_secs(),
             chunk_threshold_secs: Self::default_chunk_threshold_secs(),
             chunk_overlap_secs: Self::default_chunk_overlap_secs(),
-            vad_rms_threshold: Self::default_vad_rms_threshold(),
             vad_lookback_secs: Self::default_vad_lookback_secs(),
         }
     }
@@ -93,6 +87,14 @@ const MOVED_TO_SERVICE: &[(&str, &str)] = &[
 
 const RENAMED_KEYS: &[(&str, &str)] = &[("initial_prompt", "prompt")];
 
+const SECTION: &str = "transcription";
+
+/// Keys the app no longer reads, and what to do instead.
+const REMOVED_KEYS: &[(&str, &str)] = &[(
+    "vad_rms_threshold",
+    "delete it: chunks are now cut in pauses judged against the recording's own background noise",
+)];
+
 /// Explains how to migrate a config that still has the removed `[whisper]` section.
 /// Returns `Ok(())` when the section is absent.
 pub fn reject_removed_whisper_section(raw: &toml::Table) -> Result<()> {
@@ -113,7 +115,27 @@ pub fn reject_removed_whisper_section(raw: &toml::Table) -> Result<()> {
     )
 }
 
+/// Explains how to migrate a `[transcription]` section that still sets a removed key.
+/// Returns `Ok(())` when it sets none.
+pub fn reject_removed_transcription_keys(raw: &toml::Table) -> Result<()> {
+    let Some(section) = raw.get(SECTION).and_then(toml::Value::as_table) else {
+        return Ok(());
+    };
+    let hints: Vec<String> = REMOVED_KEYS
+        .iter()
+        .filter(|(key, _)| section.contains_key(*key))
+        .map(|(key, hint)| format!("  - {SECTION}.{key}: {hint}"))
+        .collect();
+    if hints.is_empty() {
+        return Ok(());
+    }
+    bail!("settings no longer used:\n{}", hints.join("\n"))
+}
+
 fn replacement_for(key: &str) -> String {
+    if let Some((_, hint)) = REMOVED_KEYS.iter().find(|(old, _)| *old == key) {
+        return (*hint).to_owned();
+    }
     if let Some((_, hint)) = MOVED_TO_SERVICE.iter().find(|(old, _)| *old == key) {
         return (*hint).to_owned();
     }
@@ -158,8 +180,35 @@ mod tests {
         // Then
         assert_eq!(cfg.chunk_threshold_secs, 30);
         assert_eq!(cfg.chunk_overlap_secs, 2);
-        assert_eq!(cfg.vad_rms_threshold, 0.01_f32);
         assert_eq!(cfg.vad_lookback_secs, 5);
+    }
+
+    #[test]
+    fn should_refuse_the_removed_fixed_silence_level() {
+        let raw: toml::Table =
+            toml::from_str("[transcription]\nvad_rms_threshold = 0.01\n").unwrap();
+        let message = format!("{:#}", reject_removed_transcription_keys(&raw).unwrap_err());
+        assert!(
+            message.contains("transcription.vad_rms_threshold"),
+            "{message}"
+        );
+        assert!(message.contains("background noise"), "{message}");
+        assert!(message.contains("delete"), "{message}");
+    }
+
+    #[test]
+    fn should_accept_a_transcription_section_without_removed_keys() {
+        let raw: toml::Table = toml::from_str("[transcription]\nlanguage = \"en\"\n").unwrap();
+        assert!(reject_removed_transcription_keys(&raw).is_ok());
+    }
+
+    #[test]
+    fn should_tell_to_delete_the_fixed_silence_level_of_the_whisper_section() {
+        let message = migration_error("[whisper]\nvad_rms_threshold = 0.01\n");
+        assert!(
+            message.contains("whisper.vad_rms_threshold: delete it"),
+            "{message}"
+        );
     }
 
     #[test]
@@ -203,7 +252,6 @@ mod tests {
             "temperature",
             "chunk_threshold_secs",
             "chunk_overlap_secs",
-            "vad_rms_threshold",
             "vad_lookback_secs",
         ] {
             let message = migration_error(&format!("[whisper]\n{key} = 1\n"));

@@ -6,7 +6,6 @@ use crate::core::domain::AudioBuffer16k;
 pub struct ChunkingCfg {
     pub chunk_threshold_secs: u32,
     pub chunk_overlap_secs: u32,
-    pub vad_rms_threshold: f32,
     pub vad_lookback_secs: u32,
 }
 
@@ -15,7 +14,6 @@ impl Default for ChunkingCfg {
         Self {
             chunk_threshold_secs: 0,
             chunk_overlap_secs: 2,
-            vad_rms_threshold: 0.01,
             vad_lookback_secs: 5,
         }
     }
@@ -220,42 +218,91 @@ fn levenshtein(a: &[char], b: &[char]) -> usize {
     row[b.len()]
 }
 
-/// Length of the frames the silence search measures.
+/// Length of the frames whose loudness the pause search measures.
 const QUIET_FRAME_MS: usize = 20;
+/// Shortest quiet stretch that counts as a pause: longer than a microphone dropout (120 ms),
+/// shorter than most gaps between phrases (150–250 ms).
+const MIN_PAUSE_MS: usize = 160;
+/// Percentile of the frame loudness of a chunk that stands for its noise floor: a chunk of
+/// speech pauses at least this share of the time.
+const NOISE_FLOOR_PERCENTILE: f32 = 0.1;
+/// A frame is quiet up to this multiple of the noise floor.
+const NOISE_FLOOR_FACTOR: f32 = 2.0;
+/// ... but never above this share of the median frame, so speech without any pause, whose
+/// noise floor is itself speech, never counts as quiet.
+const SPEECH_LEVEL_SHARE: f32 = 0.5;
+/// A frame this quiet is quiet whatever the noise floor: digital silence makes the floor 0.
+const MIN_QUIET_RMS: f32 = 0.002;
 
-/// Where the chunk that started after `last_cut` ends: the start of the latest quiet frame
-/// within the lookback before the hard boundary (`chunk_threshold_secs` after `last_cut`),
-/// or the hard boundary when there is none.
-pub fn next_cut(samples: &[i16], sample_rate: u32, last_cut: usize, cfg: ChunkingCfg) -> usize {
+/// Where the chunk that starts at `chunk_start` ends: the middle of the longest pause (the
+/// latest of equally long ones) within the lookback before the hard boundary
+/// (`chunk_threshold_secs` after `chunk_start`, so the chunk, its overlap with the previous one
+/// included, fits the threshold), or the hard boundary when there is none. A pause is a stretch
+/// of at least [`MIN_PAUSE_MS`] of frames quieter than the chunk's noise floor allows; it is
+/// searched after the chunk's overlap only.
+pub fn next_cut(samples: &[i16], sample_rate: u32, chunk_start: usize, cfg: ChunkingCfg) -> usize {
     let rate = sample_rate as usize;
-    let hard_boundary = (last_cut + cfg.chunk_threshold_secs as usize * rate).min(samples.len());
-    let lookback_start = hard_boundary.saturating_sub(cfg.vad_lookback_secs as usize * rate);
+    let hard_boundary = (chunk_start + cfg.chunk_threshold_secs as usize * rate).min(samples.len());
+    let lookback_start = hard_boundary
+        .saturating_sub(cfg.vad_lookback_secs as usize * rate)
+        .max(chunk_start + cfg.chunk_overlap_secs as usize * rate);
     let frame = rate * QUIET_FRAME_MS / 1000;
-    if frame == 0 {
+    if frame == 0 || hard_boundary <= lookback_start {
         return hard_boundary;
     }
-    let quiet = |start: usize| {
-        let samples = &samples[start..(start + frame).min(samples.len())];
-        let mean_square = samples
-            .iter()
-            .map(|&s| {
-                let f = s as f32 / 32_768.0;
-                f * f
-            })
-            .sum::<f32>()
-            / samples.len() as f32;
-        !samples.is_empty() && mean_square.sqrt() < cfg.vad_rms_threshold
-    };
-    (lookback_start / frame..hard_boundary / frame)
-        .rev()
-        .map(|i| i * frame)
-        .find(|&start| quiet(start))
-        .unwrap_or(hard_boundary)
+    let loudness: Vec<f32> = samples[chunk_start..hard_boundary]
+        .chunks(frame)
+        .map(rms)
+        .collect();
+    let level = quiet_level(&loudness);
+    let first = (lookback_start - chunk_start).div_ceil(frame);
+    let min_frames = MIN_PAUSE_MS.div_ceil(QUIET_FRAME_MS);
+
+    let mut longest: Option<(usize, usize)> = None;
+    let mut run_start = None;
+    for i in first..=loudness.len() {
+        let quiet = i < loudness.len() && loudness[i] < level;
+        match (quiet, run_start) {
+            (true, None) => run_start = Some(i),
+            (false, Some(start)) => {
+                let len = i - start;
+                if len >= min_frames && longest.is_none_or(|(s, e)| len >= e - s) {
+                    longest = Some((start, i));
+                }
+                run_start = None;
+            }
+            _ => {}
+        }
+    }
+    match longest {
+        Some((start, end)) => chunk_start + (start + end) * frame / 2,
+        None => hard_boundary,
+    }
 }
 
-/// Splits a whole recording the way a live dictation is split: cut with [`next_cut`] every
-/// time a chunk threshold of audio is available, and start every later chunk the overlap
-/// before the previous cut.
+/// Loudness below which a frame of this chunk is quiet, from its noise floor.
+fn quiet_level(loudness: &[f32]) -> f32 {
+    let mut sorted = loudness.to_vec();
+    sorted.sort_by(f32::total_cmp);
+    let at = |share: f32| sorted[((sorted.len() - 1) as f32 * share) as usize];
+    (NOISE_FLOOR_FACTOR * at(NOISE_FLOOR_PERCENTILE))
+        .min(SPEECH_LEVEL_SHARE * at(0.5))
+        .max(MIN_QUIET_RMS)
+}
+
+/// Root mean square of `samples`, as a share of full scale.
+fn rms(samples: &[i16]) -> f32 {
+    let mean_square = samples
+        .iter()
+        .map(|&s| (s as f32 / 32_768.0).powi(2))
+        .sum::<f32>()
+        / samples.len() as f32;
+    mean_square.sqrt()
+}
+
+/// Splits a whole recording the way a live dictation is split: while more than a chunk
+/// threshold of audio follows the start of the chunk, cut it with [`next_cut`] and start the
+/// next chunk the overlap before the cut.
 pub fn split_into_chunks(audio: &AudioBuffer16k, cfg: ChunkingCfg) -> Vec<AudioBuffer16k> {
     let samples = audio.samples();
     let rate = AudioBuffer16k::SAMPLE_RATE_HZ as usize;
@@ -265,17 +312,23 @@ pub fn split_into_chunks(audio: &AudioBuffer16k, cfg: ChunkingCfg) -> Vec<AudioB
     }
     let overlap = cfg.chunk_overlap_secs as usize * rate;
     let mut chunks = Vec::new();
-    let (mut last_cut, mut start) = (0, 0);
-    while samples.len() - last_cut >= chunk_len {
-        let cut = next_cut(samples, AudioBuffer16k::SAMPLE_RATE_HZ, last_cut, cfg);
+    let mut start = 0;
+    while samples.len() - start > chunk_len {
+        let cut = next_cut(samples, AudioBuffer16k::SAMPLE_RATE_HZ, start, cfg);
         chunks.push(AudioBuffer16k::new(samples[start..cut].to_vec()));
-        last_cut = cut;
-        start = cut.saturating_sub(overlap);
+        start = next_chunk_start(start, cut, overlap);
     }
-    if start < samples.len() {
-        chunks.push(AudioBuffer16k::new(samples[start..].to_vec()));
-    }
+    chunks.push(AudioBuffer16k::new(samples[start..].to_vec()));
     chunks
+}
+
+/// Where the chunk after a `cut` starts: the overlap before the cut, or at the cut when the
+/// overlap would reach back to the start of the chunk before.
+pub fn next_chunk_start(chunk_start: usize, cut: usize, overlap: usize) -> usize {
+    match cut.saturating_sub(overlap) {
+        start if start > chunk_start => start,
+        _ => cut,
+    }
 }
 
 #[cfg(test)]
@@ -459,21 +512,126 @@ mod tests {
         vec![10_000i16; secs * RATE as usize]
     }
 
+    fn secs(at: f32) -> usize {
+        (at * RATE as f32) as usize
+    }
+
+    /// Speech-like audio: 180 ms syllables with a 60 ms weak consonant between them, and a
+    /// 300 ms pause every 2 s before the lookback of the first cut (25 s at a 30 s threshold),
+    /// so a tenth of the first chunk is pause.
+    fn speech(total_secs: usize) -> Vec<i16> {
+        let mut samples: Vec<i16> = (0..total_secs * RATE as usize)
+            .map(|i| if i % 3_840 < 2_880 { 8_000 } else { 3_000 })
+            .collect();
+        for start in (1..25).step_by(2) {
+            silence(&mut samples, start as f32, 0.3);
+        }
+        samples
+    }
+
+    fn silence(samples: &mut [i16], from_secs: f32, len_secs: f32) {
+        samples[secs(from_secs)..secs(from_secs + len_secs)].fill(0);
+    }
+
+    /// Adds steady noise of about `rms` (of full scale) to every sample.
+    fn add_noise(samples: &mut [i16], rms: f32) {
+        let mut state = 0x9E37_79B9_7F4A_7C15u64;
+        for s in samples.iter_mut() {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            let unit = (state >> 40) as f32 / (1u64 << 24) as f32 * 2.0 - 1.0;
+            let noise = unit * rms * 3f32.sqrt() * 32_768.0;
+            *s = (*s as f32 + noise).clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+        }
+    }
+
+    fn in_range(cut: usize, from_secs: f32, to_secs: f32) -> bool {
+        (secs(from_secs)..secs(to_secs)).contains(&cut)
+    }
+
     #[test]
-    fn should_cut_at_hard_boundary_when_no_silence_found() {
+    fn should_cut_at_the_threshold_when_the_lookback_holds_no_pause() {
         let samples = tone(40);
         let cut = next_cut(&samples, RATE, 0, cfg(30));
         assert_eq!(cut, 30 * RATE as usize);
     }
 
     #[test]
-    fn should_cut_at_latest_quiet_frame_within_lookback() {
-        let mut samples = tone(40);
-        let quiet_from = 27 * RATE as usize;
-        let quiet_to = quiet_from + 640;
-        samples[quiet_from..quiet_to].fill(0);
+    fn should_cut_in_a_pause_rather_than_in_a_quiet_moment_of_a_word() {
+        let mut samples = speech(40);
+        silence(&mut samples, 26.0, 0.3);
+        silence(&mut samples, 29.5, 0.04);
         let cut = next_cut(&samples, RATE, 0, cfg(30));
-        assert_eq!(cut, quiet_from + 320);
+        assert!(
+            in_range(cut, 26.0, 26.3),
+            "cut at {:.2} s",
+            cut as f32 / RATE as f32
+        );
+    }
+
+    #[test]
+    fn should_cut_in_the_middle_of_the_longest_pause() {
+        let mut samples = speech(40);
+        silence(&mut samples, 25.5, 0.5);
+        silence(&mut samples, 28.5, 0.2);
+        let cut = next_cut(&samples, RATE, 0, cfg(30));
+        assert_eq!(cut, secs(25.75), "cut at {:.2} s", cut as f32 / RATE as f32);
+    }
+
+    #[test]
+    fn should_take_a_stretch_of_the_minimum_pause_length_for_a_pause() {
+        let mut samples = speech(40);
+        silence(&mut samples, 27.0, 0.17);
+        let cut = next_cut(&samples, RATE, 0, cfg(30));
+        assert!(
+            in_range(cut, 27.0, 27.17),
+            "cut at {:.2} s",
+            cut as f32 / RATE as f32
+        );
+    }
+
+    #[test]
+    fn should_cut_in_the_latest_of_equally_long_pauses() {
+        let mut samples = speech(40);
+        silence(&mut samples, 26.0, 0.3);
+        silence(&mut samples, 28.0, 0.3);
+        let cut = next_cut(&samples, RATE, 0, cfg(30));
+        assert_eq!(cut, secs(28.15), "cut at {:.2} s", cut as f32 / RATE as f32);
+    }
+
+    #[test]
+    fn should_find_a_pause_under_background_noise() {
+        let mut samples = speech(40);
+        silence(&mut samples, 26.0, 0.3);
+        silence(&mut samples, 29.5, 0.04);
+        add_noise(&mut samples, 0.03);
+        let cut = next_cut(&samples, RATE, 0, cfg(30));
+        assert!(
+            in_range(cut, 26.0, 26.3),
+            "cut at {:.2} s",
+            cut as f32 / RATE as f32
+        );
+    }
+
+    #[test]
+    fn should_not_take_quiet_speech_for_a_pause() {
+        let mut samples: Vec<i16> = speech(40).iter().map(|&s| s / 20).collect();
+        silence(&mut samples, 26.0, 0.3);
+        let cut = next_cut(&samples, RATE, 0, cfg(30));
+        assert!(
+            in_range(cut, 26.0, 26.3),
+            "cut at {:.2} s",
+            cut as f32 / RATE as f32
+        );
+    }
+
+    #[test]
+    fn should_not_take_a_short_dropout_for_a_pause() {
+        let mut samples = speech(40);
+        silence(&mut samples, 27.0, 0.12);
+        let cut = next_cut(&samples, RATE, 0, cfg(30));
+        assert_eq!(cut, 30 * RATE as usize);
     }
 
     #[test]
@@ -504,18 +662,46 @@ mod tests {
         let audio = AudioBuffer16k::new(tone(70));
         let chunks = split_into_chunks(&audio, cfg(30));
         let lens: Vec<usize> = chunks.iter().map(|c| c.samples().len()).collect();
-        // cuts at 30 s and 60 s; every chunk after the first starts 2 s before the cut
-        assert_eq!(lens, vec![30 * rate, 32 * rate, 12 * rate]);
+        // cuts at 30 s and 58 s; every chunk after the first starts 2 s before the cut
+        assert_eq!(lens, vec![30 * rate, 30 * rate, 14 * rate]);
+    }
+
+    #[test]
+    fn should_keep_every_chunk_with_its_overlap_within_the_threshold() {
+        // a pause early in the lookback, then none: the next cut falls at the hard boundary
+        let mut samples = speech(100);
+        silence(&mut samples, 26.0, 0.3);
+        let chunks = split_into_chunks(&AudioBuffer16k::new(samples), cfg(30));
+        let lens: Vec<f32> = chunks
+            .iter()
+            .map(|c| c.samples().len() as f32 / RATE as f32)
+            .collect();
+        assert!(chunks.len() > 3, "chunks of {lens:?} s");
+        assert!(lens.iter().all(|&len| len <= 30.0), "chunks of {lens:?} s");
+    }
+
+    #[test]
+    fn should_start_the_next_chunk_the_overlap_before_the_cut() {
+        assert_eq!(next_chunk_start(0, secs(26.0), secs(2.0)), secs(24.0));
+    }
+
+    #[test]
+    fn should_start_the_next_chunk_at_the_cut_when_the_overlap_reaches_the_chunk_start() {
+        assert_eq!(
+            next_chunk_start(secs(10.0), secs(11.0), secs(2.0)),
+            secs(11.0)
+        );
     }
 
     #[test]
     fn should_split_at_a_silence_inside_the_lookback() {
         let rate = RATE as usize;
         let mut samples = tone(50);
-        samples[28 * rate..28 * rate + 320].fill(0);
+        silence(&mut samples, 28.0, 0.3);
         let chunks = split_into_chunks(&AudioBuffer16k::new(samples), cfg(30));
         let lens: Vec<usize> = chunks.iter().map(|c| c.samples().len()).collect();
-        assert_eq!(lens, vec![28 * rate, 24 * rate]);
+        // cut in the middle of the pause; the second chunk starts 2 s before the cut
+        assert_eq!(lens, vec![secs(28.15), 50 * rate - secs(26.15)]);
     }
 
     #[test]

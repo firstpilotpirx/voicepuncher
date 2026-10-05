@@ -91,7 +91,7 @@ _e2e-smoke: _require-models _build
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}"
     cargo test -p voicepuncher --test transcription_openai_it --test textrefinement_openai_it --release -- --nocapture
-    cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @smoke
+    cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags '@smoke and not @wip'
 
 # WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 % (~20 s)
 e2e-quick:
@@ -103,7 +103,7 @@ _e2e-quick: _require-models _require-corpus _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_BENCH_LIMIT=10 \
-        cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @accuracy
+        cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags '@accuracy and not @wip'
 
 # Text refinement on the live services: dictated commands, normalization, evaluation per category (@refinement) (~1 min)
 refine-eval:
@@ -115,7 +115,7 @@ _refine-eval: _require-models _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" \
-        cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @refinement
+        cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags '@refinement and not @wip'
 
 # Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words (~5 min)
 e2e-seams:
@@ -128,7 +128,7 @@ _e2e-seams: _require-models _build
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}"
     cargo test -p voicepuncher --test chunked_transcription_it --release -- --nocapture
-    cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @seams
+    cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags '@seams and not @wip'
 
 # WER accuracy on a fixed sample of 100 recordings (50 per language), two at a time — fails if mean WER > 30 % (~2 min)
 e2e-bench:
@@ -140,7 +140,7 @@ _e2e-bench: _require-models _require-corpus _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" \
-        cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags @accuracy
+        cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags '@accuracy and not @wip'
 
 # Manual: @real_keyboard scenarios drive the real hotkey + paste — needs Accessibility and Input Monitoring for the terminal, a GUI session, hands off the keyboard
 test-real-keyboard:

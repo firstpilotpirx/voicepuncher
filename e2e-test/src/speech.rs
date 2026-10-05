@@ -122,6 +122,35 @@ impl Condition {
 /// Speech of `lang`'s paragraph under `condition`, 16 kHz mono, after `lead_in_secs` of silence.
 /// The lead-in moves the chunk seams onto other words.
 pub fn synthesize(lang: Lang, condition: Condition, lead_in_secs: f32) -> Result<Vec<i16>> {
+    let speech = say(lang, condition)?;
+    Ok(after_lead_in(&speech, condition, lead_in_secs).0)
+}
+
+/// [`synthesize`] after each of `lead_ins_secs`, together with the same speech before
+/// `condition` degraded it: where the clean copy is silent, the speech pauses. `say` runs once.
+pub fn synthesize_with_clean(
+    lang: Lang,
+    condition: Condition,
+    lead_ins_secs: &[f32],
+) -> Result<Vec<(Vec<i16>, Vec<i16>)>> {
+    let speech = say(lang, condition)?;
+    Ok(lead_ins_secs
+        .iter()
+        .map(|&lead_in| after_lead_in(&speech, condition, lead_in))
+        .collect())
+}
+
+/// `speech` after `lead_in_secs` of silence, degraded by `condition`, and the clean copy.
+fn after_lead_in(speech: &[i16], condition: Condition, lead_in_secs: f32) -> (Vec<i16>, Vec<i16>) {
+    let mut samples = vec![0i16; (lead_in_secs * SAMPLE_RATE_HZ as f32) as usize];
+    samples.extend_from_slice(speech);
+    let clean = samples.clone();
+    condition.degrade(&mut samples);
+    (samples, clean)
+}
+
+/// `lang`'s paragraph spoken by macOS `say` as `condition` asks, 16 kHz mono.
+fn say(lang: Lang, condition: Condition) -> Result<Vec<i16>> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("speech.wav");
     let status = Command::new("say")
@@ -135,11 +164,7 @@ pub fn synthesize(lang: Lang, condition: Condition, lead_in_secs: f32) -> Result
     if !status.success() {
         bail!("'say' failed to synthesize speech ({status})");
     }
-    let speech = read_wav(&path)?;
-    let mut samples = vec![0i16; (lead_in_secs * SAMPLE_RATE_HZ as f32) as usize];
-    samples.extend(speech);
-    condition.degrade(&mut samples);
-    Ok(samples)
+    read_wav(&path)
 }
 
 pub fn read_wav(path: &Path) -> Result<Vec<i16>> {
@@ -423,6 +448,19 @@ mod tests {
     #[test]
     fn should_read_yo_as_ye() {
         assert_eq!(normalized_words("Ещё отчёт"), vec!["еще", "отчет"]);
+    }
+
+    #[test]
+    fn should_keep_the_clean_speech_aligned_with_the_degraded_one() {
+        for condition in [Condition::NoiseHigh, Condition::Dropouts] {
+            let speeches = synthesize_with_clean(Lang::En, condition, &[0.0, 0.7]).unwrap();
+            let [(_, first), (degraded, clean)] = speeches.as_slice() else {
+                panic!("{condition:?}: one speech per lead-in expected");
+            };
+            assert_eq!(clean.len(), degraded.len(), "{condition:?}");
+            assert_eq!(clean.len(), first.len() + 11_200, "{condition:?}");
+            assert_ne!(clean, degraded, "{condition:?}");
+        }
     }
 
     #[test]

@@ -41,7 +41,6 @@ fn should_merge_chunked_speech_without_repeating_or_dropping_a_phrase() {
     let chunking = ChunkingCfg {
         chunk_threshold_secs: cfg.chunk_threshold_secs,
         chunk_overlap_secs: cfg.chunk_overlap_secs,
-        vad_rms_threshold: cfg.vad_rms_threshold,
         vad_lookback_secs: cfg.vad_lookback_secs,
     };
     let mut transcriber = OpenAiTranscriber::connect(cfg).unwrap();

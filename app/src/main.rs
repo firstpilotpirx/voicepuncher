@@ -201,7 +201,6 @@ fn chunking_cfg(cfg: &TranscriptionCfg) -> ChunkingCfg {
     ChunkingCfg {
         chunk_threshold_secs: cfg.chunk_threshold_secs,
         chunk_overlap_secs: cfg.chunk_overlap_secs,
-        vad_rms_threshold: cfg.vad_rms_threshold,
         vad_lookback_secs: cfg.vad_lookback_secs,
     }
 }

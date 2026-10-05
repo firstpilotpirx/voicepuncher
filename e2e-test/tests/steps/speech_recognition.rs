@@ -24,6 +24,7 @@ const MAX_MISSING_WORD_SHARE: f64 = 0.10;
 /// Words the service may mishear in place, but not a whole phrase it skips after a pause.
 const MAX_DROPPED_PHRASE_WORDS: usize = 5;
 const OUTDATED_CONFIG: &str = "[whisper]\nmodel_path = \"/models/ggml-large-v3-turbo.bin\"\n";
+const FIXED_SILENCE_LEVEL_CONFIG: &str = "[transcription]\nvad_rms_threshold = 0.01\n";
 const AUTO_LANGUAGE_CONFIG: &str = "[transcription]\nlanguage = \"auto\"\n";
 
 #[given("the speech recognition service is running")]
@@ -54,6 +55,14 @@ fn outdated_config(world: &mut E2eWorld) -> Result<()> {
     let dir = world.workdir()?;
     let path = dir.join("config.toml");
     std::fs::write(&path, OUTDATED_CONFIG)?;
+    world.config = Some(path);
+    Ok(())
+}
+
+#[given("the configuration sets a fixed silence level for chunking")]
+fn fixed_silence_level_config(world: &mut E2eWorld) -> Result<()> {
+    let path = world.workdir()?.join("config.toml");
+    std::fs::write(&path, FIXED_SILENCE_LEVEL_CONFIG)?;
     world.config = Some(path);
     Ok(())
 }
@@ -117,6 +126,14 @@ fn reported_outdated(world: &mut E2eWorld) -> Result<()> {
     expect_startup_failure(world)?;
     expect_message(world, "starting the speech recognition service")?;
     expect_message(world, "[transcription].base_url")
+}
+
+#[then("the app exits with a message saying pauses now follow the recording's background noise and the setting can be deleted")]
+fn reported_fixed_silence_level(world: &mut E2eWorld) -> Result<()> {
+    expect_startup_failure(world)?;
+    expect_message(world, "transcription.vad_rms_threshold")?;
+    expect_message(world, "background noise")?;
+    expect_message(world, "delete")
 }
 
 #[then("no text is produced")]
