@@ -1,0 +1,19 @@
+# kit config of voicepuncher (agent-kit README § Project config)
+version_file: app/Cargo.toml
+checks:
+  build_inputs: ["app/**", "e2e-test/**", "Cargo.toml", "Cargo.lock", "justfile"]
+  after_edit: just test
+  after_group: just check
+  before_merge: just full-check
+manual_run:
+  hotkey: ["app/src/adapters/primary/ptt/**"]
+  recording: ["app/src/adapters/secondary/recording/**"]
+  overlay: ["app/src/adapters/secondary/visualfeedback/**"]
+  paste: ["app/src/adapters/secondary/textpasting/**"]
+  permissions: ["app/src/adapters/secondary/permissions/**"]
+release:
+  command: just release
+panel:
+  services:
+    - {name: whisper-server, url: "http://127.0.0.1:8081"}
+    - {name: llama-server, url: "http://127.0.0.1:8080"}
