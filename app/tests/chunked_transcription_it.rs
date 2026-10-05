@@ -2,8 +2,10 @@
 // VOICEPUNCHER_TRANSCRIPTION_URL: synthesized Russian and English speech is split with the
 // chunk rule, every chunk goes through OpenAiTranscriber, and the merged text must repeat no
 // phrase of the speech and drop at most one in fifty spoken words beyond those the chunks
-// already missed (words lost inside a chunk are recognition, not the merge). The lead-in
-// moves the seams onto other words, because a duplicate depends on which word a seam cuts.
+// already missed (words lost inside a chunk are recognition, not the merge). The chunk
+// transcripts themselves must drop no phrase of more than five spoken words, as the service
+// does when it skips the speech after a pause. The lead-in moves the seams onto other words,
+// because a duplicate depends on which word a seam cuts.
 
 use voicepuncher::adapters::secondary::transcription::openai::OpenAiTranscriber;
 use voicepuncher::config::TranscriptionCfg;
@@ -11,7 +13,7 @@ use voicepuncher::core::application::chunking::{merge_chunk_texts, split_into_ch
 use voicepuncher::core::application::{ChunkingCfg, Transcriber};
 use voicepuncher::core::domain::AudioBuffer16k;
 use voicepuncher_e2e_test::speech::{
-    missing_word_share, repeated_phrases, synthesize, Condition, Lang,
+    dropped_phrase_len, missing_word_share, repeated_phrases, synthesize, Condition, Lang,
 };
 
 const CONDITIONS: [Condition; 5] = [
@@ -23,9 +25,10 @@ const CONDITIONS: [Condition; 5] = [
 ];
 const LEAD_INS_SECS: [f32; 3] = [0.0, 0.7, 1.4];
 const MAX_LOST_BY_MERGE_SHARE: f64 = 0.02;
+const MAX_DROPPED_PHRASE_WORDS: usize = 5;
 
 #[test]
-fn should_merge_chunked_speech_without_repeating_a_phrase() {
+fn should_merge_chunked_speech_without_repeating_or_dropping_a_phrase() {
     // Given
     let Ok(base_url) = std::env::var("VOICEPUNCHER_TRANSCRIPTION_URL") else {
         eprintln!("GATED: VOICEPUNCHER_TRANSCRIPTION_URL not set, skipping");
@@ -59,14 +62,19 @@ fn should_merge_chunked_speech_without_repeating_a_phrase() {
                 // Then
                 let repeated = repeated_phrases(lang.text(), &merged);
                 let missing = missing_word_share(lang.text(), &merged);
-                let lost_by_merge = missing - missing_word_share(lang.text(), &texts.join(" "));
+                let joined = texts.join(" ");
+                let lost_by_merge = missing - missing_word_share(lang.text(), &joined);
+                let dropped = dropped_phrase_len(lang.text(), &joined);
                 let case = format!("{lang:?} {condition:?} lead-in {lead_in} s");
                 eprintln!(
-                    "  {case:<36} repeated={repeated:?} missing={missing:.3} lost_by_merge={lost_by_merge:.3}"
+                    "  {case:<36} repeated={repeated:?} missing={missing:.3} lost_by_merge={lost_by_merge:.3} dropped_phrase={dropped}"
                 );
-                if !repeated.is_empty() || lost_by_merge > MAX_LOST_BY_MERGE_SHARE {
+                if !repeated.is_empty()
+                    || lost_by_merge > MAX_LOST_BY_MERGE_SHARE
+                    || dropped > MAX_DROPPED_PHRASE_WORDS
+                {
                     failures.push(format!(
-                        "{case}: repeated {repeated:?}, merge dropped {:.1} % of the recognized words\n    merged: {merged}\n    chunks:\n      {}",
+                        "{case}: repeated {repeated:?}, merge dropped {:.1} % of the recognized words, chunks dropped a phrase of {dropped} words\n    merged: {merged}\n    chunks:\n      {}",
                         lost_by_merge * 100.0,
                         texts.join("\n      ")
                     ));

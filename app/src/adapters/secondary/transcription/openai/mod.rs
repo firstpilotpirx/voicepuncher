@@ -173,6 +173,10 @@ impl Transcriber for OpenAiTranscriber {
                 audio.duration_ms()
             );
         }
+        if text.trim().is_empty() {
+            log::info!("speech recognition service heard no speech");
+            return Ok(None);
+        }
         if is_whisper_hallucination(&text) {
             log::info!("dropping hallucinated transcript: {text:?}");
             return Ok(None);

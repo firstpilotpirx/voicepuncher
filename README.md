@@ -40,14 +40,15 @@ just start-model-servers   # starts whisper-server on 127.0.0.1:8081 and llama-s
 just stop-model-servers    # stops both again (or one: just stop-model-servers llama-server)
 ```
 
-`start-model-servers` checks that `whisper-server` and `llama-server` are installed (offers `brew install whisper-cpp` / `brew install llama.cpp`), skips a service if something already answers on its port, uses the largest `ggml-*.bin` and `*.gguf` in `~/.voicepuncher/` or `~/.voicepuncher/models/` (override with `VOICEPUNCHER_WHISPER_MODEL`, `VOICEPUNCHER_LLM_MODEL`), and waits until each model is loaded. Logs: `~/.voicepuncher/logs/whisper-server-8081.log`, `~/.voicepuncher/logs/llama-server-8080.log`. Set `VOICEPUNCHER_STT_PORT` / `VOICEPUNCHER_LLM_PORT` to use other ports; PID and log files are per port. `stop-model-servers` stops only servers that `start-model-servers` launched.
+`start-model-servers` checks that `whisper-server` and `llama-server` are installed (offers `brew install whisper-cpp` / `brew install llama.cpp`), skips a service if something already answers on its port, uses the largest `ggml-*.bin` and `*.gguf` in `~/.voicepuncher/` or `~/.voicepuncher/models/` (override with `VOICEPUNCHER_WHISPER_MODEL`, `VOICEPUNCHER_LLM_MODEL`), and waits until each model is loaded. whisper-server also needs the Silero voice activity detection model `ggml-silero-*.bin` (`just models` downloads it; override with `VOICEPUNCHER_VAD_MODEL`): it removes silences longer than 2 s, so a silent recording yields no text, while the pauses between words stay. Logs: `~/.voicepuncher/logs/whisper-server-8081.log`, `~/.voicepuncher/logs/llama-server-8080.log`. Set `VOICEPUNCHER_STT_PORT` / `VOICEPUNCHER_LLM_PORT` to use other ports; PID and log files are per port. `stop-model-servers` stops only servers that `start-model-servers` launched. A service that is already running keeps the flags it was started with: after an update that changes them, restart it (`just stop-model-servers whisper-server && just start-model-servers`).
 
 To run the services by hand instead:
 
 ```bash
 whisper-server -m ~/.voicepuncher/models/ggml-large-v3-turbo.bin \
   --host 127.0.0.1 --port 8081 --inference-path /v1/audio/transcriptions \
-  -l auto -bo 1 -nf -sns -mc 0 -nt
+  -l auto -bo 1 -nf -sns -mc 0 \
+  --vad -vm ~/.voicepuncher/models/ggml-silero-v5.1.2.bin -vsd 2000 -vp 500
 llama-server -m ~/.voicepuncher/models/Qwen2.5-3B-Instruct-Q4_K_M.gguf \
   --host 127.0.0.1 --port 8080 -c 4096 -np 1
 ```

@@ -95,3 +95,18 @@ Feature: speech-recognition
         | English  | spoken quietly                |
         | English  | clipped                       |
         | English  | with short audio dropouts     |
+
+  Rule: Speech after a pause is transcribed
+
+    @seams
+    Scenario Outline: Speech with pauses between words or sentences
+      Given a recording file of <language> speech longer than the chunk threshold, <condition>
+      When the user transcribes the recording file without refinement
+      Then no run of more than five consecutive spoken words is missing from the printed text
+
+      Examples:
+        | language | condition                     |
+        | Russian  | with pauses between words     |
+        | Russian  | with pauses between sentences |
+        | English  | with pauses between words     |
+        | English  | with pauses between sentences |

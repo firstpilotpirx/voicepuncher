@@ -39,7 +39,13 @@ BENCH_STT_PORT = 8091
 STT_READY_TIMEOUT_S = 120
 STT_STOP_TIMEOUT_S = 10
 # Same decoding flags as `just start-model-servers`
-STT_DECODING_FLAGS = ["-l", "auto", "-bo", "1", "-nf", "-sns", "-mc", "0", "-nt"]
+STT_DECODING_FLAGS = ["-l", "auto", "-bo", "1", "-nf", "-sns", "-mc", "0"]
+# Same voice activity detection as `just start-model-servers`: only silences longer than 2 s are removed
+STT_VAD_FLAGS = ["--vad", "-vsd", "2000", "-vp", "500"]
+VAD_MODEL = {
+    "file": "ggml-silero-v5.1.2.bin",
+    "url": "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin",
+}
 # Separate from the 8080 port `just start-model-servers` uses
 BENCH_LLM_PORT = 8090
 LLM_READY_TIMEOUT_S = 120
@@ -213,7 +219,7 @@ def _download(url: str, dest: Path) -> None:
 
 def ensure_models(models_dir: Path) -> None:
     print(_banner("Models"))
-    for m in WHISPER_MODELS + LLM_MODELS:
+    for m in WHISPER_MODELS + LLM_MODELS + [VAD_MODEL]:
         path = models_dir / m["file"]
         if path.exists():
             print(f"  {GREEN}✓ {m['file']}{RESET}")
@@ -319,6 +325,7 @@ def whisper_server(model_path: Path, port: int = BENCH_STT_PORT):
         "whisper-server", "-m", str(model_path), "--host", "127.0.0.1", "--port", str(port),
         "--inference-path", "/v1/audio/transcriptions", "-t", str(os.cpu_count() or 4),
         *STT_DECODING_FLAGS,
+        *STT_VAD_FLAGS, "-vm", str(model_path.parent / VAD_MODEL["file"]),
     ]
     return _local_server(cmd, port, _port_open, STT_READY_TIMEOUT_S, model_path)
 

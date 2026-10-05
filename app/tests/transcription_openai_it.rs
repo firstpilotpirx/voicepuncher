@@ -238,6 +238,26 @@ fn should_discard_known_hallucination() {
 }
 
 #[test]
+fn should_return_no_transcript_when_service_hears_no_speech() {
+    // Given
+    let (cfg, _requests) = spawn_stub(StubReply::ok(r#"{"text": ""}"#));
+    // When
+    let transcript = transcribe(cfg).unwrap();
+    // Then
+    assert_eq!(transcript, None);
+}
+
+#[test]
+fn should_return_no_transcript_when_service_answers_only_whitespace() {
+    // Given
+    let (cfg, _requests) = spawn_stub(StubReply::ok(r#"{"text": " \n"}"#));
+    // When
+    let transcript = transcribe(cfg).unwrap();
+    // Then
+    assert_eq!(transcript, None);
+}
+
+#[test]
 fn should_fail_on_server_error() {
     // Given
     let (cfg, _requests) = spawn_stub(StubReply {

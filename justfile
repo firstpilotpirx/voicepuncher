@@ -3,7 +3,9 @@ set dotenv-load
 # ── Settings ── override any of these via env or .env ─────────────────────────
 
 # Models: explicit env var wins; otherwise the largest model found in ~/.voicepuncher or ~/.voicepuncher/models
-export VOICEPUNCHER_WHISPER_MODEL := env_var_or_default("VOICEPUNCHER_WHISPER_MODEL", `find ~/.voicepuncher -maxdepth 2 -name 'ggml-*.bin' -exec ls -S {} + 2>/dev/null | head -1 || true`)
+export VOICEPUNCHER_WHISPER_MODEL := env_var_or_default("VOICEPUNCHER_WHISPER_MODEL", `find ~/.voicepuncher -maxdepth 2 -name 'ggml-*.bin' ! -name 'ggml-silero-*' -exec ls -S {} + 2>/dev/null | head -1 || true`)
+# Voice activity detection model of the speech recognition service: the newest Silero model found
+export VOICEPUNCHER_VAD_MODEL := env_var_or_default("VOICEPUNCHER_VAD_MODEL", `find ~/.voicepuncher -maxdepth 2 -name 'ggml-silero-*.bin' -exec ls -t {} + 2>/dev/null | head -1 || true`)
 export VOICEPUNCHER_LLM_MODEL := env_var_or_default("VOICEPUNCHER_LLM_MODEL", `find ~/.voicepuncher -maxdepth 2 -name '*.gguf' -exec ls -S {} + 2>/dev/null | head -1 || true`)
 
 # Corpus directory containing manifest.jsonl — absolute, because cargo runs tests from e2e-test/
@@ -261,12 +263,16 @@ start-model-servers:
         echo "✓ speech recognition service already running at {{stt_url}}"
     else
         require_model VOICEPUNCHER_WHISPER_MODEL
-        # Same decoding as the former in-process engine: greedy, no temperature fallback,
-        # no cross-request text context, non-speech tokens suppressed
+        require_model VOICEPUNCHER_VAD_MODEL
+        # Greedy, no temperature fallback, no cross-request text context, non-speech tokens
+        # suppressed; timestamps stay on, so whisper resumes after the last decoded segment
+        # instead of skipping the rest of a 30 s window when the text ends early at a pause.
+        # VAD removes only silences longer than 2 s, so silence yields no text ("Thank you.")
+        # while the short pauses between words stay
         start_service whisper-server "{{stt_port}}" "speech recognition service" whisper_ready \
             whisper-server -m "$VOICEPUNCHER_WHISPER_MODEL" --host 127.0.0.1 --port "{{stt_port}}" \
             --inference-path /v1/audio/transcriptions -l auto -t "$(sysctl -n hw.ncpu)" \
-            -bo 1 -nf -sns -mc 0 -nt
+            -bo 1 -nf -sns -mc 0 --vad -vm "$VOICEPUNCHER_VAD_MODEL" -vsd 2000 -vp 500
     fi
     if port_open "{{llm_port}}"; then
         echo "✓ text refinement service already running at {{llm_url}}"
@@ -314,7 +320,7 @@ stop-model-servers *services:
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
-# Download default models into ~/.voicepuncher/models (whisper small ~460 MB, Qwen2.5-1.5B ~1 GB)
+# Download default models into ~/.voicepuncher/models (whisper small ~460 MB, Silero VAD ~1 MB, Qwen2.5-1.5B ~1 GB)
 models:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -327,6 +333,7 @@ models:
         mv "$dir/$2.download" "$dir/$2"
     }
     fetch https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin ggml-small.bin
+    fetch https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin ggml-silero-v5.1.2.bin
     fetch https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf Qwen2.5-1.5B-Instruct-Q4_K_M.gguf
 
 # Download benchmark corpus — idempotent, ~500 MB, one-time setup

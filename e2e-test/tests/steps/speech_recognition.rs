@@ -7,7 +7,8 @@ use cucumber::{given, then, when};
 use regex::Regex;
 
 use voicepuncher_e2e_test::speech::{
-    missing_word_share, repeated_phrases, synthesize, write_wav, Condition, Lang,
+    dropped_phrase_len, missing_word_share, repeated_phrases, synthesize, write_wav, Condition,
+    Lang,
 };
 
 use crate::steps::file_transcription::{
@@ -20,6 +21,8 @@ const REMOTE_SERVICE_URL: &str = "http://192.168.1.10:8081/v1";
 const START_COMMAND: &str = "just start-model-servers";
 /// A chunk seam may lose a word or two; more means the merge dropped real speech.
 const MAX_MISSING_WORD_SHARE: f64 = 0.10;
+/// Words the service may mishear in place, but not a whole phrase it skips after a pause.
+const MAX_DROPPED_PHRASE_WORDS: usize = 5;
 const OUTDATED_CONFIG: &str = "[whisper]\nmodel_path = \"/models/ggml-large-v3-turbo.bin\"\n";
 const AUTO_LANGUAGE_CONFIG: &str = "[transcription]\nlanguage = \"auto\"\n";
 
@@ -125,6 +128,12 @@ fn no_text(world: &mut E2eWorld) -> Result<()> {
             world.stderr
         );
     }
+    if !status.success() {
+        bail!(
+            "the app reported a failure ({status}); stderr: {}",
+            world.stderr
+        );
+    }
     if !world.stdout.is_empty() {
         bail!("expected no text, got: {:?}", world.stdout);
     }
@@ -192,6 +201,19 @@ fn few_missing_words(world: &mut E2eWorld) -> Result<()> {
         bail!(
             "{:.0} % of the spoken words are missing\n  printed: {}",
             missing * 100.0,
+            world.stdout
+        );
+    }
+    Ok(())
+}
+
+#[then("no run of more than five consecutive spoken words is missing from the printed text")]
+fn no_dropped_phrase(world: &mut E2eWorld) -> Result<()> {
+    let spoken = world.spoken.context("no speech was recorded")?.text();
+    let dropped = dropped_phrase_len(spoken, &world.stdout);
+    if dropped > MAX_DROPPED_PHRASE_WORDS {
+        bail!(
+            "a phrase of {dropped} spoken words is missing\n  printed: {}",
             world.stdout
         );
     }

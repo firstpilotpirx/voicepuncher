@@ -309,6 +309,41 @@ pub fn repeated_phrases(spoken: &str, transcript: &str) -> Vec<String> {
     repeated
 }
 
+/// Spoken words of the longest phrase the transcript dropped: in every gap between two
+/// words both texts share in order, the spoken words beyond those the transcript puts in
+/// their place. A misheard phrase fills its gap and counts nothing.
+pub fn dropped_phrase_len(spoken: &str, transcript: &str) -> usize {
+    let s = normalized_words(spoken);
+    let t = normalized_words(transcript);
+    // lcs[i][j]: longest common subsequence of s[i..] and t[j..]
+    let mut lcs = vec![vec![0usize; t.len() + 1]; s.len() + 1];
+    for i in (0..s.len()).rev() {
+        for j in (0..t.len()).rev() {
+            lcs[i][j] = if s[i] == t[j] {
+                lcs[i + 1][j + 1] + 1
+            } else {
+                lcs[i + 1][j].max(lcs[i][j + 1])
+            };
+        }
+    }
+    let (mut i, mut j) = (0, 0);
+    let (mut gap_start_s, mut gap_start_t) = (0, 0);
+    let mut longest = 0;
+    while i < s.len() && j < t.len() {
+        if s[i] == t[j] {
+            longest = longest.max((i - gap_start_s).saturating_sub(j - gap_start_t));
+            i += 1;
+            j += 1;
+            (gap_start_s, gap_start_t) = (i, j);
+        } else if lcs[i + 1][j] >= lcs[i][j + 1] {
+            i += 1;
+        } else {
+            j += 1;
+        }
+    }
+    longest.max((s.len() - gap_start_s).saturating_sub(t.len() - gap_start_t))
+}
+
 /// Share of spoken words that the transcript does not contain in order (longest common
 /// subsequence of normalized words).
 pub fn missing_word_share(spoken: &str, transcript: &str) -> f64 {
@@ -359,6 +394,30 @@ mod tests {
     fn should_count_dropped_words() {
         let share = missing_word_share("one two three four", "one four");
         assert!((share - 0.5).abs() < 1e-9, "{share}");
+    }
+
+    #[test]
+    fn should_count_a_dropped_phrase() {
+        assert_eq!(dropped_phrase_len("a b c d e f g h", "a b g h"), 4);
+    }
+
+    #[test]
+    fn should_not_count_a_misheard_phrase() {
+        let spoken = "индекс по полю даты создания так и не построили";
+        let transcript = "индекс попа людат и создание так и не построили";
+        assert_eq!(dropped_phrase_len(spoken, transcript), 0);
+    }
+
+    #[test]
+    fn should_count_a_phrase_replaced_by_a_shorter_one() {
+        let spoken = "at the end of a day I updated a report to the lead";
+        let transcript = "at the Jordan reports to the lead";
+        assert_eq!(dropped_phrase_len(spoken, transcript), 6);
+    }
+
+    #[test]
+    fn should_count_words_dropped_at_the_end() {
+        assert_eq!(dropped_phrase_len("one two three four five", "one two"), 3);
     }
 
     #[test]
