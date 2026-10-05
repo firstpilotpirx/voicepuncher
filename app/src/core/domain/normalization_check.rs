@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use crate::core::domain::{is_filler_sound, CleanedText, RawTranscript};
 
 /// Why a text refinement answer is not a normalization of the transcript.
@@ -18,7 +16,8 @@ pub enum NotANormalization {
 /// technical terms in Latin script causes; a translation moves it by about 100.
 const MAX_CYRILLIC_SHIFT_PERCENT: f64 = 50.0;
 /// Accepts `answer` only when it is still the user's dictation: the same writing system
-/// and at least half of the transcript's words in each alphabet, so a translation, an answer or a rewrite
+/// and at least half of the transcript's words in each alphabet, also with a corrected
+/// ending, so a translation, an answer or a rewrite
 /// is never pasted in place of what the user said.
 pub fn check_normalization(
     raw: &RawTranscript,
@@ -46,7 +45,7 @@ fn check_writing_system(raw: &str, answer: &str) -> Result<(), NotANormalization
 /// Each writing system is counted on its own, so translating only the Russian part of a
 /// mixed dictation is rejected even when the English words survive.
 fn check_words_kept(raw: &str, answer: &str) -> Result<(), NotANormalization> {
-    let answer_words: HashSet<String> = words(answer).collect();
+    let answer_words: Vec<String> = words(answer).collect();
     let dictated: Vec<String> = words(raw).filter(|word| !is_filler_sound(word)).collect();
     for in_cyrillic in [true, false] {
         let script: Vec<&String> = dictated
@@ -56,13 +55,39 @@ fn check_words_kept(raw: &str, answer: &str) -> Result<(), NotANormalization> {
         let total = script.len();
         let kept = script
             .iter()
-            .filter(|word| answer_words.contains(**word))
+            .filter(|word| answer_words.iter().any(|kept| same_word(word, kept)))
             .count();
         if kept * 2 < total {
             return Err(NotANormalization::WordsLost { kept, total });
         }
     }
     Ok(())
+}
+
+/// Shortest stem two forms of one word share, in letters.
+const MIN_STEM_LETTERS: usize = 2;
+/// Longest ending a correction replaces, in letters.
+const MAX_ENDING_LETTERS: usize = 3;
+
+/// Equal words, or one word with another ending: the shared stem is at least
+/// `MIN_STEM_LETTERS` long and half of the longer word, and neither ending is longer than
+/// `MAX_ENDING_LETTERS` (время/времени, пошел/пошла — but not моей/своей or кот/кит).
+fn same_word(dictated: &str, answered: &str) -> bool {
+    if dictated == answered {
+        return true;
+    }
+    let (dictated, answered): (Vec<char>, Vec<char>) =
+        (dictated.chars().collect(), answered.chars().collect());
+    let stem = dictated
+        .iter()
+        .zip(&answered)
+        .take_while(|(a, b)| a == b)
+        .count();
+    let longer = dictated.len().max(answered.len());
+    stem >= MIN_STEM_LETTERS
+        && stem * 2 >= longer
+        && dictated.len() - stem <= MAX_ENDING_LETTERS
+        && answered.len() - stem <= MAX_ENDING_LETTERS
 }
 
 /// Share of Cyrillic letters among all letters, in percent; `None` without letters.
@@ -184,6 +209,49 @@ mod tests {
     #[test]
     fn should_accept_answer_for_transcript_of_filler_sounds_only() {
         assert_eq!(check("Э-э, эм...", "Эм."), Ok(()));
+    }
+
+    #[test]
+    fn should_accept_short_answer_with_most_endings_corrected() {
+        assert_eq!(
+            check("новый машина приехал", "Новая машина приехала."),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn should_keep_a_word_whose_ending_was_corrected() {
+        for (dictated, corrected) in [
+            ("время", "времени"),
+            ("пошёл", "пошла"),
+            ("это", "эту"),
+            ("сказал", "сказали"),
+        ] {
+            assert_eq!(
+                check(dictated, corrected),
+                Ok(()),
+                "{dictated} -> {corrected}"
+            );
+        }
+    }
+
+    #[test]
+    fn should_not_keep_a_different_word_that_shares_a_few_letters() {
+        for (dictated, other) in [
+            ("моей", "своей"),
+            ("кот", "кит"),
+            ("я", "и"),
+            ("кот", "кошка"),
+            ("стол", "столовая"),
+        ] {
+            assert!(
+                matches!(
+                    check(dictated, other),
+                    Err(NotANormalization::WordsLost { .. })
+                ),
+                "{dictated} -> {other}"
+            );
+        }
     }
 
     #[test]

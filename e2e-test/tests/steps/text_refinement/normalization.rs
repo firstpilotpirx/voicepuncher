@@ -21,6 +21,16 @@ const TERM_IN_LATIN: &str = "Docker";
 const TERM_SENTENCE_RU_WORDS: [&str; 2] = ["деплоим", "пятницу"];
 const MIXED_RU_EN: &str = "Сделай code review этого pull request до вечера";
 const MIXED_KEPT: [&str; 4] = ["сделай", "code review", "pull request", "вечера"];
+const DISAGREEING_VERBS_RU: &str = "мама сказал что она купил новый телефон";
+const AGREEING_WORDS_RU: [&str; 7] = [
+    "мама",
+    "сказала",
+    "что",
+    "она",
+    "купила",
+    "новый",
+    "телефон",
+];
 
 /// Refines `transcript` exactly as the app does before pasting it.
 pub fn refine_with_live_service(world: &mut E2eWorld, transcript: &str) -> Result<()> {
@@ -60,6 +70,13 @@ fn dictate_cyrillic_term(world: &mut E2eWorld) -> Result<()> {
 #[when("the user dictates a Russian sentence with English words in it")]
 fn dictate_mixed(world: &mut E2eWorld) -> Result<()> {
     refine_with_live_service(world, MIXED_RU_EN)
+}
+
+#[when(
+    "the user dictates in Russian a sentence whose verbs do not agree with their subject in gender"
+)]
+fn dictate_disagreeing_verbs(world: &mut E2eWorld) -> Result<()> {
+    refine_with_live_service(world, DISAGREEING_VERBS_RU)
 }
 
 #[then("the pasted text starts with a capital letter, separates its clauses with punctuation and ends with a sentence mark")]
@@ -103,6 +120,15 @@ fn term_in_latin(world: &mut E2eWorld) -> Result<()> {
 #[then("the pasted text keeps the Russian words in Russian and the English words in English")]
 fn mixed_kept(world: &mut E2eWorld) -> Result<()> {
     expect_contains_all(&world.stdout, &MIXED_KEPT)
+}
+
+#[then("the pasted text has those verbs in the form that agrees with the subject and keeps the same words in the same order")]
+fn endings_agree(world: &mut E2eWorld) -> Result<()> {
+    let words = lowercase_words(&world.stdout);
+    if words != AGREEING_WORDS_RU {
+        bail!("expected exactly the words {AGREEING_WORDS_RU:?}, got {words:?}");
+    }
+    Ok(())
 }
 
 fn expect_contains_all(pasted: &str, expected: &[&str]) -> Result<()> {

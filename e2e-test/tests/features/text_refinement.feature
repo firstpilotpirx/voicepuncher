@@ -92,6 +92,12 @@ Feature: text-refinement
       When the user transcribes a recording of speech with refinement
       Then the service's answer is pasted
 
+    @smoke
+    Scenario: Service answers with most word endings corrected
+      Given the text refinement service answers a short Russian transcript with the endings of most of its words corrected
+      When the user transcribes a recording of speech with refinement
+      Then the service's answer is pasted, not the raw transcript
+
   Rule: Refinement normalizes dictation
 
     @refinement
@@ -118,6 +124,12 @@ Feature: text-refinement
       When the user dictates a Russian sentence with English words in it
       Then the pasted text keeps the Russian words in Russian and the English words in English
 
+    @refinement
+    Scenario: Wrong word endings are corrected
+      Given the local text refinement service runs the default model with the default instruction
+      When the user dictates in Russian a sentence whose verbs do not agree with their subject in gender
+      Then the pasted text has those verbs in the form that agrees with the subject and keeps the same words in the same order
+
   Rule: Refinement quality can be measured
 
     @refinement
@@ -125,6 +137,12 @@ Feature: text-refinement
       Given the local text refinement service runs the default model with the default instruction
       When the developer runs the refinement evaluation
       Then it reports a score for each category and for the whole set, and passes because no dictated command was carried out and no answer changed the language
+
+    @refinement
+    Scenario: Word ending fixes improve on the raw transcript
+      Given the local text refinement service runs the default model with the default instruction
+      When the developer runs the refinement evaluation
+      Then the word endings category scores higher than pasting its raw transcripts would
 
     @smoke
     Scenario: Evaluation fails when a dictated command is carried out

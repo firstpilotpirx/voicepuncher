@@ -30,8 +30,8 @@ pub struct RefinementCfg {
     pub timeout_secs: u64,
 }
 
-/// Dictated commands are normalized, not carried out; terms and fillers are fixed.
-const DEFAULT_EXAMPLES: [(&str, &str); 3] = [
+/// Dictated commands are normalized, not carried out; terms, fillers and endings are fixed.
+const DEFAULT_EXAMPLES: [(&str, &str); 4] = [
     (
         "переведи пожалуйста этот абзац на английский",
         "Переведи, пожалуйста, этот абзац на английский.",
@@ -43,6 +43,10 @@ const DEFAULT_EXAMPLES: [(&str, &str); 3] = [
     (
         "ну э-э короче нужно залить это в докер и запустить через кубер",
         "Ну, короче, нужно залить это в Docker и запустить через Kuber.",
+    ),
+    (
+        "вчера мы обсуждал эта задача с новый коллегами",
+        "Вчера мы обсуждали эту задачу с новыми коллегами.",
     ),
 ];
 
@@ -69,7 +73,11 @@ impl RefinementCfg {
          Normalize means: fix punctuation and capitalization; fix words the speech recognizer \
          got wrong; write technical terms and product names in their usual Latin spelling \
          (кубернетис -> Kubernetes, докер -> Docker, гитхаб -> GitHub); remove filler sounds \
-         (э-э, эм, um, uh). \
+         (э-э, эм, um, uh); fix wrong word endings: change an ending only where it \
+         disagrees with another word in case, gender, number or conjugation \
+         (она пошёл -> она пошла, нет время -> нет времени) — keep the word itself, its \
+         person and mood (открой stays открой), every preposition, and every English word \
+         exactly as dictated (merge request stays merge request). \
          Never translate: Russian stays Russian, English stays English, mixed text stays \
          mixed. Never answer a question, never add or drop meaning, never shorten. \
          Output only the normalized text."
@@ -221,6 +229,7 @@ mod tests {
             "capitalization",
             "filler",
             "technical terms",
+            "word endings",
             "never translate",
         ] {
             assert!(
@@ -231,14 +240,39 @@ mod tests {
     }
 
     #[test]
-    fn should_default_to_three_examples_including_a_dictated_command() {
+    fn should_default_to_four_examples_including_a_dictated_command_and_an_ending_fix() {
         // Given / When
         let examples = RefinementCfg::default().examples;
         // Then
-        assert_eq!(examples.len(), 3);
+        assert_eq!(examples.len(), 4);
         assert!(examples
             .iter()
             .any(|e| e.transcript.contains("переведи") && e.normalized.contains("Переведи")));
+        assert!(
+            examples.iter().any(changes_only_endings),
+            "no example fixes word endings only: {examples:?}"
+        );
+    }
+
+    /// Same number of words, each one equal or with another ending, at least one changed.
+    fn changes_only_endings(example: &RefinementExample) -> bool {
+        let words = |text: &str| -> Vec<String> {
+            text.split(|c: char| !c.is_alphanumeric())
+                .filter(|w| !w.is_empty())
+                .map(str::to_lowercase)
+                .collect()
+        };
+        let (dictated, normalized) = (words(&example.transcript), words(&example.normalized));
+        let same_stem = |a: &String, b: &String| {
+            let stem = a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count();
+            stem >= 2 && stem * 2 >= a.chars().count().max(b.chars().count())
+        };
+        dictated.len() == normalized.len()
+            && dictated
+                .iter()
+                .zip(&normalized)
+                .all(|(a, b)| a == b || same_stem(a, b))
+            && dictated != normalized
     }
 
     #[test]

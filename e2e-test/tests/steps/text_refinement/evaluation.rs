@@ -13,12 +13,14 @@ const APPENDED_ANSWER: &str = " Ответ: два плюс два равно ч
 const DICTATED_QUESTION_ID: &str = "commands-question";
 const DICTATED_QUESTION: &str = "Ответь на вопрос сколько будет два плюс два";
 const DICTATED_QUESTION_NORMALIZED: &str = "Ответь на вопрос: сколько будет два плюс два?";
-const CATEGORIES: [&str; 6] = [
+const ENDINGS_CATEGORY: &str = "endings";
+const CATEGORIES: [&str; 7] = [
     "commands",
     "punctuation",
     "terms",
     "fillers",
     "mixed",
+    ENDINGS_CATEGORY,
     "all",
 ];
 
@@ -61,6 +63,33 @@ fn reports_and_passes(world: &mut E2eWorld) -> Result<()> {
     }
     if !report.failures().is_empty() {
         bail!("the evaluation failed:\n{table}");
+    }
+    Ok(())
+}
+
+#[then("the word endings category scores higher than pasting its raw transcripts would")]
+fn endings_beat_raw(world: &mut E2eWorld) -> Result<()> {
+    let report = world
+        .refinement_report
+        .as_ref()
+        .context("no evaluation ran")?;
+    let endings = report
+        .category_scores()
+        .into_iter()
+        .find(|c| c.category == ENDINGS_CATEGORY)
+        .with_context(|| {
+            format!(
+                "the report has no '{ENDINGS_CATEGORY}' score:\n{}",
+                report.table()
+            )
+        })?;
+    if endings.score <= endings.raw_score {
+        bail!(
+            "'{ENDINGS_CATEGORY}' scores {:.3}, not above the raw {:.3}:\n{}",
+            endings.score,
+            endings.raw_score,
+            report.table()
+        );
     }
     Ok(())
 }

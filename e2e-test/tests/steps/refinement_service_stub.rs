@@ -22,6 +22,9 @@ pub enum StubBehavior {
     },
     /// Answers every chat request with its transcript followed by `suffix`.
     AppendToTranscript { suffix: &'static str },
+    /// Answers every chat request with its transcript, the last letter of every Cyrillic
+    /// word of three or more letters replaced, starting with a capital and ending with a period.
+    CorrectEndings,
     /// Offers these models; never receives a chat request.
     OfferModels(Vec<&'static str>),
     /// Answers the startup model list, then stops listening.
@@ -77,6 +80,10 @@ fn serve(listener: TcpListener, behavior: &StubBehavior, recorded: &Mutex<Vec<St
                 let content = format!("{}{suffix}", last_transcript(&body));
                 respond(&mut stream, &chat_answer(&content, STOP_FINISH_REASON));
             }
+            StubBehavior::CorrectEndings => {
+                let content = with_endings_changed(&last_transcript(&body));
+                respond(&mut stream, &chat_answer(&content, STOP_FINISH_REASON));
+            }
             _ => {}
         }
     }
@@ -93,6 +100,41 @@ fn last_transcript(body: &str) -> String {
     last.trim_start_matches(TRANSCRIPT_OPEN)
         .trim_end_matches(TRANSCRIPT_CLOSE)
         .to_owned()
+}
+
+/// `transcript` with every Cyrillic word of three or more letters ending in another letter,
+/// a capital first letter and a final period.
+fn with_endings_changed(transcript: &str) -> String {
+    let mut text = String::new();
+    let mut word = String::new();
+    for c in transcript.chars().chain(std::iter::once(' ')) {
+        if c.is_alphabetic() {
+            word.push(c);
+            continue;
+        }
+        text.push_str(&changed_ending(&word));
+        word.clear();
+        text.push(c);
+    }
+    let text = text.trim().trim_end_matches(['.', '!', '?']);
+    let mut chars = text.chars();
+    let capitalized: String = chars
+        .next()
+        .map(|first| first.to_uppercase().chain(chars).collect())
+        .unwrap_or_default();
+    format!("{capitalized}.")
+}
+
+fn changed_ending(word: &str) -> String {
+    let letters: Vec<char> = word.chars().collect();
+    let cyrillic = letters.iter().all(|c| matches!(c, '\u{0400}'..='\u{04FF}'));
+    match letters.split_last() {
+        Some((last, stem)) if cyrillic && letters.len() >= 3 => {
+            let ending = if *last == 'а' { 'у' } else { 'а' };
+            stem.iter().chain(std::iter::once(&ending)).collect()
+        }
+        _ => word.to_owned(),
+    }
 }
 
 fn models_answer(behavior: &StubBehavior) -> String {

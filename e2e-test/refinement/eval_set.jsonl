@@ -39,3 +39,11 @@
 {"id": "mixed-04", "category": "mixed", "transcript": "Это просто best practice, не надо overengineering.", "expected": "Это просто best practice, не надо overengineering."}
 {"id": "mixed-05", "category": "mixed", "transcript": "Я пушнул fix в main, проверь пожалуйста.", "expected": "Я пушнул fix в main, проверь, пожалуйста."}
 {"id": "mixed-06", "category": "mixed", "transcript": "Let me know когда будет готов релиз", "expected": "Let me know, когда будет готов релиз."}
+{"id": "endings-01", "category": "endings", "transcript": "наша команда закончил релиз и отправил его клиентам", "expected": "Наша команда закончила релиз и отправила его клиентам."}
+{"id": "endings-02", "category": "endings", "transcript": "у меня нет время на это задачу", "expected": "У меня нет времени на эту задачу."}
+{"id": "endings-03", "category": "endings", "transcript": "я хочу купить новый машину для моей жена", "expected": "Я хочу купить новую машину для моей жены."}
+{"id": "endings-04", "category": "endings", "transcript": "нужно исправить ошибки в тестах которые падает на сервере", "expected": "Нужно исправить ошибки в тестах, которые падают на сервере."}
+{"id": "endings-05", "category": "endings", "transcript": "давай поговорим о новом проект который мы начали", "expected": "Давай поговорим о новом проекте, который мы начали."}
+{"id": "endings-06", "category": "endings", "transcript": "моя сестра вчера пришёл домой поздно", "expected": "Моя сестра вчера пришла домой поздно."}
+{"id": "endings-07", "category": "endings", "transcript": "мы вчера обсуждали эта проблема с командой", "expected": "Мы вчера обсуждали эту проблему с командой."}
+{"id": "endings-08", "category": "endings", "transcript": "девочка прочитал книгу и написал отзыв", "expected": "Девочка прочитала книгу и написала отзыв."}

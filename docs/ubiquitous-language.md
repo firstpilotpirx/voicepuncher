@@ -37,7 +37,7 @@
 
 ### CleanedText
 - **Type:** Value Object
-- **Definition:** Final text ready to paste — the text refinement service's normalization of a `RawTranscript` (punctuation, capitals, filler sounds, misrecognized words and technical terms fixed; meaning and language unchanged; reasoning removed) that passed the normalization check, or the raw transcript itself when refinement is disabled, fails or its answer is rejected. Constructor rejects empty/whitespace.
+- **Definition:** Final text ready to paste — the text refinement service's normalization of a `RawTranscript` (punctuation, capitals, filler sounds, misrecognized words, technical terms and wrong word endings fixed; meaning and language unchanged; reasoning removed) that passed the normalization check, or the raw transcript itself when refinement is disabled, fails or its answer is rejected. Constructor rejects empty/whitespace.
 - **Code:** `app/src/core/domain/cleaned_text.rs`
 - **Synonyms to AVOID:** "refined transcript", "polished text", "corrected text", "LLM output"
 
@@ -102,13 +102,13 @@
 
 ### Text refinement
 - **Type:** Pipeline step
-- **Definition:** Normalizing a `RawTranscript` before it is pasted — punctuation, capitals, filler sounds removed, misrecognized words and technical terms fixed, meaning and language kept — done by the text refinement service and accepted only after the normalization check. Dictated words that sound like commands are normalized, never carried out. Disabled with `--no-llm`: the raw transcript is pasted unchanged.
+- **Definition:** Normalizing a `RawTranscript` before it is pasted — punctuation, capitals, filler sounds removed, misrecognized words, technical terms and wrong word endings (case, gender, number, conjugation) fixed, meaning and language kept — done by the text refinement service and accepted only after the normalization check. Dictated words that sound like commands are normalized, never carried out. Disabled with `--no-llm`: the raw transcript is pasted unchanged.
 - **Code:** `app/src/core/application/text_refiner.rs` — `TextRefiner` port; `refine_or_raw`
 - **Synonyms to AVOID:** "LLM cleanup", "post-processing", "polishing"
 
 ### Normalization check
 - **Type:** Domain policy (pure function)
-- **Definition:** Decides whether a text refinement service answer is still the user's dictation: it must keep the transcript's writing system (Cyrillic share of letters moves by at most 50 points) and at least half of its Cyrillic and half of its Latin words, filler sounds aside, so translating only the Russian part of a mixed dictation is caught too. A rejected answer — a translation, an answer to a dictated question, a rewrite — is logged and the raw transcript is pasted instead.
+- **Definition:** Decides whether a text refinement service answer is still the user's dictation: it must keep the transcript's writing system (Cyrillic share of letters moves by at most 50 points) and at least half of its Cyrillic and half of its Latin words, filler sounds aside — a word whose ending was corrected (время → времени) still counts as kept — so translating only the Russian part of a mixed dictation is caught too. A rejected answer — a translation, an answer to a dictated question, a rewrite — is logged and the raw transcript is pasted instead.
 - **Code:** `app/src/core/domain/normalization_check.rs` — `check_normalization`, `NotANormalization`
 - **Synonyms to AVOID:** "guard", "injection filter", "sanity check"
 

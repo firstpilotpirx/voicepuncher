@@ -338,7 +338,14 @@ mod tests {
         let items = load_eval_set(&default_eval_set()).unwrap();
         // Then
         assert!(items.len() >= 40, "{}", items.len());
-        for category in ["commands", "punctuation", "terms", "fillers", "mixed"] {
+        for category in [
+            "commands",
+            "punctuation",
+            "terms",
+            "fillers",
+            "mixed",
+            "endings",
+        ] {
             assert!(
                 items.iter().any(|i| i.category == category),
                 "no {category} items"
