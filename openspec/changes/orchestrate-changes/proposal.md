@@ -10,7 +10,7 @@ Changes are filed ahead of time with `/create-change` and run one at a time with
 - Add an orchestrator that reads the backlog and its dependencies, and runs ready changes through `/proceed-change`:
   - independent changes in parallel, each in its own session and worktree;
   - dependent changes in sequence, after the changes they depend on are on `main`.
-- *How* (dependency format, launcher, limits on parallel E2E and version bumps) is decided in `design.md`, after `/create-change` and `/proceed-change` are proven on real changes.
+- *How* (dependency format, launcher, limits on parallel E2E and version bumps) is decided in `design.md`, after `/create-change` and `/proceed-change` are proven on real changes. First exploration, open questions and leanings: `exploration.md`.
 
 ## Capabilities
 
