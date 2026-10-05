@@ -37,11 +37,12 @@ Every feature, bug fix and behavior change runs through all stages below, in ord
 | 12 | Release | `just release` on `origin/main` (§ Release), only when stage 5 bumped the version | the GitHub Release `vX.Y.Z` exists with downloadable artifacts |
 
 - **Never leave work uncommitted** (`~/.claude/rules-custom/atomic-commits.md`): commit and push after every finished piece of work, without asking.
-- Stages 4–12 are pre-authorized: commit, push, open the PR, squash-merge and release without asking. Stop only at stage 3, stage 10, a failed check you cannot fix, or a scope question the specs do not settle.
+- Stages 4–12 are pre-authorized: commit, push, open the PR, squash-merge and release without asking.
+- **Filed changes land on `main` at once.** `/create-change`, and any later edit to a change that implements nothing (notes, artifacts, a reworded proposal), ends with a PR squash-merged without asking, then the main checkout update below. `openspec list` on `main` is the backlog; never leave a filed change only on a branch. Stop only at stage 3, stage 10, a failed check you cannot fix, or a scope question the specs do not settle.
 - **Update the main checkout after every merge.** The user runs the app from the main checkout (`cargo watch`), not from a worktree, and a merge on GitHub does not change it. Right after `gh pr merge` run `git -C "$(git worktree list | head -1 | cut -d' ' -f1)" pull --ff-only origin main` when that checkout is on `main` and clean; otherwise tell the user it is behind. Say in the report that it is updated.
 - A change is not done until stage 11 (or 12, when the version moved) is done. Report which stages ran.
 
-Skills: `/create-change` files a change for later (stages 2–3 only, landed on `main`); `/proceed-change <name>` runs stages 1–12 for one change, stopping only at the gates picked at start. Both skills, the `spec-test-reviewer` agent and the shared OpenSpec rules (generated `opsx:*` skills stay untouched, one session per change) come from agent-kit (`~/.claude/skills/`, `~/.claude/agents/`, `~/.claude/rules-custom/openspec.md`); this file supplies their project values.
+Skills: `/create-change` files a change for later (stages 2–3 only, squash-merged to `main` without asking); `/proceed-change <name>` runs stages 1–12 for one change, stopping only at the gates picked at start. Both skills, the `spec-test-reviewer` agent and the shared OpenSpec rules (generated `opsx:*` skills stay untouched, one session per change) come from agent-kit (`~/.claude/skills/`, `~/.claude/agents/`, `~/.claude/rules-custom/openspec.md`); this file supplies their project values.
 
 CLI: `openspec list` (changes), `openspec list --specs`, `openspec status --change <name>`, `openspec view` (dashboard), `openspec validate`.
 
