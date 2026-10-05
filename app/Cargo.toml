@@ -1,6 +1,6 @@
 [package]
 name = "voicepuncher"
-version = "0.5.2"
+version = "0.5.3"
 edition = "2021"
 rust-version = "1.88"
 
@@ -56,6 +56,7 @@ objc2-core-foundation = "0.3"
 objc2-quartz-core = { version = "0.3", features = ["CALayer"] }
 
 [dev-dependencies]
+libc = "=0.2.186"
 mockall = "0.13"
 tempfile = "3"
 walkdir = "2"

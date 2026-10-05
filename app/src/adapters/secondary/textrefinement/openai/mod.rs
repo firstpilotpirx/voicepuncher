@@ -51,9 +51,7 @@ impl OpenAiTextRefiner {
                 offered.join(", ")
             );
         }
-        let agent = ureq::AgentBuilder::new()
-            .timeout(Duration::from_secs(cfg.timeout_secs))
-            .build();
+        let agent = request_agent(Duration::from_secs(cfg.timeout_secs));
         Ok(Self {
             agent,
             endpoint: format!("{base_url}/{CHAT_COMPLETIONS_PATH}"),
@@ -102,6 +100,18 @@ impl TextRefiner for OpenAiTextRefiner {
         let text = cleaned_answer(&json, raw.as_str())?;
         CleanedText::new(text).map_err(|e| anyhow!(e))
     }
+}
+
+/// Opens a new connection for every request: the service closes an idle connection
+/// after a few seconds, and after a pause of minutes the HTTP client fails a request
+/// on such a connection instead of reconnecting. A new loopback connection costs
+/// about 0.1 ms.
+fn request_agent(timeout: Duration) -> ureq::Agent {
+    ureq::AgentBuilder::new()
+        .timeout(timeout)
+        .max_idle_connections(0)
+        .max_idle_connections_per_host(0)
+        .build()
 }
 
 #[cfg(test)]

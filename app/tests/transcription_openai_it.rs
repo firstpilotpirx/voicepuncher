@@ -4,6 +4,7 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
@@ -125,6 +126,90 @@ fn spawn_dropping_stub(drops: usize, reply: StubReply) -> (TranscriptionCfg, Arc
         ..TranscriptionCfg::default()
     };
     (cfg, attempts)
+}
+
+/// Answers every request with `body` on a connection it keeps open, as the real
+/// service does. After the first answer it waits for a message on the returned
+/// sender, resets that connection (as macOS reports a connection the service closed
+/// minutes ago) and confirms on the returned receiver.
+fn spawn_resetting_stub(
+    body: &'static str,
+) -> (TranscriptionCfg, mpsc::Sender<()>, mpsc::Receiver<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (reset_tx, reset_rx) = mpsc::channel();
+    let (done_tx, done_rx) = mpsc::channel();
+    thread::spawn(move || {
+        let mut reset_done = false;
+        for stream in listener.incoming() {
+            let mut stream = stream.unwrap();
+            while answer_kept_open(&mut stream, body) {
+                if !reset_done {
+                    reset_rx.recv().unwrap();
+                    reset(stream);
+                    reset_done = true;
+                    done_tx.send(()).unwrap();
+                    break;
+                }
+            }
+        }
+    });
+    let cfg = TranscriptionCfg {
+        base_url: format!("http://127.0.0.1:{port}/v1"),
+        ..TranscriptionCfg::default()
+    };
+    (cfg, reset_tx, done_rx)
+}
+
+/// Reads one request and answers it with `body`, leaving the connection open; false
+/// when the client closed the connection instead.
+fn answer_kept_open(stream: &mut TcpStream, body: &str) -> bool {
+    let mut reader = BufReader::new(stream.try_clone().unwrap());
+    let mut content_length = 0usize;
+    let mut line = String::new();
+    if reader.read_line(&mut line).unwrap_or(0) == 0 {
+        return false;
+    }
+    loop {
+        line.clear();
+        reader.read_line(&mut line).unwrap();
+        let header = line.trim_end();
+        if header.is_empty() {
+            break;
+        }
+        if let Some((name, value)) = header.split_once(':') {
+            if name.eq_ignore_ascii_case("content-length") {
+                content_length = value.trim().parse().unwrap();
+            }
+        }
+    }
+    reader.read_exact(&mut vec![0u8; content_length]).unwrap();
+    let response = format!(
+        "HTTP/1.1 200 STUB\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    );
+    stream.write_all(response.as_bytes()).unwrap();
+    true
+}
+
+/// Closes the connection with a reset instead of an orderly close.
+fn reset(stream: TcpStream) {
+    let linger = libc::linger {
+        l_onoff: 1,
+        l_linger: 0,
+    };
+    // SAFETY: `stream` owns a valid socket; `linger` is a valid SO_LINGER value of its size.
+    let rc = unsafe {
+        libc::setsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_LINGER,
+            (&linger as *const libc::linger).cast(),
+            std::mem::size_of::<libc::linger>() as libc::socklen_t,
+        )
+    };
+    assert_eq!(rc, 0, "set SO_LINGER");
+    drop(stream);
 }
 
 /// Keeps every log message with the thread that logged it, so parallel tests read
@@ -337,6 +422,27 @@ fn should_not_retry_error_answer() {
     // Then
     assert!(result.is_err());
     assert_eq!(attempts.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn should_transcribe_on_first_attempt_after_service_reset_idle_connection() {
+    // Given
+    capturing_logger();
+    let (cfg, reset, reset_done) = spawn_resetting_stub(r#"{"text": "hello"}"#);
+    let mut transcriber = OpenAiTranscriber::connect(cfg).unwrap();
+    let first = transcriber.transcribe(&half_second()).unwrap();
+    reset.send(()).unwrap();
+    reset_done.recv_timeout(Duration::from_secs(5)).unwrap();
+    thread::sleep(Duration::from_millis(50));
+    // When
+    let next = transcriber.transcribe(&half_second());
+    // Then
+    assert_eq!(first.unwrap().as_str(), "hello");
+    assert_eq!(next.unwrap().unwrap().as_str(), "hello");
+    assert_eq!(
+        logged_by_this_thread("WARN speech recognition service dropped the connection"),
+        0
+    );
 }
 
 #[test]

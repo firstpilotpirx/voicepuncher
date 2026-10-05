@@ -4,6 +4,7 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::os::fd::AsRawFd;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -106,6 +107,73 @@ fn respond(stream: &mut TcpStream, status: u16, body: &str) {
     let _ = stream.write_all(response.as_bytes());
 }
 
+/// Answers the startup model list, then every chat request with `body` on a
+/// connection it keeps open, as the real service does. After the first chat answer it
+/// waits for a message on the returned sender, resets that connection (as macOS
+/// reports a connection the service closed minutes ago) and confirms on the returned
+/// receiver.
+fn spawn_resetting_stub(
+    body: &'static str,
+) -> (RefinementCfg, mpsc::Sender<()>, mpsc::Receiver<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (reset_tx, reset_rx) = mpsc::channel();
+    let (done_tx, done_rx) = mpsc::channel();
+    thread::spawn(move || {
+        let mut reset_done = false;
+        for stream in listener.incoming() {
+            let mut stream = stream.unwrap();
+            while let Some(request) = read_request(&mut stream) {
+                if request.request_line.starts_with("GET ") {
+                    respond(&mut stream, 200, MODELS);
+                    break;
+                }
+                respond_kept_open(&mut stream, body);
+                if !reset_done {
+                    reset_rx.recv().unwrap();
+                    reset(stream);
+                    reset_done = true;
+                    done_tx.send(()).unwrap();
+                    break;
+                }
+            }
+        }
+    });
+    let cfg = RefinementCfg {
+        base_url: format!("http://127.0.0.1:{port}/v1"),
+        ..RefinementCfg::default()
+    };
+    (cfg, reset_tx, done_rx)
+}
+
+fn respond_kept_open(stream: &mut TcpStream, body: &str) {
+    let response = format!(
+        "HTTP/1.1 200 STUB\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    );
+    stream.write_all(response.as_bytes()).unwrap();
+}
+
+/// Closes the connection with a reset instead of an orderly close.
+fn reset(stream: TcpStream) {
+    let linger = libc::linger {
+        l_onoff: 1,
+        l_linger: 0,
+    };
+    // SAFETY: `stream` owns a valid socket; `linger` is a valid SO_LINGER value of its size.
+    let rc = unsafe {
+        libc::setsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_LINGER,
+            (&linger as *const libc::linger).cast(),
+            std::mem::size_of::<libc::linger>() as libc::socklen_t,
+        )
+    };
+    assert_eq!(rc, 0, "set SO_LINGER");
+    drop(stream);
+}
+
 fn refine(cfg: RefinementCfg, transcript: &str) -> anyhow::Result<String> {
     let mut refiner = OpenAiTextRefiner::connect(cfg)?;
     let cleaned = refiner.refine(&RawTranscript::new(transcript.to_owned())?)?;
@@ -188,6 +256,26 @@ fn should_fail_when_service_answers_after_timeout() {
     };
     // When / Then
     assert!(refine(cfg, TRANSCRIPT).is_err());
+}
+
+#[test]
+fn should_refine_after_service_reset_idle_connection() {
+    // Given
+    let (cfg, reset, reset_done) = spawn_resetting_stub(ANSWER);
+    let mut refiner = OpenAiTextRefiner::connect(cfg).unwrap();
+    let transcript = RawTranscript::new(TRANSCRIPT.to_owned()).unwrap();
+    let first = refiner.refine(&transcript).unwrap();
+    reset.send(()).unwrap();
+    reset_done.recv_timeout(RECV_TIMEOUT).unwrap();
+    thread::sleep(Duration::from_millis(50));
+    // When
+    let next = refiner.refine(&transcript);
+    // Then
+    assert_eq!(first.as_str(), "The Docker image builds fine on staging.");
+    assert_eq!(
+        next.unwrap().as_str(),
+        "The Docker image builds fine on staging."
+    );
 }
 
 #[test]
