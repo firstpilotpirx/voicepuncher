@@ -4,9 +4,10 @@ use crate::core::application::audio_recorder::LiveChunk;
 use crate::core::application::chunking::{merge_chunk_texts, split_into_chunks, ChunkingCfg};
 use crate::core::application::text_refiner::refine_or_raw;
 use crate::core::application::{
-    AudioRecorder, SoundPlayer, TextPaster, TextRefiner, Transcriber, VisualIndicator,
+    insert_text, AudioRecorder, FocusProbe, FocusWaitCfg, Insertion, SoundPlayer, TextPaster,
+    TextRefiner, Transcriber, VisualIndicator,
 };
-use crate::core::domain::{AudioBuffer16k, PttSignal, RawTranscript, RecordingMode};
+use crate::core::domain::{AudioBuffer16k, CleanedText, PttSignal, RawTranscript, RecordingMode};
 
 #[derive(Debug, Clone, Copy)]
 pub struct PipelineConfig {
@@ -43,6 +44,9 @@ pub struct Pipeline {
     pub cfg: PipelineConfig,
     state: PipelineState,
     live_session: Option<LiveTranscriptionSession>,
+    focus_probe: Option<Box<dyn FocusProbe>>,
+    focus_wait: FocusWaitCfg,
+    signals: Option<mpsc::Receiver<PttSignal>>,
 }
 
 impl Pipeline {
@@ -65,12 +69,27 @@ impl Pipeline {
             cfg,
             state: PipelineState::Idle,
             live_session: None,
+            focus_probe: None,
+            focus_wait: FocusWaitCfg::OFF,
+            signals: None,
         }
     }
 
+    /// Waits for text input focus before a dictation is pasted (see `insert_text`).
+    pub fn with_focus_wait(mut self, probe: Box<dyn FocusProbe>, cfg: FocusWaitCfg) -> Self {
+        self.focus_probe = Some(probe);
+        self.focus_wait = cfg;
+        self
+    }
+
     pub fn run(&mut self, rx: mpsc::Receiver<PttSignal>) -> anyhow::Result<()> {
+        // kept in `self` so a focus wait inside `step` sees a hotkey press
+        self.signals = Some(rx);
         loop {
-            let signal = rx
+            let signal = self
+                .signals
+                .as_ref()
+                .expect("signals set above")
                 .recv()
                 .map_err(|_| anyhow::anyhow!("hotkey listener channel closed"))?;
             self.step(signal)?;
@@ -223,6 +242,23 @@ impl Pipeline {
         Ok(())
     }
 
+    fn deliver(&mut self, cleaned: &CleanedText) {
+        match insert_text(
+            cleaned,
+            self.paster.as_mut(),
+            self.focus_probe.as_deref(),
+            self.visual_indicator.as_ref(),
+            self.focus_wait,
+            self.signals.as_ref(),
+        ) {
+            Ok(Insertion::Pasted | Insertion::PastedAfterWait) => {
+                eprintln!("{} {}", console::style("▸").dim(), cleaned.as_str())
+            }
+            Ok(Insertion::LeftInClipboard(_)) => {}
+            Err(e) => log::error!("paste failed, dropping cycle: {e:#}"),
+        }
+    }
+
     fn run_transcribe_refine_paste(
         &mut self,
         audio: AudioBuffer16k,
@@ -267,10 +303,7 @@ impl Pipeline {
         self.state = PipelineState::Pasting;
         log::info!("pasting… ({duration_s:.1}s)");
         let t_paste = std::time::Instant::now();
-        match self.paster.paste(&cleaned) {
-            Ok(()) => eprintln!("{} {}", console::style("▸").dim(), cleaned.as_str()),
-            Err(e) => log::error!("paste failed, dropping cycle: {e:#}"),
-        }
+        self.deliver(&cleaned);
         let paste_ms = t_paste.elapsed().as_millis() as u64;
         let total_ms = t_user_stop.elapsed().as_millis() as u64;
         self.state = PipelineState::Idle;
@@ -300,10 +333,7 @@ impl Pipeline {
         self.state = PipelineState::Pasting;
         log::info!("pasting… (live)");
         let t_paste = std::time::Instant::now();
-        match self.paster.paste(&cleaned) {
-            Ok(()) => eprintln!("{} {}", console::style("▸").dim(), cleaned.as_str()),
-            Err(e) => log::error!("paste failed, dropping cycle: {e:#}"),
-        }
+        self.deliver(&cleaned);
         let paste_ms = t_paste.elapsed().as_millis() as u64;
         let total_ms = t_user_stop.elapsed().as_millis() as u64;
         self.state = PipelineState::Idle;

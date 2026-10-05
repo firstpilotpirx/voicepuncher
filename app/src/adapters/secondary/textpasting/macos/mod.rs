@@ -63,4 +63,9 @@ impl TextPaster for MacOsTextPaster {
 
         Ok(())
     }
+
+    fn leave_in_clipboard(&mut self, text: &CleanedText) -> Result<()> {
+        arboard::Clipboard::new()?.set_text(text.as_str().to_owned())?;
+        Ok(())
+    }
 }

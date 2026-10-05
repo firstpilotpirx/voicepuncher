@@ -257,6 +257,10 @@ impl TextPaster for CapturingPaster {
         self.0.lock().unwrap().push(text.as_str().to_owned());
         Ok(())
     }
+
+    fn leave_in_clipboard(&mut self, _text: &CleanedText) -> Result<()> {
+        bail!("the text was left in the clipboard instead of pasted")
+    }
 }
 
 struct Silent;
@@ -270,5 +274,6 @@ impl SoundPlayer for Silent {
 impl VisualIndicator for Silent {
     fn show_recording(&self) {}
     fn show_processing(&self) {}
+    fn show_waiting_for_focus(&self) {}
     fn hide(&self) {}
 }

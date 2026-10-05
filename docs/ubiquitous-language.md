@@ -142,9 +142,21 @@
 - **Code:** `app/src/core/application/chunking.rs` — `merge_chunk_texts`
 - **Synonyms to AVOID:** "boundary" (the cut point is only one side of a seam), "join"
 
-### HotkeyListener / AudioRecorder / Transcriber / TextRefiner / TextPaster
+### Text input focus
+- **Type:** Value Object (`TextFocus`) decided from a `FocusedElement` (role, text selection, settable value)
+- **Definition:** Whether the final text can be pasted now. The app holds the text back only when it is sure no text input has keyboard focus: the focused element is a clearly non-text control (button, list, table, outline, image, menu, check box, radio button, slider, tab group, toolbar) that offers neither a text selection nor an editable value. Any other element, no reported element or an Accessibility error means "paste now".
+- **Code:** `app/src/core/domain/text_focus.rs` — `FocusedElement`, `TextFocus`
+- **Synonyms to AVOID:** "editable focus", "cursor" (the caret is not what is checked)
+
+### Focus wait
+- **Type:** Application policy (`[paste].focus_wait_seconds`, default 300; 0 turns it off)
+- **Definition:** The time the app holds the final text back while no text input has focus, re-checking about every 100 ms and pasting as soon as one has. A hotkey press or the end of the wait time ends it without a paste: the text is left in the clipboard. The overlay shows the wait.
+- **Code:** `app/src/core/application/text_insertion.rs` — `insert_text`, `FocusWaitCfg`
+- **Synonyms to AVOID:** "retry", "paste delay"
+
+### HotkeyListener / AudioRecorder / Transcriber / TextRefiner / TextPaster / FocusProbe
 - **Type:** Driving / Driven Ports (traits in `core/application/`)
-- **Code:** `app/src/core/application/{hotkey_listener,audio_recorder,transcriber,text_refiner,text_paster}.rs`
+- **Code:** `app/src/core/application/{hotkey_listener,audio_recorder,transcriber,text_refiner,text_paster,focus_probe}.rs`
 
 ### Project-local tech vocabulary
 

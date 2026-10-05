@@ -7,6 +7,7 @@ pub mod normalization_check;
 pub mod ptt_signal;
 pub mod raw_transcript;
 pub mod recording_mode;
+pub mod text_focus;
 
 pub use audio_buffer::AudioBuffer16k;
 pub use audio_level::{level_to_pills, AudioLevel};
@@ -17,3 +18,4 @@ pub use normalization_check::{check_normalization, NotANormalization};
 pub use ptt_signal::PttSignal;
 pub use raw_transcript::{EmptyTranscript, RawTranscript};
 pub use recording_mode::RecordingMode;
+pub use text_focus::{FocusedElement, TextFocus};

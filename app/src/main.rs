@@ -5,6 +5,7 @@ use objc2_app_kit::NSApplication;
 use voicepuncher::adapters::primary::cli::Cli;
 use voicepuncher::adapters::primary::ptt::rdev::RdevHotkeyListener;
 use voicepuncher::adapters::primary::setup::cli::SetupWizard;
+use voicepuncher::adapters::secondary::focus::macos::MacOsFocusProbe;
 use voicepuncher::adapters::secondary::permissions::macos::MacOsPermissionProbe;
 use voicepuncher::adapters::secondary::recording::cpal::CpalAudioRecorder;
 use voicepuncher::adapters::secondary::recording::filesystem::FileSystemAudioRecorder;
@@ -20,7 +21,7 @@ use voicepuncher::core::application::hotkey_listener::HotkeyListener;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
 use voicepuncher::core::application::preflight::Preflight;
 use voicepuncher::core::application::visual_indicator::VisualIndicator;
-use voicepuncher::core::application::{ChunkingCfg, TextRefiner};
+use voicepuncher::core::application::{ChunkingCfg, FocusWaitCfg, TextRefiner};
 use voicepuncher::core::domain::PttSignal;
 
 struct NoopVisualIndicator;
@@ -28,6 +29,7 @@ struct NoopVisualIndicator;
 impl VisualIndicator for NoopVisualIndicator {
     fn show_recording(&self) {}
     fn show_processing(&self) {}
+    fn show_waiting_for_focus(&self) {}
     fn hide(&self) {}
 }
 
@@ -150,6 +152,13 @@ fn main() {
             min_press_ms: config.hotkey.min_press_ms,
             recording_mode: config.hotkey.recording_mode,
             chunking: chunking_cfg(&config.transcription),
+        },
+    )
+    .with_focus_wait(
+        Box::new(MacOsFocusProbe::new()),
+        FocusWaitCfg {
+            timeout: std::time::Duration::from_secs(config.paste.focus_wait_seconds),
+            poll_interval: std::time::Duration::from_millis(100),
         },
     );
 

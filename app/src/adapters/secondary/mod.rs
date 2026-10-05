@@ -1,3 +1,4 @@
+pub mod focus;
 pub mod permissions;
 pub mod recording;
 pub mod soundplaying;

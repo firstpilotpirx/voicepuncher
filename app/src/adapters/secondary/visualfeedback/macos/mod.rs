@@ -24,6 +24,7 @@ enum OverlayState {
     Hidden,
     Recording,
     Processing,
+    WaitingForFocus,
 }
 
 #[link(name = "System", kind = "dylib")]
@@ -141,6 +142,14 @@ impl MacosVisualIndicator {
                     OverlayState::Processing => {
                         let ws_vec = windows.lock().unwrap().clone();
                         apply_processing_state(ws_vec, generation, Arc::clone(&pulse_generation));
+                    }
+                    OverlayState::WaitingForFocus => {
+                        let ws_vec = windows.lock().unwrap().clone();
+                        apply_waiting_for_focus_state(
+                            ws_vec,
+                            generation,
+                            Arc::clone(&pulse_generation),
+                        );
                     }
                     OverlayState::Hidden => {}
                 }
@@ -271,6 +280,11 @@ fn rebuild_window_set_inner(
             let pg = Arc::clone(pulse_generation);
             apply_processing_state(ws_vec, generation, pg);
         }
+        OverlayState::WaitingForFocus => {
+            let ws_vec = windows.lock().unwrap().clone();
+            let pg = Arc::clone(pulse_generation);
+            apply_waiting_for_focus_state(ws_vec, generation, pg);
+        }
         OverlayState::Hidden => {}
     }
 }
@@ -309,6 +323,24 @@ impl VisualIndicator for MacosVisualIndicator {
 
                 let ws_vec = windows.lock().unwrap().clone();
                 apply_processing_state(ws_vec, generation, pulse_gen);
+            }
+        });
+    }
+
+    fn show_waiting_for_focus(&self) {
+        let generation = self.pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let pulse_gen = Arc::clone(&self.pulse_generation);
+        let windows = Arc::clone(&self.windows);
+        let last_topology = Arc::clone(&self.last_topology);
+
+        *self.state.lock().unwrap() = OverlayState::WaitingForFocus;
+
+        dispatch_to_main(move || {
+            if let Some(mtm) = MainThreadMarker::new() {
+                do_rebuild(mtm, &windows, &last_topology);
+
+                let ws_vec = windows.lock().unwrap().clone();
+                apply_waiting_for_focus_state(ws_vec, generation, pulse_gen);
             }
         });
     }
@@ -417,6 +449,36 @@ fn apply_processing_state(
     }
 
     schedule_heartbeat(windows, generation, pulse_gen);
+}
+
+/// Pulsing orange label: the text is held back until a text input gets focus.
+fn apply_waiting_for_focus_state(
+    windows: Vec<Arc<WindowSet>>,
+    generation: u64,
+    pulse_gen: Arc<AtomicU64>,
+) {
+    use objc2_app_kit::{NSColor, NSWindowCollectionBehavior};
+    use objc2_foundation::NSString;
+
+    let text = NSString::from_str("⌨ FOCUS");
+    for ws in &windows {
+        ws.label.setStringValue(&text);
+        ws.label.setTextColor(Some(&NSColor::orangeColor()));
+        ws.label.setHidden(false);
+        ws.eq_label.setHidden(true);
+        ws.spinner.setHidden(true);
+        unsafe { ws.spinner.stopAnimation(None) };
+        ws.window.orderFrontRegardless();
+        ws.window.setCollectionBehavior(
+            NSWindowCollectionBehavior::CanJoinAllSpaces
+                | NSWindowCollectionBehavior::Stationary
+                | NSWindowCollectionBehavior::IgnoresCycle
+                | NSWindowCollectionBehavior::FullScreenAuxiliary,
+        );
+    }
+
+    schedule_heartbeat(windows.clone(), generation, Arc::clone(&pulse_gen));
+    schedule_pulse(windows, generation, pulse_gen, false);
 }
 
 fn schedule_heartbeat(windows: Vec<Arc<WindowSet>>, generation: u64, pulse_gen: Arc<AtomicU64>) {

@@ -188,6 +188,7 @@ impl SetupWizard {
              \n\
              [paste]\n\
              clipboard_restore_delay_ms = 120\n\
+             focus_wait_seconds = 300\n\
              \n\
              [sounds]\n\
              start_sound = \"{start_sound}\"\n\

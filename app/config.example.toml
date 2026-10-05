@@ -49,6 +49,7 @@ timeout_secs = 30          # per request
 
 [paste]
 clipboard_restore_delay_ms = 120
+focus_wait_seconds = 300   # wait this long for a text input to get focus before pasting; 0 = paste at once
 
 [sounds]
 start_sound = "Glass"   # macOS system sound name, or "" to disable

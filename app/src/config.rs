@@ -97,11 +97,16 @@ impl Default for AudioCfg {
 pub struct PasteCfg {
     #[serde(default = "PasteCfg::default_clipboard_restore_delay_ms")]
     pub clipboard_restore_delay_ms: u64,
+    #[serde(default = "PasteCfg::default_focus_wait_seconds")]
+    pub focus_wait_seconds: u64,
 }
 
 impl PasteCfg {
     fn default_clipboard_restore_delay_ms() -> u64 {
         120
+    }
+    fn default_focus_wait_seconds() -> u64 {
+        300
     }
 }
 
@@ -109,6 +114,7 @@ impl Default for PasteCfg {
     fn default() -> Self {
         Self {
             clipboard_restore_delay_ms: Self::default_clipboard_restore_delay_ms(),
+            focus_wait_seconds: Self::default_focus_wait_seconds(),
         }
     }
 }
@@ -206,6 +212,29 @@ mod tests {
         assert_eq!(cfg.hotkey.min_press_ms, 200);
         assert_eq!(cfg.audio.input_device, "default");
         assert_eq!(cfg.logging.level, "info");
+    }
+
+    #[test]
+    fn should_wait_five_minutes_for_focus_when_the_setting_is_absent() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(f, "[paste]\nclipboard_restore_delay_ms = 120").unwrap();
+        // When
+        let cfg = load(f.path()).unwrap();
+        // Then
+        assert_eq!(cfg.paste.focus_wait_seconds, 300);
+        assert_eq!(Config::default().paste.focus_wait_seconds, 300);
+    }
+
+    #[test]
+    fn should_keep_the_configured_focus_wait() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(f, "[paste]\nfocus_wait_seconds = 0").unwrap();
+        // When
+        let cfg = load(f.path()).unwrap();
+        // Then
+        assert_eq!(cfg.paste.focus_wait_seconds, 0);
     }
 
     #[test]

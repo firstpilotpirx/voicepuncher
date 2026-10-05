@@ -22,4 +22,8 @@ impl TextPaster for StdioTextPaster {
         println!("{}", text.as_str());
         Ok(())
     }
+
+    fn leave_in_clipboard(&mut self, text: &CleanedText) -> Result<()> {
+        self.paste(text)
+    }
 }
