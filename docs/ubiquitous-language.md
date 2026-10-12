@@ -190,6 +190,41 @@
 - **Invariants:** value ∈ [0.0, 1.0]; NaN and ±Inf are clamped to 0.0 (SILENT).
 - **Synonyms to AVOID:** "volume", "loudness", "amplitude" (alone — too generic), "rms_value"
 
+### Voice control
+- **Type:** Mode of the app (opt-in, `[voice_control]` config section or `--voice-control`)
+- **Definition:** Hands-free operation: the hotkey turns *listening* on and off instead of recording, and spoken *voice commands* start, stop and cancel a dictation, press Enter and clear the focused text.
+- **Code:** `app/src/core/application/pipeline/voice_control.rs` (`VoiceControl`: off or listening)
+- **Synonyms to AVOID:** "voice mode", "hands-free mode", "RecordingMode" (that is Toggle/Hold)
+
+### Listening
+- **Type:** State of voice control
+- **Definition:** The microphone stays open and audio streams to the *command spotting service*, so *voice commands* take effect. *Standby* is listening with no dictation running; *dictating* is listening while a dictation records.
+- **Synonyms to AVOID:** "wake", "armed", "always-on"
+
+### VoiceCommand
+- **Type:** Value Object (enum)
+- **Definition:** A spoken English command, recognized only when its phrase is the whole utterance (a pause before and after it). `SpokenCommand` pairs it with the moment its phrase started.
+- **Code:** `app/src/core/domain/voice_command.rs`, recognition (pause rule) in `app/src/core/domain/voice_command_recognizer.rs`
+- **Variants:** `StartDictation` ("start dictation"), `StopDictation` ("stop dictation"), `CancelDictation` ("cancel dictation"), `PressEnter` ("press enter"), `ClearAllText` ("clear all text")
+- **Synonyms to AVOID:** "keyword", "hotword", "wake word", "voice shortcut"
+
+### SpottingEvent
+- **Type:** Boundary signal
+- **Definition:** What the *command spotting service* reports about the audio it hears: speech started, speech ended, a phrase spotted with its start and end. Fed to the `VoiceCommandRecognizer`.
+- **Code:** `app/src/core/domain/voice_command_recognizer.rs`
+- **Variants:** `SpeechStarted`, `SpeechEnded`, `PhraseSpotted`
+
+### Command spotting service
+- **Type:** Local service (separate process, loopback WebSocket)
+- **Definition:** The `voicepuncher-command-spotting` program in `command-spotting/`: sherpa-onnx keyword spotting plus a voice activity detector. It turns streamed microphone audio into *spotting events*; it opens no microphone itself.
+- **Synonyms to AVOID:** "KWS server", "wake word engine"
+
+### Key press
+- **Type:** Effect of a *voice command*
+- **Definition:** A synthetic keyboard event posted into the focused app: Return for `press enter`; Cmd+A then Delete for `clear all text`.
+- **Code:** port `app/src/core/application/key_presser.rs`
+- **Synonyms to AVOID:** "keystroke" (too generic), "shortcut"
+
 ## E2E / Test vocabulary
 
 > These terms describe reference data used for accuracy measurement only. They are NOT part of the production domain.

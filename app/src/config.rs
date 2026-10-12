@@ -9,7 +9,7 @@ mod loopback;
 mod refinement;
 mod transcription;
 
-pub use loopback::ensure_loopback;
+pub use loopback::{ensure_loopback, ensure_loopback_websocket};
 pub use refinement::{RefinementCfg, RefinementExample};
 pub use transcription::TranscriptionCfg;
 
@@ -28,6 +28,8 @@ pub struct Config {
     pub paste: PasteCfg,
     #[serde(default)]
     pub sounds: SoundsCfg,
+    #[serde(default)]
+    pub voice_control: VoiceControlCfg,
     #[serde(default)]
     pub logging: LoggingCfg,
 }
@@ -128,6 +130,12 @@ pub struct SoundsCfg {
     pub stop_sound: String,
     #[serde(default = "SoundsCfg::default_cancel_sound")]
     pub cancel_sound: String,
+    #[serde(default = "SoundsCfg::default_listening_on_sound")]
+    pub listening_on_sound: String,
+    #[serde(default = "SoundsCfg::default_listening_off_sound")]
+    pub listening_off_sound: String,
+    #[serde(default = "SoundsCfg::default_command_sound")]
+    pub command_sound: String,
 }
 
 impl SoundsCfg {
@@ -142,6 +150,18 @@ impl SoundsCfg {
     fn default_cancel_sound() -> String {
         "Basso".into()
     }
+
+    fn default_listening_on_sound() -> String {
+        "Tink".into()
+    }
+
+    fn default_listening_off_sound() -> String {
+        "Bottle".into()
+    }
+
+    fn default_command_sound() -> String {
+        "Morse".into()
+    }
 }
 
 impl Default for SoundsCfg {
@@ -150,6 +170,33 @@ impl Default for SoundsCfg {
             start_sound: Self::default_start_sound(),
             stop_sound: Self::default_stop_sound(),
             cancel_sound: Self::default_cancel_sound(),
+            listening_on_sound: Self::default_listening_on_sound(),
+            listening_off_sound: Self::default_listening_off_sound(),
+            command_sound: Self::default_command_sound(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VoiceControlCfg {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "VoiceControlCfg::default_url")]
+    pub url: String,
+}
+
+impl VoiceControlCfg {
+    fn default_url() -> String {
+        "ws://127.0.0.1:8082".into()
+    }
+}
+
+impl Default for VoiceControlCfg {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            url: Self::default_url(),
         }
     }
 }
@@ -193,7 +240,8 @@ pub fn load(path: &Path) -> Result<Config> {
 /// Checks rules that span the effective config; run again after CLI flags are overlaid.
 pub fn validate(cfg: &Config) -> Result<()> {
     ensure_loopback("transcription.base_url", &cfg.transcription.base_url)?;
-    ensure_loopback("refinement.base_url", &cfg.refinement.base_url)
+    ensure_loopback("refinement.base_url", &cfg.refinement.base_url)?;
+    ensure_loopback_websocket("voice_control.url", &cfg.voice_control.url)
 }
 
 #[cfg(test)]
@@ -236,6 +284,56 @@ mod tests {
         let cfg = load(f.path()).unwrap();
         // Then
         assert_eq!(cfg.paste.focus_wait_seconds, 0);
+    }
+
+    #[test]
+    fn should_keep_voice_control_off_with_the_local_service_url_when_the_section_is_absent() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(f, "[hotkey]\nkey = \"F13\"").unwrap();
+        // When
+        let cfg = load(f.path()).unwrap();
+        // Then
+        assert!(!cfg.voice_control.enabled);
+        assert_eq!(cfg.voice_control.url, "ws://127.0.0.1:8082");
+    }
+
+    #[test]
+    fn should_keep_the_configured_voice_control_settings() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            f,
+            "[voice_control]\nenabled = true\nurl = \"ws://localhost:9002\""
+        )
+        .unwrap();
+        // When
+        let cfg = load(f.path()).unwrap();
+        // Then
+        assert!(cfg.voice_control.enabled);
+        assert_eq!(cfg.voice_control.url, "ws://localhost:9002");
+    }
+
+    #[test]
+    fn should_reject_a_command_spotting_service_on_another_machine() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(f, "[voice_control]\nurl = \"ws://192.168.1.10:8082\"").unwrap();
+        // When
+        let message = format!("{:#}", load(f.path()).unwrap_err());
+        // Then
+        assert!(message.contains("voice_control.url"), "{message}");
+        assert!(message.contains("not on this machine"), "{message}");
+    }
+
+    #[test]
+    fn should_default_the_voice_control_sounds() {
+        // Given / When
+        let sounds = SoundsCfg::default();
+        // Then
+        assert_eq!(sounds.listening_on_sound, "Tink");
+        assert_eq!(sounds.listening_off_sound, "Bottle");
+        assert_eq!(sounds.command_sound, "Morse");
     }
 
     #[test]

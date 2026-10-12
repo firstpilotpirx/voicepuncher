@@ -5,7 +5,9 @@ use objc2_app_kit::NSApplication;
 use voicepuncher::adapters::primary::cli::Cli;
 use voicepuncher::adapters::primary::ptt::rdev::RdevHotkeyListener;
 use voicepuncher::adapters::primary::setup::cli::SetupWizard;
+use voicepuncher::adapters::secondary::commandspotting::websocket::WebSocketCommandSpotter;
 use voicepuncher::adapters::secondary::focus::macos::MacOsFocusProbe;
+use voicepuncher::adapters::secondary::keypressing::macos::MacOsKeyPresser;
 use voicepuncher::adapters::secondary::permissions::macos::MacOsPermissionProbe;
 use voicepuncher::adapters::secondary::recording::cpal::CpalAudioRecorder;
 use voicepuncher::adapters::secondary::recording::filesystem::FileSystemAudioRecorder;
@@ -21,7 +23,8 @@ use voicepuncher::core::application::hotkey_listener::HotkeyListener;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
 use voicepuncher::core::application::preflight::Preflight;
 use voicepuncher::core::application::visual_indicator::VisualIndicator;
-use voicepuncher::core::application::{ChunkingCfg, FocusWaitCfg, TextRefiner};
+use voicepuncher::core::application::CommandSpotter;
+use voicepuncher::core::application::{ChunkingCfg, FocusWaitCfg, PipelineInput, TextRefiner};
 use voicepuncher::core::domain::PttSignal;
 
 struct NoopVisualIndicator;
@@ -99,6 +102,12 @@ fn main() {
         return;
     }
 
+    let (inputs_tx, inputs_rx) = std::sync::mpsc::channel::<PipelineInput>();
+    let spotter = config
+        .voice_control
+        .enabled
+        .then(|| connect_command_spotter(&config, inputs_tx.clone()));
+
     let probe = MacOsPermissionProbe::new();
     Preflight::run(&probe).unwrap_or_else(|e| {
         log::error!("{e:#}");
@@ -122,20 +131,26 @@ fn main() {
         std::sync::Arc::clone(&level_register),
     );
 
-    let (tx, rx) = std::sync::mpsc::channel::<PttSignal>();
+    let (hotkey_tx, hotkey_rx) = std::sync::mpsc::channel::<PttSignal>();
 
     let listener = RdevHotkeyListener::new();
     let _handle = Box::new(listener)
-        .spawn(config.hotkey.key, tx)
+        .spawn(config.hotkey.key, hotkey_tx)
         .unwrap_or_else(|e| {
             log::error!("failed to spawn hotkey listener: {e:#}");
             std::process::exit(2);
         });
+    forward_hotkey_signals(hotkey_rx, inputs_tx.clone());
 
     let sound_player = MacosSoundPlayer::new(
         &config.sounds.start_sound,
         &config.sounds.stop_sound,
         &config.sounds.cancel_sound,
+    )
+    .with_voice_control_sounds(
+        &config.sounds.listening_on_sound,
+        &config.sounds.listening_off_sound,
+        &config.sounds.command_sound,
     );
 
     let mtm = MainThreadMarker::new().expect("main must run on the main thread");
@@ -161,11 +176,15 @@ fn main() {
             poll_interval: std::time::Duration::from_millis(100),
         },
     );
+    if let Some(spotter) = spotter {
+        log::info!("voice control on: listening starts now, the hotkey turns it off and on");
+        pipeline = pipeline.with_voice_control(Box::new(spotter), Box::new(MacOsKeyPresser));
+    }
 
     let pipeline_handle = std::thread::Builder::new()
         .name("pipeline".into())
         .spawn(move || {
-            pipeline.run(rx).unwrap_or_else(|e| {
+            pipeline.run(inputs_rx).unwrap_or_else(|e| {
                 log::error!("fatal: {e:#}");
                 std::process::exit(1);
             });
@@ -176,6 +195,36 @@ fn main() {
     app.run();
 
     pipeline_handle.join().ok();
+}
+
+/// Feeds hotkey signals into the pipeline's ordered input stream.
+fn forward_hotkey_signals(
+    hotkey_rx: std::sync::mpsc::Receiver<PttSignal>,
+    inputs_tx: std::sync::mpsc::Sender<PipelineInput>,
+) {
+    std::thread::Builder::new()
+        .name("hotkey-forwarder".into())
+        .spawn(move || {
+            for signal in hotkey_rx {
+                if inputs_tx.send(PipelineInput::Hotkey(signal)).is_err() {
+                    break;
+                }
+            }
+        })
+        .expect("failed to spawn hotkey forwarder thread");
+}
+
+/// The command spotting adapter, once its service answers; exits like the other services.
+fn connect_command_spotter(
+    config: &Config,
+    inputs_tx: std::sync::mpsc::Sender<PipelineInput>,
+) -> WebSocketCommandSpotter {
+    let spotter = WebSocketCommandSpotter::new(config.voice_control.url.clone(), inputs_tx);
+    spotter.probe().unwrap_or_else(|e| {
+        log::error!("{e:#}");
+        std::process::exit(2);
+    });
+    spotter
 }
 
 fn connect_transcriber(config: &Config) -> OpenAiTranscriber {

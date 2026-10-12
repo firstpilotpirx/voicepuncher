@@ -28,6 +28,11 @@ pub struct E2eWorld {
     pub stdout: String,
     pub stderr: String,
     pub elapsed: Option<Duration>,
+    pub voice_control: bool,
+    pub command_spotting_url: Option<String>,
+    pub recognized: Vec<voicepuncher::core::domain::VoiceCommand>,
+    pub listened_before_secs: f32,
+    pub hands_free: Option<steps::voice_control::HandsFree>,
 }
 
 impl E2eWorld {

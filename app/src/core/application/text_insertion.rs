@@ -1,9 +1,10 @@
+use std::collections::VecDeque;
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
 
-use crate::core::application::{FocusProbe, TextPaster, VisualIndicator};
+use crate::core::application::{FocusProbe, PipelineInput, TextPaster, VisualIndicator};
 use crate::core::domain::{CleanedText, PttSignal, TextFocus};
 
 /// How long the focus wait lasts and how often it re-checks the focus. A zero timeout
@@ -36,14 +37,14 @@ pub enum WaitEnd {
 
 /// Delivers the final text: pastes at once unless no text input is surely focused, then
 /// waits for text input focus; a wait that ends without one leaves the text in the clipboard.
-/// A hotkey press seen on `signals` ends the wait and is consumed.
+/// The wait ends early when `hotkey_pressed` reports a hotkey press.
 pub fn insert_text(
     text: &CleanedText,
     paster: &mut dyn TextPaster,
     probe: Option<&dyn FocusProbe>,
     indicator: &dyn VisualIndicator,
     cfg: FocusWaitCfg,
-    signals: Option<&Receiver<PttSignal>>,
+    hotkey_pressed: &mut dyn FnMut() -> bool,
 ) -> Result<Insertion> {
     let probe = match probe {
         Some(probe) if !cfg.timeout.is_zero() => probe,
@@ -62,7 +63,7 @@ pub fn insert_text(
     let started = Instant::now();
     loop {
         std::thread::sleep(cfg.poll_interval);
-        if hotkey_pressed(signals) {
+        if hotkey_pressed() {
             return leave_in_clipboard(text, paster, WaitEnd::HotkeyPressed, started);
         }
         let focus = text_focus(probe);
@@ -94,13 +95,18 @@ fn text_focus(probe: &dyn FocusProbe) -> TextFocus {
     TextFocus::of(probed.as_ref().map(Option::as_ref))
 }
 
-fn hotkey_pressed(signals: Option<&Receiver<PttSignal>>) -> bool {
-    let Some(rx) = signals else {
-        return false;
-    };
+/// Reads the inputs that arrived during a focus wait: a hotkey press or cancel is
+/// consumed and reported; every other input is kept in `pending`, in order, for later.
+pub fn hotkey_pressed_during_wait(
+    inputs: &Receiver<PipelineInput>,
+    pending: &mut VecDeque<PipelineInput>,
+) -> bool {
     let mut pressed = false;
-    while let Ok(signal) = rx.try_recv() {
-        pressed |= matches!(signal, PttSignal::Pressed | PttSignal::Cancel);
+    while let Ok(input) = inputs.try_recv() {
+        match input {
+            PipelineInput::Hotkey(PttSignal::Pressed | PttSignal::Cancel) => pressed = true,
+            other => pending.push_back(other),
+        }
     }
     pressed
 }
@@ -214,7 +220,7 @@ mod tests {
             Some(&probe),
             &indicator(0),
             WAIT,
-            None,
+            &mut || false,
         )
         .unwrap();
         assert_eq!(outcome, Insertion::Pasted);
@@ -233,7 +239,7 @@ mod tests {
             Some(&probe),
             &indicator(0),
             WAIT,
-            None,
+            &mut || false,
         )
         .unwrap();
         assert_eq!(outcome, Insertion::Pasted);
@@ -249,7 +255,7 @@ mod tests {
             Some(&probe),
             &indicator(1),
             WAIT,
-            None,
+            &mut || false,
         )
         .unwrap();
         assert_eq!(outcome, Insertion::PastedAfterWait);
@@ -265,7 +271,7 @@ mod tests {
             Some(&probe),
             &indicator(1),
             WAIT,
-            None,
+            &mut || false,
         )
         .unwrap();
         assert_eq!(outcome, Insertion::LeftInClipboard(WaitEnd::TimedOut));
@@ -275,7 +281,8 @@ mod tests {
     fn should_end_the_wait_on_a_hotkey_press_and_consume_it() {
         let probe = probe("AXButton", usize::MAX, "AXButton");
         let (tx, rx) = mpsc::channel();
-        tx.send(PttSignal::Pressed).unwrap();
+        tx.send(PipelineInput::Hotkey(PttSignal::Pressed)).unwrap();
+        let mut pending = VecDeque::new();
         let mut paster = leaving_in_clipboard();
         let cfg = FocusWaitCfg {
             timeout: Duration::from_secs(60),
@@ -287,18 +294,20 @@ mod tests {
             Some(&probe),
             &indicator(1),
             cfg,
-            Some(&rx),
+            &mut || hotkey_pressed_during_wait(&rx, &mut pending),
         )
         .unwrap();
         assert_eq!(outcome, Insertion::LeftInClipboard(WaitEnd::HotkeyPressed));
         assert!(rx.try_recv().is_err());
+        assert!(pending.is_empty());
     }
 
     #[test]
     fn should_end_the_wait_on_cancel() {
         let probe = probe("AXButton", usize::MAX, "AXButton");
         let (tx, rx) = mpsc::channel();
-        tx.send(PttSignal::Cancel).unwrap();
+        tx.send(PipelineInput::Hotkey(PttSignal::Cancel)).unwrap();
+        let mut pending = VecDeque::new();
         let mut paster = leaving_in_clipboard();
         let cfg = FocusWaitCfg {
             timeout: Duration::from_secs(60),
@@ -310,7 +319,7 @@ mod tests {
             Some(&probe),
             &indicator(1),
             cfg,
-            Some(&rx),
+            &mut || hotkey_pressed_during_wait(&rx, &mut pending),
         )
         .unwrap();
         assert_eq!(outcome, Insertion::LeftInClipboard(WaitEnd::HotkeyPressed));
@@ -320,7 +329,8 @@ mod tests {
     fn should_keep_waiting_on_a_release() {
         let probe = probe("AXButton", usize::MAX, "AXButton");
         let (tx, rx) = mpsc::channel();
-        tx.send(PttSignal::Released).unwrap();
+        tx.send(PipelineInput::Hotkey(PttSignal::Released)).unwrap();
+        let mut pending = VecDeque::new();
         let mut paster = leaving_in_clipboard();
         let outcome = insert_text(
             &text(),
@@ -328,10 +338,31 @@ mod tests {
             Some(&probe),
             &indicator(1),
             WAIT,
-            Some(&rx),
+            &mut || hotkey_pressed_during_wait(&rx, &mut pending),
         )
         .unwrap();
         assert_eq!(outcome, Insertion::LeftInClipboard(WaitEnd::TimedOut));
+        assert_eq!(pending, [PipelineInput::Hotkey(PttSignal::Released)]);
+    }
+
+    #[test]
+    fn should_keep_a_voice_input_that_arrives_during_the_wait() {
+        let probe = probe("AXButton", usize::MAX, "AXButton");
+        let (tx, rx) = mpsc::channel();
+        tx.send(PipelineInput::SpottingLost).unwrap();
+        let mut pending = VecDeque::new();
+        let mut paster = leaving_in_clipboard();
+        let outcome = insert_text(
+            &text(),
+            &mut paster,
+            Some(&probe),
+            &indicator(1),
+            WAIT,
+            &mut || hotkey_pressed_during_wait(&rx, &mut pending),
+        )
+        .unwrap();
+        assert_eq!(outcome, Insertion::LeftInClipboard(WaitEnd::TimedOut));
+        assert_eq!(pending, [PipelineInput::SpottingLost]);
     }
 
     #[test]
@@ -345,7 +376,7 @@ mod tests {
             Some(&probe),
             &indicator(0),
             FocusWaitCfg::OFF,
-            None,
+            &mut || false,
         )
         .unwrap();
         assert_eq!(outcome, Insertion::Pasted);
@@ -354,7 +385,10 @@ mod tests {
     #[test]
     fn should_paste_without_probing_when_there_is_no_probe() {
         let mut paster = pasting_once();
-        let outcome = insert_text(&text(), &mut paster, None, &indicator(0), WAIT, None).unwrap();
+        let outcome = insert_text(&text(), &mut paster, None, &indicator(0), WAIT, &mut || {
+            false
+        })
+        .unwrap();
         assert_eq!(outcome, Insertion::Pasted);
     }
 }

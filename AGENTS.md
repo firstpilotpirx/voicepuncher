@@ -2,7 +2,7 @@
 
 ## What this project is
 
-Push-to-talk voice-to-text CLI for macOS Apple Silicon. Single Rust crate at `app/`. Fully offline: a local whisper.cpp `whisper-server` for transcription and a local llama.cpp `llama-server` (Qwen2.5) for text cleanup, both reached over loopback HTTP, started with `just start-model-servers` and running on Metal. No internet at runtime; loopback connections only.
+Push-to-talk voice-to-text CLI for macOS Apple Silicon. Single Rust crate at `app/`. Fully offline: a local whisper.cpp `whisper-server` for transcription and a local llama.cpp `llama-server` (Qwen2.5) for text cleanup, both reached over loopback HTTP and running on Metal, plus the command spotting service `voicepuncher-command-spotting` (crate `command-spotting/`, sherpa-onnx keyword spotting) reached over a loopback WebSocket for voice control; `just start-model-servers` starts all three. No internet at runtime; loopback connections only.
 
 **Product lifecycle stage:** PoC (Proof of Concept). The core workflow is demonstrated but the codebase is not yet hardened for daily use.
 
@@ -11,9 +11,10 @@ Push-to-talk voice-to-text CLI for macOS Apple Silicon. Single Rust crate at `ap
 ```
 voicepuncher/
   app/          ← Rust CLI crate (hexagonal architecture)
+  command-spotting/ ← Rust binary: the command spotting service (voice control)
   e2e-test/     ← Rust crate: accuracy benchmark + smoke E2E
   docs/         ← Architecture documentation + ubiquitous language
-  Cargo.toml    ← Cargo workspace (members: app, e2e-test)
+  Cargo.toml    ← Cargo workspace (members: app, command-spotting, e2e-test)
   justfile      ← Task runner: all checks, E2E, benchmarks (`just` lists recipes)
 ```
 
@@ -92,12 +93,12 @@ All checks are `just` recipes (see `justfile`; no other scripts). A change is "v
 | Before merging a branch, before a release | `just full-check` (~10 min) | `cargo clean` + everything in `check`, plus the chunk seams (`e2e-seams`: seam sweep and seam matrix), with WER accuracy on a fixed sample of 100 recordings |
 | Before merging a change to hotkey, recording, overlay, paste, permissions | manual run by the user | `README.md` § Release checklist |
 
-Build inputs are `app/`, `e2e-test/`, `Cargo.toml`, `Cargo.lock` and `justfile`. A branch that changes none of them (docs, `AGENTS.md`, `openspec/`, `.claude/`) needs `just test` only; never `just check` or `just full-check` for it. Do not merge a branch that changed a build input until `just full-check` has passed on its final commit; say in the PR which checks ran.
+Build inputs are `app/`, `command-spotting/`, `e2e-test/`, `Cargo.toml`, `Cargo.lock` and `justfile`. A branch that changes none of them (docs, `AGENTS.md`, `openspec/`, `.claude/`) needs `just test` only; never `just check` or `just full-check` for it. Do not merge a branch that changed a build input until `just full-check` has passed on its final commit; say in the PR which checks ran.
 
 `just bench` is a model comparison, not a gate — only when a model, decoding params or the prompt changed.
 
 - **Models and corpus** are auto-discovered by the `justfile` (largest model in `~/.voicepuncher/` or `~/.voicepuncher/models/`; corpus in `e2e-test/corpus/`). The corpus is gitignored, so in a worktree set `VOICEPUNCHER_BENCH_CORPUS` to the main checkout's `e2e-test/corpus`.
-- **Local services:** the E2E recipes start `whisper-server` and `llama-server` (`just start-model-servers`) and stop what they started afterwards; `just test` needs no service. The services are shared across checkouts on ports 8081 and 8080; every check, test and benchmark recipe waits for the machine-wide test lock (`~/.claude/rules-custom/machine-lock.md`), so runs from parallel checkouts queue instead of colliding. E2E business scenarios synthesize speech with macOS `say`.
+- **Local services:** the E2E recipes start `whisper-server`, `llama-server` and `voicepuncher-command-spotting` (`just start-model-servers`) and stop what they started afterwards; `just test` needs no service. The services are shared across checkouts on ports 8081, 8080 and 8082; every check, test and benchmark recipe waits for the machine-wide test lock (`~/.claude/rules-custom/machine-lock.md`), so runs from parallel checkouts queue instead of colliding. E2E business scenarios synthesize speech with macOS `say`.
 - **`full-check` runs `cargo clean`** and deletes `target/release/voicepuncher`, which the user may be running. In the main checkout, ask first; in a worktree it only cleans that worktree's `target/`.
 - **The manual run cannot happen in an agent sandbox**: it lacks macOS TCC permissions (`permission denied for accessibility`). Ask the user to run `cargo run --release -p voicepuncher` (with and without `--no-llm` when refinement changed) and paste the log; `just start-model-servers` must run first. A healthy cycle logs `pipeline recv Pressed` → `chunk 1 | … transcribed` → `pasting…` → `stop→paste: … total=…ms`.
 
@@ -124,5 +125,5 @@ All domain terms are defined in `docs/ubiquitous-language.md`. Read it before na
 ## Key constraints
 
 - macOS + Apple Silicon only (Metal GPU, CoreAudio, macOS TCC permissions).
-- No internet at runtime; loopback connections only — all inference is local, in separate local services (speech recognition, text refinement).
+- No internet at runtime; loopback connections only — all inference is local, in separate local services (speech recognition, text refinement, command spotting).
 - Three macOS TCC permissions required: Microphone, Accessibility, Input Monitoring.

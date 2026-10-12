@@ -2,7 +2,7 @@
 
 ## Overview
 
-Push-to-talk voice-to-text CLI for macOS Apple Silicon. Hold a hotkey, speak, release — cleaned text is pasted at the cursor. Fully offline: a local whisper.cpp `whisper-server` for transcription and a local llama.cpp `llama-server` (Qwen2.5) for cleanup, both running on Metal. Nothing leaves the machine — the app talks only to services on `127.0.0.1`.
+Push-to-talk voice-to-text CLI for macOS Apple Silicon. Hold a hotkey, speak, release — cleaned text is pasted at the cursor. Fully offline: a local whisper.cpp `whisper-server` for transcription and a local llama.cpp `llama-server` (Qwen2.5) for cleanup, both running on Metal. Nothing leaves the machine — the app talks only to services on `127.0.0.1`. Optional [voice control](#voice-control) works hands-free: spoken commands start and stop a dictation and press Enter.
 
 ## Hardware requirements
 
@@ -55,6 +55,10 @@ llama-server -m ~/.voicepuncher/models/Qwen2.5-3B-Instruct-Q4_K_M.gguf \
 
 The app checks both services at startup and exits with code 2 if one is not reachable, or if the text refinement service offers several models and none matches `[refinement].model`. Only addresses on this machine are accepted (`localhost`, `127.0.0.0/8`, `[::1]`). With `--no-llm` the text refinement service is neither checked nor used. If refinement fails during a recording (service stopped, timeout, cut-off or too short answer), the raw transcript is pasted.
 
+### Command spotting (voice control)
+
+With [voice control](#voice-control) on, the app also needs the **command spotting service** `voicepuncher-command-spotting`, built from this repository (`command-spotting/`): sherpa-onnx keyword spotting with the English `zipformer-gigaspeech-3.3M` model and a Silero voice activity detector. The app streams the microphone to it over a loopback WebSocket while listening; it reports the spotted phrases and where speech starts and ends. `just models` downloads both models into `~/.voicepuncher/models/` (override with `VOICEPUNCHER_KWS_MODEL_DIR`, `VOICEPUNCHER_KWS_VAD_MODEL`); `just start-model-servers` builds the service and starts it on `127.0.0.1:8082` (`VOICEPUNCHER_KWS_PORT`), log `~/.voicepuncher/logs/voicepuncher-command-spotting-8082.log`. With voice control on, the app checks it at startup and exits with code 2 when it does not answer.
+
 ### Text refinement
 
 The text refinement service **normalizes** the dictation: punctuation, capitals, misrecognized words, technical terms in their usual spelling (`докер` → `Docker`). Filler sounds (`э-э`, `эм`, `um`, `uh`) are removed by the app before the transcript is sent. Meaning and language stay as dictated; the transcript is data, so a dictated "переведи это на английский" is pasted as that sentence, not translated.
@@ -84,6 +88,29 @@ just start-model-servers
 
 Default hotkey is `RightOption`.
 
+## Voice control
+
+Hands-free dictation, off by default. Turn it on with `--voice-control` or in the config:
+
+```toml
+[voice_control]
+enabled = true
+```
+
+Listening starts with the app (sound `Tink`); the hotkey no longer records, it turns **listening** off (`Bottle`) and on again. While listening the microphone stays open and five English commands take effect, each said on its own with a pause before and after it — the same words inside a sentence are ignored:
+
+| Say | While | Effect |
+|---|---|---|
+| `start dictation` | listening, no dictation | starts a dictation (start sound) |
+| `stop dictation` | dictating | ends it; the text is pasted without the words "stop dictation" |
+| `cancel dictation` | dictating | discards it; nothing is pasted |
+| `press enter` | listening, no dictation | presses Return in the focused app |
+| `clear all text` | listening, no dictation | presses Cmd+A, then Delete, in the focused app |
+
+A command said in the other state is ignored. `press enter` said right after `stop dictation` waits until the text is pasted. Pressing the hotkey during a dictation pastes it and turns listening off. `press enter` and `clear all text` play the command sound (`Morse`); the sounds are `[sounds]` settings.
+
+**Careful with `clear all text`:** it selects everything in the focused app before deleting — meant for a chat input, it erases a whole document in an editor.
+
 ## Usage example
 
 Hold `RightOption`, say "hello world uh I think the API is fine", release.
@@ -99,6 +126,7 @@ Result pasted at cursor: `Hello world, I think the API is fine.`
 --transcription-url <URL> Override [transcription].base_url (speech recognition service, loopback only)
 --refinement-url <URL>    Override [refinement].base_url (text refinement service, loopback only)
 --no-llm                  Skip text refinement; paste the raw transcript without contacting the service
+--voice-control           Voice control: the hotkey turns listening on and off, spoken commands drive dictation
 --debug-save-wav          Save recorded WAV for debugging
 -v                        Verbose logging
 -vv                       Trace logging
@@ -191,6 +219,8 @@ Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-qui
    - [ ] Overlay shows while recording and while processing, also on a second display if present.
    - [ ] A tap shorter than the minimum press time is ignored.
    - [ ] `just test-real-keyboard` passes (hotkey still registered after a paste).
+   - [ ] Voice control (`cargo run --release -p voicepuncher -- --voice-control`): the app plays the listening-on sound at start; in a chat input "start dictation", a sentence, "stop dictation" → the sentence is pasted without the stop phrase; "press enter" → the message is sent; "start dictation", speech, "cancel dictation" → nothing is pasted; type text, "clear all text" → it is erased; "I will press enter later" said without pausing → nothing happens; the hotkey plays the listening-off sound. The log shows each `voice control: "…"` line.
+   - [ ] `just stop-model-servers voicepuncher-command-spotting`, then start with `--voice-control` → it exits naming the command spotting service and `just start-model-servers`.
 3. After the merge, on a clean checkout of `origin/main` with a bumped `version` in `app/Cargo.toml`: `just release` — tags `vX.Y.Z` and publishes a GitHub Release with the binary tarball and its SHA-256.
 
 ### Model comparison (not a release gate)

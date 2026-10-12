@@ -1,4 +1,6 @@
+pub mod commandspotting;
 pub mod focus;
+pub mod keypressing;
 pub mod permissions;
 pub mod recording;
 pub mod soundplaying;

@@ -21,6 +21,8 @@ fn r1_domain_no_adapter_imports() {
         "serde_json",
         "arboard",
         "core_graphics",
+        "tungstenite",
+        "sherpa_onnx",
     ];
 
     let mut violations: Vec<String> = Vec::new();
@@ -64,6 +66,8 @@ fn r2_application_no_adapter_imports() {
         "serde_json",
         "arboard",
         "core_graphics",
+        "tungstenite",
+        "sherpa_onnx",
     ];
 
     let mut violations: Vec<String> = Vec::new();

@@ -28,3 +28,13 @@ fn should_parse_and_overlay_all_modifiable_flags_onto_config() {
     assert!(cfg.audio.debug_save_wav);
     assert!(no_llm);
 }
+
+#[test]
+fn should_turn_voice_control_on_with_its_flag() {
+    let cli = Cli::parse_from(["voicepuncher", "--voice-control"]);
+    let mut cfg = Config::default();
+
+    cli.overlay(&mut cfg);
+
+    assert!(cfg.voice_control.enabled);
+}

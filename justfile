@@ -7,6 +7,9 @@ export VOICEPUNCHER_WHISPER_MODEL := env_var_or_default("VOICEPUNCHER_WHISPER_MO
 # Voice activity detection model of the speech recognition service: the newest Silero model found
 export VOICEPUNCHER_VAD_MODEL := env_var_or_default("VOICEPUNCHER_VAD_MODEL", `find ~/.voicepuncher -maxdepth 2 -name 'ggml-silero-*.bin' -exec ls -t {} + 2>/dev/null | head -1 || true`)
 export VOICEPUNCHER_LLM_MODEL := env_var_or_default("VOICEPUNCHER_LLM_MODEL", `find ~/.voicepuncher -maxdepth 2 -name '*.gguf' -exec ls -S {} + 2>/dev/null | head -1 || true`)
+# Command spotting service (voice control): sherpa-onnx keyword spotting model directory and its Silero VAD
+export VOICEPUNCHER_KWS_MODEL_DIR := env_var_or_default("VOICEPUNCHER_KWS_MODEL_DIR", `find ~/.voicepuncher -maxdepth 2 -type d -name 'sherpa-onnx-kws-*' 2>/dev/null | head -1 || true`)
+export VOICEPUNCHER_KWS_VAD_MODEL := env_var_or_default("VOICEPUNCHER_KWS_VAD_MODEL", `find ~/.voicepuncher -maxdepth 2 -name 'silero_vad.onnx' 2>/dev/null | head -1 || true`)
 
 # Corpus directory containing manifest.jsonl — absolute, because cargo runs tests from e2e-test/
 export VOICEPUNCHER_BENCH_CORPUS := env_var_or_default("VOICEPUNCHER_BENCH_CORPUS", justfile_directory() / "e2e-test/corpus")
@@ -16,6 +19,9 @@ stt_port := env_var_or_default("VOICEPUNCHER_STT_PORT", "8081")
 stt_url := "http://127.0.0.1:" + stt_port + "/v1"
 llm_port := env_var_or_default("VOICEPUNCHER_LLM_PORT", "8080")
 llm_url := "http://127.0.0.1:" + llm_port + "/v1"
+kws_port := env_var_or_default("VOICEPUNCHER_KWS_PORT", "8082")
+kws_url := "ws://127.0.0.1:" + kws_port
+kws_binary := justfile_directory() / "target/release/voicepuncher-command-spotting"
 services_run_dir := home_directory() / ".voicepuncher/run"
 services_log_dir := home_directory() / ".voicepuncher/logs"
 
@@ -59,12 +65,13 @@ lint:
 _lint:
     cargo clippy --workspace --all-targets -- -D warnings
 
-# Unit + architecture + integration tests (plain and .feature) of the app, unit tests of the E2E harness (~1 min)
+# Unit + architecture + integration tests (plain and .feature) of the app, tests of the command spotting service, unit tests of the E2E harness (~1 min)
 test:
     @{{locked}} _test
 
 _test:
     cargo test -p voicepuncher --tests --no-fail-fast
+    cargo test -p voicepuncher-command-spotting
     cargo test -p voicepuncher-e2e-test --lib
 
 # Build the release binary
@@ -80,7 +87,7 @@ e2e:
 
 _e2e: _e2e-smoke _e2e-seams _e2e-bench _refine-eval
 
-# Smoke test — services and models load, file mode runs (@smoke scenarios), the adapters talk to the real services
+# Smoke test — services and models load, file mode runs and voice commands are spotted (@smoke scenarios), the adapters talk to the real services
 e2e-smoke:
     @{{locked}} _e2e-smoke
 
@@ -89,8 +96,8 @@ _e2e-smoke: _require-models _build
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
-    export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}"
-    cargo test -p voicepuncher --test transcription_openai_it --test textrefinement_openai_it --release -- --nocapture
+    export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
+    cargo test -p voicepuncher --test transcription_openai_it --test textrefinement_openai_it --test commandspotting_websocket_it --release -- --nocapture
     cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags '@smoke and not @wip'
 
 # WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 % (~20 s)
@@ -102,7 +109,7 @@ _e2e-quick: _require-models _require-corpus _build
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
-    VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_BENCH_LIMIT=10 \
+    VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" VOICEPUNCHER_BENCH_LIMIT=10 \
         cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags '@accuracy and not @wip'
 
 # Text refinement on the live services: dictated commands, normalization, evaluation per category (@refinement) (~1 min)
@@ -139,7 +146,7 @@ _e2e-bench: _require-models _require-corpus _build
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
-    VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" \
+    VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" \
         cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags '@accuracy and not @wip'
 
 # Manual: @real_keyboard scenarios drive the real hotkey + paste — needs Accessibility and Input Monitoring for the terminal, a GUI session, hands off the keyboard
@@ -179,7 +186,7 @@ _start-model-servers-for-e2e:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p "{{services_run_dir}}"
-    for service in whisper-server:{{stt_port}} llama-server:{{llm_port}}; do
+    for service in whisper-server:{{stt_port}} llama-server:{{llm_port}} voicepuncher-command-spotting:{{kws_port}}; do
         if nc -z 127.0.0.1 "${service#*:}" >/dev/null 2>&1; then
             echo "✓ reusing ${service%%:*} already running on port ${service#*:}; it stays running"
         else
@@ -192,7 +199,7 @@ _start-model-servers-for-e2e:
 _stop-model-servers-for-e2e:
     #!/usr/bin/env bash
     set -euo pipefail
-    for service in whisper-server:{{stt_port}} llama-server:{{llm_port}}; do
+    for service in whisper-server:{{stt_port}} llama-server:{{llm_port}} voicepuncher-command-spotting:{{kws_port}}; do
         marker="{{services_run_dir}}/${service%%:*}-${service#*:}.e2e"
         if [[ -f "$marker" ]]; then
             rm -f "$marker"
@@ -200,7 +207,7 @@ _stop-model-servers-for-e2e:
         fi
     done
 
-# Start the speech recognition (whisper-server) and text refinement (llama-server) services; one that already answers on its port is skipped
+# Start the speech recognition (whisper-server), text refinement (llama-server) and command spotting (voicepuncher-command-spotting) services; one that already answers on its port is skipped
 start-model-servers:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -230,6 +237,13 @@ start-model-servers:
             exit 1
         fi
     }
+    require_model_dir() {
+        local path="${!1:-}"
+        if [[ -z "$path" || ! -d "$path" ]]; then
+            echo "✗ $1: no model directory (got '$path'). Run 'just models' or set it in .env" >&2
+            exit 1
+        fi
+    }
     # start_service <binary> <port> <label> <readiness check> <command…>
     start_service() {
         local binary=$1 port=$2 label=$3 ready=$4
@@ -241,7 +255,7 @@ start-model-servers:
         echo "… starting $binary (pid $pid), log: $log_file"
         for _ in $(seq 1 240); do
             if "$ready"; then
-                echo "✓ $label ready at http://127.0.0.1:$port/v1"
+                echo "✓ $label ready on port $port"
                 return 0
             fi
             if ! kill -0 "$pid" 2>/dev/null; then
@@ -282,8 +296,20 @@ start-model-servers:
         start_service llama-server "{{llm_port}}" "text refinement service" llama_ready \
             llama-server -m "$VOICEPUNCHER_LLM_MODEL" --host 127.0.0.1 --port "{{llm_port}}" -c 4096 -np 1
     fi
+    kws_ready() { port_open "{{kws_port}}"; }
+    if port_open "{{kws_port}}"; then
+        echo "✓ command spotting service already running at {{kws_url}}"
+    else
+        require_model_dir VOICEPUNCHER_KWS_MODEL_DIR
+        require_model VOICEPUNCHER_KWS_VAD_MODEL
+        cargo build --release -p voicepuncher-command-spotting
+        start_service voicepuncher-command-spotting "{{kws_port}}" "command spotting service" kws_ready \
+            "{{kws_binary}}" --port "{{kws_port}}" \
+            --model-dir "$VOICEPUNCHER_KWS_MODEL_DIR" --vad-model "$VOICEPUNCHER_KWS_VAD_MODEL" \
+            ${VOICEPUNCHER_KWS_SAVE_SPEECH_DIR:+--save-speech-dir "$VOICEPUNCHER_KWS_SAVE_SPEECH_DIR"}
+    fi
 
-# Stop the services that start-model-servers launched (all, or the named ones: whisper-server, llama-server); services started by hand keep running
+# Stop the services that start-model-servers launched (all, or the named ones: whisper-server, llama-server, voicepuncher-command-spotting); services started by hand keep running
 stop-model-servers *services:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -310,17 +336,18 @@ stop-model-servers *services:
         rm -f "$pid_file"
     }
     selected="{{services}}"
-    for service in ${selected:-whisper-server llama-server}; do
+    for service in ${selected:-whisper-server llama-server voicepuncher-command-spotting}; do
         case "$service" in
             whisper-server) stop_service whisper-server "{{stt_port}}" "speech recognition service" ;;
             llama-server) stop_service llama-server "{{llm_port}}" "text refinement service" ;;
-            *) echo "✗ unknown service '$service' — use whisper-server or llama-server" >&2; exit 1 ;;
+            voicepuncher-command-spotting) stop_service voicepuncher-command-spotting "{{kws_port}}" "command spotting service" ;;
+            *) echo "✗ unknown service '$service' — use whisper-server, llama-server or voicepuncher-command-spotting" >&2; exit 1 ;;
         esac
     done
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
-# Download default models into ~/.voicepuncher/models (whisper small ~460 MB, Silero VAD ~1 MB, Qwen2.5-1.5B ~1 GB)
+# Download default models into ~/.voicepuncher/models (whisper small ~460 MB, Silero VAD ~1 MB, Qwen2.5-1.5B ~1 GB, keyword spotting ~20 MB, Silero VAD for sherpa-onnx ~1 MB)
 models:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -335,6 +362,14 @@ models:
     fetch https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin ggml-small.bin
     fetch https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin ggml-silero-v5.1.2.bin
     fetch https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf Qwen2.5-1.5B-Instruct-Q4_K_M.gguf
+    fetch https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx silero_vad.onnx
+    kws=sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01
+    if [[ -d "$dir/$kws" ]]; then
+        echo "✓ $kws already present"
+    else
+        fetch "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/$kws.tar.bz2" "$kws.tar.bz2"
+        tar -xjf "$dir/$kws.tar.bz2" -C "$dir" && rm "$dir/$kws.tar.bz2"
+    fi
 
 # Download benchmark corpus — idempotent, ~500 MB, one-time setup
 corpus max_samples="50":

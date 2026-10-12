@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -42,6 +42,8 @@ struct ActiveRecording {
     live_stop_tx: Option<std::sync::mpsc::Sender<()>>,
     live_watcher: Option<std::thread::JoinHandle<()>>,
     used_live: bool,
+    started_at: Instant,
+    capturing: Arc<AtomicBool>,
 }
 
 impl CpalAudioRecorder {
@@ -109,6 +111,8 @@ impl AudioRecorder for CpalAudioRecorder {
         };
 
         let buffer_write = Arc::clone(&buffer);
+        let capturing = Arc::new(AtomicBool::new(true));
+        let capturing_write = Arc::clone(&capturing);
         let channels_usize = channels as usize;
         let level_reg = Arc::clone(&self.level_register);
         let stream = device.build_input_stream(
@@ -134,6 +138,9 @@ impl AudioRecorder for CpalAudioRecorder {
                     / mono_frames.len().max(1) as f32;
                 let rms = mean_sq.sqrt();
                 level_reg.store(f32::to_bits(rms.clamp(0.0, 1.0)), Ordering::Relaxed);
+                if !capturing_write.load(Ordering::Relaxed) {
+                    return;
+                }
                 if let Ok(mut buf) = buffer_write.lock() {
                     let remaining = max_samples.saturating_sub(buf.len());
                     let to_push = mono_frames.len().min(remaining);
@@ -147,6 +154,7 @@ impl AudioRecorder for CpalAudioRecorder {
         )?;
 
         stream.play()?;
+        let started_at = Instant::now();
 
         self.active = Some(ActiveRecording {
             stream,
@@ -157,6 +165,8 @@ impl AudioRecorder for CpalAudioRecorder {
             live_stop_tx: None,
             live_watcher: None,
             used_live: false,
+            started_at,
+            capturing,
         });
 
         Ok(())
@@ -241,6 +251,32 @@ impl AudioRecorder for CpalAudioRecorder {
                 }
             }
         }
+    }
+
+    fn truncate_at(&mut self, cut: Instant) {
+        if let Some(active) = self.active.as_ref() {
+            active.capturing.store(false, Ordering::Relaxed);
+            let kept = samples_before(active.started_at, cut, active.native_sample_rate);
+            truncate_buffer(&active.buffer, kept);
+        }
+    }
+}
+
+/// Number of samples captured at `rate` between `started` and `cut`.
+fn samples_before(started: Instant, cut: Instant, rate: u32) -> usize {
+    (cut.saturating_duration_since(started).as_secs_f64() * f64::from(rate)) as usize
+}
+
+/// The samples from `start` to `end`, bounded by what the buffer holds now: a recording cut
+/// by `truncate_at` may be shorter than when its length was read.
+fn samples_between(buffer: &[i16], start: usize, end: usize) -> Vec<i16> {
+    let end = end.min(buffer.len());
+    buffer.get(start.min(end)..end).unwrap_or_default().to_vec()
+}
+
+fn truncate_buffer(buffer: &Mutex<Vec<i16>>, len: usize) {
+    if let Ok(mut samples) = buffer.lock() {
+        samples.truncate(len);
     }
 }
 
@@ -356,13 +392,19 @@ fn live_watcher_thread(
         let t_detect = Instant::now();
 
         let (chunk, cut_point) = if should_stop {
-            let chunk = buffer.lock().unwrap()[next_start..current_len].to_vec();
+            let chunk = samples_between(&buffer.lock().unwrap(), next_start, current_len);
             let cut = current_len;
             (chunk, cut)
         } else {
             let buf_guard = buffer.lock().unwrap();
+            if next_start >= buf_guard.len() {
+                // The recording was cut before this chunk: nothing is left to send.
+                drop(buf_guard);
+                std::thread::sleep(std::time::Duration::from_millis(20));
+                continue;
+            }
             let cut = next_cut(&buf_guard, native_sample_rate, next_start, cfg);
-            let chunk = buf_guard[next_start..cut].to_vec();
+            let chunk = samples_between(&buf_guard, next_start, cut);
             (chunk, cut)
         };
 
@@ -506,6 +548,64 @@ mod tests {
             first, second,
             "samples should be byte-identical when reset() is called between buffers"
         );
+    }
+
+    #[test]
+    fn should_keep_one_second_of_samples_for_a_cut_one_second_after_the_start() {
+        // Given
+        let started = Instant::now();
+        let cut = started + std::time::Duration::from_secs(1);
+        // When
+        let kept = samples_before(started, cut, 16_000);
+        // Then
+        assert_eq!(kept, 16_000);
+    }
+
+    #[test]
+    fn should_keep_no_samples_for_a_cut_before_the_start() {
+        // Given
+        let cut = Instant::now();
+        let started = cut + std::time::Duration::from_millis(500);
+        // When
+        let kept = samples_before(started, cut, 48_000);
+        // Then
+        assert_eq!(kept, 0);
+    }
+
+    #[test]
+    fn should_keep_every_sample_captured_before_a_late_cut() {
+        // Given
+        let buffer = Arc::new(Mutex::new(vec![1i16; 8_000]));
+        let started = Instant::now();
+        // When
+        truncate_buffer(
+            &buffer,
+            samples_before(started, started + std::time::Duration::from_secs(2), 16_000),
+        );
+        // Then
+        assert_eq!(buffer.lock().unwrap().len(), 8_000);
+    }
+
+    #[test]
+    fn should_take_only_the_samples_left_when_the_buffer_was_cut_after_its_length_was_read() {
+        // Given the watcher read 16 000 samples, then the recording was cut to 10 000
+        let buffer = Arc::new(Mutex::new(vec![1i16; 16_000]));
+        let read_len = buffer.lock().unwrap().len();
+        truncate_buffer(&buffer, 10_000);
+        // When
+        let chunk = samples_between(&buffer.lock().unwrap(), 4_000, read_len);
+        // Then
+        assert_eq!(chunk.len(), 6_000);
+    }
+
+    #[test]
+    fn should_take_nothing_when_the_cut_is_before_the_chunk_start() {
+        // Given
+        let buffer = vec![1i16; 3_000];
+        // When
+        let chunk = samples_between(&buffer, 4_000, 16_000);
+        // Then
+        assert!(chunk.is_empty());
     }
 
     #[test]

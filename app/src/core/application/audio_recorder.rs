@@ -19,4 +19,7 @@ pub trait AudioRecorder: Send {
         cfg: ChunkingCfg,
     ) -> Result<Option<std::sync::mpsc::Receiver<LiveChunk>>>;
     fn flush_live_chunks(&mut self);
+    /// Drops the audio captured from `cut` on and records nothing more, so a later
+    /// `flush_live_chunks` and `stop` deliver only the audio before `cut`.
+    fn truncate_at(&mut self, _cut: Instant) {}
 }

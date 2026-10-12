@@ -14,7 +14,8 @@ use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughT
 use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
 use voicepuncher::core::application::{
-    AudioRecorder, ChunkingCfg, SoundPlayer, TextPaster, Transcriber, VisualIndicator,
+    AudioRecorder, ChunkingCfg, PipelineInput, SoundPlayer, TextPaster, Transcriber,
+    VisualIndicator,
 };
 use voicepuncher::core::domain::{
     AudioBuffer16k, CleanedText, PttSignal, RawTranscript, RecordingMode,
@@ -172,8 +173,8 @@ fn stop_dictation(world: &mut IntegrationWorld) -> Result<()> {
         },
     );
     let (tx, rx) = mpsc::channel();
-    tx.send(PttSignal::Pressed)?;
-    tx.send(PttSignal::Pressed)?;
+    tx.send(PipelineInput::Hotkey(PttSignal::Pressed))?;
+    tx.send(PipelineInput::Hotkey(PttSignal::Pressed))?;
     drop(tx);
     // `run` only returns once the hotkey channel closes, after both presses were handled
     let _ = pipeline.run(rx);

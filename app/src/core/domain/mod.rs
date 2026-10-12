@@ -8,6 +8,8 @@ pub mod ptt_signal;
 pub mod raw_transcript;
 pub mod recording_mode;
 pub mod text_focus;
+pub mod voice_command;
+pub mod voice_command_recognizer;
 
 pub use audio_buffer::AudioBuffer16k;
 pub use audio_level::{level_to_pills, AudioLevel};
@@ -19,3 +21,5 @@ pub use ptt_signal::PttSignal;
 pub use raw_transcript::{EmptyTranscript, RawTranscript};
 pub use recording_mode::RecordingMode;
 pub use text_focus::{FocusedElement, TextFocus};
+pub use voice_command::{SpokenCommand, VoiceCommand};
+pub use voice_command_recognizer::{SpottingEvent, VoiceCommandRecognizer};

@@ -6,6 +6,9 @@ pub struct MacosSoundPlayer {
     start_path: Option<PathBuf>,
     stop_path: Option<PathBuf>,
     cancel_path: Option<PathBuf>,
+    listening_on_path: Option<PathBuf>,
+    listening_off_path: Option<PathBuf>,
+    command_path: Option<PathBuf>,
 }
 
 impl MacosSoundPlayer {
@@ -14,7 +17,23 @@ impl MacosSoundPlayer {
             start_path: Self::resolve(start_sound),
             stop_path: Self::resolve(stop_sound),
             cancel_path: Self::resolve(cancel_sound),
+            listening_on_path: None,
+            listening_off_path: None,
+            command_path: None,
         }
+    }
+
+    /// Adds the sounds of voice control: listening on, listening off, command carried out.
+    pub fn with_voice_control_sounds(
+        mut self,
+        listening_on_sound: &str,
+        listening_off_sound: &str,
+        command_sound: &str,
+    ) -> Self {
+        self.listening_on_path = Self::resolve(listening_on_sound);
+        self.listening_off_path = Self::resolve(listening_off_sound);
+        self.command_path = Self::resolve(command_sound);
+        self
     }
 
     pub fn preview(name: &str) {
@@ -46,6 +65,12 @@ impl MacosSoundPlayer {
     fn play_async(path: &std::path::Path) {
         let _ = std::process::Command::new("afplay").arg(path).spawn();
     }
+
+    fn play_if_set(path: &Option<PathBuf>) {
+        if let Some(path) = path {
+            Self::play_async(path);
+        }
+    }
 }
 
 impl SoundPlayer for MacosSoundPlayer {
@@ -65,6 +90,18 @@ impl SoundPlayer for MacosSoundPlayer {
         if let Some(ref path) = self.cancel_path {
             Self::play_async(path);
         }
+    }
+
+    fn play_listening_on(&self) {
+        Self::play_if_set(&self.listening_on_path);
+    }
+
+    fn play_listening_off(&self) {
+        Self::play_if_set(&self.listening_off_path);
+    }
+
+    fn play_command(&self) {
+        Self::play_if_set(&self.command_path);
     }
 }
 

@@ -54,6 +54,18 @@ focus_wait_seconds = 300   # wait this long for a text input to get focus before
 start_sound = "Glass"   # macOS system sound name, or "" to disable
 stop_sound = "Pop"      # macOS system sound name, or "" to disable
 cancel_sound = "Basso"  # played when recording is cancelled with Escape
+listening_on_sound = "Tink"     # voice control: the hotkey turned listening on
+listening_off_sound = "Bottle"  # voice control: the hotkey turned listening off
+command_sound = "Morse"         # voice control: "press enter" or "clear all text" was carried out
+
+[voice_control]
+# Hands-free mode (also `--voice-control`): listening starts with the app, the hotkey turns it off
+# and on again, and spoken
+# English commands, each said on its own with a pause before and after, take effect:
+# "start dictation", "stop dictation", "cancel dictation", "press enter", "clear all text".
+# Needs the command spotting service: `just models`, then `just start-model-servers`.
+enabled = false
+url = "ws://127.0.0.1:8082"   # must be on this machine: localhost, 127.0.0.0/8 or [::1]
 
 [logging]
 level = "info"

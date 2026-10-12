@@ -49,6 +49,12 @@ pub struct Cli {
         help = "Skip text refinement; paste the raw transcript without contacting the text refinement service"
     )]
     pub no_llm: bool,
+
+    #[arg(
+        long,
+        help = "Voice control: listen for spoken commands from the start; the hotkey turns listening off and on"
+    )]
+    pub voice_control: bool,
 }
 
 impl Cli {
@@ -64,6 +70,9 @@ impl Cli {
         }
         if self.debug_save_wav.is_some() {
             cfg.audio.debug_save_wav = true;
+        }
+        if self.voice_control {
+            cfg.voice_control.enabled = true;
         }
     }
 }
@@ -100,6 +109,7 @@ mod tests {
             input_file: None,
             setup: false,
             no_llm: false,
+            voice_control: false,
         };
         let mut cfg = Config::default();
         // When

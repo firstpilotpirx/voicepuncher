@@ -1,11 +1,14 @@
+mod voice_control;
+
+use std::collections::VecDeque;
 use std::sync::mpsc;
 
 use crate::core::application::audio_recorder::LiveChunk;
 use crate::core::application::chunking::{merge_chunk_texts, split_into_chunks, ChunkingCfg};
 use crate::core::application::text_refiner::refine_or_raw;
 use crate::core::application::{
-    insert_text, AudioRecorder, FocusProbe, FocusWaitCfg, Insertion, SoundPlayer, TextPaster,
-    TextRefiner, Transcriber, VisualIndicator,
+    hotkey_pressed_during_wait, insert_text, AudioRecorder, FocusProbe, FocusWaitCfg, Insertion,
+    PipelineInput, SoundPlayer, TextPaster, TextRefiner, Transcriber, VisualIndicator,
 };
 use crate::core::domain::{AudioBuffer16k, CleanedText, PttSignal, RawTranscript, RecordingMode};
 
@@ -46,7 +49,10 @@ pub struct Pipeline {
     live_session: Option<LiveTranscriptionSession>,
     focus_probe: Option<Box<dyn FocusProbe>>,
     focus_wait: FocusWaitCfg,
-    signals: Option<mpsc::Receiver<PttSignal>>,
+    inputs: Option<mpsc::Receiver<PipelineInput>>,
+    /// Inputs read during a focus wait, handled before the channel is read again.
+    pending: VecDeque<PipelineInput>,
+    voice: Option<voice_control::VoiceControl>,
 }
 
 impl Pipeline {
@@ -71,7 +77,9 @@ impl Pipeline {
             live_session: None,
             focus_probe: None,
             focus_wait: FocusWaitCfg::OFF,
-            signals: None,
+            inputs: None,
+            pending: VecDeque::new(),
+            voice: None,
         }
     }
 
@@ -82,17 +90,36 @@ impl Pipeline {
         self
     }
 
-    pub fn run(&mut self, rx: mpsc::Receiver<PttSignal>) -> anyhow::Result<()> {
+    pub fn run(&mut self, rx: mpsc::Receiver<PipelineInput>) -> anyhow::Result<()> {
         // kept in `self` so a focus wait inside `step` sees a hotkey press
-        self.signals = Some(rx);
+        self.inputs = Some(rx);
+        if self.voice.is_some() {
+            self.turn_listening_on();
+        }
         loop {
-            let signal = self
-                .signals
-                .as_ref()
-                .expect("signals set above")
-                .recv()
-                .map_err(|_| anyhow::anyhow!("hotkey listener channel closed"))?;
-            self.step(signal)?;
+            let input = match self.pending.pop_front() {
+                Some(input) => input,
+                None => self
+                    .inputs
+                    .as_ref()
+                    .expect("inputs set above")
+                    .recv()
+                    .map_err(|_| anyhow::anyhow!("pipeline input channel closed"))?,
+            };
+            self.handle(input)?;
+        }
+    }
+
+    fn handle(&mut self, input: PipelineInput) -> anyhow::Result<()> {
+        if self.voice.is_some() {
+            return self.handle_with_voice_control(input);
+        }
+        match input {
+            PipelineInput::Hotkey(signal) => self.step(signal),
+            other => {
+                log::warn!("ignoring {other:?}: voice control is off");
+                Ok(())
+            }
         }
     }
 
@@ -105,114 +132,120 @@ impl Pipeline {
                 | (Recording, PttSignal::Pressed, RecordingMode::Toggle)
         );
         match (self.state, signal) {
-            (Idle, PttSignal::Pressed) => {
-                self.sound_player.play_start();
-                self.recorder.start()?;
-                if self.cfg.chunking.chunk_threshold_secs > 0 {
-                    if let Some(chunk_rx) = self.recorder.start_live_chunks(self.cfg.chunking)? {
-                        let target_chunk_secs = self.cfg.chunking.chunk_threshold_secs
-                            + self.cfg.chunking.chunk_overlap_secs;
-                        log::info!(
-                            "live chunking: threshold={}s overlap={}s → target chunk duration ≈ {}s",
-                            self.cfg.chunking.chunk_threshold_secs,
-                            self.cfg.chunking.chunk_overlap_secs,
-                            target_chunk_secs,
-                        );
-                        let transcriber =
-                            self.transcriber.take().expect("transcriber already taken");
-                        let (results_tx, results_rx) = mpsc::sync_channel(1);
-                        std::thread::Builder::new()
-                            .name("live-transcription".into())
-                            .spawn(move || run_live_worker(transcriber, chunk_rx, results_tx))
-                            .expect("failed to spawn live transcription thread");
-                        self.live_session = Some(LiveTranscriptionSession { results_rx });
-                    }
-                }
-                self.visual_indicator.show_recording();
-                self.state = Recording;
-            }
-            (Recording, _) if stops => {
-                let t_user_stop = std::time::Instant::now();
-                self.sound_player.play_stop();
-                self.visual_indicator.show_processing();
-                if let Some(session) = self.live_session.take() {
-                    self.state = Idle;
-                    let t_drain_start = std::time::Instant::now();
-                    self.recorder.flush_live_chunks();
-                    match session.results_rx.recv() {
-                        Ok(result) => {
-                            let drain_ms = t_drain_start.elapsed().as_millis() as u64;
-                            let t_stop_start = std::time::Instant::now();
-                            let _ = self.recorder.stop();
-                            let stop_ms = t_stop_start.elapsed().as_millis() as u64;
-                            self.transcriber = Some(result.transcriber);
-                            if result.texts.is_empty() {
-                                log::info!(
-                                    "live session: no text (drain {drain_ms}ms stop {stop_ms}ms)"
-                                );
-                                self.visual_indicator.hide();
-                            } else {
-                                let t_merge_start = std::time::Instant::now();
-                                let merged = merge_chunk_texts(result.texts);
-                                let merge_ms = t_merge_start.elapsed().as_millis() as u64;
-                                log::info!(
-                                    "live session: {} chars merged (drain {drain_ms}ms stop {stop_ms}ms merge {merge_ms}ms)",
-                                    merged.len()
-                                );
-                                match RawTranscript::new(merged) {
-                                    Ok(raw) => self.run_refine_paste(
-                                        raw,
-                                        t_user_stop,
-                                        drain_ms,
-                                        stop_ms,
-                                        merge_ms,
-                                    ),
-                                    Err(e) => {
-                                        log::warn!("live session: bad transcript: {e}");
-                                        self.visual_indicator.hide();
-                                    }
-                                }
-                            }
-                        }
-                        Err(_) => {
-                            log::error!("live transcription worker channel closed unexpectedly");
-                            let _ = self.recorder.stop();
-                            self.visual_indicator.hide();
-                        }
-                    }
-                } else {
-                    let t_stop_start = std::time::Instant::now();
-                    let audio = self.recorder.stop()?;
-                    let stop_ms = t_stop_start.elapsed().as_millis() as u64;
-                    self.state = Idle;
-                    if audio.is_empty() || audio.duration_ms() < self.cfg.min_press_ms {
-                        log::info!("dropped: too short ({} ms)", audio.duration_ms());
-                        self.visual_indicator.hide();
-                        return Ok(());
-                    }
-                    self.run_transcribe_refine_paste(audio, t_user_stop, stop_ms);
-                }
-            }
-            (Recording, PttSignal::Cancel) => {
-                if let Some(session) = self.live_session.take() {
-                    self.recorder.flush_live_chunks();
-                    let _ = self.recorder.stop();
-                    if let Ok(result) = session.results_rx.recv() {
-                        self.transcriber = Some(result.transcriber);
-                    } else {
-                        log::error!("live worker channel closed on cancel");
-                    }
-                } else {
-                    let _ = self.recorder.stop()?;
-                }
-                self.sound_player.play_cancel();
-                self.visual_indicator.hide();
-                self.state = Idle;
-                log::info!("recording cancelled");
-            }
+            (Idle, PttSignal::Pressed) => self.start_recording()?,
+            (Recording, _) if stops => self.stop_recording()?,
+            (Recording, PttSignal::Cancel) => self.cancel_recording()?,
             (s, sig) => log::warn!("ignoring {sig:?} in state {s:?}"),
         }
         Ok(())
+    }
+
+    fn start_recording(&mut self) -> anyhow::Result<()> {
+        self.sound_player.play_start();
+        self.recorder.start()?;
+        if self.cfg.chunking.chunk_threshold_secs > 0 {
+            if let Some(chunk_rx) = self.recorder.start_live_chunks(self.cfg.chunking)? {
+                let target_chunk_secs =
+                    self.cfg.chunking.chunk_threshold_secs + self.cfg.chunking.chunk_overlap_secs;
+                log::info!(
+                    "live chunking: threshold={}s overlap={}s → target chunk duration ≈ {}s",
+                    self.cfg.chunking.chunk_threshold_secs,
+                    self.cfg.chunking.chunk_overlap_secs,
+                    target_chunk_secs,
+                );
+                let transcriber = self.transcriber.take().expect("transcriber already taken");
+                let (results_tx, results_rx) = mpsc::sync_channel(1);
+                std::thread::Builder::new()
+                    .name("live-transcription".into())
+                    .spawn(move || run_live_worker(transcriber, chunk_rx, results_tx))
+                    .expect("failed to spawn live transcription thread");
+                self.live_session = Some(LiveTranscriptionSession { results_rx });
+            }
+        }
+        self.visual_indicator.show_recording();
+        self.state = PipelineState::Recording;
+        Ok(())
+    }
+
+    fn stop_recording(&mut self) -> anyhow::Result<()> {
+        let t_user_stop = std::time::Instant::now();
+        self.sound_player.play_stop();
+        self.visual_indicator.show_processing();
+        if let Some(session) = self.live_session.take() {
+            self.state = PipelineState::Idle;
+            let t_drain_start = std::time::Instant::now();
+            self.recorder.flush_live_chunks();
+            match session.results_rx.recv() {
+                Ok(result) => {
+                    let drain_ms = t_drain_start.elapsed().as_millis() as u64;
+                    let t_stop_start = std::time::Instant::now();
+                    let _ = self.recorder.stop();
+                    let stop_ms = t_stop_start.elapsed().as_millis() as u64;
+                    self.transcriber = Some(result.transcriber);
+                    if result.texts.is_empty() {
+                        log::info!("live session: no text (drain {drain_ms}ms stop {stop_ms}ms)");
+                        self.visual_indicator.hide();
+                    } else {
+                        let t_merge_start = std::time::Instant::now();
+                        let merged = merge_chunk_texts(result.texts);
+                        let merge_ms = t_merge_start.elapsed().as_millis() as u64;
+                        log::info!(
+                            "live session: {} chars merged (drain {drain_ms}ms stop {stop_ms}ms merge {merge_ms}ms)",
+                            merged.len()
+                        );
+                        match RawTranscript::new(merged) {
+                            Ok(raw) => {
+                                self.run_refine_paste(raw, t_user_stop, drain_ms, stop_ms, merge_ms)
+                            }
+                            Err(e) => {
+                                log::warn!("live session: bad transcript: {e}");
+                                self.visual_indicator.hide();
+                            }
+                        }
+                    }
+                }
+                Err(_) => {
+                    log::error!("live transcription worker channel closed unexpectedly");
+                    let _ = self.recorder.stop();
+                    self.visual_indicator.hide();
+                }
+            }
+        } else {
+            let t_stop_start = std::time::Instant::now();
+            let audio = self.recorder.stop()?;
+            let stop_ms = t_stop_start.elapsed().as_millis() as u64;
+            self.state = PipelineState::Idle;
+            if audio.is_empty() || audio.duration_ms() < self.cfg.min_press_ms {
+                log::info!("dropped: too short ({} ms)", audio.duration_ms());
+                self.visual_indicator.hide();
+                return Ok(());
+            }
+            self.run_transcribe_refine_paste(audio, t_user_stop, stop_ms);
+        }
+        Ok(())
+    }
+
+    fn cancel_recording(&mut self) -> anyhow::Result<()> {
+        if let Some(session) = self.live_session.take() {
+            self.recorder.flush_live_chunks();
+            let _ = self.recorder.stop();
+            if let Ok(result) = session.results_rx.recv() {
+                self.transcriber = Some(result.transcriber);
+            } else {
+                log::error!("live worker channel closed on cancel");
+            }
+        } else {
+            let _ = self.recorder.stop()?;
+        }
+        self.sound_player.play_cancel();
+        self.visual_indicator.hide();
+        self.state = PipelineState::Idle;
+        log::info!("recording cancelled");
+        Ok(())
+    }
+
+    fn is_recording(&self) -> bool {
+        matches!(self.state, PipelineState::Recording)
     }
 
     pub fn run_once(&mut self, audio: AudioBuffer16k) -> anyhow::Result<()> {
@@ -243,13 +276,17 @@ impl Pipeline {
     }
 
     fn deliver(&mut self, cleaned: &CleanedText) {
+        let inputs = self.inputs.as_ref();
+        let pending = &mut self.pending;
+        let mut hotkey_pressed =
+            || inputs.is_some_and(|rx| hotkey_pressed_during_wait(rx, pending));
         match insert_text(
             cleaned,
             self.paster.as_mut(),
             self.focus_probe.as_deref(),
             self.visual_indicator.as_ref(),
             self.focus_wait,
-            self.signals.as_ref(),
+            &mut hotkey_pressed,
         ) {
             Ok(Insertion::Pasted | Insertion::PastedAfterWait) => {
                 eprintln!("{} {}", console::style("▸").dim(), cleaned.as_str())
@@ -737,7 +774,7 @@ mod tests {
     #[test]
     fn should_run_loop_until_channel_closed() {
         // Given
-        let (tx, rx) = mpsc::channel::<PttSignal>();
+        let (tx, rx) = mpsc::channel::<PipelineInput>();
         drop(tx);
 
         let mut recorder = MockAudioRecorder::new();

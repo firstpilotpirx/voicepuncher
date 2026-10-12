@@ -14,8 +14,8 @@ use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughT
 use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
 use voicepuncher::core::application::{
-    AudioRecorder, ChunkingCfg, FocusProbe, FocusWaitCfg, SoundPlayer, TextPaster, Transcriber,
-    VisualIndicator,
+    AudioRecorder, ChunkingCfg, FocusProbe, FocusWaitCfg, PipelineInput, SoundPlayer, TextPaster,
+    Transcriber, VisualIndicator,
 };
 use voicepuncher::core::domain::{
     AudioBuffer16k, CleanedText, FocusedElement, PttSignal, RawTranscript, RecordingMode,
@@ -54,7 +54,7 @@ pub struct InsertionRun {
     focus: Arc<Mutex<Focus>>,
     events: Arc<Mutex<Vec<Event>>>,
     wait_time: Duration,
-    signals: Option<Sender<PttSignal>>,
+    signals: Option<Sender<PipelineInput>>,
     waiting_shown_at: Arc<Mutex<Option<Instant>>>,
     left_in_clipboard_at: Arc<Mutex<Option<Instant>>>,
 }
@@ -97,11 +97,11 @@ impl InsertionRun {
         self.signals
             .as_ref()
             .context("pipeline not running")?
-            .send(PttSignal::Pressed)?;
+            .send(PipelineInput::Hotkey(PttSignal::Pressed))?;
         Ok(())
     }
 
-    fn start_pipeline(&mut self) -> Sender<PttSignal> {
+    fn start_pipeline(&mut self) -> Sender<PipelineInput> {
         let (tx, rx) = mpsc::channel();
         let events = Arc::clone(&self.events);
         let mut pipeline = Pipeline::new(

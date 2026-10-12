@@ -1,7 +1,7 @@
 # kit config of voicepuncher (agent-kit README § Project config)
 version_file: app/Cargo.toml
 checks:
-  build_inputs: ["app/**", "e2e-test/**", "Cargo.toml", "Cargo.lock", "justfile"]
+  build_inputs: ["app/**", "command-spotting/**", "e2e-test/**", "Cargo.toml", "Cargo.lock", "justfile"]
   after_edit: just test
   after_group: just check
   before_merge: just full-check
@@ -11,9 +11,11 @@ manual_run:
   overlay: ["app/src/adapters/secondary/visualfeedback/**"]
   paste: ["app/src/adapters/secondary/textpasting/**"]
   permissions: ["app/src/adapters/secondary/permissions/**"]
+  voice control: ["app/src/adapters/secondary/commandspotting/**", "app/src/adapters/secondary/keypressing/**", "app/src/core/application/pipeline/voice_control.rs"]
 release:
   command: just release
 panel:
   services:
     - {name: whisper-server, url: "http://127.0.0.1:8081"}
     - {name: llama-server, url: "http://127.0.0.1:8080"}
+    - {name: voicepuncher-command-spotting, url: "http://127.0.0.1:8082"}
