@@ -50,6 +50,43 @@ Feature: voice-control
       When someone speaks every recording of the sample while listening
       Then no command takes effect
 
+  Rule: The user's own way of saying the commands is recognized
+
+    @smoke
+    Scenario: A short Russian phrase is no command
+      Given the command spotting service is running
+      When someone says short Russian phrases, each on its own with a pause around it
+      Then no command takes effect
+
+  Rule: A command may end with "please"
+
+    @smoke
+    Scenario Outline: A command followed by please is recognized
+      Given the command spotting service is running
+      When the user says "<said>" with a pause before and after it
+      Then the "<command>" command takes effect
+
+      Examples:
+        | said                    | command          |
+        | start dictation please  | start dictation  |
+        | stop dictation please   | stop dictation   |
+        | cancel dictation please | cancel dictation |
+        | press enter please      | press enter      |
+        | clear all text please   | clear all text   |
+
+  Rule: "clear text" erases the focused text too
+
+    @smoke
+    Scenario Outline: Clear text is recognized as clear all text
+      Given the command spotting service is running
+      When the user says "<said>" with a pause before and after it
+      Then the "clear all text" command takes effect
+
+      Examples:
+        | said              |
+        | clear text        |
+        | clear text please |
+
   Rule: Commands are carried out in the order spoken
 
     @smoke
@@ -59,6 +96,31 @@ Feature: voice-control
       When the user says "start dictation", a sentence, "stop dictation" and "press enter", each command on its own
       Then the sentence is pasted into the focused app
       And the Return key is pressed after it
+
+  Rule: A whole hands-free session runs as said
+
+    @smoke
+    Scenario: A hands-free session in a synthesized voice
+      Given the command spotting service is running
+      And listening is on for a whole session
+      When a synthesized voice goes through the hands-free session
+      Then the app does everything the session said, in order
+
+    @smoke @voice_samples
+    Scenario: A hands-free session with the user's recorded commands
+      Given the command spotting service is running
+      And the user's own recordings of the commands exist on the machine
+      And listening is on for a whole session
+      When the hands-free session is spoken with the user's recorded commands
+      Then the app does everything the session said, in order
+
+    @smoke @voice_samples
+    Scenario: A hands-free session with long pauses between its steps
+      Given the command spotting service is running
+      And the user's own recordings of the commands exist on the machine
+      And listening is on for a whole session
+      When the hands-free session is spoken with the user's recorded commands and long pauses
+      Then the app does everything the session said, in order
 
   Rule: Voice control needs the command spotting service
 

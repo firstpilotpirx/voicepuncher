@@ -57,7 +57,7 @@ The app checks both services at startup and exits with code 2 if one is not reac
 
 ### Command spotting (voice control)
 
-With [voice control](#voice-control) on, the app also needs the **command spotting service** `voicepuncher-command-spotting`, built from this repository (`command-spotting/`): sherpa-onnx keyword spotting with the English `zipformer-gigaspeech-3.3M` model and a Silero voice activity detector. The app streams the microphone to it over a loopback WebSocket while listening; it reports the spotted phrases and where speech starts and ends. `just models` downloads both models into `~/.voicepuncher/models/` (override with `VOICEPUNCHER_KWS_MODEL_DIR`, `VOICEPUNCHER_KWS_VAD_MODEL`); `just start-model-servers` builds the service and starts it on `127.0.0.1:8082` (`VOICEPUNCHER_KWS_PORT`), log `~/.voicepuncher/logs/voicepuncher-command-spotting-8082.log`. With voice control on, the app checks it at startup and exits with code 2 when it does not answer.
+With [voice control](#voice-control) on, the app also needs the **command spotting service** `voicepuncher-command-spotting`, built from this repository (`command-spotting/`): sherpa-onnx keyword spotting with the English `zipformer-gigaspeech-3.3M` model and a Silero voice activity detector. The app streams the microphone to it over a loopback WebSocket while listening; it reports the spotted phrases and where speech starts and ends. Each short utterance (up to 3 s) is also sent to the speech recognition service, and the service reports a command when the whole utterance is a command phrase — this is what recognizes commands in a non-native accent reliably; the keyword spotter alone missed most of them. `just models` downloads both models into `~/.voicepuncher/models/` (override with `VOICEPUNCHER_KWS_MODEL_DIR`, `VOICEPUNCHER_KWS_VAD_MODEL`); `just start-model-servers` builds the service and starts it on `127.0.0.1:8082` (`VOICEPUNCHER_KWS_PORT`), log `~/.voicepuncher/logs/voicepuncher-command-spotting-8082.log`. With voice control on, the app checks it at startup and exits with code 2 when it does not answer.
 
 ### Text refinement
 
@@ -105,7 +105,9 @@ Listening starts with the app (sound `Tink`); the hotkey no longer records, it t
 | `stop dictation` | dictating | ends it; the text is pasted without the words "stop dictation" |
 | `cancel dictation` | dictating | discards it; nothing is pasted |
 | `press enter` | listening, no dictation | presses Return in the focused app |
-| `clear all text` | listening, no dictation | presses Cmd+A, then Delete, in the focused app |
+| `clear all text` or `clear text` | listening, no dictation | presses Cmd+A, then Delete, in the focused app |
+
+Every command may end with "please" ("press enter please"). A command repeated without a pause ("press enter, press enter") counts once.
 
 A command said in the other state is ignored. `press enter` said right after `stop dictation` waits until the text is pasted. Pressing the hotkey during a dictation pastes it and turns listening off. `press enter` and `clear all text` play the command sound (`Morse`); the sounds are `[sounds]` settings.
 
@@ -202,6 +204,8 @@ Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-qui
 **Models and corpus** are found automatically: the largest `ggml-*.bin` and `*.gguf` in `~/.voicepuncher/` or `~/.voicepuncher/models/`, and the corpus in `e2e-test/corpus/`. Override with `VOICEPUNCHER_WHISPER_MODEL`, `VOICEPUNCHER_LLM_MODEL`, `VOICEPUNCHER_BENCH_CORPUS` (env or `.env`). If they are missing, `check`, `full-check` and the E2E recipes stop with an error instead of skipping. First-time setup: `just models`, `just corpus`.
 
 `full-check` runs `cargo clean`, so `target/release/voicepuncher` is gone until the build finishes.
+
+**Your own voice.** Voice control is tested on recordings of your own commands when they exist in `~/.voicepuncher/voice-samples/` (never committed): `<session>.wav` (16 kHz mono, e.g. `rec -r 16000 -c 1 -b 16 session-1.wav` from Homebrew `sox`) with `<session>/manifest.jsonl`, one line per command said (`file`, `start`, `end`, `said`, `command`, `note`, optional `unclear`). `just e2e-smoke` then checks that every clear recording is recognized as its command, with no extra command, and runs whole hands-free sessions with your recorded commands.
 
 ### Release checklist
 

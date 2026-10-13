@@ -32,7 +32,31 @@ struct Spotted {
 struct ClosedSegment {
     start: Instant,
     end: Instant,
-    spotted_count: usize,
+    /// The command every phrase spotted in the segment named so far.
+    command: Option<VoiceCommand>,
+    /// Phrases of different commands were spotted: the utterance is no command.
+    mixed: bool,
+    /// The segment's command was already recognized.
+    recognized: bool,
+}
+
+impl ClosedSegment {
+    /// Counts one more spotted phrase; the command, the first time a phrase of the
+    /// segment's one command fills the segment.
+    fn take(&mut self, spotted: Spotted) -> Option<SpokenCommand> {
+        match (self.command, spotted.command) {
+            (_, None) => self.mixed = true,
+            (None, Some(command)) if !self.mixed => self.command = Some(command),
+            (Some(known), Some(command)) if known != command => self.mixed = true,
+            _ => {}
+        }
+        if self.mixed || self.recognized {
+            return None;
+        }
+        let spoken = fills(*self, spotted)?;
+        self.recognized = true;
+        Some(spoken)
+    }
 }
 
 /// Turns spotting events into voice commands, keeping only a phrase spoken on its own:
@@ -72,16 +96,22 @@ impl VoiceCommandRecognizer {
     fn close_segment(&mut self, end: Instant) -> Option<SpokenCommand> {
         let start = self.open_segment_start.take()?;
         let spotted = std::mem::take(&mut self.spotted_in_open_segment);
-        let segment = ClosedSegment {
+        let mut segment = ClosedSegment {
             start,
             end,
-            spotted_count: spotted.len(),
+            command: None,
+            mixed: false,
+            recognized: false,
         };
+        let commands: Vec<SpokenCommand> = spotted
+            .into_iter()
+            .filter_map(|s| segment.take(s))
+            .collect();
         self.last_closed = Some(segment);
-        match spotted.as_slice() {
-            [only] => fills(segment, *only),
-            _ => None,
+        if segment.mixed {
+            return None;
         }
+        commands.into_iter().next()
     }
 
     /// A phrase may be reported before or shortly after the end of its segment; one that
@@ -95,11 +125,7 @@ impl VoiceCommandRecognizer {
         if spotted.start > segment.end {
             return None;
         }
-        segment.spotted_count += 1;
-        let segment = *segment;
-        (segment.spotted_count == 1)
-            .then(|| fills(segment, spotted))
-            .flatten()
+        segment.take(spotted)
     }
 }
 
@@ -235,6 +261,73 @@ mod tests {
         let commands = feed_all(events);
         // Then
         assert!(commands.is_empty());
+    }
+
+    #[test]
+    fn should_take_two_spots_of_the_same_command_in_one_segment_once() {
+        // Given the keyword spotter and the transcript both report "press enter"
+        let base = Instant::now();
+        let events = vec![
+            SpottingEvent::SpeechStarted(at(base, 1.0)),
+            phrase(base, "press enter", 1.3, 1.8),
+            phrase(base, "press enter", 1.0, 1.9),
+            SpottingEvent::SpeechEnded(at(base, 1.9)),
+        ];
+        // When
+        let commands = feed_all(events);
+        // Then
+        assert_eq!(commands.len(), 1, "{commands:?}");
+        assert_eq!(commands[0].command, VoiceCommand::PressEnter);
+    }
+
+    #[test]
+    fn should_take_a_late_whole_utterance_spot_after_an_early_one_failed_the_pause_rule() {
+        // Given the keyword spotter placed the phrase badly, the transcript arrives later
+        let base = Instant::now();
+        let events = vec![
+            SpottingEvent::SpeechStarted(at(base, 1.0)),
+            phrase(base, "start dictation", 1.6, 2.0),
+            SpottingEvent::SpeechEnded(at(base, 2.6)),
+            phrase(base, "start dictation", 1.0, 2.6),
+        ];
+        // When
+        let commands = feed_all(events);
+        // Then
+        assert_eq!(commands.len(), 1, "{commands:?}");
+        assert_eq!(commands[0].command, VoiceCommand::StartDictation);
+    }
+
+    #[test]
+    fn should_take_a_command_reported_twice_after_its_segment_once() {
+        // Given
+        let base = Instant::now();
+        let events = vec![
+            SpottingEvent::SpeechStarted(at(base, 1.0)),
+            SpottingEvent::SpeechEnded(at(base, 1.9)),
+            phrase(base, "press enter", 1.1, 1.8),
+            phrase(base, "press enter", 1.0, 1.9),
+        ];
+        // When
+        let commands = feed_all(events);
+        // Then
+        assert_eq!(commands.len(), 1, "{commands:?}");
+    }
+
+    #[test]
+    fn should_carry_out_only_the_first_of_two_different_commands_in_one_segment() {
+        // Given
+        let base = Instant::now();
+        let events = vec![
+            SpottingEvent::SpeechStarted(at(base, 1.0)),
+            SpottingEvent::SpeechEnded(at(base, 1.9)),
+            phrase(base, "press enter", 1.0, 1.9),
+            phrase(base, "clear all text", 1.0, 1.9),
+        ];
+        // When
+        let commands = feed_all(events);
+        // Then the first is carried out as it fills the closed segment; the second is not
+        assert_eq!(commands.len(), 1, "{commands:?}");
+        assert_eq!(commands[0].command, VoiceCommand::PressEnter);
     }
 
     #[test]

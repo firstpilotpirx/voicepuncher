@@ -216,7 +216,7 @@
 
 ### Command spotting service
 - **Type:** Local service (separate process, loopback WebSocket)
-- **Definition:** The `voicepuncher-command-spotting` program in `command-spotting/`: sherpa-onnx keyword spotting plus a voice activity detector. It turns streamed microphone audio into *spotting events*; it opens no microphone itself.
+- **Definition:** The `voicepuncher-command-spotting` program in `command-spotting/`: sherpa-onnx keyword spotting plus a voice activity detector, with each short utterance confirmed by the *speech recognition service* (the whole transcript must be a command phrase). It turns streamed microphone audio into *spotting events*; it opens no microphone itself.
 - **Synonyms to AVOID:** "KWS server", "wake word engine"
 
 ### Key press

@@ -10,15 +10,33 @@ use cucumber::{given, then, when};
 use voicepuncher::core::domain::VoiceCommand;
 use voicepuncher_e2e_test::speech::read_wav;
 use voicepuncher_e2e_test::voice_commands::{
-    recognized_commands, silence, spoken_with_pauses, spotting_events,
+    recognized_commands, silence, spoken_by, spoken_with_pauses, spotting_events,
 };
 
 use crate::steps::file_transcription::{env, sut_bin, STARTUP_FAILURE_EXIT_CODE};
 use crate::E2eWorld;
 
 mod hands_free;
+mod session;
+
+pub use session::HandsFreeSession;
 
 pub use hands_free::HandsFree;
+
+/// The `say` voice for Russian speech.
+const RUSSIAN_VOICE: &str = "Milena";
+
+/// Short Russian phrases whisper, forced to English, could take for a command.
+const SHORT_RUSSIAN_PHRASES: [&str; 8] = [
+    "Да",
+    "Нет",
+    "Стоп",
+    "Спасибо",
+    "Привет",
+    "Отправь",
+    "Очисти",
+    "Окей, понял",
+];
 
 /// Silence around each corpus recording, as between utterances.
 const CORPUS_PAUSE_SECS: f32 = 1.0;
@@ -37,6 +55,17 @@ fn listened_for(command: VoiceCommand) -> &'static [VoiceCommand] {
 
 fn command(phrase: &str) -> Result<VoiceCommand> {
     VoiceCommand::from_phrase(phrase).with_context(|| format!("{phrase:?} is no voice command"))
+}
+
+/// The command a spoken phrase stands for: "… please" is the phrase, "clear text" is
+/// "clear all text".
+fn command_said(said: &str) -> Result<VoiceCommand> {
+    let phrase = said.strip_suffix(" please").unwrap_or(said);
+    command(if phrase == "clear text" {
+        "clear all text"
+    } else {
+        phrase
+    })
 }
 
 fn hear(world: &mut E2eWorld, words: &str, commands: &[VoiceCommand]) -> Result<()> {
@@ -75,7 +104,7 @@ fn service_not_running(world: &mut E2eWorld) -> Result<()> {
 
 #[when(expr = "the user says {string} with a pause before and after it")]
 fn says_alone(world: &mut E2eWorld, phrase: String) -> Result<()> {
-    let commands = listened_for(command(&phrase)?);
+    let commands = listened_for(command_said(&phrase)?);
     hear(world, &phrase, commands)
 }
 
@@ -84,12 +113,31 @@ fn says_in_sentence(world: &mut E2eWorld, sentence: String) -> Result<()> {
     hear(world, &sentence, &VoiceCommand::STANDBY)
 }
 
-#[when("someone speaks every recording of the sample while listening")]
-fn speaks_the_sample(world: &mut E2eWorld) -> Result<()> {
+#[when("someone says short Russian phrases, each on its own with a pause around it")]
+fn says_short_russian(world: &mut E2eWorld) -> Result<()> {
+    let mut audio = Vec::new();
+    for phrase in SHORT_RUSSIAN_PHRASES {
+        audio.extend(spoken_by(RUSSIAN_VOICE, phrase)?);
+    }
+    heard_in_both_states(world, &audio)
+}
+
+/// Every command `audio` gives while listening in standby and while dictating.
+fn heard_in_both_states(world: &mut E2eWorld, audio: &[f32]) -> Result<()> {
     let url = world
         .command_spotting_url
         .clone()
         .context("the command spotting service is not set up")?;
+    let mut recognized = Vec::new();
+    for commands in [&VoiceCommand::STANDBY[..], &VoiceCommand::DICTATING[..]] {
+        recognized.extend(recognized_commands(spotting_events(&url, audio, commands)?));
+    }
+    world.recognized = recognized;
+    Ok(())
+}
+
+#[when("someone speaks every recording of the sample while listening")]
+fn speaks_the_sample(world: &mut E2eWorld) -> Result<()> {
     let mut audio = silence(CORPUS_PAUSE_SECS);
     for sample in &world.corpus {
         let speech = read_wav(&sample.path)?;
@@ -100,14 +148,7 @@ fn speaks_the_sample(world: &mut E2eWorld) -> Result<()> {
         );
         audio.extend(silence(CORPUS_PAUSE_SECS));
     }
-    let mut recognized = Vec::new();
-    for commands in [&VoiceCommand::STANDBY[..], &VoiceCommand::DICTATING[..]] {
-        recognized.extend(recognized_commands(spotting_events(
-            &url, &audio, commands,
-        )?));
-    }
-    world.recognized = recognized;
-    Ok(())
+    heard_in_both_states(world, &audio)
 }
 
 #[when("the app starts")]

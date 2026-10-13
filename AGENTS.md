@@ -2,7 +2,7 @@
 
 ## What this project is
 
-Push-to-talk voice-to-text CLI for macOS Apple Silicon. Single Rust crate at `app/`. Fully offline: a local whisper.cpp `whisper-server` for transcription and a local llama.cpp `llama-server` (Qwen2.5) for text cleanup, both reached over loopback HTTP and running on Metal, plus the command spotting service `voicepuncher-command-spotting` (crate `command-spotting/`, sherpa-onnx keyword spotting) reached over a loopback WebSocket for voice control; `just start-model-servers` starts all three. No internet at runtime; loopback connections only.
+Push-to-talk voice-to-text CLI for macOS Apple Silicon. Single Rust crate at `app/`. Fully offline: a local whisper.cpp `whisper-server` for transcription and a local llama.cpp `llama-server` (Qwen2.5) for text cleanup, both reached over loopback HTTP and running on Metal, plus the command spotting service `voicepuncher-command-spotting` (crate `command-spotting/`, sherpa-onnx keyword spotting confirmed by whisper-server) reached over a loopback WebSocket for voice control; `just start-model-servers` starts all three. No internet at runtime; loopback connections only.
 
 **Product lifecycle stage:** PoC (Proof of Concept). The core workflow is demonstrated but the codebase is not yet hardened for daily use.
 
@@ -100,6 +100,7 @@ Build inputs are `app/`, `command-spotting/`, `e2e-test/`, `Cargo.toml`, `Cargo.
 - **Models and corpus** are auto-discovered by the `justfile` (largest model in `~/.voicepuncher/` or `~/.voicepuncher/models/`; corpus in `e2e-test/corpus/`). The corpus is gitignored, so in a worktree set `VOICEPUNCHER_BENCH_CORPUS` to the main checkout's `e2e-test/corpus`.
 - **Local services:** the E2E recipes start `whisper-server`, `llama-server` and `voicepuncher-command-spotting` (`just start-model-servers`) and stop what they started afterwards; `just test` needs no service. The services are shared across checkouts on ports 8081, 8080 and 8082; every check, test and benchmark recipe waits for the machine-wide test lock (`~/.claude/rules-custom/machine-lock.md`), so runs from parallel checkouts queue instead of colliding. E2E business scenarios synthesize speech with macOS `say`.
 - **`full-check` runs `cargo clean`** and deletes `target/release/voicepuncher`, which the user may be running. In the main checkout, ask first; in a worktree it only cleans that worktree's `target/`.
+- **The user's voice:** recordings of the user's own voice commands live in `~/.voicepuncher/voice-samples/` (never committed; README § Testing); `voice_samples_it` and the `@voice_samples` E2E scenarios run on them when they exist. When voice recognition fails for the user, ask for a new recording session there and add it rather than tuning on synthesized speech alone.
 - **The manual run cannot happen in an agent sandbox**: it lacks macOS TCC permissions (`permission denied for accessibility`). Ask the user to run `cargo run --release -p voicepuncher` (with and without `--no-llm` when refinement changed) and paste the log; `just start-model-servers` must run first. A healthy cycle logs `pipeline recv Pressed` → `chunk 1 | … transcribed` → `pasting…` → `stop→paste: … total=…ms`.
 
 ## Test layout (inside `app/`)

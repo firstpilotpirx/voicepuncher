@@ -126,10 +126,15 @@ impl Pipeline {
         }
         log::info!("voice control: \"{phrase}\"");
         match spoken.command {
+            // The phrase set switches first, so speech right after the command is heard
+            // with the dictation phrases; it switches back when no dictation starts.
             VoiceCommand::StartDictation => {
-                self.start_recording()?;
                 self.voice().spotter.listen_for(&VoiceCommand::DICTATING);
-                Ok(())
+                let started = self.start_recording();
+                if started.is_err() {
+                    self.voice().spotter.listen_for(&VoiceCommand::STANDBY);
+                }
+                started
             }
             VoiceCommand::StopDictation => {
                 self.voice().spotter.listen_for(&VoiceCommand::STANDBY);
@@ -477,10 +482,17 @@ mod tests {
         recorder
             .expect_start()
             .returning(|| Err(anyhow::anyhow!("microphone busy")));
+        let listened = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut spotter = MockCommandSpotter::new();
+        spotter.expect_start_listening().returning(|_| Ok(()));
+        let seen = std::sync::Arc::clone(&listened);
+        spotter
+            .expect_listen_for()
+            .returning(move |commands| seen.lock().unwrap().push(commands.to_vec()));
         let mut pipeline = pipeline(
             recorder,
             MockTextPaster::new(),
-            lenient_spotter(),
+            spotter,
             RecordingMode::Toggle,
         );
         press(&mut pipeline);
@@ -504,5 +516,46 @@ mod tests {
         assert!(results.iter().all(|r| r.is_ok()), "{results:?}");
         assert!(!pipeline.is_recording());
         assert!(pipeline.listening());
+        assert_eq!(
+            *listened.lock().unwrap(),
+            [
+                VoiceCommand::DICTATING.to_vec(),
+                VoiceCommand::STANDBY.to_vec()
+            ]
+        );
+    }
+
+    #[test]
+    fn should_listen_for_the_dictation_phrases_before_the_recording_starts() {
+        // Given
+        let order = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut spotter = MockCommandSpotter::new();
+        spotter.expect_start_listening().returning(|_| Ok(()));
+        let seen = std::sync::Arc::clone(&order);
+        spotter
+            .expect_listen_for()
+            .returning(move |commands| seen.lock().unwrap().push(format!("listen {commands:?}")));
+        let mut recorder = MockAudioRecorder::new();
+        let seen = std::sync::Arc::clone(&order);
+        recorder.expect_start().returning(move || {
+            seen.lock().unwrap().push("record".to_owned());
+            Ok(())
+        });
+        let mut pipeline = pipeline(
+            recorder,
+            MockTextPaster::new(),
+            spotter,
+            RecordingMode::Toggle,
+        );
+        press(&mut pipeline);
+        // When
+        say(&mut pipeline, "start dictation");
+        // Then
+        let order = order.lock().unwrap();
+        assert_eq!(
+            order.first().map(String::as_str),
+            Some(format!("listen {:?}", VoiceCommand::DICTATING).as_str())
+        );
+        assert_eq!(order.get(1).map(String::as_str), Some("record"));
     }
 }

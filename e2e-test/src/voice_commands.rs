@@ -21,9 +21,22 @@ const QUIET_SECS: Duration = Duration::from_secs(2);
 
 /// English `words` spoken by `say`, 16 kHz mono, with a pause of silence before and after.
 pub fn spoken_with_pauses(words: &str) -> Result<Vec<f32>> {
+    spoken(None, words)
+}
+
+/// `words` spoken by the `say` voice `voice` ("Milena" for Russian), with pauses around them.
+pub fn spoken_by(voice: &str, words: &str) -> Result<Vec<f32>> {
+    spoken(Some(voice), words)
+}
+
+fn spoken(voice: Option<&str>, words: &str) -> Result<Vec<f32>> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("words.wav");
-    let status = Command::new("say")
+    let mut say = Command::new("say");
+    if let Some(voice) = voice {
+        say.args(["-v", voice]);
+    }
+    let status = say
         .args(["--file-format=WAVE", "--data-format=LEI16@16000", "-o"])
         .arg(&path)
         .arg(words)

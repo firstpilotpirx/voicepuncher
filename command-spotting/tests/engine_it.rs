@@ -39,6 +39,12 @@ fn engine() -> Option<MutexGuard<'static, Engine>> {
 }
 
 fn load_engine() -> Option<Engine> {
+    engine_cfg(None).map(|cfg| Engine::load(&cfg).expect("models load"))
+}
+
+/// The engine config, confirming utterances with the speech recognition service at
+/// `transcription_url` when given.
+fn engine_cfg(transcription_url: Option<String>) -> Option<EngineCfg> {
     let (Ok(model_dir), Ok(vad_model)) = (
         std::env::var("VOICEPUNCHER_KWS_MODEL_DIR"),
         std::env::var("VOICEPUNCHER_KWS_VAD_MODEL"),
@@ -48,14 +54,16 @@ fn load_engine() -> Option<Engine> {
         );
         return None;
     };
-    let cfg = EngineCfg {
+    Some(EngineCfg {
         model_dir: PathBuf::from(model_dir),
         vad_model: PathBuf::from(vad_model),
         threads: 2,
         min_silence_secs: MIN_SILENCE_SECS,
         save_speech_dir: None,
-    };
-    Some(Engine::load(&cfg).expect("models load"))
+        keywords: None,
+        transcription_url,
+        max_command_secs: 3.0,
+    })
 }
 
 /// `words` spoken by `say`, with a pause of silence before and after.
@@ -120,6 +128,37 @@ fn should_spot_each_phrase_spoken_on_its_own_inside_its_speech_segment() {
             .filter(|e| matches!(e, ServerEvent::SpeechStart { .. }))
             .count();
         assert_eq!(starts, 1, "one speech segment expected: {events:?}");
+    }
+}
+
+#[test]
+fn should_spot_the_polite_and_short_variants_by_keyword_alone() {
+    let Some(engine) = engine() else { return };
+    for (said, phrase) in [
+        ("press enter please", "press enter"),
+        ("stop dictation please", "stop dictation"),
+        ("clear text", "clear all text"),
+        ("clear text please", "clear all text"),
+    ] {
+        let events = events_for(&engine, said);
+        assert_eq!(spotted(&events), [phrase], "{said}: {events:?}");
+    }
+}
+
+#[test]
+fn should_spot_by_keyword_alone_when_the_speech_recognition_service_does_not_answer() {
+    // Holding the shared engine keeps other tests from loading or running models meanwhile.
+    let Some(_shared) = engine() else { return };
+    let closed_port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let cfg = engine_cfg(Some(format!("http://127.0.0.1:{closed_port}/v1"))).unwrap();
+    let engine = Engine::load(&cfg).expect("models load");
+    for phrase in ["press enter", "stop dictation"] {
+        let events = events_for(&engine, phrase);
+        assert_eq!(spotted(&events), [phrase], "{phrase}: {events:?}");
     }
 }
 

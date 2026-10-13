@@ -33,6 +33,7 @@ pub struct E2eWorld {
     pub recognized: Vec<voicepuncher::core::domain::VoiceCommand>,
     pub listened_before_secs: f32,
     pub hands_free: Option<steps::voice_control::HandsFree>,
+    pub session: Option<steps::voice_control::HandsFreeSession>,
 }
 
 impl E2eWorld {
@@ -50,13 +51,23 @@ impl E2eWorld {
 }
 
 fn main() {
+    // The user's recorded commands stay on the machine; scenarios that need them run only
+    // where they exist.
+    let has_voice_samples =
+        std::env::var("VOICEPUNCHER_VOICE_SAMPLES").is_ok_and(|d| !d.is_empty());
+    if !has_voice_samples {
+        eprintln!("GATED: VOICEPUNCHER_VOICE_SAMPLES not set, skipping @voice_samples scenarios");
+    }
     futures::executor::block_on(
         E2eWorld::cucumber()
             .max_concurrent_scenarios(MAX_CONCURRENT_SCENARIOS)
             .fail_on_skipped()
-            .filter_run_and_exit("tests/features", |feature, rule, scenario| {
-                let wip = |tags: &[String]| tags.iter().any(|t| t == "wip");
-                !wip(&feature.tags) && !rule.is_some_and(|r| wip(&r.tags)) && !wip(&scenario.tags)
+            .filter_run_and_exit("tests/features", move |feature, rule, scenario| {
+                let tagged = |tag: &str| {
+                    let has = |tags: &[String]| tags.iter().any(|t| t == tag);
+                    has(&feature.tags) || rule.is_some_and(|r| has(&r.tags)) || has(&scenario.tags)
+                };
+                !tagged("wip") && (has_voice_samples || !tagged("voice_samples"))
             }),
     );
 }

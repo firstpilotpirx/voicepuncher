@@ -34,6 +34,16 @@ struct Args {
     /// Save every speech segment heard as a WAV file in this directory (for tuning).
     #[arg(long)]
     save_speech_dir: Option<PathBuf>,
+    /// Keyword lines to use in place of the built-in keywords.txt (for tuning).
+    #[arg(long)]
+    keywords_file: Option<PathBuf>,
+    /// Speech recognition service that confirms short utterances (OpenAI Audio
+    /// Transcriptions API on this machine); without it only the keywords count.
+    #[arg(long)]
+    transcription_url: Option<String>,
+    /// Longest utterance, in seconds, sent to the speech recognition service.
+    #[arg(long, default_value_t = 3.0)]
+    max_command_secs: f32,
 }
 
 fn main() -> Result<()> {
@@ -51,6 +61,13 @@ fn main() -> Result<()> {
         threads: args.threads,
         min_silence_secs: args.min_silence_secs,
         save_speech_dir: args.save_speech_dir,
+        keywords: args
+            .keywords_file
+            .map(std::fs::read_to_string)
+            .transpose()
+            .context("read --keywords-file")?,
+        transcription_url: args.transcription_url,
+        max_command_secs: args.max_command_secs,
     })?;
     let listener = TcpListener::bind((args.host, args.port))
         .with_context(|| format!("listen on {}:{}", args.host, args.port))?;

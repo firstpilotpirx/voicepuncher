@@ -2,14 +2,24 @@
 # then :boost, #threshold and @phrase, its words joined by _ (sherpa-onnx splits on spaces). Tokens come from the model's bpe.model:
 #   uv run --with sentencepiece python3 -c "import sentencepiece as s; \
 #     print(' '.join(s.SentencePieceProcessor(model_file='bpe.model').encode('PRESS ENTER', out_type=str)))"
-# A phrase may have several lines: "press enter" runs together into "presenter".
+# A phrase may have several lines: "press enter" runs together into "presenter", "start"
+# may sound like "star", any phrase may end with "please", and "clear text" is "clear all text".
 # A lower threshold or a higher boost makes a phrase easier to spot. press enter and clear
 # all text are spotted less reliably than the dictation phrases, so they need the looser
 # values; the app's pause rule (the phrase must be the whole utterance) guards them.
 ▁START ▁DI C T ATION :1.0 #0.25 @start_dictation
+▁ST AR ▁DI C T ATION :1.0 #0.25 @start_dictation
+▁START ▁DI C T ATION ▁P LE AS E :1.0 #0.25 @start_dictation
 ▁ST O P ▁DI C T ATION :1.0 #0.25 @stop_dictation
+▁ST O P ▁DI C T ATION ▁P LE AS E :1.0 #0.25 @stop_dictation
 ▁CAN CE L ▁DI C T ATION :1.0 #0.25 @cancel_dictation
+▁CAN CE L ▁DI C T ATION ▁P LE AS E :1.0 #0.25 @cancel_dictation
 ▁PRE S S ▁EN TER :1.5 #0.20 @press_enter
 ▁PRE S ENT ER :1.5 #0.20 @press_enter
 ▁PRE S S ENT ER :1.5 #0.20 @press_enter
+▁PRE S S ▁EN TER ▁P LE AS E :1.5 #0.20 @press_enter
+▁PRE S ENT ER ▁P LE AS E :1.5 #0.20 @press_enter
 ▁C LE AR ▁ALL ▁T E X T :1.5 #0.20 @clear_all_text
+▁C LE AR ▁ALL ▁T E X T ▁P LE AS E :1.5 #0.20 @clear_all_text
+▁C LE AR ▁T E X T :1.5 #0.20 @clear_all_text
+▁C LE AR ▁T E X T ▁P LE AS E :1.5 #0.20 @clear_all_text

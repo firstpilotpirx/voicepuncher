@@ -9,6 +9,8 @@ export VOICEPUNCHER_VAD_MODEL := env_var_or_default("VOICEPUNCHER_VAD_MODEL", `f
 export VOICEPUNCHER_LLM_MODEL := env_var_or_default("VOICEPUNCHER_LLM_MODEL", `find ~/.voicepuncher -maxdepth 2 -name '*.gguf' -exec ls -S {} + 2>/dev/null | head -1 || true`)
 # Command spotting service (voice control): sherpa-onnx keyword spotting model directory and its Silero VAD
 export VOICEPUNCHER_KWS_MODEL_DIR := env_var_or_default("VOICEPUNCHER_KWS_MODEL_DIR", `find ~/.voicepuncher -maxdepth 2 -type d -name 'sherpa-onnx-kws-*' 2>/dev/null | head -1 || true`)
+# The user's own recorded voice commands (never committed): tests run on them when they exist
+export VOICEPUNCHER_VOICE_SAMPLES := env_var_or_default("VOICEPUNCHER_VOICE_SAMPLES", `test -d ~/.voicepuncher/voice-samples && echo ~/.voicepuncher/voice-samples || true`)
 export VOICEPUNCHER_KWS_VAD_MODEL := env_var_or_default("VOICEPUNCHER_KWS_VAD_MODEL", `find ~/.voicepuncher -maxdepth 2 -name 'silero_vad.onnx' 2>/dev/null | head -1 || true`)
 
 # Corpus directory containing manifest.jsonl — absolute, because cargo runs tests from e2e-test/
@@ -97,7 +99,7 @@ _e2e-smoke: _require-models _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
-    cargo test -p voicepuncher --test transcription_openai_it --test textrefinement_openai_it --test commandspotting_websocket_it --release -- --nocapture
+    cargo test -p voicepuncher --test transcription_openai_it --test textrefinement_openai_it --test commandspotting_websocket_it --test voice_samples_it --release -- --nocapture
     cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags '@smoke and not @wip'
 
 # WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 % (~20 s)
@@ -306,6 +308,7 @@ start-model-servers:
         start_service voicepuncher-command-spotting "{{kws_port}}" "command spotting service" kws_ready \
             "{{kws_binary}}" --port "{{kws_port}}" \
             --model-dir "$VOICEPUNCHER_KWS_MODEL_DIR" --vad-model "$VOICEPUNCHER_KWS_VAD_MODEL" \
+            --transcription-url "{{stt_url}}" \
             ${VOICEPUNCHER_KWS_SAVE_SPEECH_DIR:+--save-speech-dir "$VOICEPUNCHER_KWS_SAVE_SPEECH_DIR"}
     fi
 

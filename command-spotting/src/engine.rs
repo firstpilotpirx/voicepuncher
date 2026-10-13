@@ -8,7 +8,9 @@ use sherpa_onnx::{
     VoiceActivityDetector,
 };
 
+use crate::confirm::{RecentAudio, UtteranceTranscriber};
 use crate::keywords::{self, Keyword, UnknownPhrases};
+use crate::matcher::PhraseMatcher;
 use crate::orderer::{EventOrderer, Segment, Spotted};
 use crate::protocol::ServerEvent;
 
@@ -27,6 +29,12 @@ const FIRST_TOKEN_SECS: f32 = 0.25;
 const DETECTION_LAG_SECS: f32 = 0.25;
 /// Longest gap between two tokens of one spoken phrase.
 const MAX_TOKEN_GAP_SECS: f32 = 0.3;
+/// Audio kept for the speech recognition of an utterance after its segment closed.
+const RECENT_AUDIO_SECS: f32 = 12.0;
+/// Speech before a segment's start that the voice activity detector cut off: it notices
+/// an utterance up to 0.7 s late, most on a soft start like the "st" of "stop".
+const PRE_ROLL_SECS: f32 = 0.8;
+const POST_ROLL_SECS: f32 = 0.2;
 /// 100 ms: the resolution at which a spotted phrase is placed in the stream.
 const DECODE_FRAME_SAMPLES: usize = 1_600;
 
@@ -38,6 +46,12 @@ pub struct EngineCfg {
     pub min_silence_secs: f32,
     /// Where each speech segment is saved as a WAV file, for tuning on real voices.
     pub save_speech_dir: Option<PathBuf>,
+    /// Keyword lines in the format of `keywords.txt`, in place of the built-in ones.
+    pub keywords: Option<String>,
+    /// The speech recognition service that confirms short utterances; none: keywords only.
+    pub transcription_url: Option<String>,
+    /// Longest utterance sent to the speech recognition service, in seconds.
+    pub max_command_secs: f32,
 }
 
 /// Shared by every connection: the loaded keyword spotter and the keyword list.
@@ -46,11 +60,13 @@ pub struct Engine {
     keywords: Vec<Keyword>,
     vad: VadModelConfig,
     save_speech_dir: Option<PathBuf>,
+    transcriber: Option<UtteranceTranscriber>,
+    max_command_samples: usize,
 }
 
 impl Engine {
     pub fn load(cfg: &EngineCfg) -> Result<Self> {
-        let keywords = keywords::parse(keywords::KEYWORDS);
+        let keywords = keywords::parse(cfg.keywords.as_deref().unwrap_or(keywords::KEYWORDS));
         let spotter =
             KeywordSpotter::create(&spotter_config(cfg, &keywords)?).ok_or_else(|| {
                 anyhow!(
@@ -63,6 +79,11 @@ impl Engine {
             keywords,
             vad: vad_config(cfg),
             save_speech_dir: cfg.save_speech_dir.clone(),
+            transcriber: cfg
+                .transcription_url
+                .as_deref()
+                .map(UtteranceTranscriber::new),
+            max_command_samples: samples_in(cfg.max_command_secs),
         })
     }
 
@@ -76,6 +97,11 @@ impl Engine {
             samples_seen: 0,
             vad_pending: Vec::new(),
             orderer: EventOrderer::default(),
+            recent: RecentAudio::new(samples_in(RECENT_AUDIO_SECS)),
+            matcher: PhraseMatcher::new(&[]),
+            vad_fed: 0,
+            vad_offset: 0,
+            last_segment_end: 0,
         })
     }
 }
@@ -88,6 +114,14 @@ pub struct Session<'a> {
     samples_seen: usize,
     vad_pending: Vec<f32>,
     orderer: EventOrderer,
+    recent: RecentAudio,
+    matcher: PhraseMatcher,
+    /// Samples fed to the voice activity detector so far.
+    vad_fed: usize,
+    /// Samples fed before its last reset: its segment positions count from there.
+    vad_offset: usize,
+    /// Where the last utterance ended: the pre-roll of the next never reaches back past it.
+    last_segment_end: usize,
 }
 
 impl Session<'_> {
@@ -95,6 +129,7 @@ impl Session<'_> {
     pub fn listen_for(&mut self, phrases: &[String]) -> Result<(), UnknownPhrases> {
         let selected = keywords::select(&self.engine.keywords, phrases)?;
         self.stream = Some(self.engine.spotter.create_stream_with_keywords(&selected));
+        self.matcher = PhraseMatcher::new(phrases);
         Ok(())
     }
 
@@ -103,6 +138,7 @@ impl Session<'_> {
     pub fn accept(&mut self, samples: &[f32]) -> Vec<ServerEvent> {
         let mut events = Vec::new();
         for frame in samples.chunks(DECODE_FRAME_SAMPLES) {
+            self.recent.push(frame);
             events.extend(self.spot(frame));
             events.extend(self.detect_speech(frame));
             self.samples_seen += frame.len();
@@ -138,11 +174,12 @@ impl Session<'_> {
         for window in self.vad_pending.chunks_exact(SILERO_WINDOW).take(windows) {
             self.vad.accept_waveform(window);
         }
+        self.vad_fed += windows * SILERO_WINDOW;
         self.vad_pending.drain(..windows * SILERO_WINDOW);
         let mut events = Vec::new();
         while let Some(segment) = self.vad.front() {
             self.vad.pop();
-            let start = segment.start().max(0) as usize;
+            let start = self.vad_offset + segment.start().max(0) as usize;
             let bounds = Segment {
                 start: seconds(start),
                 end: seconds(start + segment.n().max(0) as usize),
@@ -152,9 +189,46 @@ impl Session<'_> {
                 save_speech(dir, bounds.start, segment.samples());
             }
             events.extend(self.orderer.segment(bounds));
+            let end = start + segment.n().max(0) as usize;
+            events.extend(self.confirm(start, end, bounds));
+            self.last_segment_end = end;
+            // WHY: after some utterances the detector's state stops it noticing quiet
+            // speech; a reset in the silence that closed the segment loses nothing.
+            self.vad.reset();
+            self.vad_offset = self.vad_fed;
         }
         events
     }
+
+    /// The command phrase the whole utterance from `start` to `end` says, according to the
+    /// speech recognition service; utterances too long for a command are not sent.
+    fn confirm(&self, start: usize, end: usize, bounds: Segment) -> Option<ServerEvent> {
+        let transcriber = self.engine.transcriber.as_ref()?;
+        if end - start > self.engine.max_command_samples {
+            return None;
+        }
+        let pre_roll_start = start
+            .saturating_sub(samples_in(PRE_ROLL_SECS))
+            .max(self.last_segment_end.min(start));
+        let audio = self
+            .recent
+            .between(pre_roll_start, end + samples_in(POST_ROLL_SECS));
+        let text = transcriber
+            .transcribe(&audio, SAMPLE_RATE)
+            .map_err(|e| log::warn!("cannot confirm the utterance: {e:#}"))
+            .ok()?;
+        let phrase = self.matcher.phrase_in(&text);
+        log::info!("heard {text:?} → {phrase:?}");
+        Some(ServerEvent::Phrase {
+            phrase: phrase?,
+            start: bounds.start,
+            end: bounds.end,
+        })
+    }
+}
+
+fn samples_in(secs: f32) -> usize {
+    (secs * SAMPLE_RATE as f32) as usize
 }
 
 /// Writes one speech segment as 16 kHz mono 16-bit WAV; a failure is only logged.
