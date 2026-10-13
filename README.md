@@ -82,9 +82,10 @@ Download to `~/.voicepuncher/models/` (`just models` fetches a small default pai
 
 ```bash
 cp app/config.example.toml ~/.voicepuncher/config.toml
-just start-model-servers
-./target/release/voicepuncher
+just run
 ```
+
+`just run` does everything in one command: downloads missing models, restarts the three local services (the command spotting service is rebuilt from the checkout), builds the app and starts it with voice control; the hotkey records as push-to-talk too. Extra arguments go to the app: `just run --no-llm`. Restarting reloads the models, so it takes a few seconds more than `just start-model-servers` followed by `cargo run --release -p voicepuncher`.
 
 Default hotkey is `RightOption`.
 

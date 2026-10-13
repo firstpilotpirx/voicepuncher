@@ -76,6 +76,12 @@ _test:
     cargo test -p voicepuncher-command-spotting
     cargo test -p voicepuncher-e2e-test --lib
 
+# Run the app for real use with one command: download missing models, restart the three services (the command spotting service is rebuilt), build and start the app with voice control; extra arguments go to the app (`just run --no-llm`)
+run *args: models
+    just stop-model-servers
+    just start-model-servers
+    cargo run --release -p voicepuncher -- --voice-control {{args}}
+
 # Build the release binary
 build:
     @{{locked}} _build
