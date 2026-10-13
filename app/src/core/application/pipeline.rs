@@ -141,8 +141,14 @@ impl Pipeline {
     }
 
     fn start_recording(&mut self) -> anyhow::Result<()> {
+        // With voice control the dictation phrases are listened for before the recording
+        // starts, so a "stop dictation" said right away is heard.
+        self.follow_dictation(true);
         self.sound_player.play_start();
-        self.recorder.start()?;
+        if let Err(e) = self.recorder.start() {
+            self.follow_dictation(false);
+            return Err(e);
+        }
         if self.cfg.chunking.chunk_threshold_secs > 0 {
             if let Some(chunk_rx) = self.recorder.start_live_chunks(self.cfg.chunking)? {
                 let target_chunk_secs =
@@ -169,6 +175,7 @@ impl Pipeline {
 
     fn stop_recording(&mut self) -> anyhow::Result<()> {
         let t_user_stop = std::time::Instant::now();
+        self.follow_dictation(false);
         self.sound_player.play_stop();
         self.visual_indicator.show_processing();
         if let Some(session) = self.live_session.take() {
@@ -226,6 +233,7 @@ impl Pipeline {
     }
 
     fn cancel_recording(&mut self) -> anyhow::Result<()> {
+        self.follow_dictation(false);
         if let Some(session) = self.live_session.take() {
             self.recorder.flush_live_chunks();
             let _ = self.recorder.stop();

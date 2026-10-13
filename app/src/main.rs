@@ -177,7 +177,7 @@ fn main() {
         },
     );
     if let Some(spotter) = spotter {
-        log::info!("voice control on: listening starts now, the hotkey turns it off and on");
+        log::info!("voice control on: listening starts now; the hotkey records as push-to-talk");
         pipeline = pipeline.with_voice_control(Box::new(spotter), Box::new(MacOsKeyPresser));
     }
 

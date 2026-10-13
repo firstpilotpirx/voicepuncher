@@ -13,12 +13,12 @@ use cucumber::{given, then, when};
 
 use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
-use voicepuncher::core::application::{ChunkingCfg, PipelineInput, VisualIndicator};
-use voicepuncher::core::domain::{PttSignal, RecordingMode, SpottingEvent};
+use voicepuncher::core::application::{ChunkingCfg, PipelineInput};
+use voicepuncher::core::domain::{PttSignal, RecordingMode, SpottingEvent, VoiceCommand};
 
 use doubles::{
-    Cut, ErrorLog, Event, Events, NotingRecorder, RecordingKeyPresser, RecordingPaster,
-    RecordingSounds, ScriptedSpotter, Speech, SpeechBeforeCut, TRANSCRIPTION_TIME,
+    Cut, ErrorLog, Event, Events, NotingRecorder, Phrases, RecordingKeyPresser, RecordingOverlay,
+    RecordingPaster, RecordingSounds, ScriptedSpotter, Speech, SpeechBeforeCut, TRANSCRIPTION_TIME,
 };
 
 use crate::IntegrationWorld;
@@ -55,6 +55,7 @@ pub struct VoiceRun {
     events: Events,
     speech: Speech,
     cut: Cut,
+    phrases: Phrases,
     inputs: Option<Sender<PipelineInput>>,
     /// Index in the event log where the scenario's `When` started.
     mark: usize,
@@ -103,6 +104,24 @@ impl VoiceRun {
         self.send(PipelineInput::Hotkey(PttSignal::Pressed))
     }
 
+    /// Starts a dictation with the hotkey and says the sentence into it.
+    fn dictate_with_hotkey(&mut self) -> Result<()> {
+        let started = self.events().len();
+        self.press_hotkey()?;
+        let deadline = Instant::now() + REACTION;
+        while !self.events()[started..].contains(&Event::RecordingStarted) {
+            if Instant::now() >= deadline {
+                bail!(
+                    "the hotkey started no dictation; events: {:?}",
+                    self.events()
+                );
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        self.speak(SENTENCE, Instant::now());
+        Ok(())
+    }
+
     fn start_pipeline(&self) -> Sender<PipelineInput> {
         error_log();
         let (tx, rx) = mpsc::channel();
@@ -119,7 +138,7 @@ impl VoiceRun {
             Box::new(PassthroughTextRefiner),
             Box::new(RecordingPaster(Arc::clone(&self.events))),
             Box::new(RecordingSounds(Arc::clone(&self.events))),
-            Box::new(NoOverlay),
+            Box::new(RecordingOverlay(Arc::clone(&self.events))),
             PipelineConfig {
                 min_press_ms: 0,
                 recording_mode: RecordingMode::Toggle,
@@ -133,7 +152,7 @@ impl VoiceRun {
             pipeline = pipeline.with_voice_control(
                 Box::new(ScriptedSpotter {
                     events: Arc::clone(&self.events),
-                    phrases: Arc::default(),
+                    phrases: Arc::clone(&self.phrases),
                 }),
                 Box::new(RecordingKeyPresser(Arc::clone(&self.events))),
             );
@@ -182,15 +201,25 @@ impl VoiceRun {
         self.send(PipelineInput::Spotting(SpottingEvent::SpeechStarted(
             segment_start,
         )))?;
-        let phrase = phrase.to_owned();
-        self.send(PipelineInput::Spotting(SpottingEvent::PhraseSpotted {
-            phrase,
-            start,
-            end,
-        }))?;
+        if self.listened_for(phrase) {
+            let phrase = phrase.to_owned();
+            self.send(PipelineInput::Spotting(SpottingEvent::PhraseSpotted {
+                phrase,
+                start,
+                end,
+            }))?;
+        }
         self.send(PipelineInput::Spotting(SpottingEvent::SpeechEnded(
             segment_end,
         )))
+    }
+
+    /// Whether the service listens for `phrase` now. The pipeline may still be switching
+    /// the phrase set after an earlier input, so this waits for it to settle first.
+    fn listened_for(&self, phrase: &str) -> bool {
+        std::thread::sleep(Duration::from_millis(20));
+        VoiceCommand::from_phrase(phrase)
+            .is_some_and(|command| self.phrases.lock().unwrap().contains(&command))
     }
 
     fn wait_for(&self, wanted: impl Fn(&Event) -> bool) -> Result<usize> {
@@ -246,15 +275,6 @@ impl VoiceRun {
     }
 }
 
-struct NoOverlay;
-
-impl VisualIndicator for NoOverlay {
-    fn show_recording(&self) {}
-    fn show_processing(&self) {}
-    fn show_waiting_for_focus(&self) {}
-    fn hide(&self) {}
-}
-
 fn run(world: &mut IntegrationWorld) -> &mut VoiceRun {
     world.voice.get_or_insert_with(VoiceRun::default)
 }
@@ -271,16 +291,6 @@ fn voice_control_off(world: &mut IntegrationWorld) {
 #[given("voice control is turned on")]
 fn voice_control_on(world: &mut IntegrationWorld) {
     run(world).voice_control = true;
-}
-
-#[given("listening is off")]
-fn listening_off_given(world: &mut IntegrationWorld) -> Result<()> {
-    let run = run(world);
-    run.ensure_started();
-    run.wait_for(|e| *e == Event::ListeningStarted)?;
-    run.press_hotkey()?;
-    run.wait_for(|e| *e == Event::ListeningStopped)?;
-    Ok(())
 }
 
 #[given("no dictation runs")]
@@ -302,6 +312,12 @@ fn dictation_runs(world: &mut IntegrationWorld) -> Result<()> {
     run.say_alone("start dictation")?;
     run.wait_for(|e| *e == Event::RecordingStarted)?;
     Ok(())
+}
+
+#[given("the user started a dictation with the hotkey and said a sentence")]
+fn hotkey_dictation_runs(world: &mut IntegrationWorld) -> Result<()> {
+    listening_on_given(world)?;
+    run(world).dictate_with_hotkey()
 }
 
 #[given("the user has said a sentence in it")]
@@ -328,6 +344,23 @@ fn press_hotkey_once(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     run.start_when();
     run.press_hotkey()
+}
+
+#[when("the user presses Escape")]
+fn press_escape(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.start_when();
+    run.send(PipelineInput::Hotkey(PttSignal::Cancel))
+}
+
+#[when("the user records a dictation with the hotkey")]
+fn records_with_hotkey(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.start_when();
+    run.dictate_with_hotkey()?;
+    run.press_hotkey()?;
+    run.pasted()?;
+    Ok(())
 }
 
 #[when(expr = "the user says {string}")]
@@ -358,11 +391,6 @@ fn dictation_starts(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("no dictation starts")]
-fn no_dictation_starts(world: &mut IntegrationWorld) -> Result<()> {
-    run(world).never_since_mark(|e| *e == Event::RecordingStarted, "a dictation started")
-}
-
 #[then("listening is on")]
 #[then("listening stays on")]
 fn listening_on(world: &mut IntegrationWorld) -> Result<()> {
@@ -385,22 +413,45 @@ fn listening_off(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("spoken commands have no effect")]
-fn commands_have_no_effect(world: &mut IntegrationWorld) -> Result<()> {
+#[then(expr = "saying {string} presses Return")]
+fn saying_presses_return(world: &mut IntegrationWorld, phrase: String) -> Result<()> {
     let run = run(world);
     run.start_when();
-    run.say_alone("press enter")?;
-    run.say_alone("start dictation")?;
-    let effect = |e: &Event| is_key_press(e) || *e == Event::RecordingStarted;
-    run.never_since_mark(effect, "a spoken command took effect")
+    run.say_alone(&phrase)?;
+    run.wait_since_mark(|e| *e == Event::ReturnPressed)
+}
+
+#[then("the overlay is hidden")]
+fn overlay_hidden(world: &mut IntegrationWorld) -> Result<()> {
+    run(world).wait_since_mark(|e| *e == Event::Overlay("hidden"))
+}
+
+#[then("the overlay shows the recording")]
+fn overlay_recording(world: &mut IntegrationWorld) -> Result<()> {
+    run(world).wait_since_mark(|e| *e == Event::Overlay("recording"))
+}
+
+#[then("the overlay shows processing until the sentence is pasted, then hides")]
+fn overlay_processing_then_hidden(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.wait_since_mark(|e| *e == Event::Overlay("hidden"))?;
+    let since = run.since_mark();
+    let at = |wanted: &Event| since.iter().position(|e| e == wanted);
+    let processing = at(&Event::Overlay("processing"));
+    let pasted = since.iter().position(|e| matches!(e, Event::Pasted(_)));
+    let hidden = at(&Event::Overlay("hidden"));
+    match (processing, pasted, hidden) {
+        (Some(p), Some(t), Some(h)) if p < t && t < h => Ok(()),
+        _ => bail!("expected processing, paste, hidden in order; events: {since:?}"),
+    }
 }
 
 #[then(expr = "the {word} sound plays")]
 fn sound_plays(world: &mut IntegrationWorld, sound: String) -> Result<()> {
     let name = match sound.as_str() {
         "listening-on" => "listening on",
-        "listening-off" => "listening off",
         "start" => "start",
+        "stop" => "stop",
         "cancel" => "cancel",
         "command" => "command",
         other => bail!("unknown sound {other}"),

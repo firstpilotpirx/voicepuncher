@@ -1,7 +1,5 @@
 use crate::core::application::{CommandSpotter, KeyPresser, PipelineInput};
-use crate::core::domain::{
-    PttSignal, SpokenCommand, SpottingEvent, VoiceCommand, VoiceCommandRecognizer,
-};
+use crate::core::domain::{SpokenCommand, SpottingEvent, VoiceCommand, VoiceCommandRecognizer};
 
 use super::Pipeline;
 
@@ -13,8 +11,8 @@ pub(super) struct VoiceControl {
 }
 
 impl Pipeline {
-    /// Turns voice control on: the hotkey controls listening and spoken commands drive
-    /// dictations and key presses.
+    /// Turns voice control on: listening runs alongside push-to-talk, and spoken commands
+    /// drive dictations and key presses as the hotkey does.
     pub fn with_voice_control(
         mut self,
         spotter: Box<dyn CommandSpotter>,
@@ -38,11 +36,7 @@ impl Pipeline {
             ),
         }
         match input {
-            PipelineInput::Hotkey(PttSignal::Pressed) => self.toggle_listening(),
-            PipelineInput::Hotkey(PttSignal::Cancel) if self.is_recording() => {
-                self.cancel_dictation()
-            }
-            PipelineInput::Hotkey(_) => Ok(()),
+            PipelineInput::Hotkey(signal) => self.step(signal),
             PipelineInput::Spotting(event) => {
                 if let Some(spoken) = self.recognize(event) {
                     self.carry_out_or_log(spoken);
@@ -61,16 +55,17 @@ impl Pipeline {
         self.voice.as_ref().is_some_and(|voice| voice.listening)
     }
 
-    fn toggle_listening(&mut self) -> anyhow::Result<()> {
-        if !self.listening() {
-            self.turn_listening_on();
-            return Ok(());
-        }
-        if self.is_recording() {
-            self.stop_recording()?;
-        }
-        self.turn_listening_off();
-        Ok(())
+    /// Points the service at the phrases of a running dictation or of standby, whatever
+    /// started or ended the dictation; nothing without voice control or while not listening.
+    pub(super) fn follow_dictation(&mut self, dictating: bool) {
+        let Some(voice) = self.voice.as_mut().filter(|voice| voice.listening) else {
+            return;
+        };
+        voice.spotter.listen_for(if dictating {
+            &VoiceCommand::DICTATING
+        } else {
+            &VoiceCommand::STANDBY
+        });
     }
 
     pub(super) fn turn_listening_on(&mut self) {
@@ -126,30 +121,15 @@ impl Pipeline {
         }
         log::info!("voice control: \"{phrase}\"");
         match spoken.command {
-            // The phrase set switches first, so speech right after the command is heard
-            // with the dictation phrases; it switches back when no dictation starts.
-            VoiceCommand::StartDictation => {
-                self.voice().spotter.listen_for(&VoiceCommand::DICTATING);
-                let started = self.start_recording();
-                if started.is_err() {
-                    self.voice().spotter.listen_for(&VoiceCommand::STANDBY);
-                }
-                started
-            }
+            VoiceCommand::StartDictation => self.start_recording(),
             VoiceCommand::StopDictation => {
-                self.voice().spotter.listen_for(&VoiceCommand::STANDBY);
                 self.recorder.truncate_at(spoken.started_at);
                 self.stop_recording()
             }
-            VoiceCommand::CancelDictation => self.cancel_dictation(),
+            VoiceCommand::CancelDictation => self.cancel_recording(),
             VoiceCommand::PressEnter => self.press_keys(|keys| keys.press_enter()),
             VoiceCommand::ClearAllText => self.press_keys(|keys| keys.clear_all_text()),
         }
-    }
-
-    fn cancel_dictation(&mut self) -> anyhow::Result<()> {
-        self.voice().spotter.listen_for(&VoiceCommand::STANDBY);
-        self.cancel_recording()
     }
 
     fn press_keys(
@@ -287,6 +267,10 @@ mod tests {
         .with_voice_control(Box::new(spotter), Box::new(MockKeyPresser::new()))
     }
 
+    fn listen(pipeline: &mut Pipeline) {
+        pipeline.turn_listening_on();
+    }
+
     fn press(pipeline: &mut Pipeline) {
         pipeline
             .handle(PipelineInput::Hotkey(PttSignal::Pressed))
@@ -314,48 +298,60 @@ mod tests {
     }
 
     #[test]
-    fn should_toggle_listening_with_the_hotkey_without_recording() {
+    fn should_record_with_the_hotkey_and_keep_listening() {
         // Given
         let mut spotter = MockCommandSpotter::new();
+        let mut order = mockall::Sequence::new();
         spotter
             .expect_start_listening()
             .with(mockall::predicate::eq(VoiceCommand::STANDBY.to_vec()))
             .once()
+            .in_sequence(&mut order)
             .returning(|_| Ok(()));
-        spotter.expect_stop_listening().once().return_const(());
-        let mut pipeline = pipeline(
-            idle_recorder(),
-            MockTextPaster::new(),
-            spotter,
-            RecordingMode::Toggle,
-        );
+        spotter
+            .expect_listen_for()
+            .with(mockall::predicate::eq(VoiceCommand::DICTATING.to_vec()))
+            .once()
+            .in_sequence(&mut order)
+            .return_const(());
+        spotter
+            .expect_listen_for()
+            .with(mockall::predicate::eq(VoiceCommand::STANDBY.to_vec()))
+            .once()
+            .in_sequence(&mut order)
+            .return_const(());
+        spotter.expect_stop_listening().never();
+        let mut paster = MockTextPaster::new();
+        paster.expect_paste().once().returning(|_| Ok(()));
+        let mut pipeline = pipeline(recording_recorder(), paster, spotter, RecordingMode::Toggle);
+        listen(&mut pipeline);
         // When
         press(&mut pipeline);
         press(&mut pipeline);
-        // Then the mock expectations hold
+        // Then
+        assert!(!pipeline.is_recording());
+        assert!(pipeline.listening());
     }
 
     #[test]
-    fn should_keep_listening_on_a_hotkey_release_in_hold_mode() {
+    fn should_end_a_hold_dictation_on_release_and_keep_listening() {
         // Given
         let mut spotter = MockCommandSpotter::new();
-        spotter
-            .expect_start_listening()
-            .once()
-            .returning(|_| Ok(()));
+        spotter.expect_start_listening().returning(|_| Ok(()));
+        spotter.expect_listen_for().return_const(());
         spotter.expect_stop_listening().never();
-        let mut pipeline = pipeline(
-            idle_recorder(),
-            MockTextPaster::new(),
-            spotter,
-            RecordingMode::Hold,
-        );
+        let mut paster = MockTextPaster::new();
+        paster.expect_paste().once().returning(|_| Ok(()));
+        let mut pipeline = pipeline(recording_recorder(), paster, spotter, RecordingMode::Hold);
+        listen(&mut pipeline);
         press(&mut pipeline);
         // When
         pipeline
             .handle(PipelineInput::Hotkey(PttSignal::Released))
             .unwrap();
-        // Then the mock expectations hold
+        // Then
+        assert!(!pipeline.is_recording());
+        assert!(pipeline.listening());
     }
 
     #[test]
@@ -371,7 +367,7 @@ mod tests {
         let mut paster = MockTextPaster::new();
         paster.expect_paste().once().returning(|_| Ok(()));
         let mut pipeline = pipeline(recorder, paster, lenient_spotter(), RecordingMode::Toggle);
-        press(&mut pipeline);
+        listen(&mut pipeline);
         say(&mut pipeline, "start dictation");
         // When
         let phrase_start = say(&mut pipeline, "stop dictation");
@@ -407,7 +403,7 @@ mod tests {
         let mut paster = MockTextPaster::new();
         paster.expect_paste().returning(|_| Ok(()));
         let mut pipeline = pipeline(recorder, paster, spotter, RecordingMode::Toggle);
-        press(&mut pipeline);
+        listen(&mut pipeline);
         // When
         say(&mut pipeline, "start dictation");
         say(&mut pipeline, "stop dictation");
@@ -424,7 +420,7 @@ mod tests {
         let mut paster = MockTextPaster::new();
         paster.expect_paste().once().returning(|_| Ok(()));
         let mut pipeline = pipeline(recording_recorder(), paster, spotter, RecordingMode::Toggle);
-        press(&mut pipeline);
+        listen(&mut pipeline);
         say(&mut pipeline, "start dictation");
         // When
         pipeline.handle(PipelineInput::SpottingLost).unwrap();
@@ -435,13 +431,25 @@ mod tests {
     fn should_cancel_a_dictation_on_escape_and_keep_listening() {
         // Given
         let mut spotter = MockCommandSpotter::new();
+        let mut order = mockall::Sequence::new();
         spotter.expect_start_listening().returning(|_| Ok(()));
-        spotter.expect_listen_for().return_const(());
+        spotter
+            .expect_listen_for()
+            .with(mockall::predicate::eq(VoiceCommand::DICTATING.to_vec()))
+            .once()
+            .in_sequence(&mut order)
+            .return_const(());
+        spotter
+            .expect_listen_for()
+            .with(mockall::predicate::eq(VoiceCommand::STANDBY.to_vec()))
+            .once()
+            .in_sequence(&mut order)
+            .return_const(());
         spotter.expect_stop_listening().never();
         let mut paster = MockTextPaster::new();
         paster.expect_paste().never();
         let mut pipeline = pipeline(recording_recorder(), paster, spotter, RecordingMode::Toggle);
-        press(&mut pipeline);
+        listen(&mut pipeline);
         say(&mut pipeline, "start dictation");
         // When
         pipeline
@@ -495,7 +503,7 @@ mod tests {
             spotter,
             RecordingMode::Toggle,
         );
-        press(&mut pipeline);
+        listen(&mut pipeline);
         // When
         let segment_start = Instant::now();
         let start = segment_start + PHRASE_LEAD;
@@ -547,7 +555,7 @@ mod tests {
             spotter,
             RecordingMode::Toggle,
         );
-        press(&mut pipeline);
+        listen(&mut pipeline);
         // When
         say(&mut pipeline, "start dictation");
         // Then

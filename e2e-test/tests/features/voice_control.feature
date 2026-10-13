@@ -58,6 +58,22 @@ Feature: voice-control
       When someone says short Russian phrases, each on its own with a pause around it
       Then no command takes effect
 
+  Rule: Each command but cancel has a one-word short form
+
+    @smoke
+    Scenario Outline: A short form is recognized as its command
+      Given the command spotting service is running
+      When the user says "<said>" with a pause before and after it
+      Then the "<command>" command takes effect
+
+      Examples:
+        | said         | command         |
+        | enter        | press enter     |
+        | enter please | press enter     |
+        | clear        | clear all text  |
+        | start        | start dictation |
+        | stop         | stop dictation  |
+
   Rule: A command may end with "please"
 
     @smoke

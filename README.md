@@ -97,19 +97,19 @@ Hands-free dictation, off by default. Turn it on with `--voice-control` or in th
 enabled = true
 ```
 
-Listening starts with the app (sound `Tink`); the hotkey no longer records, it turns **listening** off (`Bottle`) and on again. While listening the microphone stays open and five English commands take effect, each said on its own with a pause before and after it — the same words inside a sentence are ignored:
+Push-to-talk keeps working as without voice control: the hotkey starts and stops a dictation, Escape cancels it, the overlay and sounds are the same. **Listening** starts with the app (sound `Tink`) and stays on until the app quits; the microphone stays open and five English commands take effect, each said on its own with a pause before and after it — the same words inside a sentence are ignored:
 
 | Say | While | Effect |
 |---|---|---|
-| `start dictation` | listening, no dictation | starts a dictation (start sound) |
-| `stop dictation` | dictating | ends it; the text is pasted without the words "stop dictation" |
+| `start dictation` or `start` | listening, no dictation | starts a dictation (start sound, overlay) |
+| `stop dictation` or `stop` | dictating | ends it; the text is pasted without the command |
 | `cancel dictation` | dictating | discards it; nothing is pasted |
-| `press enter` | listening, no dictation | presses Return in the focused app |
-| `clear all text` or `clear text` | listening, no dictation | presses Cmd+A, then Delete, in the focused app |
+| `press enter` or `enter` | listening, no dictation | presses Return in the focused app |
+| `clear all text`, `clear text` or `clear` | listening, no dictation | presses Cmd+A, then Delete, in the focused app |
 
 Every command may end with "please" ("press enter please"). A command repeated without a pause ("press enter, press enter") counts once.
 
-A command said in the other state is ignored. `press enter` said right after `stop dictation` waits until the text is pasted. Pressing the hotkey during a dictation pastes it and turns listening off. `press enter` and `clear all text` play the command sound (`Morse`); the sounds are `[sounds]` settings.
+A command said in the other state is ignored. `press enter` said right after `stop dictation` waits until the text is pasted. The hotkey and the voice commands drive the same dictation: "stop dictation" ends one the hotkey started, and the hotkey ends one "start dictation" started. `press enter` and `clear all text` play the command sound (`Morse`); the sounds are `[sounds]` settings.
 
 **Careful with `clear all text`:** it selects everything in the focused app before deleting — meant for a chat input, it erases a whole document in an editor.
 
@@ -128,7 +128,7 @@ Result pasted at cursor: `Hello world, I think the API is fine.`
 --transcription-url <URL> Override [transcription].base_url (speech recognition service, loopback only)
 --refinement-url <URL>    Override [refinement].base_url (text refinement service, loopback only)
 --no-llm                  Skip text refinement; paste the raw transcript without contacting the service
---voice-control           Voice control: the hotkey turns listening on and off, spoken commands drive dictation
+--voice-control           Voice control: spoken commands drive dictation alongside the hotkey
 --debug-save-wav          Save recorded WAV for debugging
 -v                        Verbose logging
 -vv                       Trace logging
@@ -223,7 +223,7 @@ Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-qui
    - [ ] Overlay shows while recording and while processing, also on a second display if present.
    - [ ] A tap shorter than the minimum press time is ignored.
    - [ ] `just test-real-keyboard` passes (hotkey still registered after a paste).
-   - [ ] Voice control (`cargo run --release -p voicepuncher -- --voice-control`): the app plays the listening-on sound at start; in a chat input "start dictation", a sentence, "stop dictation" → the sentence is pasted without the stop phrase; "press enter" → the message is sent; "start dictation", speech, "cancel dictation" → nothing is pasted; type text, "clear all text" → it is erased; "I will press enter later" said without pausing → nothing happens; the hotkey plays the listening-off sound. The log shows each `voice control: "…"` line.
+   - [ ] Voice control (`cargo run --release -p voicepuncher -- --voice-control`): the app plays the listening-on sound at start; in a chat input "start dictation", a sentence, "stop dictation" → the sentence is pasted without the stop phrase; "press enter" → the message is sent; "start dictation", speech, "cancel dictation" → nothing is pasted; type text, "clear all text" → it is erased; "I will press enter later" said without pausing → nothing happens; "start", a sentence, "stop" → the sentence is pasted; the hotkey starts a dictation with the overlay and start sound, and "stop dictation" ends it; "start dictation", then the hotkey → pasted, listening stays on. The log shows each `voice control: "…"` line.
    - [ ] `just stop-model-servers voicepuncher-command-spotting`, then start with `--voice-control` → it exits naming the command spotting service and `just start-model-servers`.
 3. After the merge, on a clean checkout of `origin/main` with a bumped `version` in `app/Cargo.toml`: `just release` — tags `vX.Y.Z` and publishes a GitHub Release with the binary tarball and its SHA-256.
 

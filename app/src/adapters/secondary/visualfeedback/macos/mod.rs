@@ -298,12 +298,14 @@ impl VisualIndicator for MacosVisualIndicator {
         let level_register = Arc::clone(&self.level_register);
 
         *self.state.lock().unwrap() = OverlayState::Recording;
+        log::debug!("overlay: recording requested");
 
         dispatch_to_main(move || {
             if let Some(mtm) = MainThreadMarker::new() {
                 do_rebuild(mtm, &windows, &last_topology);
 
                 let ws_vec = windows.lock().unwrap().clone();
+                log::debug!("overlay: recording shown on {} screen(s)", ws_vec.len());
                 apply_recording_state(ws_vec, generation, pulse_gen, level_register);
             }
         });
@@ -316,12 +318,14 @@ impl VisualIndicator for MacosVisualIndicator {
         let last_topology = Arc::clone(&self.last_topology);
 
         *self.state.lock().unwrap() = OverlayState::Processing;
+        log::debug!("overlay: processing requested");
 
         dispatch_to_main(move || {
             if let Some(mtm) = MainThreadMarker::new() {
                 do_rebuild(mtm, &windows, &last_topology);
 
                 let ws_vec = windows.lock().unwrap().clone();
+                log::debug!("overlay: processing shown on {} screen(s)", ws_vec.len());
                 apply_processing_state(ws_vec, generation, pulse_gen);
             }
         });
@@ -350,8 +354,10 @@ impl VisualIndicator for MacosVisualIndicator {
         let windows = self.windows.lock().unwrap().clone();
 
         *self.state.lock().unwrap() = OverlayState::Hidden;
+        log::debug!("overlay: hide requested");
 
         dispatch_to_main(move || {
+            log::debug!("overlay: hidden");
             apply_hidden_state(windows);
         });
     }

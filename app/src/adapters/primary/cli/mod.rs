@@ -52,7 +52,7 @@ pub struct Cli {
 
     #[arg(
         long,
-        help = "Voice control: listen for spoken commands from the start; the hotkey turns listening off and on"
+        help = "Voice control: listen for spoken commands from the start, alongside the push-to-talk hotkey"
     )]
     pub voice_control: bool,
 }

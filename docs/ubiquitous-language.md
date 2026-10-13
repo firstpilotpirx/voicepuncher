@@ -192,7 +192,7 @@
 
 ### Voice control
 - **Type:** Mode of the app (opt-in, `[voice_control]` config section or `--voice-control`)
-- **Definition:** Hands-free operation: the hotkey turns *listening* on and off instead of recording, and spoken *voice commands* start, stop and cancel a dictation, press Enter and clear the focused text.
+- **Definition:** Hands-free operation alongside push-to-talk: *listening* stays on while the app runs, and spoken *voice commands* start, stop and cancel a dictation, press Enter and clear the focused text; the hotkey still records as push-to-talk.
 - **Code:** `app/src/core/application/pipeline/voice_control.rs` (`VoiceControl`: off or listening)
 - **Synonyms to AVOID:** "voice mode", "hands-free mode", "RecordingMode" (that is Toggle/Hold)
 

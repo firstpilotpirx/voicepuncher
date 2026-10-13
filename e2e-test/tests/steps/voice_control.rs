@@ -30,7 +30,7 @@ const RUSSIAN_VOICE: &str = "Milena";
 const SHORT_RUSSIAN_PHRASES: [&str; 8] = [
     "Да",
     "Нет",
-    "Стоп",
+    "Хорошо",
     "Спасибо",
     "Привет",
     "Отправь",
@@ -57,14 +57,16 @@ fn command(phrase: &str) -> Result<VoiceCommand> {
     VoiceCommand::from_phrase(phrase).with_context(|| format!("{phrase:?} is no voice command"))
 }
 
-/// The command a spoken phrase stands for: "… please" is the phrase, "clear text" is
-/// "clear all text".
+/// The command a spoken phrase stands for: "… please" is the phrase, "clear text" and
+/// "clear" are "clear all text", and each other short form names its phrase.
 fn command_said(said: &str) -> Result<VoiceCommand> {
     let phrase = said.strip_suffix(" please").unwrap_or(said);
-    command(if phrase == "clear text" {
-        "clear all text"
-    } else {
-        phrase
+    command(match phrase {
+        "clear text" | "clear" => "clear all text",
+        "enter" => "press enter",
+        "start" => "start dictation",
+        "stop" => "stop dictation",
+        other => other,
     })
 }
 

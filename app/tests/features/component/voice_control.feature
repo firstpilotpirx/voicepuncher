@@ -7,21 +7,37 @@
 @voice_control @component @serial
 Feature: voice-control
 
-  Rule: Voice control is opt-in
+  Rule: Push-to-talk works with voice control on or off
 
     Scenario: The hotkey records when voice control is off
       Given voice control is not turned on
       When the user presses the hotkey once
       Then a dictation starts
 
-    Scenario: The hotkey does not record when voice control is on
-      Given voice control is turned on
-      And listening is off
+    Scenario: The hotkey records when voice control is on
+      Given listening is on
+      And no dictation runs
       When the user presses the hotkey once
-      Then no dictation starts
-      And listening is on
+      Then a dictation starts
+      And the start sound plays
+      And the overlay shows the recording
 
-  Rule: The hotkey turns listening on and off
+    Scenario: The hotkey ends its dictation when voice control is on
+      Given the user started a dictation with the hotkey and said a sentence
+      When the user presses the hotkey once
+      Then the sentence is pasted into the focused app
+      And listening stays on
+
+    Scenario: Escape cancels a dictation when voice control is on
+      Given a dictation runs
+      And the user has said a sentence in it
+      When the user presses Escape
+      Then no text is pasted
+      And the cancel sound plays
+      And the overlay is hidden
+      And listening stays on
+
+  Rule: Listening stays on while voice control is on
 
     Scenario: Listening is on at start
       Given voice control is turned on
@@ -29,20 +45,11 @@ Feature: voice-control
       Then listening is on
       And the listening-on sound plays
 
-    Scenario: A hotkey press turns listening on
-      Given voice control is turned on
-      And listening is off
-      When the user presses the hotkey once
-      Then listening is on
-      And the listening-on sound plays
-
-    Scenario: A hotkey press turns listening off
+    Scenario: Listening stays on after a hotkey dictation
       Given listening is on
-      And no dictation runs
-      When the user presses the hotkey once
-      Then listening is off
-      And the listening-off sound plays
-      And spoken commands have no effect
+      When the user records a dictation with the hotkey
+      Then listening is on
+      And saying "press enter" presses Return
 
   Rule: "start dictation" starts a dictation
 
@@ -52,6 +59,14 @@ Feature: voice-control
       When the user says "start dictation"
       Then a dictation starts
       And the start sound plays
+      And the overlay shows the recording
+
+    Scenario: Saying stop dictation plays the stop sound and shows processing
+      Given a dictation runs
+      And the user has said a sentence in it
+      When the user says "stop dictation"
+      Then the stop sound plays
+      And the overlay shows processing until the sentence is pasted, then hides
 
   Rule: "stop dictation" ends a dictation and pastes its text
 
@@ -122,14 +137,30 @@ Feature: voice-control
       Then the text is pasted first
       And the Return key is pressed after it
 
-  Rule: The hotkey during a dictation ends it and turns listening off
+  Rule: The hotkey ends a dictation started by voice
 
-    Scenario: A hotkey press during a dictation pastes and stops listening
+    Scenario: A hotkey press ends a voice dictation and keeps listening
       Given a dictation runs
       And the user has said a sentence in it
       When the user presses the hotkey once
+      Then the stop sound plays
+      And the sentence is pasted into the focused app
+      And listening stays on
+
+  Rule: Voice commands end a dictation the hotkey started
+
+    Scenario: Saying stop dictation ends a hotkey dictation
+      Given the user started a dictation with the hotkey and said a sentence
+      When the user says "stop dictation"
       Then the sentence is pasted into the focused app
-      And listening is off
+      And the pasted text does not contain the stop phrase
+
+    Scenario: Saying cancel dictation discards a hotkey dictation
+      Given the user started a dictation with the hotkey and said a sentence
+      When the user says "cancel dictation"
+      Then no text is pasted
+      And the cancel sound plays
+      And listening stays on
 
   Rule: Voice control needs the command spotting service
 

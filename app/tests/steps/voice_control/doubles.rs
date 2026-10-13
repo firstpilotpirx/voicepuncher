@@ -10,6 +10,7 @@ use anyhow::Result;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::{
     AudioRecorder, ChunkingCfg, CommandSpotter, KeyPresser, SoundPlayer, TextPaster, Transcriber,
+    VisualIndicator,
 };
 use voicepuncher::core::domain::{AudioBuffer16k, CleanedText, RawTranscript, VoiceCommand};
 
@@ -26,6 +27,7 @@ pub enum Event {
     Sound(&'static str),
     ListeningStarted,
     ListeningStopped,
+    Overlay(&'static str),
 }
 
 pub type Events = Arc<Mutex<Vec<Event>>>;
@@ -34,6 +36,9 @@ pub type Events = Arc<Mutex<Vec<Event>>>;
 pub type Speech = Arc<Mutex<Vec<(Instant, String)>>>;
 
 pub type Cut = Arc<Mutex<Option<Instant>>>;
+
+/// The phrases the command spotting service listens for right now.
+pub type Phrases = Arc<Mutex<Vec<VoiceCommand>>>;
 
 pub fn record(events: &Events, event: Event) {
     events.lock().unwrap().push(event);
@@ -150,11 +155,32 @@ impl SoundPlayer for RecordingSounds {
     }
 }
 
+pub struct RecordingOverlay(pub Events);
+
+impl VisualIndicator for RecordingOverlay {
+    fn show_recording(&self) {
+        record(&self.0, Event::Overlay("recording"));
+    }
+
+    fn show_processing(&self) {
+        record(&self.0, Event::Overlay("processing"));
+    }
+
+    fn show_waiting_for_focus(&self) {
+        record(&self.0, Event::Overlay("waiting for focus"));
+    }
+
+    fn hide(&self) {
+        record(&self.0, Event::Overlay("hidden"));
+    }
+}
+
 /// The command spotting service as the pipeline sees it; the scenario feeds its events
-/// straight into the pipeline's input channel.
+/// straight into the pipeline's input channel, and reports a phrase only while the
+/// service listens for it, as the real service does.
 pub struct ScriptedSpotter {
     pub events: Events,
-    pub phrases: Arc<Mutex<Vec<VoiceCommand>>>,
+    pub phrases: Phrases,
 }
 
 impl CommandSpotter for ScriptedSpotter {

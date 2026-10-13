@@ -11,6 +11,11 @@ const ALIASES: &[(&str, &str)] = &[
     ("clear text", "clear all text"),
     ("presenter", "press enter"),
     ("star dictation", "start dictation"),
+    // The short forms: one word for each command but cancel.
+    ("enter", "press enter"),
+    ("clear", "clear all text"),
+    ("start", "start dictation"),
+    ("stop", "stop dictation"),
 ];
 /// Largest share of characters that may differ between a transcript and a phrase.
 const MAX_DIFFERENCE: f32 = 0.25;
@@ -241,9 +246,38 @@ mod tests {
     }
 
     #[test]
-    fn should_not_take_part_of_a_phrase_or_other_words() {
-        for transcript in ["Start.", "Enter.", "Clear.", "Hello.", "Thank you.", ""] {
+    fn should_take_the_short_forms() {
+        for (transcript, phrase) in [
+            ("Enter.", "press enter"),
+            ("Enter, please.", "press enter"),
+            ("Clear.", "clear all text"),
+            ("Clear please.", "clear all text"),
+            ("Start.", "start dictation"),
+            ("Start please.", "start dictation"),
+        ] {
+            assert_eq!(
+                standby().phrase_in(transcript),
+                Some(phrase.into()),
+                "{transcript}"
+            );
+        }
+        assert_eq!(
+            dictating().phrase_in("Stop."),
+            Some("stop dictation".into())
+        );
+        assert_eq!(
+            dictating().phrase_in("Stop, please."),
+            Some("stop dictation".into())
+        );
+    }
+
+    #[test]
+    fn should_not_take_other_short_words() {
+        for transcript in ["Hello.", "Thank you.", "Okay.", "Yes.", "Restart.", ""] {
             assert_eq!(standby().phrase_in(transcript), None, "{transcript}");
+        }
+        for transcript in ["Start.", "Cancel.", "Stopped.", "Okay."] {
+            assert_eq!(dictating().phrase_in(transcript), None, "{transcript}");
         }
     }
 

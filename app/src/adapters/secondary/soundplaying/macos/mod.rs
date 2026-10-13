@@ -63,7 +63,10 @@ impl MacosSoundPlayer {
     }
 
     fn play_async(path: &std::path::Path) {
-        let _ = std::process::Command::new("afplay").arg(path).spawn();
+        match std::process::Command::new("afplay").arg(path).spawn() {
+            Ok(_) => log::debug!("sound: playing {}", path.display()),
+            Err(e) => log::warn!("sound: cannot play {}: {e}", path.display()),
+        }
     }
 
     fn play_if_set(path: &Option<PathBuf>) {
