@@ -212,3 +212,11 @@ The system SHALL send a recording to the speech recognition service on a connect
 - **AND** the speech recognition service has since reset the connection that recording used
 - **WHEN** the user finishes the next recording
 - **THEN** its transcript is passed on for refinement and pasting, and no dropped attempt is logged
+
+### Requirement: Audio without speech never stops the speech recognition service
+The speech recognition service SHALL answer a request whose audio holds no speech with an empty transcript and SHALL keep answering later requests, in every answer format the system asks for, including the detailed format the command spotting service uses to confirm commands.
+
+#### Scenario: Command confirmation of an utterance without speech
+- **GIVEN** the service scripts started the speech recognition service
+- **WHEN** the command spotting service asks it to confirm an utterance that holds no speech
+- **THEN** no words are heard and the service answers the next request

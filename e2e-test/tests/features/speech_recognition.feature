@@ -116,3 +116,11 @@ Feature: speech-recognition
         | Russian  | with pauses between sentences |
         | English  | with pauses between words     |
         | English  | with pauses between sentences |
+
+  Rule: Audio without speech never stops the speech recognition service
+
+    @smoke
+    Scenario: Command confirmation of an utterance without speech
+      Given the service scripts started the speech recognition service
+      When the command spotting service asks it to confirm an utterance that holds no speech
+      Then no words are heard and the service answers the next request

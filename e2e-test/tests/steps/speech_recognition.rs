@@ -285,3 +285,52 @@ fn record_speech(world: &mut E2eWorld, lang: Lang, condition: Condition) -> Resu
     world.spoken = Some(lang);
     Ok(())
 }
+
+/// 2.3 s at 16 kHz: a command-length utterance, and the length that crashed whisper-server
+/// 1.9.5 when it computed language probabilities for audio without speech.
+const SILENT_UTTERANCE_SAMPLES: usize = 36_800;
+const UTTERANCE_SAMPLE_RATE: u32 = 16_000;
+
+fn confirm_silence(url: &str) -> std::result::Result<usize, String> {
+    voicepuncher_command_spotting::confirm::UtteranceTranscriber::new(url)
+        .transcribe(&[0.0; SILENT_UTTERANCE_SAMPLES], UTTERANCE_SAMPLE_RATE)
+        .map(|heard| heard.words.len())
+        .map_err(|e| format!("{e:#}"))
+}
+
+#[when("the command spotting service asks it to confirm an utterance that holds no speech")]
+async fn confirm_utterance_without_speech(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, |world| {
+        let services = world
+            .local_services
+            .as_mut()
+            .context("the speech recognition service was not started by a Given step")?;
+        services.heard_words = Some(confirm_silence(&services.transcription_url()));
+        Ok(())
+    })
+    .await
+}
+
+#[then("no words are heard and the service answers the next request")]
+async fn no_words_and_service_answers(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, |world| {
+        let services = world
+            .local_services
+            .as_ref()
+            .context("the speech recognition service was not started by a Given step")?;
+        match services
+            .heard_words
+            .as_ref()
+            .context("nothing was confirmed")?
+        {
+            Ok(0) => {}
+            Ok(words) => bail!("{words} words were heard in an utterance without speech"),
+            Err(e) => bail!("the confirmation of an utterance without speech failed: {e}"),
+        }
+        if let Err(e) = confirm_silence(&services.transcription_url()) {
+            bail!("the service does not answer the next request: {e}");
+        }
+        Ok(())
+    })
+    .await
+}

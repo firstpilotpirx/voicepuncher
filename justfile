@@ -307,8 +307,8 @@ _stop-model-servers-for-e2e:
         fi
     done
 
-# Start the speech recognition (whisper-server), text refinement (llama-server) and command spotting (voicepuncher-command-spotting) services; one that already answers on its port is skipped
-start-model-servers:
+# Start the speech recognition (whisper-server), text refinement (llama-server) and command spotting (voicepuncher-command-spotting) services, or only the named ones; one that already answers on its port is skipped
+start-model-servers *services:
     #!/usr/bin/env bash
     set -euo pipefail
     run_dir="{{services_run_dir}}"
@@ -344,12 +344,35 @@ start-model-servers:
             exit 1
         fi
     }
-    # start_service <binary> <port> <label> <readiness check> <command…>
+    # supervise <log file> <command…>: runs the service and starts it again whenever it exits,
+    # after 1 s, doubling up to 30 s while it keeps exiting within 30 s of its start.
+    # TERM or INT stops the service and the supervisor, without a restart
+    supervise() {
+        local log_file=$1 delay=1 started code
+        shift
+        child=""
+        trap '[[ -z "$child" ]] || kill "$child" 2>/dev/null; wait "$child" 2>/dev/null; exit 0' TERM INT
+        while true; do
+            started=$SECONDS
+            "$@" >>"$log_file" 2>&1 &
+            child=$!
+            wait "$child" && code=0 || code=$?
+            (( SECONDS - started < 30 )) || delay=1
+            echo "… $1 exited with code $code — restarting in $delay s" >>"$log_file"
+            sleep "$delay" &
+            child=$!
+            wait "$child"
+            delay=$(( delay * 2 > 30 ? 30 : delay * 2 ))
+        done
+    }
+    # start_service <binary> <port> <label> <readiness check> <command…>: starts the service
+    # under its supervisor; the PID file holds the supervisor's PID
     start_service() {
         local binary=$1 port=$2 label=$3 ready=$4
         shift 4
         local pid_file="$run_dir/$binary-$port.pid" log_file="$log_dir/$binary-$port.log"
-        nohup "$@" >"$log_file" 2>&1 &
+        : >"$log_file"
+        nohup bash -c "$(declare -f supervise); supervise \"\$@\"" "supervise-$binary" "$log_file" "$@" >/dev/null 2>&1 &
         local pid=$!
         echo "$pid" >"$pid_file"
         echo "… starting $binary (pid $pid), log: $log_file"
@@ -358,8 +381,11 @@ start-model-servers:
                 echo "✓ $label ready on port $port"
                 return 0
             fi
-            if ! kill -0 "$pid" 2>/dev/null; then
-                echo "✗ $binary exited during startup — last log lines:" >&2
+            # A service that exits before it was ever ready cannot start: stop its supervisor
+            # instead of letting it retry
+            if ! kill -0 "$pid" 2>/dev/null || grep -q " exited with code " "$log_file"; then
+                kill "$pid" 2>/dev/null || true
+                echo "✗ $binary exited during startup (log: $log_file) — last log lines:" >&2
                 tail -n 20 "$log_file" >&2
                 rm -f "$pid_file"
                 exit 1
@@ -371,35 +397,43 @@ start-model-servers:
         rm -f "$pid_file"
         exit 1
     }
-    require_binary whisper-server whisper-cpp
-    require_binary llama-server llama.cpp
-    if port_open "{{stt_port}}"; then
-        echo "✓ speech recognition service already running at {{stt_url}}"
-    else
+    start_whisper() {
+        require_binary whisper-server whisper-cpp
+        if port_open "{{stt_port}}"; then
+            echo "✓ speech recognition service already running at {{stt_url}}"
+            return 0
+        fi
         require_model VOICEPUNCHER_WHISPER_MODEL
         require_model VOICEPUNCHER_VAD_MODEL
         # Greedy, no temperature fallback, no cross-request text context, non-speech tokens
         # suppressed; timestamps stay on, so whisper resumes after the last decoded segment
         # instead of skipping the rest of a 30 s window when the text ends early at a pause.
         # VAD removes only silences longer than 2 s, so silence yields no text ("Thank you.")
-        # while the short pauses between words stay
+        # while the short pauses between words stay. No language probabilities (-nlp): with them,
+        # whisper-server 1.9.5 crashes on a verbose_json request whose audio VAD leaves empty,
+        # as the command spotting service's confirmation of an utterance without speech
         start_service whisper-server "{{stt_port}}" "speech recognition service" whisper_ready \
             whisper-server -m "$VOICEPUNCHER_WHISPER_MODEL" --host 127.0.0.1 --port "{{stt_port}}" \
             --inference-path /v1/audio/transcriptions -l auto -t "$(sysctl -n hw.ncpu)" \
-            -bo 1 -nf -sns -mc 0 --vad -vm "$VOICEPUNCHER_VAD_MODEL" -vsd 2000 -vp 500
-    fi
-    if port_open "{{llm_port}}"; then
-        echo "✓ text refinement service already running at {{llm_url}}"
-    else
+            -bo 1 -nf -sns -mc 0 --vad -vm "$VOICEPUNCHER_VAD_MODEL" -vsd 2000 -vp 500 -nlp
+    }
+    start_llama() {
+        require_binary llama-server llama.cpp
+        if port_open "{{llm_port}}"; then
+            echo "✓ text refinement service already running at {{llm_url}}"
+            return 0
+        fi
         require_model VOICEPUNCHER_LLM_MODEL
         # One slot, so a request gets the whole context, as the former in-process engine did
         start_service llama-server "{{llm_port}}" "text refinement service" llama_ready \
             llama-server -m "$VOICEPUNCHER_LLM_MODEL" --host 127.0.0.1 --port "{{llm_port}}" -c 4096 -np 1
-    fi
+    }
     kws_ready() { port_open "{{kws_port}}"; }
-    if port_open "{{kws_port}}"; then
-        echo "✓ command spotting service already running at {{kws_url}}"
-    else
+    start_command_spotting() {
+        if port_open "{{kws_port}}"; then
+            echo "✓ command spotting service already running at {{kws_url}}"
+            return 0
+        fi
         require_model_dir VOICEPUNCHER_KWS_MODEL_DIR
         require_model VOICEPUNCHER_KWS_VAD_MODEL
         cargo build --release -p voicepuncher-command-spotting
@@ -408,7 +442,16 @@ start-model-servers:
             --model-dir "$VOICEPUNCHER_KWS_MODEL_DIR" --vad-model "$VOICEPUNCHER_KWS_VAD_MODEL" \
             --transcription-url "{{stt_url}}" \
             ${VOICEPUNCHER_KWS_SAVE_SPEECH_DIR:+--save-speech-dir "$VOICEPUNCHER_KWS_SAVE_SPEECH_DIR"}
-    fi
+    }
+    selected="{{services}}"
+    for service in ${selected:-whisper-server llama-server voicepuncher-command-spotting}; do
+        case "$service" in
+            whisper-server) start_whisper ;;
+            llama-server) start_llama ;;
+            voicepuncher-command-spotting) start_command_spotting ;;
+            *) echo "✗ unknown service '$service' — use whisper-server, llama-server or voicepuncher-command-spotting" >&2; exit 1 ;;
+        esac
+    done
 
 # Stop the services that start-model-servers launched (all, or the named ones: whisper-server, llama-server, voicepuncher-command-spotting); services started by hand keep running
 stop-model-servers *services:
@@ -423,13 +466,18 @@ stop-model-servers *services:
         fi
         local pid
         pid="$(cat "$pid_file")"
-        if ps -p "$pid" -o comm= 2>/dev/null | grep -q "$binary"; then
+        # The PID is the service's supervisor, or the service itself when an older justfile
+        # started it; either has the binary in its command line
+        if ps -p "$pid" -o command= 2>/dev/null | grep -q -- "$binary"; then
             kill "$pid"
             for _ in $(seq 1 40); do
                 kill -0 "$pid" 2>/dev/null || break
                 sleep 0.25
             done
-            kill -0 "$pid" 2>/dev/null && kill -9 "$pid"
+            if kill -0 "$pid" 2>/dev/null; then
+                pkill -9 -P "$pid" || true
+                kill -9 "$pid"
+            fi
             echo "✓ stopped $binary (pid $pid)"
         else
             echo "· $binary (pid $pid) is no longer running"
