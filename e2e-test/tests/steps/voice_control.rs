@@ -10,7 +10,8 @@ use cucumber::{given, then, when};
 use voicepuncher::core::domain::VoiceCommand;
 use voicepuncher_e2e_test::speech::read_wav;
 use voicepuncher_e2e_test::voice_commands::{
-    recognized_commands, silence, spoken_by, spoken_with_pauses, spotting_events,
+    carried_out_by_app, recognized_commands, silence, spoken_by, spoken_with_pauses,
+    spotting_events,
 };
 
 use crate::steps::file_transcription::{env, sut_bin, STARTUP_FAILURE_EXIT_CODE};
@@ -37,6 +38,11 @@ const SHORT_RUSSIAN_PHRASES: [&str; 8] = [
     "Очисти",
     "Окей, понял",
 ];
+
+/// A short breath between a sentence and a command: longer than the 0.3 s that ends an
+/// utterance, shorter than a deliberate pause.
+const BREATH_SECS: f32 = 0.35;
+const ENGLISH_VOICE: &str = "Eddy";
 
 /// Silence around each corpus recording, as between utterances.
 const CORPUS_PAUSE_SECS: f32 = 1.0;
@@ -66,6 +72,8 @@ fn command_said(said: &str) -> Result<VoiceCommand> {
         "enter" => "press enter",
         "start" => "start dictation",
         "stop" => "stop dictation",
+        "restart" => "restart dictation",
+        "cancel" => "cancel dictation",
         other => other,
     })
 }
@@ -138,6 +146,46 @@ fn heard_in_both_states(world: &mut E2eWorld, audio: &[f32]) -> Result<()> {
     Ok(())
 }
 
+/// The phrases the app listens for in the state a step names.
+fn phrases_while(state: &str) -> Result<&'static [VoiceCommand]> {
+    match state {
+        "dictating" => Ok(&VoiceCommand::DICTATING),
+        "no dictation runs" => Ok(&VoiceCommand::STANDBY),
+        other => bail!("unknown state {other:?}"),
+    }
+}
+
+/// Every command the app carries out for `audio`, switching the phrase set after each
+/// as the app does: the commands of a chain each move it to its next state.
+fn carried_out(world: &mut E2eWorld, audio: &[f32], state: &str) -> Result<()> {
+    let url = world
+        .command_spotting_url
+        .clone()
+        .context("the command spotting service is not set up")?;
+    world.recognized = carried_out_by_app(&url, audio, phrases_while(state)?)?;
+    Ok(())
+}
+
+#[when(expr = "someone says {string} in one breath while {}")]
+fn says_in_one_breath(world: &mut E2eWorld, words: String, state: String) -> Result<()> {
+    carried_out(world, &spoken_by(ENGLISH_VOICE, &words)?, &state)
+}
+
+#[when(expr = "someone says {string}, takes a short breath and says {string} while {}")]
+fn says_after_a_breath(
+    world: &mut E2eWorld,
+    words: String,
+    command: String,
+    state: String,
+) -> Result<()> {
+    let mut audio = spoken_by(ENGLISH_VOICE, &words)?;
+    let first_pause = silence(1.0).len();
+    audio.truncate(audio.len() - first_pause);
+    audio.extend(silence(BREATH_SECS));
+    audio.extend(spoken_by(ENGLISH_VOICE, &command)?.split_off(first_pause));
+    carried_out(world, &audio, &state)
+}
+
 #[when("someone speaks every recording of the sample while listening")]
 fn speaks_the_sample(world: &mut E2eWorld) -> Result<()> {
     let mut audio = silence(CORPUS_PAUSE_SECS);
@@ -185,6 +233,18 @@ fn command_takes_effect(world: &mut E2eWorld, phrase: String) -> Result<()> {
             "recognized {:?}, expected only {expected:?}",
             world.recognized
         );
+    }
+    Ok(())
+}
+
+#[then(expr = "the commands {string} take effect in order")]
+fn commands_in_order(world: &mut E2eWorld, commands: String) -> Result<()> {
+    let expected = commands
+        .split(", ")
+        .map(command)
+        .collect::<Result<Vec<_>>>()?;
+    if world.recognized != expected {
+        bail!("recognized {:?}, expected {expected:?}", world.recognized);
     }
     Ok(())
 }

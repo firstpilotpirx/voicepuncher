@@ -6,15 +6,31 @@ pub enum VoiceCommand {
     StartDictation,
     StopDictation,
     CancelDictation,
+    RestartDictation,
     PressEnter,
     ClearAllText,
 }
 
-/// A voice command together with the moment its phrase started.
+/// Where a command sat in its utterance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandPlacement {
+    /// The whole utterance, with a pause before and after it.
+    Alone,
+    /// The utterance ended with it.
+    Tail,
+    /// "start" opened the utterance and speech followed.
+    Head,
+    /// A doubled short form or a chain of commands, wherever it sat.
+    Anywhere,
+}
+
+/// A voice command together with when its words were said and where they sat.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SpokenCommand {
     pub command: VoiceCommand,
     pub started_at: Instant,
+    pub ends_at: Instant,
+    pub placement: CommandPlacement,
 }
 
 impl VoiceCommand {
@@ -25,15 +41,20 @@ impl VoiceCommand {
         VoiceCommand::ClearAllText,
     ];
 
-    /// Commands accepted during a dictation.
-    pub const DICTATING: [VoiceCommand; 2] =
-        [VoiceCommand::StopDictation, VoiceCommand::CancelDictation];
+    /// Commands accepted during a dictation; "press enter" there also ends it.
+    pub const DICTATING: [VoiceCommand; 4] = [
+        VoiceCommand::StopDictation,
+        VoiceCommand::CancelDictation,
+        VoiceCommand::RestartDictation,
+        VoiceCommand::PressEnter,
+    ];
 
     /// Every command, in the order of the spec.
-    pub const ALL: [VoiceCommand; 5] = [
+    pub const ALL: [VoiceCommand; 6] = [
         VoiceCommand::StartDictation,
         VoiceCommand::StopDictation,
         VoiceCommand::CancelDictation,
+        VoiceCommand::RestartDictation,
         VoiceCommand::PressEnter,
         VoiceCommand::ClearAllText,
     ];
@@ -43,6 +64,7 @@ impl VoiceCommand {
             VoiceCommand::StartDictation => "start dictation",
             VoiceCommand::StopDictation => "stop dictation",
             VoiceCommand::CancelDictation => "cancel dictation",
+            VoiceCommand::RestartDictation => "restart dictation",
             VoiceCommand::PressEnter => "press enter",
             VoiceCommand::ClearAllText => "clear all text",
         }
@@ -64,6 +86,7 @@ mod tests {
             "start dictation",
             "stop dictation",
             "cancel dictation",
+            "restart dictation",
             "press enter",
             "clear all text",
         ];
@@ -94,10 +117,15 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_stop_and_cancel_during_a_dictation() {
+    fn should_accept_stop_cancel_restart_and_enter_during_a_dictation() {
         assert_eq!(
             VoiceCommand::DICTATING.map(VoiceCommand::phrase),
-            ["stop dictation", "cancel dictation"]
+            [
+                "stop dictation",
+                "cancel dictation",
+                "restart dictation",
+                "press enter"
+            ]
         );
     }
 }

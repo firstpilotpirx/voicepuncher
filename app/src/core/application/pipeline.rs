@@ -10,7 +10,10 @@ use crate::core::application::{
     hotkey_pressed_during_wait, insert_text, AudioRecorder, FocusProbe, FocusWaitCfg, Insertion,
     PipelineInput, SoundPlayer, TextPaster, TextRefiner, Transcriber, VisualIndicator,
 };
-use crate::core::domain::{AudioBuffer16k, CleanedText, PttSignal, RawTranscript, RecordingMode};
+use crate::core::domain::{
+    without_leading_start, without_trailing_command, AudioBuffer16k, CleanedText, PttSignal,
+    RawTranscript, RecordingMode,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct PipelineConfig {
@@ -53,6 +56,17 @@ pub struct Pipeline {
     /// Inputs read during a focus wait, handled before the channel is read again.
     pending: VecDeque<PipelineInput>,
     voice: Option<voice_control::VoiceControl>,
+    /// Command words the running dictation may hold in its text.
+    command_words: CommandWords,
+}
+
+/// Command words said in one breath with a dictation, so they may reach its transcript.
+#[derive(Debug, Default, Clone, Copy)]
+struct CommandWords {
+    /// A "start" opened the utterance the dictation began in.
+    opening: bool,
+    /// A command said without a pause ended the dictation.
+    closing: bool,
 }
 
 impl Pipeline {
@@ -80,6 +94,7 @@ impl Pipeline {
             inputs: None,
             pending: VecDeque::new(),
             voice: None,
+            command_words: CommandWords::default(),
         }
     }
 
@@ -141,11 +156,21 @@ impl Pipeline {
     }
 
     fn start_recording(&mut self) -> anyhow::Result<()> {
+        self.start_recording_with(None)
+    }
+
+    /// Starts a dictation; `lead_in` is audio heard before it that begins its recording.
+    fn start_recording_with(&mut self, lead_in: Option<AudioBuffer16k>) -> anyhow::Result<()> {
         // With voice control the dictation phrases are listened for before the recording
         // starts, so a "stop dictation" said right away is heard.
         self.follow_dictation(true);
+        self.command_words = CommandWords::default();
         self.sound_player.play_start();
-        if let Err(e) = self.recorder.start() {
+        let started = match lead_in {
+            Some(lead_in) => self.recorder.start_with_lead_in(lead_in),
+            None => self.recorder.start(),
+        };
+        if let Err(e) = started {
             self.follow_dictation(false);
             return Err(e);
         }
@@ -200,7 +225,7 @@ impl Pipeline {
                             "live session: {} chars merged (drain {drain_ms}ms stop {stop_ms}ms merge {merge_ms}ms)",
                             merged.len()
                         );
-                        match RawTranscript::new(merged) {
+                        match RawTranscript::new(self.without_command_words(&merged)) {
                             Ok(raw) => {
                                 self.run_refine_paste(raw, t_user_stop, drain_ms, stop_ms, merge_ms)
                             }
@@ -234,6 +259,7 @@ impl Pipeline {
 
     fn cancel_recording(&mut self) -> anyhow::Result<()> {
         self.follow_dictation(false);
+        self.command_words = CommandWords::default();
         if let Some(session) = self.live_session.take() {
             self.recorder.flush_live_chunks();
             let _ = self.recorder.stop();
@@ -333,6 +359,12 @@ impl Pipeline {
             }
             Ok(Some(r)) => r,
         };
+        let Ok(raw) = RawTranscript::new(self.without_command_words(raw.as_str())) else {
+            log::info!("dropped: only command words were transcribed");
+            self.state = PipelineState::Idle;
+            self.visual_indicator.hide();
+            return;
+        };
         let transcribe_ms = t_transcribe.elapsed().as_millis() as u64;
 
         self.state = PipelineState::Refining;
@@ -356,6 +388,21 @@ impl Pipeline {
         log::info!(
             "stop→paste: stop={stop_ms}ms transcribe={transcribe_ms}ms refine={refine_ms}ms paste={paste_ms}ms total={total_ms}ms"
         );
+    }
+
+    /// `text` without the command words said in one breath with the dictation.
+    fn without_command_words(&mut self, text: &str) -> String {
+        let words = std::mem::take(&mut self.command_words);
+        let text = if words.opening {
+            without_leading_start(text)
+        } else {
+            text.to_owned()
+        };
+        if words.closing {
+            without_trailing_command(&text)
+        } else {
+            text
+        }
     }
 
     fn run_refine_paste(

@@ -89,6 +89,35 @@ just run
 
 Default hotkey is `RightOption`.
 
+## How to use
+
+**Hotkey** (`[hotkey] key`, default `RightOption`):
+
+- `recording_mode = "Toggle"`: press to start a dictation, press again to stop — the text is pasted at the cursor.
+- `recording_mode = "Hold"`: hold while speaking, release to paste.
+- `Escape` during a dictation cancels it; presses shorter than `min_press_ms` (200 ms) are ignored.
+
+**Voice** (`--voice-control`; `just run` turns it on). The app listens all the time; the hotkey keeps working.
+
+| Say | When | Does |
+|---|---|---|
+| `start` / `start dictation` | no dictation | starts a dictation |
+| `stop` / `stop dictation` | dictating | stops and pastes |
+| `cancel` / `cancel dictation` | dictating | drops the dictation |
+| `restart` / `restart dictation` | dictating | drops it and starts again |
+| `enter` / `press enter` | any time | presses Return; while dictating: stops, pastes, then Return |
+| `clear` / `clear text` / `clear all text` | no dictation | Cmd+A, Delete |
+
+A command works when it is:
+
+- said on its own, with a short pause (0.3 s) around it;
+- the last words of a phrase: "…and that is all, stop";
+- `start` at the beginning: "start, the meeting moved to Friday";
+- doubled anywhere, no pause needed: "stop stop", "enter enter";
+- a chain of 2–3 commands: "stop enter", "stop clear enter", "stop enter start".
+
+Any command may end with "please". The same words inside a sentence ("we should stop the server") do nothing. Details: [Voice control](#voice-control).
+
 ## Voice control
 
 Hands-free dictation, off by default. Turn it on with `--voice-control` or in the config:
@@ -98,17 +127,26 @@ Hands-free dictation, off by default. Turn it on with `--voice-control` or in th
 enabled = true
 ```
 
-Push-to-talk keeps working as without voice control: the hotkey starts and stops a dictation, Escape cancels it, the overlay and sounds are the same. **Listening** starts with the app (sound `Tink`) and stays on until the app quits; the microphone stays open and five English commands take effect, each said on its own with a pause before and after it — the same words inside a sentence are ignored:
+Push-to-talk keeps working as without voice control: the hotkey starts and stops a dictation, Escape cancels it, the overlay and sounds are the same. **Listening** starts with the app (sound `Tink`) and stays on until the app quits; the microphone stays open and six English commands take effect:
 
 | Say | While | Effect |
 |---|---|---|
 | `start dictation` or `start` | listening, no dictation | starts a dictation (start sound, overlay) |
 | `stop dictation` or `stop` | dictating | ends it; the text is pasted without the command |
-| `cancel dictation` | dictating | discards it; nothing is pasted |
-| `press enter` or `enter` | listening, no dictation | presses Return in the focused app |
+| `cancel dictation` or `cancel` | dictating | discards it; nothing is pasted |
+| `restart dictation` or `restart` | dictating | discards it and starts a new dictation at once |
+| `press enter` or `enter` | listening | presses Return in the focused app; during a dictation it first ends it and pastes the text, like "stop enter" |
 | `clear all text`, `clear text` or `clear` | listening, no dictation | presses Cmd+A, then Delete, in the focused app |
 
-Every command may end with "please" ("press enter please"). A command repeated without a pause ("press enter, press enter") counts once.
+Every command may end with "please" ("press enter please"). A pause of 0.3 s ends an utterance. A command counts:
+
+- **on its own**, with a pause before and after it;
+- **at the end of an utterance**, right after other speech: "…and that is all, stop" ends the dictation and pastes the speech before it; the same words inside a sentence ("we should stop the server") are ignored;
+- **"start" at the start of an utterance**: "start, the meeting moved to Friday" starts a dictation that begins with "the meeting…";
+- **doubled anywhere**, with no pause around it: "start start", "stop stop", "cancel cancel", "restart restart", "enter enter", "clear clear"; after "stop stop" the words said after it are dropped;
+- **as a chain** of two or three commands in a row, anywhere: "stop enter" pastes and sends, "stop clear", "cancel clear", "stop enter start" pastes, sends and starts the next dictation; "start" can only come last.
+
+A command repeated within one utterance ("press enter, press enter") counts once.
 
 A command said in the other state is ignored. `press enter` said right after `stop dictation` waits until the text is pasted. The hotkey and the voice commands drive the same dictation: "stop dictation" ends one the hotkey started, and the hotkey ends one "start dictation" started. `press enter` and `clear all text` play the command sound (`Morse`); the sounds are `[sounds]` settings.
 

@@ -16,8 +16,10 @@ const SAMPLE_RATE_HZ: f32 = 16_000.0;
 const PAUSE_SECS: f32 = 1.0;
 /// 100 ms of audio per message, as the app sends it.
 const FRAME_SAMPLES: usize = 1_600;
-/// How long the service may stay quiet before every event is taken to have arrived.
-const QUIET_SECS: Duration = Duration::from_secs(2);
+/// How long the service may stay quiet before every event is taken to have arrived: the
+/// scenarios run at once and share one speech recognition service, so an answer may wait
+/// for the others' requests.
+const QUIET_SECS: Duration = Duration::from_secs(4);
 
 /// English `words` spoken by `say`, 16 kHz mono, with a pause of silence before and after.
 pub fn spoken_with_pauses(words: &str) -> Result<Vec<f32>> {
@@ -92,7 +94,55 @@ pub fn recognized_commands(events: Vec<SpottingEvent>) -> Vec<VoiceCommand> {
     let mut recognizer = VoiceCommandRecognizer::new();
     events
         .into_iter()
-        .filter_map(|e| recognizer.feed(e))
+        .flat_map(|e| recognizer.feed(e))
         .map(|spoken| spoken.command)
         .collect()
+}
+
+/// The phrases accepted after `command` was carried out, as the app switches them.
+fn accepted_after(command: VoiceCommand) -> &'static [VoiceCommand] {
+    match command {
+        VoiceCommand::StartDictation | VoiceCommand::RestartDictation => &VoiceCommand::DICTATING,
+        _ => &VoiceCommand::STANDBY,
+    }
+}
+
+/// The commands the app carries out for `audio`, starting in the state that accepts
+/// `commands`: like the app, it carries out a command only in a state that accepts it and
+/// then listens for the phrases of the state the command leads to.
+pub fn carried_out_by_app(
+    url: &str,
+    audio: &[f32],
+    commands: &'static [VoiceCommand],
+) -> Result<Vec<VoiceCommand>> {
+    let mut client = SpottingClient::connect(url, Instant::now())?;
+    let mut accepted = commands;
+    client.listen_for(accepted)?;
+    let mut recognizer = VoiceCommandRecognizer::new();
+    let mut carried_out = Vec::new();
+    let mut hear = |client: &mut SpottingClient, events: Vec<SpottingEvent>| -> Result<()> {
+        for spoken in events.into_iter().flat_map(|e| recognizer.feed(e)) {
+            if accepted.contains(&spoken.command) {
+                carried_out.push(spoken.command);
+                accepted = accepted_after(spoken.command);
+                client.listen_for(accepted)?;
+            }
+        }
+        Ok(())
+    };
+    for frame in audio.chunks(FRAME_SAMPLES) {
+        client.send_audio(frame)?;
+        let events = client.read_events()?;
+        hear(&mut client, events)?;
+    }
+    let mut last_event = Instant::now();
+    while last_event.elapsed() < QUIET_SECS {
+        let events = client.read_events()?;
+        if !events.is_empty() {
+            last_event = Instant::now();
+        }
+        hear(&mut client, events)?;
+    }
+    client.close();
+    Ok(carried_out)
 }

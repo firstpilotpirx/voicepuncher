@@ -22,4 +22,8 @@ pub trait AudioRecorder: Send {
     /// Drops the audio captured from `cut` on and records nothing more, so a later
     /// `flush_live_chunks` and `stop` deliver only the audio before `cut`.
     fn truncate_at(&mut self, _cut: Instant) {}
+    /// Starts recording with `lead_in`, audio heard just before, as its beginning.
+    fn start_with_lead_in(&mut self, _lead_in: AudioBuffer16k) -> Result<()> {
+        self.start()
+    }
 }

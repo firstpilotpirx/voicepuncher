@@ -1,5 +1,9 @@
 //! Decides which command phrase, if any, a transcript of a whole utterance is.
 
+mod placed;
+
+pub use placed::{Found, Placement};
+
 /// Where a transcript's sentences end.
 const SENTENCE_ENDS: &[char] = &['.', ',', '!', '?', '\n'];
 /// Said after a command out of politeness; it does not change the command.
@@ -11,11 +15,14 @@ const ALIASES: &[(&str, &str)] = &[
     ("clear text", "clear all text"),
     ("presenter", "press enter"),
     ("star dictation", "start dictation"),
-    // The short forms: one word for each command but cancel.
+    ("stuck dictation", "start dictation"),
+    // The short forms: one word for each command.
     ("enter", "press enter"),
     ("clear", "clear all text"),
     ("start", "start dictation"),
     ("stop", "stop dictation"),
+    ("restart", "restart dictation"),
+    ("cancel", "cancel dictation"),
 ];
 /// Largest share of characters that may differ between a transcript and a phrase.
 const MAX_DIFFERENCE: f32 = 0.25;
@@ -26,6 +33,13 @@ const MAX_WORD_DIFFERENCE: f32 = 0.4;
 /// The selected command phrases and the ways people say them.
 pub struct PhraseMatcher {
     phrases: Vec<String>,
+}
+
+impl PhraseMatcher {
+    /// The selected command phrases.
+    fn selected(&self) -> &[String] {
+        &self.phrases
+    }
 }
 
 impl PhraseMatcher {
@@ -144,7 +158,12 @@ mod tests {
     }
 
     fn dictating() -> PhraseMatcher {
-        PhraseMatcher::new(&["stop dictation".into(), "cancel dictation".into()])
+        PhraseMatcher::new(&[
+            "stop dictation".into(),
+            "cancel dictation".into(),
+            "restart dictation".into(),
+            "press enter".into(),
+        ])
     }
 
     #[test]
@@ -269,6 +288,14 @@ mod tests {
             dictating().phrase_in("Stop, please."),
             Some("stop dictation".into())
         );
+        assert_eq!(
+            dictating().phrase_in("Cancel."),
+            Some("cancel dictation".into())
+        );
+        assert_eq!(
+            dictating().phrase_in("Restart, please."),
+            Some("restart dictation".into())
+        );
     }
 
     #[test]
@@ -276,7 +303,7 @@ mod tests {
         for transcript in ["Hello.", "Thank you.", "Okay.", "Yes.", "Restart.", ""] {
             assert_eq!(standby().phrase_in(transcript), None, "{transcript}");
         }
-        for transcript in ["Start.", "Cancel.", "Stopped.", "Okay."] {
+        for transcript in ["Start.", "Cancelled.", "Stopped.", "Okay."] {
             assert_eq!(dictating().phrase_in(transcript), None, "{transcript}");
         }
     }
@@ -284,6 +311,6 @@ mod tests {
     #[test]
     fn should_not_take_a_phrase_outside_the_selected_set() {
         assert_eq!(standby().phrase_in("Stop dictation."), None);
-        assert_eq!(dictating().phrase_in("Press enter."), None);
+        assert_eq!(dictating().phrase_in("Clear all text."), None);
     }
 }

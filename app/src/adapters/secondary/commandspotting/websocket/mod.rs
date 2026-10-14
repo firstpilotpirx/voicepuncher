@@ -4,18 +4,21 @@
 
 mod capture;
 pub mod client;
+mod heard;
 
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Instant;
 
 use anyhow::Result;
 
 use crate::core::application::{CommandSpotter, PipelineInput};
-use crate::core::domain::VoiceCommand;
+use crate::core::domain::{AudioBuffer16k, VoiceCommand};
 
 use capture::{MicCapture, StreamResampler};
 use client::SpottingClient;
+use heard::HeardAudio;
 
 enum Control {
     ListenFor(Vec<VoiceCommand>),
@@ -26,6 +29,7 @@ enum Control {
 pub struct AudioStream {
     control: Sender<Control>,
     worker: JoinHandle<()>,
+    heard: Arc<Mutex<HeardAudio>>,
 }
 
 impl AudioStream {
@@ -44,10 +48,30 @@ impl AudioStream {
         client.listen_for(commands)?;
         let resampler = StreamResampler::new(native_rate)?;
         let (control, control_rx) = mpsc::channel();
+        let heard = Arc::new(Mutex::new(HeardAudio::new(audio_start)));
+        let streamed = Stream {
+            client,
+            resampler,
+            audio,
+            control: control_rx,
+            inputs,
+            heard: Arc::clone(&heard),
+        };
         let worker = std::thread::Builder::new()
             .name("command-spotting".into())
-            .spawn(move || stream_to_service(client, resampler, audio, control_rx, inputs))?;
-        Ok(Self { control, worker })
+            .spawn(move || stream_to_service(streamed))?;
+        Ok(Self {
+            control,
+            worker,
+            heard,
+        })
+    }
+
+    /// The audio streamed from `since` on, as far as it is still held.
+    pub fn heard_since(&self, since: Instant) -> AudioBuffer16k {
+        self.heard
+            .lock()
+            .map_or_else(|_| AudioBuffer16k::new(Vec::new()), |h| h.since(since))
     }
 
     pub fn listen_for(&self, commands: &[VoiceCommand]) {
@@ -123,16 +147,35 @@ impl CommandSpotter for WebSocketCommandSpotter {
             listening.stream.stop();
         }
     }
+
+    fn heard_since(&self, since: Instant) -> AudioBuffer16k {
+        self.listening.as_ref().map_or_else(
+            || AudioBuffer16k::new(Vec::new()),
+            |listening| listening.stream.heard_since(since),
+        )
+    }
 }
 
-/// Runs until told to stop or the service goes away; a lost service is reported once.
-fn stream_to_service(
-    mut client: SpottingClient,
-    mut resampler: StreamResampler,
+/// What the streaming worker owns.
+struct Stream {
+    client: SpottingClient,
+    resampler: StreamResampler,
     audio: Receiver<Vec<f32>>,
     control: Receiver<Control>,
     inputs: Sender<PipelineInput>,
-) {
+    heard: Arc<Mutex<HeardAudio>>,
+}
+
+/// Runs until told to stop or the service goes away; a lost service is reported once.
+fn stream_to_service(stream: Stream) {
+    let Stream {
+        mut client,
+        mut resampler,
+        audio,
+        control,
+        inputs,
+        heard,
+    } = stream;
     loop {
         match control.try_recv() {
             Ok(Control::ListenFor(commands)) => {
@@ -146,6 +189,9 @@ fn stream_to_service(
         let captured: Vec<f32> = audio.try_iter().flatten().collect();
         let samples = resampler.push(&captured);
         if !samples.is_empty() {
+            if let Ok(mut heard) = heard.lock() {
+                heard.push(&samples);
+            }
             if let Err(e) = client.send_audio(&samples) {
                 return report_lost(&inputs, e);
             }

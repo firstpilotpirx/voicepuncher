@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+pub use crate::matcher::Placement;
+
 /// Text frame from the app: the phrases to spot from now on.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct PhraseSelection {
@@ -22,6 +24,14 @@ pub enum ServerEvent {
         phrase: String,
         start: f32,
         end: f32,
+    },
+    /// Commands said without a pause around them, to carry out in order without the
+    /// app's pause rule: `start..end` spans their words.
+    Command {
+        commands: Vec<String>,
+        start: f32,
+        end: f32,
+        placement: Placement,
     },
 }
 
@@ -66,6 +76,24 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&ServerEvent::SpeechEnd { t: 3.0 }).unwrap(),
             r#"{"event":"speech_end","t":3.0}"#
+        );
+    }
+
+    #[test]
+    fn should_write_a_command_with_its_placement() {
+        // Given
+        let command = ServerEvent::Command {
+            commands: vec!["stop dictation".into(), "press enter".into()],
+            start: 4.5,
+            end: 5.25,
+            placement: Placement::Anywhere,
+        };
+        // When
+        let json = serde_json::to_string(&command).unwrap();
+        // Then
+        assert_eq!(
+            json,
+            r#"{"event":"command","commands":["stop dictation","press enter"],"start":4.5,"end":5.25,"placement":"anywhere"}"#
         );
     }
 

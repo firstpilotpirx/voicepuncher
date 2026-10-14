@@ -105,7 +105,8 @@ _e2e-smoke: _require-models _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
-    cargo test -p voicepuncher --test transcription_openai_it --test textrefinement_openai_it --test commandspotting_websocket_it --test voice_samples_it --release -- --nocapture
+    cargo test -p voicepuncher --test transcription_openai_it --test textrefinement_openai_it --test commandspotting_websocket_it --test voice_samples_it --test voice_forms_it --release -- --nocapture
+    cargo test -p voicepuncher-command-spotting --test placed_commands_it --release
     cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags '@smoke and not @wip'
 
 # WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 % (~20 s)

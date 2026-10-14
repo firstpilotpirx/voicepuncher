@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use super::voice_command::{SpokenCommand, VoiceCommand};
+use super::voice_command::{CommandPlacement, SpokenCommand, VoiceCommand};
 
 /// What the command spotting service reports about the audio it hears.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,6 +11,14 @@ pub enum SpottingEvent {
         phrase: String,
         start: Instant,
         end: Instant,
+    },
+    /// Commands said without a pause around them, to carry out at once and in order:
+    /// `start..end` spans their words.
+    CommandsSaid {
+        commands: Vec<VoiceCommand>,
+        start: Instant,
+        end: Instant,
+        placement: CommandPlacement,
     },
 }
 
@@ -66,6 +74,10 @@ pub struct VoiceCommandRecognizer {
     open_segment_start: Option<Instant>,
     spotted_in_open_segment: Vec<Spotted>,
     last_closed: Option<ClosedSegment>,
+    /// Commands said without a pause were carried out up to here: a phrase of the same
+    /// words, reported again by the keyword spotter or for the whole utterance, is no
+    /// new command.
+    carried_out_until: Option<Instant>,
 }
 
 impl VoiceCommandRecognizer {
@@ -73,22 +85,44 @@ impl VoiceCommandRecognizer {
         Self::default()
     }
 
-    pub fn feed(&mut self, event: SpottingEvent) -> Option<SpokenCommand> {
+    /// The commands `event` completes, in the order to carry them out.
+    pub fn feed(&mut self, event: SpottingEvent) -> Vec<SpokenCommand> {
         match event {
             SpottingEvent::SpeechStarted(at) => {
                 self.open_segment_start = Some(at);
                 self.spotted_in_open_segment.clear();
                 self.last_closed = None;
-                None
+                Vec::new()
             }
-            SpottingEvent::SpeechEnded(at) => self.close_segment(at),
+            SpottingEvent::SpeechEnded(at) => self.close_segment(at).into_iter().collect(),
             SpottingEvent::PhraseSpotted { phrase, start, end } => {
+                if self.carried_out_until.is_some_and(|until| start <= until) {
+                    return Vec::new();
+                }
                 let spotted = Spotted {
                     command: VoiceCommand::from_phrase(&phrase),
                     start,
                     end,
                 };
-                self.spot(spotted)
+                self.spot(spotted).into_iter().collect()
+            }
+            SpottingEvent::CommandsSaid {
+                commands,
+                start,
+                end,
+                placement,
+            } => {
+                self.carried_out_until = Some(end);
+                self.spotted_in_open_segment.retain(|s| s.start > end);
+                commands
+                    .into_iter()
+                    .map(|command| SpokenCommand {
+                        command,
+                        started_at: start,
+                        ends_at: end,
+                        placement,
+                    })
+                    .collect()
             }
         }
     }
@@ -138,6 +172,8 @@ fn fills(segment: ClosedSegment, spotted: Spotted) -> Option<SpokenCommand> {
     spotted.command.map(|command| SpokenCommand {
         command,
         started_at: spotted.start,
+        ends_at: spotted.end,
+        placement: CommandPlacement::Alone,
     })
 }
 
@@ -161,7 +197,7 @@ mod tests {
         let mut recognizer = VoiceCommandRecognizer::new();
         events
             .into_iter()
-            .filter_map(|e| recognizer.feed(e))
+            .flat_map(|e| recognizer.feed(e))
             .collect()
     }
 
@@ -181,7 +217,9 @@ mod tests {
             commands,
             vec![SpokenCommand {
                 command: VoiceCommand::PressEnter,
-                started_at: at(base, 1.1)
+                started_at: at(base, 1.1),
+                ends_at: at(base, 1.8),
+                placement: CommandPlacement::Alone,
             }]
         );
     }
@@ -392,5 +430,60 @@ mod tests {
         // Then
         assert_eq!(commands.len(), 1);
         assert_eq!(commands[0].command, VoiceCommand::ClearAllText);
+    }
+
+    fn said(base: Instant, commands: &[VoiceCommand], start: f32, end: f32) -> SpottingEvent {
+        SpottingEvent::CommandsSaid {
+            commands: commands.to_vec(),
+            start: at(base, start),
+            end: at(base, end),
+            placement: CommandPlacement::Anywhere,
+        }
+    }
+
+    #[test]
+    fn should_carry_out_commands_said_without_a_pause_at_once_in_order() {
+        // Given
+        let base = Instant::now();
+        let events = vec![
+            SpottingEvent::SpeechStarted(at(base, 1.0)),
+            said(
+                base,
+                &[VoiceCommand::StopDictation, VoiceCommand::PressEnter],
+                2.5,
+                3.2,
+            ),
+        ];
+        // When the utterance has not ended yet
+        let commands = feed_all(events);
+        // Then
+        let carried: Vec<(VoiceCommand, CommandPlacement)> =
+            commands.iter().map(|c| (c.command, c.placement)).collect();
+        assert_eq!(
+            carried,
+            [
+                (VoiceCommand::StopDictation, CommandPlacement::Anywhere),
+                (VoiceCommand::PressEnter, CommandPlacement::Anywhere)
+            ]
+        );
+        assert_eq!(commands[0].started_at, at(base, 2.5));
+        assert_eq!(commands[0].ends_at, at(base, 3.2));
+    }
+
+    #[test]
+    fn should_not_take_again_a_phrase_of_words_already_carried_out() {
+        // Given "enter enter" said as a whole utterance, reported both ways
+        let base = Instant::now();
+        let events = vec![
+            SpottingEvent::SpeechStarted(at(base, 1.0)),
+            said(base, &[VoiceCommand::PressEnter], 1.05, 1.9),
+            phrase(base, "press enter", 1.05, 1.9),
+            SpottingEvent::SpeechEnded(at(base, 2.0)),
+            phrase(base, "press enter", 1.05, 1.95),
+        ];
+        // When
+        let commands = feed_all(events);
+        // Then
+        assert_eq!(commands.len(), 1, "{commands:?}");
     }
 }

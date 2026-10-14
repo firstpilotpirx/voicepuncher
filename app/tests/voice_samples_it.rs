@@ -77,10 +77,10 @@ fn load(dir: &Path) -> Session {
 
 /// The phrases the app listens for in the state where `command` is accepted.
 fn listened_for(command: VoiceCommand) -> &'static [VoiceCommand] {
-    if VoiceCommand::DICTATING.contains(&command) {
-        &VoiceCommand::DICTATING
-    } else {
+    if VoiceCommand::STANDBY.contains(&command) {
         &VoiceCommand::STANDBY
+    } else {
+        &VoiceCommand::DICTATING
     }
 }
 
@@ -110,9 +110,7 @@ fn recognized_in(url: &str, session: &Session) -> Vec<(f32, VoiceCommand)> {
         while last_event.elapsed() < QUIET {
             for event in client.read_events().unwrap() {
                 last_event = Instant::now();
-                if let Some(spoken) = recognizer.feed(event) {
-                    recognized.push(spoken);
-                }
+                recognized.extend(recognizer.feed(event));
             }
         }
     }
@@ -123,6 +121,7 @@ fn recognized_in(url: &str, session: &Session) -> Vec<(f32, VoiceCommand)> {
             |SpokenCommand {
                  command,
                  started_at,
+                 ..
              }| {
                 (
                     started_at.duration_since(audio_start).as_secs_f32(),
@@ -134,9 +133,9 @@ fn recognized_in(url: &str, session: &Session) -> Vec<(f32, VoiceCommand)> {
 }
 
 /// Repeats of one command closer than this are one utterance: the service ends an utterance
-/// after 0.4 s of silence and its detector holds speech a little longer, so a pause under
-/// half a second does not separate them and they count as one command.
-const REPEAT_PAUSE_SECS: f32 = 0.5;
+/// after 0.3 s of silence and its detector holds speech a little longer, so a shorter
+/// pause does not separate them and they count as one command.
+const REPEAT_PAUSE_SECS: f32 = 0.3;
 
 /// Consecutive utterances of the same command said without a pause between them.
 fn groups(utterances: &[Utterance]) -> Vec<Vec<&Utterance>> {

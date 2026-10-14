@@ -6,7 +6,7 @@
 @voice_control @e2e
 Feature: voice-control
 
-  Rule: A command counts only when spoken on its own
+  Rule: A command counts on its own or in its set places
 
     @smoke
     Scenario Outline: A command phrase spoken on its own is recognized
@@ -19,6 +19,7 @@ Feature: voice-control
         | start dictation  |
         | stop dictation   |
         | cancel dictation |
+        | restart dictation |
         | press enter      |
         | clear all text   |
 
@@ -34,6 +35,7 @@ Feature: voice-control
         | start dictation  |
         | stop dictation   |
         | cancel dictation |
+        | restart dictation |
         | press enter      |
         | clear all text   |
 
@@ -58,7 +60,7 @@ Feature: voice-control
       When someone says short Russian phrases, each on its own with a pause around it
       Then no command takes effect
 
-  Rule: Each command but cancel has a one-word short form
+  Rule: Every command has a one-word short form
 
     @smoke
     Scenario Outline: A short form is recognized as its command
@@ -67,12 +69,19 @@ Feature: voice-control
       Then the "<command>" command takes effect
 
       Examples:
-        | said         | command         |
-        | enter        | press enter     |
-        | enter please | press enter     |
-        | clear        | clear all text  |
-        | start        | start dictation |
-        | stop         | stop dictation  |
+        | said           | command           |
+        | start          | start dictation   |
+        | start please   | start dictation   |
+        | stop           | stop dictation    |
+        | stop please    | stop dictation    |
+        | cancel         | cancel dictation  |
+        | cancel please  | cancel dictation  |
+        | restart        | restart dictation |
+        | restart please | restart dictation |
+        | enter          | press enter       |
+        | enter please   | press enter       |
+        | clear          | clear all text    |
+        | clear please   | clear all text    |
 
   Rule: A command may end with "please"
 
@@ -87,6 +96,7 @@ Feature: voice-control
         | start dictation please  | start dictation  |
         | stop dictation please   | stop dictation   |
         | cancel dictation please | cancel dictation |
+        | restart dictation please | restart dictation |
         | press enter please      | press enter      |
         | clear all text please   | clear all text   |
 
@@ -112,6 +122,110 @@ Feature: voice-control
       When the user says "start dictation", a sentence, "stop dictation" and "press enter", each command on its own
       Then the sentence is pasted into the focused app
       And the Return key is pressed after it
+
+  Rule: Each state accepts its own commands
+
+    @smoke
+    Scenario: Stop dictation without a dictation is ignored
+      Given the command spotting service is running
+      When someone says "stop dictation" in one breath while no dictation runs
+      Then no command takes effect
+
+  Rule: A command may end an utterance
+
+    @smoke
+    Scenario Outline: A command right after other speech takes effect
+      Given the command spotting service is running
+      When someone says "<words>" in one breath while <state>
+      Then the commands "<commands>" take effect in order
+
+      Examples:
+        | words                                    | state             | commands          |
+        | We meet on Friday at ten stop            | dictating         | stop dictation    |
+        | That is all for today, stop dictation    | dictating         | stop dictation    |
+        | Forget it, cancel                        | dictating         | cancel dictation  |
+        | Never mind, cancel dictation             | dictating         | cancel dictation  |
+        | Let me say it again, restart             | dictating         | restart dictation |
+        | Let me try once more, restart dictation  | dictating         | restart dictation |
+        | Okay, press enter                        | no dictation runs | press enter       |
+        | We meet on Friday at ten, enter          | dictating         | press enter       |
+        | Okay, enter                              | no dictation runs | press enter       |
+        | Okay, clear                              | no dictation runs | clear all text    |
+        | Okay, clear all text                     | no dictation runs | clear all text    |
+        | Okay, start                              | no dictation runs | start dictation   |
+        | Okay, start dictation                    | no dictation runs | start dictation   |
+
+    @smoke
+    Scenario: A command word inside a sentence is still no command
+      Given the command spotting service is running
+      When someone says "We should stop the server tonight" in one breath while dictating
+      Then no command takes effect
+
+  Rule: "start" may open an utterance
+
+    @smoke
+    Scenario Outline: Start followed by the dictation at once
+      Given the command spotting service is running
+      When someone says "<words>" in one breath while no dictation runs
+      Then the commands "start dictation" take effect in order
+
+      Examples:
+        | words                                         |
+        | Start, the meeting moved to Friday at ten     |
+        | Start dictation, the build is green again     |
+
+    @smoke
+    Scenario: Enter followed by speech is no command
+      Given the command spotting service is running
+      When someone says "Enter the building on the left" in one breath while no dictation runs
+      Then no command takes effect
+
+  Rule: A doubled short form counts anywhere
+
+    @smoke
+    Scenario Outline: A doubled short form in the middle of speech takes effect once
+      Given the command spotting service is running
+      When someone says "<words>" in one breath while <state>
+      Then the commands "<commands>" take effect in order
+
+      Examples:
+        | words                                                           | state             | commands         |
+        | We move the meeting to Friday stop stop and some more words here | dictating         | stop dictation   |
+        | Fine, enter enter, thanks                                       | no dictation runs | press enter      |
+        | We move the meeting to Friday cancel cancel                     | dictating         | cancel dictation |
+        | Wait, restart restart                                           | dictating         | restart dictation |
+        | Okay, start start                                               | no dictation runs | start dictation   |
+        | Fine, clear clear                                               | no dictation runs | clear all text    |
+
+  Rule: A chain of commands is carried out in order
+
+    @smoke
+    Scenario Outline: A chain of commands takes effect in order
+      Given the command spotting service is running
+      When someone says "<words>" in one breath while <state>
+      Then the commands "<commands>" take effect in order
+
+      Examples:
+        | words                           | state             | commands                                     |
+        | That is all, stop enter         | dictating         | stop dictation, press enter                  |
+        | That is all, stop, clear        | dictating         | stop dictation, clear all text               |
+        | That is all, stop, enter, start | dictating         | stop dictation, press enter, start dictation |
+        | That is all, stop, clear, enter | dictating         | stop dictation, clear all text, press enter  |
+        | Forget it, cancel, clear        | dictating         | cancel dictation, clear all text             |
+        | Forget it, cancel, enter        | dictating         | cancel dictation, press enter                |
+        | That is all, enter, start       | dictating         | press enter, start dictation                 |
+        | Okay, enter, clear              | no dictation runs | press enter, clear all text                  |
+        | Okay, clear, enter              | no dictation runs | clear all text, press enter                  |
+        | Okay, enter, start              | no dictation runs | press enter, start dictation                 |
+        | Okay, clear, start              | no dictation runs | clear all text, start dictation              |
+
+  Rule: An utterance ends after 0.3 s of silence
+
+    @smoke
+    Scenario: Stop after a short breath
+      Given the command spotting service is running
+      When someone says "We meet on Friday", takes a short breath and says "stop dictation" while dictating
+      Then the commands "stop dictation" take effect in order
 
   Rule: A whole hands-free session runs as said
 

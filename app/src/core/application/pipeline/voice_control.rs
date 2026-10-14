@@ -1,5 +1,7 @@
 use crate::core::application::{CommandSpotter, KeyPresser, PipelineInput};
-use crate::core::domain::{SpokenCommand, SpottingEvent, VoiceCommand, VoiceCommandRecognizer};
+use crate::core::domain::{
+    CommandPlacement, SpokenCommand, SpottingEvent, VoiceCommand, VoiceCommandRecognizer,
+};
 
 use super::Pipeline;
 
@@ -38,7 +40,7 @@ impl Pipeline {
         match input {
             PipelineInput::Hotkey(signal) => self.step(signal),
             PipelineInput::Spotting(event) => {
-                if let Some(spoken) = self.recognize(event) {
+                for spoken in self.recognize(event) {
                     self.carry_out_or_log(spoken);
                 }
                 Ok(())
@@ -89,9 +91,9 @@ impl Pipeline {
         log::info!("voice control: not listening");
     }
 
-    fn recognize(&mut self, event: SpottingEvent) -> Option<SpokenCommand> {
+    fn recognize(&mut self, event: SpottingEvent) -> Vec<SpokenCommand> {
         if !self.listening() {
-            return None;
+            return Vec::new();
         }
         self.voice().recognizer.feed(event)
     }
@@ -121,12 +123,31 @@ impl Pipeline {
         }
         log::info!("voice control: \"{phrase}\"");
         match spoken.command {
+            VoiceCommand::StartDictation if spoken.placement == CommandPlacement::Head => {
+                // The speech after "start" came before the recording: it begins it.
+                let lead_in = self.voice().spotter.heard_since(spoken.ends_at);
+                self.start_recording_with(Some(lead_in))?;
+                self.command_words.opening = true;
+                Ok(())
+            }
             VoiceCommand::StartDictation => self.start_recording(),
             VoiceCommand::StopDictation => {
+                self.command_words.closing = spoken.placement != CommandPlacement::Alone;
                 self.recorder.truncate_at(spoken.started_at);
                 self.stop_recording()
             }
+            VoiceCommand::PressEnter if self.is_recording() => {
+                // "enter" during a dictation is "stop enter": paste, then send.
+                self.command_words.closing = spoken.placement != CommandPlacement::Alone;
+                self.recorder.truncate_at(spoken.started_at);
+                self.stop_recording()?;
+                self.press_keys(|keys| keys.press_enter())
+            }
             VoiceCommand::CancelDictation => self.cancel_recording(),
+            VoiceCommand::RestartDictation => {
+                self.cancel_recording()?;
+                self.start_recording()
+            }
             VoiceCommand::PressEnter => self.press_keys(|keys| keys.press_enter()),
             VoiceCommand::ClearAllText => self.press_keys(|keys| keys.clear_all_text()),
         }
@@ -247,6 +268,24 @@ mod tests {
         spotter: MockCommandSpotter,
         mode: RecordingMode,
     ) -> Pipeline {
+        pipeline_with(
+            recorder,
+            paster,
+            spotter,
+            sounds(),
+            MockKeyPresser::new(),
+            mode,
+        )
+    }
+
+    fn pipeline_with(
+        recorder: MockAudioRecorder,
+        paster: MockTextPaster,
+        spotter: MockCommandSpotter,
+        sounds: MockSoundPlayer,
+        keys: MockKeyPresser,
+        mode: RecordingMode,
+    ) -> Pipeline {
         let cfg = PipelineConfig {
             min_press_ms: 0,
             recording_mode: mode,
@@ -260,11 +299,11 @@ mod tests {
             Box::new(answering_transcriber()),
             Box::new(passthrough_refiner()),
             Box::new(paster),
-            Box::new(sounds()),
+            Box::new(sounds),
             Box::new(overlay()),
             cfg,
         )
-        .with_voice_control(Box::new(spotter), Box::new(MockKeyPresser::new()))
+        .with_voice_control(Box::new(spotter), Box::new(keys))
     }
 
     fn listen(pipeline: &mut Pipeline) {
@@ -565,5 +604,111 @@ mod tests {
             Some(format!("listen {:?}", VoiceCommand::DICTATING).as_str())
         );
         assert_eq!(order.get(1).map(String::as_str), Some("record"));
+    }
+
+    #[test]
+    fn should_begin_a_dictation_with_the_speech_heard_after_a_start_at_the_head() {
+        // Given half a second heard since "start" ended
+        const LEAD_IN_SAMPLES: usize = 8_000;
+        let start = Instant::now();
+        let end = start + PHRASE_LENGTH;
+        let mut spotter = lenient_spotter();
+        spotter
+            .expect_heard_since()
+            .withf(move |since| *since == end)
+            .returning(|_| AudioBuffer16k::new(vec![0; LEAD_IN_SAMPLES]));
+        let mut recorder = MockAudioRecorder::new();
+        recorder.expect_start().never();
+        recorder
+            .expect_start_with_lead_in()
+            .withf(|lead_in| lead_in.samples().len() == LEAD_IN_SAMPLES)
+            .once()
+            .returning(|_| Ok(()));
+        let mut pipeline = pipeline(
+            recorder,
+            MockTextPaster::new(),
+            spotter,
+            RecordingMode::Toggle,
+        );
+        listen(&mut pipeline);
+        // When
+        pipeline
+            .handle(PipelineInput::Spotting(SpottingEvent::CommandsSaid {
+                commands: vec![VoiceCommand::StartDictation],
+                start,
+                end,
+                placement: CommandPlacement::Head,
+            }))
+            .unwrap();
+        // Then
+        assert!(pipeline.is_recording());
+    }
+
+    #[test]
+    fn should_paste_and_then_press_return_on_enter_during_a_dictation() {
+        // Given
+        let order = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut recorder = recording_recorder();
+        recorder.expect_truncate_at().return_const(());
+        let mut paster = MockTextPaster::new();
+        let seen = std::sync::Arc::clone(&order);
+        paster.expect_paste().once().returning(move |_| {
+            seen.lock().unwrap().push("paste");
+            Ok(())
+        });
+        let mut keys = MockKeyPresser::new();
+        let seen = std::sync::Arc::clone(&order);
+        keys.expect_press_enter().once().returning(move || {
+            seen.lock().unwrap().push("return");
+            Ok(())
+        });
+        let mut pipeline = pipeline_with(
+            recorder,
+            paster,
+            lenient_spotter(),
+            sounds(),
+            keys,
+            RecordingMode::Toggle,
+        );
+        listen(&mut pipeline);
+        say(&mut pipeline, "start dictation");
+        // When
+        say(&mut pipeline, "press enter");
+        // Then
+        assert!(!pipeline.is_recording());
+        assert_eq!(*order.lock().unwrap(), ["paste", "return"]);
+    }
+
+    #[test]
+    fn should_play_the_cancel_sound_then_the_start_sound_on_restart() {
+        // Given
+        let played = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut sounds = MockSoundPlayer::new();
+        let seen = std::sync::Arc::clone(&played);
+        sounds
+            .expect_play_start()
+            .returning(move || seen.lock().unwrap().push("start"));
+        let seen = std::sync::Arc::clone(&played);
+        sounds
+            .expect_play_cancel()
+            .returning(move || seen.lock().unwrap().push("cancel"));
+        sounds.expect_play_listening_on().return_const(());
+        let mut paster = MockTextPaster::new();
+        paster.expect_paste().never();
+        let mut pipeline = pipeline_with(
+            recording_recorder(),
+            paster,
+            lenient_spotter(),
+            sounds,
+            MockKeyPresser::new(),
+            RecordingMode::Toggle,
+        );
+        listen(&mut pipeline);
+        say(&mut pipeline, "start dictation");
+        // When
+        say(&mut pipeline, "restart dictation");
+        // Then
+        assert!(pipeline.is_recording());
+        assert_eq!(*played.lock().unwrap(), ["start", "cancel", "start"]);
     }
 }

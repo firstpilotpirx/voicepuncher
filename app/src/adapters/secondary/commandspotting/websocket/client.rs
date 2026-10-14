@@ -10,7 +10,7 @@ use serde::Deserialize;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Message, WebSocket};
 
-use crate::core::domain::{SpottingEvent, VoiceCommand};
+use crate::core::domain::{CommandPlacement, SpottingEvent, VoiceCommand};
 
 /// How long a read waits for an event before the caller gets control back.
 const READ_WAIT: Duration = Duration::from_millis(10);
@@ -36,6 +36,20 @@ enum ServiceEvent {
         start: f32,
         end: f32,
     },
+    Command {
+        commands: Vec<String>,
+        start: f32,
+        end: f32,
+        placement: Placement,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Placement {
+    Tail,
+    Head,
+    Anywhere,
 }
 
 pub struct SpottingClient {
@@ -150,6 +164,24 @@ fn to_spotting_event(event: ServiceEvent, audio_start: Instant) -> SpottingEvent
             start: at(start),
             end: at(end),
         },
+        ServiceEvent::Command {
+            commands,
+            start,
+            end,
+            placement,
+        } => SpottingEvent::CommandsSaid {
+            commands: commands
+                .iter()
+                .filter_map(|phrase| VoiceCommand::from_phrase(phrase))
+                .collect(),
+            start: at(start),
+            end: at(end),
+            placement: match placement {
+                Placement::Tail => CommandPlacement::Tail,
+                Placement::Head => CommandPlacement::Head,
+                Placement::Anywhere => CommandPlacement::Anywhere,
+            },
+        },
     }
 }
 
@@ -185,6 +217,26 @@ mod tests {
                 phrase: "press enter".into(),
                 start: audio_start + Duration::from_millis(1500),
                 end: audio_start + Duration::from_millis(2250),
+            }
+        );
+    }
+
+    #[test]
+    fn should_read_commands_said_without_a_pause() {
+        // Given
+        let json = r#"{"event":"command","commands":["stop dictation","press enter"],"start":4.0,"end":4.75,"placement":"anywhere"}"#;
+        let event: ServiceEvent = serde_json::from_str(json).unwrap();
+        let audio_start = Instant::now();
+        // When
+        let converted = to_spotting_event(event, audio_start);
+        // Then
+        assert_eq!(
+            converted,
+            SpottingEvent::CommandsSaid {
+                commands: vec![VoiceCommand::StopDictation, VoiceCommand::PressEnter],
+                start: audio_start + Duration::from_secs(4),
+                end: audio_start + Duration::from_millis(4750),
+                placement: CommandPlacement::Anywhere,
             }
         );
     }

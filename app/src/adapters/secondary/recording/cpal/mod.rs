@@ -253,6 +253,20 @@ impl AudioRecorder for CpalAudioRecorder {
         }
     }
 
+    fn start_with_lead_in(&mut self, lead_in: AudioBuffer16k) -> Result<()> {
+        self.start()?;
+        if let Some(active) = self.active.as_mut() {
+            let samples = upsampled(lead_in.samples(), active.native_sample_rate);
+            let lead_in_secs = samples.len() as f64 / f64::from(active.native_sample_rate);
+            if let Ok(mut buffer) = active.buffer.lock() {
+                buffer.splice(0..0, samples);
+            }
+            // The recording now begins earlier: cuts count from there.
+            active.started_at -= std::time::Duration::from_secs_f64(lead_in_secs);
+        }
+        Ok(())
+    }
+
     fn truncate_at(&mut self, cut: Instant) {
         if let Some(active) = self.active.as_ref() {
             active.capturing.store(false, Ordering::Relaxed);
@@ -260,6 +274,27 @@ impl AudioRecorder for CpalAudioRecorder {
             truncate_buffer(&active.buffer, kept);
         }
     }
+}
+
+/// 16 kHz `samples` at `rate`, linearly interpolated: the lead-in goes back to 16 kHz for
+/// the speech recognition service, so the in-between samples need not be exact.
+fn upsampled(samples: &[i16], rate: u32) -> Vec<i16> {
+    if rate == AudioBuffer16k::SAMPLE_RATE_HZ || samples.is_empty() {
+        return samples.to_vec();
+    }
+    let ratio = f64::from(AudioBuffer16k::SAMPLE_RATE_HZ) / f64::from(rate);
+    let len = (samples.len() as f64 / ratio) as usize;
+    (0..len)
+        .map(|i| {
+            let at = i as f64 * ratio;
+            let below = at.floor() as usize;
+            let above = (below + 1).min(samples.len() - 1);
+            let weight = at - below as f64;
+            let value =
+                f64::from(samples[below]) * (1.0 - weight) + f64::from(samples[above]) * weight;
+            value.round() as i16
+        })
+        .collect()
 }
 
 /// Number of samples captured at `rate` between `started` and `cut`.
@@ -468,6 +503,28 @@ fn save_wav(path: &PathBuf, samples: &[i16]) -> Result<()> {
     }
     writer.finalize()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod lead_in_tests {
+    use super::*;
+
+    #[test]
+    fn should_upsample_a_second_of_16_khz_to_a_second_at_the_device_rate() {
+        // Given
+        let second: Vec<i16> = (0..16_000).map(|i| (i % 100) as i16).collect();
+        // When
+        let at_48k = upsampled(&second, 48_000);
+        // Then
+        assert_eq!(at_48k.len(), 48_000);
+        assert_eq!(at_48k[0], 0);
+        assert_eq!(at_48k[3], second[1]);
+    }
+
+    #[test]
+    fn should_keep_16_khz_audio_as_it_is() {
+        assert_eq!(upsampled(&[1, 2, 3], 16_000), [1, 2, 3]);
+    }
 }
 
 #[cfg(test)]

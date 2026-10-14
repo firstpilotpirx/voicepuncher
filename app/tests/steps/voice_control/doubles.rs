@@ -14,6 +14,9 @@ use voicepuncher::core::application::{
 };
 use voicepuncher::core::domain::{AudioBuffer16k, CleanedText, RawTranscript, VoiceCommand};
 
+/// The stand-ins' audio rate: one sample per millisecond is enough to measure a lead-in.
+const SAMPLES_PER_SEC: f32 = AudioBuffer16k::SAMPLE_RATE_HZ as f32;
+
 /// Long enough that a command spoken right after "stop dictation" arrives before the paste.
 pub const TRANSCRIPTION_TIME: Duration = Duration::from_millis(150);
 
@@ -71,6 +74,16 @@ impl AudioRecorder for NotingRecorder {
 
     fn truncate_at(&mut self, cut: Instant) {
         *self.cut.lock().unwrap() = Some(cut);
+    }
+
+    /// Keeps what was said during the lead-in, so it is transcribed with the recording.
+    fn start_with_lead_in(&mut self, lead_in: AudioBuffer16k) -> Result<()> {
+        let lead_in_secs = lead_in.duration_ms() as f32 / 1000.0;
+        let since = Instant::now() - Duration::from_secs_f32(lead_in_secs);
+        self.speech.lock().unwrap().retain(|(at, _)| *at >= since);
+        *self.cut.lock().unwrap() = None;
+        record(&self.events, Event::RecordingStarted);
+        Ok(())
     }
 }
 
@@ -201,6 +214,13 @@ impl CommandSpotter for ScriptedSpotter {
     fn stop_listening(&mut self) {
         self.phrases.lock().unwrap().clear();
         record(&self.events, Event::ListeningStopped);
+    }
+
+    fn heard_since(&self, since: Instant) -> AudioBuffer16k {
+        let secs = Instant::now()
+            .saturating_duration_since(since)
+            .as_secs_f32();
+        AudioBuffer16k::new(vec![0; (secs * SAMPLES_PER_SEC) as usize])
     }
 }
 

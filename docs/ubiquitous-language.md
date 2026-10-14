@@ -203,16 +203,26 @@
 
 ### VoiceCommand
 - **Type:** Value Object (enum)
-- **Definition:** A spoken English command, recognized only when its phrase is the whole utterance (a pause before and after it). `SpokenCommand` pairs it with the moment its phrase started.
+- **Definition:** A spoken English command. `SpokenCommand` pairs it with when its words were said and its *command placement*: the whole utterance (the pause rule), the end of an utterance, "start" at its head, or a doubled form or *command chain* anywhere.
 - **Code:** `app/src/core/domain/voice_command.rs`, recognition (pause rule) in `app/src/core/domain/voice_command_recognizer.rs`
-- **Variants:** `StartDictation` ("start dictation"), `StopDictation` ("stop dictation"), `CancelDictation` ("cancel dictation"), `PressEnter` ("press enter"), `ClearAllText` ("clear all text")
+- **Variants:** `StartDictation` ("start dictation"), `StopDictation` ("stop dictation"), `CancelDictation` ("cancel dictation"), `RestartDictation` ("restart dictation"), `PressEnter` ("press enter"), `ClearAllText` ("clear all text")
 - **Synonyms to AVOID:** "keyword", "hotword", "wake word", "voice shortcut"
 
 ### SpottingEvent
 - **Type:** Boundary signal
 - **Definition:** What the *command spotting service* reports about the audio it hears: speech started, speech ended, a phrase spotted with its start and end. Fed to the `VoiceCommandRecognizer`.
 - **Code:** `app/src/core/domain/voice_command_recognizer.rs`
-- **Variants:** `SpeechStarted`, `SpeechEnded`, `PhraseSpotted`
+- **Variants:** `SpeechStarted`, `SpeechEnded`, `PhraseSpotted`, `CommandsSaid` (one to three commands said without a pause around them, carried out at once without the pause rule)
+
+### Command placement
+- **Type:** Value Object (enum `CommandPlacement`)
+- **Definition:** Where a *voice command* sat in its utterance: `Alone` (the whole utterance), `Tail` (it ended the utterance), `Head` ("start" opened it and speech followed), `Anywhere` (a doubled short form or a *command chain*).
+- **Code:** `app/src/core/domain/voice_command.rs`
+
+### Command chain
+- **Type:** Concept
+- **Definition:** Two or three different *voice commands* said one right after the other ("stop enter", "stop enter start"), each accepted in the state the one before leads to; carried out in order.
+- **Synonyms to AVOID:** "macro", "combo"
 
 ### Command spotting service
 - **Type:** Local service (separate process, loopback WebSocket)

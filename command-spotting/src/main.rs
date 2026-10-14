@@ -29,7 +29,7 @@ struct Args {
     #[arg(long, default_value_t = 2)]
     threads: i32,
     /// Silence in seconds that ends an utterance: the pause around a command.
-    #[arg(long, default_value_t = 0.4)]
+    #[arg(long, default_value_t = 0.3)]
     min_silence_secs: f32,
     /// Save every speech segment heard as a WAV file in this directory (for tuning).
     #[arg(long)]
@@ -77,4 +77,18 @@ fn main() -> Result<()> {
         args.port
     );
     server::serve(listener, Arc::new(engine))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_end_an_utterance_after_0_3_s_of_silence_by_default() {
+        // When
+        let args =
+            Args::try_parse_from(["service", "--model-dir", "m", "--vad-model", "v"]).unwrap();
+        // Then
+        assert_eq!(args.min_silence_secs, 0.3);
+    }
 }

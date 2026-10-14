@@ -65,6 +65,7 @@ fn should_report_a_spoken_phrase_between_the_bounds_of_its_speech() {
             SpottingEvent::SpeechStarted(_) => "speech started",
             SpottingEvent::PhraseSpotted { phrase, .. } => phrase.as_str(),
             SpottingEvent::SpeechEnded(_) => "speech ended",
+            SpottingEvent::CommandsSaid { .. } => "commands said",
         })
         .collect();
     // The keyword spotter and the speech recognition of the utterance may both report it.
@@ -218,7 +219,7 @@ impl Listening {
         while let Some(left) = deadline.checked_duration_since(Instant::now()) {
             match self.inputs.recv_timeout(left) {
                 Ok(PipelineInput::Spotting(event)) => {
-                    if let Some(spoken) = self.recognizer.feed(event) {
+                    if let Some(spoken) = self.recognizer.feed(event).first() {
                         return Some(spoken.command);
                     }
                 }
@@ -269,22 +270,23 @@ fn should_ignore_a_command_phrase_said_inside_a_sentence_after_long_listening() 
 }
 
 #[test]
-fn should_ignore_a_command_phrase_with_words_only_before_it() {
+fn should_take_a_command_phrase_that_ends_the_utterance() {
     let Some(url) = service_url() else { return };
-    // A single short word right before a command ("please press enter") is within the
-    // spotter's timing error and still passes: a known limit, see design.md Risks.
-    for sentence in [
-        "now start dictation",
-        "I think we should press enter",
-        "then we start dictation",
-        "and then clear all text",
+    for (sentence, command) in [
+        ("now start dictation", VoiceCommand::StartDictation),
+        ("I think we should press enter", VoiceCommand::PressEnter),
+        ("and then clear all text", VoiceCommand::ClearAllText),
     ] {
         // Given
         let mut listening = Listening::start(&url, &VoiceCommand::STANDBY);
         // When
         listening.say_after(BETWEEN_COMMANDS_SECS, sentence);
         // Then
-        assert_eq!(listening.next_command(), None, "said: {sentence:?}");
+        assert_eq!(
+            listening.next_command(),
+            Some(command),
+            "said: {sentence:?}"
+        );
         listening.stream.stop();
     }
 }
@@ -439,14 +441,34 @@ fn should_keep_a_live_service_that_hears_nothing_for_a_while() {
 }
 
 #[test]
+fn should_start_a_dictation_with_start_opening_the_utterance() {
+    let Some(url) = service_url() else { return };
+    for sentence in [
+        "start dictation again",
+        "start dictation for the next message",
+    ] {
+        // Given
+        let mut listening = Listening::start(&url, &VoiceCommand::STANDBY);
+        // When
+        listening.say_after(BETWEEN_COMMANDS_SECS, sentence);
+        // Then
+        assert_eq!(
+            listening.next_command(),
+            Some(VoiceCommand::StartDictation),
+            "said: {sentence:?}"
+        );
+        listening.stream.stop();
+    }
+}
+
+#[test]
 fn should_ignore_a_command_phrase_with_more_speech_after_it() {
     let Some(url) = service_url() else { return };
     // A single short word right after a command ("press enter now") is within the margin
-    // quiet speech needs and still passes: a known limit, see design.md Risks.
+    // quiet speech needs and still passes: a known limit of the pause rule.
     for sentence in [
-        "start dictation again",
         "press enter when you are ready",
-        "start dictation for the next message",
+        "clear all text in the morning please",
     ] {
         // Given
         let mut listening = Listening::start(&url, &VoiceCommand::STANDBY);

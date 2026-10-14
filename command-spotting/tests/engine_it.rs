@@ -19,11 +19,12 @@ const TAIL_TOLERANCE_SECS: f32 = 0.5;
 /// Silence streamed before the phrase set changes.
 const LEAD_IN_SECS: f32 = 2.0;
 const FRAME_SAMPLES: usize = 1_600;
-const MIN_SILENCE_SECS: f32 = 0.4;
-const ALL_PHRASES: [&str; 5] = [
+const MIN_SILENCE_SECS: f32 = 0.3;
+const ALL_PHRASES: [&str; 6] = [
     "start dictation",
     "stop dictation",
     "cancel dictation",
+    "restart dictation",
     "press enter",
     "clear all text",
 ];
@@ -170,6 +171,7 @@ fn segment_and_phrase(events: &[ServerEvent]) -> ((f32, f32), (f32, f32)) {
             ServerEvent::SpeechStart { t } => segment = Some((*t, f32::MAX)),
             ServerEvent::SpeechEnd { t } => segment = segment.map(|(s, _)| (s, *t)),
             ServerEvent::Phrase { start, end, .. } => phrase = Some((*start, *end)),
+            ServerEvent::Command { .. } => {}
         }
     }
     (
@@ -260,17 +262,25 @@ type PhraseInSegment = (String, (f32, f32), (f32, f32));
 fn phrases_in_segments(events: &[ServerEvent]) -> Vec<PhraseInSegment> {
     let mut found = Vec::new();
     let mut segment_start = None;
+    let mut last_segment: Option<(f32, f32)> = None;
     let mut waiting: Vec<(String, (f32, f32))> = Vec::new();
     for event in events {
         match event {
             ServerEvent::SpeechStart { t } => segment_start = Some(*t),
-            ServerEvent::Phrase { phrase, start, end } => {
-                waiting.push((phrase.clone(), (*start, *end)))
-            }
+            // A phrase reported after its segment ended still belongs to it: the spotter
+            // may decode it after the short pause that closed the segment.
+            ServerEvent::Phrase { phrase, start, end } => match (segment_start, last_segment) {
+                (None, Some(segment)) if *start <= segment.1 => {
+                    found.push((phrase.clone(), segment, (*start, *end)))
+                }
+                _ => waiting.push((phrase.clone(), (*start, *end))),
+            },
             ServerEvent::SpeechEnd { t } => {
                 let start = segment_start.take().expect("speech start before its end");
+                last_segment = Some((start, *t));
                 found.extend(waiting.drain(..).map(|(p, span)| (p, (start, *t), span)));
             }
+            ServerEvent::Command { .. } => {}
         }
     }
     found

@@ -7,6 +7,9 @@ use crate::protocol::ServerEvent;
 /// places a phrase end up to half a second past where the voice activity detector ends
 /// quiet speech.
 const TAIL_SLACK: f32 = 0.5;
+/// How long after its end a phrase waits for a speech segment: after that the voice
+/// activity detector has missed the utterance, which happens with quiet speech in noise.
+const UNHELD_AFTER: f32 = 1.0;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Spotted {
@@ -44,6 +47,16 @@ impl EventOrderer {
         }
         self.pending.push(spotted);
         Vec::new()
+    }
+
+    /// The phrases no speech segment took although `now` (seconds of audio) is well past
+    /// their end; they are dropped from the waiting ones.
+    pub fn unheld(&mut self, now: f32) -> Vec<Spotted> {
+        let (unheld, waiting): (Vec<Spotted>, Vec<Spotted>) = std::mem::take(&mut self.pending)
+            .into_iter()
+            .partition(|p| now - p.end > UNHELD_AFTER);
+        self.pending = waiting;
+        unheld
     }
 
     /// The segment's start, the phrases spotted in it, then its end.
@@ -176,5 +189,19 @@ mod tests {
         });
         // Then
         assert!(events.contains(&phrase(25.5, 26.75)), "{events:?}");
+    }
+
+    #[test]
+    fn should_give_up_waiting_for_the_segment_of_a_phrase_the_detector_missed() {
+        // Given
+        let mut orderer = EventOrderer::default();
+        orderer.phrase(spotted(10.0, 11.0));
+        // When
+        let early = orderer.unheld(11.5);
+        let late = orderer.unheld(12.5);
+        // Then
+        assert!(early.is_empty());
+        assert_eq!(late, [spotted(10.0, 11.0)]);
+        assert!(orderer.unheld(13.0).is_empty());
     }
 }

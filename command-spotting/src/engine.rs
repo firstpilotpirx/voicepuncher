@@ -8,9 +8,10 @@ use sherpa_onnx::{
     VoiceActivityDetector,
 };
 
-use crate::confirm::{RecentAudio, UtteranceTranscriber};
+use crate::confirm::{Heard, RecentAudio, UtteranceTranscriber};
 use crate::keywords::{self, Keyword, UnknownPhrases};
-use crate::matcher::PhraseMatcher;
+use crate::matcher::Placement;
+use crate::matcher::{Found, PhraseMatcher};
 use crate::orderer::{EventOrderer, Segment, Spotted};
 use crate::protocol::ServerEvent;
 
@@ -18,7 +19,8 @@ pub const SAMPLE_RATE: u32 = 16_000;
 const SILERO_WINDOW: usize = 512;
 const VAD_BUFFER_SECS: f32 = 30.0;
 const VAD_SPEECH_THRESHOLD: f32 = 0.5;
-const MIN_SPEECH_SECS: f32 = 0.25;
+/// Shorter speech is noise to the detector: a short "start" or "enter" lasts about 0.2 s.
+const MIN_SPEECH_SECS: f32 = 0.15;
 const MAX_SPEECH_SECS: f32 = 20.0;
 /// How long the last spotted token lasts after its reported time.
 const LAST_TOKEN_SECS: f32 = 0.2;
@@ -37,6 +39,22 @@ const PRE_ROLL_SECS: f32 = 0.8;
 const POST_ROLL_SECS: f32 = 0.2;
 /// 100 ms: the resolution at which a spotted phrase is placed in the stream.
 const DECODE_FRAME_SAMPLES: usize = 1_600;
+/// How much of an utterance's end is searched for a command that ends it, or for a doubled
+/// or chained command while it runs.
+const WINDOW_SECS: f32 = 2.5;
+/// How often a running utterance is searched for a doubled or chained command.
+const WINDOW_EVERY_SECS: f32 = 1.0;
+/// How long an utterance runs before the first such search: a shorter one is searched
+/// once it ends, which spares the speech recognition service a request.
+const FIRST_WINDOW_SECS: f32 = 2.0;
+/// How long an utterance runs before its start is searched for "start": long enough for
+/// "start" and the first word after it.
+const HEAD_CHECK_SECS: f32 = 1.5;
+/// How far before the end of its utterance a command heard while it ran may end and still
+/// end the utterance: the detector holds speech this much past the last word.
+const TAIL_SLACK_SECS: f32 = 0.6;
+/// How late the voice activity detector notices speech has started.
+const ONSET_SECS: f32 = 0.3;
 
 pub struct EngineCfg {
     pub model_dir: PathBuf,
@@ -102,6 +120,7 @@ impl Engine {
             vad_fed: 0,
             vad_offset: 0,
             last_segment_end: 0,
+            running: None,
         })
     }
 }
@@ -122,6 +141,22 @@ pub struct Session<'a> {
     vad_offset: usize,
     /// Where the last utterance ended: the pre-roll of the next never reaches back past it.
     last_segment_end: usize,
+    /// The utterance the voice activity detector hears now, if any.
+    running: Option<Running>,
+}
+
+/// An utterance still being spoken, searched for commands while it runs.
+struct Running {
+    /// Where it started, by sample position.
+    start: usize,
+    /// Its start was searched for "start".
+    head_checked: bool,
+    /// When to search its last seconds again.
+    next_window: usize,
+    /// Commands found up to this sample position are not reported again.
+    reported_until: usize,
+    /// The last window heard while it ran, and where that window started.
+    last_window: Option<(Heard, usize)>,
 }
 
 impl Session<'_> {
@@ -142,6 +177,8 @@ impl Session<'_> {
             events.extend(self.spot(frame));
             events.extend(self.detect_speech(frame));
             self.samples_seen += frame.len();
+            events.extend(self.watch_running());
+            events.extend(self.confirm_unheld());
         }
         events
     }
@@ -200,30 +237,201 @@ impl Session<'_> {
         events
     }
 
-    /// The command phrase the whole utterance from `start` to `end` says, according to the
-    /// speech recognition service; utterances too long for a command are not sent.
-    fn confirm(&self, start: usize, end: usize, bounds: Segment) -> Option<ServerEvent> {
-        let transcriber = self.engine.transcriber.as_ref()?;
-        if end - start > self.engine.max_command_samples {
-            return None;
+    /// Searches the utterance being spoken: its start for "start", and every second its
+    /// last seconds for a doubled or chained command.
+    fn watch_running(&mut self) -> Vec<ServerEvent> {
+        if self.engine.transcriber.is_none() || !self.vad.detected() {
+            self.running = None;
+            return Vec::new();
         }
-        let pre_roll_start = start
+        let now = self.samples_seen;
+        let floor = self.last_segment_end;
+        let running = self.running.get_or_insert_with(|| Running {
+            start: now.saturating_sub(samples_in(ONSET_SECS)).max(floor),
+            head_checked: false,
+            next_window: now + samples_in(FIRST_WINDOW_SECS),
+            reported_until: 0,
+            last_window: None,
+        });
+        let start = running.start;
+        let mut events = Vec::new();
+        if !running.head_checked && now - start >= samples_in(HEAD_CHECK_SECS) {
+            running.head_checked = true;
+            let from = self.pre_rolled(start);
+            if let Some(found) = self.hear(from, now).and_then(|heard| {
+                // The utterance goes on: a "start" heard alone so far has speech after it.
+                self.place(&heard, from, |m, w| {
+                    m.start_at_head(w).or_else(|| m.start_so_far(w))
+                })
+            }) {
+                events.push(found);
+            }
+        }
+        let due = self.running.as_ref().is_some_and(|r| now >= r.next_window);
+        if due {
+            let from = now
+                .saturating_sub(samples_in(WINDOW_SECS))
+                .max(self.pre_rolled(start));
+            if let Some(running) = self.running.as_mut() {
+                running.next_window = now + samples_in(WINDOW_EVERY_SECS);
+            }
+            if let Some(heard) = self.hear(from, now) {
+                if let Some(found) = self.place(&heard, from, |m, w| m.anywhere(w)) {
+                    events.push(found);
+                }
+                if let Some(running) = self.running.as_mut() {
+                    running.last_window = Some((heard, from));
+                }
+            }
+        }
+        events
+    }
+
+    /// A phrase the keyword spotter found but no speech segment took: the voice activity
+    /// detector missed the utterance. It counts when the speech recognition service hears
+    /// only the command around it.
+    fn confirm_unheld(&mut self) -> Vec<ServerEvent> {
+        let unheld = self.orderer.unheld(seconds(self.samples_seen));
+        let mut events = Vec::new();
+        for spotted in unheld {
+            let around = samples_in(PRE_ROLL_SECS / 2.0);
+            let from = samples_in(spotted.start)
+                .saturating_sub(around)
+                .max(self.last_segment_end);
+            let to = samples_in(spotted.end) + around;
+            let Some(heard) = self.hear(from, to) else {
+                continue;
+            };
+            let Some(phrase) = self.matcher.phrase_in(&heard.text) else {
+                continue;
+            };
+            let (start, end) = match (heard.words.first(), heard.words.last()) {
+                (Some(first), Some(last)) => (
+                    seconds(from + samples_in(first.start)),
+                    seconds(from + samples_in(last.end)),
+                ),
+                _ => (spotted.start, spotted.end),
+            };
+            log::info!("missed utterance → {phrase:?}");
+            events.push(ServerEvent::Command {
+                commands: vec![phrase],
+                start,
+                end,
+                placement: Placement::Tail,
+            });
+        }
+        events
+    }
+
+    /// `start` moved back by the pre-roll, never past the end of the utterance before.
+    fn pre_rolled(&self, start: usize) -> usize {
+        start
             .saturating_sub(samples_in(PRE_ROLL_SECS))
-            .max(self.last_segment_end.min(start));
-        let audio = self
-            .recent
-            .between(pre_roll_start, end + samples_in(POST_ROLL_SECS));
-        let text = transcriber
+            .max(self.last_segment_end.min(start))
+    }
+
+    fn hear(&self, from: usize, to: usize) -> Option<Heard> {
+        let transcriber = self.engine.transcriber.as_ref()?;
+        let audio = self.recent.between(from, to);
+        let heard = transcriber
             .transcribe(&audio, SAMPLE_RATE)
-            .map_err(|e| log::warn!("cannot confirm the utterance: {e:#}"))
+            .map_err(|e| log::warn!("cannot transcribe the utterance: {e:#}"))
             .ok()?;
-        let phrase = self.matcher.phrase_in(&text);
-        log::info!("heard {text:?} → {phrase:?}");
-        Some(ServerEvent::Phrase {
-            phrase: phrase?,
-            start: bounds.start,
-            end: bounds.end,
+        log::info!("heard {:?}", heard.text);
+        Some(heard)
+    }
+
+    /// The command `find` sees in `heard` (audio sent from sample `from`), as an event
+    /// placed in the stream; none when the running utterance already reported it.
+    fn place(
+        &mut self,
+        heard: &Heard,
+        from: usize,
+        find: impl Fn(&PhraseMatcher, &[&str]) -> Option<Found>,
+    ) -> Option<ServerEvent> {
+        let found = find(&self.matcher, &heard.word_texts())?;
+        let (first, last) = (&heard.words[found.first], &heard.words[found.last]);
+        let start = from + samples_in(first.start);
+        let end = from + samples_in(last.end);
+        if let Some(running) = self.running.as_mut() {
+            if start < running.reported_until {
+                return None;
+            }
+            running.reported_until = end;
+        }
+        log::info!("{:?} {:?}", found.placement, found.commands);
+        Some(ServerEvent::Command {
+            commands: found.commands,
+            start: seconds(start),
+            end: seconds(end),
+            placement: found.placement,
         })
+    }
+
+    /// The command the utterance from `start` to `end` says: the whole utterance, when it
+    /// is short enough for a command; else a doubled or chained command in its last
+    /// seconds the running search did not report yet, or a command that ends it.
+    fn confirm(&mut self, start: usize, end: usize, bounds: Segment) -> Option<ServerEvent> {
+        self.engine.transcriber.as_ref()?;
+        let to = end + samples_in(POST_ROLL_SECS);
+        let reported_until = self.running.as_ref().map_or(0, |r| r.reported_until);
+        let last_window = self.running.as_mut().and_then(|r| r.last_window.take());
+        let short = end - start <= self.engine.max_command_samples;
+        let from = if short {
+            self.pre_rolled(start)
+        } else {
+            end.saturating_sub(samples_in(WINDOW_SECS))
+        };
+        let heard = self.hear(from, to)?;
+        if short {
+            if let Some(phrase) = self.matcher.phrase_in(&heard.text) {
+                log::info!("utterance → {phrase:?}");
+                // The detector notices speech up to 0.7 s late: the first word's time is
+                // where the command starts, so a recording cut there keeps none of it.
+                let start = heard
+                    .words
+                    .first()
+                    .map_or(bounds.start, |w| seconds(from + samples_in(w.start)));
+                return Some(ServerEvent::Phrase {
+                    phrase,
+                    start: start.min(bounds.start),
+                    end: bounds.end,
+                });
+            }
+        }
+        self.running = Some(Running {
+            start,
+            head_checked: true,
+            next_window: usize::MAX,
+            reported_until,
+            last_window: None,
+        });
+        let event = self
+            .place(&heard, from, |m, w| m.anywhere(w))
+            .or_else(|| self.place(&heard, from, |m, w| m.at_end(w)))
+            .or_else(|| self.tail_heard_while_running(last_window, end));
+        self.running = None;
+        event
+    }
+
+    /// A command that ended the last window heard while the utterance ran, when it also
+    /// ends the utterance: the closing window, cut elsewhere, may hear its words wrong
+    /// ("at ten enter" as "at 10am").
+    fn tail_heard_while_running(
+        &mut self,
+        last_window: Option<(Heard, usize)>,
+        end: usize,
+    ) -> Option<ServerEvent> {
+        let (heard, from) = last_window?;
+        let event = self.place(&heard, from, |m, w| m.at_end(w))?;
+        match event {
+            ServerEvent::Command { end: said_end, .. }
+                if said_end >= seconds(end.saturating_sub(samples_in(TAIL_SLACK_SECS))) =>
+            {
+                Some(event)
+            }
+            _ => None,
+        }
     }
 }
 

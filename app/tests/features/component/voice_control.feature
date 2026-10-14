@@ -106,18 +106,28 @@ Feature: voice-control
       Then select all and delete are pressed in the focused app
       And the command sound plays
 
-  Rule: A command counts only when spoken on its own
+  Rule: A command counts on its own or in its set places
 
     Scenario: A stop phrase inside a dictated sentence does not end the dictation
       Given a dictation runs
       When the user says "please stop dictation software from crashing" without pausing
       Then the dictation keeps running
 
-  Rule: Each state accepts only its own commands
+  Rule: "press enter" during a dictation pastes and sends
 
-    Scenario: Press enter during a dictation is ignored
+    Scenario: Saying enter during a dictation pastes and sends
       Given a dictation runs
-      When the user says "press enter"
+      And the user has said a sentence in it
+      When the user says "enter"
+      Then the sentence is pasted into the focused app
+      And the pasted text does not contain "enter"
+      And the Return key is pressed after it
+
+  Rule: Each state accepts its own commands
+
+    Scenario: Clear during a dictation is ignored
+      Given a dictation runs
+      When the user says "clear all text"
       Then no key is pressed
       And the dictation keeps running
 
@@ -161,6 +171,84 @@ Feature: voice-control
       Then no text is pasted
       And the cancel sound plays
       And listening stays on
+
+  Rule: "restart dictation" starts the dictation over
+
+    Scenario: Saying restart drops the dictation and starts a new one
+      Given a dictation runs
+      And the user has said a sentence in it
+      When the user says "restart"
+      Then no text is pasted
+      And the cancel sound plays, then the start sound
+      And a new dictation starts
+
+    Scenario: Only the speech after a restart is pasted
+      Given the user said a sentence, "restart", and another sentence
+      When the user says "stop"
+      Then only the other sentence is pasted
+
+  Rule: A command may end an utterance
+
+    Scenario: Stop right after the last dictated word
+      Given a dictation runs
+      When the user says a sentence and then "stop" without a pause, then pauses
+      Then the sentence is pasted into the focused app
+      And the pasted text does not contain "stop"
+
+  Rule: "start" may open an utterance
+
+    Scenario: Start followed by the dictation at once
+      Given listening is on
+      And no dictation runs
+      When the user says "start" and a sentence without a pause, and later ends the dictation
+      Then the sentence is pasted into the focused app
+      And the pasted text does not contain "start"
+
+  Rule: A doubled short form counts anywhere
+
+    Scenario: Stop stop in the middle of speech
+      Given a dictation runs
+      When the user says a sentence, "stop stop" and more words, without any pause
+      Then the sentence is pasted into the focused app
+      And the pasted text does not contain "stop"
+      And the pasted text does not contain the words after it
+
+    Scenario: Cancel cancel in the middle of speech
+      Given a dictation runs
+      When the user says a sentence and "cancel cancel" without a pause
+      Then no text is pasted
+      And the cancel sound plays
+
+  Rule: A chain of commands is carried out in order
+
+    Scenario: Stop enter pastes and sends
+      Given a dictation runs
+      And the user has said a sentence in it
+      When the user says "stop enter"
+      Then the sentence is pasted into the focused app
+      And the Return key is pressed after it
+
+    Scenario: Stop enter start sends and starts the next dictation
+      Given a dictation runs
+      And the user has said a sentence in it
+      When the user says "stop enter start"
+      Then the sentence is pasted into the focused app
+      And the Return key is pressed after it
+      And a new dictation starts after it
+
+    Scenario: Cancel clear discards and clears
+      Given a dictation runs
+      When the user says "cancel clear"
+      Then no text is pasted
+      And select all and delete are pressed in the focused app
+
+  Rule: Which chains exist
+
+    Scenario: Stop clear enter
+      Given a dictation runs
+      And the user has said a sentence in it
+      When the user says "stop clear enter"
+      Then the sentence is pasted, then select all and delete are pressed, then the Return key is pressed
 
   Rule: Voice control needs the command spotting service
 

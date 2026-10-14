@@ -13,7 +13,7 @@ const LANGUAGE: &str = "en";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// The commands, as a hint that steers the speech recognition service towards them.
 const PROMPT: &str =
-    "start dictation. stop dictation. cancel dictation. press enter. clear text. clear all text.";
+    "start dictation. stop dictation. cancel dictation. restart dictation. press enter. clear text. clear all text.";
 
 /// The last seconds of a connection's audio, by absolute sample position.
 pub struct RecentAudio {
@@ -46,9 +46,64 @@ impl RecentAudio {
     }
 }
 
+/// A word the speech recognition service heard, with its times in the audio sent.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct TimedWord {
+    #[serde(rename = "word")]
+    pub text: String,
+    pub start: f32,
+    pub end: f32,
+}
+
+/// What the speech recognition service heard: the text, and each word with its times.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Heard {
+    pub text: String,
+    pub words: Vec<TimedWord>,
+}
+
+impl Heard {
+    pub fn word_texts(&self) -> Vec<&str> {
+        self.words.iter().map(|w| w.text.as_str()).collect()
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct Transcription {
     text: String,
+    #[serde(default)]
+    segments: Vec<TranscribedSegment>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TranscribedSegment {
+    #[serde(default)]
+    words: Vec<TimedWord>,
+}
+
+fn heard_from(answer: &str) -> Result<Heard> {
+    let transcription: Transcription =
+        serde_json::from_str(answer).context("speech recognition service answer")?;
+    Ok(Heard {
+        text: transcription.text,
+        words: whole_words(transcription.segments.into_iter().flat_map(|s| s.words)),
+    })
+}
+
+/// The service reports pieces of words: a piece that does not start with a space
+/// continues the word before it ("end" + "er", "today" + "'s").
+fn whole_words(pieces: impl Iterator<Item = TimedWord>) -> Vec<TimedWord> {
+    let mut words: Vec<TimedWord> = Vec::new();
+    for piece in pieces {
+        match words.last_mut() {
+            Some(word) if !piece.text.starts_with(' ') => {
+                word.text.push_str(&piece.text);
+                word.end = piece.end;
+            }
+            _ => words.push(piece),
+        }
+    }
+    words
 }
 
 /// A client of the speech recognition service (OpenAI Audio Transcriptions API).
@@ -64,8 +119,8 @@ impl UtteranceTranscriber {
         }
     }
 
-    /// What was said in `samples` (16 kHz mono).
-    pub fn transcribe(&self, samples: &[f32], sample_rate: u32) -> Result<String> {
+    /// What was said in `samples` (16 kHz mono), with each word's times.
+    pub fn transcribe(&self, samples: &[f32], sample_rate: u32) -> Result<Heard> {
         let body = multipart_body(&wav(samples, sample_rate)?);
         let response = ureq::post(&self.endpoint)
             .timeout(REQUEST_TIMEOUT)
@@ -76,9 +131,7 @@ impl UtteranceTranscriber {
             .send_bytes(&body)
             .with_context(|| format!("speech recognition service at {}", self.endpoint))?
             .into_string()?;
-        let transcription: Transcription =
-            serde_json::from_str(&response).context("speech recognition service answer")?;
-        Ok(transcription.text)
+        heard_from(&response)
     }
 }
 
@@ -104,7 +157,8 @@ fn multipart_body(wav: &[u8]) -> Vec<u8> {
         ("language", LANGUAGE),
         ("prompt", PROMPT),
         ("temperature", "0"),
-        ("response_format", "json"),
+        ("response_format", "verbose_json"),
+        ("timestamp_granularities[]", "word"),
     ] {
         body.extend_from_slice(
             format!("--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n")
@@ -150,6 +204,35 @@ mod tests {
         assert!(body.contains("name=\"language\"\r\n\r\nen\r\n"));
         assert!(body.contains("name=\"temperature\"\r\n\r\n0\r\n"));
         assert!(body.contains("press enter"));
+        assert!(body.contains("name=\"response_format\"\r\n\r\nverbose_json\r\n"));
+        assert!(body.contains("name=\"timestamp_granularities[]\"\r\n\r\nword\r\n"));
         assert!(body.ends_with(&format!("--{BOUNDARY}--\r\n")));
+    }
+
+    #[test]
+    fn should_read_the_words_and_their_times() {
+        // Given
+        let answer = r#"{"text":" we meet stop","segments":[
+            {"start":0.0,"end":1.0,"words":[{"word":" we","start":0.0,"end":0.2},{"word":" meet","start":0.2,"end":0.6}]},
+            {"start":1.0,"end":1.4,"words":[{"word":" stop","start":1.0,"end":1.4}]}]}"#;
+        // When
+        let heard = heard_from(answer).unwrap();
+        // Then
+        assert_eq!(heard.text, " we meet stop");
+        assert_eq!(heard.word_texts(), [" we", " meet", " stop"]);
+        assert_eq!((heard.words[2].start, heard.words[2].end), (1.0, 1.4));
+    }
+
+    #[test]
+    fn should_join_the_pieces_of_a_word() {
+        // Given
+        let answer = r#"{"text":" top ender.","segments":[{"words":[
+            {"word":" top","start":0.0,"end":0.3},{"word":" end","start":0.3,"end":0.5},
+            {"word":"er","start":0.5,"end":0.7},{"word":".","start":0.7,"end":0.7}]}]}"#;
+        // When
+        let heard = heard_from(answer).unwrap();
+        // Then
+        assert_eq!(heard.word_texts(), [" top", " ender."]);
+        assert_eq!((heard.words[1].start, heard.words[1].end), (0.3, 0.7));
     }
 }

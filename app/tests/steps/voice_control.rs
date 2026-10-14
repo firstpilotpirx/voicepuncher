@@ -14,7 +14,9 @@ use cucumber::{given, then, when};
 use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
 use voicepuncher::core::application::{ChunkingCfg, PipelineInput};
-use voicepuncher::core::domain::{PttSignal, RecordingMode, SpottingEvent, VoiceCommand};
+use voicepuncher::core::domain::{
+    CommandPlacement, PttSignal, RecordingMode, SpottingEvent, VoiceCommand,
+};
 
 use doubles::{
     Cut, ErrorLog, Event, Events, NotingRecorder, Phrases, RecordingKeyPresser, RecordingOverlay,
@@ -24,6 +26,18 @@ use doubles::{
 use crate::IntegrationWorld;
 
 const SENTENCE: &str = "Meeting moved to Friday.";
+/// Said in the same breath after a doubled command: none of it may be pasted.
+const MORE_WORDS: &str = "and some more words";
+/// Where a command said without a pause sits after the start of its utterance.
+const COMMAND_AFTER: Duration = Duration::from_millis(1_500);
+/// How long a command's words last.
+const COMMAND_LENGTH: Duration = Duration::from_millis(500);
+/// How late the service places a command's start: a cut this late keeps the first command
+/// word in the recording, so the text must lose it.
+const LATE_CUT: Duration = Duration::from_millis(50);
+/// How far back an utterance said in one breath with "start" began, so its speech came
+/// before the recording started.
+const BREATH_AGO: Duration = Duration::from_secs(2);
 const STOP_PHRASE: &str = "stop dictation";
 /// Longest a pipeline reaction may take in these scenarios.
 const REACTION: Duration = Duration::from_secs(2);
@@ -186,6 +200,22 @@ impl VoiceRun {
         self.send_segment(phrase, segment_start, phrase_start, phrase_end, segment_end)
     }
 
+    /// Reports `commands` said without a pause at `start..end`, as the service does.
+    fn say_commands(
+        &mut self,
+        commands: &[VoiceCommand],
+        start: Instant,
+        end: Instant,
+        placement: CommandPlacement,
+    ) -> Result<()> {
+        self.send(PipelineInput::Spotting(SpottingEvent::CommandsSaid {
+            commands: commands.to_vec(),
+            start,
+            end,
+            placement,
+        }))
+    }
+
     fn speak(&self, words: &str, at: Instant) {
         self.speech.lock().unwrap().push((at, words.to_owned()));
     }
@@ -346,6 +376,80 @@ fn press_hotkey_once(world: &mut IntegrationWorld) -> Result<()> {
     run.press_hotkey()
 }
 
+#[when(expr = "the user says a sentence and then {string} without a pause, then pauses")]
+fn says_sentence_then_command(world: &mut IntegrationWorld, said: String) -> Result<()> {
+    let run = run(world);
+    run.start_when();
+    let start = Instant::now();
+    let command_at = start + COMMAND_AFTER;
+    run.speak(SENTENCE, start);
+    run.speak(&said, command_at);
+    run.send(PipelineInput::Spotting(SpottingEvent::SpeechStarted(start)))?;
+    let commands = chain(&said).context("no command")?;
+    let end = command_at + COMMAND_LENGTH;
+    run.say_commands(
+        &commands,
+        command_at + LATE_CUT,
+        end,
+        CommandPlacement::Tail,
+    )?;
+    run.send(PipelineInput::Spotting(SpottingEvent::SpeechEnded(end)))
+}
+
+#[when(
+    expr = "the user says {string} and a sentence without a pause, and later ends the dictation"
+)]
+fn says_start_and_sentence(world: &mut IntegrationWorld, said: String) -> Result<()> {
+    let run = run(world);
+    run.start_when();
+    let start = Instant::now() - BREATH_AGO;
+    let end = start + COMMAND_LENGTH;
+    run.speak(&said, start);
+    run.speak(SENTENCE, end + LATE_CUT);
+    run.send(PipelineInput::Spotting(SpottingEvent::SpeechStarted(start)))?;
+    let commands = chain(&said).context("no command")?;
+    run.say_commands(&commands, start, end, CommandPlacement::Head)?;
+    run.wait_for(|e| *e == Event::RecordingStarted)?;
+    run.press_hotkey()
+}
+
+#[when(expr = "the user says a sentence, {string} and more words, without any pause")]
+fn says_doubled_in_speech(world: &mut IntegrationWorld, said: String) -> Result<()> {
+    let run = run(world);
+    run.start_when();
+    let start = Instant::now();
+    let command_at = start + COMMAND_AFTER;
+    let end = command_at + COMMAND_LENGTH;
+    run.speak(SENTENCE, start);
+    run.speak(&said, command_at);
+    run.speak(MORE_WORDS, end);
+    run.send(PipelineInput::Spotting(SpottingEvent::SpeechStarted(start)))?;
+    let commands = doubled(&said).context("no doubled command")?;
+    run.say_commands(
+        &commands,
+        command_at + LATE_CUT,
+        end,
+        CommandPlacement::Anywhere,
+    )
+}
+
+#[when(expr = "the user says a sentence and {string} without a pause")]
+fn says_sentence_and_doubled(world: &mut IntegrationWorld, said: String) -> Result<()> {
+    let run = run(world);
+    run.start_when();
+    let start = Instant::now();
+    let command_at = start + COMMAND_AFTER;
+    run.speak(SENTENCE, start);
+    run.send(PipelineInput::Spotting(SpottingEvent::SpeechStarted(start)))?;
+    let commands = doubled(&said).context("no doubled command")?;
+    run.say_commands(
+        &commands,
+        command_at,
+        command_at + COMMAND_LENGTH,
+        CommandPlacement::Anywhere,
+    )
+}
+
 #[when("the user presses Escape")]
 fn press_escape(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
@@ -368,7 +472,45 @@ fn records_with_hotkey(world: &mut IntegrationWorld) -> Result<()> {
 fn says(world: &mut IntegrationWorld, phrase: String) -> Result<()> {
     let run = run(world);
     run.start_when();
-    run.say_alone(&phrase)
+    match chain(&phrase) {
+        Some(commands) if commands.len() > 1 => {
+            let start = Instant::now();
+            run.say_commands(
+                &commands,
+                start,
+                start + COMMAND_LENGTH,
+                CommandPlacement::Anywhere,
+            )
+        }
+        Some(commands) if commands.len() == 1 => run.say_alone(commands[0].phrase()),
+        _ => run.say_alone(&phrase),
+    }
+}
+
+/// The command a short form names.
+fn short_form(word: &str) -> Option<VoiceCommand> {
+    match word {
+        "start" => Some(VoiceCommand::StartDictation),
+        "stop" => Some(VoiceCommand::StopDictation),
+        "cancel" => Some(VoiceCommand::CancelDictation),
+        "restart" => Some(VoiceCommand::RestartDictation),
+        "enter" => Some(VoiceCommand::PressEnter),
+        "clear" => Some(VoiceCommand::ClearAllText),
+        _ => None,
+    }
+}
+
+/// The commands of a chain of short forms ("stop enter start").
+fn chain(said: &str) -> Option<Vec<VoiceCommand>> {
+    said.split_whitespace().map(short_form).collect()
+}
+
+/// The command a doubled short form ("stop stop") names.
+fn doubled(said: &str) -> Option<Vec<VoiceCommand>> {
+    match chain(said)?.as_slice() {
+        [first, second] if first == second => Some(vec![*first]),
+        _ => None,
+    }
 }
 
 #[when(expr = "the user says {string} without pausing")]
@@ -478,6 +620,106 @@ fn no_stop_phrase(world: &mut IntegrationWorld) -> Result<()> {
     let pasted = run(world).pasted()?;
     if pasted.contains(STOP_PHRASE) {
         bail!("the stop phrase reached the pasted text: {pasted:?}");
+    }
+    Ok(())
+}
+
+#[then(expr = "the pasted text does not contain {string}")]
+fn pasted_without(world: &mut IntegrationWorld, word: String) -> Result<()> {
+    let pasted = run(world).pasted()?;
+    let has_word = pasted
+        .to_lowercase()
+        .split(|c: char| !c.is_alphabetic())
+        .any(|w| w == word);
+    if has_word {
+        bail!("{word:?} reached the pasted text: {pasted:?}");
+    }
+    Ok(())
+}
+
+#[then("the pasted text does not contain the words after it")]
+fn pasted_without_more_words(world: &mut IntegrationWorld) -> Result<()> {
+    let pasted = run(world).pasted()?;
+    if pasted.contains(MORE_WORDS) {
+        bail!("the words after the command reached the pasted text: {pasted:?}");
+    }
+    Ok(())
+}
+
+#[then("a new dictation starts")]
+fn new_dictation_starts(world: &mut IntegrationWorld) -> Result<()> {
+    run(world).wait_since_mark(|e| *e == Event::RecordingStarted)
+}
+
+/// Said after a restart: the only text of the dictation that follows.
+const OTHER_SENTENCE: &str = "Lunch is at noon.";
+
+#[given(expr = "the user said a sentence, {string}, and another sentence")]
+fn restarted_with_another_sentence(world: &mut IntegrationWorld, restart: String) -> Result<()> {
+    dictation_runs(world)?;
+    let run = run(world);
+    run.speak(SENTENCE, Instant::now());
+    run.say_alone(short_form(&restart).context("no command")?.phrase())?;
+    let deadline = Instant::now() + REACTION;
+    let started = |run: &VoiceRun| {
+        run.events()
+            .iter()
+            .filter(|e| **e == Event::RecordingStarted)
+            .count()
+    };
+    while started(run) < 2 {
+        if Instant::now() >= deadline {
+            bail!("no new dictation after the restart: {:?}", run.events());
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    run.speak(OTHER_SENTENCE, Instant::now());
+    Ok(())
+}
+
+#[then("only the other sentence is pasted")]
+fn only_other_sentence(world: &mut IntegrationWorld) -> Result<()> {
+    let pasted = run(world).pasted()?;
+    if pasted.contains(SENTENCE) || !pasted.contains(OTHER_SENTENCE) {
+        bail!("pasted {pasted:?}, expected only {OTHER_SENTENCE:?}");
+    }
+    Ok(())
+}
+
+#[then("the cancel sound plays, then the start sound")]
+fn cancel_then_start_sound(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.wait_since_mark(|e| *e == Event::Sound("start"))?;
+    let since = run.since_mark();
+    let at = |name| since.iter().position(|e| *e == Event::Sound(name));
+    match (at("cancel"), at("start")) {
+        (Some(cancel), Some(start)) if cancel < start => Ok(()),
+        _ => bail!("expected the cancel sound, then the start sound: {since:?}"),
+    }
+}
+
+#[then("a new dictation starts after it")]
+fn new_dictation_after(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    let pasted_at = run.wait_for(|e| matches!(e, Event::Pasted(_)))?;
+    let deadline = Instant::now() + REACTION;
+    while !run.events()[pasted_at..].contains(&Event::RecordingStarted) {
+        if Instant::now() >= deadline {
+            bail!("no dictation started after the paste: {:?}", run.events());
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    Ok(())
+}
+
+#[then("the sentence is pasted, then select all and delete are pressed, then the Return key is pressed")]
+fn pasted_cleared_sent(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    let pasted = run.wait_for(|e| matches!(e, Event::Pasted(_)))?;
+    let cleared = run.wait_for(|e| *e == Event::AllTextCleared)?;
+    let sent = run.wait_for(|e| *e == Event::ReturnPressed)?;
+    if !(pasted < cleared && cleared < sent) {
+        bail!("expected paste, clear, Return in order: {:?}", run.events());
     }
     Ok(())
 }
