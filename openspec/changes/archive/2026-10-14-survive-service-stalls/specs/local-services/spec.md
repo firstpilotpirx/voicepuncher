@@ -34,7 +34,7 @@ While a confirmation of a running utterance waits for the speech recognition ser
 #### Scenario: Checks of a long utterance are skipped while the service is slow
 - **GIVEN** the speech recognition service takes 4 seconds to answer every confirmation
 - **WHEN** an app streams one utterance of 10 seconds
-- **THEN** at most one confirmation of that utterance waits at any time
+- **THEN** at most one check of that utterance waits at any time, and the checks that fall due meanwhile are skipped
 
 #### Scenario: A command said alone is confirmed by the second attempt
 - **GIVEN** the speech recognition service does not answer the first confirmation in time and answers the second
@@ -42,10 +42,10 @@ While a confirmation of a running utterance waits for the speech recognition ser
 - **THEN** the service reports "press enter"
 
 ### Requirement: A request given up by its client does not hold a copy
-The speech recognition service SHALL drop a request that still waits for a free copy when its client has given up on it, so an abandoned request never occupies a copy.
+The speech recognition service SHALL not transcribe a request whose client gave up on it while it waited for a free copy: the copy that takes it SHALL give it up at once, so an abandoned request never holds a copy for longer than a moment.
 
 #### Scenario: An abandoned request is not transcribed
-- **GIVEN** the speech recognition service runs as one copy, busy with long speech
-- **AND** a second request waits and its client gives up
-- **WHEN** the copy becomes free
-- **THEN** the abandoned request is not transcribed
+- **GIVEN** the speech recognition service runs as two copies, both busy with long speech
+- **AND** a third request waits and its client gives up
+- **WHEN** the copies become free
+- **THEN** the copy that takes the abandoned request gives it up at once instead of transcribing it

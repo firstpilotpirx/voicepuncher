@@ -48,13 +48,13 @@ check:
 _check:
     {{just_executable()}} _stages fmt lint test build e2e-smoke e2e-quick refine-eval
 
-# FULL (~10 min), run before merging: clean build + code checks + E2E (seams included) + accuracy on 100 samples
+# FULL (~14 min), run before merging: clean build + code checks + E2E (seams and outages included) + accuracy on 100 samples
 full-check:
     @{{locked}} _full-check
 
 _full-check: _require-models _require-corpus
     cargo clean
-    {{just_executable()}} _stages fmt lint test build e2e-smoke e2e-seams e2e-bench refine-eval
+    {{just_executable()}} _stages fmt lint test build e2e-smoke e2e-seams e2e-resilience e2e-bench refine-eval
     @echo "✓ full-check passed — before a release also walk through README.md § Release checklist (manual run)"
 
 # Runs the named stages (private recipes without their `_`) one by one: the services start once,
@@ -224,6 +224,13 @@ _refine-eval: _require-models _build
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" \
         cargo test -p voicepuncher-e2e-test --test cucumber_e2e -- --tags '@refinement and not @wip'
 
+# Outages: services that hang, die and come back while voice control runs (@resilience), each scenario on service ports of its own, so the shared services are never touched (~4 min)
+e2e-resilience:
+    @{{locked}} _e2e-resilience
+
+_e2e-resilience: _require-models _build
+    cargo test -p voicepuncher-e2e-test --test cucumber_e2e -- --tags '@resilience and not @wip'
+
 # Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words (~2.5 min)
 e2e-seams:
     @{{locked}} _e2e-seams
@@ -347,19 +354,42 @@ start-model-servers *services:
             exit 1
         fi
     }
-    # supervise <log file> <command…>: runs the service and starts it again whenever it exits,
-    # after 1 s, doubling up to 30 s while it keeps exiting within 30 s of its start.
+    # supervise <log file> <health URL or -> <command…>: runs the service and starts it again
+    # whenever it exits, after 1 s, doubling up to 30 s while it keeps exiting within 30 s of
+    # its start. With a health URL, a service that once answered it and then fails it 3 times
+    # in a row, 5 s apart, is killed and so restarted: a service that hangs without exiting.
     # TERM or INT stops the service and the supervisor, without a restart
     supervise() {
-        local log_file=$1 delay=1 started code
-        shift
-        child=""
-        trap '[[ -z "$child" ]] || kill "$child" 2>/dev/null; wait "$child" 2>/dev/null; exit 0' TERM INT
+        local log_file=$1 health=$2 delay=1 started code
+        shift 2
+        child="" watcher=""
+        trap '[[ -z "$watcher" ]] || kill "$watcher" 2>/dev/null; [[ -z "$child" ]] || kill "$child" 2>/dev/null; wait "$child" 2>/dev/null; exit 0' TERM INT
         while true; do
             started=$SECONDS
             "$@" >>"$log_file" 2>&1 &
             child=$!
+            watcher=""
+            if [[ "$health" != "-" ]]; then
+                (
+                    answered="" fails=0
+                    while kill -0 "$child" 2>/dev/null; do
+                        sleep 5
+                        if curl -fsS -o /dev/null --max-time 2 "$health" 2>/dev/null; then
+                            answered=1 fails=0
+                        elif [[ -n "$answered" ]]; then
+                            fails=$((fails + 1))
+                            if (( fails >= 3 )); then
+                                echo "… $1 stopped answering its health check ($fails checks in a row) — restarting" >>"$log_file"
+                                kill -9 "$child" 2>/dev/null
+                                exit 0
+                            fi
+                        fi
+                    done
+                ) &
+                watcher=$!
+            fi
             wait "$child" && code=0 || code=$?
+            [[ -z "$watcher" ]] || kill "$watcher" 2>/dev/null || true
             (( SECONDS - started < 30 )) || delay=1
             echo "… $1 exited with code $code — restarting in $delay s" >>"$log_file"
             sleep "$delay" &
@@ -368,14 +398,14 @@ start-model-servers *services:
             delay=$(( delay * 2 > 30 ? 30 : delay * 2 ))
         done
     }
-    # start_service <binary> <port> <label> <readiness check> <command…>: starts the service
-    # under its supervisor; the PID file holds the supervisor's PID
+    # start_service <binary> <port> <label> <readiness check> <health URL or -> <command…>:
+    # starts the service under its supervisor; the PID file holds the supervisor's PID
     start_service() {
-        local binary=$1 port=$2 label=$3 ready=$4
-        shift 4
+        local binary=$1 port=$2 label=$3 ready=$4 health=$5
+        shift 5
         local pid_file="$run_dir/$binary-$port.pid" log_file="$log_dir/$binary-$port.log"
         : >"$log_file"
-        nohup bash -c "$(declare -f supervise); supervise \"\$@\"" "supervise-$binary" "$log_file" "$@" >/dev/null 2>&1 &
+        nohup bash -c "$(declare -f supervise); supervise \"\$@\"" "supervise-$binary" "$log_file" "$health" "$@" >/dev/null 2>&1 &
         local pid=$!
         echo "$pid" >"$pid_file"
         echo "… starting $binary (pid $pid), log: $log_file"
@@ -418,11 +448,12 @@ start-model-servers *services:
     # about 5 s: a command confirmation) waits ahead of long dictation chunks. A copy whose
     # port does not answer — at the first refused connection, or by the health check — gets no
     # requests while its supervisor restarts it, and a request that could not reach a copy is
-    # retried on another one
+    # retried on another one. A waiting request whose client gave up is dropped (abortonclose),
+    # so the command spotting service's abandoned confirmations never occupy a copy
     haproxy_config() {
         printf '%s\n' "global" "    maxconn 256" "defaults" "    mode http" \
             "    timeout connect 2s" "    timeout client 300s" "    timeout server 300s" \
-            "    timeout queue 300s" "    option http-server-close" "    retries 3" "    option redispatch 1" \
+            "    timeout queue 300s" "    option http-server-close" "    option abortonclose" "    retries 3" "    option redispatch 1" \
             "frontend speech_recognition" "    bind 127.0.0.1:{{stt_port}}" \
             "    http-request set-priority-class int(-1) if { req.hdr_val(content-length) -m int lt 160000 }" \
             "    default_backend copies" "backend copies" "    balance leastconn"
@@ -446,7 +477,7 @@ start-model-servers *services:
             # A copy list left from an earlier start would make the stop look for copies
             rm -f "$run_dir/whisper-server-{{stt_port}}.copies" "$run_dir/haproxy-{{stt_port}}.cfg"
             whisper_args "{{stt_port}}" "$cores"
-            start_service whisper-server "{{stt_port}}" "speech recognition service" whisper_ready "${whisper_cmd[@]}"
+            start_service whisper-server "{{stt_port}}" "speech recognition service" whisper_ready - "${whisper_cmd[@]}"
             return 0
         fi
         require_binary haproxy haproxy
@@ -461,11 +492,11 @@ start-model-servers *services:
         for i in "${!ports[@]}"; do
             whisper_args "${ports[$i]}" "$threads"
             start_service whisper-server "${ports[$i]}" "speech recognition copy $((i + 1)) of $copies" \
-                "port_open ${ports[$i]}" "${whisper_cmd[@]}"
+                "port_open ${ports[$i]}" - "${whisper_cmd[@]}"
         done
         haproxy_config "${ports[@]}" >"$config"
         haproxy -c -q -f "$config"
-        start_service haproxy "{{stt_port}}" "speech recognition service ($copies copies)" whisper_ready \
+        start_service haproxy "{{stt_port}}" "speech recognition service ($copies copies)" whisper_ready - \
             haproxy -db -f "$config"
         trap - EXIT
     }
@@ -478,7 +509,7 @@ start-model-servers *services:
         require_model VOICEPUNCHER_LLM_MODEL
         # One slot, so a request gets the whole context, as the former in-process engine did
         start_service llama-server "{{llm_port}}" "text refinement service" llama_ready \
-            llama-server -m "$VOICEPUNCHER_LLM_MODEL" --host 127.0.0.1 --port "{{llm_port}}" -c 4096 -np 1
+            "http://127.0.0.1:{{llm_port}}/health" llama-server -m "$VOICEPUNCHER_LLM_MODEL" --host 127.0.0.1 --port "{{llm_port}}" -c 4096 -np 1
     }
     kws_ready() { port_open "{{kws_port}}"; }
     start_command_spotting() {
@@ -490,7 +521,7 @@ start-model-servers *services:
         require_model VOICEPUNCHER_KWS_VAD_MODEL
         cargo build --release -p voicepuncher-command-spotting
         start_service voicepuncher-command-spotting "{{kws_port}}" "command spotting service" kws_ready \
-            "{{kws_binary}}" --port "{{kws_port}}" \
+            "http://127.0.0.1:{{kws_port}}/health" "{{kws_binary}}" --port "{{kws_port}}" \
             --model-dir "$VOICEPUNCHER_KWS_MODEL_DIR" --vad-model "$VOICEPUNCHER_KWS_VAD_MODEL" \
             --transcription-url "{{stt_url}}" \
             ${VOICEPUNCHER_KWS_SAVE_SPEECH_DIR:+--save-speech-dir "$VOICEPUNCHER_KWS_SAVE_SPEECH_DIR"}

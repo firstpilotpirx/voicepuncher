@@ -33,3 +33,12 @@ Feature: speech-recognition
       Given a dictation longer than the chunk threshold whose chunk transcripts share no words at the seam
       When the user stops the dictation
       Then the pasted text contains every word of every chunk, in order
+
+  Rule: A lost chunk does not lose the rest of the dictation
+
+    Scenario: The middle chunk of a long dictation fails
+      Given a dictation long enough for three chunks
+      And the speech recognition service fails every attempt for the second chunk
+      When the user stops the dictation
+      Then the text of the first and third chunks is pasted
+      And the lost second chunk is logged

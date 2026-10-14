@@ -19,6 +19,7 @@ use crate::steps::off_thread;
 use crate::E2eWorld;
 
 mod hands_free;
+mod outages;
 mod session;
 
 pub use session::HandsFreeSession;

@@ -1,6 +1,9 @@
 //! Runs the keyword spotter and the voice activity detector over one connection's audio.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use sherpa_onnx::{
@@ -8,12 +11,17 @@ use sherpa_onnx::{
     VoiceActivityDetector,
 };
 
-use crate::confirm::{Heard, RecentAudio, UtteranceTranscriber};
+use crate::confirm::{Hear, Heard, RecentAudio, UtteranceTranscriber};
 use crate::keywords::{self, Keyword, UnknownPhrases};
-use crate::matcher::Placement;
-use crate::matcher::{Found, PhraseMatcher};
+use crate::matcher::PhraseMatcher;
 use crate::orderer::{EventOrderer, Segment, Spotted};
+use crate::outbox::Outbox;
 use crate::protocol::ServerEvent;
+use crate::worker::{ConfirmationWorker, JobKind};
+
+mod confirming;
+
+use confirming::JobContext;
 
 pub const SAMPLE_RATE: u32 = 16_000;
 const SILERO_WINDOW: usize = 512;
@@ -70,6 +78,9 @@ pub struct EngineCfg {
     pub transcription_url: Option<String>,
     /// Longest utterance sent to the speech recognition service, in seconds.
     pub max_command_secs: f32,
+    /// How long one confirmation by the speech recognition service may take before it is
+    /// given up.
+    pub confirmation_deadline: Duration,
 }
 
 /// Shared by every connection: the loaded keyword spotter and the keyword list.
@@ -78,7 +89,8 @@ pub struct Engine {
     keywords: Vec<Keyword>,
     vad: VadModelConfig,
     save_speech_dir: Option<PathBuf>,
-    transcriber: Option<UtteranceTranscriber>,
+    hear: Option<Arc<dyn Hear>>,
+    deadline: Duration,
     max_command_samples: usize,
 }
 
@@ -97,19 +109,44 @@ impl Engine {
             keywords,
             vad: vad_config(cfg),
             save_speech_dir: cfg.save_speech_dir.clone(),
-            transcriber: cfg
+            hear: cfg
                 .transcription_url
                 .as_deref()
-                .map(UtteranceTranscriber::new),
+                .map(|url| Arc::new(UtteranceTranscriber::new(url)) as Arc<dyn Hear>),
+            deadline: cfg.confirmation_deadline,
             max_command_samples: samples_in(cfg.max_command_secs),
         })
     }
 
+    /// Confirms utterances with `hear` in place of the speech recognition service.
+    pub fn hearing(mut self, hear: Arc<dyn Hear>) -> Self {
+        self.hear = Some(hear);
+        self
+    }
+
     pub fn session(&self) -> Result<Session<'_>> {
+        self.session_for(0)
+    }
+
+    /// The session of connection `conn`, which names its threads and log lines.
+    pub fn session_for(&self, conn: u64) -> Result<Session<'_>> {
         let vad = VoiceActivityDetector::create(&self.vad, VAD_BUFFER_SECS)
             .ok_or_else(|| anyhow!("cannot load the voice activity detector"))?;
+        let worker = self
+            .hear
+            .clone()
+            .map(|hear| ConfirmationWorker::start(conn, hear, self.deadline))
+            .transpose()?;
         Ok(Session {
             engine: self,
+            conn,
+            worker,
+            outbox: Outbox::default(),
+            next_job: 0,
+            jobs: HashMap::new(),
+            utterances: HashMap::new(),
+            current: None,
+            next_utterance: 0,
             vad,
             stream: None,
             samples_seen: 0,
@@ -120,7 +157,6 @@ impl Engine {
             vad_fed: 0,
             vad_offset: 0,
             last_segment_end: 0,
-            running: None,
         })
     }
 }
@@ -128,6 +164,17 @@ impl Engine {
 /// One connection's audio: its clock, its keyword stream and its speech segments.
 pub struct Session<'a> {
     engine: &'a Engine,
+    conn: u64,
+    /// Runs the confirmations by the speech recognition service; none without one.
+    worker: Option<ConfirmationWorker>,
+    outbox: Outbox,
+    next_job: u64,
+    /// What each confirmation asked for, by job number, until its answer is applied.
+    jobs: HashMap<u64, JobContext>,
+    /// The utterances with confirmations still to apply, and the one heard now.
+    utterances: HashMap<u64, Running>,
+    current: Option<u64>,
+    next_utterance: u64,
     vad: VoiceActivityDetector,
     stream: Option<OnlineStream>,
     samples_seen: usize,
@@ -141,8 +188,6 @@ pub struct Session<'a> {
     vad_offset: usize,
     /// Where the last utterance ended: the pre-roll of the next never reaches back past it.
     last_segment_end: usize,
-    /// The utterance the voice activity detector hears now, if any.
-    running: Option<Running>,
 }
 
 /// An utterance still being spoken, searched for commands while it runs.
@@ -157,6 +202,10 @@ struct Running {
     reported_until: usize,
     /// The last window heard while it ran, and where that window started.
     last_window: Option<(Heard, usize)>,
+    /// Confirmations of it whose answers are not applied yet.
+    jobs: usize,
+    /// It ended: its state goes once its last confirmation is applied.
+    closed: bool,
 }
 
 impl Session<'_> {
@@ -174,11 +223,13 @@ impl Session<'_> {
         let mut events = Vec::new();
         for frame in samples.chunks(DECODE_FRAME_SAMPLES) {
             self.recent.push(frame);
-            events.extend(self.spot(frame));
+            let spotted = self.spot(frame);
+            events.extend(self.outbox.send(spotted));
             events.extend(self.detect_speech(frame));
             self.samples_seen += frame.len();
-            events.extend(self.watch_running());
-            events.extend(self.confirm_unheld());
+            self.watch_running();
+            self.confirm_unheld();
+            events.extend(self.take_answers());
         }
         events
     }
@@ -225,9 +276,9 @@ impl Session<'_> {
             if let Some(dir) = self.engine.save_speech_dir.as_deref() {
                 save_speech(dir, bounds.start, segment.samples());
             }
-            events.extend(self.orderer.segment(bounds));
+            let segment_events = self.orderer.segment(bounds);
             let end = start + segment.n().max(0) as usize;
-            events.extend(self.confirm(start, end, bounds));
+            events.extend(self.close_segment(start, end, bounds, segment_events));
             self.last_segment_end = end;
             // WHY: after some utterances the detector's state stops it noticing quiet
             // speech; a reset in the silence that closed the segment loses nothing.
@@ -238,89 +289,118 @@ impl Session<'_> {
     }
 
     /// Searches the utterance being spoken: its start for "start", and every second its
-    /// last seconds for a doubled or chained command.
-    fn watch_running(&mut self) -> Vec<ServerEvent> {
-        if self.engine.transcriber.is_none() || !self.vad.detected() {
-            self.running = None;
-            return Vec::new();
+    /// last seconds for a doubled or chained command; a check is skipped while another one
+    /// waits for its answer.
+    fn watch_running(&mut self) {
+        if self.worker.is_none() || !self.vad.detected() {
+            self.close_current();
+            return;
         }
         let now = self.samples_seen;
         let floor = self.last_segment_end;
-        let running = self.running.get_or_insert_with(|| Running {
-            start: now.saturating_sub(samples_in(ONSET_SECS)).max(floor),
-            head_checked: false,
-            next_window: now + samples_in(FIRST_WINDOW_SECS),
-            reported_until: 0,
-            last_window: None,
-        });
-        let start = running.start;
-        let mut events = Vec::new();
-        if !running.head_checked && now - start >= samples_in(HEAD_CHECK_SECS) {
-            running.head_checked = true;
+        let id = self.current_or_new(now.saturating_sub(samples_in(ONSET_SECS)).max(floor));
+        let Some(&Running {
+            start,
+            head_checked,
+            next_window,
+            ..
+        }) = self.utterances.get(&id)
+        else {
+            return;
+        };
+        if !head_checked && now - start >= samples_in(HEAD_CHECK_SECS) && !self.outbox.check_busy()
+        {
+            self.mark(id, |r| r.head_checked = true);
             let from = self.pre_rolled(start);
-            if let Some(found) = self.hear(from, now).and_then(|heard| {
-                // The utterance goes on: a "start" heard alone so far has speech after it.
-                self.place(&heard, from, |m, w| {
-                    m.start_at_head(w).or_else(|| m.start_so_far(w))
-                })
-            }) {
-                events.push(found);
-            }
+            self.ask(
+                JobKind::Head,
+                from,
+                now,
+                JobContext::Head {
+                    utterance: id,
+                    from,
+                },
+            );
         }
-        let due = self.running.as_ref().is_some_and(|r| now >= r.next_window);
-        if due {
+        if now >= next_window {
+            self.mark(id, |r| r.next_window = now + samples_in(WINDOW_EVERY_SECS));
+            if self.outbox.check_busy() {
+                log::debug!(
+                    "conn={} utterance={id} window skipped: a check still waits",
+                    self.conn
+                );
+                return;
+            }
             let from = now
                 .saturating_sub(samples_in(WINDOW_SECS))
                 .max(self.pre_rolled(start));
-            if let Some(running) = self.running.as_mut() {
-                running.next_window = now + samples_in(WINDOW_EVERY_SECS);
-            }
-            if let Some(heard) = self.hear(from, now) {
-                if let Some(found) = self.place(&heard, from, |m, w| m.anywhere(w)) {
-                    events.push(found);
-                }
-                if let Some(running) = self.running.as_mut() {
-                    running.last_window = Some((heard, from));
-                }
-            }
+            self.ask(
+                JobKind::Window,
+                from,
+                now,
+                JobContext::Window {
+                    utterance: id,
+                    from,
+                },
+            );
         }
-        events
     }
 
-    /// A phrase the keyword spotter found but no speech segment took: the voice activity
-    /// detector missed the utterance. It counts when the speech recognition service hears
-    /// only the command around it.
-    fn confirm_unheld(&mut self) -> Vec<ServerEvent> {
-        let unheld = self.orderer.unheld(seconds(self.samples_seen));
-        let mut events = Vec::new();
-        for spotted in unheld {
-            let around = samples_in(PRE_ROLL_SECS / 2.0);
-            let from = samples_in(spotted.start)
-                .saturating_sub(around)
-                .max(self.last_segment_end);
-            let to = samples_in(spotted.end) + around;
-            let Some(heard) = self.hear(from, to) else {
-                continue;
-            };
-            let Some(phrase) = self.matcher.phrase_in(&heard.text) else {
-                continue;
-            };
-            let (start, end) = match (heard.words.first(), heard.words.last()) {
-                (Some(first), Some(last)) => (
-                    seconds(from + samples_in(first.start)),
-                    seconds(from + samples_in(last.end)),
-                ),
-                _ => (spotted.start, spotted.end),
-            };
-            log::info!("missed utterance → {phrase:?}");
-            events.push(ServerEvent::Command {
-                commands: vec![phrase],
-                start,
-                end,
-                placement: Placement::Tail,
-            });
+    /// The utterance heard now, started at `start` when there is none yet.
+    fn current_or_new(&mut self, start: usize) -> u64 {
+        if let Some(id) = self.current {
+            return id;
         }
-        events
+        let id = self.new_utterance(start, samples_in(FIRST_WINDOW_SECS), false);
+        self.current = Some(id);
+        id
+    }
+
+    fn new_utterance(
+        &mut self,
+        start: usize,
+        first_window_after: usize,
+        head_checked: bool,
+    ) -> u64 {
+        let id = self.next_utterance;
+        self.next_utterance += 1;
+        let next_window = self.samples_seen.saturating_add(first_window_after);
+        self.utterances.insert(
+            id,
+            Running {
+                start,
+                head_checked,
+                next_window,
+                reported_until: 0,
+                last_window: None,
+                jobs: 0,
+                closed: false,
+            },
+        );
+        id
+    }
+
+    fn mark(&mut self, utterance: u64, change: impl FnOnce(&mut Running)) {
+        if let Some(running) = self.utterances.get_mut(&utterance) {
+            change(running);
+        }
+    }
+
+    fn close_current(&mut self) {
+        if let Some(id) = self.current.take() {
+            self.mark(id, |r| r.closed = true);
+            self.forget_if_done(id);
+        }
+    }
+
+    fn forget_if_done(&mut self, utterance: u64) {
+        if self
+            .utterances
+            .get(&utterance)
+            .is_some_and(|r| r.closed && r.jobs == 0)
+        {
+            self.utterances.remove(&utterance);
+        }
     }
 
     /// `start` moved back by the pre-roll, never past the end of the utterance before.
@@ -328,110 +408,6 @@ impl Session<'_> {
         start
             .saturating_sub(samples_in(PRE_ROLL_SECS))
             .max(self.last_segment_end.min(start))
-    }
-
-    fn hear(&self, from: usize, to: usize) -> Option<Heard> {
-        let transcriber = self.engine.transcriber.as_ref()?;
-        let audio = self.recent.between(from, to);
-        let heard = transcriber
-            .transcribe(&audio, SAMPLE_RATE)
-            .map_err(|e| log::warn!("cannot transcribe the utterance: {e:#}"))
-            .ok()?;
-        log::info!("heard {:?}", heard.text);
-        Some(heard)
-    }
-
-    /// The command `find` sees in `heard` (audio sent from sample `from`), as an event
-    /// placed in the stream; none when the running utterance already reported it.
-    fn place(
-        &mut self,
-        heard: &Heard,
-        from: usize,
-        find: impl Fn(&PhraseMatcher, &[&str]) -> Option<Found>,
-    ) -> Option<ServerEvent> {
-        let found = find(&self.matcher, &heard.word_texts())?;
-        let (first, last) = (&heard.words[found.first], &heard.words[found.last]);
-        let start = from + samples_in(first.start);
-        let end = from + samples_in(last.end);
-        if let Some(running) = self.running.as_mut() {
-            if start < running.reported_until {
-                return None;
-            }
-            running.reported_until = end;
-        }
-        log::info!("{:?} {:?}", found.placement, found.commands);
-        Some(ServerEvent::Command {
-            commands: found.commands,
-            start: seconds(start),
-            end: seconds(end),
-            placement: found.placement,
-        })
-    }
-
-    /// The command the utterance from `start` to `end` says: the whole utterance, when it
-    /// is short enough for a command; else a doubled or chained command in its last
-    /// seconds the running search did not report yet, or a command that ends it.
-    fn confirm(&mut self, start: usize, end: usize, bounds: Segment) -> Option<ServerEvent> {
-        self.engine.transcriber.as_ref()?;
-        let to = end + samples_in(POST_ROLL_SECS);
-        let reported_until = self.running.as_ref().map_or(0, |r| r.reported_until);
-        let last_window = self.running.as_mut().and_then(|r| r.last_window.take());
-        let short = end - start <= self.engine.max_command_samples;
-        let from = if short {
-            self.pre_rolled(start)
-        } else {
-            end.saturating_sub(samples_in(WINDOW_SECS))
-        };
-        let heard = self.hear(from, to)?;
-        if short {
-            if let Some(phrase) = self.matcher.phrase_in(&heard.text) {
-                log::info!("utterance → {phrase:?}");
-                // The detector notices speech up to 0.7 s late: the first word's time is
-                // where the command starts, so a recording cut there keeps none of it.
-                let start = heard
-                    .words
-                    .first()
-                    .map_or(bounds.start, |w| seconds(from + samples_in(w.start)));
-                return Some(ServerEvent::Phrase {
-                    phrase,
-                    start: start.min(bounds.start),
-                    end: bounds.end,
-                });
-            }
-        }
-        self.running = Some(Running {
-            start,
-            head_checked: true,
-            next_window: usize::MAX,
-            reported_until,
-            last_window: None,
-        });
-        let event = self
-            .place(&heard, from, |m, w| m.anywhere(w))
-            .or_else(|| self.place(&heard, from, |m, w| m.at_end(w)))
-            .or_else(|| self.tail_heard_while_running(last_window, end));
-        self.running = None;
-        event
-    }
-
-    /// A command that ended the last window heard while the utterance ran, when it also
-    /// ends the utterance: the closing window, cut elsewhere, may hear its words wrong
-    /// ("at ten enter" as "at 10am").
-    fn tail_heard_while_running(
-        &mut self,
-        last_window: Option<(Heard, usize)>,
-        end: usize,
-    ) -> Option<ServerEvent> {
-        let (heard, from) = last_window?;
-        let event = self.place(&heard, from, |m, w| m.at_end(w))?;
-        match event {
-            ServerEvent::Command { end: said_end, .. }
-                if said_end >= seconds(end.saturating_sub(samples_in(TAIL_SLACK_SECS))) =>
-            {
-                Some(event)
-            }
-            _ => None,
-        }
     }
 }
 

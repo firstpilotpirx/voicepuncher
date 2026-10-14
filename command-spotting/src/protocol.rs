@@ -10,6 +10,17 @@ pub struct PhraseSelection {
     pub phrases: Vec<String>,
 }
 
+/// A text frame from the app.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+pub enum AppMessage {
+    Select(PhraseSelection),
+    /// Asks for `synced` with this id once every event for the audio sent before it is out.
+    Sync {
+        sync: u64,
+    },
+}
+
 /// Text frame to the app. Times are seconds since the first sample of the connection.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
@@ -32,6 +43,10 @@ pub enum ServerEvent {
         start: f32,
         end: f32,
         placement: Placement,
+    },
+    /// Every event for the audio sent before the sync with this id is out.
+    Synced {
+        id: u64,
     },
 }
 
@@ -56,6 +71,22 @@ mod tests {
             serde_json::from_str(r#"{"phrases": ["press enter", "clear all text"]}"#).unwrap();
         // Then
         assert_eq!(selection.phrases, ["press enter", "clear all text"]);
+    }
+
+    #[test]
+    fn should_parse_a_sync_request() {
+        // When
+        let message: AppMessage = serde_json::from_str(r#"{"sync": 7}"#).unwrap();
+        // Then
+        assert_eq!(message, AppMessage::Sync { sync: 7 });
+    }
+
+    #[test]
+    fn should_write_the_answer_to_a_sync() {
+        // When
+        let json = serde_json::to_string(&ServerEvent::Synced { id: 7 }).unwrap();
+        // Then
+        assert_eq!(json, r#"{"event":"synced","id":7}"#);
     }
 
     #[test]

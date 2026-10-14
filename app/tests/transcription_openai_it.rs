@@ -408,7 +408,7 @@ fn should_give_up_after_four_attempts_when_service_keeps_dropping() {
 }
 
 #[test]
-fn should_not_retry_error_answer() {
+fn should_send_a_recording_answered_with_errors_three_times() {
     // Given
     let (cfg, attempts) = spawn_dropping_stub(
         0,
@@ -421,7 +421,147 @@ fn should_not_retry_error_answer() {
     let result = transcribe(cfg);
     // Then
     assert!(result.is_err());
+    assert_eq!(attempts.load(Ordering::SeqCst), 3);
+}
+
+#[test]
+fn should_not_retry_a_request_the_service_cannot_take() {
+    // Given
+    let (cfg, attempts) = spawn_dropping_stub(
+        0,
+        StubReply {
+            status: 400,
+            ..StubReply::ok(r#"{"error": "bad request"}"#)
+        },
+    );
+    // When
+    let result = transcribe(cfg);
+    // Then
+    assert!(result.is_err());
     assert_eq!(attempts.load(Ordering::SeqCst), 1);
+}
+
+/// What the scripted stub does with one request.
+#[derive(Clone, Copy)]
+enum Turn {
+    /// Reads the request and never answers it.
+    Hang,
+    Answer(u16, &'static str),
+}
+
+/// Takes the requests in turn as `script` says; the last turn repeats. Counts requests.
+fn spawn_scripted_stub(script: Vec<Turn>) -> (TranscriptionCfg, Arc<AtomicUsize>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&attempts);
+    thread::spawn(move || {
+        let mut held = Vec::new();
+        for stream in listener.incoming() {
+            let mut stream = stream.unwrap();
+            let mut first = [0u8; 1];
+            if stream.peek(&mut first).unwrap_or(0) == 0 {
+                continue;
+            }
+            let n = counter.fetch_add(1, Ordering::SeqCst);
+            match script[n.min(script.len() - 1)] {
+                Turn::Hang => {
+                    let mut buf = [0u8; 65536];
+                    let _ = stream.read(&mut buf);
+                    held.push(stream);
+                }
+                Turn::Answer(status, body) => {
+                    read_request(
+                        &mut stream,
+                        &StubReply {
+                            status,
+                            ..StubReply::ok(body)
+                        },
+                    );
+                }
+            }
+        }
+    });
+    let cfg = TranscriptionCfg {
+        base_url: format!("http://127.0.0.1:{port}/v1"),
+        ..TranscriptionCfg::default()
+    };
+    (cfg, attempts)
+}
+
+/// The longest the stubs below let one request take.
+const SHORT_TIMEOUT_SECS: u64 = 2;
+
+#[test]
+fn should_transcribe_by_a_new_attempt_when_the_first_request_hangs() {
+    // Given
+    capturing_logger();
+    let (cfg, attempts) =
+        spawn_scripted_stub(vec![Turn::Hang, Turn::Answer(200, r#"{"text": "hello"}"#)]);
+    let cfg = TranscriptionCfg {
+        timeout_secs: SHORT_TIMEOUT_SECS,
+        ..cfg
+    };
+    // When
+    let transcript = transcribe(cfg).unwrap();
+    // Then
+    assert_eq!(transcript.as_deref(), Some("hello"));
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        logged_by_this_thread("WARN speech recognition service did not answer in time"),
+        1
+    );
+    assert_eq!(logged_by_this_thread("(request=1 attempt 1, after"), 1);
+}
+
+#[test]
+fn should_transcribe_by_a_new_attempt_after_one_error_answer() {
+    // Given
+    capturing_logger();
+    let (cfg, _attempts) = spawn_scripted_stub(vec![
+        Turn::Answer(503, r#"{"error": "busy"}"#),
+        Turn::Answer(200, r#"{"text": "hello"}"#),
+    ]);
+    // When
+    let transcript = transcribe(cfg).unwrap();
+    // Then
+    assert_eq!(transcript.as_deref(), Some("hello"));
+    assert_eq!(
+        logged_by_this_thread("WARN speech recognition service answered with an error"),
+        1
+    );
+}
+
+/// A recording of five seconds, as the spec's short recording.
+fn five_seconds() -> AudioBuffer16k {
+    AudioBuffer16k::new(vec![0; 5 * 16_000])
+}
+
+/// The longest the app may hold a short recording when the service never answers.
+const GIVEN_UP_WITHIN: Duration = Duration::from_secs(30);
+
+#[test]
+fn should_give_up_a_short_recording_the_service_never_answers_within_half_a_minute() {
+    // Given
+    capturing_logger();
+    let (cfg, attempts) = spawn_scripted_stub(vec![Turn::Hang]);
+    let mut transcriber = OpenAiTranscriber::connect(cfg).unwrap();
+    // When
+    let started = std::time::Instant::now();
+    let result = transcriber.transcribe(&five_seconds());
+    // Then
+    assert!(result.is_err());
+    assert!(
+        started.elapsed() < GIVEN_UP_WITHIN,
+        "held for {:?}",
+        started.elapsed()
+    );
+    assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    assert_eq!(
+        logged_by_this_thread("WARN speech recognition service did not answer in time"),
+        3
+    );
+    assert_eq!(logged_by_this_thread("— giving up"), 1);
 }
 
 #[test]

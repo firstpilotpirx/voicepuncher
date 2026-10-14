@@ -299,7 +299,7 @@ Feature: voice-control
       When the hands-free session is spoken with the user's recorded commands and long pauses
       Then the app does everything the session said, in order
 
-  Rule: Voice control needs the command spotting service
+  Rule: Voice control needs the command spotting service to start
 
     @smoke
     Scenario: The app refuses to start without the command spotting service
@@ -307,3 +307,36 @@ Feature: voice-control
       And the command spotting service is not running
       When the app starts
       Then the app exits with an error that names the command spotting service and how to start it
+
+  @serial @resilience
+  Rule: A slow command spotting service does not stop listening
+
+    Scenario: A confirmation that takes longer than 10 seconds keeps listening on
+      Given the speech recognition and command spotting services run on ports of their own
+      And listening is on with them and a dictation runs
+      And the speech recognition service stops answering for 15 seconds
+      When the user keeps dictating through those 15 seconds and then says "stop dictation"
+      Then listening is still on and no error about the command spotting service is logged
+      And the dictation ends and its text is pasted
+
+  @serial @resilience
+  Rule: Listening comes back when the command spotting service is back
+
+    Scenario: Commands work again after the command spotting service restarts
+      Given the speech recognition and command spotting services run on ports of their own
+      And listening is on with them
+      And the command spotting service went away and was started again
+      When the user says "press enter" 5 seconds after the service answers again
+      Then the Return key is pressed in the focused app
+      And the listening-on sound played when the service came back
+
+  @serial @resilience
+  Rule: A dictation keeps recording while the command spotting service is away
+
+    Scenario: "stop dictation" ends a dictation after the service is back
+      Given the speech recognition and command spotting services run on ports of their own
+      And listening is on with them and a dictation runs
+      And the command spotting service went away during it and is back
+      When the user says "stop dictation" once the service is back
+      Then the dictation ends and its text is pasted
+

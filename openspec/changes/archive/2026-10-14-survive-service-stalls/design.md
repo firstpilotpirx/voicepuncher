@@ -76,13 +76,13 @@ See proposal.md § Why for the incident. These facts of the current code shape t
   - Results come back on a channel and are applied between frames, through the existing `place` / `confirm` logic, now split into "build the job" and "apply the heard text".
   - The `Session` state a result needs (`reported_until`, `last_window`, `last_segment_end`) is read and written only on this thread. This keeps today's logic and its unit tests intact.
 - **Confirmation worker:** one thread per connection, running jobs one at a time.
-  - **Segment and unheld jobs** queue (bounded at 8; above that the oldest window or head job is dropped, never a segment job).
-  - **Window and head jobs are skipped, not queued,** while a job of the same running utterance is in flight. The next due window covers the newer audio anyway.
-  - **Deadline per attempt: 3 s.** A 2.5 s clip takes 0.1–0.5 s today, and HAProxy puts short requests ahead of long ones.
+  - **Segment and unheld jobs** always queue: there is one per utterance and one per unheld phrase, so the queue stays short without a bound.
+  - **Window and head jobs are skipped, not queued,** while a check of the running utterance is in flight. The next due window covers the newer audio anyway.
+  - **Deadline per attempt: 3 s** (`--confirmation-deadline-secs`). A 2.5 s clip takes 0.1–0.5 s today, and HAProxy puts short requests ahead of long ones.
   - **Segment jobs are retried once** on a timeout or a dropped connection. They are the only chance to recognize a command said alone. The other jobs are not retried.
   - **Every job logs its duration:** debug when under 1 s, info when slower, warn when given up.
 - **Event order:**
-  - A segment's `speech_end` and its phrase or command go out together once its job is resolved (answered or given up). Today's order (start, phrases, end) stays.
+  - A segment's events (start, the phrases spotted in it, end) and then its confirmed phrase or command go out together once its job is resolved (answered or given up): the same order as today, only later.
   - Window and head commands go out when their result arrives, placed by their audio times as today. The app already orders by those times.
   - The keyword-only path is kept unchanged when there is no speech recognition service. When a segment job is given up, the keyword-spotted phrase alone decides, as it does when no service is configured.
 - **Model-free seam:** confirmations go through a small trait in the crate, `Hear`: samples to `Heard` with a deadline. The processing logic can then be tested with a scripted `Hear`, and the server with a scripted session, without sherpa models. `UtteranceTranscriber` is the real implementation.
@@ -106,7 +106,7 @@ See proposal.md § Why for the incident. These facts of the current code shape t
   - The client pings every 1 s and counts only pongs and messages as answers.
   - Five seconds without any answer, or a socket error or close, means the service is gone. A service that answers pings but spots slowly is fine (spec: "A slow command spotting service does not stop listening").
 - **Reconnect** lives in the adapter worker (`websocket/mod.rs`); the core only learns about loss and return.
-  - On loss the worker sends `PipelineInput::SpottingLost` once. It then tries `connect` with pauses of 0.25, 0.5, 1, 2 and then 4 s, forever, until told to stop, logging each failed attempt.
+  - On loss the worker sends `PipelineInput::SpottingLost` once. It then tries `connect` (at most 2 s for the connection and the handshake) with pauses of 0.25, 0.5, 1, 2 and then 4 s, forever, until told to stop, logging the first failed attempt and every tenth with the session and the address.
   - The 4 s cap keeps "back within 5 s" true.
   - The microphone capture and the heard-audio ring stay open across the outage. They move out of `AudioStream` into the worker's lifetime.
 - **On a new connection:**
@@ -135,7 +135,7 @@ See proposal.md § Why for the incident. These facts of the current code shape t
 
 ### 5. Text refinement retries a dropped connection once
 
-- The refinement client reuses the dropped-connection test of the transcription client. The function moves to a shared adapter module, `app/src/adapters/secondary/http_retry.rs`, used by both.
+- The refinement client reuses the dropped-connection test of the transcription client. The classification moves to `app/src/adapters/secondary/http/failure/` (`Failure::of`), used by both, with its own adapter integration test `http_failure_it.rs` on real sockets.
 - It retries once after 200 ms. A timeout is not retried, because the raw transcript is already a good answer and a second 30 s wait is not.
 
 ### 6. The service scripts restart a service that stops answering
@@ -149,37 +149,47 @@ See proposal.md § Why for the incident. These facts of the current code shape t
   - A deadlocked processing thread or a hung accept loop therefore fails the check, while a slow confirmation does not.
 - **Text refinement:** `curl -fsS --max-time 2 http://127.0.0.1:<port>/health`, as `llama_ready` already does.
 - **Speech recognition copies:** no new check. A copy hung on one request is freed when its client gives up (decisions 1 and 4). HAProxy's TCP check already handles a copy that exits.
-- **HAProxy:** add `option abortonclose`, so a queued request whose client gave up is dropped instead of sent to a copy.
+- **HAProxy:** add `option abortonclose`, so a queued request whose client gave up is dropped where HAProxy can see the close. HAProxy 3.4 does not watch the client side of a request it has received whole, so such a request is still sent to the next free copy; whisper-server then sees the closed connection and aborts it before decoding (`client disconnected, aborted processing`), so the copy is free again within a moment. The E2E scenario checks that outcome.
 - **Alternatives considered:**
   - *A WebSocket ping probe from bash.* It needs an extra binary or `websocat`. Rejected; HTTP on the same port is a few lines in `server.rs`.
   - *An HTTP health check of whisper-server copies.* A copy busy with a 30 s chunk would fail it and be marked down by mistake. Rejected.
 
-### 7. Logs
+### 7. Logs that trace one request across threads and processes
 
-- **Command spotting service:** every confirmation's duration; jobs given up and skipped; `processing lag` when the processing thread is more than 1 s behind the audio it has received.
+Every line that belongs to a unit of work carries that unit's id, so one grep follows it through the I/O, processing and worker threads and across the app and the service. Ids are short counters, never audio or text.
+
+- **Command spotting service:**
+  - `conn=<n>` on every line of a connection: connect, disconnect, phrase selections, sync, errors, the reason it ended.
+  - `job=<conn>.<n> kind=<head|window|segment|unheld>` on every confirmation line: asked with its audio span (debug), queued, answered with its attempt, duration and heard text (info), given up with its attempt and deadline (warn), what it decided (`job=… → events`); a skipped check names its utterance (debug).
+  - `lag=<ms>` whenever the processing thread is more than 1 s behind the audio received; a periodic `stats conn=<n>` line every 30 s (frames processed, jobs answered/given up/skipped, worst job duration, worst lag).
+  - Every thread is named (`conn-<n>-io`, `conn-<n>-proc`, `conn-<n>-confirm`); the log format includes the thread name.
 - **App:**
-  - each reconnect attempt, logged at info for the first and then every 10th;
-  - `voice control: listening again`;
-  - each retried speech recognition attempt, with its reason and duration.
+  - `session=<n>` per command spotting connection: connect, phrase selections, sync, loss with its cause (silence, close, I/O error) and silence length, each reconnect attempt with its pause, back with the replay span and outage length.
+  - `request=<n> attempt <k>` on every failed speech recognition attempt: its class (did not answer in time, answered with an error, dropped the connection), how long it took, the deadline and the pause before the next one; `request=<n>` with audio length and deadline at debug for every request; the pipeline names a lost chunk by its number (`chunk <n> lost`).
+  - Refinement attempts likewise (`refine attempt 1`).
+  - Voice control state changes (`listening`, `away`, `back`, dictation kept or ended) logged at info with the state before and after.
+  - Thread names in the app log format (`pipeline`, `command-spotting`, `live-transcription`, …).
+- Defaults: state changes, slow work (> 1 s), retries and failures at info/warn; per-frame and per-job detail at debug, so `RUST_LOG=debug` traces a whole session without changing code.
 
 ## Test levels
 
 | Spec scenario | Level | Where |
 |---|---|---|
 | voice-control / The app refuses to start without the command spotting service | E2E `.feature` (exists) | `e2e-test/tests/features/voice_control.feature` |
-| voice-control / The app keeps reaching for the command spotting service when it goes away | component `.feature` + adapter integration | `app/tests/features/component/voice_control.feature` (replaces "Listening turns off when the command spotting service goes away"); `commandspotting_websocket_it.rs`: a stub that closes the connection, then reconnect attempts are logged |
+| voice-control / The app keeps reaching for the command spotting service when it goes away | component `.feature` + adapter integration | `app/tests/features/component/voice_control.feature` (replaces "Listening turns off when the command spotting service goes away"); `commandspotting_reconnect_it.rs`: a stub that closes the connection, the loss, the return, and the failed attempts logged in the long outage |
 | voice-control / Listening is on at start | component `.feature` (exists) | `voice_control.feature` |
 | voice-control / Listening stays on after a hotkey dictation | component `.feature` (exists) | `voice_control.feature` |
 | voice-control / Commands work again after the command spotting service restarts | E2E `.feature` + component `.feature` | E2E kills the real service on its own port and lets the scripts restart it; component sends `SpottingLost` then `SpottingBack` |
-| voice-control / Listening is not given up after many failed attempts | adapter integration | `commandspotting_websocket_it.rs`: nothing listens for 20 s, then a stub starts on the port and `SpottingBack` arrives within 5 s |
+| voice-control / Listening is not given up after many failed attempts | adapter integration | `commandspotting_reconnect_it.rs`: nothing listens for a minute, then a stub starts on the port and `SpottingBack` arrives within 5 s |
 | voice-control / A confirmation that takes longer than 10 seconds keeps listening on | E2E `.feature` (bug reproduction) | `voice_control.feature`, `@serial`: own speech recognition service with one copy, paused with SIGSTOP for 15 s during a hands-free dictation, then SIGCONT and "stop dictation" |
 | voice-control / The hotkey ends a dictation while the service is away | component `.feature` | `voice_control.feature` |
 | voice-control / "stop dictation" ends a dictation after the service is back | component `.feature` + E2E `.feature` | component: lost, back, then the spotted command; E2E: kill and restart the real service during a hands-free dictation |
-| voice-control / "stop dictation" said during a short outage ends the dictation | adapter integration | `commandspotting_websocket_it.rs`: a stub drops the connection; the audio said during the outage reaches the next stub connection, checked through the replayed samples and the event times |
-| speech-recognition / Service stops between recordings | E2E `.feature` (exists) | `speech_recognition.feature` |
-| speech-recognition / Service is briefly busy, Drop reported as an invalid argument, Service keeps dropping the connection | adapter integration (exist) | `transcription_openai_it.rs` |
+| voice-control / "stop dictation" said during a short outage ends the dictation | adapter integration + component `.feature` | `commandspotting_reconnect_it.rs`: the stub refuses connections for 3 s; the audio said meanwhile reaches the next connection and its events are placed at the capture time of the first sample sent again; component: after the return the service reports "stop dictation" said during the outage, and the dictation ends without it |
+| speech-recognition / Service stops between recordings | unit (exists) | `pipeline.rs::should_drop_cycle_and_not_paste_when_transcription_fails`; the failure log of a dictation is checked by "The middle chunk of a long dictation fails" |
+| speech-recognition / Service is briefly busy, Service keeps dropping the connection | adapter integration (exist) | `transcription_openai_it.rs` |
+| speech-recognition / Drop reported as an invalid argument | unit (exists, moved) | `http/failure/mod.rs`: an OS EINVAL, also rewrapped by the HTTP client, is a dropped connection |
 | speech-recognition / Service answers with an error | adapter integration (changed: 3 attempts) | `transcription_openai_it.rs` |
-| speech-recognition / The first request of a chunk hangs | adapter integration + component `.feature` | `transcription_openai_it.rs`: a stub that never answers the first request; `speech_recognition.feature` (component): a transcriber double that fails the first attempt of chunk 2 |
+| speech-recognition / The first request of a chunk hangs | adapter integration | `transcription_openai_it.rs`: a stub that never answers the first request; the retry lives in the adapter, so a component double would bypass it |
 | speech-recognition / One error answer is retried | adapter integration | `transcription_openai_it.rs` |
 | speech-recognition / A hung short chunk is given up quickly | adapter integration | `transcription_openai_it.rs`: a stub that never answers, a 5 s recording, and the stop-to-failure time under 30 s |
 | speech-recognition / The middle chunk of a long dictation fails | component `.feature` | `app/tests/features/component/speech_recognition.feature` |
@@ -187,11 +197,11 @@ See proposal.md § Why for the incident. These facts of the current code shape t
 | text-refinement / The text refinement service keeps dropping the connection | adapter integration | `textrefinement_openai_it.rs` |
 | local-services / The command spotting service hangs | E2E `.feature` | `local_services.feature`, `@serial`: SIGSTOP the service started on own ports; it answers again within 30 s and its log names the health check |
 | local-services / A busy service is not restarted | E2E `.feature` | `local_services.feature`: stream synthesized speech for 60 s to the service started with a speech recognition stub that answers in 4 s; no restart note in the log |
-| local-services / One confirmation hangs | integration (crate) | `command-spotting/tests/server_it.rs`: the real server with a scripted session and a stub that never answers one request; pongs keep coming for 15 s and the give-up is logged |
+| local-services / One confirmation hangs | integration (crate, models) | `command-spotting/tests/server_it.rs`: the real server and engine with a stub speech recognition service that never answers; pings are answered within 1 s throughout 15 s |
 | local-services / Commands are spotted after a hung confirmation | integration (crate, models) | `command-spotting/tests/engine_it.rs`: real models plus a stub speech recognition server that hangs the first request; "press enter" is reported |
-| local-services / Checks of a long utterance are skipped while the service is slow | unit | the confirmation worker with a scripted `Hear` that takes 4 s; at most one window job is in flight |
+| local-services / Checks of a long utterance are skipped while the service is slow | integration (crate, models) + unit | `engine_it.rs`: a ten-second utterance against a `Hear` that takes 4 s sends at most 4 clips (head, one window, the segment) instead of one per second; `outbox.rs`: busy while a check waits |
 | local-services / A command said alone is confirmed by the second attempt | unit + integration (crate, models) | unit: the worker retries a segment job; `engine_it.rs`: a stub that times out the first request |
-| local-services / An abandoned request is not transcribed | E2E `.feature` | `local_services.feature`: one copy, a long request, then a second request whose client hangs up; the copy's log shows one request |
+| local-services / An abandoned request is not transcribed | E2E `.feature` | `local_services.feature`: two copies busy with long speech, then a third request whose client gives up; the copy that takes it logs within 2 s that it aborted it |
 
 Beyond the scenarios, these unit tests cover the building blocks:
 
@@ -200,16 +210,17 @@ Beyond the scenarios, these unit tests cover the building blocks:
 - the deadline formula;
 - the retry classifier (timeout, 5xx, 429, other 4xx, unusable answer, dropped connection);
 - the duplicate-command guard in voice control;
-- skip-while-busy and the bounded queue of the confirmation worker;
+- skip-while-busy: the outbox is busy while a check waits (unit), and a slow service gets at most four clips of a long utterance (`engine_it.rs`);
+- a given-up segment confirmation leaves the keyword-spotted phrase to decide (`engine_it.rs`);
 - the event order of a segment whose job resolves late;
-- the `/health` answer: busy versus stuck;
+- the `/health` answer: 200 with no connection and while connections keep up, 503 naming a stuck connection;
 - the sync request and its answer.
 
 Fault injection:
 
 - Adapter integration uses in-process `TcpListener` stubs that hang, close, reset or restart on the same port. They join the existing stubs in `transcription_openai_it.rs` and `commandspotting_client_it.rs`.
 - E2E pauses (SIGSTOP/SIGCONT) or kills the real services started on free ports of their own (`steps/local_services.rs`), so the shared services on 8080–8082 are never touched. These scenarios are `@serial`.
-- The new E2E scenarios get `@smoke` when they take under 60 s, and `@resilience` otherwise. `just e2e-resilience` runs that tag, and `full-check` gains it.
+- The new E2E scenarios are tagged `@resilience @serial`: each starts its own services, which takes most of a minute. `just e2e-resilience` runs that tag, and `full-check` gains it.
 
 ## Risks / Trade-offs
 

@@ -27,12 +27,12 @@ A PoC that is used every day must not lose voice control or dictated text becaus
   - Speech captured while the service was away is sent once it is back, so a command said during the outage still counts.
   - A dictation that runs while the service is away keeps recording. The hotkey still ends it, and voice commands end it again once the service is back.
 - **Speech recognition: a slow or failed chunk is retried, not lost.**
-  - A request that times out or gets an error answer is sent again, up to twice more. The service aborts the request the app gave up on, and the next attempt goes to a free copy.
+  - A request that times out or gets an error answer is sent again, up to twice more, each failed attempt logged. The service aborts the request the app gave up on, and the next attempt goes to a free copy.
   - The time the app waits for one request is scaled to the length of its audio instead of a flat 60 s, so a hung chunk holds the dictation for seconds, not minutes.
   - Only when every attempt fails is the chunk lost. The rest of the dictation is still pasted, as today, and the lost chunk is logged.
 - **Text refinement:** a dropped connection is retried once before falling back to the raw transcript.
 - **Service scripts: a hung service is restarted too.**
-  - The scripts check that each service still answers, not only that its process runs: command spotting by a WebSocket ping, text refinement by its health endpoint. A service that fails several checks in a row is restarted and the restart is logged.
+  - The scripts check that each service still answers, not only that its process runs: command spotting and text refinement by their `/health` endpoint. A service that fails several checks in a row is restarted and the restart is logged.
   - The load balancer of the speech recognition copies drops queued requests whose client gave up, so abandoned requests do not occupy copies.
 - **Tests at every level**, unit, adapter integration, component and E2E. They reproduce the incident and cover a hung speech recognition copy, a hung or restarted command spotting service, a dropped connection and a slow chunk.
   - Fault injection uses in-process stub servers at adapter level.
@@ -56,11 +56,11 @@ None.
 - Current stage: PoC. Target stage: PoC, hardened for daily use against service stalls and losses.
 - In scope: the command spotting service's connection handling and confirmations; the app's command spotting client and voice control on loss; the app's speech recognition and text refinement clients (deadlines, retries); the service scripts' health checks and load balancer settings; tests at every level; the glossary terms for the new behavior.
 - Acceptance bar:
-  - With one speech recognition copy paused for 30 s while the user dictates hands-free, listening stays on, and "stop dictation" ends and pastes the dictation.
+  - With the speech recognition service paused for 15 s while the user dictates hands-free, listening stays on, and "stop dictation" ends and pastes the dictation.
   - With the command spotting service killed during a dictation, the dictation keeps recording. Within 5 s after the service is back, "stop dictation" ends it and pastes its text.
   - With the command spotting service paused for 30 s, the scripts restart it, and voice commands work again without restarting the app.
   - A dictation chunk whose first request hangs is transcribed by a retry, and its text is pasted.
-  - Every scenario above is an automated test that fails on today's code: an E2E `.feature`, backed by component, adapter integration and unit tests.
+  - Every scenario above is an automated test: an E2E `.feature`, except the hung chunk, whose retry lives in the speech recognition client and is tested at adapter level; all are backed by component, adapter integration and unit tests.
 
 ## Out of scope
 
@@ -90,6 +90,6 @@ MINOR, 0.12.0 → 0.13.0. The change goes beyond restoring the specified behavio
   - new stub servers that hang, drop or restart in `app/tests/*_it.rs`;
   - a stub speech recognition server and a model-free engine seam in `command-spotting/tests/`;
   - component scenarios in `voice_control.feature`;
-  - E2E scenarios in `voice_control.feature`, `speech_recognition.feature` and `local_services.feature` that pause or kill real services.
+  - E2E scenarios in `voice_control.feature` and `local_services.feature` that pause or kill real services.
 - `docs/ubiquitous-language.md`: terms for a service that is back, reconnecting, a confirmation deadline and a health check.
 - Manual run by the user: recording and voice control behavior changes.

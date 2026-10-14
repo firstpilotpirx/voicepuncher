@@ -431,3 +431,107 @@ async fn copies_start_failed(world: &mut E2eWorld) -> Result<()> {
     })
     .await
 }
+
+/// How long the client of the abandoned request waits before it gives up on it.
+const GIVES_UP_AFTER: Duration = Duration::from_millis(300);
+/// The long requests that keep both copies busy, each this many times the long speech.
+const BUSY_REQUESTS: usize = 2;
+/// Long enough that both copies are still busy when the third client gives up.
+const LONG_SPEECH_REPEATS: usize = 10;
+/// How long after the copies become free the abandoned request is given up: at once.
+const GIVEN_UP_WITHIN: Duration = Duration::from_secs(2);
+/// What a copy logs when it gives up a request whose client is gone.
+const ABORTED_LOG_LINE: &str = "client disconnected, aborted processing";
+/// How long the long requests may take to reach both copies.
+const BUSY_WITHIN: Duration = Duration::from_secs(20);
+/// What a copy logs for every request it takes, with the length of its audio.
+const REQUEST_LOG_LINE: &str = "processing '";
+
+#[given("the speech recognition service runs as two copies, both busy with long speech, and a third request waits and its client gives up")]
+async fn abandoned_request(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, |world| {
+        started_with(world, Some(SEVERAL_COPIES))?;
+        let services = services(world)?;
+        let url = services.transcription_url();
+        let speech: Vec<i16> = long_speech()?.repeat(LONG_SPEECH_REPEATS);
+        for _ in 0..BUSY_REQUESTS {
+            let (url, speech) = (url.clone(), speech.clone());
+            services.pool.long.push(std::thread::spawn(move || {
+                transcribe(&url, speech)?;
+                Ok(Instant::now())
+            }));
+            std::thread::sleep(BETWEEN_REQUESTS);
+        }
+        ensure!(
+            wait_until(BUSY_WITHIN, || requests_taken(&services.copy_ports)
+                >= BUSY_REQUESTS),
+            "the copies did not both take a long request within {BUSY_WITHIN:?}"
+        );
+        let short: Vec<f32> = short_speech()?
+            .into_iter()
+            .map(|s| f32::from(s) / f32::from(i16::MAX))
+            .collect();
+        let gave_up = voicepuncher_command_spotting::confirm::UtteranceTranscriber::new(&url)
+            .transcribe(&short, AudioBuffer16k::SAMPLE_RATE_HZ, GIVES_UP_AFTER)
+            .is_err();
+        ensure!(
+            gave_up,
+            "the third request was answered although both copies were busy"
+        );
+        Ok(())
+    })
+    .await
+}
+
+/// How many requests the copies on `ports` took so far, from their logs.
+fn requests_taken(ports: &[u16]) -> usize {
+    ports
+        .iter()
+        .filter_map(|port| {
+            std::fs::read_to_string(
+                services_dir("logs").join(format!("{SPEECH_RECOGNITION}-{port}.log")),
+            )
+            .ok()
+        })
+        .map(|text| text.matches(REQUEST_LOG_LINE).count())
+        .sum()
+}
+
+#[when("the copies become free")]
+async fn copies_free(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, |world| {
+        let services = services(world)?;
+        for request in services.pool.long.drain(..) {
+            request
+                .join()
+                .map_err(|_| anyhow::anyhow!("a long request panicked"))??;
+        }
+        Ok(())
+    })
+    .await
+}
+
+#[then("the copy that takes the abandoned request gives it up at once instead of transcribing it")]
+fn abandoned_given_up(world: &mut E2eWorld) -> Result<()> {
+    let services = services(world)?;
+    let aborted_lines = || -> usize {
+        services
+            .copy_ports
+            .iter()
+            .filter_map(|port| {
+                std::fs::read_to_string(
+                    services_dir("logs").join(format!("{SPEECH_RECOGNITION}-{port}.log")),
+                )
+                .ok()
+            })
+            .map(|text| text.matches(ABORTED_LOG_LINE).count())
+            .sum::<usize>()
+    };
+    wait_until(GIVEN_UP_WITHIN, || aborted_lines() >= 1);
+    let aborted = aborted_lines();
+    ensure!(
+        aborted == 1,
+        "{aborted} requests were given up by a copy, not the one abandoned request"
+    );
+    Ok(())
+}

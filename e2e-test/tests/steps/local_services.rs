@@ -13,8 +13,12 @@ use crate::steps::off_thread;
 use crate::E2eWorld;
 
 mod copies;
+mod hangs;
 
 const SPEECH_RECOGNITION: &str = "whisper-server";
+const COMMAND_SPOTTING: &str = "voicepuncher-command-spotting";
+/// How long a health check may take before it counts as failed.
+const HEALTH_CHECK_WAIT: Duration = Duration::from_secs(1);
 const RESTART_WITHIN: Duration = Duration::from_secs(30);
 const STAYS_STOPPED_FOR: Duration = Duration::from_secs(5);
 const PROCESS_GONE_WITHIN: Duration = Duration::from_secs(10);
@@ -46,6 +50,10 @@ pub struct ScenarioServices {
     /// The ports of the copies the start left running.
     copy_ports: Vec<u16>,
     pool: copies::PoolRun,
+    /// Processes a step paused: they are resumed before the services are stopped.
+    paused: Vec<u32>,
+    /// The command spotting service process a step made hang or watched.
+    hung: Option<u32>,
 }
 
 impl ScenarioServices {
@@ -70,7 +78,69 @@ impl ScenarioServices {
             copies,
             copy_ports: Vec::new(),
             pool: copies::PoolRun::default(),
+            paused: Vec::new(),
+            hung: None,
         })
+    }
+
+    /// Services on free ports, the speech recognition service as one copy, for the voice
+    /// control scenarios that make them fail.
+    pub fn for_outages() -> Result<Self> {
+        Self::on_free_ports()
+    }
+
+    /// Starts the named services with the service scripts; fails with their output when the
+    /// start fails.
+    pub fn start(&mut self, names: &[&str]) -> Result<()> {
+        let args: Vec<&str> = std::iter::once("start-model-servers")
+            .chain(names.iter().copied())
+            .collect();
+        let output = self.just(&args)?;
+        ensure!(
+            output.status.success(),
+            "the service scripts could not start {names:?}:\n{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        self.copy_ports = self.running_copy_ports();
+        self.service = service_process(self.stt_port);
+        Ok(())
+    }
+
+    pub fn command_spotting_url(&self) -> String {
+        format!("ws://127.0.0.1:{}", self.kws_port)
+    }
+
+    pub fn kws_port(&self) -> u16 {
+        self.kws_port
+    }
+
+    /// The command spotting service process itself, not what keeps it running.
+    pub fn command_spotting_process(&self) -> Option<u32> {
+        pgrep(&format!(
+            "^[^ ]*{COMMAND_SPOTTING} --port {}( |$)",
+            self.kws_port
+        ))
+    }
+
+    pub fn speech_recognition_process(&self) -> Option<u32> {
+        service_process(self.stt_port)
+    }
+
+    pub fn command_spotting_log(&self) -> PathBuf {
+        services_dir("logs").join(format!("{COMMAND_SPOTTING}-{}.log", self.kws_port))
+    }
+
+    /// Stops `pid` without ending it, as a process that hangs; resumed when the services stop.
+    pub fn pause(&mut self, pid: u32) -> Result<()> {
+        signal(pid, "-STOP")?;
+        self.paused.push(pid);
+        Ok(())
+    }
+
+    pub fn resume(&mut self, pid: u32) -> Result<()> {
+        self.paused.retain(|p| *p != pid);
+        signal(pid, "-CONT")
     }
 
     pub fn transcription_url(&self) -> String {
@@ -129,6 +199,10 @@ impl ScenarioServices {
 
 impl Drop for ScenarioServices {
     fn drop(&mut self) {
+        for pid in std::mem::take(&mut self.paused) {
+            let _ = signal(pid, "-CONT");
+        }
+        let left_spotting = self.command_spotting_process();
         let _ = self.just(&["stop-model-servers"]);
         let left = self
             .copy_ports
@@ -139,6 +213,8 @@ impl Drop for ScenarioServices {
             self.supervisor,
             self.service,
             service_process(self.stt_port),
+            left_spotting,
+            self.command_spotting_process(),
         ]
         .into_iter()
         .flatten()
@@ -166,6 +242,22 @@ impl Drop for ScenarioServices {
         }
         copies::remove_balancer_files(self.stt_port);
     }
+}
+
+fn signal(pid: u32, signal: &str) -> Result<()> {
+    let status = Command::new("kill")
+        .args([signal, &pid.to_string()])
+        .status()?;
+    ensure!(status.success(), "kill {signal} {pid} failed");
+    Ok(())
+}
+
+/// The service on `port` answers its health check.
+pub fn healthy(port: u16) -> bool {
+    ureq::get(&format!("http://127.0.0.1:{port}/health"))
+        .timeout(HEALTH_CHECK_WAIT)
+        .call()
+        .is_ok()
 }
 
 fn workspace_root() -> PathBuf {

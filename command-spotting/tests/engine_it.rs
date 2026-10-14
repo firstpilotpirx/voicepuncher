@@ -1,12 +1,17 @@
 //! The real keyword spotting model and voice activity detector on speech synthesized with
 //! macOS `say`. Gated on the model paths the justfile exports.
 
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::time::Duration;
 
 mod common;
 
-use voicepuncher_command_spotting::engine::{Engine, EngineCfg, SAMPLE_RATE};
+use voicepuncher_command_spotting::confirm::{Hear, Heard};
+use voicepuncher_command_spotting::engine::{Engine, EngineCfg, Session, SAMPLE_RATE};
 use voicepuncher_command_spotting::protocol::ServerEvent;
 
 const PAUSE_SECS: f32 = 1.0;
@@ -65,6 +70,7 @@ fn engine_cfg(transcription_url: Option<String>) -> Option<EngineCfg> {
         keywords: None,
         transcription_url,
         max_command_secs: 3.0,
+        confirmation_deadline: Duration::from_secs(3),
     })
 }
 
@@ -84,10 +90,7 @@ fn events_for(engine: &Engine, words: &str) -> Vec<ServerEvent> {
     let phrases: Vec<String> = ALL_PHRASES.iter().map(|p| (*p).to_owned()).collect();
     session.listen_for(&phrases).unwrap();
     let audio = spoken(words);
-    audio
-        .chunks(FRAME_SAMPLES)
-        .flat_map(|frame| session.accept(frame))
-        .collect()
+    fed(&mut session, &audio)
 }
 
 fn spotted(events: &[ServerEvent]) -> Vec<String> {
@@ -98,6 +101,17 @@ fn spotted(events: &[ServerEvent]) -> Vec<String> {
             _ => None,
         })
         .collect()
+}
+
+/// Every event the session reports for `audio` fed frame by frame, its confirmations
+/// included once they are answered.
+fn fed(session: &mut Session<'_>, audio: &[f32]) -> Vec<ServerEvent> {
+    let mut events: Vec<ServerEvent> = audio
+        .chunks(FRAME_SAMPLES)
+        .flat_map(|frame| session.accept(frame))
+        .collect();
+    events.extend(session.settle());
+    events
 }
 
 #[test]
@@ -154,7 +168,7 @@ fn segment_and_phrase(events: &[ServerEvent]) -> ((f32, f32), (f32, f32)) {
             ServerEvent::SpeechStart { t } => segment = Some((*t, f32::MAX)),
             ServerEvent::SpeechEnd { t } => segment = segment.map(|(s, _)| (s, *t)),
             ServerEvent::Phrase { start, end, .. } => phrase = Some((*start, *end)),
-            ServerEvent::Command { .. } => {}
+            ServerEvent::Command { .. } | ServerEvent::Synced { .. } => {}
         }
     }
     (
@@ -191,10 +205,7 @@ fn should_report_the_phrase_within_its_speech_after_a_long_silence() {
     let mut audio = vec![0.0f32; (LONG_SILENCE_SECS * SAMPLE_RATE as f32) as usize];
     audio.extend(spoken("start dictation"));
     // When
-    let events: Vec<ServerEvent> = audio
-        .chunks(FRAME_SAMPLES)
-        .flat_map(|frame| session.accept(frame))
-        .collect();
+    let events: Vec<ServerEvent> = fed(&mut session, &audio);
     // Then
     assert_phrase_fills_segment(&events);
 }
@@ -211,10 +222,7 @@ fn should_count_event_times_from_the_first_sample_across_a_phrase_change() {
     }
     // When
     session.listen_for(&["press enter".to_owned()]).unwrap();
-    let events: Vec<ServerEvent> = spoken("press enter")
-        .chunks(FRAME_SAMPLES)
-        .flat_map(|frame| session.accept(frame))
-        .collect();
+    let events: Vec<ServerEvent> = fed(&mut session, &spoken("press enter"));
     // Then
     let speech_start = events
         .iter()
@@ -259,7 +267,7 @@ fn phrases_in_segments(events: &[ServerEvent]) -> Vec<PhraseInSegment> {
                 last_segment = Some((start, *t));
                 found.extend(waiting.drain(..).map(|(p, span)| (p, (start, *t), span)));
             }
-            ServerEvent::Command { .. } => {}
+            ServerEvent::Command { .. } | ServerEvent::Synced { .. } => {}
         }
     }
     found
@@ -279,10 +287,7 @@ fn should_spot_commands_said_one_after_another_in_one_long_stream() {
     audio.extend(silence(20.0));
     audio.extend(spoken("clear all text"));
     // When
-    let events: Vec<ServerEvent> = audio
-        .chunks(FRAME_SAMPLES)
-        .flat_map(|frame| session.accept(frame))
-        .collect();
+    let events: Vec<ServerEvent> = fed(&mut session, &audio);
     // Then
     let found = phrases_in_segments(&events);
     let names: Vec<&str> = found.iter().map(|(p, _, _)| p.as_str()).collect();
@@ -309,7 +314,8 @@ fn should_place_the_phrase_alike_whether_the_audio_comes_in_small_or_large_messa
     // When the whole utterance arrives in one message
     let mut session = engine.session().unwrap();
     session.listen_for(&phrases).unwrap();
-    let events = session.accept(&audio);
+    let mut events = session.accept(&audio);
+    events.extend(session.settle());
     // Then
     assert_phrase_fills_segment(&events);
 }
@@ -332,10 +338,7 @@ fn spotted_in(engine: &Engine, audio: &[f32]) -> Vec<ServerEvent> {
     let mut session = engine.session().unwrap();
     let phrases: Vec<String> = ALL_PHRASES.iter().map(|p| (*p).to_owned()).collect();
     session.listen_for(&phrases).unwrap();
-    audio
-        .chunks(FRAME_SAMPLES)
-        .flat_map(|frame| session.accept(frame))
-        .collect()
+    fed(&mut session, audio)
 }
 
 /// About 20 dB quieter than `say`: a user sitting back from the built-in microphone.
@@ -372,4 +375,195 @@ fn should_spot_speech_over_room_noise() {
         assert_eq!(spotted(&events), [phrase], "noisy {phrase}: {events:?}");
         assert_phrase_fills_segment(&events);
     }
+}
+
+/// What the speech recognition service hears in every clip, word by word.
+const HEARD_PRESS_ENTER: &str = r#"{"text":" press enter","segments":[{"words":[{"word":" press","start":0.1,"end":0.4},{"word":" enter","start":0.4,"end":0.8}]}]}"#;
+/// Speech the keyword spotter does not take for a command.
+const NOT_A_COMMAND: &str = "hello there";
+const SHORT_DEADLINE: Duration = Duration::from_millis(800);
+
+/// Hears "press enter" in every clip.
+struct HearsPressEnter;
+
+impl Hear for HearsPressEnter {
+    fn hear(&self, _: &[f32], _: Duration) -> anyhow::Result<Heard> {
+        Ok(Heard {
+            text: " press enter".to_owned(),
+            words: Vec::new(),
+        })
+    }
+}
+
+/// An engine of its own that confirms with `transcription_url`, loaded while the shared
+/// engine is held so no other test runs models meanwhile.
+fn own_engine(transcription_url: Option<String>) -> Option<Engine> {
+    let mut cfg = engine_cfg(transcription_url)?;
+    cfg.confirmation_deadline = SHORT_DEADLINE;
+    Some(Engine::load(&cfg).expect("models load"))
+}
+
+/// A speech recognition service that never answers its first `hung` requests and hears
+/// "press enter" in every later one.
+fn speech_recognition_hanging_first(hung: usize) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        let mut held = Vec::new();
+        for (n, stream) in listener.incoming().flatten().enumerate() {
+            if n < hung {
+                held.push(stream);
+            } else {
+                answer(stream, HEARD_PRESS_ENTER);
+            }
+        }
+    });
+    format!("http://127.0.0.1:{port}/v1")
+}
+
+fn answer(mut stream: TcpStream, body: &str) {
+    read_request(&mut stream);
+    let _ = write!(
+        stream,
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+}
+
+/// Reads a request whole, headers and body, so the answer is not a reset.
+fn read_request(stream: &mut TcpStream) {
+    let mut request = Vec::new();
+    let mut buf = [0u8; 8192];
+    while let Ok(n @ 1..) = stream.read(&mut buf) {
+        request.extend_from_slice(&buf[..n]);
+        let text = String::from_utf8_lossy(&request);
+        let Some(head_end) = text.find("\r\n\r\n") else {
+            continue;
+        };
+        let length = text[..head_end]
+            .lines()
+            .find_map(|l| {
+                l.to_ascii_lowercase()
+                    .strip_prefix("content-length:")
+                    .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+            })
+            .unwrap_or(0);
+        if request.len() >= head_end + 4 + length {
+            return;
+        }
+    }
+}
+
+fn reported_phrases(events: &[ServerEvent]) -> Vec<String> {
+    events
+        .iter()
+        .flat_map(|e| match e {
+            ServerEvent::Phrase { phrase, .. } => vec![phrase.clone()],
+            ServerEvent::Command { commands, .. } => commands.clone(),
+            _ => Vec::new(),
+        })
+        .collect()
+}
+
+#[test]
+fn should_confirm_an_utterance_with_what_the_speech_recognition_service_heard() {
+    let Some(_shared) = engine() else { return };
+    // Given
+    let engine = own_engine(None).unwrap().hearing(Arc::new(HearsPressEnter));
+    // When
+    let events = events_for(&engine, NOT_A_COMMAND);
+    // Then
+    assert_eq!(reported_phrases(&events), ["press enter"], "{events:?}");
+}
+
+#[test]
+fn should_confirm_a_command_said_alone_by_the_second_attempt() {
+    let Some(_shared) = engine() else { return };
+    // Given
+    let engine = own_engine(Some(speech_recognition_hanging_first(1))).unwrap();
+    // When
+    let events = events_for(&engine, NOT_A_COMMAND);
+    // Then
+    assert_eq!(reported_phrases(&events), ["press enter"], "{events:?}");
+}
+
+#[test]
+fn should_spot_a_command_after_a_hung_confirmation() {
+    let Some(_shared) = engine() else { return };
+    // Given
+    let engine = own_engine(Some(speech_recognition_hanging_first(2))).unwrap();
+    let mut session = engine.session().unwrap();
+    let phrases: Vec<String> = ALL_PHRASES.iter().map(|p| (*p).to_owned()).collect();
+    session.listen_for(&phrases).unwrap();
+    let mut audio = spoken(NOT_A_COMMAND);
+    audio.extend(spoken("press enter"));
+    // When
+    let events = fed(&mut session, &audio);
+    // Then
+    assert!(
+        reported_phrases(&events).contains(&"press enter".to_owned()),
+        "{events:?}"
+    );
+}
+
+/// Takes 4 s for every clip, as a slow speech recognition service, and counts the clips.
+struct SlowHear(std::sync::atomic::AtomicU32);
+
+const SLOW_HEARING: Duration = Duration::from_secs(4);
+/// Longer than one slow answer, so `settle` waits for each.
+const PATIENT_DEADLINE: Duration = Duration::from_secs(5);
+/// About ten seconds of speech in one breath.
+const LONG_UTTERANCE: &str = "so I was saying that the weather today is really nice and we could go for a long walk along the river later this afternoon";
+/// The head check, at most one window after it, and the segment: a slow service gets no more.
+const MOST_CLIPS_WHILE_SLOW: u32 = 4;
+
+impl Hear for SlowHear {
+    fn hear(&self, _: &[f32], _: Duration) -> anyhow::Result<Heard> {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        std::thread::sleep(SLOW_HEARING);
+        Ok(Heard {
+            text: " hello there".to_owned(),
+            words: Vec::new(),
+        })
+    }
+}
+
+#[test]
+fn should_skip_the_checks_of_a_long_utterance_while_one_waits_for_a_slow_service() {
+    let Some(_shared) = engine() else { return };
+    // Given
+    let hear = Arc::new(SlowHear(std::sync::atomic::AtomicU32::new(0)));
+    let mut cfg = engine_cfg(None).unwrap();
+    cfg.confirmation_deadline = PATIENT_DEADLINE;
+    let engine = Engine::load(&cfg)
+        .expect("models load")
+        .hearing(hear.clone());
+    // When
+    let events = events_for(&engine, LONG_UTTERANCE);
+    // Then
+    let clips = hear.0.load(std::sync::atomic::Ordering::SeqCst);
+    assert!(
+        clips <= MOST_CLIPS_WHILE_SLOW,
+        "{clips} clips were sent for one utterance while the service was slow: {events:?}"
+    );
+}
+
+/// Never hears anything in time: every confirmation is given up.
+struct NeverInTime;
+
+impl Hear for NeverInTime {
+    fn hear(&self, _: &[f32], deadline: Duration) -> anyhow::Result<Heard> {
+        anyhow::bail!("timed out reading response after {deadline:?}")
+    }
+}
+
+#[test]
+fn should_leave_the_keyword_spotted_phrase_to_decide_when_its_segment_confirmation_is_given_up() {
+    let Some(_shared) = engine() else { return };
+    // Given
+    let engine = own_engine(None).unwrap().hearing(Arc::new(NeverInTime));
+    // When
+    let events = events_for(&engine, "press enter");
+    // Then
+    assert_eq!(spotted(&events), ["press enter"], "{events:?}");
 }

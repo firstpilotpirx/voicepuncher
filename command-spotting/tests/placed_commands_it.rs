@@ -5,10 +5,11 @@
 
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::time::Duration;
 
 mod common;
 
-use voicepuncher_command_spotting::engine::{Engine, EngineCfg, SAMPLE_RATE};
+use voicepuncher_command_spotting::engine::{Engine, EngineCfg, Session, SAMPLE_RATE};
 use voicepuncher_command_spotting::protocol::{Placement, ServerEvent};
 
 const STANDBY: [&str; 3] = ["start dictation", "press enter", "clear all text"];
@@ -57,6 +58,7 @@ fn load_engine() -> Option<Engine> {
         keywords: None,
         transcription_url: Some(transcription_url),
         max_command_secs: 3.0,
+        confirmation_deadline: Duration::from_secs(3),
     };
     Some(Engine::load(&cfg).expect("models load"))
 }
@@ -81,10 +83,7 @@ fn heard(engine: &Engine, phrases: &[&str], audio: &[f32]) -> Vec<ServerEvent> {
         .chain(audio.iter().copied())
         .chain(silence(PAUSE_SECS))
         .collect();
-    let events: Vec<ServerEvent> = stream
-        .chunks(FRAME_SAMPLES)
-        .flat_map(|frame| session.accept(frame))
-        .collect();
+    let events: Vec<ServerEvent> = fed(&mut session, &stream);
     eprintln!("{events:?}");
     events
 }
@@ -115,6 +114,17 @@ fn phrases(events: &[ServerEvent]) -> Vec<String> {
 
 fn command(names: &[&str], placement: Placement) -> (Vec<String>, Placement) {
     (names.iter().map(|n| (*n).to_owned()).collect(), placement)
+}
+
+/// Every event the session reports for `audio` fed frame by frame, its confirmations
+/// included once they are answered.
+fn fed(session: &mut Session<'_>, audio: &[f32]) -> Vec<ServerEvent> {
+    let mut events: Vec<ServerEvent> = audio
+        .chunks(FRAME_SAMPLES)
+        .flat_map(|frame| session.accept(frame))
+        .collect();
+    events.extend(session.settle());
+    events
 }
 
 #[test]

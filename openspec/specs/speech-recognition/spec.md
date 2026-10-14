@@ -32,7 +32,7 @@ The system SHALL check that the speech recognition service is reachable before i
 - **THEN** the app exits within 3 seconds with a message naming the address and how to start the service
 
 ### Requirement: Service failure during a cycle drops only that cycle
-The system SHALL drop the current recording, log the failure and stay ready for the next recording when the speech recognition service fails, times out or returns an unusable answer.
+The system SHALL drop the current recording, log the failure and stay ready for the next recording when the speech recognition service fails, times out or returns an unusable answer on every attempt the retry rules allow.
 
 #### Scenario: Service stops between recordings
 - **WHEN** the user finishes a recording after the speech recognition service has stopped
@@ -159,7 +159,7 @@ The system SHALL refuse a configuration that still uses the removed in-process r
 - **THEN** the app exits with a message saying pauses now follow the recording's background level and the setting can be deleted
 
 ### Requirement: Dropped connection to the service is retried
-The system SHALL send the recording again, up to 3 more times with a growing pause of at most 1.5 seconds in total, when the speech recognition service refuses or drops the connection before it answers, whatever connection error the operating system reports for the drop, and SHALL log each dropped attempt; only when every attempt fails is the cycle dropped as a service failure. An error answer, an unusable answer or a timeout SHALL NOT be retried.
+The system SHALL send the recording again, up to 3 more times with a growing pause of at most 1.5 seconds in total, when the speech recognition service refuses or drops the connection before it answers, whatever connection error the operating system reports for the drop, and SHALL log each dropped attempt; only when every attempt fails is the cycle dropped as a service failure. An unusable answer SHALL NOT be retried; a timeout or an error answer is retried as its own requirement states.
 
 #### Scenario: Service is briefly busy
 - **GIVEN** the speech recognition service drops the first two connections and then answers normally
@@ -180,7 +180,7 @@ The system SHALL send the recording again, up to 3 more times with a growing pau
 #### Scenario: Service answers with an error
 - **GIVEN** the speech recognition service answers every request with an error
 - **WHEN** the user finishes a recording
-- **THEN** the recording is sent once and the cycle is dropped as a service failure
+- **THEN** the recording is sent 3 times in total and then the cycle is dropped as a service failure
 
 ### Requirement: Speech after a pause is transcribed
 The system SHALL transcribe the speech that follows a pause in a long dictation or recording file: no phrase of more than five consecutive spoken words SHALL be missing from the raw transcript, whatever the pauses between words or sentences and wherever the chunk seams fall. Words the service mishears are not dropped phrases.
@@ -220,3 +220,33 @@ The speech recognition service SHALL answer a request whose audio holds no speec
 - **GIVEN** the service scripts started the speech recognition service
 - **WHEN** the command spotting service asks it to confirm an utterance that holds no speech
 - **THEN** no words are heard and the service answers the next request
+
+### Requirement: A request that times out or gets an error answer is retried
+The system SHALL send a recording or chunk again, up to 2 more times, when the speech recognition service does not answer it in time or answers with an error, and SHALL log each failed attempt with how long it took; the service SHALL stop working on a request the app gave up on.
+
+#### Scenario: The first request of a chunk hangs
+- **GIVEN** the speech recognition service never answers the first request for a chunk and answers the next one normally
+- **WHEN** the user finishes the dictation
+- **THEN** the chunk's text is in the pasted text, and the hung attempt is logged
+
+#### Scenario: One error answer is retried
+- **GIVEN** the speech recognition service answers the first request with an error and the next one normally
+- **WHEN** the user finishes a recording
+- **THEN** the transcript is pasted and the error answer is logged
+
+### Requirement: The wait for a transcript follows the length of the audio
+The system SHALL give up on one request after a time that grows with the length of the audio sent, a few seconds for a short recording and never more than the configured request timeout, so a request that hangs holds the dictation for seconds rather than a minute.
+
+#### Scenario: A hung short chunk is given up quickly
+- **GIVEN** the speech recognition service never answers any request
+- **WHEN** the user finishes a 5-second recording
+- **THEN** the cycle is dropped as a service failure within 30 seconds of the stop, after every attempt was logged
+
+### Requirement: A lost chunk does not lose the rest of the dictation
+The system SHALL paste the text of every chunk of a dictation that was transcribed when one chunk fails on every attempt, and SHALL log which chunk was lost.
+
+#### Scenario: The middle chunk of a long dictation fails
+- **GIVEN** a dictation long enough for three chunks
+- **AND** the speech recognition service fails every attempt for the second chunk
+- **WHEN** the user finishes the dictation
+- **THEN** the text of the first and third chunks is pasted, and the lost second chunk is logged

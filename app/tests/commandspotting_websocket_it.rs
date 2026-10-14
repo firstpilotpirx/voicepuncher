@@ -366,55 +366,6 @@ fn should_serve_several_apps_listening_at_once() {
     );
 }
 
-/// A service that accepts the connection, then hangs: it never reads or answers again.
-fn hanging_service() -> String {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("ws://{}", listener.local_addr().unwrap());
-    std::thread::spawn(move || {
-        let (stream, _) = listener.accept().unwrap();
-        let socket = tungstenite::accept(stream).unwrap();
-        std::thread::sleep(Duration::from_secs(600));
-        drop(socket);
-    });
-    url
-}
-
-/// Longer than the app waits for a silent service before it gives up on it.
-const HANG_NOTICED_WITHIN: Duration = Duration::from_secs(20);
-
-#[test]
-fn should_report_the_service_lost_when_it_stops_answering() {
-    // Given the app streams to a service that hangs
-    let url = hanging_service();
-    let (audio_tx, audio_rx) = mpsc::channel();
-    let (inputs_tx, inputs_rx) = mpsc::channel();
-    let stream = AudioStream::start(
-        &url,
-        &VoiceCommand::STANDBY,
-        Instant::now(),
-        MIC_RATE_HZ,
-        audio_rx,
-        inputs_tx,
-    )
-    .unwrap();
-    // When the microphone keeps capturing
-    let deadline = Instant::now() + HANG_NOTICED_WITHIN;
-    let mut lost = false;
-    while !lost && Instant::now() < deadline {
-        audio_tx.send(microphone_silence(0.1)).unwrap();
-        lost = matches!(
-            inputs_rx.recv_timeout(Duration::from_millis(100)),
-            Ok(PipelineInput::SpottingLost)
-        );
-    }
-    // Then
-    assert!(
-        lost,
-        "the hanging service was not noticed within {HANG_NOTICED_WITHIN:?}"
-    );
-    stream.stop();
-}
-
 /// Longer than the silence the app allows the service before it gives up on it.
 const QUIET_SESSION: Duration = Duration::from_secs(15);
 

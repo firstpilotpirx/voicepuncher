@@ -3,6 +3,7 @@ use std::time::Duration;
 use anyhow::{anyhow, bail, Context, Result};
 use serde::Deserialize;
 
+use crate::adapters::secondary::http::failure::is_dropped_connection;
 use crate::config::RefinementCfg;
 use crate::core::application::text_refiner::TextRefiner;
 use crate::core::domain::{CleanedText, RawTranscript};
@@ -15,6 +16,8 @@ const CHAT_COMPLETIONS_PATH: &str = "chat/completions";
 const MODELS_PATH: &str = "models";
 const STARTUP_CHECK_TIMEOUT: Duration = Duration::from_secs(2);
 const START_HINT: &str = "start it with 'just start-model-servers'";
+/// The pause before the one new attempt after the service dropped the connection.
+const DROPPED_RETRY_PAUSE: Duration = Duration::from_millis(200);
 
 #[derive(Deserialize)]
 struct ModelList {
@@ -90,15 +93,34 @@ fn with_api_key(request: ureq::Request, api_key: &str) -> ureq::Request {
 impl TextRefiner for OpenAiTextRefiner {
     fn refine(&mut self, raw: &RawTranscript) -> Result<CleanedText> {
         let body = chat_body(&self.cfg, raw.as_str());
-        let response = with_api_key(self.agent.post(&self.endpoint), &self.cfg.api_key)
-            .set("Content-Type", "application/json")
-            .send_string(&body)
+        let response = self
+            .post(&body)
+            .or_else(|e| {
+                if !is_dropped_connection(&e) {
+                    return Err(e);
+                }
+                log::warn!(
+                    "text refinement service dropped the connection (refine attempt 1): {e} — retrying in {}ms",
+                    DROPPED_RETRY_PAUSE.as_millis()
+                );
+                std::thread::sleep(DROPPED_RETRY_PAUSE);
+                self.post(&body)
+            })
             .map_err(|e| anyhow!("text refinement request to {} failed: {e}", self.endpoint))?;
         let json = response
             .into_string()
             .context("read text refinement response")?;
         let text = cleaned_answer(&json, raw.as_str())?;
         CleanedText::new(text).map_err(|e| anyhow!(e))
+    }
+}
+
+impl OpenAiTextRefiner {
+    fn post(&self, body: &str) -> std::result::Result<ureq::Response, Box<ureq::Error>> {
+        with_api_key(self.agent.post(&self.endpoint), &self.cfg.api_key)
+            .set("Content-Type", "application/json")
+            .send_string(body)
+            .map_err(Box::new)
     }
 }
 

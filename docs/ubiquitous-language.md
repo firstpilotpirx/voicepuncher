@@ -198,8 +198,41 @@
 
 ### Listening
 - **Type:** State of voice control
-- **Definition:** The microphone stays open and audio streams to the *command spotting service*, so *voice commands* take effect. *Standby* is listening with no dictation running; *dictating* is listening while a dictation records.
+- **Definition:** The microphone stays open and audio streams to the *command spotting service*, so *voice commands* take effect. *Standby* is listening with no dictation running; *dictating* is listening while a dictation records. Listening stays on until the app exits: while the service is *away*, the app *reconnects* and listening resumes once the service is *back*.
 - **Synonyms to AVOID:** "wake", "armed", "always-on"
+
+### Away (command spotting service)
+- **Type:** State of *listening*
+- **Definition:** The *command spotting service* dropped the connection or answered nothing, not even a ping, for 5 s. Listening stays on, a running dictation keeps recording, the listening-off sound plays, and the app *reconnects*. Slow spotting results alone never make the service away.
+- **Code:** `PipelineInput::SpottingLost`; `lose_spotting` in `app/src/core/application/pipeline/voice_control.rs`
+- **Synonyms to AVOID:** "dead", "offline", "disconnected" (alone: the connection may be up while the service is slow)
+
+### Reconnect
+- **Type:** Behavior of the command spotting adapter
+- **Definition:** While the service is *away*, the adapter tries it again after 0.25, 0.5, 1, 2 and then every 4 s, logging the first and every tenth failed attempt, for as long as listening is on.
+- **Code:** `app/src/adapters/secondary/commandspotting/websocket/{mod.rs,link.rs}`
+- **Synonyms to AVOID:** "retry loop" (retries are per request), "restart" (the service scripts restart services)
+
+### Back (command spotting service)
+- **Type:** Boundary signal
+- **Definition:** A *reconnect* succeeded: the new connection was told the commands of the current state and sent the *speech captured while the service was away*. The core resets the recognizer, plays the listening-on sound and listens again.
+- **Code:** `PipelineInput::SpottingBack`; `regain_spotting` in `app/src/core/application/pipeline/voice_control.rs`
+
+### Speech captured while the service was away
+- **Type:** Concept
+- **Definition:** The audio from 5 s before the loss (never earlier than the end of the last command reported) to the return, at most the last 10 s held by the adapter, sent to the service that is *back* so a command said in that time is carried out late rather than lost. A command that ends before the last one carried out is not carried out twice.
+- **Code:** `HeardAudio::replay_from` in `app/src/adapters/secondary/commandspotting/websocket/heard.rs`, `replay_start` in `link.rs`
+
+### Confirmation deadline
+- **Type:** Rule of the *command spotting service*
+- **Definition:** How long one confirmation by the *speech recognition service* may take before the service gives it up (3 s, `--confirmation-deadline-secs`). The confirmation of a closed utterance is tried twice; a check of a running utterance is skipped while another one waits. Confirmations run off the audio path, so a slow one delays only its own check.
+- **Code:** `command-spotting/src/worker.rs`
+
+### Health check
+- **Type:** Rule of the service scripts
+- **Definition:** Every 5 s the supervisor of the command spotting and text refinement services asks `/health`; a service that answered once and then fails 3 checks in a row is killed and so restarted, with a note in its log. The command spotting service answers 503 when a connection has audio waiting and its processing made no progress for 10 s.
+- **Code:** `supervise` in `justfile`, `command-spotting/src/health.rs`
+- **Synonyms to AVOID:** "heartbeat", "ping" (the app's pings check one connection)
 
 ### VoiceCommand
 - **Type:** Value Object (enum)

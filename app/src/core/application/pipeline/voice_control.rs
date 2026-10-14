@@ -13,6 +13,13 @@ pub(super) struct VoiceControl {
     key_presser: Box<dyn KeyPresser>,
     recognizer: VoiceCommandRecognizer,
     listening: bool,
+    /// The command spotting service is away: listening resumes once it is back.
+    away: bool,
+    /// Where the last command carried out ended.
+    last_carried_end: Option<Instant>,
+    /// Commands ending by then were carried out before the service went away: the audio
+    /// sent again to the service that is back may report them a second time.
+    carried_before_outage: Option<Instant>,
 }
 
 impl Pipeline {
@@ -28,6 +35,9 @@ impl Pipeline {
             key_presser,
             recognizer: VoiceCommandRecognizer::new(),
             listening: false,
+            away: false,
+            last_carried_end: None,
+            carried_before_outage: None,
         });
         self
     }
@@ -49,6 +59,7 @@ impl Pipeline {
                 Ok(())
             }
             PipelineInput::SpottingLost => self.lose_spotting(),
+            PipelineInput::SpottingBack => self.regain_spotting(),
         }
     }
 
@@ -94,14 +105,6 @@ impl Pipeline {
         log::info!("voice control: listening");
     }
 
-    fn turn_listening_off(&mut self) {
-        let voice = self.voice();
-        voice.spotter.stop_listening();
-        voice.listening = false;
-        self.sound_player.play_listening_off();
-        log::info!("voice control: not listening");
-    }
-
     fn recognize(&mut self, event: SpottingEvent) -> Vec<SpokenCommand> {
         if !self.listening() {
             return Vec::new();
@@ -112,6 +115,22 @@ impl Pipeline {
     /// A command that fails (the microphone is busy, a key press is refused) is logged;
     /// the app keeps listening for the next one.
     fn carry_out_or_log(&mut self, spoken: SpokenCommand) {
+        let voice = self.voice();
+        if voice
+            .carried_before_outage
+            .is_some_and(|until| spoken.ends_at <= until)
+        {
+            log::info!(
+                "voice control: \"{}\" was carried out before the outage, skipped",
+                spoken.command.phrase()
+            );
+            return;
+        }
+        voice.last_carried_end = Some(
+            voice
+                .last_carried_end
+                .map_or(spoken.ends_at, |end| end.max(spoken.ends_at)),
+        );
         if let Err(e) = self.carry_out(spoken) {
             log::error!(
                 "voice control: \"{}\" failed: {e:#}",
@@ -178,17 +197,50 @@ impl Pipeline {
         Ok(())
     }
 
+    /// The service went away: listening stays on, a running dictation keeps recording, and
+    /// the adapter reaches for the service until it is back.
     fn lose_spotting(&mut self) -> anyhow::Result<()> {
-        if !self.listening() {
+        if !self.listening() || self.voice().away {
             return Ok(());
         }
         log::error!(
-            "voice control: the command spotting service stopped answering; listening is off"
+            "voice control: the command spotting service stopped answering; listening resumes once it is back"
         );
-        if self.is_recording() {
-            self.stop_recording()?;
+        let recording = self.is_recording();
+        let voice = self.voice();
+        voice.away = true;
+        voice.carried_before_outage = voice.last_carried_end;
+        self.sound_player.play_listening_off();
+        log::info!(
+            "voice control: listening → away{}",
+            if recording {
+                ", the dictation keeps recording"
+            } else {
+                ""
+            }
+        );
+        Ok(())
+    }
+
+    /// The service is back: the commands of the current state are spotted again.
+    fn regain_spotting(&mut self) -> anyhow::Result<()> {
+        if !self.listening() || !self.voice().away {
+            return Ok(());
         }
-        self.turn_listening_off();
+        let recording = self.is_recording();
+        let voice = self.voice();
+        voice.away = false;
+        voice.recognizer = VoiceCommandRecognizer::new();
+        self.follow_dictation(recording);
+        self.sound_player.play_listening_on();
+        log::info!(
+            "voice control: away → listening again{}",
+            if recording {
+                " during the dictation"
+            } else {
+                ""
+            }
+        );
         Ok(())
     }
 }
@@ -395,7 +447,11 @@ mod tests {
 
     /// Says `phrase` on its own and returns the moment the phrase started.
     fn say(pipeline: &mut Pipeline, phrase: &str) -> Instant {
-        let segment_start = Instant::now();
+        say_at(pipeline, phrase, Instant::now())
+    }
+
+    /// Says `phrase` on its own in a segment starting at `segment_start`.
+    fn say_at(pipeline: &mut Pipeline, phrase: &str, segment_start: Instant) -> Instant {
         let start = segment_start + PHRASE_LEAD;
         let end = start + PHRASE_LENGTH;
         let events = [
@@ -528,20 +584,45 @@ mod tests {
     }
 
     #[test]
-    fn should_paste_and_stop_listening_when_the_service_goes_away_during_a_dictation() {
+    fn should_keep_recording_and_listening_when_the_service_goes_away_during_a_dictation() {
         // Given
         let mut spotter = MockCommandSpotter::new();
         spotter.expect_start_listening().returning(|_| Ok(()));
         spotter.expect_listen_for().return_const(());
-        spotter.expect_stop_listening().once().return_const(());
+        spotter.expect_stop_listening().never();
         hears_nothing(&mut spotter);
         let mut paster = MockTextPaster::new();
-        paster.expect_paste().once().returning(|_| Ok(()));
+        paster.expect_paste().never();
         let mut pipeline = pipeline(recording_recorder(), paster, spotter, RecordingMode::Toggle);
         listen(&mut pipeline);
         say(&mut pipeline, "start dictation");
         // When
         pipeline.handle(PipelineInput::SpottingLost).unwrap();
+        // Then
+        assert!(pipeline.is_recording());
+    }
+
+    #[test]
+    fn should_listen_for_the_commands_of_a_running_dictation_when_the_service_is_back() {
+        // Given
+        let mut spotter = MockCommandSpotter::new();
+        let mut order = mockall::Sequence::new();
+        spotter.expect_start_listening().returning(|_| Ok(()));
+        hears_nothing(&mut spotter);
+        spotter
+            .expect_listen_for()
+            .with(mockall::predicate::eq(VoiceCommand::DICTATING.to_vec()))
+            .times(2)
+            .in_sequence(&mut order)
+            .return_const(());
+        let mut paster = MockTextPaster::new();
+        paster.expect_paste().never();
+        let mut pipeline = pipeline(recording_recorder(), paster, spotter, RecordingMode::Toggle);
+        listen(&mut pipeline);
+        say(&mut pipeline, "start dictation");
+        pipeline.handle(PipelineInput::SpottingLost).unwrap();
+        // When
+        pipeline.handle(PipelineInput::SpottingBack).unwrap();
         // Then the mock expectations hold
     }
 
@@ -921,5 +1002,28 @@ mod tests {
         // Then
         assert!(pipeline.is_recording());
         assert_eq!(*played.lock().unwrap(), ["start", "cancel", "start"]);
+    }
+
+    #[test]
+    fn should_not_carry_out_again_a_command_the_service_reports_twice_across_an_outage() {
+        // Given
+        let mut keys = MockKeyPresser::new();
+        keys.expect_press_enter().once().returning(|| Ok(()));
+        let mut pipeline = pipeline_with(
+            idle_recorder(),
+            MockTextPaster::new(),
+            lenient_spotter(),
+            sounds(),
+            keys,
+            RecordingMode::Toggle,
+        );
+        listen(&mut pipeline);
+        let said_at = Instant::now();
+        say_at(&mut pipeline, "press enter", said_at);
+        pipeline.handle(PipelineInput::SpottingLost).unwrap();
+        pipeline.handle(PipelineInput::SpottingBack).unwrap();
+        // When the audio sent again reports the same command
+        say_at(&mut pipeline, "press enter", said_at);
+        // Then the mock expectations hold
     }
 }

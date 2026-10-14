@@ -5,8 +5,9 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::os::fd::AsRawFd;
-use std::sync::mpsc;
-use std::thread;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{mpsc, Arc, Mutex, OnceLock};
+use std::thread::{self, ThreadId};
 use std::time::Duration;
 
 use voicepuncher::adapters::secondary::textrefinement::openai::OpenAiTextRefiner;
@@ -254,8 +255,16 @@ fn should_fail_when_service_answers_after_timeout() {
         timeout_secs: 1,
         ..cfg
     };
-    // When / Then
-    assert!(refine(cfg, TRANSCRIPT).is_err());
+    // When
+    let started = std::time::Instant::now();
+    let result = refine(cfg, TRANSCRIPT);
+    // Then it fails after one wait: a timeout is not retried, the raw transcript is good enough
+    assert!(result.is_err());
+    assert!(
+        started.elapsed() < Duration::from_millis(1_800),
+        "waited {:?}: the timed-out request was sent again",
+        started.elapsed()
+    );
 }
 
 #[test]
@@ -276,6 +285,98 @@ fn should_refine_after_service_reset_idle_connection() {
         next.unwrap().as_str(),
         "The Docker image builds fine on staging."
     );
+}
+
+/// Keeps every log message with the thread that logged it, so parallel tests read
+/// only their own messages.
+struct CapturingLogger(Mutex<Vec<(ThreadId, String)>>);
+
+impl log::Log for CapturingLogger {
+    fn enabled(&self, _: &log::Metadata) -> bool {
+        true
+    }
+    fn log(&self, record: &log::Record) {
+        let line = format!("{} {}", record.level(), record.args());
+        self.0.lock().unwrap().push((thread::current().id(), line));
+    }
+    fn flush(&self) {}
+}
+
+fn capturing_logger() -> &'static CapturingLogger {
+    static LOGGER: OnceLock<&'static CapturingLogger> = OnceLock::new();
+    LOGGER.get_or_init(|| {
+        let logger = Box::leak(Box::new(CapturingLogger(Mutex::new(Vec::new()))));
+        log::set_logger(logger).unwrap();
+        log::set_max_level(log::LevelFilter::Trace);
+        logger
+    })
+}
+
+fn logged_by_this_thread(fragment: &str) -> usize {
+    let me = thread::current().id();
+    capturing_logger()
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(thread, line)| *thread == me && line.contains(fragment))
+        .count()
+}
+
+/// Answers the startup model list, then resets the first `drops` chat requests (as a busy
+/// service does) and answers the later ones with `ANSWER`. Counts chat requests.
+fn spawn_dropping_stub(drops: usize) -> (RefinementCfg, Arc<AtomicUsize>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let posts = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&posts);
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let mut stream = stream.unwrap();
+            let Some(request) = read_request(&mut stream) else {
+                continue;
+            };
+            if request.request_line.starts_with("GET ") {
+                respond(&mut stream, 200, MODELS);
+            } else if counter.fetch_add(1, Ordering::SeqCst) < drops {
+                reset(stream);
+            } else {
+                respond(&mut stream, 200, ANSWER);
+            }
+        }
+    });
+    let cfg = RefinementCfg {
+        base_url: format!("http://127.0.0.1:{port}/v1"),
+        ..RefinementCfg::default()
+    };
+    (cfg, posts)
+}
+
+#[test]
+fn should_refine_by_a_new_attempt_after_one_dropped_connection() {
+    // Given
+    capturing_logger();
+    let (cfg, posts) = spawn_dropping_stub(1);
+    // When
+    let cleaned = refine(cfg, TRANSCRIPT).unwrap();
+    // Then
+    assert_eq!(cleaned, "The Docker image builds fine on staging.");
+    assert_eq!(posts.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        logged_by_this_thread("WARN text refinement service dropped the connection"),
+        1
+    );
+}
+
+#[test]
+fn should_send_the_request_twice_when_the_service_keeps_dropping_the_connection() {
+    // Given
+    let (cfg, posts) = spawn_dropping_stub(usize::MAX);
+    // When
+    let result = refine(cfg, TRANSCRIPT);
+    // Then the refiner gives up, and the raw transcript is pasted instead
+    assert!(result.is_err());
+    assert_eq!(posts.load(Ordering::SeqCst), 2);
 }
 
 #[test]

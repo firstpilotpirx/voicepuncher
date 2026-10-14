@@ -31,6 +31,8 @@ const CHUNK_THRESHOLD_SECS: u32 = 30;
 pub struct Dictation {
     chunk_texts: Vec<&'static str>,
     spoken: &'static str,
+    /// The chunk the service fails on every attempt, counting from 0.
+    failing_chunk: Option<usize>,
 }
 
 fn same_overlap() -> Dictation {
@@ -41,6 +43,7 @@ fn same_overlap() -> Dictation {
             "out of date. We agreed with the team to review the list.",
         ],
         spoken: "This morning I went through the task queue and realised that half of it was out of date. We agreed with the team to review the list.",
+        failing_chunk: None,
     }
 }
 
@@ -107,6 +110,7 @@ fn differing_overlap(language: &str, difference: &str) -> Result<Dictation> {
     Ok(Dictation {
         chunk_texts,
         spoken,
+        failing_chunk: None,
     })
 }
 
@@ -117,7 +121,54 @@ fn no_shared_words() -> Dictation {
             "Tomorrow we start early and review the plan.",
         ],
         spoken: "It was a long day at the office. Tomorrow we start early and review the plan.",
+        failing_chunk: None,
     }
+}
+
+fn three_chunks() -> Dictation {
+    Dictation {
+        chunk_texts: vec![
+            "It was a long day at the office.",
+            "We talked about the release for an hour.",
+            "Tomorrow we start early and review the plan.",
+        ],
+        spoken: "It was a long day at the office. Tomorrow we start early and review the plan.",
+        failing_chunk: None,
+    }
+}
+
+#[given("a dictation long enough for three chunks")]
+fn three_chunk_dictation(world: &mut IntegrationWorld) {
+    world.dictation = Some(three_chunks());
+}
+
+#[given("the speech recognition service fails every attempt for the second chunk")]
+fn second_chunk_fails(world: &mut IntegrationWorld) -> Result<()> {
+    crate::steps::voice_control::error_log();
+    world
+        .dictation
+        .as_mut()
+        .context("no dictation")?
+        .failing_chunk = Some(1);
+    Ok(())
+}
+
+#[then("the text of the first and third chunks is pasted")]
+fn first_and_third_pasted(world: &mut IntegrationWorld) -> Result<()> {
+    pasted_as_spoken(world)
+}
+
+#[then("the lost second chunk is logged")]
+fn lost_chunk_logged(_world: &mut IntegrationWorld) -> Result<()> {
+    let errors = crate::steps::voice_control::error_log()
+        .0
+        .lock()
+        .unwrap()
+        .clone();
+    if !errors.iter().any(|e| e.starts_with("chunk 2 lost")) {
+        bail!("no error names the lost second chunk: {errors:?}");
+    }
+    Ok(())
 }
 
 #[given("the user dictates for longer than the chunk threshold")]
@@ -158,7 +209,10 @@ fn stop_dictation(world: &mut IntegrationWorld) -> Result<()> {
         Box::new(ChunkingRecorder {
             chunks: dictation.chunk_texts.len(),
         }),
-        Box::new(FixedTranscripts(dictation.chunk_texts.clone())),
+        Box::new(FixedTranscripts(
+            dictation.chunk_texts.clone(),
+            dictation.failing_chunk,
+        )),
         Box::new(PassthroughTextRefiner),
         Box::new(CapturingPaster(pasted.clone())),
         Box::new(Silent),
@@ -240,12 +294,15 @@ impl AudioRecorder for ChunkingRecorder {
     fn flush_live_chunks(&mut self) {}
 }
 
-/// Answers chunk n with the n-th transcript.
-struct FixedTranscripts(Vec<&'static str>);
+/// Answers chunk n with the n-th transcript, and fails the chunk it is told to fail.
+struct FixedTranscripts(Vec<&'static str>, Option<usize>);
 
 impl Transcriber for FixedTranscripts {
     fn transcribe(&mut self, audio: &AudioBuffer16k) -> Result<Option<RawTranscript>> {
         let n = audio.samples()[0] as usize;
+        if self.1 == Some(n) {
+            bail!("speech recognition request failed: every attempt timed out");
+        }
         let text = self.0.get(n).context("no transcript for this chunk")?;
         Ok(Some(RawTranscript::new((*text).to_owned())?))
     }

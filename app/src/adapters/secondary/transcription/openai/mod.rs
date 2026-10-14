@@ -1,4 +1,3 @@
-use std::io;
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -7,6 +6,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use serde::Deserialize;
 use url::Url;
 
+use crate::adapters::secondary::http::failure::Failure;
 use crate::config::TranscriptionCfg;
 use crate::core::application::transcriber::Transcriber;
 use crate::core::application::transcript_filter::is_whisper_hallucination;
@@ -27,6 +27,14 @@ const RETRY_PAUSES: [Duration; 3] = [
     Duration::from_millis(400),
     Duration::from_millis(800),
 ];
+/// New attempts after a request the service did not answer in time or answered with an
+/// error: the service aborts the request the app gave up on, and the next one goes to a
+/// free copy.
+const SLOW_RETRIES: u32 = 2;
+const SLOW_RETRY_PAUSE: Duration = Duration::from_millis(200);
+/// The wait for one request: this, plus half the length of its audio.
+const DEADLINE_BASE: Duration = Duration::from_secs(5);
+const DEADLINE_PER_AUDIO_SECOND: f32 = 0.5;
 
 #[derive(Deserialize)]
 struct TranscriptionResponse {
@@ -39,6 +47,8 @@ pub struct OpenAiTranscriber {
     agent: ureq::Agent,
     endpoint: String,
     cfg: TranscriptionCfg,
+    /// Numbers the requests, for the log: `request=<n>`.
+    requests: u64,
 }
 
 impl OpenAiTranscriber {
@@ -63,13 +73,22 @@ impl OpenAiTranscriber {
             agent,
             endpoint,
             cfg,
+            requests: 0,
         })
     }
 
-    fn request_text(&self, audio: &AudioBuffer16k) -> Result<String> {
+    fn request_text(&mut self, audio: &AudioBuffer16k) -> Result<String> {
         let wav = encode_wav(audio)?;
         let body = multipart_body(&self.cfg, &wav);
-        let response = self.post_with_retries(&body)?;
+        self.requests += 1;
+        let deadline = request_deadline(audio, Duration::from_secs(self.cfg.timeout_secs));
+        log::debug!(
+            "speech recognition: request={} audio={}ms deadline={}ms",
+            self.requests,
+            audio.duration_ms(),
+            deadline.as_millis()
+        );
+        let response = self.post_with_retries(&body, deadline)?;
         let json = response
             .into_string()
             .context("read speech recognition response")?;
@@ -78,70 +97,65 @@ impl OpenAiTranscriber {
         Ok(normalize_transcript(&parsed.text))
     }
 
-    fn post_with_retries(&self, body: &[u8]) -> Result<ureq::Response> {
-        let mut pauses = RETRY_PAUSES.iter();
-        let mut attempt = 1;
+    /// Posts `body`, again after a dropped connection, a timeout or an error answer, as
+    /// often as each allows; every failed attempt is logged with how long it took.
+    fn post_with_retries(&self, body: &[u8], deadline: Duration) -> Result<ureq::Response> {
+        let (mut dropped, mut slow, mut attempt) = (0usize, 0u32, 0u32);
         loop {
+            attempt += 1;
+            let started = Instant::now();
             let result = self
                 .agent
                 .post(&self.endpoint)
+                .timeout(deadline)
                 .set("Content-Type", &request::content_type())
                 .send_bytes(body);
-            match (result, pauses.next()) {
-                (Err(e), Some(pause)) if is_dropped_connection(&e) => {
+            let error = match result {
+                Ok(response) => return Ok(response),
+                Err(e) => e,
+            };
+            let failure = Failure::of(&error);
+            let pause = match failure {
+                Failure::Dropped if dropped < RETRY_PAUSES.len() => {
+                    dropped += 1;
+                    RETRY_PAUSES[dropped - 1]
+                }
+                Failure::TimedOut | Failure::Busy(_) if slow < SLOW_RETRIES => {
+                    slow += 1;
+                    SLOW_RETRY_PAUSE
+                }
+                _ => {
                     log::warn!(
-                        "speech recognition service dropped the connection (attempt {attempt}): \
-                         {e} — retrying in {}ms",
-                        pause.as_millis()
+                        "speech recognition service {} (request={} attempt {attempt}, after {}ms, deadline {}ms): {error} — giving up",
+                        failure.describe(),
+                        self.requests,
+                        started.elapsed().as_millis(),
+                        deadline.as_millis()
                     );
-                    thread::sleep(*pause);
-                    attempt += 1;
+                    bail!(
+                        "speech recognition request to {} failed: {error}",
+                        self.endpoint
+                    )
                 }
-                (result, _) => {
-                    return result.map_err(|e| {
-                        anyhow!(
-                            "speech recognition request to {} failed: {e}",
-                            self.endpoint
-                        )
-                    })
-                }
-            }
+            };
+            log::warn!(
+                "speech recognition service {} (request={} attempt {attempt}, after {}ms, deadline {}ms): {error} — retrying in {}ms",
+                failure.describe(),
+                self.requests,
+                started.elapsed().as_millis(),
+                deadline.as_millis(),
+                pause.as_millis()
+            );
+            thread::sleep(pause);
         }
     }
 }
 
-/// True when the service refused or dropped the connection before it answered; an
-/// error answer or a timeout is not a dropped connection.
-fn is_dropped_connection(error: &ureq::Error) -> bool {
-    let ureq::Error::Transport(transport) = error else {
-        return false;
-    };
-    if transport.kind() == ureq::ErrorKind::ConnectionFailed {
-        return true;
-    }
-    // ureq may rewrap the OS error, so any I/O error in the chain can carry the drop
-    let mut source = std::error::Error::source(transport);
-    while let Some(cause) = source {
-        if cause.downcast_ref::<io::Error>().is_some_and(is_dropped_io) {
-            return true;
-        }
-        source = cause.source();
-    }
-    false
-}
-
-/// macOS reports a socket call on a connection the peer already reset as EINVAL; an
-/// invalid-input error raised by a library has no OS code and is not a drop.
-fn is_dropped_io(error: &io::Error) -> bool {
-    match error.kind() {
-        io::ErrorKind::ConnectionRefused
-        | io::ErrorKind::ConnectionReset
-        | io::ErrorKind::ConnectionAborted
-        | io::ErrorKind::BrokenPipe
-        | io::ErrorKind::UnexpectedEof => true,
-        io::ErrorKind::InvalidInput => error.raw_os_error().is_some(),
-        _ => false,
-    }
+/// How long one request may take: a few seconds for a short recording, more for long
+/// audio, never more than `timeout`.
+fn request_deadline(audio: &AudioBuffer16k, timeout: Duration) -> Duration {
+    let audio_secs = audio.duration_ms() as f32 / 1_000.0;
+    (DEADLINE_BASE + Duration::from_secs_f32(audio_secs * DEADLINE_PER_AUDIO_SECOND)).min(timeout)
 }
 
 fn socket_addrs(base_url: &str) -> Result<Vec<SocketAddr>> {
@@ -243,50 +257,30 @@ mod tests {
     }
 
     #[test]
-    fn should_treat_reset_refused_and_closed_connections_as_dropped() {
-        for kind in [
-            io::ErrorKind::ConnectionRefused,
-            io::ErrorKind::ConnectionReset,
-            io::ErrorKind::ConnectionAborted,
-            io::ErrorKind::BrokenPipe,
-            io::ErrorKind::UnexpectedEof,
-        ] {
-            assert!(is_dropped_io(&io::Error::from(kind)), "{kind:?}");
-        }
+    fn should_wait_a_few_seconds_for_a_short_recording() {
+        let five_seconds = AudioBuffer16k::new(vec![0; 5 * 16_000]);
+        assert_eq!(
+            request_deadline(&five_seconds, Duration::from_secs(60)),
+            Duration::from_millis(7_500)
+        );
     }
 
     #[test]
-    fn should_not_treat_timeout_as_dropped() {
-        assert!(!is_dropped_io(&io::Error::from(io::ErrorKind::TimedOut)));
-        assert!(!is_dropped_io(&io::Error::from(io::ErrorKind::WouldBlock)));
+    fn should_wait_longer_for_a_long_chunk() {
+        let chunk = AudioBuffer16k::new(vec![0; 32 * 16_000]);
+        assert_eq!(
+            request_deadline(&chunk, Duration::from_secs(60)),
+            Duration::from_secs(21)
+        );
     }
 
     #[test]
-    fn should_treat_os_invalid_argument_as_dropped() {
-        // macOS reports a connection the service already reset as EINVAL (os error 22)
-        let einval = io::Error::from_raw_os_error(22);
-        assert_eq!(einval.kind(), io::ErrorKind::InvalidInput);
-        assert!(is_dropped_io(&einval));
-    }
-
-    #[test]
-    fn should_treat_os_invalid_argument_wrapped_by_http_client_as_dropped() {
-        // ureq rewraps a status-line read error in an io::Error without the OS code
-        let einval = io::Error::from_raw_os_error(22);
-        let rewrapped = io::Error::new(einval.kind(), ureq::Error::from(einval));
-        assert!(is_dropped_connection(&ureq::Error::from(rewrapped)));
-    }
-
-    #[test]
-    fn should_not_treat_library_invalid_input_as_dropped() {
-        let invalid = io::Error::new(io::ErrorKind::InvalidInput, "bad header");
-        assert!(!is_dropped_io(&invalid));
-    }
-
-    #[test]
-    fn should_not_treat_error_answer_as_dropped() {
-        let response = ureq::Response::new(500, "Internal Server Error", "boom").unwrap();
-        assert!(!is_dropped_connection(&ureq::Error::Status(500, response)));
+    fn should_never_wait_longer_than_the_configured_timeout() {
+        let chunk = AudioBuffer16k::new(vec![0; 32 * 16_000]);
+        assert_eq!(
+            request_deadline(&chunk, Duration::from_secs(10)),
+            Duration::from_secs(10)
+        );
     }
 
     #[test]

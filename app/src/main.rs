@@ -71,6 +71,7 @@ fn main() {
                 .parse()
                 .unwrap_or(log::LevelFilter::Info),
         )
+        .format(log_line)
         .init();
 
     if let Some(ref input_path) = input_file {
@@ -252,4 +253,20 @@ fn chunking_cfg(cfg: &TranscriptionCfg) -> ChunkingCfg {
         chunk_overlap_secs: cfg.chunk_overlap_secs,
         vad_lookback_secs: cfg.vad_lookback_secs,
     }
+}
+
+/// One log line with the thread that wrote it, so a session traces across the pipeline,
+/// command spotting and transcription threads: `[time LEVEL thread target] message`.
+fn log_line(buf: &mut env_logger::fmt::Formatter, record: &log::Record) -> std::io::Result<()> {
+    use std::io::Write;
+    let thread = std::thread::current();
+    writeln!(
+        buf,
+        "[{} {:<5} {} {}] {}",
+        buf.timestamp(),
+        record.level(),
+        thread.name().unwrap_or("-"),
+        record.target(),
+        record.args()
+    )
 }

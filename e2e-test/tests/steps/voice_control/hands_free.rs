@@ -25,19 +25,24 @@ use voicepuncher_e2e_test::voice_commands::spoken_with_pauses;
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
-const SENTENCE: &str = "Meeting moved to Friday.";
+pub(super) const SENTENCE: &str = "Meeting moved to Friday.";
 const SAY_SAMPLE_RATE_HZ: u32 = 16_000;
 const FRAME_SAMPLES: usize = 1_600;
 /// Longest the app may take to react to a spoken command.
 const REACTION: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Event {
+pub(super) enum Event {
     Listening,
     RecordingStarted,
     Pasted(String),
     ReturnPressed,
+    ListeningOffSound,
+    ListeningOnSound,
 }
+
+/// One frame of audio, as long as it lasts in real time.
+const FRAME: Duration = Duration::from_millis(100);
 
 type Events = Arc<Mutex<Vec<Event>>>;
 
@@ -56,7 +61,7 @@ impl std::fmt::Debug for HandsFree {
 }
 
 impl HandsFree {
-    fn start(url: String) -> Self {
+    pub(super) fn start(url: String) -> Self {
         let events = Events::default();
         let (microphone, heard) = mpsc::channel();
         let (inputs_tx, inputs_rx) = mpsc::channel();
@@ -72,7 +77,7 @@ impl HandsFree {
             Box::new(FixedTranscript),
             Box::new(PassthroughTextRefiner),
             Box::new(RecordingPaster(Arc::clone(&events))),
-            Box::new(Silent),
+            Box::new(ListeningSounds(Arc::clone(&events))),
             Box::new(NoOverlay),
             PipelineConfig {
                 min_press_ms: 0,
@@ -91,12 +96,12 @@ impl HandsFree {
         Self { events, microphone }
     }
 
-    fn events(&self) -> Vec<Event> {
+    pub(super) fn events(&self) -> Vec<Event> {
         self.events.lock().unwrap().clone()
     }
 
     /// Waits until `wanted` happened; returns whether it did within the reaction time.
-    fn saw(&self, wanted: impl Fn(&Event) -> bool) -> bool {
+    pub(super) fn saw(&self, wanted: impl Fn(&Event) -> bool) -> bool {
         let deadline = Instant::now() + REACTION;
         while Instant::now() < deadline {
             if self.events().iter().any(&wanted) {
@@ -107,7 +112,7 @@ impl HandsFree {
         false
     }
 
-    fn say(&self, words: &str) -> Result<()> {
+    pub(super) fn say(&self, words: &str) -> Result<()> {
         for frame in spoken_with_pauses(words)?.chunks(FRAME_SAMPLES) {
             self.microphone.send(frame.to_vec())?;
         }
@@ -116,6 +121,30 @@ impl HandsFree {
 
     fn position(&self, wanted: impl Fn(&Event) -> bool) -> Option<usize> {
         self.events().iter().position(wanted)
+    }
+
+    /// Says `words` again and again, frame by frame in real time, for `duration`.
+    pub(super) fn keep_saying(&self, words: &str, duration: Duration) -> Result<()> {
+        let speech = spoken_with_pauses(words)?;
+        let started = Instant::now();
+        for frame in speech.chunks(FRAME_SAMPLES).cycle() {
+            if started.elapsed() >= duration {
+                return Ok(());
+            }
+            self.microphone.send(frame.to_vec())?;
+            std::thread::sleep(FRAME);
+        }
+        Ok(())
+    }
+
+    /// Silence in real time for `duration`, as a microphone hears between two utterances.
+    pub(super) fn keep_quiet(&self, duration: Duration) -> Result<()> {
+        let started = Instant::now();
+        while started.elapsed() < duration {
+            self.microphone.send(vec![0.0; FRAME_SAMPLES])?;
+            std::thread::sleep(FRAME);
+        }
+        Ok(())
     }
 }
 
@@ -272,12 +301,19 @@ impl KeyPresser for RecordingKeys {
     }
 }
 
-struct Silent;
+/// Plays nothing; notes the listening-on and listening-off sounds.
+struct ListeningSounds(Events);
 
-impl SoundPlayer for Silent {
+impl SoundPlayer for ListeningSounds {
     fn play_start(&self) {}
     fn play_stop(&self) {}
     fn play_cancel(&self) {}
+    fn play_listening_on(&self) {
+        self.0.lock().unwrap().push(Event::ListeningOnSound);
+    }
+    fn play_listening_off(&self) {
+        self.0.lock().unwrap().push(Event::ListeningOffSound);
+    }
 }
 
 struct NoOverlay;

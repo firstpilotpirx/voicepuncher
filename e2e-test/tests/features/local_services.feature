@@ -77,3 +77,25 @@ Feature: local-services
       Given the speech recognition service is to run as several copies, and its second copy cannot start
       When the service scripts start the speech recognition service
       Then the start fails naming the service and the log of the copy that failed, and neither the copy that started nor anything in front of it is left
+
+  @serial @resilience
+  Rule: A service that stops answering is started again
+
+    Scenario: The command spotting service hangs
+      Given the service scripts started the command spotting service
+      When its process stops answering without exiting
+      Then the service answers on its port again within 30 seconds, and its log notes that it was restarted because it stopped answering
+
+    Scenario: A busy service is not restarted
+      Given the service scripts started the command spotting service with a speech recognition service that answers in 4 seconds
+      When an app streams speech to it for a minute while its confirmations are slow
+      Then the service is not restarted
+
+  @serial @resilience
+  Rule: A request given up by its client does not hold a copy
+
+    Scenario: An abandoned request is not transcribed
+      Given the speech recognition service runs as two copies, both busy with long speech, and a third request waits and its client gives up
+      When the copies become free
+      Then the copy that takes the abandoned request gives it up at once instead of transcribing it
+

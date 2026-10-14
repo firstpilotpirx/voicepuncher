@@ -21,7 +21,7 @@ use voicepuncher::core::domain::{
 
 use doubles::{
     Cut, ErrorLog, Event, Events, NotingRecorder, Phrases, RecordingKeyPresser, RecordingOverlay,
-    RecordingPaster, RecordingSounds, ScriptedSpotter, Speech, SpeechBeforeCut, TRANSCRIPTION_TIME,
+    RecordingPaster, RecordingSounds, ScriptedSpotter, Speech, SpeechBeforeCut,
 };
 
 use crate::IntegrationWorld;
@@ -50,7 +50,7 @@ const SENTENCE_AROUND_PHRASE: Duration = Duration::from_secs(1);
 
 static ERRORS: OnceLock<&'static ErrorLog> = OnceLock::new();
 
-fn error_log() -> &'static ErrorLog {
+pub(crate) fn error_log() -> &'static ErrorLog {
     ERRORS.get_or_init(|| {
         let errors: &'static ErrorLog = Box::leak(Box::new(ErrorLog(Mutex::default())));
         if log::set_logger(errors).is_ok() {
@@ -71,6 +71,8 @@ pub struct VoiceRun {
     inputs: Option<Sender<PipelineInput>>,
     /// Index in the event log where the scenario's `When` started.
     mark: usize,
+    /// When the command spotting service went away, if it did.
+    away_since: Option<Instant>,
 }
 
 impl std::fmt::Debug for VoiceRun {
@@ -509,6 +511,75 @@ fn service_stops(world: &mut IntegrationWorld) -> Result<()> {
     run.send(PipelineInput::SpottingLost)
 }
 
+#[given("the command spotting service went away during it")]
+fn service_went_away(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.away_since = Some(Instant::now());
+    run.send(PipelineInput::SpottingLost)?;
+    run.wait_for(|e| *e == Event::Sound("listening off"))?;
+    Ok(())
+}
+
+#[given("the command spotting service went away and is back")]
+#[given("the command spotting service went away during it and is back")]
+fn service_went_away_and_is_back(world: &mut IntegrationWorld) -> Result<()> {
+    service_went_away(world)?;
+    let run = run(world);
+    run.send(PipelineInput::SpottingBack)?;
+    run.wait_for(|e| {
+        *e == Event::Sound("listening on") && run.events().contains(&Event::Sound("listening off"))
+    })?;
+    std::thread::sleep(SETTLE);
+    Ok(())
+}
+
+#[when(expr = "the service is back and reports {string}, said while it was away")]
+fn back_with_command_said_away(world: &mut IntegrationWorld, phrase: String) -> Result<()> {
+    let run = run(world);
+    let away_since = run.away_since.context("the service did not go away")?;
+    run.start_when();
+    run.send(PipelineInput::SpottingBack)?;
+    run.wait_since_mark(|e| *e == Event::Sound("listening on"))?;
+    let segment_start = away_since + PHRASE_LEAD;
+    let phrase_start = segment_start + PHRASE_LEAD;
+    let phrase_end = phrase_start + PHRASE_LENGTH;
+    run.speak(&phrase, phrase_start);
+    run.send_segment(
+        &phrase,
+        segment_start,
+        phrase_start,
+        phrase_end,
+        phrase_end + SEGMENT_TAIL,
+    )
+}
+
+#[then("nothing was pasted before the dictation was ended")]
+fn nothing_pasted_before_end(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    let before = &run.events()[..run.mark];
+    if let Some(paste) = before.iter().find(|e| matches!(e, Event::Pasted(_))) {
+        bail!("pasted before the dictation was ended: {paste:?}; events: {before:?}");
+    }
+    run.wait_since_mark(|e| matches!(e, Event::Pasted(_)))
+}
+
+#[then("the listening-on sound played when the service came back")]
+fn listening_on_after_return(world: &mut IntegrationWorld) -> Result<()> {
+    let events = run(world).events();
+    let off = events
+        .iter()
+        .position(|e| *e == Event::Sound("listening off"));
+    let on_after = off.and_then(|off| {
+        events[off..]
+            .iter()
+            .position(|e| *e == Event::Sound("listening on"))
+    });
+    match on_after {
+        Some(_) => Ok(()),
+        None => bail!("no listening-on sound after the listening-off sound; events: {events:?}"),
+    }
+}
+
 #[then("a dictation starts")]
 fn dictation_starts(world: &mut IntegrationWorld) -> Result<()> {
     run(world).wait_for(|e| *e == Event::RecordingStarted)?;
@@ -523,16 +594,6 @@ fn listening_on(world: &mut IntegrationWorld) -> Result<()> {
     std::thread::sleep(SETTLE);
     if !run.listening() {
         bail!("listening is off; events: {:?}", run.events());
-    }
-    Ok(())
-}
-
-#[then("listening is off")]
-fn listening_off(world: &mut IntegrationWorld) -> Result<()> {
-    let run = run(world);
-    std::thread::sleep(SETTLE + TRANSCRIPTION_TIME);
-    if run.listening() {
-        bail!("listening is on; events: {:?}", run.events());
     }
     Ok(())
 }
@@ -574,6 +635,7 @@ fn overlay_processing_then_hidden(world: &mut IntegrationWorld) -> Result<()> {
 fn sound_plays(world: &mut IntegrationWorld, sound: String) -> Result<()> {
     let name = match sound.as_str() {
         "listening-on" => "listening on",
+        "listening-off" => "listening off",
         "start" => "start",
         "stop" => "stop",
         "cancel" => "cancel",

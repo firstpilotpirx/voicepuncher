@@ -290,10 +290,16 @@ fn record_speech(world: &mut E2eWorld, lang: Lang, condition: Condition) -> Resu
 /// 1.9.5 when it computed language probabilities for audio without speech.
 const SILENT_UTTERANCE_SAMPLES: usize = 36_800;
 const UTTERANCE_SAMPLE_RATE: u32 = 16_000;
+/// As long as the command spotting service waited for a confirmation before it had a deadline.
+const UTTERANCE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
 
 fn confirm_silence(url: &str) -> std::result::Result<usize, String> {
     voicepuncher_command_spotting::confirm::UtteranceTranscriber::new(url)
-        .transcribe(&[0.0; SILENT_UTTERANCE_SAMPLES], UTTERANCE_SAMPLE_RATE)
+        .transcribe(
+            &[0.0; SILENT_UTTERANCE_SAMPLES],
+            UTTERANCE_SAMPLE_RATE,
+            UTTERANCE_DEADLINE,
+        )
         .map(|heard| heard.words.len())
         .map_err(|e| format!("{e:#}"))
 }

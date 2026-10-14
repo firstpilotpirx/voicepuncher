@@ -5,6 +5,7 @@
 use std::net::{IpAddr, TcpListener};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
@@ -44,10 +45,16 @@ struct Args {
     /// Longest utterance, in seconds, sent to the speech recognition service.
     #[arg(long, default_value_t = 3.0)]
     max_command_secs: f32,
+    /// Seconds one confirmation by the speech recognition service may take before it is
+    /// given up; the audio keeps being spotted meanwhile.
+    #[arg(long, default_value_t = 3.0)]
+    confirmation_deadline_secs: f32,
 }
 
 fn main() -> Result<()> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .format(log_line)
+        .init();
     let args = Args::parse();
     if !args.host.is_loopback() {
         bail!(
@@ -68,6 +75,7 @@ fn main() -> Result<()> {
             .context("read --keywords-file")?,
         transcription_url: args.transcription_url,
         max_command_secs: args.max_command_secs,
+        confirmation_deadline: Duration::from_secs_f32(args.confirmation_deadline_secs),
     })?;
     let listener = TcpListener::bind((args.host, args.port))
         .with_context(|| format!("listen on {}:{}", args.host, args.port))?;
@@ -77,6 +85,22 @@ fn main() -> Result<()> {
         args.port
     );
     server::serve(listener, Arc::new(engine))
+}
+
+/// One log line with the thread that wrote it (`conn-<n>-io`, `conn-<n>-proc`,
+/// `conn-<n>-confirm`), so one connection traces across its threads.
+fn log_line(buf: &mut env_logger::fmt::Formatter, record: &log::Record) -> std::io::Result<()> {
+    use std::io::Write;
+    let thread = std::thread::current();
+    writeln!(
+        buf,
+        "[{} {:<5} {} {}] {}",
+        buf.timestamp(),
+        record.level(),
+        thread.name().unwrap_or("-"),
+        record.target(),
+        record.args()
+    )
 }
 
 #[cfg(test)]
@@ -90,5 +114,14 @@ mod tests {
             Args::try_parse_from(["service", "--model-dir", "m", "--vad-model", "v"]).unwrap();
         // Then
         assert_eq!(args.min_silence_secs, 0.3);
+    }
+
+    #[test]
+    fn should_give_up_a_confirmation_after_3_s_by_default() {
+        // When
+        let args =
+            Args::try_parse_from(["service", "--model-dir", "m", "--vad-model", "v"]).unwrap();
+        // Then
+        assert_eq!(args.confirmation_deadline_secs, 3.0);
     }
 }

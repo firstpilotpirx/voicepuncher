@@ -5,20 +5,29 @@
 mod capture;
 pub mod client;
 mod heard;
+mod link;
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 
 use crate::core::application::{CommandSpotter, PipelineInput};
-use crate::core::domain::{AudioBuffer16k, VoiceCommand};
+use crate::core::domain::{AudioBuffer16k, SpottingEvent, VoiceCommand};
 
 use capture::{MicCapture, StreamResampler};
 use client::SpottingClient;
 use heard::HeardAudio;
+use link::Outage;
+
+/// How long the worker waits between rounds while the service is away.
+const AWAY_WAIT: Duration = Duration::from_millis(10);
+
+/// Numbers each connection to the service, for the log: `session=<n>`.
+static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
 
 enum Control {
     ListenFor(Vec<VoiceCommand>),
@@ -35,7 +44,9 @@ pub struct AudioStream {
 impl AudioStream {
     /// Connects to the service at `url`, listens for `commands`, and streams every chunk
     /// from `audio` — mono at `native_rate`, the first sample captured at `audio_start` —
-    /// resampled to 16 kHz; the service's events go to `inputs`.
+    /// resampled to 16 kHz; the service's events go to `inputs`. When the service goes
+    /// away the worker reaches for it again until stopped, and tells `inputs` of the loss
+    /// and of the return.
     pub fn start(
         url: &str,
         commands: &[VoiceCommand],
@@ -46,11 +57,17 @@ impl AudioStream {
     ) -> Result<Self> {
         let mut client = SpottingClient::connect(url, audio_start)?;
         client.listen_for(commands)?;
+        let session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
+        log::info!("command spotting: session={session} connected to {url}");
         let resampler = StreamResampler::new(native_rate)?;
         let (control, control_rx) = mpsc::channel();
         let heard = Arc::new(Mutex::new(HeardAudio::new(audio_start)));
         let streamed = Stream {
-            client,
+            url: url.to_owned(),
+            session,
+            link: Link::Up(Box::new(client)),
+            commands: commands.to_vec(),
+            last_command_end: None,
             resampler,
             audio,
             control: control_rx,
@@ -156,9 +173,21 @@ impl CommandSpotter for WebSocketCommandSpotter {
     }
 }
 
+/// The connection to the service, or the outage while it is away.
+enum Link {
+    Up(Box<SpottingClient>),
+    Away(Outage),
+}
+
 /// What the streaming worker owns.
 struct Stream {
-    client: SpottingClient,
+    url: String,
+    session: u64,
+    link: Link,
+    /// The commands listened for now, sent again to a new connection.
+    commands: Vec<VoiceCommand>,
+    /// The end of the last command reported: a replay never reaches back to it.
+    last_command_end: Option<Instant>,
     resampler: StreamResampler,
     audio: Receiver<Vec<f32>>,
     control: Receiver<Control>,
@@ -166,51 +195,155 @@ struct Stream {
     heard: Arc<Mutex<HeardAudio>>,
 }
 
-/// Runs until told to stop or the service goes away; a lost service is reported once.
-fn stream_to_service(stream: Stream) {
-    let Stream {
-        mut client,
-        mut resampler,
-        audio,
-        control,
-        inputs,
-        heard,
-    } = stream;
+/// Runs until told to stop; a lost service is reported once, and its return once.
+fn stream_to_service(mut stream: Stream) {
     loop {
-        match control.try_recv() {
-            Ok(Control::ListenFor(commands)) => {
-                if let Err(e) = client.listen_for(&commands) {
-                    return report_lost(&inputs, e);
-                }
-            }
-            Ok(Control::Stop) | Err(TryRecvError::Disconnected) => return client.close(),
+        match stream.control.try_recv() {
+            Ok(Control::ListenFor(commands)) => stream.listen_for(commands),
+            Ok(Control::Stop) | Err(TryRecvError::Disconnected) => return stream.close(),
             Err(TryRecvError::Empty) => {}
         }
-        let captured: Vec<f32> = audio.try_iter().flatten().collect();
-        let samples = resampler.push(&captured);
-        if !samples.is_empty() {
-            if let Ok(mut heard) = heard.lock() {
-                heard.push(&samples);
-            }
-            if let Err(e) = client.send_audio(&samples) {
-                return report_lost(&inputs, e);
-            }
-        }
-        if let Err(e) = client.keep_alive() {
-            return report_lost(&inputs, e);
-        }
-        match client.read_events() {
-            Ok(events) => {
-                for event in events {
-                    let _ = inputs.send(PipelineInput::Spotting(event));
-                }
-            }
-            Err(e) => return report_lost(&inputs, e),
+        stream.stream_audio();
+        match &stream.link {
+            Link::Up(_) => stream.exchange(),
+            Link::Away(_) => stream.reach_for_service(),
         }
     }
 }
 
-fn report_lost(inputs: &Sender<PipelineInput>, error: anyhow::Error) {
-    log::error!("{error:#}");
-    let _ = inputs.send(PipelineInput::SpottingLost);
+impl Stream {
+    fn listen_for(&mut self, commands: Vec<VoiceCommand>) {
+        log::info!(
+            "command spotting: session={} listening for {commands:?}",
+            self.session
+        );
+        self.commands = commands;
+        if let Link::Up(client) = &mut self.link {
+            if let Err(e) = client.listen_for(&self.commands) {
+                self.lose(e);
+            }
+        }
+    }
+
+    /// Holds every sample captured, and sends it while the service is there.
+    fn stream_audio(&mut self) {
+        let captured: Vec<f32> = self.audio.try_iter().flatten().collect();
+        let samples = self.resampler.push(&captured);
+        if samples.is_empty() {
+            return;
+        }
+        if let Ok(mut heard) = self.heard.lock() {
+            heard.push(&samples);
+        }
+        if let Link::Up(client) = &mut self.link {
+            if let Err(e) = client.send_audio(&samples) {
+                self.lose(e);
+            }
+        }
+    }
+
+    /// Checks that the service answers and passes its events on.
+    fn exchange(&mut self) {
+        let Link::Up(client) = &mut self.link else {
+            return;
+        };
+        let events = client.keep_alive().and_then(|()| client.read_events());
+        match events {
+            Ok(events) => {
+                for event in events {
+                    self.note_command_end(&event);
+                    let _ = self.inputs.send(PipelineInput::Spotting(event));
+                }
+            }
+            Err(e) => self.lose(e),
+        }
+    }
+
+    fn note_command_end(&mut self, event: &SpottingEvent) {
+        let end = match event {
+            SpottingEvent::PhraseSpotted { end, .. } | SpottingEvent::CommandsSaid { end, .. } => {
+                *end
+            }
+            _ => return,
+        };
+        self.last_command_end = Some(self.last_command_end.map_or(end, |last| last.max(end)));
+    }
+
+    fn lose(&mut self, error: anyhow::Error) {
+        log::error!("command spotting: session={} lost: {error:#}", self.session);
+        let lost_at = Instant::now();
+        if let Link::Up(client) =
+            std::mem::replace(&mut self.link, Link::Away(Outage::since(lost_at)))
+        {
+            client.close();
+        }
+        let _ = self.inputs.send(PipelineInput::SpottingLost);
+    }
+
+    /// Tries the service again when the pause after the last attempt is over.
+    fn reach_for_service(&mut self) {
+        let Link::Away(outage) = &mut self.link else {
+            return;
+        };
+        let now = Instant::now();
+        if !outage.due(now) {
+            std::thread::sleep(AWAY_WAIT);
+            return;
+        }
+        let (lost_at, replay_from) = (
+            outage.lost_at,
+            link::replay_start(outage.lost_at, self.last_command_end),
+        );
+        match self.reconnect(replay_from) {
+            Ok((client, replayed)) => {
+                self.session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
+                log::info!(
+                    "command spotting: session={} back after {:.1}s away, {:.1}s of audio sent again",
+                    self.session,
+                    lost_at.elapsed().as_secs_f32(),
+                    replayed.as_secs_f32()
+                );
+                self.link = Link::Up(Box::new(client));
+                let _ = self.inputs.send(PipelineInput::SpottingBack);
+            }
+            Err(e) => {
+                let Link::Away(outage) = &mut self.link else {
+                    return;
+                };
+                let pause = outage.failed(now);
+                if link::attempt_logged(outage.failed_attempts) {
+                    log::info!(
+                        "command spotting: session={} attempt {} to reach {} failed, next in {}ms: {e:#}",
+                        self.session,
+                        outage.failed_attempts,
+                        self.url,
+                        pause.as_millis()
+                    );
+                }
+            }
+        }
+    }
+
+    /// A new connection, told the current commands and sent the audio held from `replay_from`.
+    fn reconnect(&self, replay_from: Instant) -> Result<(SpottingClient, Duration)> {
+        let (audio_start, samples) = self.heard.lock().map_or_else(
+            |_| (Instant::now(), Vec::new()),
+            |heard| heard.replay_from(replay_from),
+        );
+        let mut client = SpottingClient::connect(&self.url, audio_start)?;
+        client.listen_for(&self.commands)?;
+        if !samples.is_empty() {
+            client.send_audio(&samples)?;
+        }
+        let replayed =
+            Duration::from_secs_f32(samples.len() as f32 / AudioBuffer16k::SAMPLE_RATE_HZ as f32);
+        Ok((client, replayed))
+    }
+
+    fn close(self) {
+        if let Link::Up(client) = self.link {
+            client.close();
+        }
+        log::info!("command spotting: session={} closed", self.session);
+    }
 }

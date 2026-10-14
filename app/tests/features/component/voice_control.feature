@@ -278,10 +278,48 @@ Feature: voice-control
       When the user says "stop clear enter"
       Then the sentence is pasted, then select all and delete are pressed, then the Return key is pressed
 
-  Rule: Voice control needs the command spotting service
+  Rule: The app keeps reaching for the command spotting service while it is away
 
-    Scenario: Listening turns off when the command spotting service goes away
+    Scenario: The app keeps reaching for the command spotting service when it goes away
       Given listening is on
       When the command spotting service stops answering
       Then an error naming the command spotting service is logged
-      And listening is off
+      And the listening-off sound plays
+      And listening stays on
+
+  Rule: Listening comes back when the command spotting service is back
+
+    Scenario: Commands work again after the command spotting service restarts
+      Given listening is on
+      And the command spotting service went away and is back
+      When the user says "press enter"
+      Then the Return key is pressed in the focused app
+      And the listening-on sound played when the service came back
+
+  Rule: A dictation keeps recording while the command spotting service is away
+
+    Scenario: The hotkey ends a dictation while the service is away
+      Given a dictation runs
+      And the user has said a sentence in it
+      And the command spotting service went away during it
+      When the user presses the hotkey once
+      Then the sentence is pasted into the focused app
+      And nothing was pasted before the dictation was ended
+
+    Scenario: "stop dictation" ends a dictation after the service is back
+      Given a dictation runs
+      And the user has said a sentence in it
+      And the command spotting service went away during it and is back
+      When the user says "stop dictation"
+      Then the sentence is pasted into the focused app
+      And nothing was pasted before the dictation was ended
+
+  Rule: A command said while the command spotting service was away still counts
+
+    Scenario: "stop dictation" said during a short outage ends the dictation
+      Given a dictation runs
+      And the user has said a sentence in it
+      And the command spotting service went away during it
+      When the service is back and reports "stop dictation", said while it was away
+      Then the sentence is pasted into the focused app
+      And the pasted text does not contain the stop phrase

@@ -10,7 +10,6 @@ use serde::Deserialize;
 
 const BOUNDARY: &str = "voicepuncher-command-spotting-3f9a";
 const LANGUAGE: &str = "en";
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// The commands, as a hint that steers the speech recognition service towards them.
 const PROMPT: &str =
     "start dictation. stop dictation. cancel dictation. restart dictation. press enter. clear text. clear all text.";
@@ -106,6 +105,11 @@ fn whole_words(pieces: impl Iterator<Item = TimedWord>) -> Vec<TimedWord> {
     words
 }
 
+/// What was said in a clip of 16 kHz mono audio, given up after `deadline`.
+pub trait Hear: Send + Sync {
+    fn hear(&self, samples: &[f32], deadline: Duration) -> Result<Heard>;
+}
+
 /// A client of the speech recognition service (OpenAI Audio Transcriptions API).
 pub struct UtteranceTranscriber {
     endpoint: String,
@@ -120,10 +124,15 @@ impl UtteranceTranscriber {
     }
 
     /// What was said in `samples` (16 kHz mono), with each word's times.
-    pub fn transcribe(&self, samples: &[f32], sample_rate: u32) -> Result<Heard> {
+    pub fn transcribe(
+        &self,
+        samples: &[f32],
+        sample_rate: u32,
+        deadline: Duration,
+    ) -> Result<Heard> {
         let body = multipart_body(&wav(samples, sample_rate)?);
         let response = ureq::post(&self.endpoint)
-            .timeout(REQUEST_TIMEOUT)
+            .timeout(deadline)
             .set(
                 "Content-Type",
                 &format!("multipart/form-data; boundary={BOUNDARY}"),
@@ -132,6 +141,12 @@ impl UtteranceTranscriber {
             .with_context(|| format!("speech recognition service at {}", self.endpoint))?
             .into_string()?;
         heard_from(&response)
+    }
+}
+
+impl Hear for UtteranceTranscriber {
+    fn hear(&self, samples: &[f32], deadline: Duration) -> Result<Heard> {
+        self.transcribe(samples, crate::engine::SAMPLE_RATE, deadline)
     }
 }
 

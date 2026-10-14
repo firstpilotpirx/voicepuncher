@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, bail, Context, Result};
 use serde::Deserialize;
 use tungstenite::stream::MaybeTlsStream;
-use tungstenite::{Bytes, Message, WebSocket};
+use tungstenite::{Message, WebSocket};
 
 use crate::core::domain::{CommandPlacement, SpottingEvent, VoiceCommand};
 
@@ -16,10 +16,14 @@ use crate::core::domain::{CommandPlacement, SpottingEvent, VoiceCommand};
 const READ_WAIT: Duration = Duration::from_millis(10);
 /// How long a send may block on a service that stopped reading.
 const WRITE_WAIT: Duration = Duration::from_secs(2);
+/// How long connecting and the WebSocket handshake may take: a service that hangs fails
+/// the attempt instead of holding it.
+const CONNECT_WAIT: Duration = Duration::from_secs(2);
 /// How often the client checks that the service still answers.
-const PING_EVERY: Duration = Duration::from_secs(2);
-/// How long the service may stay silent, pings included, before it counts as gone.
-const SILENCE_LIMIT: Duration = Duration::from_secs(10);
+const PING_EVERY: Duration = Duration::from_secs(1);
+/// How long the service may stay silent, pings included, before it counts as gone: the
+/// service answers pings at once, however long its spotting takes.
+const SILENCE_LIMIT: Duration = Duration::from_secs(5);
 const SAMPLE_BYTES: usize = 4;
 
 #[derive(Debug, Deserialize)]
@@ -42,6 +46,9 @@ enum ServiceEvent {
         end: f32,
         placement: Placement,
     },
+    Synced {
+        id: u64,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -57,14 +64,14 @@ pub struct SpottingClient {
     audio_start: Instant,
     last_answer: Instant,
     last_ping: Instant,
-    /// Waits for the service's answer so far, numbering the ping of each.
+    /// Waits for the service's answer so far, numbering the sync of each.
     answer_waits: u64,
 }
 
 impl SpottingClient {
     /// Connects to the service; `audio_start` is when the first sample to be sent was captured.
     pub fn connect(url: &str, audio_start: Instant) -> Result<Self> {
-        let (socket, _) = tungstenite::connect(url).with_context(|| {
+        let socket = handshake(url).with_context(|| {
             format!(
                 "command spotting service not reachable at {url} — run 'just start-model-servers'"
             )
@@ -121,30 +128,28 @@ impl SpottingClient {
         let mut events = Vec::new();
         while let Some(message) = self.next_message()? {
             if let Message::Text(text) = message {
-                events.extend(self.parse(text.as_str()));
+                events.extend(self.parse(text.as_str()).and_then(Answer::event));
             }
         }
         Ok(events)
     }
 
     /// Every event for the audio sent so far, once the service has answered all of it: the
-    /// service answers a ping only after the events for every message sent before it.
+    /// service answers a sync only after the events for every message sent before it. A
+    /// service that keeps answering pings is waited for however long its spotting takes.
     pub fn events_for_sent_audio(&mut self) -> Result<Vec<SpottingEvent>> {
         self.answer_waits += 1;
-        let token = Bytes::from(self.answer_waits.to_le_bytes().to_vec());
-        self.socket.send(Message::Ping(token.clone()))?;
-        let asked = Instant::now();
+        let id = self.answer_waits;
+        self.socket
+            .send(Message::text(serde_json::json!({ "sync": id }).to_string()))?;
         let mut events = Vec::new();
         loop {
-            match self.next_message()? {
-                Some(Message::Text(text)) => events.extend(self.parse(text.as_str())),
-                Some(Message::Pong(payload)) if payload == token => return Ok(events),
-                Some(_) => {}
-                None => {
-                    let silent = self.last_answer.max(asked).elapsed();
-                    if silent > SILENCE_LIMIT {
-                        return Err(stopped_answering(silent));
-                    }
+            self.keep_alive()?;
+            if let Some(Message::Text(text)) = self.next_message()? {
+                match self.parse(text.as_str()) {
+                    Some(Answer::Synced(synced)) if synced == id => return Ok(events),
+                    Some(answer) => events.extend(answer.event()),
+                    None => {}
                 }
             }
         }
@@ -169,9 +174,10 @@ impl SpottingClient {
         }
     }
 
-    fn parse(&self, text: &str) -> Option<SpottingEvent> {
+    fn parse(&self, text: &str) -> Option<Answer> {
         match serde_json::from_str::<ServiceEvent>(text) {
-            Ok(event) => Some(to_spotting_event(event, self.audio_start)),
+            Ok(ServiceEvent::Synced { id }) => Some(Answer::Synced(id)),
+            Ok(event) => to_spotting_event(event, self.audio_start).map(Answer::Event),
             Err(e) => {
                 log::warn!("command spotting service sent an unknown event {text}: {e}");
                 None
@@ -180,11 +186,26 @@ impl SpottingClient {
     }
 }
 
+/// A message of the service: a spotting event, or the answer to a sync.
+enum Answer {
+    Event(SpottingEvent),
+    Synced(u64),
+}
+
+impl Answer {
+    fn event(self) -> Option<SpottingEvent> {
+        match self {
+            Answer::Event(event) => Some(event),
+            Answer::Synced(_) => None,
+        }
+    }
+}
+
 /// A service event with its times, seconds since the first sample, as instants from
 /// `audio_start`, the moment that sample was captured.
-fn to_spotting_event(event: ServiceEvent, audio_start: Instant) -> SpottingEvent {
+fn to_spotting_event(event: ServiceEvent, audio_start: Instant) -> Option<SpottingEvent> {
     let at = |secs: f32| audio_start + Duration::from_secs_f32(secs.max(0.0));
-    match event {
+    Some(match event {
         ServiceEvent::SpeechStart { t } => SpottingEvent::SpeechStarted(at(t)),
         ServiceEvent::SpeechEnd { t } => SpottingEvent::SpeechEnded(at(t)),
         ServiceEvent::Phrase { phrase, start, end } => SpottingEvent::PhraseSpotted {
@@ -210,7 +231,23 @@ fn to_spotting_event(event: ServiceEvent, audio_start: Instant) -> SpottingEvent
                 Placement::Anywhere => CommandPlacement::Anywhere,
             },
         },
-    }
+        ServiceEvent::Synced { .. } => return None,
+    })
+}
+
+/// A WebSocket connection to `url`, given up after `CONNECT_WAIT` at each step.
+fn handshake(url: &str) -> Result<WebSocket<MaybeTlsStream<TcpStream>>> {
+    let parsed = url::Url::parse(url)?;
+    let addrs = parsed.socket_addrs(|| None)?;
+    let addr = addrs
+        .first()
+        .ok_or_else(|| anyhow!("no address for {url}"))?;
+    let stream = TcpStream::connect_timeout(addr, CONNECT_WAIT)?;
+    stream.set_read_timeout(Some(CONNECT_WAIT))?;
+    stream.set_write_timeout(Some(CONNECT_WAIT))?;
+    let (socket, _) = tungstenite::client(url, MaybeTlsStream::Plain(stream))
+        .map_err(|e| anyhow!("WebSocket handshake: {e}"))?;
+    Ok(socket)
 }
 
 /// Fails when nothing answers at `url`.
@@ -247,7 +284,7 @@ mod tests {
         let converted = to_spotting_event(event, audio_start);
         // Then
         assert_eq!(
-            converted,
+            converted.unwrap(),
             SpottingEvent::PhraseSpotted {
                 phrase: "press enter".into(),
                 start: audio_start + Duration::from_millis(1500),
@@ -266,7 +303,7 @@ mod tests {
         let converted = to_spotting_event(event, audio_start);
         // Then
         assert_eq!(
-            converted,
+            converted.unwrap(),
             SpottingEvent::CommandsSaid {
                 commands: vec![VoiceCommand::StopDictation, VoiceCommand::PressEnter],
                 start: audio_start + Duration::from_secs(4),
@@ -285,7 +322,7 @@ mod tests {
         // When
         let converted = to_spotting_event(event, audio_start);
         // Then
-        assert_eq!(converted, SpottingEvent::SpeechStarted(audio_start));
+        assert_eq!(converted, Some(SpottingEvent::SpeechStarted(audio_start)));
     }
 
     #[test]
@@ -295,5 +332,11 @@ mod tests {
         let end: ServiceEvent = serde_json::from_str(r#"{"event":"speech_end","t":4.5}"#).unwrap();
         assert!(matches!(start, ServiceEvent::SpeechStart { t } if t == 3.0));
         assert!(matches!(end, ServiceEvent::SpeechEnd { t } if t == 4.5));
+    }
+
+    #[test]
+    fn should_read_the_answer_to_a_sync() {
+        let synced: ServiceEvent = serde_json::from_str(r#"{"event":"synced","id":7}"#).unwrap();
+        assert!(matches!(synced, ServiceEvent::Synced { id: 7 }));
     }
 }

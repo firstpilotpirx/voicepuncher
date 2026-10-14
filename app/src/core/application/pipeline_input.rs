@@ -7,4 +7,6 @@ pub enum PipelineInput {
     Spotting(SpottingEvent),
     /// The command spotting service stopped answering.
     SpottingLost,
+    /// The command spotting service answers again after it was lost.
+    SpottingBack,
 }

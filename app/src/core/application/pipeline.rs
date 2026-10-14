@@ -472,7 +472,9 @@ fn run_live_worker(
                     t0.elapsed().as_secs_f32(),
                 );
             }
-            Err(e) => log::warn!("chunk {chunk_num} failed: {e:#}"),
+            Err(e) => log::error!(
+                "chunk {chunk_num} lost | {duration_secs:.1}s audio not transcribed, the rest of the dictation is kept: {e:#}"
+            ),
         }
     }
     log::info!("live worker: {chunk_num} chunks done, returning transcriber");

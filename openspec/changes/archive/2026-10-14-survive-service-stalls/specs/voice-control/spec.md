@@ -33,14 +33,14 @@ With voice control on, the system SHALL refuse to start, with a message naming t
 - **THEN** the app exits with an error that names the command spotting service and how to start it
 
 ### Requirement: The app keeps reaching for the command spotting service while it is away
-When the command spotting service stops answering while listening, the system SHALL log an error naming the service, play the listening-off sound and keep trying to reach the service, with a growing pause of at most 4 seconds, until it answers or the app exits.
+When the command spotting service stops answering while listening, the system SHALL log an error naming the service, play the listening-off sound and keep trying to reach the service, with a growing pause of at most 4 seconds, until it answers or the app exits; it SHALL log the first failed attempt and every tenth, so a long outage does not flood the log.
 
 #### Scenario: The app keeps reaching for the command spotting service when it goes away
 - **GIVEN** listening is on
 - **WHEN** the command spotting service stops answering
 - **THEN** an error naming the command spotting service is logged
 - **AND** the listening-off sound plays
-- **AND** the app tries to reach the service again, logging each attempt
+- **AND** the app tries to reach the service again, logging its first failed attempt and every tenth
 
 ### Requirement: Listening comes back when the command spotting service is back
 When the command spotting service answers again after it went away, the system SHALL resume listening for the commands of the current state within 5 seconds, play the listening-on sound and log that listening is back, without a restart of the app.
@@ -81,7 +81,7 @@ The system SHALL keep a running dictation recording when the command spotting se
 - **GIVEN** a dictation started by voice runs
 - **AND** the command spotting service went away during it and is back
 - **WHEN** the user says "stop dictation"
-- **THEN** the dictation ends and the text dictated before and during the outage is pasted
+- **THEN** the dictation ends and its text is pasted
 
 ### Requirement: A command said while the command spotting service was away still counts
 The system SHALL send the service the speech heard during the last 10 seconds of an outage once the service is back, so a command said in that time is carried out late rather than lost.

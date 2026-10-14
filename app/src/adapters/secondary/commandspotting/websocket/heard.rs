@@ -2,7 +2,7 @@
 //! after a "start" can begin the recording that starts only once the command is heard.
 
 use std::collections::VecDeque;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::core::domain::AudioBuffer16k;
 
@@ -38,16 +38,30 @@ impl HeardAudio {
         self.first += excess;
     }
 
-    /// The samples heard from `since` on, as far as they are still held.
-    pub fn since(&self, since: Instant) -> AudioBuffer16k {
+    /// The samples heard from `since` on, as far as they are still held, and when the first
+    /// of them was captured: the audio to send a service that missed it.
+    pub fn replay_from(&self, since: Instant) -> (Instant, Vec<f32>) {
+        let skip = self.skip_to(since);
+        let first = Duration::from_secs_f32((self.first + skip) as f32 / SAMPLE_RATE);
+        (
+            self.audio_start + first,
+            self.samples.range(skip..).copied().collect(),
+        )
+    }
+
+    fn skip_to(&self, since: Instant) -> usize {
         let position = (since
             .saturating_duration_since(self.audio_start)
             .as_secs_f32()
             * SAMPLE_RATE) as usize;
-        let skip = position.saturating_sub(self.first).min(self.samples.len());
+        position.saturating_sub(self.first).min(self.samples.len())
+    }
+
+    /// The samples heard from `since` on, as far as they are still held.
+    pub fn since(&self, since: Instant) -> AudioBuffer16k {
         AudioBuffer16k::new(
             self.samples
-                .range(skip..)
+                .range(self.skip_to(since)..)
                 .map(|s| (s.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16)
                 .collect(),
         )
@@ -56,8 +70,6 @@ impl HeardAudio {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use super::*;
 
     #[test]
@@ -84,5 +96,35 @@ mod tests {
         let all = heard.since(start);
         // Then only the held seconds come back
         assert_eq!(all.duration_ms(), 10_000);
+    }
+
+    #[test]
+    fn should_replay_the_held_audio_from_a_moment_with_the_capture_time_of_its_first_sample() {
+        // Given twelve seconds heard, ten of them held
+        let start = Instant::now();
+        let mut heard = HeardAudio::new(start);
+        for _ in 0..12 {
+            heard.push(&vec![0.0; SAMPLE_RATE as usize]);
+        }
+        // When
+        let (first_at, samples) = heard.replay_from(start + Duration::from_secs(9));
+        // Then
+        assert_eq!(first_at, start + Duration::from_secs(9));
+        assert_eq!(samples.len(), 3 * SAMPLE_RATE as usize);
+    }
+
+    #[test]
+    fn should_replay_from_the_oldest_sample_held_when_asked_for_earlier() {
+        // Given twelve seconds heard, ten of them held
+        let start = Instant::now();
+        let mut heard = HeardAudio::new(start);
+        for _ in 0..12 {
+            heard.push(&vec![0.0; SAMPLE_RATE as usize]);
+        }
+        // When
+        let (first_at, samples) = heard.replay_from(start);
+        // Then
+        assert_eq!(first_at, start + Duration::from_secs(2));
+        assert_eq!(samples.len(), 10 * SAMPLE_RATE as usize);
     }
 }
