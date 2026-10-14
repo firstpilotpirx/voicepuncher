@@ -15,7 +15,7 @@ pub mod voice_command_recognizer;
 pub use audio_buffer::AudioBuffer16k;
 pub use audio_level::{level_to_pills, AudioLevel};
 pub use cleaned_text::CleanedText;
-pub use command_words::{without_leading_start, without_trailing_command};
+pub use command_words::{without_leading_command, without_trailing_command};
 pub use filler_sounds::{is_filler_sound, without_filler_sounds};
 pub use hotkey::HotKey;
 pub use normalization_check::{check_normalization, NotANormalization};

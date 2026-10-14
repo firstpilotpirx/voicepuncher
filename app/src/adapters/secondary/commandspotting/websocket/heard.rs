@@ -7,8 +7,9 @@ use std::time::Instant;
 use crate::core::domain::AudioBuffer16k;
 
 const SAMPLE_RATE: f32 = AudioBuffer16k::SAMPLE_RATE_HZ as f32;
-/// How much audio is held: more than the time from a "start" to its report.
-const HELD_SECS: f32 = 5.0;
+/// How much audio is held: more than the time from a "start" or "restart" to its report,
+/// which waits behind a dictation's own requests at the speech recognition service.
+const HELD_SECS: f32 = 10.0;
 
 pub struct HeardAudio {
     audio_start: Instant,
@@ -73,15 +74,15 @@ mod tests {
 
     #[test]
     fn should_hold_only_the_last_seconds() {
-        // Given eight seconds heard
+        // Given twelve seconds heard
         let start = Instant::now();
         let mut heard = HeardAudio::new(start);
-        for _ in 0..8 {
+        for _ in 0..12 {
             heard.push(&vec![0.0; SAMPLE_RATE as usize]);
         }
         // When asked from the start
         let all = heard.since(start);
         // Then only the held seconds come back
-        assert_eq!(all.duration_ms(), (HELD_SECS * 1000.0) as u64);
+        assert_eq!(all.duration_ms(), 10_000);
     }
 }

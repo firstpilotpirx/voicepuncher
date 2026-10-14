@@ -25,6 +25,8 @@ use voicepuncher::core::domain::{AudioBuffer16k, CleanedText, RecordingMode, Voi
 use voicepuncher_e2e_test::speech::read_wav;
 use voicepuncher_e2e_test::voice_commands::spoken_by;
 
+mod speech_after_start;
+
 use super::RUSSIAN_VOICE;
 use crate::steps::file_transcription::env;
 use crate::E2eWorld;
@@ -33,6 +35,9 @@ const SAMPLE_RATE_HZ: f32 = 16_000.0;
 const FRAME_SAMPLES: usize = 1_600;
 /// How long one frame of the microphone lasts.
 const FRAME_TIME: Duration = Duration::from_millis(100);
+/// How long the recorder takes to open the microphone, as macOS takes up to 0.3 s: nothing
+/// said meanwhile is recorded.
+const MICROPHONE_OPENING: Duration = Duration::from_millis(300);
 /// Longest the app may take to carry out a command, transcription of a dictation included.
 const REACTION: Duration = Duration::from_secs(30);
 const ENGLISH_VOICE: &str = "Eddy";
@@ -206,6 +211,7 @@ impl HandsFreeSession {
             events: Arc::clone(&events),
             start: 0,
             cut: None,
+            lead_in: Vec::new(),
         };
         let mut pipeline = Pipeline::new(
             Box::new(recorder),
@@ -460,6 +466,13 @@ impl CommandSpotter for MicrophoneSpotter {
             stream.stop();
         }
     }
+
+    fn heard_since(&self, since: Instant) -> AudioBuffer16k {
+        self.stream.as_ref().map_or_else(
+            || AudioBuffer16k::new(Vec::new()),
+            |stream| stream.heard_since(since),
+        )
+    }
 }
 
 /// Records from the session's microphone, as the real recorder records from the real one.
@@ -468,12 +481,16 @@ struct MicrophoneRecorder {
     events: Events,
     start: usize,
     cut: Option<usize>,
+    /// Heard before the recording started, put at its beginning.
+    lead_in: Vec<i16>,
 }
 
 impl AudioRecorder for MicrophoneRecorder {
     fn start(&mut self) -> Result<()> {
+        std::thread::sleep(MICROPHONE_OPENING);
         self.start = self.microphone.captured.lock().unwrap().len();
         self.cut = None;
+        self.lead_in.clear();
         self.events.lock().unwrap().push(Event::RecordingStarted);
         Ok(())
     }
@@ -481,10 +498,10 @@ impl AudioRecorder for MicrophoneRecorder {
     fn stop(&mut self) -> Result<AudioBuffer16k> {
         let captured = self.microphone.captured.lock().unwrap();
         let end = self.cut.unwrap_or(captured.len()).min(captured.len());
-        let samples = captured[self.start.min(end)..end]
+        let recorded = captured[self.start.min(end)..end]
             .iter()
-            .map(|s| (s.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16)
-            .collect();
+            .map(|s| (s.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16);
+        let samples = self.lead_in.iter().copied().chain(recorded).collect();
         Ok(AudioBuffer16k::new(samples))
     }
 
@@ -496,6 +513,10 @@ impl AudioRecorder for MicrophoneRecorder {
 
     fn truncate_at(&mut self, cut: Instant) {
         self.cut = Some(self.microphone.index_at(cut));
+    }
+
+    fn begin_with(&mut self, lead_in: AudioBuffer16k) {
+        self.lead_in = lead_in.samples().to_vec();
     }
 }
 

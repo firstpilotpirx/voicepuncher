@@ -1,6 +1,9 @@
 //! Command words that reached a dictated text: said right before "stop" without a pause,
 //! the recording is cut at the command, but a cut a word late leaves the command in the
-//! transcript; and after a "start" that opened an utterance, the command opens it.
+//! transcript; and after a "start" or "restart" said in one breath with the dictation, the
+//! command opens it.
+
+use super::voice_command::VoiceCommand;
 
 /// The ways a command reaches a transcript: English, or written in Cyrillic when the
 /// speech recognition service took the dictation for Russian. Longer ways first.
@@ -26,6 +29,7 @@ const COMMAND_FORMS: &[&[&str]] = &[
     &["кэнсел"],
 ];
 const START_FORMS: &[&[&str]] = &[&["start", "dictation"], &["start"], &["старт"]];
+const RESTART_FORMS: &[&[&str]] = &[&["restart", "dictation"], &["restart"]];
 const POLITE_WORDS: &[&str] = &["please", "пожалуйста"];
 /// What may sit between the kept text and the removed command.
 const SEPARATORS: &[char] = &[',', ';', ':', '-', '—'];
@@ -100,16 +104,25 @@ pub fn without_trailing_command(text: &str) -> String {
     }
 }
 
-/// Removes a "start" or "start dictation" that opens `text`, when more text follows.
-pub fn without_leading_start(text: &str) -> String {
+/// Removes the words of `command`, the command that started a dictation, that open `text`
+/// when more text follows: "start", a doubled "start start" or "start dictation", and the
+/// same for "restart".
+pub fn without_leading_command(command: VoiceCommand, text: &str) -> String {
+    let forms = match command {
+        VoiceCommand::StartDictation => START_FORMS,
+        VoiceCommand::RestartDictation => RESTART_FORMS,
+        _ => return text.to_owned(),
+    };
     let words = words(text);
-    let Some(form) = START_FORMS
+    let Some(form) = forms
         .iter()
         .find(|form| words.len() > form.len() && says(&words[..form.len()], form))
     else {
         return text.to_owned();
     };
-    let rest = &text[words[form.len()].start..];
+    let doubled = form.len() == 1 && words.len() > 2 && words[1].text == words[0].text;
+    let opening = if doubled { 2 } else { form.len() };
+    let rest = &text[words[opening].start..];
     let mut chars = rest.chars();
     chars
         .next()
@@ -154,20 +167,70 @@ mod tests {
     #[test]
     fn should_remove_a_start_that_opens_the_text() {
         assert_eq!(
-            without_leading_start("Start, meeting moved to Friday."),
+            without_leading_command(
+                VoiceCommand::StartDictation,
+                "Start, meeting moved to Friday."
+            ),
             "Meeting moved to Friday."
         );
         assert_eq!(
-            without_leading_start("start dictation we meet at ten"),
+            without_leading_command(
+                VoiceCommand::StartDictation,
+                "start dictation we meet at ten"
+            ),
             "We meet at ten"
         );
         assert_eq!(
-            without_leading_start("Старт. Встреча в пятницу."),
+            without_leading_command(VoiceCommand::StartDictation, "Старт. Встреча в пятницу."),
             "Встреча в пятницу."
         );
         assert_eq!(
-            without_leading_start("Starting tomorrow we meet."),
+            without_leading_command(VoiceCommand::StartDictation, "Starting tomorrow we meet."),
             "Starting tomorrow we meet."
         );
+    }
+
+    #[test]
+    fn should_remove_a_restart_that_opens_the_text_of_a_restarted_dictation() {
+        for (text, kept) in [
+            (
+                "Restart, restart, coffee machine is broken.",
+                "Coffee machine is broken.",
+            ),
+            ("restart dictation we meet at ten", "We meet at ten"),
+            ("Restart. Lunch is at noon.", "Lunch is at noon."),
+        ] {
+            assert_eq!(
+                without_leading_command(VoiceCommand::RestartDictation, text),
+                kept,
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn should_keep_words_of_another_command_that_open_the_text() {
+        for (opened_by, text) in [
+            (VoiceCommand::StartDictation, "Restart the server tonight."),
+            (VoiceCommand::RestartDictation, "Start the engine."),
+        ] {
+            assert_eq!(without_leading_command(opened_by, text), text, "{text}");
+        }
+    }
+
+    #[test]
+    fn should_remove_a_doubled_start_that_opens_the_text() {
+        for (text, kept) in [
+            ("Start, start, the build is green.", "The build is green."),
+            ("start start we meet at ten", "We meet at ten"),
+            ("Старт старт. Встреча в пятницу.", "Встреча в пятницу."),
+            ("Start dictation, start the engine.", "Start the engine."),
+        ] {
+            assert_eq!(
+                without_leading_command(VoiceCommand::StartDictation, text),
+                kept,
+                "{text}"
+            );
+        }
     }
 }

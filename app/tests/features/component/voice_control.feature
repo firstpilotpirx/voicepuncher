@@ -204,6 +204,34 @@ Feature: voice-control
       Then the sentence is pasted into the focused app
       And the pasted text does not contain "start"
 
+  Rule: A dictation started by voice holds the speech right after the command
+
+    Scenario: Start start followed by the dictation at once
+      Given listening is on
+      And no dictation runs
+      When the user says "start start" and a sentence without a pause, and later ends the dictation
+      Then the whole sentence, its first words included, is pasted into the focused app
+      And the pasted text does not contain "start"
+
+    Scenario: Start, a short pause, then the dictation
+      Given listening is on
+      And no dictation runs
+      When the user says "start", pauses for about 0.5 s and says a sentence, and later ends the dictation
+      Then the whole sentence, its first words included, is pasted into the focused app
+      And the pasted text does not contain "start"
+
+    Scenario: Restart, a short pause, then the new dictation
+      Given a dictation runs
+      And the user has said a sentence in it
+      When the user says "restart", pauses for about 0.5 s and says another sentence, and later ends the dictation
+      Then only the other sentence is pasted, its first words included
+
+    Scenario: A chain ending in start followed by the next dictation at once
+      Given a dictation runs
+      And the user has said a sentence in it
+      When the user says "stop enter start" and another sentence without a pause, and later ends the dictation
+      Then the other sentence, its first words included, is pasted after the Return key is pressed
+
   Rule: A doubled short form counts anywhere
 
     Scenario: Stop stop in the middle of speech

@@ -16,8 +16,8 @@ pub trait CommandSpotter: Send {
     fn listen_for(&mut self, commands: &[VoiceCommand]);
     /// Closes the microphone.
     fn stop_listening(&mut self);
-    /// The audio heard from `since` until now, as far as it is still held: the speech
-    /// that followed a "start" before the recording began.
+    /// The sound heard from `since` until now, as far as it is still held: the speech
+    /// that followed a voice command starting a dictation before the recording began.
     fn heard_since(&self, _since: Instant) -> AudioBuffer16k {
         AudioBuffer16k::new(Vec::new())
     }

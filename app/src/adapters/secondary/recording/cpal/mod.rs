@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -253,18 +253,14 @@ impl AudioRecorder for CpalAudioRecorder {
         }
     }
 
-    fn start_with_lead_in(&mut self, lead_in: AudioBuffer16k) -> Result<()> {
-        self.start()?;
+    fn begin_with(&mut self, lead_in: AudioBuffer16k) {
         if let Some(active) = self.active.as_mut() {
-            let samples = upsampled(lead_in.samples(), active.native_sample_rate);
-            let lead_in_secs = samples.len() as f64 / f64::from(active.native_sample_rate);
             if let Ok(mut buffer) = active.buffer.lock() {
-                buffer.splice(0..0, samples);
+                let lead_in_time = put_first(&mut buffer, &lead_in, active.native_sample_rate);
+                // The recording now begins earlier: cuts count from there.
+                active.started_at -= lead_in_time;
             }
-            // The recording now begins earlier: cuts count from there.
-            active.started_at -= std::time::Duration::from_secs_f64(lead_in_secs);
         }
-        Ok(())
     }
 
     fn truncate_at(&mut self, cut: Instant) {
@@ -274,6 +270,14 @@ impl AudioRecorder for CpalAudioRecorder {
             truncate_buffer(&active.buffer, kept);
         }
     }
+}
+
+/// Puts `lead_in` before the samples `buffer` holds at `rate`; how long the lead-in lasts.
+fn put_first(buffer: &mut Vec<i16>, lead_in: &AudioBuffer16k, rate: u32) -> Duration {
+    let samples = upsampled(lead_in.samples(), rate);
+    let lead_in_time = Duration::from_secs_f64(samples.len() as f64 / f64::from(rate));
+    buffer.splice(0..0, samples);
+    lead_in_time
 }
 
 /// 16 kHz `samples` at `rate`, linearly interpolated: the lead-in goes back to 16 kHz for
@@ -524,6 +528,20 @@ mod lead_in_tests {
     #[test]
     fn should_keep_16_khz_audio_as_it_is() {
         assert_eq!(upsampled(&[1, 2, 3], 16_000), [1, 2, 3]);
+    }
+
+    #[test]
+    fn should_put_the_lead_in_before_the_recorded_samples() {
+        // Given a quarter second heard, and what the recorder captured itself
+        let lead_in = AudioBuffer16k::new(vec![7; 4_000]);
+        let mut buffer = vec![1, 2, 3];
+        // When
+        let lead_in_time = put_first(&mut buffer, &lead_in, 48_000);
+        // Then
+        assert_eq!(lead_in_time, Duration::from_millis(250));
+        assert_eq!(buffer.len(), 12_000 + 3);
+        assert_eq!(buffer[..12_000], [7; 12_000]);
+        assert_eq!(buffer[12_000..], [1, 2, 3]);
     }
 }
 

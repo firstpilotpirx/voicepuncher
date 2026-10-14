@@ -3,6 +3,7 @@
 //! watches the ordered log of what the stand-ins in `doubles` were asked to do.
 
 mod doubles;
+mod speech_after_start;
 
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -35,9 +36,6 @@ const COMMAND_LENGTH: Duration = Duration::from_millis(500);
 /// How late the service places a command's start: a cut this late keeps the first command
 /// word in the recording, so the text must lose it.
 const LATE_CUT: Duration = Duration::from_millis(50);
-/// How far back an utterance said in one breath with "start" began, so its speech came
-/// before the recording started.
-const BREATH_AGO: Duration = Duration::from_secs(2);
 const STOP_PHRASE: &str = "stop dictation";
 /// Longest a pipeline reaction may take in these scenarios.
 const REACTION: Duration = Duration::from_secs(2);
@@ -144,6 +142,7 @@ impl VoiceRun {
                 events: Arc::clone(&self.events),
                 speech: Arc::clone(&self.speech),
                 cut: Arc::clone(&self.cut),
+                said_before: Vec::new(),
             }),
             Box::new(SpeechBeforeCut {
                 speech: Arc::clone(&self.speech),
@@ -396,23 +395,6 @@ fn says_sentence_then_command(world: &mut IntegrationWorld, said: String) -> Res
     run.send(PipelineInput::Spotting(SpottingEvent::SpeechEnded(end)))
 }
 
-#[when(
-    expr = "the user says {string} and a sentence without a pause, and later ends the dictation"
-)]
-fn says_start_and_sentence(world: &mut IntegrationWorld, said: String) -> Result<()> {
-    let run = run(world);
-    run.start_when();
-    let start = Instant::now() - BREATH_AGO;
-    let end = start + COMMAND_LENGTH;
-    run.speak(&said, start);
-    run.speak(SENTENCE, end + LATE_CUT);
-    run.send(PipelineInput::Spotting(SpottingEvent::SpeechStarted(start)))?;
-    let commands = chain(&said).context("no command")?;
-    run.say_commands(&commands, start, end, CommandPlacement::Head)?;
-    run.wait_for(|e| *e == Event::RecordingStarted)?;
-    run.press_hotkey()
-}
-
 #[when(expr = "the user says a sentence, {string} and more words, without any pause")]
 fn says_doubled_in_speech(world: &mut IntegrationWorld, said: String) -> Result<()> {
     let run = run(world);
@@ -653,6 +635,8 @@ fn new_dictation_starts(world: &mut IntegrationWorld) -> Result<()> {
 
 /// Said after a restart: the only text of the dictation that follows.
 const OTHER_SENTENCE: &str = "Lunch is at noon.";
+/// Words of the commands that start a dictation over: none may be pasted.
+const RESTART_WORDS: [&str; 3] = ["restart", "start", "dictation"];
 
 #[given(expr = "the user said a sentence, {string}, and another sentence")]
 fn restarted_with_another_sentence(world: &mut IntegrationWorld, restart: String) -> Result<()> {
@@ -678,9 +662,14 @@ fn restarted_with_another_sentence(world: &mut IntegrationWorld, restart: String
 }
 
 #[then("only the other sentence is pasted")]
+#[then("only the other sentence is pasted, its first words included")]
 fn only_other_sentence(world: &mut IntegrationWorld) -> Result<()> {
     let pasted = run(world).pasted()?;
-    if pasted.contains(SENTENCE) || !pasted.contains(OTHER_SENTENCE) {
+    let command_word = pasted
+        .to_lowercase()
+        .split(|c: char| !c.is_alphabetic())
+        .any(|w| RESTART_WORDS.contains(&w));
+    if command_word || pasted.contains(SENTENCE) || !pasted.contains(OTHER_SENTENCE) {
         bail!("pasted {pasted:?}, expected only {OTHER_SENTENCE:?}");
     }
     Ok(())

@@ -35,7 +35,8 @@ pub enum Event {
 
 pub type Events = Arc<Mutex<Vec<Event>>>;
 
-/// What the user said into the running recording, with the moment each part started.
+/// What the user said, with the moment each part started; a recording that starts drops
+/// what was said before it.
 pub type Speech = Arc<Mutex<Vec<(Instant, String)>>>;
 
 pub type Cut = Arc<Mutex<Option<Instant>>>;
@@ -51,11 +52,13 @@ pub struct NotingRecorder {
     pub events: Events,
     pub speech: Speech,
     pub cut: Cut,
+    /// What was said before the recording started: a lead-in may bring some of it back.
+    pub said_before: Vec<(Instant, String)>,
 }
 
 impl AudioRecorder for NotingRecorder {
     fn start(&mut self) -> Result<()> {
-        self.speech.lock().unwrap().clear();
+        self.said_before = std::mem::take(&mut *self.speech.lock().unwrap());
         *self.cut.lock().unwrap() = None;
         record(&self.events, Event::RecordingStarted);
         Ok(())
@@ -76,14 +79,17 @@ impl AudioRecorder for NotingRecorder {
         *self.cut.lock().unwrap() = Some(cut);
     }
 
-    /// Keeps what was said during the lead-in, so it is transcribed with the recording.
-    fn start_with_lead_in(&mut self, lead_in: AudioBuffer16k) -> Result<()> {
-        let lead_in_secs = lead_in.duration_ms() as f32 / 1000.0;
-        let since = Instant::now() - Duration::from_secs_f32(lead_in_secs);
-        self.speech.lock().unwrap().retain(|(at, _)| *at >= since);
-        *self.cut.lock().unwrap() = None;
-        record(&self.events, Event::RecordingStarted);
-        Ok(())
+    /// Brings back what was said within the lead-in, which reaches back from now, so it
+    /// is transcribed with the recording.
+    fn begin_with(&mut self, lead_in: AudioBuffer16k) {
+        let now = Instant::now();
+        let heard_from = now - Duration::from_millis(lead_in.duration_ms());
+        let heard: Vec<(Instant, String)> = self
+            .said_before
+            .drain(..)
+            .filter(|(at, _)| (heard_from..=now).contains(at))
+            .collect();
+        self.speech.lock().unwrap().splice(0..0, heard);
     }
 }
 

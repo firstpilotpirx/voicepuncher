@@ -1,6 +1,9 @@
+use std::time::Instant;
+
 use crate::core::application::{CommandSpotter, KeyPresser, PipelineInput};
 use crate::core::domain::{
-    CommandPlacement, SpokenCommand, SpottingEvent, VoiceCommand, VoiceCommandRecognizer,
+    AudioBuffer16k, CommandPlacement, SpokenCommand, SpottingEvent, VoiceCommand,
+    VoiceCommandRecognizer,
 };
 
 use super::Pipeline;
@@ -70,6 +73,14 @@ impl Pipeline {
         });
     }
 
+    /// The sound heard since `since`; none without voice control.
+    pub(super) fn heard_since(&self, since: Instant) -> AudioBuffer16k {
+        self.voice.as_ref().map_or_else(
+            || AudioBuffer16k::new(Vec::new()),
+            |voice| voice.spotter.heard_since(since),
+        )
+    }
+
     pub(super) fn turn_listening_on(&mut self) {
         log::info!("voice control: turning listening on…");
         let voice = self.voice();
@@ -123,14 +134,7 @@ impl Pipeline {
         }
         log::info!("voice control: \"{phrase}\"");
         match spoken.command {
-            VoiceCommand::StartDictation if spoken.placement == CommandPlacement::Head => {
-                // The speech after "start" came before the recording: it begins it.
-                let lead_in = self.voice().spotter.heard_since(spoken.ends_at);
-                self.start_recording_with(Some(lead_in))?;
-                self.command_words.opening = true;
-                Ok(())
-            }
-            VoiceCommand::StartDictation => self.start_recording(),
+            VoiceCommand::StartDictation => self.start_dictation_after(spoken),
             VoiceCommand::StopDictation => {
                 self.command_words.closing = spoken.placement != CommandPlacement::Alone;
                 self.recorder.truncate_at(spoken.started_at);
@@ -146,11 +150,21 @@ impl Pipeline {
             VoiceCommand::CancelDictation => self.cancel_recording(),
             VoiceCommand::RestartDictation => {
                 self.cancel_recording()?;
-                self.start_recording()
+                self.start_dictation_after(spoken)
             }
             VoiceCommand::PressEnter => self.press_keys(|keys| keys.press_enter()),
             VoiceCommand::ClearAllText => self.press_keys(|keys| keys.clear_all_text()),
         }
+    }
+
+    /// Starts a dictation that begins where `spoken` ended, so the speech said right after
+    /// the command, before it was recognized, is part of it.
+    fn start_dictation_after(&mut self, spoken: SpokenCommand) -> anyhow::Result<()> {
+        self.start_recording_from(Some(spoken.ends_at))?;
+        // Only an end the voice activity detector placed lies safely past the last word.
+        self.command_words.opening =
+            (spoken.placement != CommandPlacement::Alone).then_some(spoken.command);
+        Ok(())
     }
 
     fn press_keys(
@@ -181,6 +195,7 @@ impl Pipeline {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
 
     use super::*;
@@ -201,6 +216,8 @@ mod tests {
 
     const PHRASE_LEAD: Duration = Duration::from_millis(100);
     const PHRASE_LENGTH: Duration = Duration::from_millis(800);
+    /// Half a second of sound at 16 kHz.
+    const LEAD_IN_SAMPLES: usize = 8_000;
 
     fn sounds() -> MockSoundPlayer {
         let mut sounds = MockSoundPlayer::new();
@@ -228,6 +245,12 @@ mod tests {
     }
 
     fn recording_recorder() -> MockAudioRecorder {
+        let mut recorder = recording_recorder_without_lead_in();
+        recorder.expect_begin_with().return_const(());
+        recorder
+    }
+
+    fn recording_recorder_without_lead_in() -> MockAudioRecorder {
         let mut recorder = MockAudioRecorder::new();
         recorder.expect_start().returning(|| Ok(()));
         recorder.expect_start_live_chunks().returning(|_| Ok(None));
@@ -254,12 +277,33 @@ mod tests {
         refiner
     }
 
-    fn lenient_spotter() -> MockCommandSpotter {
+    fn listening_spotter() -> MockCommandSpotter {
         let mut spotter = MockCommandSpotter::new();
         spotter.expect_start_listening().returning(|_| Ok(()));
         spotter.expect_listen_for().return_const(());
         spotter.expect_stop_listening().return_const(());
         spotter
+    }
+
+    fn lenient_spotter() -> MockCommandSpotter {
+        let mut spotter = listening_spotter();
+        hears_nothing(&mut spotter);
+        spotter
+    }
+
+    fn hears_nothing(spotter: &mut MockCommandSpotter) {
+        spotter
+            .expect_heard_since()
+            .returning(|_| AudioBuffer16k::new(Vec::new()));
+    }
+
+    fn said(command: VoiceCommand, placement: CommandPlacement, start: Instant) -> PipelineInput {
+        PipelineInput::Spotting(SpottingEvent::CommandsSaid {
+            commands: vec![command],
+            start,
+            end: start + PHRASE_LENGTH,
+            placement,
+        })
     }
 
     fn pipeline(
@@ -278,6 +322,18 @@ mod tests {
         )
     }
 
+    /// Toggle recording, transcribed in one go when it ends.
+    fn toggle_cfg() -> PipelineConfig {
+        PipelineConfig {
+            min_press_ms: 0,
+            recording_mode: RecordingMode::Toggle,
+            chunking: ChunkingCfg {
+                chunk_threshold_secs: 0,
+                ..ChunkingCfg::default()
+            },
+        }
+    }
+
     fn pipeline_with(
         recorder: MockAudioRecorder,
         paster: MockTextPaster,
@@ -287,12 +343,8 @@ mod tests {
         mode: RecordingMode,
     ) -> Pipeline {
         let cfg = PipelineConfig {
-            min_press_ms: 0,
             recording_mode: mode,
-            chunking: ChunkingCfg {
-                chunk_threshold_secs: 0,
-                ..ChunkingCfg::default()
-            },
+            ..toggle_cfg()
         };
         Pipeline::new(
             Box::new(recorder),
@@ -304,6 +356,31 @@ mod tests {
             cfg,
         )
         .with_voice_control(Box::new(spotter), Box::new(keys))
+    }
+
+    /// A pipeline that transcribes a dictation in live chunks while it runs.
+    fn live_chunking_pipeline(
+        recorder: MockAudioRecorder,
+        spotter: MockCommandSpotter,
+    ) -> Pipeline {
+        let cfg = PipelineConfig {
+            min_press_ms: 0,
+            recording_mode: RecordingMode::Toggle,
+            chunking: ChunkingCfg {
+                chunk_threshold_secs: 1,
+                ..ChunkingCfg::default()
+            },
+        };
+        Pipeline::new(
+            Box::new(recorder),
+            Box::new(answering_transcriber()),
+            Box::new(passthrough_refiner()),
+            Box::new(MockTextPaster::new()),
+            Box::new(sounds()),
+            Box::new(overlay()),
+            cfg,
+        )
+        .with_voice_control(Box::new(spotter), Box::new(MockKeyPresser::new()))
     }
 
     fn listen(pipeline: &mut Pipeline) {
@@ -437,6 +514,7 @@ mod tests {
             .once()
             .in_sequence(&mut order)
             .return_const(());
+        hears_nothing(&mut spotter);
         let mut recorder = recording_recorder();
         recorder.expect_truncate_at().return_const(());
         let mut paster = MockTextPaster::new();
@@ -456,6 +534,7 @@ mod tests {
         spotter.expect_start_listening().returning(|_| Ok(()));
         spotter.expect_listen_for().return_const(());
         spotter.expect_stop_listening().once().return_const(());
+        hears_nothing(&mut spotter);
         let mut paster = MockTextPaster::new();
         paster.expect_paste().once().returning(|_| Ok(()));
         let mut pipeline = pipeline(recording_recorder(), paster, spotter, RecordingMode::Toggle);
@@ -485,6 +564,7 @@ mod tests {
             .in_sequence(&mut order)
             .return_const(());
         spotter.expect_stop_listening().never();
+        hears_nothing(&mut spotter);
         let mut paster = MockTextPaster::new();
         paster.expect_paste().never();
         let mut pipeline = pipeline(recording_recorder(), paster, spotter, RecordingMode::Toggle);
@@ -582,12 +662,14 @@ mod tests {
         spotter
             .expect_listen_for()
             .returning(move |commands| seen.lock().unwrap().push(format!("listen {commands:?}")));
+        hears_nothing(&mut spotter);
         let mut recorder = MockAudioRecorder::new();
         let seen = std::sync::Arc::clone(&order);
         recorder.expect_start().returning(move || {
             seen.lock().unwrap().push("record".to_owned());
             Ok(())
         });
+        recorder.expect_begin_with().return_const(());
         let mut pipeline = pipeline(
             recorder,
             MockTextPaster::new(),
@@ -606,24 +688,65 @@ mod tests {
         assert_eq!(order.get(1).map(String::as_str), Some("record"));
     }
 
-    #[test]
-    fn should_begin_a_dictation_with_the_speech_heard_after_a_start_at_the_head() {
-        // Given half a second heard since "start" ended
-        const LEAD_IN_SAMPLES: usize = 8_000;
-        let start = Instant::now();
-        let end = start + PHRASE_LENGTH;
-        let mut spotter = lenient_spotter();
+    /// A spotter that heard half a second since `end`, and nothing since any other moment.
+    fn heard_half_a_second_since(end: Instant) -> MockCommandSpotter {
+        let mut spotter = listening_spotter();
+        spotter.expect_heard_since().returning(move |since| {
+            let samples = if since == end { LEAD_IN_SAMPLES } else { 0 };
+            AudioBuffer16k::new(vec![0; samples])
+        });
         spotter
-            .expect_heard_since()
-            .withf(move |since| *since == end)
-            .returning(|_| AudioBuffer16k::new(vec![0; LEAD_IN_SAMPLES]));
-        let mut recorder = MockAudioRecorder::new();
-        recorder.expect_start().never();
+    }
+
+    /// A recorder that notes the length of every lead-in it begins with.
+    fn noting_lead_ins(lead_ins: &Arc<Mutex<Vec<usize>>>) -> MockAudioRecorder {
+        let mut recorder = recording_recorder_without_lead_in();
+        let seen = Arc::clone(lead_ins);
         recorder
-            .expect_start_with_lead_in()
-            .withf(|lead_in| lead_in.samples().len() == LEAD_IN_SAMPLES)
-            .once()
-            .returning(|_| Ok(()));
+            .expect_begin_with()
+            .returning(move |lead_in| seen.lock().unwrap().push(lead_in.samples().len()));
+        recorder
+    }
+
+    #[test]
+    fn should_begin_a_voice_dictation_where_the_start_ended_wherever_it_was_said() {
+        for placement in [
+            CommandPlacement::Alone,
+            CommandPlacement::Head,
+            CommandPlacement::Tail,
+            CommandPlacement::Anywhere,
+        ] {
+            // Given half a second heard since "start" ended
+            let start = Instant::now();
+            let lead_ins = Arc::new(Mutex::new(Vec::new()));
+            let spotter = heard_half_a_second_since(start + PHRASE_LENGTH);
+            let recorder = noting_lead_ins(&lead_ins);
+            let mut pipeline = pipeline(
+                recorder,
+                MockTextPaster::new(),
+                spotter,
+                RecordingMode::Toggle,
+            );
+            listen(&mut pipeline);
+            // When
+            let started = pipeline.handle(said(VoiceCommand::StartDictation, placement, start));
+            // Then
+            assert!(started.is_ok() && pipeline.is_recording(), "{placement:?}");
+            assert_eq!(
+                *lead_ins.lock().unwrap(),
+                [LEAD_IN_SAMPLES],
+                "{placement:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn should_begin_a_restarted_dictation_where_restart_ended() {
+        // Given a dictation runs and half a second was heard since "restart" ended
+        let restart_at = Instant::now() + Duration::from_secs(5);
+        let lead_ins = Arc::new(Mutex::new(Vec::new()));
+        let spotter = heard_half_a_second_since(restart_at + PHRASE_LENGTH);
+        let recorder = noting_lead_ins(&lead_ins);
         let mut pipeline = pipeline(
             recorder,
             MockTextPaster::new(),
@@ -631,17 +754,105 @@ mod tests {
             RecordingMode::Toggle,
         );
         listen(&mut pipeline);
+        say(&mut pipeline, "start dictation");
         // When
-        pipeline
-            .handle(PipelineInput::Spotting(SpottingEvent::CommandsSaid {
-                commands: vec![VoiceCommand::StartDictation],
-                start,
-                end,
-                placement: CommandPlacement::Head,
-            }))
-            .unwrap();
+        let restarted = pipeline.handle(said(
+            VoiceCommand::RestartDictation,
+            CommandPlacement::Alone,
+            restart_at,
+        ));
         // Then
-        assert!(pipeline.is_recording());
+        assert!(restarted.is_ok() && pipeline.is_recording());
+        assert_eq!(lead_ins.lock().unwrap().last(), Some(&LEAD_IN_SAMPLES));
+    }
+
+    #[test]
+    fn should_paste_a_restarted_dictation_without_the_restart_its_lead_in_caught() {
+        // Given a dictation runs, and its restart's lead-in caught the end of "restart restart"
+        let mut transcriber = MockTranscriber::new();
+        transcriber.expect_transcribe().returning(|_| {
+            Ok(Some(
+                RawTranscript::new("Restart, lunch is at noon.".into()).unwrap(),
+            ))
+        });
+        let pasted = Arc::new(Mutex::new(Vec::new()));
+        let seen = Arc::clone(&pasted);
+        let mut paster = MockTextPaster::new();
+        paster.expect_paste().returning(move |text| {
+            seen.lock().unwrap().push(text.as_str().to_owned());
+            Ok(())
+        });
+        let mut pipeline = Pipeline::new(
+            Box::new(recording_recorder()),
+            Box::new(transcriber),
+            Box::new(passthrough_refiner()),
+            Box::new(paster),
+            Box::new(sounds()),
+            Box::new(overlay()),
+            toggle_cfg(),
+        )
+        .with_voice_control(Box::new(lenient_spotter()), Box::new(MockKeyPresser::new()));
+        listen(&mut pipeline);
+        say(&mut pipeline, "start dictation");
+        let restart = said(
+            VoiceCommand::RestartDictation,
+            CommandPlacement::Anywhere,
+            Instant::now(),
+        );
+        pipeline.handle(restart).unwrap();
+        // When
+        press(&mut pipeline);
+        // Then
+        assert_eq!(*pasted.lock().unwrap(), ["Lunch is at noon."]);
+    }
+
+    #[test]
+    fn should_take_the_heard_speech_once_the_recorder_runs_and_before_live_chunks() {
+        // Given
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let note = |step: &'static str| {
+            let seen = Arc::clone(&order);
+            move || seen.lock().unwrap().push(step)
+        };
+        let mut spotter = listening_spotter();
+        let heard = note("take the heard speech");
+        spotter.expect_heard_since().returning(move |_| {
+            heard();
+            AudioBuffer16k::new(Vec::new())
+        });
+        let mut recorder = MockAudioRecorder::new();
+        let started = note("start the recorder");
+        recorder.expect_start().returning(move || {
+            started();
+            Ok(())
+        });
+        let joined = note("begin with the heard speech");
+        recorder.expect_begin_with().returning(move |_| joined());
+        let chunked = note("start live chunks");
+        recorder.expect_start_live_chunks().returning(move |_| {
+            chunked();
+            Ok(None)
+        });
+        let mut pipeline = live_chunking_pipeline(recorder, spotter);
+        listen(&mut pipeline);
+        // When
+        let start = Instant::now();
+        let started = pipeline.handle(said(
+            VoiceCommand::StartDictation,
+            CommandPlacement::Head,
+            start,
+        ));
+        // Then
+        assert!(started.is_ok());
+        assert_eq!(
+            *order.lock().unwrap(),
+            [
+                "start the recorder",
+                "take the heard speech",
+                "begin with the heard speech",
+                "start live chunks"
+            ]
+        );
     }
 
     #[test]

@@ -180,6 +180,47 @@ Feature: voice-control
       When someone says "Enter the building on the left" in one breath while no dictation runs
       Then no command takes effect
 
+  Rule: A dictation started by voice holds the speech right after the command
+
+    @smoke
+    Scenario: Start start followed by the dictation at once
+      Given the command spotting service is running
+      And listening is on for a whole session
+      When someone says "Start, start" and a sentence in one breath, and later ends the dictation
+      Then the whole sentence, its first words included, is pasted without "start"
+
+    @smoke
+    Scenario: Start, a short pause, then the dictation
+      Given the command spotting service is running
+      And listening is on for a whole session
+      When someone says "Start", pauses for about 0.5 s and says a sentence, and later ends the dictation
+      Then the whole sentence, its first words included, is pasted without "start"
+
+    @smoke
+    Scenario: Restart, a short pause, then the new dictation
+      Given the command spotting service is running
+      And listening is on for a whole session
+      And a dictation runs and someone has said a sentence in it
+      When someone says "Restart", pauses for about 0.5 s and says another sentence, and later ends the dictation
+      Then only the other sentence is pasted, its first words included
+
+    @smoke @voice_samples
+    Scenario: The user's recorded restart restart followed by the new dictation at once
+      Given the command spotting service is running
+      And the user's own recordings of the commands exist on the machine
+      And listening is on for a whole session
+      And a dictation runs and someone has said a sentence in it
+      When the user's recorded "restart restart" is followed at once by another sentence, and the dictation later ends
+      Then only the other sentence is pasted, its first words included
+
+    @smoke @voice_samples
+    Scenario: The user's recorded start start followed by the dictation at once
+      Given the command spotting service is running
+      And the user's own recordings of the commands exist on the machine
+      And listening is on for a whole session
+      When the user's recorded "start start" is followed at once by a sentence, and the dictation later ends
+      Then the whole sentence, its first words included, is pasted without "start"
+
   Rule: A doubled short form counts anywhere
 
     @smoke

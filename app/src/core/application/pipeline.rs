@@ -2,6 +2,7 @@ mod voice_control;
 
 use std::collections::VecDeque;
 use std::sync::mpsc;
+use std::time::Instant;
 
 use crate::core::application::audio_recorder::LiveChunk;
 use crate::core::application::chunking::{merge_chunk_texts, split_into_chunks, ChunkingCfg};
@@ -11,8 +12,8 @@ use crate::core::application::{
     PipelineInput, SoundPlayer, TextPaster, TextRefiner, Transcriber, VisualIndicator,
 };
 use crate::core::domain::{
-    without_leading_start, without_trailing_command, AudioBuffer16k, CleanedText, PttSignal,
-    RawTranscript, RecordingMode,
+    without_leading_command, without_trailing_command, AudioBuffer16k, CleanedText, PttSignal,
+    RawTranscript, RecordingMode, VoiceCommand,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -63,8 +64,8 @@ pub struct Pipeline {
 /// Command words said in one breath with a dictation, so they may reach its transcript.
 #[derive(Debug, Default, Clone, Copy)]
 struct CommandWords {
-    /// A "start" opened the utterance the dictation began in.
-    opening: bool,
+    /// The command that started the dictation, said in one breath with its first words.
+    opening: Option<VoiceCommand>,
     /// A command said without a pause ended the dictation.
     closing: bool,
 }
@@ -156,23 +157,26 @@ impl Pipeline {
     }
 
     fn start_recording(&mut self) -> anyhow::Result<()> {
-        self.start_recording_with(None)
+        self.start_recording_from(None)
     }
 
-    /// Starts a dictation; `lead_in` is audio heard before it that begins its recording.
-    fn start_recording_with(&mut self, lead_in: Option<AudioBuffer16k>) -> anyhow::Result<()> {
+    /// Starts a recording; one started by voice begins at `begins_at`, the end of the
+    /// command, with the speech heard since then.
+    fn start_recording_from(&mut self, begins_at: Option<Instant>) -> anyhow::Result<()> {
         // With voice control the dictation phrases are listened for before the recording
         // starts, so a "stop dictation" said right away is heard.
         self.follow_dictation(true);
         self.command_words = CommandWords::default();
         self.sound_player.play_start();
-        let started = match lead_in {
-            Some(lead_in) => self.recorder.start_with_lead_in(lead_in),
-            None => self.recorder.start(),
-        };
-        if let Err(e) = started {
+        if let Err(e) = self.recorder.start() {
             self.follow_dictation(false);
             return Err(e);
+        }
+        if let Some(since) = begins_at {
+            // Taken once the recorder runs, so the heard speech reaches its first sample,
+            // and before live chunks, so they count the speech as the recording's start.
+            let lead_in = self.heard_since(since);
+            self.recorder.begin_with(lead_in);
         }
         if self.cfg.chunking.chunk_threshold_secs > 0 {
             if let Some(chunk_rx) = self.recorder.start_live_chunks(self.cfg.chunking)? {
@@ -393,10 +397,9 @@ impl Pipeline {
     /// `text` without the command words said in one breath with the dictation.
     fn without_command_words(&mut self, text: &str) -> String {
         let words = std::mem::take(&mut self.command_words);
-        let text = if words.opening {
-            without_leading_start(text)
-        } else {
-            text.to_owned()
+        let text = match words.opening {
+            Some(command) => without_leading_command(command, text),
+            None => text.to_owned(),
         };
         if words.closing {
             without_trailing_command(&text)
