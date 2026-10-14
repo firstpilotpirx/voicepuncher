@@ -8,6 +8,7 @@ use voicepuncher_e2e_test::concurrency::map_concurrently;
 use voicepuncher_e2e_test::corpus::{load_manifest, select_balanced};
 use voicepuncher_e2e_test::wer::wer;
 
+use crate::steps::off_thread;
 use crate::E2eWorld;
 
 pub const STARTUP_FAILURE_EXIT_CODE: i32 = 2;
@@ -56,31 +57,37 @@ fn benchmark_sample(world: &mut E2eWorld, size: usize) -> Result<()> {
 }
 
 #[when(regex = r"^the user transcribes the recording file (with|without) refinement$")]
-fn transcribe_recording(world: &mut E2eWorld, refinement: String) -> Result<()> {
-    let recording = world.recording.as_deref().context("no recording")?;
-    let output = transcribe(recording, world.config.as_deref(), refinement == "with")?;
-    world.exit_status = Some(output.status);
-    world.stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-    Ok(())
+async fn transcribe_recording(world: &mut E2eWorld, refinement: String) -> Result<()> {
+    off_thread(world, move |world| {
+        let recording = world.recording.as_deref().context("no recording")?;
+        let output = transcribe(recording, world.config.as_deref(), refinement == "with")?;
+        world.exit_status = Some(output.status);
+        world.stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        Ok(())
+    })
+    .await
 }
 
 #[when("the user transcribes every recording of the sample with refinement")]
-fn transcribe_sample(world: &mut E2eWorld) -> Result<()> {
-    let outputs = map_concurrently(&world.corpus, CONCURRENT_RECORDINGS, |sample| {
-        transcribe(&sample.path, None, true)
-    });
-    eprintln!("\n  {:<20} {:<4} {:>7} {:>8}", "id", "lang", "dur", "wer");
-    for (sample, output) in world.corpus.iter().zip(outputs) {
-        let hypothesis = String::from_utf8_lossy(&output?.stdout).trim().to_owned();
-        let rate = wer(&sample.reference, &hypothesis);
-        eprintln!(
-            "  {:<20} {:<4} {:>7.1} {:>8.3}",
-            sample.id, sample.lang, sample.duration_s, rate
-        );
-        world.word_error_rates.push(rate);
-    }
-    Ok(())
+async fn transcribe_sample(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        let outputs = map_concurrently(&world.corpus, CONCURRENT_RECORDINGS, |sample| {
+            transcribe(&sample.path, None, true)
+        });
+        eprintln!("\n  {:<20} {:<4} {:>7} {:>8}", "id", "lang", "dur", "wer");
+        for (sample, output) in world.corpus.iter().zip(outputs) {
+            let hypothesis = String::from_utf8_lossy(&output?.stdout).trim().to_owned();
+            let rate = wer(&sample.reference, &hypothesis);
+            eprintln!(
+                "  {:<20} {:<4} {:>7.1} {:>8.3}",
+                sample.id, sample.lang, sample.duration_s, rate
+            );
+            world.word_error_rates.push(rate);
+        }
+        Ok(())
+    })
+    .await
 }
 
 #[then("the app does not exit with a startup failure")]

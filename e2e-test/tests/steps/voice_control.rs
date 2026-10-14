@@ -15,6 +15,7 @@ use voicepuncher_e2e_test::voice_commands::{
 };
 
 use crate::steps::file_transcription::{env, sut_bin, STARTUP_FAILURE_EXIT_CODE};
+use crate::steps::off_thread;
 use crate::E2eWorld;
 
 mod hands_free;
@@ -113,23 +114,32 @@ fn service_not_running(world: &mut E2eWorld) -> Result<()> {
 }
 
 #[when(expr = "the user says {string} with a pause before and after it")]
-fn says_alone(world: &mut E2eWorld, phrase: String) -> Result<()> {
-    let commands = listened_for(command_said(&phrase)?);
-    hear(world, &phrase, commands)
+async fn says_alone(world: &mut E2eWorld, phrase: String) -> Result<()> {
+    off_thread(world, move |world| {
+        let commands = listened_for(command_said(&phrase)?);
+        hear(world, &phrase, commands)
+    })
+    .await
 }
 
 #[when(expr = "someone says {string} without pausing")]
-fn says_in_sentence(world: &mut E2eWorld, sentence: String) -> Result<()> {
-    hear(world, &sentence, &VoiceCommand::STANDBY)
+async fn says_in_sentence(world: &mut E2eWorld, sentence: String) -> Result<()> {
+    off_thread(world, move |world| {
+        hear(world, &sentence, &VoiceCommand::STANDBY)
+    })
+    .await
 }
 
 #[when("someone says short Russian phrases, each on its own with a pause around it")]
-fn says_short_russian(world: &mut E2eWorld) -> Result<()> {
-    let mut audio = Vec::new();
-    for phrase in SHORT_RUSSIAN_PHRASES {
-        audio.extend(spoken_by(RUSSIAN_VOICE, phrase)?);
-    }
-    heard_in_both_states(world, &audio)
+async fn says_short_russian(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        let mut audio = Vec::new();
+        for phrase in SHORT_RUSSIAN_PHRASES {
+            audio.extend(spoken_by(RUSSIAN_VOICE, phrase)?);
+        }
+        heard_in_both_states(world, &audio)
+    })
+    .await
 }
 
 /// Every command `audio` gives while listening in standby and while dictating.
@@ -167,62 +177,74 @@ fn carried_out(world: &mut E2eWorld, audio: &[f32], state: &str) -> Result<()> {
 }
 
 #[when(expr = "someone says {string} in one breath while {}")]
-fn says_in_one_breath(world: &mut E2eWorld, words: String, state: String) -> Result<()> {
-    carried_out(world, &spoken_by(ENGLISH_VOICE, &words)?, &state)
+async fn says_in_one_breath(world: &mut E2eWorld, words: String, state: String) -> Result<()> {
+    off_thread(world, move |world| {
+        carried_out(world, &spoken_by(ENGLISH_VOICE, &words)?, &state)
+    })
+    .await
 }
 
 #[when(expr = "someone says {string}, takes a short breath and says {string} while {}")]
-fn says_after_a_breath(
+async fn says_after_a_breath(
     world: &mut E2eWorld,
     words: String,
     command: String,
     state: String,
 ) -> Result<()> {
-    let mut audio = spoken_by(ENGLISH_VOICE, &words)?;
-    let first_pause = silence(1.0).len();
-    audio.truncate(audio.len() - first_pause);
-    audio.extend(silence(BREATH_SECS));
-    audio.extend(spoken_by(ENGLISH_VOICE, &command)?.split_off(first_pause));
-    carried_out(world, &audio, &state)
+    off_thread(world, move |world| {
+        let mut audio = spoken_by(ENGLISH_VOICE, &words)?;
+        let first_pause = silence(1.0).len();
+        audio.truncate(audio.len() - first_pause);
+        audio.extend(silence(BREATH_SECS));
+        audio.extend(spoken_by(ENGLISH_VOICE, &command)?.split_off(first_pause));
+        carried_out(world, &audio, &state)
+    })
+    .await
 }
 
 #[when("someone speaks every recording of the sample while listening")]
-fn speaks_the_sample(world: &mut E2eWorld) -> Result<()> {
-    let mut audio = silence(CORPUS_PAUSE_SECS);
-    for sample in &world.corpus {
-        let speech = read_wav(&sample.path)?;
-        audio.extend(
-            speech
-                .into_iter()
-                .map(|s| f32::from(s) / f32::from(i16::MAX)),
-        );
-        audio.extend(silence(CORPUS_PAUSE_SECS));
-    }
-    heard_in_both_states(world, &audio)
+async fn speaks_the_sample(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        let mut audio = silence(CORPUS_PAUSE_SECS);
+        for sample in &world.corpus {
+            let speech = read_wav(&sample.path)?;
+            audio.extend(
+                speech
+                    .into_iter()
+                    .map(|s| f32::from(s) / f32::from(i16::MAX)),
+            );
+            audio.extend(silence(CORPUS_PAUSE_SECS));
+        }
+        heard_in_both_states(world, &audio)
+    })
+    .await
 }
 
 #[when("the app starts")]
-fn app_starts(world: &mut E2eWorld) -> Result<()> {
-    let url = world
-        .command_spotting_url
-        .clone()
-        .context("the command spotting service is not set up")?;
-    let config = world.workdir()?.join("config.toml");
-    std::fs::write(
-        &config,
-        format!(
-            "[voice_control]\nenabled = {}\nurl = \"{url}\"\n",
-            world.voice_control
-        ),
-    )?;
-    let output = Command::new(sut_bin())
-        .arg("--config")
-        .arg(&config)
-        .output()
-        .context("failed to spawn the app")?;
-    world.exit_status = Some(output.status);
-    world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-    Ok(())
+async fn app_starts(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        let url = world
+            .command_spotting_url
+            .clone()
+            .context("the command spotting service is not set up")?;
+        let config = world.workdir()?.join("config.toml");
+        std::fs::write(
+            &config,
+            format!(
+                "[voice_control]\nenabled = {}\nurl = \"{url}\"\n",
+                world.voice_control
+            ),
+        )?;
+        let output = Command::new(sut_bin())
+            .arg("--config")
+            .arg(&config)
+            .output()
+            .context("failed to spawn the app")?;
+        world.exit_status = Some(output.status);
+        world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        Ok(())
+    })
+    .await
 }
 
 #[then(expr = "the {string} command takes effect")]

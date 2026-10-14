@@ -4,8 +4,9 @@
 //! exports.
 
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::{Mutex, MutexGuard, OnceLock};
+
+mod common;
 
 use voicepuncher_command_spotting::engine::{Engine, EngineCfg, SAMPLE_RATE};
 use voicepuncher_command_spotting::protocol::{Placement, ServerEvent};
@@ -62,20 +63,7 @@ fn load_engine() -> Option<Engine> {
 
 /// `words` spoken by `say`, without any pause.
 fn speech(words: &str) -> Vec<f32> {
-    let dir = tempfile::tempdir().unwrap();
-    let wav = dir.path().join("speech.wav");
-    let status = Command::new("say")
-        .args(["-v", VOICE, "-o"])
-        .arg(&wav)
-        .args(["--data-format=LEI16@16000", words])
-        .status()
-        .expect("say runs");
-    assert!(status.success());
-    hound::WavReader::open(&wav)
-        .unwrap()
-        .samples::<i16>()
-        .map(|s| s.unwrap() as f32 / i16::MAX as f32)
-        .collect()
+    common::spoken_by(Some(VOICE), words)
 }
 
 fn silence(secs: f32) -> Vec<f32> {

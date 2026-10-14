@@ -38,11 +38,12 @@ default:
 
 # ── Checks ── `check` while developing, `full-check` before merging ─────────
 
-# FAST (~3 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples + refinement evaluation
+# FAST (~6 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples + refinement evaluation
 check:
     @{{locked}} _check
 
-_check: _fmt _lint _test _build _e2e-smoke _e2e-quick _refine-eval
+_check:
+    {{just_executable()}} _stages fmt lint test build e2e-smoke e2e-quick refine-eval
 
 # FULL (~10 min), run before merging: clean build + code checks + E2E (seams included) + accuracy on 100 samples
 full-check:
@@ -50,8 +51,43 @@ full-check:
 
 _full-check: _require-models _require-corpus
     cargo clean
-    {{just_executable()}} _fmt _lint _test _build _e2e
+    {{just_executable()}} _stages fmt lint test build e2e-smoke e2e-seams e2e-bench refine-eval
     @echo "✓ full-check passed — before a release also walk through README.md § Release checklist (manual run)"
+
+# Runs the named stages (private recipes without their `_`) one by one: the services start once,
+# before the first stage that needs them, and stop at the end; ends with each stage's time
+_stages +stages:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    now() { perl -MTime::HiRes=time -e 'printf "%.1f", time'; }
+    started=$(now)
+    report=""
+    services=""
+    finish() {
+        code=$?
+        if [[ -n "$services" ]]; then
+            unset VOICEPUNCHER_E2E_SERVICES_HELD
+            {{just_executable()}} _stop-model-servers-for-e2e || true
+        fi
+        printf '\nstages:\n%b' "$report"
+        printf '  %-12s %7ss\n' total "$(perl -e "printf '%.1f', $(now) - $started")"
+        exit "$code"
+    }
+    trap finish EXIT
+    for stage in {{stages}}; do
+        if [[ -z "$services" && ( "$stage" == e2e* || "$stage" == refine-eval ) ]]; then
+            {{just_executable()}} _start-model-servers-for-e2e
+            services=up
+            export VOICEPUNCHER_E2E_SERVICES_HELD=1
+        fi
+        t0=$(now)
+        status=0
+        {{just_executable()}} "_$stage" || status=$?
+        mark="✓"
+        [[ $status -eq 0 ]] || mark="✗"
+        report+="  $mark $(printf '%-10s %7ss' "$stage" "$(perl -e "printf '%.1f', $(now) - $t0")")\n"
+        [[ $status -eq 0 ]] || exit "$status"
+    done
 
 # Formatting check
 fmt:
@@ -67,14 +103,66 @@ lint:
 _lint:
     cargo clippy --workspace --all-targets -- -D warnings
 
-# Unit + architecture + integration tests (plain and .feature) of the app, tests of the command spotting service, unit tests of the E2E harness (~1 min)
+# Unit + architecture + integration tests (plain and .feature) of the app, tests of the command spotting service, unit tests of the E2E harness, every test binary at once (~20 s; ~1 min on a cold build)
 test:
     @{{locked}} _test
 
 _test:
-    cargo test -p voicepuncher --tests --no-fail-fast
-    cargo test -p voicepuncher-command-spotting
-    cargo test -p voicepuncher-e2e-test --lib
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # One build per selection, then every test binary at once, each in its package directory
+    # as cargo runs it; a binary's output is printed whole when it ends.
+    root=$PWD
+    tab=$'\t'
+    runs=$(mktemp -d)
+    trap 'kill $(jobs -p) 2>/dev/null || true; rm -rf "$runs"' EXIT
+    now() { perl -MTime::HiRes=time -e 'printf "%.1f", time'; }
+    started=$(now)
+    for selection in "app -p voicepuncher --tests" "command-spotting -p voicepuncher-command-spotting" "e2e-test -p voicepuncher-e2e-test --lib"; do
+        set -- $selection
+        dir=$1
+        shift
+        cargo test "$@" --no-run 2>"$runs/build.log" || { cat "$runs/build.log" >&2; exit 101; }
+        grep -v '^ *Executable ' "$runs/build.log" >&2 || true
+        sed -n "s|^ *Executable \(.*\) (\(.*\))$|$dir$tab\1$tab\2|p" "$runs/build.log" >>"$runs/binaries"
+    done
+    total=0
+    while IFS=$'\t' read -r dir source executable; do
+        total=$((total + 1))
+        (
+            cd "$dir"
+            t0=$(now)
+            code=0
+            "$root/$executable" >"$runs/$total.out" 2>&1 || code=$?
+            echo "$code $(perl -e "printf '%.1f', $(now) - $t0")" >"$runs/$total.tmp"
+            mv "$runs/$total.tmp" "$runs/$total.done"
+        ) &
+    done <"$runs/binaries"
+    finished=0
+    failed=()
+    while [ "$finished" -lt "$total" ]; do
+        for n in $(seq 1 "$total"); do
+            [ -f "$runs/$n.done" ] && [ ! -f "$runs/$n.shown" ] || continue
+            touch "$runs/$n.shown"
+            finished=$((finished + 1))
+            read -r code secs <"$runs/$n.done"
+            IFS=$'\t' read -r dir source executable <<<"$(sed -n "${n}p" "$runs/binaries")"
+            printf '\n     Running %s (%s)\n' "$source" "$executable"
+            cat "$runs/$n.out"
+            echo "$secs $dir/$source" >>"$runs/times"
+            [ "$code" = 0 ] || failed+=("$dir/$source")
+        done
+        sleep 0.2
+    done
+    printf '\nslowest test binaries:\n'
+    sort -rn "$runs/times" | head -5 | while read -r secs name; do printf '  %6ss  %s\n' "$secs" "$name"; done
+    elapsed=$(perl -e "printf '%.0f', $(now) - $started")
+    if [ "${#failed[@]}" -gt 0 ]; then
+        echo "error: ${#failed[@]} target(s) failed:"
+        printf '    `%s`\n' "${failed[@]}"
+        exit 101
+    fi
+    echo "✓ $total test binaries passed in ${elapsed} s"
 
 # Run the app for real use with one command: download missing models, restart the three services (the command spotting service is rebuilt), build and start the app with voice control; extra arguments go to the app (`just run --no-llm`)
 run *args: models
@@ -89,7 +177,7 @@ build:
 _build:
     cargo build --release
 
-# E2E on real models: smoke + chunk seams + WER accuracy on 100 samples + refinement evaluation (~9 min)
+# E2E on real models: smoke + chunk seams + WER accuracy on 100 samples + refinement evaluation (~8 min)
 e2e:
     @{{locked}} _e2e
 
@@ -105,11 +193,11 @@ _e2e-smoke: _require-models _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
-    cargo test -p voicepuncher --test transcription_openai_it --test textrefinement_openai_it --test commandspotting_websocket_it --test voice_samples_it --test voice_forms_it --release -- --nocapture
-    cargo test -p voicepuncher-command-spotting --test placed_commands_it --release
-    cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags '@smoke and not @wip'
+    cargo test -p voicepuncher --test transcription_openai_it --test textrefinement_openai_it --test commandspotting_websocket_it --test voice_samples_it --test voice_forms_it -- --nocapture
+    cargo test -p voicepuncher-command-spotting --test placed_commands_it
+    cargo test -p voicepuncher-e2e-test --test cucumber_e2e -- --tags '@smoke and not @wip'
 
-# WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 % (~20 s)
+# WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 %, and no command in 20 recordings of ordinary speech (~1 min)
 e2e-quick:
     @{{locked}} _e2e-quick
 
@@ -119,9 +207,9 @@ _e2e-quick: _require-models _require-corpus _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" VOICEPUNCHER_BENCH_LIMIT=10 \
-        cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags '@accuracy and not @wip'
+        cargo test -p voicepuncher-e2e-test --test cucumber_e2e -- --tags '@accuracy and not @wip'
 
-# Text refinement on the live services: dictated commands, normalization, evaluation per category (@refinement) (~1 min)
+# Text refinement on the live services: dictated commands, normalization, evaluation per category (@refinement) (~30 s)
 refine-eval:
     @{{locked}} _refine-eval
 
@@ -131,9 +219,9 @@ _refine-eval: _require-models _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" \
-        cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags '@refinement and not @wip'
+        cargo test -p voicepuncher-e2e-test --test cucumber_e2e -- --tags '@refinement and not @wip'
 
-# Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words (~5 min)
+# Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words (~2.5 min)
 e2e-seams:
     @{{locked}} _e2e-seams
 
@@ -143,10 +231,10 @@ _e2e-seams: _require-models _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}"
-    cargo test -p voicepuncher --test chunked_transcription_it --release -- --nocapture
-    cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags '@seams and not @wip'
+    cargo test -p voicepuncher --test chunked_transcription_it -- --nocapture
+    cargo test -p voicepuncher-e2e-test --test cucumber_e2e -- --tags '@seams and not @wip'
 
-# WER accuracy on a fixed sample of 100 recordings (50 per language), two at a time — fails if mean WER > 30 % (~2 min)
+# WER accuracy on a fixed sample of 100 recordings (50 per language), two at a time — fails if mean WER > 30 %, and no command in 20 recordings of ordinary speech (~2.5 min)
 e2e-bench:
     @{{locked}} _e2e-bench
 
@@ -156,7 +244,7 @@ _e2e-bench: _require-models _require-corpus _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" \
-        cargo test -p voicepuncher-e2e-test --test cucumber_e2e --release -- --tags '@accuracy and not @wip'
+        cargo test -p voicepuncher-e2e-test --test cucumber_e2e -- --tags '@accuracy and not @wip'
 
 # Manual: @real_keyboard scenarios drive the real hotkey + paste — needs Accessibility and Input Monitoring for the terminal, a GUI session, hands off the keyboard
 test-real-keyboard:
@@ -190,10 +278,12 @@ _release: _require-release-head _test _build
 
 # ── Services ── local processes the app talks to over loopback ────────────────
 
-# Start the services for an E2E recipe; a service that already runs (yours) is reused and left running
+# Start the services for an E2E recipe; a service that already runs (yours) is reused and left running.
+# Inside check and full-check, which hold the services for all their stages, it does nothing
 _start-model-servers-for-e2e:
     #!/usr/bin/env bash
     set -euo pipefail
+    [[ -z "${VOICEPUNCHER_E2E_SERVICES_HELD:-}" ]] || exit 0
     mkdir -p "{{services_run_dir}}"
     for service in whisper-server:{{stt_port}} llama-server:{{llm_port}} voicepuncher-command-spotting:{{kws_port}}; do
         if nc -z 127.0.0.1 "${service#*:}" >/dev/null 2>&1; then
@@ -204,10 +294,11 @@ _start-model-servers-for-e2e:
     done
     {{just_executable()}} start-model-servers
 
-# Stop the services that _start-model-servers-for-e2e started in this run
+# Stop the services that _start-model-servers-for-e2e started in this run (nothing while check or full-check holds them)
 _stop-model-servers-for-e2e:
     #!/usr/bin/env bash
     set -euo pipefail
+    [[ -z "${VOICEPUNCHER_E2E_SERVICES_HELD:-}" ]] || exit 0
     for service in whisper-server:{{stt_port}} llama-server:{{llm_port}} voicepuncher-command-spotting:{{kws_port}}; do
         marker="{{services_run_dir}}/${service%%:*}-${service#*:}.e2e"
         if [[ -f "$marker" ]]; then

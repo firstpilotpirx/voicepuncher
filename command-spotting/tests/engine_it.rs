@@ -1,9 +1,10 @@
 //! The real keyword spotting model and voice activity detector on speech synthesized with
 //! macOS `say`. Gated on the model paths the justfile exports.
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, OnceLock};
+
+mod common;
 
 use voicepuncher_command_spotting::engine::{Engine, EngineCfg, SAMPLE_RATE};
 use voicepuncher_command_spotting::protocol::ServerEvent;
@@ -68,39 +69,21 @@ fn engine_cfg(transcription_url: Option<String>) -> Option<EngineCfg> {
 }
 
 /// `words` spoken by `say`, with a pause of silence before and after.
-fn spoken(words: &str, dir: &Path) -> Vec<f32> {
-    let wav = dir.join("speech.wav");
-    let status = Command::new("say")
-        .args([
-            "-o",
-            wav.to_str().unwrap(),
-            "--data-format=LEI16@16000",
-            words,
-        ])
-        .status()
-        .expect("say runs");
-    assert!(status.success());
+fn spoken(words: &str) -> Vec<f32> {
     let pause = vec![0.0f32; (PAUSE_SECS * SAMPLE_RATE as f32) as usize];
-    let mut reader = hound::WavReader::open(&wav).unwrap();
-    let speech: Vec<f32> = reader
-        .samples::<i16>()
-        .map(|s| s.unwrap() as f32 / i16::MAX as f32)
-        .collect();
     pause
         .iter()
         .copied()
-        .chain(speech)
+        .chain(common::spoken_by(None, words))
         .chain(pause.iter().copied())
         .collect()
 }
 
 fn events_for(engine: &Engine, words: &str) -> Vec<ServerEvent> {
-    let dir = std::env::temp_dir().join(format!("kws-it-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
     let mut session = engine.session().unwrap();
     let phrases: Vec<String> = ALL_PHRASES.iter().map(|p| (*p).to_owned()).collect();
     session.listen_for(&phrases).unwrap();
-    let audio = spoken(words, &dir);
+    let audio = spoken(words);
     audio
         .chunks(FRAME_SAMPLES)
         .flat_map(|frame| session.accept(frame))
@@ -202,13 +185,11 @@ fn should_report_the_phrase_within_the_bounds_of_its_speech() {
 fn should_report_the_phrase_within_its_speech_after_a_long_silence() {
     let Some(engine) = engine() else { return };
     // Given
-    let dir = std::env::temp_dir().join(format!("kws-it-long-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
     let mut session = engine.session().unwrap();
     let phrases: Vec<String> = ALL_PHRASES.iter().map(|p| (*p).to_owned()).collect();
     session.listen_for(&phrases).unwrap();
     let mut audio = vec![0.0f32; (LONG_SILENCE_SECS * SAMPLE_RATE as f32) as usize];
-    audio.extend(spoken("start dictation", &dir));
+    audio.extend(spoken("start dictation"));
     // When
     let events: Vec<ServerEvent> = audio
         .chunks(FRAME_SAMPLES)
@@ -222,8 +203,6 @@ fn should_report_the_phrase_within_its_speech_after_a_long_silence() {
 fn should_count_event_times_from_the_first_sample_across_a_phrase_change() {
     let Some(engine) = engine() else { return };
     // Given
-    let dir = std::env::temp_dir().join(format!("kws-it-clock-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
     let mut session = engine.session().unwrap();
     session.listen_for(&["stop dictation".to_owned()]).unwrap();
     let lead_in = vec![0.0f32; (LEAD_IN_SECS * SAMPLE_RATE as f32) as usize];
@@ -232,7 +211,7 @@ fn should_count_event_times_from_the_first_sample_across_a_phrase_change() {
     }
     // When
     session.listen_for(&["press enter".to_owned()]).unwrap();
-    let events: Vec<ServerEvent> = spoken("press enter", &dir)
+    let events: Vec<ServerEvent> = spoken("press enter")
         .chunks(FRAME_SAMPLES)
         .flat_map(|frame| session.accept(frame))
         .collect();
@@ -290,17 +269,15 @@ fn phrases_in_segments(events: &[ServerEvent]) -> Vec<PhraseInSegment> {
 fn should_spot_commands_said_one_after_another_in_one_long_stream() {
     let Some(engine) = engine() else { return };
     // Given
-    let dir = std::env::temp_dir().join(format!("kws-it-many-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
     let mut session = engine.session().unwrap();
     let phrases: Vec<String> = ALL_PHRASES.iter().map(|p| (*p).to_owned()).collect();
     session.listen_for(&phrases).unwrap();
     let mut audio = silence(5.0);
-    audio.extend(spoken("start dictation", &dir));
+    audio.extend(spoken("start dictation"));
     audio.extend(silence(10.0));
-    audio.extend(spoken("press enter", &dir));
+    audio.extend(spoken("press enter"));
     audio.extend(silence(20.0));
-    audio.extend(spoken("clear all text", &dir));
+    audio.extend(spoken("clear all text"));
     // When
     let events: Vec<ServerEvent> = audio
         .chunks(FRAME_SAMPLES)
@@ -327,9 +304,7 @@ fn should_spot_commands_said_one_after_another_in_one_long_stream() {
 fn should_place_the_phrase_alike_whether_the_audio_comes_in_small_or_large_messages() {
     let Some(engine) = engine() else { return };
     // Given
-    let dir = std::env::temp_dir().join(format!("kws-it-msg-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let audio = spoken("press enter", &dir);
+    let audio = spoken("press enter");
     let phrases: Vec<String> = ALL_PHRASES.iter().map(|p| (*p).to_owned()).collect();
     // When the whole utterance arrives in one message
     let mut session = engine.session().unwrap();
@@ -371,14 +346,9 @@ const ROOM_NOISE_RMS: f32 = 0.01;
 #[test]
 fn should_spot_quiet_speech() {
     let Some(engine) = engine() else { return };
-    let dir = std::env::temp_dir().join(format!("kws-it-quiet-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
     for phrase in ALL_PHRASES {
         // Given
-        let audio: Vec<f32> = spoken(phrase, &dir)
-            .iter()
-            .map(|s| s * QUIET_GAIN)
-            .collect();
+        let audio: Vec<f32> = spoken(phrase).iter().map(|s| s * QUIET_GAIN).collect();
         // When
         let events = spotted_in(&engine, &audio);
         // Then
@@ -390,12 +360,10 @@ fn should_spot_quiet_speech() {
 #[test]
 fn should_spot_speech_over_room_noise() {
     let Some(engine) = engine() else { return };
-    let dir = std::env::temp_dir().join(format!("kws-it-noise-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
     for phrase in ALL_PHRASES {
         // Given
         let mut audio = silence(LONG_SILENCE_SECS);
-        audio.extend(spoken(phrase, &dir));
+        audio.extend(spoken(phrase));
         let room = noise(audio.len(), ROOM_NOISE_RMS);
         let heard: Vec<f32> = audio.iter().zip(&room).map(|(s, n)| s + n).collect();
         // When

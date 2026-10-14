@@ -180,6 +180,9 @@ Feature: voice-control
       When someone says "Enter the building on the left" in one breath while no dictation runs
       Then no command takes effect
 
+  # Real-time sessions, like the hands-free ones below: @serial keeps the other scenarios'
+  # requests from queuing ahead of their answers.
+  @serial
   Rule: A dictation started by voice holds the speech right after the command
 
     @smoke
@@ -268,6 +271,9 @@ Feature: voice-control
       When someone says "We meet on Friday", takes a short breath and says "stop dictation" while dictating
       Then the commands "stop dictation" take effect in order
 
+  # The sessions run in real time and wait for the speech recognition service's answers;
+  # @serial keeps the other scenarios' requests from queuing ahead of them.
+  @serial
   Rule: A whole hands-free session runs as said
 
     @smoke

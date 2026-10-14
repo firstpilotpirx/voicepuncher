@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use voicepuncher::core::domain::VoiceCommand;
+use voicepuncher_e2e_test::concurrency::map_concurrently;
 use voicepuncher_e2e_test::speech::read_wav;
 use voicepuncher_e2e_test::voice_commands::carried_out_by_app;
 
@@ -20,6 +21,8 @@ const MARGIN_SECS: f32 = 0.3;
 /// Silence before a stretch, and after it so its utterance ends.
 const LEAD_SILENCE_SECS: f32 = 1.0;
 const TRAIL_SILENCE_SECS: f32 = 1.5;
+/// Forms checked at once, each on its own connection to the service.
+const CONCURRENT_FORMS: usize = 4;
 
 #[derive(Debug, Deserialize)]
 struct Form {
@@ -114,18 +117,27 @@ fn should_carry_out_every_recorded_way_of_saying_the_commands() {
     let Some((url, sessions)) = sessions() else {
         return;
     };
+    let checked: Vec<(&Session, &Form)> = sessions
+        .iter()
+        .flat_map(|session| {
+            session
+                .forms
+                .iter()
+                .filter(|f| !f.unclear)
+                .map(move |form| (session, form))
+        })
+        .collect();
+    let carried_out = map_concurrently(&checked, CONCURRENT_FORMS, |(session, form)| {
+        heard(&url, session, form)
+    });
+    let counted = checked.len();
     let mut wrong = Vec::new();
-    let mut counted = 0;
-    for session in &sessions {
-        for form in session.forms.iter().filter(|f| !f.unclear) {
-            counted += 1;
-            let commands = heard(&url, session, form);
-            if commands != form.commands {
-                wrong.push(format!(
-                    "{} at {:.2}s, {}, said {:?} ({}): carried out {commands:?}, expected {:?}",
-                    session.name, form.start, form.state, form.said, form.note, form.commands
-                ));
-            }
+    for ((session, form), commands) in checked.iter().zip(carried_out) {
+        if commands != form.commands {
+            wrong.push(format!(
+                "{} at {:.2}s, {}, said {:?} ({}): carried out {commands:?}, expected {:?}",
+                session.name, form.start, form.state, form.said, form.note, form.commands
+            ));
         }
     }
     assert!(counted > 0, "no labelled forms found");

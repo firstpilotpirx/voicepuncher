@@ -8,6 +8,7 @@ use voicepuncher::config::RefinementCfg;
 use voicepuncher::core::application::text_refiner::refine_or_raw;
 use voicepuncher::core::domain::RawTranscript;
 
+use crate::steps::off_thread;
 use crate::E2eWorld;
 
 const UNPUNCTUATED_RU: &str = "я думаю что это хорошая идея но надо обсудить с командой";
@@ -53,30 +54,45 @@ pub fn live_refiner(world: &E2eWorld) -> Result<OpenAiTextRefiner> {
 }
 
 #[when("the user dictates a sentence that the speech recognition service returns without punctuation or capitals")]
-fn dictate_unpunctuated(world: &mut E2eWorld) -> Result<()> {
-    refine_with_live_service(world, UNPUNCTUATED_RU)
+async fn dictate_unpunctuated(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        refine_with_live_service(world, UNPUNCTUATED_RU)
+    })
+    .await
 }
 
 #[when("the user dictates a sentence with hesitation sounds in it")]
-fn dictate_with_fillers(world: &mut E2eWorld) -> Result<()> {
-    refine_with_live_service(world, WITH_FILLERS_EN)
+async fn dictate_with_fillers(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        refine_with_live_service(world, WITH_FILLERS_EN)
+    })
+    .await
 }
 
 #[when("the user dictates in Russian a sentence naming a tool whose name the speech recognition service wrote in Cyrillic")]
-fn dictate_cyrillic_term(world: &mut E2eWorld) -> Result<()> {
-    refine_with_live_service(world, CYRILLIC_TERM_RU)
+async fn dictate_cyrillic_term(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        refine_with_live_service(world, CYRILLIC_TERM_RU)
+    })
+    .await
 }
 
 #[when("the user dictates a Russian sentence with English words in it")]
-fn dictate_mixed(world: &mut E2eWorld) -> Result<()> {
-    refine_with_live_service(world, MIXED_RU_EN)
+async fn dictate_mixed(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        refine_with_live_service(world, MIXED_RU_EN)
+    })
+    .await
 }
 
 #[when(
     "the user dictates in Russian a sentence whose verbs do not agree with their subject in gender"
 )]
-fn dictate_disagreeing_verbs(world: &mut E2eWorld) -> Result<()> {
-    refine_with_live_service(world, DISAGREEING_VERBS_RU)
+async fn dictate_disagreeing_verbs(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        refine_with_live_service(world, DISAGREEING_VERBS_RU)
+    })
+    .await
 }
 
 #[then("the pasted text starts with a capital letter, separates its clauses with punctuation and ends with a sentence mark")]

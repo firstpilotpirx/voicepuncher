@@ -88,8 +88,8 @@ All checks are `just` recipes (see `justfile`; no other scripts). A change is "v
 
 | When | Command | What it runs |
 |---|---|---|
-| After every edit | `just test` (~1 min) | unit + architecture + integration tests |
-| After every task, before every push | `just check` (~2 min) | fmt, clippy `-D warnings`, `test`, release build, E2E smoke, WER accuracy on 10 samples |
+| After every edit | `just test` (~20 s) | unit + architecture + integration tests |
+| After every task, before every push | `just check` (~6 min) | fmt, clippy `-D warnings`, `test`, release build, E2E smoke, WER accuracy on 10 samples |
 | Before merging a branch, before a release | `just full-check` (~10 min) | `cargo clean` + everything in `check`, plus the chunk seams (`e2e-seams`: seam sweep and seam matrix), with WER accuracy on a fixed sample of 100 recordings |
 | Before merging a change to hotkey, recording, overlay, paste, permissions | manual run by the user | `README.md` § Release checklist |
 
@@ -99,6 +99,7 @@ Build inputs are `app/`, `command-spotting/`, `e2e-test/`, `Cargo.toml`, `Cargo.
 
 - **Models and corpus** are auto-discovered by the `justfile` (largest model in `~/.voicepuncher/` or `~/.voicepuncher/models/`; corpus in `e2e-test/corpus/`). The corpus is gitignored, so in a worktree set `VOICEPUNCHER_BENCH_CORPUS` to the main checkout's `e2e-test/corpus`.
 - **Local services:** the E2E recipes start `whisper-server`, `llama-server` and `voicepuncher-command-spotting` (`just start-model-servers`) and stop what they started afterwards; `just test` needs no service. The services are shared across checkouts on ports 8081, 8080 and 8082; every check, test and benchmark recipe waits for the machine-wide test lock (`~/.claude/rules-custom/machine-lock.md`), so runs from parallel checkouts queue instead of colliding. E2E business scenarios synthesize speech with macOS `say`.
+- **Synthesized speech is cached** in `~/.cache/voicepuncher/speech/` (or `VOICEPUNCHER_SPEECH_CACHE`), shared by every checkout and keyed by macOS build, voice, rate, audio format and text: `say` runs once per phrase per machine. Delete the directory to synthesize everything again.
 - **`full-check` runs `cargo clean`** and deletes `target/release/voicepuncher`, which the user may be running. In the main checkout, ask first; in a worktree it only cleans that worktree's `target/`.
 - **The user's voice:** recordings of the user's own voice commands live in `~/.voicepuncher/voice-samples/` (never committed; README § Testing); `voice_samples_it` and the `@voice_samples` E2E scenarios run on them when they exist. When voice recognition fails for the user, ask for a new recording session there and add it rather than tuning on synthesized speech alone.
 - **The manual run cannot happen in an agent sandbox**: it lacks macOS TCC permissions (`permission denied for accessibility`). Ask the user to run `cargo run --release -p voicepuncher` (with and without `--no-llm` when refinement changed) and paste the log; `just start-model-servers` must run first. A healthy cycle logs `pipeline recv Pressed` → `chunk 1 | … transcribed` → `pasting…` → `stop→paste: … total=…ms`.

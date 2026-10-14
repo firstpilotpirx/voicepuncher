@@ -22,6 +22,7 @@ use voicepuncher::core::domain::{
 };
 use voicepuncher_e2e_test::voice_commands::spoken_with_pauses;
 
+use crate::steps::off_thread;
 use crate::E2eWorld;
 
 const SENTENCE: &str = "Meeting moved to Friday.";
@@ -135,16 +136,19 @@ fn listening_on(world: &mut E2eWorld) -> Result<()> {
 #[when(
     "the user says \"start dictation\", a sentence, \"stop dictation\" and \"press enter\", each command on its own"
 )]
-fn dictate_and_send(world: &mut E2eWorld) -> Result<()> {
-    let hands_free = world.hands_free.as_ref().context("listening is not on")?;
-    hands_free.say("start dictation")?;
-    hands_free.saw(|e| *e == Event::RecordingStarted);
-    hands_free.say(SENTENCE)?;
-    hands_free.say("stop dictation")?;
-    hands_free.saw(|e| matches!(e, Event::Pasted(_)));
-    hands_free.say("press enter")?;
-    hands_free.saw(|e| *e == Event::ReturnPressed);
-    Ok(())
+async fn dictate_and_send(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        let hands_free = world.hands_free.as_ref().context("listening is not on")?;
+        hands_free.say("start dictation")?;
+        hands_free.saw(|e| *e == Event::RecordingStarted);
+        hands_free.say(SENTENCE)?;
+        hands_free.say("stop dictation")?;
+        hands_free.saw(|e| matches!(e, Event::Pasted(_)));
+        hands_free.say("press enter")?;
+        hands_free.saw(|e| *e == Event::ReturnPressed);
+        Ok(())
+    })
+    .await
 }
 
 #[then("the sentence is pasted into the focused app")]

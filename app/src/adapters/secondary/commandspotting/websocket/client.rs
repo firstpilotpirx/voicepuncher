@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, bail, Context, Result};
 use serde::Deserialize;
 use tungstenite::stream::MaybeTlsStream;
-use tungstenite::{Message, WebSocket};
+use tungstenite::{Bytes, Message, WebSocket};
 
 use crate::core::domain::{CommandPlacement, SpottingEvent, VoiceCommand};
 
@@ -57,6 +57,8 @@ pub struct SpottingClient {
     audio_start: Instant,
     last_answer: Instant,
     last_ping: Instant,
+    /// Waits for the service's answer so far, numbering the ping of each.
+    answer_waits: u64,
 }
 
 impl SpottingClient {
@@ -77,6 +79,7 @@ impl SpottingClient {
             audio_start,
             last_answer: now,
             last_ping: now,
+            answer_waits: 0,
         })
     }
 
@@ -103,10 +106,7 @@ impl SpottingClient {
     pub fn keep_alive(&mut self) -> Result<()> {
         let silent = self.last_answer.elapsed();
         if silent > SILENCE_LIMIT {
-            bail!(
-                "command spotting service stopped answering ({}s without a reply)",
-                silent.as_secs()
-            );
+            return Err(stopped_answering(silent));
         }
         if self.last_ping.elapsed() >= PING_EVERY {
             self.socket.send(Message::Ping(Default::default()))?;
@@ -119,18 +119,32 @@ impl SpottingClient {
     /// service is gone.
     pub fn read_events(&mut self) -> Result<Vec<SpottingEvent>> {
         let mut events = Vec::new();
-        loop {
-            let message = self.socket.read();
-            if message.is_ok() {
-                self.last_answer = Instant::now();
+        while let Some(message) = self.next_message()? {
+            if let Message::Text(text) = message {
+                events.extend(self.parse(text.as_str()));
             }
-            match message {
-                Ok(Message::Text(text)) => events.extend(self.parse(text.as_str())),
-                Ok(Message::Close(frame)) => bail!("the service closed the connection: {frame:?}"),
-                Ok(_) => {}
-                Err(tungstenite::Error::Io(e)) if is_timeout(&e) => return Ok(events),
-                Err(e) => {
-                    return Err(anyhow!(e).context("command spotting service connection lost"))
+        }
+        Ok(events)
+    }
+
+    /// Every event for the audio sent so far, once the service has answered all of it: the
+    /// service answers a ping only after the events for every message sent before it.
+    pub fn events_for_sent_audio(&mut self) -> Result<Vec<SpottingEvent>> {
+        self.answer_waits += 1;
+        let token = Bytes::from(self.answer_waits.to_le_bytes().to_vec());
+        self.socket.send(Message::Ping(token.clone()))?;
+        let asked = Instant::now();
+        let mut events = Vec::new();
+        loop {
+            match self.next_message()? {
+                Some(Message::Text(text)) => events.extend(self.parse(text.as_str())),
+                Some(Message::Pong(payload)) if payload == token => return Ok(events),
+                Some(_) => {}
+                None => {
+                    let silent = self.last_answer.max(asked).elapsed();
+                    if silent > SILENCE_LIMIT {
+                        return Err(stopped_answering(silent));
+                    }
                 }
             }
         }
@@ -139,6 +153,20 @@ impl SpottingClient {
     pub fn close(mut self) {
         let _ = self.socket.close(None);
         let _ = self.socket.flush();
+    }
+
+    /// The next message of the service, or `None` when none arrived within the read wait;
+    /// an error means the service is gone.
+    fn next_message(&mut self) -> Result<Option<Message>> {
+        match self.socket.read() {
+            Ok(Message::Close(frame)) => bail!("the service closed the connection: {frame:?}"),
+            Ok(message) => {
+                self.last_answer = Instant::now();
+                Ok(Some(message))
+            }
+            Err(tungstenite::Error::Io(e)) if is_timeout(&e) => Ok(None),
+            Err(e) => Err(anyhow!(e).context("command spotting service connection lost")),
+        }
     }
 
     fn parse(&self, text: &str) -> Option<SpottingEvent> {
@@ -189,6 +217,13 @@ fn to_spotting_event(event: ServiceEvent, audio_start: Instant) -> SpottingEvent
 pub fn probe(url: &str) -> Result<()> {
     SpottingClient::connect(url, Instant::now())?.close();
     Ok(())
+}
+
+fn stopped_answering(silent: Duration) -> anyhow::Error {
+    anyhow!(
+        "command spotting service stopped answering ({}s without a reply)",
+        silent.as_secs()
+    )
 }
 
 fn is_timeout(e: &std::io::Error) -> bool {

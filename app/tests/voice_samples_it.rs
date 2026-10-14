@@ -6,18 +6,22 @@
 //! when the service runs. Without either the test is skipped.
 
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use serde::Deserialize;
 
 use voicepuncher::adapters::secondary::commandspotting::websocket::client::SpottingClient;
 use voicepuncher::core::domain::{SpokenCommand, VoiceCommand, VoiceCommandRecognizer};
+use voicepuncher_e2e_test::concurrency::map_concurrently;
 use voicepuncher_e2e_test::speech::read_wav;
 
 const SAMPLE_RATE_HZ: f32 = 16_000.0;
 const FRAME_SAMPLES: usize = 1_600;
-/// How long the service may stay quiet before every event of a stretch has arrived.
-const QUIET: Duration = Duration::from_millis(1_500);
+/// 2 s of audio: sent before waiting for the service to answer it, so the audio in flight
+/// stays far below what the socket holds.
+const SAMPLES_BETWEEN_WAITS: usize = 20 * FRAME_SAMPLES;
+/// Sessions heard at once, each on its own connection to the service.
+const CONCURRENT_SESSIONS: usize = 4;
 
 #[derive(Debug, Deserialize)]
 struct Utterance {
@@ -102,17 +106,15 @@ fn recognized_in(url: &str, session: &Session) -> Vec<(f32, VoiceCommand)> {
             .utterances
             .get(i + 1)
             .map_or(session.audio.len(), |next| sample_at(next.start));
-        for frame in session.audio[sent..until.max(sent)].chunks(FRAME_SAMPLES) {
-            client.send_audio(frame).unwrap();
-        }
-        sent = until.max(sent);
-        let mut last_event = Instant::now();
-        while last_event.elapsed() < QUIET {
-            for event in client.read_events().unwrap() {
-                last_event = Instant::now();
+        for stretch in session.audio[sent..until.max(sent)].chunks(SAMPLES_BETWEEN_WAITS) {
+            for frame in stretch.chunks(FRAME_SAMPLES) {
+                client.send_audio(frame).unwrap();
+            }
+            for event in client.events_for_sent_audio().unwrap() {
                 recognized.extend(recognizer.feed(event));
             }
         }
+        sent = until.max(sent);
     }
     client.close();
     recognized
@@ -173,10 +175,13 @@ fn should_recognize_every_recorded_command_of_the_user() {
     let mut misses = Vec::new();
     let mut extras = Vec::new();
     let mut counted = 0;
-    for session in &sessions {
+    let recognized = map_concurrently(&sessions, CONCURRENT_SESSIONS, |session| {
+        recognized_in(&url, session)
+    });
+    for (session, recognized) in sessions.iter().zip(recognized) {
         let groups = groups(&session.utterances);
         let mut heard = vec![0usize; groups.len()];
-        for (at, command) in recognized_in(&url, session) {
+        for (at, command) in recognized {
             let nearest = groups
                 .iter()
                 .enumerate()

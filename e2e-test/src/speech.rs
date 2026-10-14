@@ -2,9 +2,10 @@
 //! transcript of it: phrases repeated at a chunk seam, and spoken words that went missing.
 
 use std::path::Path;
-use std::process::Command;
 
 use anyhow::{bail, Context, Result};
+
+use crate::speech_cache::{synthesized, SayRequest};
 
 pub const SAMPLE_RATE_HZ: u32 = 16_000;
 
@@ -151,20 +152,11 @@ fn after_lead_in(speech: &[i16], condition: Condition, lead_in_secs: f32) -> (Ve
 
 /// `lang`'s paragraph spoken by macOS `say` as `condition` asks, 16 kHz mono.
 fn say(lang: Lang, condition: Condition) -> Result<Vec<i16>> {
-    let dir = tempfile::tempdir()?;
-    let path = dir.path().join("speech.wav");
-    let status = Command::new("say")
-        .args(["-v", lang.voice(), "-r"])
-        .arg(condition.words_per_minute().to_string())
-        .args(["--file-format=WAVE", "--data-format=LEI16@16000", "-o"])
-        .arg(&path)
-        .arg(condition.say_input(lang.text()))
-        .status()
-        .context("failed to run macOS 'say'")?;
-    if !status.success() {
-        bail!("'say' failed to synthesize speech ({status})");
-    }
-    read_wav(&path)
+    synthesized(&SayRequest {
+        voice: Some(lang.voice()),
+        words_per_minute: Some(condition.words_per_minute()),
+        text: &condition.say_input(lang.text()),
+    })
 }
 
 pub fn read_wav(path: &Path) -> Result<Vec<i16>> {

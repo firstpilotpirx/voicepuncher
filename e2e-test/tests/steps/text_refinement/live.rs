@@ -6,6 +6,7 @@ use cucumber::{given, then, when};
 
 use super::{expect_success, run_app, voiced_speech_recording, RUSSIAN_VOICE};
 use crate::steps::file_transcription::env;
+use crate::steps::off_thread;
 use crate::E2eWorld;
 use voicepuncher_e2e_test::wer::wer;
 
@@ -28,15 +29,21 @@ fn live_service_with_defaults(world: &mut E2eWorld) -> Result<()> {
 }
 
 #[when("the user dictates in Russian a request to translate the text into English")]
-fn dictate_russian_translation_request(world: &mut E2eWorld) -> Result<()> {
-    let recording = voiced_speech_recording(world, RUSSIAN_VOICE, TRANSLATION_REQUEST_RU)?;
-    run_app(world, &recording, true)
+async fn dictate_russian_translation_request(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        let recording = voiced_speech_recording(world, RUSSIAN_VOICE, TRANSLATION_REQUEST_RU)?;
+        run_app(world, &recording, true)
+    })
+    .await
 }
 
 #[when("the user dictates an order to ignore all previous instructions and explain a term instead")]
-fn dictate_ignore_rules_order(world: &mut E2eWorld) -> Result<()> {
-    let recording = voiced_speech_recording(world, RUSSIAN_VOICE, IGNORE_RULES_ORDER_RU)?;
-    run_app(world, &recording, true)
+async fn dictate_ignore_rules_order(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        let recording = voiced_speech_recording(world, RUSSIAN_VOICE, IGNORE_RULES_ORDER_RU)?;
+        run_app(world, &recording, true)
+    })
+    .await
 }
 
 #[then(

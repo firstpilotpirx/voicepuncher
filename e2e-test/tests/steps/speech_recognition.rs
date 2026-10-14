@@ -14,6 +14,7 @@ use voicepuncher_e2e_test::speech::{
 use crate::steps::file_transcription::{
     env, sut_bin, write_silence_wav, NO_CONFIG, STARTUP_FAILURE_EXIT_CODE,
 };
+use crate::steps::off_thread;
 use crate::E2eWorld;
 
 const MAX_STARTUP_FAILURE: Duration = Duration::from_secs(3);
@@ -76,26 +77,29 @@ fn auto_language(world: &mut E2eWorld) -> Result<()> {
 }
 
 #[when("the user starts the app")]
-fn start_app(world: &mut E2eWorld) -> Result<()> {
-    let recording = world.workdir()?.join("silence_1s.wav");
-    write_silence_wav(&recording, 1)?;
-    let mut cmd = Command::new(sut_bin());
-    match &world.config {
-        Some(config) => cmd.arg("--config").arg(config),
-        None => cmd.args(["--config", NO_CONFIG]),
-    };
-    cmd.arg("--input-file").arg(&recording).arg("--no-llm");
-    if let Some(url) = &world.transcription_url {
-        cmd.args(["--transcription-url", url]);
-    }
-    let started = Instant::now();
-    let output = cmd
-        .output()
-        .with_context(|| format!("failed to spawn {:?}", cmd.get_program()))?;
-    world.elapsed = Some(started.elapsed());
-    world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-    world.exit_status = Some(output.status);
-    Ok(())
+async fn start_app(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        let recording = world.workdir()?.join("silence_1s.wav");
+        write_silence_wav(&recording, 1)?;
+        let mut cmd = Command::new(sut_bin());
+        match &world.config {
+            Some(config) => cmd.arg("--config").arg(config),
+            None => cmd.args(["--config", NO_CONFIG]),
+        };
+        cmd.arg("--input-file").arg(&recording).arg("--no-llm");
+        if let Some(url) = &world.transcription_url {
+            cmd.args(["--transcription-url", url]);
+        }
+        let started = Instant::now();
+        let output = cmd
+            .output()
+            .with_context(|| format!("failed to spawn {:?}", cmd.get_program()))?;
+        world.elapsed = Some(started.elapsed());
+        world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        world.exit_status = Some(output.status);
+        Ok(())
+    })
+    .await
 }
 
 #[then("the app exits before recording anything and explains that only a local service is allowed")]

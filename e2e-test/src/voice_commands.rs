@@ -1,25 +1,23 @@
 //! Voice control phrases spoken by macOS `say` and streamed to the command spotting service
 //! as the app streams the microphone while listening.
 
-use std::process::Command;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-use anyhow::{bail, Context, Result};
+use anyhow::Result;
 
 use voicepuncher::adapters::secondary::commandspotting::websocket::client::SpottingClient;
 use voicepuncher::core::domain::{SpottingEvent, VoiceCommand, VoiceCommandRecognizer};
 
-use crate::speech::read_wav;
+use crate::speech_cache::{synthesized, SayRequest};
 
 const SAMPLE_RATE_HZ: f32 = 16_000.0;
 /// The silence before and after the words: the pause around a command.
 const PAUSE_SECS: f32 = 1.0;
 /// 100 ms of audio per message, as the app sends it.
 const FRAME_SAMPLES: usize = 1_600;
-/// How long the service may stay quiet before every event is taken to have arrived: the
-/// scenarios run at once and share one speech recognition service, so an answer may wait
-/// for the others' requests.
-const QUIET_SECS: Duration = Duration::from_secs(4);
+/// 2 s of audio: sent before waiting for the service to answer it, so the audio in flight
+/// stays far below what the socket holds and a send never blocks on a busy service.
+const SAMPLES_BETWEEN_WAITS: usize = 20 * FRAME_SAMPLES;
 
 /// English `words` spoken by `say`, 16 kHz mono, with a pause of silence before and after.
 pub fn spoken_with_pauses(words: &str) -> Result<Vec<f32>> {
@@ -32,25 +30,14 @@ pub fn spoken_by(voice: &str, words: &str) -> Result<Vec<f32>> {
 }
 
 fn spoken(voice: Option<&str>, words: &str) -> Result<Vec<f32>> {
-    let dir = tempfile::tempdir()?;
-    let path = dir.path().join("words.wav");
-    let mut say = Command::new("say");
-    if let Some(voice) = voice {
-        say.args(["-v", voice]);
-    }
-    let status = say
-        .args(["--file-format=WAVE", "--data-format=LEI16@16000", "-o"])
-        .arg(&path)
-        .arg(words)
-        .status()
-        .context("failed to run macOS 'say'")?;
-    if !status.success() {
-        bail!("'say' failed to synthesize speech ({status})");
-    }
     let pause = vec![0.0f32; (PAUSE_SECS * SAMPLE_RATE_HZ) as usize];
-    let speech = read_wav(&path)?
-        .into_iter()
-        .map(|s| f32::from(s) / f32::from(i16::MAX));
+    let speech = synthesized(&SayRequest {
+        voice,
+        words_per_minute: None,
+        text: words,
+    })?
+    .into_iter()
+    .map(|s| f32::from(s) / f32::from(i16::MAX));
     Ok(pause
         .iter()
         .copied()
@@ -73,17 +60,11 @@ pub fn spotting_events(
     let mut client = SpottingClient::connect(url, Instant::now())?;
     client.listen_for(commands)?;
     let mut events = Vec::new();
-    for frame in audio.chunks(FRAME_SAMPLES) {
-        client.send_audio(frame)?;
-        events.extend(client.read_events()?);
-    }
-    let mut last_event = Instant::now();
-    while last_event.elapsed() < QUIET_SECS {
-        let arrived = client.read_events()?;
-        if !arrived.is_empty() {
-            last_event = Instant::now();
+    for stretch in audio.chunks(SAMPLES_BETWEEN_WAITS) {
+        for frame in stretch.chunks(FRAME_SAMPLES) {
+            client.send_audio(frame)?;
         }
-        events.extend(arrived);
+        events.extend(client.events_for_sent_audio()?);
     }
     client.close();
     Ok(events)
@@ -109,7 +90,7 @@ fn accepted_after(command: VoiceCommand) -> &'static [VoiceCommand] {
 
 /// The commands the app carries out for `audio`, starting in the state that accepts
 /// `commands`: like the app, it carries out a command only in a state that accepts it and
-/// then listens for the phrases of the state the command leads to.
+/// then listens for the phrases of the state the command leads to, from the next frame on.
 pub fn carried_out_by_app(
     url: &str,
     audio: &[f32],
@@ -132,15 +113,7 @@ pub fn carried_out_by_app(
     };
     for frame in audio.chunks(FRAME_SAMPLES) {
         client.send_audio(frame)?;
-        let events = client.read_events()?;
-        hear(&mut client, events)?;
-    }
-    let mut last_event = Instant::now();
-    while last_event.elapsed() < QUIET_SECS {
-        let events = client.read_events()?;
-        if !events.is_empty() {
-            last_event = Instant::now();
-        }
+        let events = client.events_for_sent_audio()?;
         hear(&mut client, events)?;
     }
     client.close();

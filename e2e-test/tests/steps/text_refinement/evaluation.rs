@@ -6,6 +6,7 @@ use voicepuncher_e2e_test::refinement_eval::{self, EvalItem};
 
 use super::normalization::live_refiner;
 use super::use_stub;
+use crate::steps::off_thread;
 use crate::steps::refinement_service_stub::StubBehavior;
 use crate::E2eWorld;
 
@@ -35,20 +36,26 @@ fn service_appends_answer(world: &mut E2eWorld) -> Result<()> {
 }
 
 #[when("the developer runs the refinement evaluation")]
-fn run_evaluation(world: &mut E2eWorld) -> Result<()> {
-    let items = refinement_eval::load_eval_set(&refinement_eval::default_eval_set())?;
-    evaluate(world, &items)
+async fn run_evaluation(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        let items = refinement_eval::load_eval_set(&refinement_eval::default_eval_set())?;
+        evaluate(world, &items)
+    })
+    .await
 }
 
 #[when("the developer runs the refinement evaluation on a dictated question")]
-fn run_evaluation_on_question(world: &mut E2eWorld) -> Result<()> {
-    let question = EvalItem {
-        id: DICTATED_QUESTION_ID.to_owned(),
-        category: "commands".to_owned(),
-        transcript: DICTATED_QUESTION.to_owned(),
-        expected: DICTATED_QUESTION_NORMALIZED.to_owned(),
-    };
-    evaluate(world, &[question])
+async fn run_evaluation_on_question(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        let question = EvalItem {
+            id: DICTATED_QUESTION_ID.to_owned(),
+            category: "commands".to_owned(),
+            transcript: DICTATED_QUESTION.to_owned(),
+            expected: DICTATED_QUESTION_NORMALIZED.to_owned(),
+        };
+        evaluate(world, &[question])
+    })
+    .await
 }
 
 #[then("it reports a score for each category and for the whole set, and passes because no dictated command was carried out and no answer changed the language")]

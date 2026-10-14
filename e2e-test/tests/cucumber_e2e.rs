@@ -6,11 +6,16 @@ use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 use std::time::Duration;
 
-use cucumber::World;
+use cucumber::gherkin::{Feature, Rule, Scenario};
+use cucumber::{ScenarioType, World};
 
 /// The local services are shared with the user's live session; more concurrent
 /// clients make the speech recognition service reset connections it has no room for.
 const MAX_CONCURRENT_SCENARIOS: usize = 4;
+/// Tags of scenarios that run alone: the accuracy benchmarks load the services on purpose
+/// (the corpus sample is transcribed two at a time), and a scenario beside them would wait
+/// out its timeouts in the speech recognition service's queue.
+const RUN_ALONE: [&str; 2] = ["serial", "accuracy"];
 
 #[derive(Debug, Default, World)]
 pub struct E2eWorld {
@@ -61,13 +66,25 @@ fn main() {
     futures::executor::block_on(
         E2eWorld::cucumber()
             .max_concurrent_scenarios(MAX_CONCURRENT_SCENARIOS)
+            .which_scenario(|feature, rule, scenario| {
+                if RUN_ALONE
+                    .iter()
+                    .any(|tag| has_tag(feature, rule, scenario, tag))
+                {
+                    ScenarioType::Serial
+                } else {
+                    ScenarioType::Concurrent
+                }
+            })
             .fail_on_skipped()
             .filter_run_and_exit("tests/features", move |feature, rule, scenario| {
-                let tagged = |tag: &str| {
-                    let has = |tags: &[String]| tags.iter().any(|t| t == tag);
-                    has(&feature.tags) || rule.is_some_and(|r| has(&r.tags)) || has(&scenario.tags)
-                };
+                let tagged = |tag| has_tag(feature, rule, scenario, tag);
                 !tagged("wip") && (has_voice_samples || !tagged("voice_samples"))
             }),
     );
+}
+
+fn has_tag(feature: &Feature, rule: Option<&Rule>, scenario: &Scenario, tag: &str) -> bool {
+    let tagged = |tags: &[String]| tags.iter().any(|t| t == tag);
+    tagged(&feature.tags) || rule.is_some_and(|r| tagged(&r.tags)) || tagged(&scenario.tags)
 }

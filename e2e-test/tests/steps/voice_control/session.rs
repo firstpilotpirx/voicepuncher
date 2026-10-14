@@ -29,6 +29,7 @@ mod speech_after_start;
 
 use super::RUSSIAN_VOICE;
 use crate::steps::file_transcription::env;
+use crate::steps::off_thread;
 use crate::E2eWorld;
 
 const SAMPLE_RATE_HZ: f32 = 16_000.0;
@@ -377,18 +378,27 @@ fn session_of(world: &E2eWorld) -> Result<&HandsFreeSession> {
 }
 
 #[when("a synthesized voice goes through the hands-free session")]
-fn synthesized_session(world: &mut E2eWorld) -> Result<()> {
-    session_of(world)?.run(CommandVoice::Synthesized)
+async fn synthesized_session(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        session_of(world)?.run(CommandVoice::Synthesized)
+    })
+    .await
 }
 
 #[when("the hands-free session is spoken with the user's recorded commands")]
-fn recorded_session(world: &mut E2eWorld) -> Result<()> {
-    session_of(world)?.run(CommandVoice::Recorded { long_pauses: false })
+async fn recorded_session(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        session_of(world)?.run(CommandVoice::Recorded { long_pauses: false })
+    })
+    .await
 }
 
 #[when("the hands-free session is spoken with the user's recorded commands and long pauses")]
-fn recorded_session_with_pauses(world: &mut E2eWorld) -> Result<()> {
-    session_of(world)?.run(CommandVoice::Recorded { long_pauses: true })
+async fn recorded_session_with_pauses(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        session_of(world)?.run(CommandVoice::Recorded { long_pauses: true })
+    })
+    .await
 }
 
 #[then("the app does everything the session said, in order")]

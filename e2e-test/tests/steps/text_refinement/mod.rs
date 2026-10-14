@@ -5,8 +5,11 @@ use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
+use voicepuncher_e2e_test::speech::write_wav;
+use voicepuncher_e2e_test::speech_cache::{synthesized, SayRequest};
 
 use crate::steps::file_transcription::{env, sut_bin, write_silence_wav, NO_CONFIG};
+use crate::steps::off_thread;
 use crate::steps::refinement_service_stub::{RefinementServiceStub, StubBehavior};
 use crate::steps::speech_recognition::{expect_message, expect_startup_failure};
 use crate::E2eWorld;
@@ -116,25 +119,34 @@ fn outdated_llm_config(world: &mut E2eWorld) -> Result<()> {
 }
 
 #[when(regex = r"^the user transcribes a recording of speech (with|without) refinement$")]
-fn transcribe_speech(world: &mut E2eWorld, refinement: String) -> Result<()> {
-    let recording = match world.spoken {
-        Some(Lang::Ru) => voiced_speech_recording(world, RUSSIAN_VOICE, SPEECH_RU)?,
-        _ => speech_recording(world, SPEECH)?,
-    };
-    run_app(world, &recording, refinement == "with")
+async fn transcribe_speech(world: &mut E2eWorld, refinement: String) -> Result<()> {
+    off_thread(world, move |world| {
+        let recording = match world.spoken {
+            Some(Lang::Ru) => voiced_speech_recording(world, RUSSIAN_VOICE, SPEECH_RU)?,
+            _ => speech_recording(world, SPEECH)?,
+        };
+        run_app(world, &recording, refinement == "with")
+    })
+    .await
 }
 
 #[when("the user dictates a sentence that asks for a translation")]
-fn dictate_translation_request(world: &mut E2eWorld) -> Result<()> {
-    let recording = speech_recording(world, TRANSLATION_REQUEST)?;
-    run_app(world, &recording, true)
+async fn dictate_translation_request(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        let recording = speech_recording(world, TRANSLATION_REQUEST)?;
+        run_app(world, &recording, true)
+    })
+    .await
 }
 
 #[when("the user starts the app with refinement")]
-fn start_app_with_refinement(world: &mut E2eWorld) -> Result<()> {
-    let recording = world.workdir()?.join("silence_1s.wav");
-    write_silence_wav(&recording, 1)?;
-    run_app(world, &recording, true)
+async fn start_app_with_refinement(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        let recording = world.workdir()?.join("silence_1s.wav");
+        write_silence_wav(&recording, 1)?;
+        run_app(world, &recording, true)
+    })
+    .await
 }
 
 #[then("the text the service returned is pasted")]
@@ -244,21 +256,12 @@ fn speech_recording(world: &mut E2eWorld, text: &str) -> Result<PathBuf> {
 /// Synthesizes `text` with the macOS voice `voice` into the scenario's recording.
 fn voiced_speech_recording(world: &mut E2eWorld, voice: &str, text: &str) -> Result<PathBuf> {
     let path = world.workdir()?.join("speech.wav");
-    let status = Command::new("say")
-        .args([
-            "-v",
-            voice,
-            "--file-format=WAVE",
-            "--data-format=LEI16@16000",
-            "-o",
-        ])
-        .arg(&path)
-        .arg(text)
-        .status()
-        .context("failed to run macOS 'say'")?;
-    if !status.success() {
-        bail!("'say' failed to synthesize speech ({status})");
-    }
+    let speech = synthesized(&SayRequest {
+        voice: Some(voice),
+        words_per_minute: None,
+        text,
+    })?;
+    write_wav(&path, &speech)?;
     Ok(path)
 }
 
