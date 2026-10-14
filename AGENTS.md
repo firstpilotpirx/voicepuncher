@@ -2,7 +2,7 @@
 
 ## What this project is
 
-Push-to-talk voice-to-text CLI for macOS Apple Silicon. Single Rust crate at `app/`. Fully offline: a local whisper.cpp `whisper-server` for transcription and a local llama.cpp `llama-server` (Qwen2.5) for text cleanup, both reached over loopback HTTP and running on Metal, plus the command spotting service `voicepuncher-command-spotting` (crate `command-spotting/`, sherpa-onnx keyword spotting confirmed by whisper-server) reached over a loopback WebSocket for voice control; `just start-model-servers` starts all three (or the named ones) and restarts a service that crashes, until `just stop-model-servers`. No internet at runtime; loopback connections only.
+Push-to-talk voice-to-text CLI for macOS Apple Silicon. Single Rust crate at `app/`. Fully offline: a local whisper.cpp `whisper-server` for transcription and a local llama.cpp `llama-server` (Qwen2.5) for text cleanup, both reached over loopback HTTP and running on Metal, plus the command spotting service `voicepuncher-command-spotting` (crate `command-spotting/`, sherpa-onnx keyword spotting confirmed by whisper-server) reached over a loopback WebSocket for voice control; `just start-model-servers` starts all three (or the named ones) and restarts a service that crashes, until `just stop-model-servers`; the speech recognition service runs as three `whisper-server` copies behind HAProxy on its port (`VOICEPUNCHER_STT_INSTANCES`). No internet at runtime; loopback connections only.
 
 **Product lifecycle stage:** PoC (Proof of Concept). The core workflow is demonstrated but the codebase is not yet hardened for daily use.
 

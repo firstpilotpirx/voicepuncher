@@ -19,6 +19,9 @@ export VOICEPUNCHER_BENCH_CORPUS := env_var_or_default("VOICEPUNCHER_BENCH_CORPU
 # Local services started by `start-model-servers`; their URLs are the app's default [transcription].base_url and [refinement].base_url
 stt_port := env_var_or_default("VOICEPUNCHER_STT_PORT", "8081")
 stt_url := "http://127.0.0.1:" + stt_port + "/v1"
+# Copies of the speech recognition service behind HAProxy on its port: whisper-server serves one
+# request at a time, and two to four copies on one GPU are twice as fast on long speech
+stt_instances := env_var_or_default("VOICEPUNCHER_STT_INSTANCES", "3")
 llm_port := env_var_or_default("VOICEPUNCHER_LLM_PORT", "8080")
 llm_url := "http://127.0.0.1:" + llm_port + "/v1"
 kws_port := env_var_or_default("VOICEPUNCHER_KWS_PORT", "8082")
@@ -377,7 +380,7 @@ start-model-servers *services:
         echo "$pid" >"$pid_file"
         echo "… starting $binary (pid $pid), log: $log_file"
         for _ in $(seq 1 240); do
-            if "$ready"; then
+            if $ready; then
                 echo "✓ $label ready on port $port"
                 return 0
             fi
@@ -397,6 +400,38 @@ start-model-servers *services:
         rm -f "$pid_file"
         exit 1
     }
+    # whisper_args <port> <threads>: the whisper-server command line, in whisper_cmd.
+    # Greedy, no temperature fallback, no cross-request text context, non-speech tokens
+    # suppressed; timestamps stay on, so whisper resumes after the last decoded segment
+    # instead of skipping the rest of a 30 s window when the text ends early at a pause.
+    # VAD removes only silences longer than 2 s, so silence yields no text ("Thank you.")
+    # while the short pauses between words stay. No language probabilities (-nlp): with them,
+    # whisper-server 1.9.5 crashes on a verbose_json request whose audio VAD leaves empty,
+    # as the command spotting service's confirmation of an utterance without speech
+    whisper_args() {
+        whisper_cmd=(whisper-server -m "$VOICEPUNCHER_WHISPER_MODEL" --host 127.0.0.1 --port "$1"
+            --inference-path /v1/audio/transcriptions -l auto -t "$2"
+            -bo 1 -nf -sns -mc 0 --vad -vm "$VOICEPUNCHER_VAD_MODEL" -vsd 2000 -vp 500 -nlp)
+    }
+    # haproxy_config <copy port…>: one address for the copies. A request goes to a free copy
+    # (leastconn, one request per copy) or waits in the queue; short audio (under 160 kB,
+    # about 5 s: a command confirmation) waits ahead of long dictation chunks. A copy whose
+    # port does not answer — at the first refused connection, or by the health check — gets no
+    # requests while its supervisor restarts it, and a request that could not reach a copy is
+    # retried on another one
+    haproxy_config() {
+        printf '%s\n' "global" "    maxconn 256" "defaults" "    mode http" \
+            "    timeout connect 2s" "    timeout client 300s" "    timeout server 300s" \
+            "    timeout queue 300s" "    option http-server-close" "    retries 3" "    option redispatch 1" \
+            "frontend speech_recognition" "    bind 127.0.0.1:{{stt_port}}" \
+            "    http-request set-priority-class int(-1) if { req.hdr_val(content-length) -m int lt 160000 }" \
+            "    default_backend copies" "backend copies" "    balance leastconn"
+        local i=0 port
+        for port in "$@"; do
+            i=$((i + 1))
+            echo "    server copy$i 127.0.0.1:$port maxconn 1 check inter 1s fall 2 rise 1 observe layer4 error-limit 1 on-error mark-down"
+        done
+    }
     start_whisper() {
         require_binary whisper-server whisper-cpp
         if port_open "{{stt_port}}"; then
@@ -405,17 +440,34 @@ start-model-servers *services:
         fi
         require_model VOICEPUNCHER_WHISPER_MODEL
         require_model VOICEPUNCHER_VAD_MODEL
-        # Greedy, no temperature fallback, no cross-request text context, non-speech tokens
-        # suppressed; timestamps stay on, so whisper resumes after the last decoded segment
-        # instead of skipping the rest of a 30 s window when the text ends early at a pause.
-        # VAD removes only silences longer than 2 s, so silence yields no text ("Thank you.")
-        # while the short pauses between words stay. No language probabilities (-nlp): with them,
-        # whisper-server 1.9.5 crashes on a verbose_json request whose audio VAD leaves empty,
-        # as the command spotting service's confirmation of an utterance without speech
-        start_service whisper-server "{{stt_port}}" "speech recognition service" whisper_ready \
-            whisper-server -m "$VOICEPUNCHER_WHISPER_MODEL" --host 127.0.0.1 --port "{{stt_port}}" \
-            --inference-path /v1/audio/transcriptions -l auto -t "$(sysctl -n hw.ncpu)" \
-            -bo 1 -nf -sns -mc 0 --vad -vm "$VOICEPUNCHER_VAD_MODEL" -vsd 2000 -vp 500 -nlp
+        local copies={{stt_instances}} cores
+        cores=$(sysctl -n hw.ncpu)
+        if (( copies <= 1 )); then
+            # A copy list left from an earlier start would make the stop look for copies
+            rm -f "$run_dir/whisper-server-{{stt_port}}.copies" "$run_dir/haproxy-{{stt_port}}.cfg"
+            whisper_args "{{stt_port}}" "$cores"
+            start_service whisper-server "{{stt_port}}" "speech recognition service" whisper_ready "${whisper_cmd[@]}"
+            return 0
+        fi
+        require_binary haproxy haproxy
+        local threads=$(( cores / copies > 0 ? cores / copies : 1 ))
+        local base=$(( {{stt_port}} + 10000 + copies <= 65535 ? {{stt_port}} + 10000 : {{stt_port}} - 10000 ))
+        local list="$run_dir/whisper-server-{{stt_port}}.copies" config="$run_dir/haproxy-{{stt_port}}.cfg"
+        local ports=() i
+        for i in $(seq 1 "$copies"); do ports+=($(( base + i ))); done
+        echo "${ports[*]}" >"$list"
+        # A copy or HAProxy that cannot start stops what this start already started
+        trap 'code=$?; (( code == 0 )) || {{quote(just_executable())}} --justfile {{quote(justfile())}} stop-model-servers whisper-server >/dev/null 2>&1 || true' EXIT
+        for i in "${!ports[@]}"; do
+            whisper_args "${ports[$i]}" "$threads"
+            start_service whisper-server "${ports[$i]}" "speech recognition copy $((i + 1)) of $copies" \
+                "port_open ${ports[$i]}" "${whisper_cmd[@]}"
+        done
+        haproxy_config "${ports[@]}" >"$config"
+        haproxy -c -q -f "$config"
+        start_service haproxy "{{stt_port}}" "speech recognition service ($copies copies)" whisper_ready \
+            haproxy -db -f "$config"
+        trap - EXIT
     }
     start_llama() {
         require_binary llama-server llama.cpp
@@ -484,10 +536,24 @@ stop-model-servers *services:
         fi
         rm -f "$pid_file"
     }
+    # The speech recognition service: HAProxy and its copies when it runs as several, or the
+    # one whisper-server on its port
+    stop_speech_recognition() {
+        local list="{{services_run_dir}}/whisper-server-{{stt_port}}.copies" port
+        if [[ ! -f "$list" ]]; then
+            stop_service whisper-server "{{stt_port}}" "speech recognition service"
+            return 0
+        fi
+        stop_service haproxy "{{stt_port}}" "speech recognition load balancer"
+        for port in $(cat "$list"); do
+            stop_service whisper-server "$port" "speech recognition copy on port $port"
+        done
+        rm -f "$list" "{{services_run_dir}}/haproxy-{{stt_port}}.cfg"
+    }
     selected="{{services}}"
     for service in ${selected:-whisper-server llama-server voicepuncher-command-spotting}; do
         case "$service" in
-            whisper-server) stop_service whisper-server "{{stt_port}}" "speech recognition service" ;;
+            whisper-server) stop_speech_recognition ;;
             llama-server) stop_service llama-server "{{llm_port}}" "text refinement service" ;;
             voicepuncher-command-spotting) stop_service voicepuncher-command-spotting "{{kws_port}}" "command spotting service" ;;
             *) echo "✗ unknown service '$service' — use whisper-server, llama-server or voicepuncher-command-spotting" >&2; exit 1 ;;

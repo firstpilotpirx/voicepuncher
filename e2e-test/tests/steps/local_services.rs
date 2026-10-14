@@ -12,6 +12,8 @@ use cucumber::{given, then, when};
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
+mod copies;
+
 const SPEECH_RECOGNITION: &str = "whisper-server";
 const RESTART_WITHIN: Duration = Duration::from_secs(30);
 const STAYS_STOPPED_FOR: Duration = Duration::from_secs(5);
@@ -38,10 +40,22 @@ pub struct ScenarioServices {
     supervisor: Option<u32>,
     service: Option<u32>,
     pub heard_words: Option<std::result::Result<usize, String>>,
+    /// How many copies of the speech recognition service to start; the scripts' default
+    /// when `None`.
+    copies: Option<u32>,
+    /// The ports of the copies the start left running.
+    copy_ports: Vec<u16>,
+    pool: copies::PoolRun,
 }
 
 impl ScenarioServices {
+    /// Services on free ports, the speech recognition service as one copy, as in the
+    /// scenarios about a single service.
     fn on_free_ports() -> Result<Self> {
+        Self::with_copies(Some(1))
+    }
+
+    fn with_copies(copies: Option<u32>) -> Result<Self> {
         Ok(Self {
             stt_port: free_port()?,
             llm_port: free_port()?,
@@ -53,6 +67,9 @@ impl ScenarioServices {
             supervisor: None,
             service: None,
             heard_words: None,
+            copies,
+            copy_ports: Vec::new(),
+            pool: copies::PoolRun::default(),
         })
     }
 
@@ -67,6 +84,9 @@ impl ScenarioServices {
             .env("VOICEPUNCHER_STT_PORT", self.stt_port.to_string())
             .env("VOICEPUNCHER_LLM_PORT", self.llm_port.to_string())
             .env("VOICEPUNCHER_KWS_PORT", self.kws_port.to_string());
+        if let Some(copies) = self.copies {
+            just.env("VOICEPUNCHER_STT_INSTANCES", copies.to_string());
+        }
         if let Some(model) = &self.speech_model {
             just.env("VOICEPUNCHER_WHISPER_MODEL", model);
         }
@@ -82,8 +102,19 @@ impl ScenarioServices {
                 .ok()
                 .and_then(|pid| pid.trim().parse().ok());
             self.service = service_process(self.stt_port);
+            self.copy_ports = self.running_copy_ports();
         }
         self.started = Some(output);
+        Ok(())
+    }
+
+    /// Points the speech recognition service at a file that is not a model.
+    fn break_speech_model(&mut self) -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let model = dir.path().join("ggml-broken.bin");
+        std::fs::write(&model, [0x5a_u8; 4096])?;
+        self.speech_model = Some(model);
+        self._model_dir = Some(dir);
         Ok(())
     }
 
@@ -99,6 +130,11 @@ impl ScenarioServices {
 impl Drop for ScenarioServices {
     fn drop(&mut self) {
         let _ = self.just(&["stop-model-servers"]);
+        let left = self
+            .copy_ports
+            .iter()
+            .filter_map(|port| any_process(*port))
+            .chain(copies::balancer_process(self.stt_port));
         for pid in [
             self.supervisor,
             self.service,
@@ -106,6 +142,7 @@ impl Drop for ScenarioServices {
         ]
         .into_iter()
         .flatten()
+        .chain(left)
         {
             let _ = Command::new("kill")
                 .args(["-9", &pid.to_string()])
@@ -121,7 +158,13 @@ impl Drop for ScenarioServices {
                 let _ =
                     std::fs::remove_file(services_dir(dir).join(format!("{binary}-{port}.{ext}")));
             }
+            for port in &self.copy_ports {
+                let _ = std::fs::remove_file(
+                    services_dir(dir).join(format!("{SPEECH_RECOGNITION}-{port}.{ext}")),
+                );
+            }
         }
+        copies::remove_balancer_files(self.stt_port);
     }
 }
 
@@ -223,11 +266,7 @@ async fn speech_recognition_started(world: &mut E2eWorld) -> Result<()> {
 #[given("the speech recognition model file is not a model")]
 fn broken_speech_model(world: &mut E2eWorld) -> Result<()> {
     let mut services = ScenarioServices::on_free_ports()?;
-    let dir = tempfile::tempdir()?;
-    let model = dir.path().join("ggml-broken.bin");
-    std::fs::write(&model, [0x5a_u8; 4096])?;
-    services.speech_model = Some(model);
-    services._model_dir = Some(dir);
+    services.break_speech_model()?;
     world.local_services = Some(services);
     Ok(())
 }
