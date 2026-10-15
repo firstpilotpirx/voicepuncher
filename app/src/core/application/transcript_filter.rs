@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-const HALLUCINATION_PATTERNS: &[&str] = &[
+/// Phrases Whisper makes up for silence: the sentence that holds one is removed, so a
+/// subtitle credit goes together with its name.
+const HALLUCINATION_PHRASES: &[&str] = &[
     "субтитры создавал",
     "продолжение следует",
     "спасибо за просмотр",
@@ -13,12 +15,19 @@ const HALLUCINATION_PATTERNS: &[&str] = &[
     "subtitles by",
     "subtitled by",
     "captions by",
+];
+
+/// Markers Whisper writes for non-speech: removed wherever they stand.
+const HALLUCINATION_MARKERS: &[&str] = &[
     "[music]",
     "[applause]",
     "[blank_audio]",
     "(music)",
     "(applause)",
 ];
+
+/// Characters that end a sentence; a run of them ("...", "?!") ends it once.
+const SENTENCE_ENDS: &[char] = &['.', '!', '?', '…'];
 
 /// Whisper returns this word alone, or repeated, for a recording of silence.
 const SILENCE_WORD: &str = "you";
@@ -28,17 +37,55 @@ const MIN_WORDS_FOR_LOOP_CHECK: usize = 10;
 const LOOP_WORD_SHARE_NUMERATOR: usize = 4;
 const LOOP_WORD_SHARE_DENOMINATOR: usize = 10;
 
-/// True when a Whisper-family transcript is a known hallucination (subtitle credits,
-/// subscription calls, blank-audio markers, a phrase repeated in a loop, a lone "you")
-/// rather than speech.
-pub fn is_whisper_hallucination(text: &str) -> bool {
-    let lower = text.trim().to_lowercase();
-    if lower.is_empty() {
-        return false;
+/// The transcript without the known hallucinations of Whisper-family services: markers are
+/// removed, and so is every sentence holding a subtitle credit or subscription call. `None`
+/// when no speech is left: nothing, a phrase repeated in a loop, or a lone "you".
+pub fn strip_whisper_hallucinations(text: &str) -> Option<String> {
+    let without_markers = text
+        .split_whitespace()
+        .filter(|token| !is_marker(token))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let speech = sentences(&without_markers)
+        .into_iter()
+        .filter(|sentence| {
+            let lower = sentence.to_lowercase();
+            !HALLUCINATION_PHRASES.iter().any(|p| lower.contains(p))
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let lower = speech.to_lowercase();
+    if speech.is_empty() || has_repetition_loop(&lower) || is_only_silence_word(&lower) {
+        return None;
     }
-    HALLUCINATION_PATTERNS.iter().any(|p| lower.contains(p))
-        || has_repetition_loop(&lower)
-        || is_only_silence_word(&lower)
+    Some(speech)
+}
+
+/// True when the token is a non-speech marker, trailing punctuation aside.
+fn is_marker(token: &str) -> bool {
+    let lower = token.to_lowercase();
+    let bare = lower.trim_end_matches(|c: char| !c.is_alphanumeric() && c != ']' && c != ')');
+    HALLUCINATION_MARKERS.contains(&bare)
+}
+
+/// `text` split after each run of [`SENTENCE_ENDS`]; text after the last run is a sentence too.
+fn sentences(text: &str) -> Vec<&str> {
+    let mut found = Vec::new();
+    let mut start = 0;
+    let mut chars = text.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
+        let run_goes_on = chars
+            .peek()
+            .is_some_and(|(_, next)| SENTENCE_ENDS.contains(next));
+        if SENTENCE_ENDS.contains(&c) && !run_goes_on {
+            let end = i + c.len_utf8();
+            found.push(text[start..end].trim());
+            start = end;
+        }
+    }
+    found.push(text[start..].trim());
+    found.retain(|sentence| !sentence.is_empty());
+    found
 }
 
 /// True when every word is "you"; tokens made only of punctuation are ignored.
@@ -74,61 +121,70 @@ mod tests {
     use super::*;
 
     #[test]
-    fn should_detect_russian_subtitle_hallucination() {
-        assert!(is_whisper_hallucination(" Субтитры создавал DimaTorzok"));
+    fn should_keep_speech_before_a_trailing_subscription_call() {
+        assert_eq!(
+            strip_whisper_hallucinations(
+                "I restarted the service. We split the module into several small parts. Thanks for watching."
+            )
+            .as_deref(),
+            Some("I restarted the service. We split the module into several small parts.")
+        );
     }
 
     #[test]
-    fn should_detect_continuation_hallucination() {
-        assert!(is_whisper_hallucination("Продолжение следует..."));
+    fn should_remove_a_credit_with_its_name_and_keep_the_speech() {
+        assert_eq!(
+            strip_whisper_hallucinations("Привет, как дела? Субтитры создавал DimaTorzok")
+                .as_deref(),
+            Some("Привет, как дела?")
+        );
     }
 
     #[test]
-    fn should_detect_english_subscribe_hallucination() {
-        assert!(is_whisper_hallucination("Thank you for watching!"));
+    fn should_remove_a_marker_inside_speech() {
+        assert_eq!(
+            strip_whisper_hallucinations("the index [BLANK_AUDIO] was never built.").as_deref(),
+            Some("the index was never built.")
+        );
     }
 
     #[test]
-    fn should_detect_blank_audio_token() {
-        assert!(is_whisper_hallucination("[BLANK_AUDIO]"));
-    }
-
-    #[test]
-    fn should_not_filter_real_speech() {
-        assert!(!is_whisper_hallucination("Hello, how are you doing?"));
-        assert!(!is_whisper_hallucination("Привет, как дела?"));
-    }
-
-    #[test]
-    fn should_detect_lone_you() {
-        for text in ["you", " You.", "you you", "YOU, you!", "You. - You."] {
-            assert!(is_whisper_hallucination(text), "{text:?}");
+    fn should_leave_speech_without_hallucination_unchanged() {
+        for text in [
+            "Hello, how are you doing?",
+            "Привет, как дела?",
+            "you know",
+            "Thank you",
+            "и потом я пошёл и потом я взял и потом позвонил другу",
+        ] {
+            assert_eq!(strip_whisper_hallucinations(text).as_deref(), Some(text));
         }
     }
 
     #[test]
-    fn should_not_filter_speech_containing_you() {
-        for text in ["you know", "Thank you", "Hello, how are you doing?"] {
-            assert!(!is_whisper_hallucination(text), "{text:?}");
+    fn should_give_no_text_for_hallucination_only() {
+        let looped = "и сайта, ".repeat(20);
+        for text in [
+            " Субтитры создавал DimaTorzok",
+            "Продолжение следует...",
+            "Thank you for watching!",
+            "[BLANK_AUDIO]",
+            "[Music] [Applause]",
+            "you",
+            " You.",
+            "you you",
+            "YOU, you!",
+            "You. - You.",
+            "You. Thanks for watching.",
+            looped.as_str(),
+        ] {
+            assert_eq!(strip_whisper_hallucinations(text), None, "{text:?}");
         }
     }
 
     #[test]
-    fn should_not_filter_empty_string() {
-        assert!(!is_whisper_hallucination(""));
-        assert!(!is_whisper_hallucination("   "));
-    }
-
-    #[test]
-    fn should_detect_repeated_phrase_loop() {
-        let repeated = "и сайта, ".repeat(20);
-        assert!(is_whisper_hallucination(&repeated));
-    }
-
-    #[test]
-    fn should_not_filter_speech_with_moderate_repetition() {
-        assert!(!is_whisper_hallucination(
-            "и потом я пошёл и потом я взял и потом позвонил другу"
-        ));
+    fn should_give_no_text_for_an_empty_transcript() {
+        assert_eq!(strip_whisper_hallucinations(""), None);
+        assert_eq!(strip_whisper_hallucinations("   "), None);
     }
 }

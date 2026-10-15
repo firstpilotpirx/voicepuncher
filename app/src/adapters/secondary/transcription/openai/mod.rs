@@ -9,7 +9,7 @@ use url::Url;
 use crate::adapters::secondary::http::failure::Failure;
 use crate::config::TranscriptionCfg;
 use crate::core::application::transcriber::Transcriber;
-use crate::core::application::transcript_filter::is_whisper_hallucination;
+use crate::core::application::transcript_filter::strip_whisper_hallucinations;
 use crate::core::domain::{AudioBuffer16k, RawTranscript};
 
 mod request;
@@ -189,11 +189,14 @@ impl Transcriber for OpenAiTranscriber {
             log::info!("speech recognition service heard no speech");
             return Ok(None);
         }
-        if is_whisper_hallucination(&text) {
+        let Some(speech) = strip_whisper_hallucinations(&text) else {
             log::info!("dropping hallucinated transcript: {text:?}");
             return Ok(None);
+        };
+        if speech.split_whitespace().count() < text.split_whitespace().count() {
+            log::info!("removed hallucination from transcript: {text:?} → {speech:?}");
         }
-        RawTranscript::new(text).map(Some).map_err(|e| anyhow!(e))
+        RawTranscript::new(speech).map(Some).map_err(|e| anyhow!(e))
     }
 }
 

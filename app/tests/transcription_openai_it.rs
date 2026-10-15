@@ -323,6 +323,33 @@ fn should_discard_known_hallucination() {
 }
 
 #[test]
+fn should_keep_speech_before_a_trailing_hallucination() {
+    // Given
+    let (cfg, _requests) = spawn_stub(StubReply::ok(
+        r#"{"text": " I restarted the service.\n We split the module into several small parts.\n Thanks for watching.\n"}"#,
+    ));
+    // When
+    let transcript = transcribe(cfg).unwrap();
+    // Then
+    assert_eq!(
+        transcript.as_deref(),
+        Some("I restarted the service. We split the module into several small parts.")
+    );
+}
+
+#[test]
+fn should_remove_a_marker_inside_speech() {
+    // Given
+    let (cfg, _requests) = spawn_stub(StubReply::ok(
+        r#"{"text": " the index\n [BLANK_AUDIO]\n was never built.\n"}"#,
+    ));
+    // When
+    let transcript = transcribe(cfg).unwrap();
+    // Then
+    assert_eq!(transcript.as_deref(), Some("the index was never built."));
+}
+
+#[test]
 fn should_return_no_transcript_when_service_hears_no_speech() {
     // Given
     let (cfg, _requests) = spawn_stub(StubReply::ok(r#"{"text": ""}"#));

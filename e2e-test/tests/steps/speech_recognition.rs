@@ -184,7 +184,7 @@ pub fn expect_message(world: &E2eWorld, fragment: &str) -> Result<()> {
 
 #[given(regex = r"^a recording file of (Russian|English) speech longer than the chunk threshold$")]
 fn long_speech_recording(world: &mut E2eWorld, language: String) -> Result<()> {
-    record_speech(world, language_of(&language)?, Condition::Normal)
+    record_speech(world, language_of(&language)?, Condition::Normal, 0.0)
 }
 
 #[then("the recording is transcribed in chunks")]
@@ -242,14 +242,36 @@ fn no_dropped_phrase(world: &mut E2eWorld) -> Result<()> {
 }
 
 #[given(
-    regex = r"^a recording file of (Russian|English) speech longer than the chunk threshold, (.+)$"
+    regex = r"^a recording file of (Russian|English) speech longer than the chunk threshold, ([^,]+)$"
 )]
 fn long_speech_under_condition(
     world: &mut E2eWorld,
     language: String,
     condition: String,
 ) -> Result<()> {
-    record_speech(world, language_of(&language)?, condition_of(&condition)?)
+    record_speech(
+        world,
+        language_of(&language)?,
+        condition_of(&condition)?,
+        0.0,
+    )
+}
+
+#[given(
+    regex = r"^a recording file of (Russian|English) speech longer than the chunk threshold, ([^,]+), after a lead-in of ([0-9.]+) seconds$"
+)]
+fn long_speech_after_lead_in(
+    world: &mut E2eWorld,
+    language: String,
+    condition: String,
+    lead_in_secs: f32,
+) -> Result<()> {
+    record_speech(
+        world,
+        language_of(&language)?,
+        condition_of(&condition)?,
+        lead_in_secs,
+    )
 }
 
 fn condition_of(name: &str) -> Result<Condition> {
@@ -277,8 +299,14 @@ fn language_of(name: &str) -> Result<Lang> {
     }
 }
 
-fn record_speech(world: &mut E2eWorld, lang: Lang, condition: Condition) -> Result<()> {
-    let samples = synthesize(lang, condition, 0.0)?;
+/// The lead-in moves the chunk seams onto other words.
+fn record_speech(
+    world: &mut E2eWorld,
+    lang: Lang,
+    condition: Condition,
+    lead_in_secs: f32,
+) -> Result<()> {
+    let samples = synthesize(lang, condition, lead_in_secs)?;
     let path = world.workdir()?.join("speech.wav");
     write_wav(&path, &samples)?;
     world.recording = Some(path);

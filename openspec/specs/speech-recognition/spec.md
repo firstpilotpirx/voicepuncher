@@ -50,7 +50,7 @@ The system SHALL send the configured spoken language with every request; the val
 - **THEN** the raw transcript contains the English words that were spoken
 
 ### Requirement: Known recognition hallucinations are discarded
-The system SHALL discard a transcript that consists only of a known recognition hallucination (subtitle credits, subscription calls, blank-audio markers, a phrase repeated in a loop, the word "you" alone or repeated, ignoring case and punctuation) instead of pasting it.
+The system SHALL discard a transcript that consists only of a known recognition hallucination (subtitle credits, subscription calls, blank-audio markers, a phrase repeated in a loop, the word "you" alone or repeated, ignoring case and punctuation) instead of pasting it. When a transcript holds spoken words as well as a known hallucination phrase or marker, the system SHALL remove the sentence holding the hallucination phrase and the marker, and SHALL keep every other word of the transcript.
 
 #### Scenario: Silence produces a subtitle credit
 - **WHEN** the user records silence and the service returns a subtitle credit line
@@ -65,6 +65,17 @@ The system SHALL discard a transcript that consists only of a known recognition 
 #### Scenario: Speech containing "you" is kept
 - **WHEN** the service returns a transcript in which "you" appears together with other words
 - **THEN** the transcript is passed on for refinement and pasting
+
+#### Scenario: Hallucination after speech is removed and the speech is kept
+- **GIVEN** the service returns a transcript of spoken sentences followed by a subscription call such as "Thanks for watching."
+- **WHEN** the user finishes the recording
+- **THEN** the spoken sentences are passed on for refinement and pasting
+- **AND** the subscription call is not
+
+#### Scenario: Marker inside speech is removed and the speech is kept
+- **GIVEN** the service returns a transcript of spoken words with a blank-audio or music marker among them
+- **WHEN** the user finishes the recording
+- **THEN** the spoken words are passed on for refinement and pasting, without the marker
 
 ### Requirement: Long recordings are transcribed in chunks
 The system SHALL split a dictation or a recording file longer than the chunk threshold into overlapping chunks, transcribe each through the service, and merge the results without duplicating words at the seams, even when the service transcribes the overlapping audio differently in the two chunks. Where two chunks share no words, the merge SHALL keep every word of both. A chunk SHALL end in a pause of the speech when the seconds before the chunk threshold hold one, judged against the recording's own background level. No chunk, its overlap included, SHALL be longer than the chunk threshold.
@@ -195,6 +206,12 @@ The system SHALL transcribe the speech that follows a pause in a long dictation 
 - **AND** the speech starts after different lead-ins, so the chunk seams fall on different words
 - **WHEN** the speech is transcribed in chunks
 - **THEN** no run of more than five consecutive spoken words is missing from the chunk transcripts
+
+#### Scenario: English speech with a short pause after every word keeps every phrase
+- **GIVEN** a recording file of English speech longer than the chunk threshold with a short pause after every word
+- **AND** the speech starts after no lead-in, a short lead-in or a longer lead-in
+- **WHEN** the user transcribes the recording file
+- **THEN** no run of more than five consecutive spoken words is missing from the printed text
 
 ### Requirement: No speech yields no text
 The system SHALL treat an empty transcript from the speech recognition service as a recording without speech: nothing is pasted or printed, and the cycle ends without a service failure.

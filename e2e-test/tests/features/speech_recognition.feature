@@ -117,6 +117,18 @@ Feature: speech-recognition
         | English  | with pauses between words     |
         | English  | with pauses between sentences |
 
+    @seams
+    Scenario Outline: English speech with a short pause after every word keeps every phrase
+      Given a recording file of English speech longer than the chunk threshold, with pauses between words, after a lead-in of <seconds> seconds
+      When the user transcribes the recording file without refinement
+      Then no run of more than five consecutive spoken words is missing from the printed text
+
+      Examples:
+        | seconds |
+        | 0       |
+        | 0.7     |
+        | 1.4     |
+
   Rule: Audio without speech never stops the speech recognition service
 
     @smoke
