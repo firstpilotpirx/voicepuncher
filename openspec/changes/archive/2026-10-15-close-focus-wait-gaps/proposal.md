@@ -7,7 +7,9 @@ The user wants the text not to be pasted when no text input is focused, but held
 ## What Changes
 
 - Find the apps and situations where the text is still pasted with no text input focused; the focus decision log and the known gap of browsers and Electron apps (archived `wait-for-text-focus` design) are the starting point.
-- Tell a focused text input from anything else inside web content and other generic elements, and hold the text back there too, until a text input gets focus; then paste it at once, as the focus wait does today.
+- Ask the focused app to expose its web content to the Accessibility API, so Chrome and Electron apps report the text input inside a page as a text input instead of a generic group.
+- Tell a focused text input from anything else inside web content, and hold the text back there too, until a text input gets focus; then paste it at once, as the focus wait does today.
+- Keep pasting at once into generic elements outside web content (terminals and custom-drawn apps report a window or a group for their real input).
 - Keep pasting at once whenever a text input is focused: a wrong wait costs a paste, so a real input never waits.
 
 ## Capabilities
@@ -18,7 +20,7 @@ None.
 
 ### Modified Capabilities
 
-- `text-insertion`: the text is held back in web content and other generic elements when no text input is focused there; a scenario reproduces the paste with no input focused.
+- `text-insertion`: the text is held back in web content of a browser or an Electron app when no text input is focused there; a scenario reproduces the paste with no input focused.
 
 ## Scope
 
@@ -34,7 +36,7 @@ None.
 
 ## Release
 
-PATCH (bug fix), next patch version after the current one in `app/Cargo.toml` (0.9.0 → 0.9.1 at the time of writing).
+PATCH (bug fix): target version 0.13.2, the next patch on top of `main` (bumped again at merge time if `main` moved).
 
 ## Impact
 

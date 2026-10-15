@@ -18,8 +18,29 @@ Feature: text-insertion
       When a dictation finishes
       Then the text is pasted at once
 
+    Scenario: Paste at once into a text input on a web page
+      Given a text input on a web page has keyboard focus
+      When a dictation finishes
+      Then the text is pasted at once
+
+    Scenario: Paste at once into an editable element on a web page
+      Given an editable element on a web page has keyboard focus
+      When a dictation finishes
+      Then the text is pasted at once
+
+    Scenario: Hold the text back when a web page has focus without a text input
+      Given a web page has keyboard focus and no text input on it has
+      When a dictation finishes
+      Then nothing is pasted yet
+      And the overlay shows that the app waits for focus
+
+    Scenario: Hold the text back when text is selected on a web page
+      Given a web page with selected text has keyboard focus and no text input on it has
+      When a dictation finishes
+      Then nothing is pasted yet
+
     Scenario: Paste at once into an element of a generic kind
-      Given the focused element is web content of a browser or an Electron app
+      Given the focused element is a terminal's window outside web content
       When a dictation finishes
       Then the text is pasted at once
 
@@ -39,6 +60,12 @@ Feature: text-insertion
     Scenario: Paste once the user clicks into a text field
       Given the app holds the text back because a button has focus
       When the user clicks into a text field
+      Then the text is pasted into it
+      And the overlay hides
+
+    Scenario: Paste once the user clicks into a text input on the web page
+      Given the app holds the text back because a web page has focus without a text input
+      When the user clicks into a text input on that page
       Then the text is pasted into it
       And the overlay hides
 

@@ -155,8 +155,8 @@
 - **Synonyms to AVOID:** "threshold", "VAD level"
 
 ### Text input focus
-- **Type:** Value Object (`TextFocus`) decided from a `FocusedElement` (role, text selection, settable value)
-- **Definition:** Whether the final text can be pasted now. The app holds the text back only when it is sure no text input has keyboard focus: the focused element is a clearly non-text control (button, list, table, outline, image, menu, check box, radio button, slider, tab group, toolbar) that offers neither a text selection nor an editable value. Any other element, no reported element or an Accessibility error means "paste now".
+- **Type:** Value Object (`TextFocus`) decided from a `FocusedElement` (role, text selection, settable value, whether it lies in web content)
+- **Definition:** Whether the final text can be pasted now. The app holds the text back only when it is sure no text input has keyboard focus: the focused element is a clearly non-text control (button, list, table, outline, image, menu, check box, radio button, slider, tab group, toolbar) that offers neither a text selection nor an editable value, or it lies in *web content* (a page of a browser or an Electron app, `AXWebArea`, or an element inside one) and is neither a text input (text field, text area, combo box, search field) nor offers an editable value. Any other element, no reported element or an Accessibility error means "paste now". Before reading the focus the app asks the focused app to expose its web content (`AXManualAccessibility`), so Chromium and Electron report a text input on a page as one.
 - **Code:** `app/src/core/domain/text_focus.rs` — `FocusedElement`, `TextFocus`
 - **Synonyms to AVOID:** "editable focus", "cursor" (the caret is not what is checked)
 

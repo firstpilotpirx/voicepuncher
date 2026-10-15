@@ -150,6 +150,7 @@ mod tests {
             role: role.to_owned(),
             has_text_selection: role == "AXTextField",
             value_settable: role == "AXTextField",
+            in_web_content: false,
         }
     }
 
@@ -207,6 +208,18 @@ mod tests {
         assert_eq!(
             decision_line(&TextFocus::of(Ok(Some(&field))), Duration::from_secs(300)),
             "focus: AXTextField +selection +settable → paste"
+        );
+    }
+
+    #[test]
+    fn should_log_that_the_focused_element_lies_in_web_content() {
+        let page = FocusedElement {
+            in_web_content: true,
+            ..element("AXWebArea")
+        };
+        assert_eq!(
+            decision_line(&TextFocus::of(Ok(Some(&page))), Duration::from_secs(300)),
+            "focus: AXWebArea +web → wait (up to 300s)"
         );
     }
 

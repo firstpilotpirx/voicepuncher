@@ -4,10 +4,13 @@ pub struct FocusedElement {
     pub role: String,
     pub has_text_selection: bool,
     pub value_settable: bool,
+    /// The element is a web page (`AXWebArea`) of a browser or an Electron app, or lies inside one.
+    pub in_web_content: bool,
 }
 
-/// Roles of controls that never take typed text. Any role not listed here may be a text
-/// input in disguise (web content, Electron groups), so it never makes the app wait.
+/// Roles of controls that never take typed text. Outside web content any role not listed
+/// here may be a text input in disguise (terminals, custom-drawn apps), so it never makes
+/// the app wait.
 const NON_TEXT_ROLES: [&str; 13] = [
     "AXButton",
     "AXList",
@@ -24,8 +27,15 @@ const NON_TEXT_ROLES: [&str; 13] = [
     "AXToolbar",
 ];
 
+/// Roles of text inputs. Inside web content any other role without an editable value is
+/// no input: a page reports the user's text selection, so a selection does not count there.
+const TEXT_ROLES: [&str; 4] = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"];
+
 impl FocusedElement {
     fn is_surely_not_text(&self) -> bool {
+        if self.in_web_content {
+            return !TEXT_ROLES.contains(&self.role.as_str()) && !self.value_settable;
+        }
         NON_TEXT_ROLES.contains(&self.role.as_str())
             && !self.has_text_selection
             && !self.value_settable
@@ -40,6 +50,9 @@ impl std::fmt::Display for FocusedElement {
         }
         if self.value_settable {
             write!(f, " +settable")?;
+        }
+        if self.in_web_content {
+            write!(f, " +web")?;
         }
         Ok(())
     }
@@ -91,6 +104,14 @@ mod tests {
             role: role.to_owned(),
             has_text_selection,
             value_settable,
+            in_web_content: false,
+        }
+    }
+
+    fn in_web(role: &str, has_text_selection: bool, value_settable: bool) -> FocusedElement {
+        FocusedElement {
+            in_web_content: true,
+            ..element(role, has_text_selection, value_settable)
         }
     }
 
@@ -106,7 +127,41 @@ mod tests {
     }
 
     #[test]
-    fn should_paste_into_generic_roles() {
+    fn should_wait_on_a_web_page_without_a_text_input() {
+        for role in ["AXWebArea", "AXGroup", "AXLink", "AXStaticText"] {
+            assert!(verdict(&in_web(role, false, false)).waits(), "{role}");
+        }
+    }
+
+    #[test]
+    fn should_wait_on_a_web_page_with_selected_text() {
+        for role in ["AXWebArea", "AXGroup"] {
+            assert!(verdict(&in_web(role, true, false)).waits(), "{role}");
+        }
+    }
+
+    #[test]
+    fn should_paste_into_text_roles_in_web_content() {
+        for role in ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"] {
+            assert!(!verdict(&in_web(role, false, false)).waits(), "{role}");
+        }
+    }
+
+    #[test]
+    fn should_paste_into_an_editable_element_in_web_content() {
+        assert!(!verdict(&in_web("AXGroup", false, true)).waits());
+    }
+
+    #[test]
+    fn should_describe_an_element_in_web_content() {
+        assert_eq!(
+            verdict(&in_web("AXWebArea", true, false)).seen(),
+            "AXWebArea +selection +web"
+        );
+    }
+
+    #[test]
+    fn should_paste_into_generic_roles_outside_web_content() {
         for role in [
             "AXWebArea",
             "AXGroup",

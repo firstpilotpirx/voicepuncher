@@ -39,4 +39,8 @@ fn should_report_the_role_of_the_focused_element() {
     // Then
     let element = element.expect("some element has keyboard focus while the test runs");
     assert!(element.role.starts_with("AX"), "{element:?}");
+    eprintln!(
+        "focused: {element} (in web content: {})",
+        element.in_web_content
+    );
 }

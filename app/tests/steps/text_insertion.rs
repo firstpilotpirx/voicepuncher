@@ -44,7 +44,11 @@ enum Event {
 enum Focus {
     TextField,
     Button,
-    WebContent,
+    WebPage,
+    WebPageWithSelectedText,
+    WebTextInput,
+    WebEditable,
+    TerminalWindow,
     ListWithTextSelection,
     Unreported,
 }
@@ -183,9 +187,29 @@ fn focus_unreported(world: &mut IntegrationWorld) {
     run(world).set_focus(Focus::Unreported);
 }
 
-#[given("the focused element is web content of a browser or an Electron app")]
-fn web_content_focused(world: &mut IntegrationWorld) {
-    run(world).set_focus(Focus::WebContent);
+#[given("a text input on a web page has keyboard focus")]
+fn web_text_input_focused(world: &mut IntegrationWorld) {
+    run(world).set_focus(Focus::WebTextInput);
+}
+
+#[given("an editable element on a web page has keyboard focus")]
+fn web_editable_focused(world: &mut IntegrationWorld) {
+    run(world).set_focus(Focus::WebEditable);
+}
+
+#[given("a web page has keyboard focus and no text input on it has")]
+fn web_page_focused(world: &mut IntegrationWorld) {
+    run(world).set_focus(Focus::WebPage);
+}
+
+#[given("a web page with selected text has keyboard focus and no text input on it has")]
+fn web_page_with_selected_text_focused(world: &mut IntegrationWorld) {
+    run(world).set_focus(Focus::WebPageWithSelectedText);
+}
+
+#[given("the focused element is a terminal's window outside web content")]
+fn terminal_window_focused(world: &mut IntegrationWorld) {
+    run(world).set_focus(Focus::TerminalWindow);
 }
 
 #[given("the focused element is a list that offers a text selection")]
@@ -221,6 +245,15 @@ fn wait_ended_by_hotkey(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
+#[given("the app holds the text back because a web page has focus without a text input")]
+fn text_held_back_on_web_page(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.set_focus(Focus::WebPage);
+    run.finish_dictation()?;
+    run.wait_for(|e| *e == Event::WaitingShown, REACTION)?;
+    Ok(())
+}
+
 #[when("a dictation finishes")]
 fn dictation_finishes(world: &mut IntegrationWorld) -> Result<()> {
     run(world).finish_dictation()
@@ -229,6 +262,11 @@ fn dictation_finishes(world: &mut IntegrationWorld) -> Result<()> {
 #[when("the user clicks into a text field")]
 fn click_into_text_field(world: &mut IntegrationWorld) {
     run(world).set_focus(Focus::TextField);
+}
+
+#[when("the user clicks into a text input on that page")]
+fn click_into_web_text_input(world: &mut IntegrationWorld) {
+    run(world).set_focus(Focus::WebTextInput);
 }
 
 #[when("the wait time passes and the button still has focus")]
@@ -352,18 +390,24 @@ struct ScriptedFocus(Arc<Mutex<Focus>>);
 
 impl FocusProbe for ScriptedFocus {
     fn focused_element(&self) -> Result<Option<FocusedElement>> {
-        let element = |role: &str, has_text_selection: bool, value_settable: bool| {
-            Ok(Some(FocusedElement {
-                role: role.to_owned(),
-                has_text_selection,
-                value_settable,
-            }))
-        };
+        let element =
+            |role: &str, has_text_selection: bool, value_settable: bool, in_web_content: bool| {
+                Ok(Some(FocusedElement {
+                    role: role.to_owned(),
+                    has_text_selection,
+                    value_settable,
+                    in_web_content,
+                }))
+            };
         match *self.0.lock().unwrap() {
-            Focus::TextField => element("AXTextField", true, true),
-            Focus::Button => element("AXButton", false, false),
-            Focus::WebContent => element("AXWebArea", false, false),
-            Focus::ListWithTextSelection => element("AXList", true, false),
+            Focus::TextField => element("AXTextField", true, true, false),
+            Focus::Button => element("AXButton", false, false, false),
+            Focus::WebPage => element("AXWebArea", false, false, true),
+            Focus::WebPageWithSelectedText => element("AXWebArea", true, false, true),
+            Focus::WebTextInput => element("AXTextField", true, true, true),
+            Focus::WebEditable => element("AXGroup", true, true, true),
+            Focus::TerminalWindow => element("AXWindow", false, false, false),
+            Focus::ListWithTextSelection => element("AXList", true, false, false),
             Focus::Unreported => bail!("AX error -25204: cannot complete"),
         }
     }
