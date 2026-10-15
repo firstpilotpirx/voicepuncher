@@ -285,7 +285,8 @@ mod tests {
     fn overlay() -> MockVisualIndicator {
         let mut overlay = MockVisualIndicator::new();
         overlay.expect_show_recording().return_const(());
-        overlay.expect_show_processing().return_const(());
+        overlay.expect_show_recognizing_speech().return_const(());
+        overlay.expect_show_refining_text().return_const(());
         overlay.expect_hide().return_const(());
         overlay
     }

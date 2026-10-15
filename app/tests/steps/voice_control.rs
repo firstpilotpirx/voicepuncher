@@ -622,7 +622,8 @@ fn overlay_processing_then_hidden(world: &mut IntegrationWorld) -> Result<()> {
     run.wait_since_mark(|e| *e == Event::Overlay("hidden"))?;
     let since = run.since_mark();
     let at = |wanted: &Event| since.iter().position(|e| e == wanted);
-    let processing = at(&Event::Overlay("processing"));
+    // processing starts with its first stage, speech recognition
+    let processing = at(&Event::Overlay("recognizing speech"));
     let pasted = since.iter().position(|e| matches!(e, Event::Pasted(_)));
     let hidden = at(&Event::Overlay("hidden"));
     match (processing, pasted, hidden) {

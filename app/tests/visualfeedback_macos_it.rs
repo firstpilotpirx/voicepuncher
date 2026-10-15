@@ -153,7 +153,7 @@ fn show_recording_rebuilds_unconditionally() {
 }
 
 #[test]
-fn show_processing_rebuilds_unconditionally() {
+fn show_recognizing_speech_rebuilds_unconditionally() {
     use objc2::MainThreadMarker;
 
     let Some(mtm) = MainThreadMarker::new() else {
@@ -165,7 +165,7 @@ fn show_processing_rebuilds_unconditionally() {
     pump_run_loop(0.2);
     let after_recording = indicator.generation_count();
 
-    indicator.show_processing();
+    indicator.show_recognizing_speech();
     pump_run_loop(0.2);
     let after_processing = indicator.generation_count();
 
@@ -175,6 +175,6 @@ fn show_processing_rebuilds_unconditionally() {
     );
     assert_eq!(
         after_processing, 2,
-        "show_processing should bump generation to 2 (unconditional rebuild)"
+        "show_recognizing_speech should bump generation to 2 (unconditional rebuild)"
     );
 }

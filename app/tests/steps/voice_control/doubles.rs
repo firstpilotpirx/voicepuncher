@@ -181,8 +181,12 @@ impl VisualIndicator for RecordingOverlay {
         record(&self.0, Event::Overlay("recording"));
     }
 
-    fn show_processing(&self) {
-        record(&self.0, Event::Overlay("processing"));
+    fn show_recognizing_speech(&self) {
+        record(&self.0, Event::Overlay("recognizing speech"));
+    }
+
+    fn show_refining_text(&self) {
+        record(&self.0, Event::Overlay("refining text"));
     }
 
     fn show_waiting_for_focus(&self) {

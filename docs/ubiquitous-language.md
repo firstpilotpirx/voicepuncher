@@ -82,11 +82,18 @@
 ### VisualIndicator
 - **Type:** Driven Port (trait in `core/application/`)
 - **Definition:** Surfaces the current `Pipeline` state to the user as
-  an on-screen widget — three discrete signals: recording in progress,
-  processing in progress, hidden. Abstracts the platform-specific
+  an on-screen widget — five discrete signals: recording in progress,
+  each `Processing stage` (speech recognition, text refinement), waiting
+  for `Text input focus`, hidden. Abstracts the platform-specific
   always-on-top overlay so `Pipeline` stays platform-agnostic.
 - **Code:** `app/src/core/application/visual_indicator.rs`
 - **Synonyms to AVOID:** "Overlay", "HUD", "StatusBadge", "Toast", "Indicator" (alone — too generic)
+
+### Processing stage
+- **Type:** Domain concept (overlay state)
+- **Definition:** The step a dictation is in between the end of its recording and the paste, as the overlay shows it with an icon of its own: **speech recognition** from the stop until the transcript is ready (with live chunks, the transcription still running after the stop), then **text refinement** from its start until the corrected text is ready. With text refinement off only speech recognition is shown.
+- **Code:** `VisualIndicator::show_recognizing_speech`, `VisualIndicator::show_refining_text`; `Pipeline::without_text_refinement_stage`
+- **Synonyms to AVOID:** "phase", "step" (alone), "processing" (alone — names both stages)
 
 ### Speech recognition service
 - **Type:** External system (outside the app process)

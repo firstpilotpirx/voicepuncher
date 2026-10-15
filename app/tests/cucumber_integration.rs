@@ -17,6 +17,7 @@ pub struct IntegrationWorld {
     pub pasted: Option<String>,
     pub insertion: Option<steps::text_insertion::InsertionRun>,
     pub voice: Option<steps::voice_control::VoiceRun>,
+    pub stages: Option<steps::processing_stages::StagesRun>,
 }
 
 fn main() {

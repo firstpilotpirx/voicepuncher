@@ -320,7 +320,8 @@ struct NoOverlay;
 
 impl VisualIndicator for NoOverlay {
     fn show_recording(&self) {}
-    fn show_processing(&self) {}
+    fn show_recognizing_speech(&self) {}
+    fn show_refining_text(&self) {}
     fn show_waiting_for_focus(&self) {}
     fn hide(&self) {}
 }

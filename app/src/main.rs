@@ -31,7 +31,8 @@ struct NoopVisualIndicator;
 
 impl VisualIndicator for NoopVisualIndicator {
     fn show_recording(&self) {}
-    fn show_processing(&self) {}
+    fn show_recognizing_speech(&self) {}
+    fn show_refining_text(&self) {}
     fn show_waiting_for_focus(&self) {}
     fn hide(&self) {}
 }
@@ -177,6 +178,9 @@ fn main() {
             poll_interval: std::time::Duration::from_millis(100),
         },
     );
+    if no_llm {
+        pipeline = pipeline.without_text_refinement_stage();
+    }
     if let Some(spotter) = spotter {
         log::info!("voice control on: listening starts now; the hotkey records as push-to-talk");
         pipeline = pipeline.with_voice_control(Box::new(spotter), Box::new(MacOsKeyPresser));

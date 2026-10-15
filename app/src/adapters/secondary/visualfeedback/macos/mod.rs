@@ -23,8 +23,21 @@ type EqualizerData = (Vec<Arc<WindowSet>>, u64, Arc<AtomicU64>, Arc<AtomicU32>);
 enum OverlayState {
     Hidden,
     Recording,
-    Processing,
+    RecognizingSpeech,
+    RefiningText,
     WaitingForFocus,
+}
+
+const RECORDING_SIGN: &str = "◉ REC";
+const WAITING_FOR_FOCUS_SIGN: &str = "⌨ FOCUS";
+
+/// The icon of a processing stage; `None` for a state that is not one.
+fn stage_icon(state: OverlayState) -> Option<&'static str> {
+    match state {
+        OverlayState::RecognizingSpeech => Some("👂"),
+        OverlayState::RefiningText => Some("✏️"),
+        _ => None,
+    }
 }
 
 #[link(name = "System", kind = "dylib")]
@@ -139,9 +152,14 @@ impl MacosVisualIndicator {
                             Arc::clone(&level_register),
                         );
                     }
-                    OverlayState::Processing => {
+                    OverlayState::RecognizingSpeech | OverlayState::RefiningText => {
                         let ws_vec = windows.lock().unwrap().clone();
-                        apply_processing_state(ws_vec, generation, Arc::clone(&pulse_generation));
+                        apply_processing_state(
+                            ws_vec,
+                            current_state,
+                            generation,
+                            Arc::clone(&pulse_generation),
+                        );
                     }
                     OverlayState::WaitingForFocus => {
                         let ws_vec = windows.lock().unwrap().clone();
@@ -275,10 +293,10 @@ fn rebuild_window_set_inner(
             let lr = Arc::clone(level_register);
             apply_recording_state(ws_vec, generation, pg, lr);
         }
-        OverlayState::Processing => {
+        OverlayState::RecognizingSpeech | OverlayState::RefiningText => {
             let ws_vec = windows.lock().unwrap().clone();
             let pg = Arc::clone(pulse_generation);
-            apply_processing_state(ws_vec, generation, pg);
+            apply_processing_state(ws_vec, current_state, generation, pg);
         }
         OverlayState::WaitingForFocus => {
             let ws_vec = windows.lock().unwrap().clone();
@@ -311,27 +329,45 @@ impl VisualIndicator for MacosVisualIndicator {
         });
     }
 
-    fn show_processing(&self) {
+    fn show_recognizing_speech(&self) {
+        self.show_processing(OverlayState::RecognizingSpeech);
+    }
+
+    fn show_refining_text(&self) {
+        self.show_processing(OverlayState::RefiningText);
+    }
+
+    fn show_waiting_for_focus(&self) {
+        self.show_waiting();
+    }
+
+    fn hide(&self) {
+        self.hide_overlay();
+    }
+}
+
+impl MacosVisualIndicator {
+    fn show_processing(&self, stage: OverlayState) {
         let generation = self.pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
         let pulse_gen = Arc::clone(&self.pulse_generation);
         let windows = Arc::clone(&self.windows);
         let last_topology = Arc::clone(&self.last_topology);
 
-        *self.state.lock().unwrap() = OverlayState::Processing;
-        log::debug!("overlay: processing requested");
+        *self.state.lock().unwrap() = stage;
+        log::debug!("overlay: {stage:?} requested");
 
         dispatch_to_main(move || {
             if let Some(mtm) = MainThreadMarker::new() {
                 do_rebuild(mtm, &windows, &last_topology);
 
                 let ws_vec = windows.lock().unwrap().clone();
-                log::debug!("overlay: processing shown on {} screen(s)", ws_vec.len());
-                apply_processing_state(ws_vec, generation, pulse_gen);
+                log::debug!("overlay: {stage:?} shown on {} screen(s)", ws_vec.len());
+                apply_processing_state(ws_vec, stage, generation, pulse_gen);
             }
         });
     }
 
-    fn show_waiting_for_focus(&self) {
+    fn show_waiting(&self) {
         let generation = self.pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
         let pulse_gen = Arc::clone(&self.pulse_generation);
         let windows = Arc::clone(&self.windows);
@@ -349,7 +385,7 @@ impl VisualIndicator for MacosVisualIndicator {
         });
     }
 
-    fn hide(&self) {
+    fn hide_overlay(&self) {
         self.pulse_generation.fetch_add(1, Ordering::SeqCst);
         let windows = self.windows.lock().unwrap().clone();
 
@@ -380,7 +416,7 @@ fn apply_recording_state(
     use objc2_app_kit::{NSColor, NSWindowCollectionBehavior};
     use objc2_foundation::NSString;
 
-    let text = NSString::from_str("◉ REC");
+    let text = NSString::from_str(RECORDING_SIGN);
     for ws in &windows {
         ws.label.setStringValue(&text);
         ws.label.setTextColor(Some(&NSColor::redColor()));
@@ -433,15 +469,22 @@ unsafe extern "C" fn pulse_trampoline(ptr: *mut std::ffi::c_void) {
     schedule_pulse(windows, generation, pulse_gen, !bright);
 }
 
+/// The icon of the processing stage on the left, the spinner turning beside it.
 fn apply_processing_state(
     windows: Vec<Arc<WindowSet>>,
+    stage: OverlayState,
     generation: u64,
     pulse_gen: Arc<AtomicU64>,
 ) {
-    use objc2_app_kit::NSWindowCollectionBehavior;
+    use objc2_app_kit::{NSColor, NSWindowCollectionBehavior};
+    use objc2_foundation::NSString;
 
+    let icon = NSString::from_str(stage_icon(stage).unwrap_or_default());
     for ws in &windows {
-        ws.label.setHidden(true);
+        ws.label.setStringValue(&icon);
+        ws.label.setTextColor(Some(&NSColor::labelColor()));
+        ws.label.setAlphaValue(1.0);
+        ws.label.setHidden(false);
         ws.eq_label.setHidden(true);
         ws.spinner.setHidden(false);
         unsafe { ws.spinner.startAnimation(None) };
@@ -466,7 +509,7 @@ fn apply_waiting_for_focus_state(
     use objc2_app_kit::{NSColor, NSWindowCollectionBehavior};
     use objc2_foundation::NSString;
 
-    let text = NSString::from_str("⌨ FOCUS");
+    let text = NSString::from_str(WAITING_FOR_FOCUS_SIGN);
     for ws in &windows {
         ws.label.setStringValue(&text);
         ws.label.setTextColor(Some(&NSColor::orangeColor()));
@@ -571,6 +614,18 @@ unsafe extern "C" fn equalizer_trampoline(ptr: *mut std::ffi::c_void) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn should_give_each_processing_stage_an_icon_of_its_own() {
+        let stages = [OverlayState::RecognizingSpeech, OverlayState::RefiningText];
+        let icons: Vec<&str> = stages.iter().filter_map(|s| stage_icon(*s)).collect();
+        assert_eq!(icons.len(), 2, "every processing stage has an icon");
+        assert_ne!(icons[0], icons[1]);
+        for icon in icons {
+            assert_ne!(icon, RECORDING_SIGN);
+            assert_ne!(icon, WAITING_FOR_FOCUS_SIGN);
+        }
+    }
 
     #[test]
     fn should_read_level_from_register_via_audio_level_source() {

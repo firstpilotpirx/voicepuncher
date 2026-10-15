@@ -40,7 +40,7 @@ None. The specs that say the overlay shows processing (`voice-control`, `text-in
 
 ## Release
 
-MINOR (new capability), next minor version after the current one in `app/Cargo.toml` (0.10.0 → 0.11.0 at the time of writing).
+MINOR (new capability): target version 0.14.0, the next minor version after the current one in `app/Cargo.toml`.
 
 ## Impact
 

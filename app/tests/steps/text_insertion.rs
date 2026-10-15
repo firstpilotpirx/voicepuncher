@@ -469,7 +469,8 @@ struct RecordingIndicator(Arc<Mutex<Vec<Event>>>, Arc<Mutex<Option<Instant>>>);
 
 impl VisualIndicator for RecordingIndicator {
     fn show_recording(&self) {}
-    fn show_processing(&self) {}
+    fn show_recognizing_speech(&self) {}
+    fn show_refining_text(&self) {}
     fn show_waiting_for_focus(&self) {
         *self.1.lock().unwrap() = Some(Instant::now());
         self.0.lock().unwrap().push(Event::WaitingShown);

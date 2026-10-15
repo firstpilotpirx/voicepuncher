@@ -59,6 +59,8 @@ pub struct Pipeline {
     voice: Option<voice_control::VoiceControl>,
     /// Command words the running dictation may hold in its text.
     command_words: CommandWords,
+    /// Whether the overlay shows the text refinement stage: off when refinement is off.
+    shows_refinement: bool,
 }
 
 /// Command words said in one breath with a dictation, so they may reach its transcript.
@@ -96,7 +98,14 @@ impl Pipeline {
             pending: VecDeque::new(),
             voice: None,
             command_words: CommandWords::default(),
+            shows_refinement: true,
         }
+    }
+
+    /// Text refinement is off: the overlay never shows its processing stage.
+    pub fn without_text_refinement_stage(mut self) -> Self {
+        self.shows_refinement = false;
+        self
     }
 
     /// Waits for text input focus before a dictation is pasted (see `insert_text`).
@@ -206,7 +215,7 @@ impl Pipeline {
         let t_user_stop = std::time::Instant::now();
         self.follow_dictation(false);
         self.sound_player.play_stop();
-        self.visual_indicator.show_processing();
+        self.visual_indicator.show_recognizing_speech();
         if let Some(session) = self.live_session.take() {
             self.state = PipelineState::Idle;
             let t_drain_start = std::time::Instant::now();
@@ -373,6 +382,9 @@ impl Pipeline {
 
         self.state = PipelineState::Refining;
         log::info!("refining…");
+        if self.shows_refinement {
+            self.visual_indicator.show_refining_text();
+        }
         let t_refine = std::time::Instant::now();
         let Some(cleaned) = refine_or_raw(self.refiner.as_mut(), &raw) else {
             self.state = PipelineState::Idle;
@@ -418,6 +430,9 @@ impl Pipeline {
     ) {
         self.state = PipelineState::Refining;
         log::info!("refining…");
+        if self.shows_refinement {
+            self.visual_indicator.show_refining_text();
+        }
         let t_refine = std::time::Instant::now();
         let Some(cleaned) = refine_or_raw(self.refiner.as_mut(), &raw) else {
             self.state = PipelineState::Idle;
@@ -511,7 +526,10 @@ mod tests {
     fn noop_visual_indicator() -> MockVisualIndicator {
         let mut v = MockVisualIndicator::new();
         v.expect_show_recording().times(..).return_const(());
-        v.expect_show_processing().times(..).return_const(());
+        v.expect_show_recognizing_speech()
+            .times(..)
+            .return_const(());
+        v.expect_show_refining_text().times(..).return_const(());
         v.expect_hide().times(..).return_const(());
         v
     }
@@ -933,7 +951,8 @@ mod tests {
 
         let mut visual = MockVisualIndicator::new();
         visual.expect_show_recording().once().return_const(());
-        visual.expect_show_processing().never();
+        visual.expect_show_recognizing_speech().never();
+        visual.expect_show_refining_text().never();
         visual.expect_hide().once().return_const(());
 
         let mut pipeline = Pipeline::new(
@@ -952,7 +971,7 @@ mod tests {
         pipeline.step(PttSignal::Pressed).unwrap();
         // When
         pipeline.step(PttSignal::Cancel).unwrap();
-        // Then — show_processing never called, hide called once
+        // Then — no processing stage shown, hide called once
     }
 
     #[test]
@@ -1117,7 +1136,14 @@ mod tests {
 
         let mut visual = MockVisualIndicator::new();
         visual.expect_show_recording().once().return_const(());
-        visual.expect_show_processing().times(..).return_const(());
+        visual
+            .expect_show_recognizing_speech()
+            .times(..)
+            .return_const(());
+        visual
+            .expect_show_refining_text()
+            .times(..)
+            .return_const(());
         visual.expect_hide().times(..).return_const(());
 
         let mut pipeline = Pipeline::new(
@@ -1138,9 +1164,7 @@ mod tests {
         // Then — MockVisualIndicator verifies exactly once show_recording was called
     }
 
-    #[test]
-    fn should_call_show_processing_when_transcribing_starts() {
-        // Given
+    fn stages_shown(refinement_shown: bool) -> Vec<&'static str> {
         let recorder = make_recorder_with_start_stop(one_second_audio());
 
         let mut transcriber = MockTranscriber::new();
@@ -1158,10 +1182,20 @@ mod tests {
         let mut paster = MockTextPaster::new();
         paster.expect_paste().once().returning(|_| Ok(()));
 
+        let shown = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut visual = MockVisualIndicator::new();
-        visual.expect_show_recording().once().return_const(());
-        visual.expect_show_processing().once().return_const(());
-        visual.expect_hide().once().return_const(());
+        let note = |stage: &'static str| {
+            let shown = std::sync::Arc::clone(&shown);
+            move || shown.lock().unwrap().push(stage)
+        };
+        visual.expect_show_recording().returning(note("recording"));
+        visual
+            .expect_show_recognizing_speech()
+            .returning(note("recognizing speech"));
+        visual
+            .expect_show_refining_text()
+            .returning(note("refining text"));
+        visual.expect_hide().returning(note("hidden"));
 
         let mut pipeline = Pipeline::new(
             Box::new(recorder),
@@ -1176,10 +1210,29 @@ mod tests {
                 chunking: ChunkingCfg::default(),
             },
         );
+        if !refinement_shown {
+            pipeline = pipeline.without_text_refinement_stage();
+        }
         pipeline.step(PttSignal::Pressed).unwrap();
-        // When
         pipeline.step(PttSignal::Pressed).unwrap();
-        // Then — MockVisualIndicator verifies the exact call sequence
+        let shown = shown.lock().unwrap().clone();
+        shown
+    }
+
+    #[test]
+    fn should_show_speech_recognition_then_text_refinement_after_the_stop() {
+        assert_eq!(
+            stages_shown(true),
+            ["recording", "recognizing speech", "refining text", "hidden"]
+        );
+    }
+
+    #[test]
+    fn should_not_show_text_refinement_when_its_stage_is_off() {
+        assert_eq!(
+            stages_shown(false),
+            ["recording", "recognizing speech", "hidden"]
+        );
     }
 
     #[test]
@@ -1189,7 +1242,10 @@ mod tests {
 
         let mut visual = MockVisualIndicator::new();
         visual.expect_show_recording().once().return_const(());
-        visual.expect_show_processing().once().return_const(());
+        visual
+            .expect_show_recognizing_speech()
+            .once()
+            .return_const(());
         visual.expect_hide().once().return_const(());
 
         let mut pipeline = Pipeline::new(
@@ -1208,6 +1264,6 @@ mod tests {
         pipeline.step(PttSignal::Pressed).unwrap();
         // When
         pipeline.step(PttSignal::Pressed).unwrap();
-        // Then — show_processing fires immediately on stop, hide fires after too-short check
+        // Then — speech recognition shows at once on stop, hide fires after too-short check
     }
 }
