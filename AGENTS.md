@@ -47,7 +47,7 @@ Skills: `/create-change` files a change for later (stages 2–3 only, squash-mer
 
 **Several changes at once:** `/orchestrate` (agent-kit skill) starts each ready change in a session and worktree of its own running `/proceed-change`, and a change whose `openspec/changes/<name>/orchestration.yaml` lists `depends_on` only after those changes are archived on `main`; `autonomy` (`auto`, `review`, `explore`) sets how much the change needs the user, and `kit backlog` shows each change as ready, blocked, running, needs you or invalid. Limits of this project:
 
-- E2E needs no extra care: every check recipe waits for the machine-wide test lock, so parallel changes run their checks one at a time while coding goes on at once.
+- E2E needs no extra care: checks, builds and E2E wait for the machine-wide test lock, so parallel changes run them one at a time; `just test` does not wait, so coding and its tests go on in every session at once.
 - Two changes that bump `version` from the same value conflict in `app/Cargo.toml` when the second merges `origin/main`; that change takes the next version above `main` and corrects the target version in its proposal (`kit version-check`).
 - Changes that touch the same code (chunk seams, the command spotting protocol, the same recipe) depend on each other even when no proposal says so: declare it in `orchestration.yaml` when filing the change; the orchestrator does not guess overlaps.
 
@@ -94,7 +94,7 @@ All checks are `just` recipes (see `justfile`; no other scripts). A change is "v
 
 | When | Command | What it runs |
 |---|---|---|
-| After every edit | `just test` (~20 s) | unit + architecture + integration tests |
+| After every edit | `just test` (~1 min, without the machine-wide lock) | unit + architecture + integration tests |
 | After every task, before every push | `just check` (~6 min) | fmt, clippy `-D warnings`, `test`, release build, E2E smoke, WER accuracy on 10 samples |
 | Before merging a branch, before a release | `just full-check` (~14 min) | `cargo clean` + everything in `check`, plus the chunk seams (`e2e-seams`: seam sweep and seam matrix) and the outages (`e2e-resilience`: services paused, killed and restarted while voice control runs, on ports of their own), with WER accuracy on a fixed sample of 100 recordings |
 | Before merging a change to hotkey, recording, overlay, paste, permissions | manual run by the user | `README.md` § Release checklist |
@@ -104,7 +104,8 @@ Build inputs are `app/`, `command-spotting/`, `e2e-test/`, `Cargo.toml`, `Cargo.
 `just bench` is a model comparison, not a gate — only when a model, decoding params or the prompt changed.
 
 - **Models and corpus** are auto-discovered by the `justfile` (largest model in `~/.voicepuncher/` or `~/.voicepuncher/models/`; corpus in `e2e-test/corpus/`). The corpus is gitignored, so in a worktree set `VOICEPUNCHER_BENCH_CORPUS` to the main checkout's `e2e-test/corpus`.
-- **Local services:** the E2E recipes start `whisper-server`, `llama-server` and `voicepuncher-command-spotting` (`just start-model-servers`) and stop what they started afterwards; `just test` needs no service. The services are shared across checkouts on ports 8081, 8080 and 8082; every check, test and benchmark recipe waits for the machine-wide test lock (`~/.claude/rules-custom/machine-lock.md`), so runs from parallel checkouts queue instead of colliding. E2E business scenarios synthesize speech with macOS `say`.
+- **Local services:** the E2E recipes start `whisper-server`, `llama-server` and `voicepuncher-command-spotting` (`just start-model-servers`) and stop what they started afterwards; `just test` needs no service. The services are shared across checkouts on ports 8081, 8080 and 8082; every check, build, E2E and benchmark recipe waits for the machine-wide test lock (`~/.claude/rules-custom/machine-lock.md`), so runs from parallel checkouts queue instead of colliding. `just test` uses no shared service, port or GPU and starts at once, beside any locked run (its comment in `justfile` says why). E2E business scenarios synthesize speech with macOS `say`.
+- **Flakes and the same worktree:** a test that fails and passes on one unchanged rerun is a flake, not a pass: rerun once, never more; name the flake — test, recipe, what ran beside it (other sessions' runs, the `[machine-lock]` holder) — in the stage report and the PR body; when the same test flakes again, `/create-change` for its cause. No bar is loosened, no test dropped; exit 124 is a hang, reported and never rerun unchanged. Let this worktree's `check` or `full-check` finish before running `just test` there: they share `target/`, and `full-check` starts with `cargo clean`.
 - **Synthesized speech is cached** in `~/.cache/voicepuncher/speech/` (or `VOICEPUNCHER_SPEECH_CACHE`), shared by every checkout and keyed by macOS build, voice, rate, audio format and text: `say` runs once per phrase per machine. Delete the directory to synthesize everything again.
 - **`full-check` runs `cargo clean`** and deletes `target/release/voicepuncher`, which the user may be running. In the main checkout, ask first; in a worktree it only cleans that worktree's `target/`.
 - **The user's voice:** recordings of the user's own voice commands live in `~/.voicepuncher/voice-samples/` (never committed; README § Testing); `voice_samples_it` and the `@voice_samples` E2E scenarios run on them when they exist. When voice recognition fails for the user, ask for a new recording session there and add it rather than tuning on synthesized speech alone.

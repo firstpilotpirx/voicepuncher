@@ -2,7 +2,7 @@
 
 ## Why
 
-Agents run `just test` after every edit (AGENTS.md § How to verify a change), and it waits for the machine-wide test lock (agent-kit `with-machine-lock`) like every check. With `/orchestrate`, parallel sessions are now the normal way to work through the backlog. On 2026-10-15 six voicepuncher changes ran in parallel sessions: their `just test` runs (~20 s each) queued behind other sessions' `check` and ~14-minute `full-check` runs, and the coding sessions sat idle. AGENTS.md promises that parallel changes run their checks one at a time "while coding goes on at once"; with `just test` locked, coding waits too. A waiter even gives up after an hour (exit 75), so a `just test` queued behind several `full-check` runs can fail without having run.
+Agents run `just test` after every edit (AGENTS.md § How to verify a change), and it waits for the machine-wide test lock (agent-kit `with-machine-lock`) like every check. With `/orchestrate`, parallel sessions are now the normal way to work through the backlog. On 2026-10-15 six voicepuncher changes ran in parallel sessions: their `just test` runs (~1 min each) queued behind other sessions' `check` and ~14-minute `full-check` runs, and the coding sessions sat idle. AGENTS.md promises that parallel changes run their checks one at a time "while coding goes on at once"; with `just test` locked, coding waits too. A waiter even gives up after an hour (exit 75), so a `just test` queued behind several `full-check` runs can fail without having run.
 
 `just test` holds nothing the lock protects:
 
@@ -21,7 +21,7 @@ It does share the machine: CPU and memory, the cache of synthesized speech (`~/.
 
 The design settles what the lock no longer keeps away from `just test`:
 
-- **CPU contention, both ways.** The lock's reason — two suites at once make both slow and flaky — still holds for the CPU. `just test` has real-time tests with tight bounds: the command spotting client's keep-alive, hang and reconnect tests (`commandspotting_client_it`, `commandspotting_reconnect_it`), `http_failure_it` (300 ms deadline), the `@serial` slice and component scenarios that watch the pipeline run (`text_insertion`, `voice_control`) and, with the models, `server_it` (pongs at most 1 s apart while a confirmation hangs) and `engine_it` (confirmation deadlines of 800 ms to 5 s). They now run beside a locked `check` or `full-check` and beside other `just test` runs. In turn, the build and the test binaries of `just test`, all started at once, take CPU from the locked run's real-time tests against the live services, such as `commandspotting_websocket_it` `should_serve_several_apps_listening_at_once`, which flaked once inside a `just check` on 2026-10-15.
+- **CPU contention, both ways.** The lock's reason — two suites at once make both slow and flaky — still holds for the CPU. `just test` has real-time tests with tight bounds: the command spotting client's keep-alive, hang and reconnect tests (`commandspotting_client_it`, `commandspotting_reconnect_it`), `http_failure_it` (300 ms deadline), the `@serial` slice and component scenarios that watch the pipeline run (`text_insertion`, `voice_control`, `processing_stages`) and, with the models, `server_it` (pongs at most 1 s apart while a confirmation hangs) and `engine_it` (confirmation deadlines of 800 ms to 5 s). They now run beside a locked `check` or `full-check` and beside other `just test` runs. In turn, the build and the test binaries of `just test`, all started at once, take CPU from the locked run's real-time tests against the live services, such as `commandspotting_websocket_it` `should_serve_several_apps_listening_at_once`, which flaked once inside a `just check` on 2026-10-15.
 - **`just test` beside its own worktree's `check` or `full-check`**, for example one started in the background: both use the same `target/`, and `full-check` begins with `cargo clean`. The lock kept them apart until now.
 
 ## Capabilities
@@ -59,4 +59,4 @@ None.
 
 ## Release
 
-No release: no app behavior changes; `version` in `app/Cargo.toml` stays as it is (0.13.2 today).
+No release: no app behavior changes; `version` in `app/Cargo.toml` keeps its value.
