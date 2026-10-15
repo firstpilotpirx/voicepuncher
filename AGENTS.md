@@ -45,6 +45,12 @@ Every feature, bug fix and behavior change runs through all stages below, in ord
 
 Skills: `/create-change` files a change for later (stages 2–3 only, squash-merged to `main` without asking); `/proceed-change <name>` runs stages 1–12 for one change, stopping only at the gates picked at start. Both skills, the `spec-test-reviewer` agent and the shared OpenSpec rules (generated `opsx:*` skills stay untouched, one session per change) come from agent-kit (`~/.claude/skills/`, `~/.claude/agents/`, `~/.claude/rules-custom/openspec.md`); this file supplies their project values.
 
+**Several changes at once:** `/orchestrate` (agent-kit skill) starts each ready change in a session and worktree of its own running `/proceed-change`, and a change whose `openspec/changes/<name>/orchestration.yaml` lists `depends_on` only after those changes are archived on `main`; `autonomy` (`auto`, `review`, `explore`) sets how much the change needs the user, and `kit backlog` shows each change as ready, blocked, running, needs you or invalid. Limits of this project:
+
+- E2E needs no extra care: every check recipe waits for the machine-wide test lock, so parallel changes run their checks one at a time while coding goes on at once.
+- Two changes that bump `version` from the same value conflict in `app/Cargo.toml` when the second merges `origin/main`; that change takes the next version above `main` and corrects the target version in its proposal (`kit version-check`).
+- Changes that touch the same code (chunk seams, the command spotting protocol, the same recipe) depend on each other even when no proposal says so: declare it in `orchestration.yaml` when filing the change; the orchestrator does not guess overlaps.
+
 CLI: `openspec list` (changes), `openspec list --specs`, `openspec status --change <name>`, `openspec view` (dashboard), `openspec validate`.
 
 ## TDD — Red, Green, Refactor
