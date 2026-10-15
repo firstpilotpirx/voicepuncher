@@ -19,6 +19,8 @@ pub enum JobKind {
     Segment,
     /// A phrase the keyword spotter found outside any speech segment.
     Unheld,
+    /// The last seconds of a closed segment in which no command was heard.
+    Tail,
 }
 
 impl JobKind {
@@ -41,6 +43,7 @@ impl JobKind {
             JobKind::Window => "window",
             JobKind::Segment => "segment",
             JobKind::Unheld => "unheld",
+            JobKind::Tail => "tail",
         }
     }
 }

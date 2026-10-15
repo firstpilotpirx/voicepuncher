@@ -265,11 +265,49 @@ Feature: voice-control
 
   Rule: An utterance ends after 0.3 s of silence
 
-    @smoke
+    @smoke @serial
     Scenario: Stop after a short breath
       Given the command spotting service is running
-      When someone says "We meet on Friday", takes a short breath and says "stop dictation" while dictating
-      Then the commands "stop dictation" take effect in order
+      And listening is on for a whole session
+      And a dictation started by voice runs
+      When someone says a sentence, takes a short breath and says "stop dictation"
+      Then the whole sentence, its first words included, is pasted without "stop"
+
+    @smoke @serial
+    Scenario: Restart, a short pause, then speech that starts like another word
+      Given the command spotting service is running
+      And listening is on for a whole session
+      And a dictation runs and someone has said a sentence in it
+      When someone says "Restart", pauses for about 0.4 s and says another sentence, and later ends the dictation
+      Then only the other sentence is pasted, its first words included
+
+    @smoke
+    Scenario: A command alone, a short pause, then speech
+      Given the command spotting service is running
+      When someone says "Enter", pauses for 0.3 s and says a sentence while no dictation runs
+      Then the commands "press enter" take effect in order
+
+    @smoke @voice_samples
+    Scenario Outline: The user's recorded command alone, a short pause, then speech
+      Given the command spotting service is running
+      And the user's own recordings of the commands exist on the machine
+      When the user's recorded "<said>", said on its own, is followed by <pause> s of silence and a sentence while <state>
+      Then the commands "<command>" take effect in order
+
+      Examples:
+        | said    | state             | pause | command           |
+        | restart | dictating         | 0.3   | restart dictation |
+        | restart | dictating         | 0.45  | restart dictation |
+        | restart | dictating         | 0.6   | restart dictation |
+        | stop    | dictating         | 0.3   | stop dictation    |
+        | stop    | dictating         | 0.45  | stop dictation    |
+        | stop    | dictating         | 0.6   | stop dictation    |
+        | start   | no dictation runs | 0.3   | start dictation   |
+        | start   | no dictation runs | 0.45  | start dictation   |
+        | start   | no dictation runs | 0.6   | start dictation   |
+        | enter   | no dictation runs | 0.3   | press enter       |
+        | enter   | no dictation runs | 0.45  | press enter       |
+        | enter   | no dictation runs | 0.6   | press enter       |
 
   # The sessions run in real time and wait for the speech recognition service's answers;
   # @serial keeps the other scenarios' requests from queuing ahead of them.

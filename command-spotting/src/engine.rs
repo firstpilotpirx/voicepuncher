@@ -20,8 +20,10 @@ use crate::protocol::ServerEvent;
 use crate::worker::{ConfirmationWorker, JobKind};
 
 mod confirming;
+mod pause;
 
 use confirming::JobContext;
+use pause::PauseWatch;
 
 pub const SAMPLE_RATE: u32 = 16_000;
 const SILERO_WINDOW: usize = 512;
@@ -92,6 +94,7 @@ pub struct Engine {
     hear: Option<Arc<dyn Hear>>,
     deadline: Duration,
     max_command_samples: usize,
+    min_silence_samples: usize,
 }
 
 impl Engine {
@@ -115,6 +118,7 @@ impl Engine {
                 .map(|url| Arc::new(UtteranceTranscriber::new(url)) as Arc<dyn Hear>),
             deadline: cfg.confirmation_deadline,
             max_command_samples: samples_in(cfg.max_command_secs),
+            min_silence_samples: samples_in(cfg.min_silence_secs),
         })
     }
 
@@ -148,6 +152,7 @@ impl Engine {
             current: None,
             next_utterance: 0,
             vad,
+            pause: PauseWatch::new(self.min_silence_samples),
             stream: None,
             samples_seen: 0,
             vad_pending: Vec::new(),
@@ -176,6 +181,8 @@ pub struct Session<'a> {
     current: Option<u64>,
     next_utterance: u64,
     vad: VoiceActivityDetector,
+    /// Ends an utterance at a quiet pause the detector still holds as speech.
+    pause: PauseWatch,
     stream: Option<OnlineStream>,
     samples_seen: usize,
     vad_pending: Vec<f32>,
@@ -224,7 +231,9 @@ impl Session<'_> {
         for frame in samples.chunks(DECODE_FRAME_SAMPLES) {
             self.recent.push(frame);
             let spotted = self.spot(frame);
-            events.extend(self.outbox.send(spotted));
+            // A phrase goes out from the orderer at once only when it belongs to the segment
+            // that ended last: the spotter may report it after a quiet pause closed that one.
+            events.extend(self.outbox.send_in_last_segment(spotted));
             events.extend(self.detect_speech(frame));
             self.samples_seen += frame.len();
             self.watch_running();
@@ -264,26 +273,50 @@ impl Session<'_> {
         }
         self.vad_fed += windows * SILERO_WINDOW;
         self.vad_pending.drain(..windows * SILERO_WINDOW);
+        let mut events = self.take_segments(None);
+        if let Some(quiet_from) = self.pause.hear(samples, self.vad.detected()) {
+            // WHY: after a quiet word the detector holds speech up to 0.55 s into the pause,
+            // so a short pause before more speech would never end the utterance.
+            self.vad.flush();
+            events.extend(self.take_segments(Some(quiet_from)));
+            self.pause.forget();
+        }
+        events
+    }
+
+    /// The events of the segments the detector closed; one closed by a quiet pause ends where
+    /// the pause began, at `quiet_from`.
+    fn take_segments(&mut self, quiet_from: Option<usize>) -> Vec<ServerEvent> {
         let mut events = Vec::new();
         while let Some(segment) = self.vad.front() {
             self.vad.pop();
             let start = self.vad_offset + segment.start().max(0) as usize;
+            let detected_end = start + segment.n().max(0) as usize;
+            let end = quiet_from.map_or(detected_end, |q| q.clamp(start, detected_end));
             let bounds = Segment {
                 start: seconds(start),
-                end: seconds(start + segment.n().max(0) as usize),
+                end: seconds(end),
             };
             log::info!("speech {:.2}–{:.2}s", bounds.start, bounds.end);
             if let Some(dir) = self.engine.save_speech_dir.as_deref() {
                 save_speech(dir, bounds.start, segment.samples());
             }
             let segment_events = self.orderer.segment(bounds);
-            let end = start + segment.n().max(0) as usize;
-            events.extend(self.close_segment(start, end, bounds, segment_events));
+            let quiet_level = self.pause.quiet_level();
+            events.extend(self.close_segment(
+                start,
+                end,
+                bounds,
+                segment_events,
+                quiet_level,
+                quiet_from.is_some(),
+            ));
             self.last_segment_end = end;
             // WHY: after some utterances the detector's state stops it noticing quiet
             // speech; a reset in the silence that closed the segment loses nothing.
             self.vad.reset();
             self.vad_offset = self.vad_fed;
+            self.pause.forget();
         }
         events
     }

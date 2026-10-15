@@ -26,6 +26,8 @@ const PAUSE_SECS: f32 = 1.0;
 /// utterance.
 const BREATH_SECS: f32 = 0.35;
 const MIN_SILENCE_SECS: f32 = 0.3;
+/// Quieter samples are silence.
+const SILENCE_LEVEL: f32 = 0.01;
 const VOICE: &str = "Eddy";
 
 /// ONNX Runtime aborts when models load or run on several test threads at once.
@@ -66,6 +68,14 @@ fn load_engine() -> Option<Engine> {
 /// `words` spoken by `say`, without any pause.
 fn speech(words: &str) -> Vec<f32> {
     common::spoken_by(Some(VOICE), words)
+}
+
+/// `say` speech from its first sound to its last.
+fn sound_only(audio: Vec<f32>) -> Vec<f32> {
+    let loud = |s: &f32| s.abs() > SILENCE_LEVEL;
+    let first = audio.iter().position(loud).unwrap_or(0);
+    let last = audio.iter().rposition(loud).map_or(first, |at| at + 1);
+    audio[first..last].to_vec()
 }
 
 fn silence(secs: f32) -> Vec<f32> {
@@ -206,10 +216,12 @@ fn should_hear_a_chain_of_commands() {
 #[test]
 fn should_hear_a_stop_after_a_short_breath_as_an_utterance_of_its_own() {
     let Some(engine) = engine() else { return };
-    let audio: Vec<f32> = speech("We meet on Friday")
+    // `say` ends a phrase with about 0.4 s of its own silence: the breath is cut from the
+    // last sound to the next.
+    let audio: Vec<f32> = sound_only(speech("We meet on Friday"))
         .into_iter()
         .chain(silence(BREATH_SECS))
-        .chain(speech("stop dictation"))
+        .chain(sound_only(speech("stop dictation")))
         .collect();
     let events = heard(&engine, &DICTATING, &audio);
     let starts = events

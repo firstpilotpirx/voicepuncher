@@ -27,6 +27,8 @@ use voicepuncher_e2e_test::voice_commands::spoken_by;
 
 mod speech_after_start;
 
+pub(super) use speech_after_start::{recorded_form, until_last_sound};
+
 use super::RUSSIAN_VOICE;
 use crate::steps::file_transcription::env;
 use crate::steps::off_thread;

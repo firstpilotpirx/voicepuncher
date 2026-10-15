@@ -52,7 +52,7 @@ fn should_answer_a_probe() {
 }
 
 #[test]
-fn should_report_a_spoken_phrase_between_the_bounds_of_its_speech() {
+fn should_report_a_spoken_phrase_with_its_speech() {
     let Some(url) = service_url() else { return };
     // Given
     let audio = spoken_with_pauses("press enter").unwrap();
@@ -68,16 +68,20 @@ fn should_report_a_spoken_phrase_between_the_bounds_of_its_speech() {
             SpottingEvent::CommandsSaid { .. } => "commands said",
         })
         .collect();
-    // The keyword spotter and the speech recognition of the utterance may both report it.
-    let mut kinds = kinds;
-    kinds.dedup();
-    let speech_end = kinds.iter().position(|k| *k == "speech ended").unwrap();
+    // The keyword spotter and the speech recognition of the utterance may both report it,
+    // each before or shortly after the end of the speech: a quiet pause may close the
+    // utterance before the spotter has decoded its last word.
+    assert_eq!(kinds.first(), Some(&"speech started"), "{kinds:?}");
     assert_eq!(
-        kinds[..speech_end + 1],
-        ["speech started", "press enter", "speech ended"]
+        kinds.iter().filter(|k| **k == "speech ended").count(),
+        1,
+        "{kinds:?}"
     );
+    assert!(kinds.contains(&"press enter"), "{kinds:?}");
     assert!(
-        kinds[speech_end + 1..].iter().all(|k| *k == "press enter"),
+        kinds
+            .iter()
+            .all(|k| ["speech started", "press enter", "speech ended"].contains(k)),
         "{kinds:?}"
     );
 }

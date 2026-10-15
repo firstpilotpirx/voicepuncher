@@ -142,7 +142,7 @@ Push-to-talk keeps working as without voice control: the hotkey starts and stops
 | `press enter` or `enter` | listening | presses Return in the focused app; during a dictation it first ends it and pastes the text, like "stop enter" |
 | `clear all text`, `clear text` or `clear` | listening, no dictation | presses Cmd+A, then Delete, in the focused app |
 
-Every command may end with "please" ("press enter please"). A pause of 0.3 s ends an utterance. A command counts:
+Every command may end with "please" ("press enter please"). A pause of 0.3 s ends an utterance, also after a quiet word and when more speech follows the pause at once ("restart", a short breath, the next sentence). A command counts:
 
 - **on its own**, with a pause before and after it;
 - **at the end of an utterance**, right after other speech: "…and that is all, stop" ends the dictation and pastes the speech before it; the same words inside a sentence ("we should stop the server") are ignored;

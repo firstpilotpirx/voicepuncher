@@ -13,6 +13,8 @@ use crate::speech_cache::{synthesized, SayRequest};
 const SAMPLE_RATE_HZ: f32 = 16_000.0;
 /// The silence before and after the words: the pause around a command.
 const PAUSE_SECS: f32 = 1.0;
+/// Quieter samples are silence.
+const SILENCE_LEVEL: f32 = 0.01;
 /// 100 ms of audio per message, as the app sends it.
 const FRAME_SAMPLES: usize = 1_600;
 /// 2 s of audio: sent before waiting for the service to answer it, so the audio in flight
@@ -44,6 +46,27 @@ fn spoken(voice: Option<&str>, words: &str) -> Result<Vec<f32>> {
         .chain(speech)
         .chain(pause.iter().copied())
         .collect())
+}
+
+/// `spoken_by` speech without the pause it puts before the words; the short silence `say`
+/// starts with stays.
+pub fn without_lead_pause(mut audio: Vec<f32>) -> Vec<f32> {
+    audio.split_off(((PAUSE_SECS * SAMPLE_RATE_HZ) as usize).min(audio.len()))
+}
+
+/// `say` speech from its first sound: without the pause `spoken_by` puts before it and the
+/// silence `say` starts with, so a pause built before it is the pause it names.
+pub fn from_first_sound(mut audio: Vec<f32>) -> Vec<f32> {
+    let first_sound = audio.iter().position(|s| s.abs() > SILENCE_LEVEL);
+    audio.split_off(first_sound.unwrap_or(audio.len()))
+}
+
+/// `say` speech cut right after its last sound: `say` ends a phrase with about 0.4 s of
+/// silence of its own, which would lengthen any pause built after it.
+pub fn without_trailing_silence(mut audio: Vec<f32>) -> Vec<f32> {
+    let last_sound = audio.iter().rposition(|s| s.abs() > SILENCE_LEVEL);
+    audio.truncate(last_sound.map_or(0, |at| at + 1));
+    audio
 }
 
 /// `secs` of silence at 16 kHz.

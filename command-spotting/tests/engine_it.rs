@@ -567,3 +567,211 @@ fn should_leave_the_keyword_spotted_phrase_to_decide_when_its_segment_confirmati
     // Then
     assert_eq!(spotted(&events), ["press enter"], "{events:?}");
 }
+
+/// A pause just longer than the 0.3 s that ends an utterance.
+const SHORT_PAUSE_SECS: f32 = 0.32;
+/// Said after a command and a short pause; it opens with a hard consonant.
+const SENTENCE_AFTER_PAUSE: &str = "Coffee machine on the third floor is broken";
+/// Quieter samples are silence.
+const SILENCE_LEVEL: f32 = 0.01;
+/// 10 ms: a stretch of sound short enough to be found again in a clip.
+const MARK_SAMPLES: usize = 160;
+
+/// `say` speech from its first sound to its last, without the silence `say` puts around it.
+fn sound_only(audio: Vec<f32>) -> Vec<f32> {
+    let first = audio
+        .iter()
+        .position(|s| s.abs() > SILENCE_LEVEL)
+        .unwrap_or(0);
+    let last = audio
+        .iter()
+        .rposition(|s| s.abs() > SILENCE_LEVEL)
+        .map_or(first, |at| at + 1);
+    audio[first..last].to_vec()
+}
+
+/// `command`, `pause_secs` of silence and the sentence, with a pause before and after; and
+/// where the sentence starts, in seconds.
+fn command_pause_sentence(command: &[f32], pause_secs: f32) -> (Vec<f32>, f32) {
+    let mut audio = silence(PAUSE_SECS);
+    audio.extend_from_slice(command);
+    audio.extend(silence(pause_secs));
+    let sentence_start = audio.len() as f32 / SAMPLE_RATE as f32;
+    audio.extend(sound_only(common::spoken_by(None, SENTENCE_AFTER_PAUSE)));
+    audio.extend(silence(PAUSE_SECS));
+    (audio, sentence_start)
+}
+
+/// Where each speech segment ends, in seconds.
+fn segment_ends(events: &[ServerEvent]) -> Vec<f32> {
+    events
+        .iter()
+        .filter_map(|e| match e {
+            ServerEvent::SpeechEnd { t } => Some(*t),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The user's quiet "restart" said on its own, cut from their labelled recording with the
+/// margins the E2E scenarios use; none when the recordings are not on this machine.
+fn users_quiet_restart() -> Option<Vec<f32>> {
+    let Ok(root) = std::env::var("VOICEPUNCHER_VOICE_SAMPLES") else {
+        eprintln!("GATED: VOICEPUNCHER_VOICE_SAMPLES not set, skipping");
+        return None;
+    };
+    let path = PathBuf::from(root).join("session-2.wav");
+    let audio: Vec<f32> = hound::WavReader::open(path)
+        .ok()?
+        .samples::<i16>()
+        .map(|s| f32::from(s.unwrap()) / f32::from(i16::MAX))
+        .collect();
+    let at = |secs: f32| (secs * SAMPLE_RATE as f32) as usize;
+    // Labelled 27.23–27.52 s; 0.3 s before and 0.2 s after keep its first and last sounds.
+    Some(audio[at(26.93)..at(27.72)].to_vec())
+}
+
+#[test]
+fn should_end_an_utterance_at_a_short_pause_before_more_speech() {
+    let Some(engine) = engine() else { return };
+    // Given
+    let command = sound_only(common::spoken_by(None, "Restart"));
+    let (audio, sentence_start) = command_pause_sentence(&command, SHORT_PAUSE_SECS);
+    let mut session = engine.session().unwrap();
+    let phrases: Vec<String> = ALL_PHRASES.iter().map(|p| (*p).to_owned()).collect();
+    session.listen_for(&phrases).unwrap();
+    // When
+    let events = fed(&mut session, &audio);
+    // Then
+    let ends = segment_ends(&events);
+    assert!(
+        ends.first().is_some_and(|end| *end < sentence_start),
+        "the command's utterance did not end before the sentence at {sentence_start:.2}s: {events:?}"
+    );
+}
+
+#[test]
+fn should_end_the_users_quiet_command_at_a_short_pause_before_more_speech() {
+    let Some(engine) = engine() else { return };
+    let Some(command) = users_quiet_restart() else {
+        return;
+    };
+    for pause_secs in [0.4, 0.5] {
+        // Given
+        let (audio, sentence_start) = command_pause_sentence(&command, pause_secs);
+        let mut session = engine.session().unwrap();
+        let phrases: Vec<String> = ALL_PHRASES.iter().map(|p| (*p).to_owned()).collect();
+        session.listen_for(&phrases).unwrap();
+        // When
+        let events = fed(&mut session, &audio);
+        // Then
+        let ends = segment_ends(&events);
+        assert!(
+            ends.first().is_some_and(|end| *end < sentence_start),
+            "after a {pause_secs} s pause the quiet command's utterance did not end before the sentence at {sentence_start:.2}s: {events:?}"
+        );
+    }
+}
+
+/// Keeps every clip it is asked to hear, and hears "restart" in each.
+#[derive(Default)]
+struct KeepsClips(Mutex<Vec<Vec<f32>>>);
+
+impl Hear for KeepsClips {
+    fn hear(&self, samples: &[f32], _: Duration) -> anyhow::Result<Heard> {
+        self.0.lock().unwrap().push(samples.to_vec());
+        Ok(Heard {
+            text: "restart".to_owned(),
+            words: Vec::new(),
+        })
+    }
+}
+
+/// Whether `clip` holds `mark` as it was streamed.
+fn holds(clip: &[f32], mark: &[f32]) -> bool {
+    clip.windows(mark.len()).any(|w| w == mark)
+}
+
+#[test]
+fn should_confirm_a_command_followed_by_a_short_pause_without_the_speech_after_it() {
+    let Some(_shared) = engine() else { return };
+    // Given
+    let hear = Arc::new(KeepsClips::default());
+    let engine = own_engine(None).unwrap().hearing(hear.clone());
+    let Some(command) = users_quiet_restart() else {
+        return;
+    };
+    // The detector holds the quiet voice's speech about 0.55 s past its last sound: a clip
+    // running past that end takes in the sentence's first sound.
+    let (audio, sentence_start) = command_pause_sentence(&command, 0.6);
+    let at = (sentence_start * SAMPLE_RATE as f32) as usize;
+    let sentence_onset = audio[at..at + MARK_SAMPLES].to_vec();
+    let command_end = command[command.len() - MARK_SAMPLES..].to_vec();
+    let mut session = engine.session().unwrap();
+    let phrases: Vec<String> = ALL_PHRASES.iter().map(|p| (*p).to_owned()).collect();
+    session.listen_for(&phrases).unwrap();
+    // When
+    fed(&mut session, &audio);
+    // Then
+    let clips = hear.0.lock().unwrap();
+    let mixed = clips
+        .iter()
+        .filter(|clip| holds(clip, &command_end) && holds(clip, &sentence_onset))
+        .count();
+    let command_clips = clips
+        .iter()
+        .filter(|clip| holds(clip, &command_end))
+        .count();
+    assert!(
+        command_clips > 0 && mixed == 0,
+        "{mixed} of {command_clips} clips holding the command also hold the sentence's first sound"
+    );
+}
+
+/// Hears the command at the end of an utterance only in a clip of its last seconds: in the
+/// whole utterance the user's "at ten enter" is heard as "at 10am".
+struct HearsTheCommandOnlyInTheTail;
+
+/// The longest clip in which the command is heard.
+const TAIL_CLIP_SECS: f32 = 1.8;
+/// Said as one utterance of more than 2 s, a command at its end.
+const SENTENCE_ENDING_IN_ENTER: &str = "We meet on Friday at ten in the morning, enter";
+
+fn timed(words: &[&str]) -> Vec<voicepuncher_command_spotting::confirm::TimedWord> {
+    words
+        .iter()
+        .enumerate()
+        .map(|(n, w)| voicepuncher_command_spotting::confirm::TimedWord {
+            text: format!(" {w}"),
+            start: 0.1 + n as f32 * 0.2,
+            end: 0.25 + n as f32 * 0.2,
+        })
+        .collect()
+}
+
+impl Hear for HearsTheCommandOnlyInTheTail {
+    fn hear(&self, samples: &[f32], _: Duration) -> anyhow::Result<Heard> {
+        let words: &[&str] = if samples.len() as f32 <= TAIL_CLIP_SECS * SAMPLE_RATE as f32 {
+            &["morning,", "enter."]
+        } else {
+            &["We", "meet", "on", "Friday", "at", "10am."]
+        };
+        Ok(Heard {
+            text: words.join(" "),
+            words: timed(words),
+        })
+    }
+}
+
+#[test]
+fn should_hear_a_command_ending_a_long_utterance_in_its_last_seconds() {
+    let Some(_shared) = engine() else { return };
+    // Given
+    let engine = own_engine(None)
+        .unwrap()
+        .hearing(Arc::new(HearsTheCommandOnlyInTheTail));
+    // When
+    let events = events_for(&engine, SENTENCE_ENDING_IN_ENTER);
+    // Then
+    assert_eq!(reported_phrases(&events), ["press enter"], "{events:?}");
+}

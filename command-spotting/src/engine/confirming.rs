@@ -7,10 +7,16 @@ use crate::orderer::{Segment, Spotted};
 use crate::protocol::ServerEvent;
 use crate::worker::{Answer, Job, JobId, JobKind};
 
+use super::pause::first_sound;
 use super::{
-    samples_in, seconds, Session, POST_ROLL_SECS, PRE_ROLL_SECS, TAIL_SLACK_SECS, WINDOW_SECS,
+    samples_in, seconds, Session, FIRST_WINDOW_SECS, POST_ROLL_SECS, PRE_ROLL_SECS,
+    TAIL_SLACK_SECS, WINDOW_SECS,
 };
 
+/// How much of an utterance's end is heard again when a quiet pause closed it and no command
+/// was heard in it: in the whole utterance the speech recognition may join a command to the
+/// words before it ("at ten enter" heard as "at 10am").
+const TAIL_CHECK_SECS: f32 = 1.5;
 /// How many deadlines `settle` waits for one answer: a segment's confirmation may be tried
 /// twice, and each attempt may take its deadline.
 const SETTLE_DEADLINES: u32 = 3;
@@ -33,6 +39,10 @@ pub(super) enum JobContext {
         spotted: Spotted,
         from: usize,
     },
+    Tail {
+        utterance: u64,
+        from: usize,
+    },
 }
 
 /// A closed speech segment by sample position, and the audio sent to confirm it.
@@ -41,6 +51,9 @@ pub(super) struct SegmentSpan {
     bounds: Segment,
     short: bool,
     from: usize,
+    to: usize,
+    /// A quiet pause closed it, and it ran long enough for its tail to be heard again.
+    tail_check: bool,
 }
 
 impl Session<'_> {
@@ -118,13 +131,16 @@ impl Session<'_> {
     }
 
     /// The events of a closed segment: held until its confirmation is answered, or out at
-    /// once without a speech recognition service.
+    /// once without a speech recognition service. Its confirmation clip runs past its end
+    /// until the post-roll is over or a sound louder than `quiet_level` starts.
     pub(super) fn close_segment(
         &mut self,
         start: usize,
         end: usize,
         bounds: Segment,
         events: Vec<ServerEvent>,
+        quiet_level: f32,
+        by_pause: bool,
     ) -> Vec<ServerEvent> {
         if self.worker.is_none() {
             return self.outbox.send(events);
@@ -144,12 +160,15 @@ impl Session<'_> {
         } else {
             end.saturating_sub(samples_in(WINDOW_SECS))
         };
-        let to = end + samples_in(POST_ROLL_SECS);
+        let post_roll = self.recent.between(end, end + samples_in(POST_ROLL_SECS));
+        let to = end + first_sound(&post_roll, quiet_level);
         let segment = SegmentSpan {
             end,
             bounds,
             short,
             from,
+            to,
+            tail_check: by_pause && end - start > samples_in(FIRST_WINDOW_SECS),
         };
         match self.ask(
             JobKind::Segment,
@@ -194,10 +213,28 @@ impl Session<'_> {
         };
         let utterance = context.utterance();
         let is_check = context.is_check();
+        let tail = context.tail_check();
         let events = match answer.heard {
             Some(heard) => self.apply_heard(heard, context),
             None => Vec::new(),
         };
+        if let (true, Some((utterance, from, to))) = (events.is_empty(), tail) {
+            // The segment's events wait for the answer about its tail.
+            if let Some(job) = self.ask(
+                JobKind::Tail,
+                from,
+                to,
+                JobContext::Tail { utterance, from },
+            ) {
+                self.outbox.transfer(n, job);
+            }
+        }
+        // The speech recognition heard the whole utterance as this command: the keyword
+        // spotter's phrases of other commands in it are mishearings, and would make the
+        // utterance no command.
+        if let Some(ServerEvent::Phrase { phrase, .. }) = events.first() {
+            self.outbox.keep_only_phrase(n, phrase);
+        }
         if !events.is_empty() {
             log::info!("job={} → {events:?}", answer.id);
         }
@@ -223,6 +260,9 @@ impl Session<'_> {
                 self.apply_segment(heard, utterance, segment)
             }
             JobContext::Unheld { spotted, from } => self.apply_unheld(&heard, spotted, from),
+            JobContext::Tail { utterance, from } => self
+                .place(&heard, from, utterance, |m, w| m.anywhere(w))
+                .or_else(|| self.place(&heard, from, utterance, |m, w| m.at_end(w))),
         };
         event.into_iter().collect()
     }
@@ -241,6 +281,7 @@ impl Session<'_> {
             bounds,
             short,
             from,
+            ..
         } = segment;
         if short {
             if let Some(phrase) = self.matcher.phrase_in(&heard.text) {
@@ -350,12 +391,26 @@ impl JobContext {
         match self {
             JobContext::Head { utterance, .. }
             | JobContext::Window { utterance, .. }
-            | JobContext::Segment { utterance, .. } => Some(*utterance),
+            | JobContext::Segment { utterance, .. }
+            | JobContext::Tail { utterance, .. } => Some(*utterance),
             JobContext::Unheld { .. } => None,
         }
     }
 
     fn is_check(&self) -> bool {
         matches!(self, JobContext::Head { .. } | JobContext::Window { .. })
+    }
+
+    /// The utterance and the audio to hear again when this segment's answer holds no
+    /// command.
+    fn tail_check(&self) -> Option<(u64, usize, usize)> {
+        match self {
+            JobContext::Segment { utterance, segment } if segment.tail_check => Some((
+                *utterance,
+                segment.end.saturating_sub(samples_in(TAIL_CHECK_SECS)),
+                segment.to,
+            )),
+            _ => None,
+        }
     }
 }

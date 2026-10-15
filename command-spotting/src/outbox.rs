@@ -60,6 +60,45 @@ impl Outbox {
         }
     }
 
+    /// Phrases of the segment that ended last, spotted after it ended: they go out before
+    /// its end when it is still held, or at once.
+    pub fn send_in_last_segment(&mut self, events: Vec<ServerEvent>) -> Vec<ServerEvent> {
+        let Some(held) = self.held.back_mut() else {
+            return events;
+        };
+        match held
+            .events
+            .iter()
+            .rposition(|e| matches!(e, ServerEvent::SpeechEnd { .. }))
+        {
+            Some(end) => {
+                held.events.splice(end..end, events);
+            }
+            None => held.events.extend(events),
+        }
+        Vec::new()
+    }
+
+    /// Drops from the segment `job` holds every spotted phrase but `phrase`: its
+    /// confirmation heard that command.
+    pub fn keep_only_phrase(&mut self, job: u64, phrase: &str) {
+        if let Some(held) = self.held.iter_mut().find(|h| h.job == job) {
+            held.events.retain(|e| match e {
+                ServerEvent::Phrase {
+                    phrase: spotted, ..
+                } => spotted == phrase,
+                _ => true,
+            });
+        }
+    }
+
+    /// The segment `from` holds waits for the confirmation `to` instead.
+    pub fn transfer(&mut self, from: u64, to: u64) {
+        if let Some(held) = self.held.iter_mut().find(|h| h.job == from) {
+            held.job = to;
+        }
+    }
+
     /// Resolves `job`: `events` go out after the segment it held, if any, and every held
     /// segment that is now first in line goes out with them, then the syncs it unblocks.
     pub fn resolve(
@@ -182,6 +221,65 @@ mod tests {
         // Then
         assert!(early.is_empty());
         assert_eq!(out, [end(2.0), phrase("press enter")]);
+    }
+
+    #[test]
+    fn should_put_a_phrase_spotted_after_its_held_segment_ended_before_that_end() {
+        // Given
+        let mut outbox = Outbox::default();
+        outbox.asked(1, false);
+        outbox.hold(1, vec![start(1.0), end(2.0)]);
+        // When
+        let early = outbox.send_in_last_segment(vec![phrase("press enter")]);
+        let out = outbox.resolve(1, false, Vec::new());
+        // Then
+        assert!(early.is_empty());
+        assert_eq!(out, [start(1.0), phrase("press enter"), end(2.0)]);
+    }
+
+    #[test]
+    fn should_send_a_phrase_of_a_segment_already_out_at_once() {
+        // When
+        let out = Outbox::default().send_in_last_segment(vec![phrase("press enter")]);
+        // Then
+        assert_eq!(out, [phrase("press enter")]);
+    }
+
+    #[test]
+    fn should_drop_the_spotted_phrases_of_other_commands_from_a_held_segment() {
+        // Given
+        let mut outbox = Outbox::default();
+        outbox.asked(1, false);
+        outbox.hold(
+            1,
+            vec![
+                start(1.0),
+                phrase("start dictation"),
+                phrase("restart dictation"),
+                end(2.0),
+            ],
+        );
+        // When
+        outbox.keep_only_phrase(1, "restart dictation");
+        let out = outbox.resolve(1, false, Vec::new());
+        // Then
+        assert_eq!(out, [start(1.0), phrase("restart dictation"), end(2.0)]);
+    }
+
+    #[test]
+    fn should_keep_a_segment_whose_wait_moved_to_another_confirmation_until_that_one() {
+        // Given
+        let mut outbox = Outbox::default();
+        outbox.asked(1, false);
+        outbox.hold(1, vec![start(1.0), end(2.0)]);
+        outbox.asked(2, false);
+        outbox.transfer(1, 2);
+        // When
+        let first = outbox.resolve(1, false, Vec::new());
+        let second = outbox.resolve(2, false, vec![phrase("press enter")]);
+        // Then
+        assert!(first.is_empty());
+        assert_eq!(second, [start(1.0), end(2.0), phrase("press enter")]);
     }
 
     #[test]

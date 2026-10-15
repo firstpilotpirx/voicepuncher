@@ -10,8 +10,8 @@ use cucumber::{given, then, when};
 use voicepuncher::core::domain::VoiceCommand;
 use voicepuncher_e2e_test::speech::read_wav;
 use voicepuncher_e2e_test::voice_commands::{
-    carried_out_by_app, recognized_commands, silence, spoken_by, spoken_with_pauses,
-    spotting_events,
+    carried_out_by_app, from_first_sound, recognized_commands, silence, spoken_by,
+    spoken_with_pauses, spotting_events, without_trailing_silence,
 };
 
 use crate::steps::file_transcription::{env, sut_bin, STARTUP_FAILURE_EXIT_CODE};
@@ -23,6 +23,8 @@ mod outages;
 mod session;
 
 pub use session::HandsFreeSession;
+
+use session::{recorded_form, until_last_sound};
 
 pub use hands_free::HandsFree;
 
@@ -41,9 +43,9 @@ const SHORT_RUSSIAN_PHRASES: [&str; 8] = [
     "Окей, понял",
 ];
 
-/// A short breath between a sentence and a command: longer than the 0.3 s that ends an
-/// utterance, shorter than a deliberate pause.
-const BREATH_SECS: f32 = 0.35;
+/// Said after a command and a short pause; it opens with a hard consonant, whose first sound
+/// a confirmation clip running past the pause would take in.
+const SENTENCE_AFTER_PAUSE: &str = "Coffee machine on the third floor is broken";
 const ENGLISH_VOICE: &str = "Eddy";
 
 /// Silence around each corpus recording, as between utterances.
@@ -185,19 +187,44 @@ async fn says_in_one_breath(world: &mut E2eWorld, words: String, state: String) 
     .await
 }
 
-#[when(expr = "someone says {string}, takes a short breath and says {string} while {}")]
-async fn says_after_a_breath(
+/// `command` from its first sound to its last, `pause_secs` of silence and a sentence.
+fn command_pause_sentence(command: Vec<f32>, pause_secs: f32) -> Result<Vec<f32>> {
+    let mut audio = silence(1.0);
+    audio.extend(command);
+    audio.extend(silence(pause_secs));
+    audio.extend(from_first_sound(spoken_by(
+        ENGLISH_VOICE,
+        SENTENCE_AFTER_PAUSE,
+    )?));
+    Ok(audio)
+}
+
+#[when(expr = "someone says {string}, pauses for {float} s and says a sentence while {}")]
+async fn says_command_pause_sentence(
     world: &mut E2eWorld,
-    words: String,
-    command: String,
+    said: String,
+    pause_secs: f32,
     state: String,
 ) -> Result<()> {
     off_thread(world, move |world| {
-        let mut audio = spoken_by(ENGLISH_VOICE, &words)?;
-        let first_pause = silence(1.0).len();
-        audio.truncate(audio.len() - first_pause);
-        audio.extend(silence(BREATH_SECS));
-        audio.extend(spoken_by(ENGLISH_VOICE, &command)?.split_off(first_pause));
+        let command = without_trailing_silence(from_first_sound(spoken_by(ENGLISH_VOICE, &said)?));
+        carried_out(world, &command_pause_sentence(command, pause_secs)?, &state)
+    })
+    .await
+}
+
+#[when(
+    expr = "the user's recorded {string}, said on its own, is followed by {float} s of silence and a sentence while {}"
+)]
+async fn recorded_command_pause_sentence(
+    world: &mut E2eWorld,
+    said: String,
+    pause_secs: f32,
+    state: String,
+) -> Result<()> {
+    off_thread(world, move |world| {
+        let command = until_last_sound(recorded_form(&said)?);
+        let audio = command_pause_sentence(command, pause_secs)?;
         carried_out(world, &audio, &state)
     })
     .await
