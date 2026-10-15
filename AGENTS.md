@@ -34,7 +34,7 @@ Every feature, bug fix and behavior change runs through all stages below, in ord
 | 8 | Full check | `just full-check`, only when the branch changed a build input | passes on the final commit |
 | 9 | Pull request | `git push -u origin HEAD`, `gh pr create` | the PR body lists the checks that ran |
 | 10 | Manual run | the user, only when hotkey, recording, overlay, paste or permissions changed (§ How to verify a change) | the user pasted a healthy log |
-| 11 | Merge | `gh pr merge --squash --delete-branch`, then update the main checkout (below) | the change is on `main` and in the main checkout; if `main` moved after stage 8, merge it in and rerun stage 8 first |
+| 11 | Merge | `gh pr merge --squash --delete-branch`, then update the main checkout (below) | the change is on `main` and in the main checkout; if `main` moved after stage 8, merge it with `kit sync-base` and run the check its last line names before `kit land` (§ How to verify a change) |
 | 12 | Release | `just release` on `origin/main` (§ Release), only when stage 5 bumped the version | the GitHub Release `vX.Y.Z` exists with downloadable artifacts |
 
 - **Never leave work uncommitted** (`~/.claude/rules-custom/atomic-commits.md`): commit and push after every finished piece of work, without asking.
@@ -99,7 +99,7 @@ All checks are `just` recipes (see `justfile`; no other scripts). A change is "v
 | Before merging a branch, before a release | `just full-check` (~14 min) | `cargo clean` + everything in `check`, plus the chunk seams (`e2e-seams`: seam sweep and seam matrix) and the outages (`e2e-resilience`: services paused, killed and restarted while voice control runs, on ports of their own), with WER accuracy on a fixed sample of 100 recordings |
 | Before merging a change to hotkey, recording, overlay, paste, permissions | manual run by the user | `README.md` § Release checklist |
 
-Build inputs are `app/`, `command-spotting/`, `e2e-test/`, `Cargo.toml`, `Cargo.lock` and `justfile`. A branch that changes none of them (docs, `AGENTS.md`, `openspec/`, `.claude/`) needs `just test` only; never `just check` or `just full-check` for it. Do not merge a branch that changed a build input until `just full-check` has passed on its final commit; say in the PR which checks ran.
+Build inputs are `app/`, `command-spotting/`, `e2e-test/`, `Cargo.toml`, `Cargo.lock` and `justfile`. A branch that changes none of them (docs, `AGENTS.md`, `openspec/`, `.claude/`) needs `just test` only; never `just check` or `just full-check` for it. Do not merge a branch that changed a build input until `just full-check` has passed on it; say in the PR which checks ran. When `main` moves after that, merge it with `kit sync-base` rather than rerunning `just full-check` by habit: a passing full check carries over when no build input changed on both sides beyond the version, and the final commit then needs `just check` (`checks.disjoint_merge` in `.claude/kit.yaml`, default `after_group`). `kit sync-base`'s last line names the check to pass before `kit land`; run exactly that one.
 
 `just bench` is a model comparison, not a gate — only when a model, decoding params or the prompt changed.
 
