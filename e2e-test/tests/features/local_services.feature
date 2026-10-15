@@ -99,3 +99,16 @@ Feature: local-services
       When the copies become free
       Then the copy that takes the abandoned request gives it up at once instead of transcribing it
 
+
+  @serial @resilience
+  Rule: Speech that is no command is confirmed quickly
+
+    Scenario: Russian speech that makes speech recognition repeat itself
+      Given voice control runs and the speech recognition service is otherwise idle
+      When the user says Russian counting and filler words
+      Then every confirmation of that speech is answered in under 2 seconds
+
+    Scenario: A command right after such speech is carried out
+      Given voice control runs and the speech recognition service is otherwise idle
+      When the user says Russian counting and filler words and then "press enter"
+      Then the command spotting service reports "press enter"

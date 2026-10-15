@@ -78,7 +78,7 @@ const MOVED_TO_SERVICE: &[(&str, &str)] = &[
     ("threads", "set it when starting the service (whisper-server -t)"),
     ("beam_size", "set it when starting the service (whisper-server -bs)"),
     ("patience", "set it when starting the service"),
-    ("temperature_inc", "set it when starting the service (whisper-server -nf disables the fallback)"),
+    ("temperature_inc", "remove it; no flag sets it when starting the service: whisper-server 1.9.5 ignores -nf and keeps its own temperature fallback"),
     ("entropy_thold", "set it when starting the service (whisper-server -et)"),
     ("logprob_thold", "set it when starting the service (whisper-server -lpt)"),
     ("no_speech_thold", "set it when starting the service (whisper-server -nth)"),

@@ -431,9 +431,12 @@ start-model-servers *services:
         exit 1
     }
     # whisper_args <port> <threads>: the whisper-server command line, in whisper_cmd.
-    # Greedy, no temperature fallback, no cross-request text context, non-speech tokens
-    # suppressed; timestamps stay on, so whisper resumes after the last decoded segment
-    # instead of skipping the rest of a 30 s window when the text ends early at a pause.
+    # Greedy, no cross-request text context, non-speech tokens suppressed. -nf (no
+    # temperature fallback) is ignored by whisper-server 1.9.5: dictation keeps the server's
+    # fallback (retries at 0.2, 0.4, … 1.0), and the command spotting service's confirmations
+    # turn it off per request; -nf stays for a whisper-server that honours it.
+    # Timestamps stay on, so whisper resumes after the last decoded segment instead of
+    # skipping the rest of a 30 s window when the text ends early at a pause.
     # VAD removes only silences longer than 2 s, so silence yields no text ("Thank you.")
     # while the short pauses between words stay. No language probabilities (-nlp): with them,
     # whisper-server 1.9.5 crashes on a verbose_json request whose audio VAD leaves empty,

@@ -12,6 +12,7 @@ use cucumber::{given, then, when};
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
+mod confirmations;
 mod copies;
 mod hangs;
 
@@ -54,6 +55,8 @@ pub struct ScenarioServices {
     paused: Vec<u32>,
     /// The command spotting service process a step made hang or watched.
     hung: Option<u32>,
+    /// How long the command spotting service's log was before a step streamed speech.
+    log_before_speech: Option<u64>,
 }
 
 impl ScenarioServices {
@@ -80,6 +83,7 @@ impl ScenarioServices {
             pool: copies::PoolRun::default(),
             paused: Vec::new(),
             hung: None,
+            log_before_speech: None,
         })
     }
 

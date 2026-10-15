@@ -23,28 +23,27 @@ Variants that did not help: `response_format=json`, `no_timestamps`, `language=r
 
 ## Goals / Non-Goals
 
-**Goals:** bound the time one confirmation can take, keep one retry for clips that get stuck repeating.
+**Goals:** bound the time one confirmation can take.
 
 **Non-Goals:** dictation requests; recognition accuracy of commands beyond keeping today's results; a token limit per request.
 
 ## Decisions
 
-### Send `temperature_inc=0.55` with every confirmation
+### Send `temperature_inc=0` with every confirmation
 
-The confirmation request gets one more multipart field, `temperature_inc` = `0.55`, next to `temperature` = `0`. The schedule is then 0 and 0.55: 0.55 + 0.55 = 1.1 is above 1.0.
+The confirmation request gets one more multipart field, `temperature_inc` = `0`, next to `temperature` = `0`: whisper.cpp then decodes once, at temperature 0, with no retry.
 
-- **Why 0.55, not 0.5:** the schedule includes 1.0, so a step of 0.5 gives 0, 0.5 and 1.0 — three attempts, the last one nearly random.
-- **Why not 0 (no retry):** it is as fast idle (1.4 s) but slower under load (2.8 s against 2.1 s), because a clip stuck repeating then always runs to the 220-token limit and returns that loop as text. The 0.55 attempt usually escapes the loop early and returns a short phrase. The user also wants a retry kept for unclear words.
-- **Why not 0.4 or 0.6:** 0.4 gives three attempts (0, 0.4, 0.8); 0.6 behaves like 0.55 with a more random second attempt.
+- **Why not one retry at 0.55 (the first plan):** the measurements above favoured it under load (2.1 s against 2.8 s), because its second attempt usually escapes a repetition loop early. On the E2E scenario (three copies, otherwise idle) it did not: on "раз, два, три, четыре" and "раз, два, раз, два" both attempts got stuck repeating and the confirmation took 2.92 s and 2.99 s, right at the 3 s deadline. With no retry the same clips took 1.57 s and 1.42 s. The user chose no retry (2026-10-15).
+- **Why not 0.5 or 0.4:** the schedule includes 1.0, so they give three attempts, slower still.
 - **Why per request, not on the server:** whisper-server 1.9.5 has no flag for it, and the dictation requests must keep today's schedule (proposal § Out of scope).
 
 ### Keep `-nf` and correct what is written about it
 
-`-nf` stays on the whisper-server command line, so a whisper-server that honours it later keeps dictation without fallback as intended. The justfile comment, the README start command and the hint for the outdated `[transcription] temperature_inc` setting state that whisper-server 1.9.5 ignores `-nf` and that the confirmation request sets its own retry step. The hint stops promising that `-nf` disables the fallback.
+`-nf` stays on the whisper-server command line, so a whisper-server that honours it later keeps dictation without fallback as intended. The justfile comment, the README start command and the hint for the outdated `[transcription] temperature_inc` setting state that whisper-server 1.9.5 ignores `-nf` and that the confirmation request turns the retries off itself. The hint stops promising that `-nf` disables the fallback.
 
 ### Test the request at unit level, the behavior at E2E level
 
-- Unit (`command-spotting/src/confirm.rs`): the multipart body holds `temperature_inc` = `0.55`, next to the existing field assertions. This is the Red test of the fix.
+- Unit (`command-spotting/src/confirm.rs`): the multipart body holds `temperature_inc` = `0`, next to the existing field assertions. This is the Red test of the fix.
 - E2E (`e2e-test/tests/features/local_services.feature`, `@resilience`): the two spec scenarios. They run on services of their own ports like the other `@resilience` scenarios, because the shared services on 8080–8082 may run an older build. Steps stream the synthesized Russian phrases (`say -v Milena`, cached like every E2E phrase) and then "press enter" to the command spotting service; the first scenario reads the confirmation times the service logs (`answered in <n>ms`) for that speech and asserts each is under 2 s; the second asserts "press enter" is reported.
 | Scenario (local-services) | Test level |
 |---|---|
@@ -55,8 +54,8 @@ The confirmation request gets one more multipart field, `temperature_inc` = `0.5
 
 ## Risks / Trade-offs
 
-- [The 0.55 attempt samples randomly, so its text can differ between runs] → it is used only for clips the first attempt failed on; on the user's 40 command clips one text changed ("Start. Activation." → "Start actuation."), and the E2E and `voice_samples_it` runs in `just full-check` show whether command recognition holds.
-- [A 2 s bound on a GPU shared with other runs can be flaky] → the scenario requires the speech recognition service to be otherwise idle, runs under the machine lock, and the margin is wide (fixed ≤ 1.93 s measured, today ≥ 5.3 s); if it proves flaky, raise the bound toward the 3 s confirmation deadline rather than drop the scenario.
+- [With no retry, a clip stuck repeating returns that loop as text, and under full load it measured up to 2.8 s] → such a clip is no command either way; on the user's 40 command clips p95 stays 0.14 s, and the E2E and `voice_samples_it` runs in `just full-check` show whether command recognition holds.
+- [A 2 s bound on a GPU shared with other runs can be flaky] → the scenario requires the speech recognition service to be otherwise idle, runs under the machine lock, and the margin is wide (fixed ≤ 1.6 s measured, today the 3 s deadline); if it proves flaky, raise the bound toward the 3 s confirmation deadline rather than drop the scenario.
 - [A later whisper-server could change the schedule or start honouring `-nf`] → the field is explicit and the unit test pins it; honouring `-nf` would only affect dictation.
 
 ## Migration Plan

@@ -12,9 +12,9 @@ The cause was found and measured (see design.md):
 
 ## What Changes
 
-- **Confirmations try at most twice.** The command spotting service asks the speech recognition service for at most one retry of a confirmation, at a moderate temperature (0 first, then 0.55), instead of the five retries up to 1.0 that whisper-server runs now. A retry is kept, so a clip that gets stuck repeating can still come out as clean text. Measured on the same clips: worst case 1.9 s idle and 2.1 s under full load, none over 3 s. On the user's 40 recorded command clips, 39 give the same text as now.
+- **Confirmations are decoded once.** The command spotting service asks the speech recognition service for no retry of a confirmation (temperature step 0), instead of the five retries up to 1.0 that whisper-server runs now. Measured on the same clips: worst case 1.4 s idle. A single retry at 0.55 was planned first, but on the E2E scenario both its attempts got stuck repeating and took 2.9–3.0 s, at the 3 s deadline; with no retry the same speech took 1.4–1.6 s.
 - **Correct descriptions of `-nf`.** The justfile comment on the whisper-server command line, the README start command and the hint for the outdated `temperature_inc` setting stop claiming that `-nf` turns the fallback off. `-nf` stays on the command line, with a note that whisper-server 1.9.5 ignores it.
-- **Tests:** a unit test that the confirmation request asks for the limited retry; an E2E scenario where Russian speech that makes speech recognition repeat itself is answered within the confirmation deadline, and a command said right after it is carried out.
+- **Tests:** a unit test that the confirmation request asks for no retry; an E2E scenario where Russian speech that makes speech recognition repeat itself is answered within the confirmation deadline, and a command said right after it is carried out.
 
 ## Capabilities
 
@@ -45,14 +45,14 @@ None.
 
 ## Release
 
-PATCH, 0.13.0 → 0.13.1: a bug fix; confirmations behave as specified, only faster.
+PATCH, 0.14.0 → 0.14.1: a bug fix; confirmations behave as specified, only faster.
 
 ## Impact
 
-- `command-spotting/src/confirm.rs`: the confirmation request gets the retry step field; unit test of the request body.
+- `command-spotting/src/confirm.rs`: the confirmation request gets the retry step field (0: no retry); unit test of the request body.
 - `justfile`: the comment on `whisper_args`.
 - `README.md`: the whisper-server start command notes.
 - `app/src/config/transcription.rs`: the hint for the outdated `temperature_inc` setting.
 - `e2e-test/tests/features/local_services.feature` and its steps: the regression scenario.
-- `app/Cargo.toml`: version 0.13.1.
+- `app/Cargo.toml`: version 0.14.1.
 - No manual run: hotkey, recording, overlay, paste and permissions do not change.
