@@ -1,0 +1,2 @@
+depends_on: [fix-short-pause-after-command, limit-confirmation-fallback, restore-recognition-prompt]
+autonomy: review
