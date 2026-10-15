@@ -1,0 +1,6 @@
+depends_on:
+  - change: fail-hung-tests-fast
+    why: moves _test and every E2E recipe body to cargo nextest; build-e2e and the shared selection variables prebuild what those recipes run
+  - change: test-without-machine-lock
+    why: unlocks just test and rewrites the same lock comment, lock wrapper use and AGENTS.md lock sentences in the justfile
+autonomy: auto
