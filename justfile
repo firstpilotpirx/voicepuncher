@@ -28,11 +28,20 @@ kws_port := env_var_or_default("VOICEPUNCHER_KWS_PORT", "8082")
 kws_url := "ws://127.0.0.1:" + kws_port
 kws_binary := justfile_directory() / "target/release/voicepuncher-command-spotting"
 services_run_dir := home_directory() / ".voicepuncher/run"
+
+# The cargo selections the model stages build, shared by their recipes and `_build-e2e`, which builds them
+# before the machine lock: another package or feature selection would build other artifacts
+command_spotting_build := "-p voicepuncher-command-spotting"
+e2e_smoke_tests := "-p voicepuncher --test transcription_openai_it --test textrefinement_openai_it --test commandspotting_websocket_it --test voice_samples_it --test voice_forms_it"
+e2e_seams_tests := "-p voicepuncher --test chunked_transcription_it"
+placed_commands_tests := "-p voicepuncher-command-spotting --test placed_commands_it"
+cucumber_e2e_tests := "-p voicepuncher-e2e-test --test cucumber_e2e"
 services_log_dir := home_directory() / ".voicepuncher/logs"
 
-# Every check, build, E2E, benchmark, release and real-keyboard recipe runs its private `_<name>` body under
-# the machine-wide test lock (agent-kit `with-machine-lock`): one run at a time on this machine, a hung run is
-# killed after its time limit. `test` does not: see its comment
+# The machine-wide test lock (agent-kit `with-machine-lock`): one run at a time on this machine, a hung run is
+# killed after its time limit. Every check, build, E2E, benchmark and real-keyboard recipe run on its own runs its
+# private `_<name>` body under it, except `test` and `release`, which use no shared service, port or GPU (see
+# their comments). `check` and `full-check` take it only for their model stages (see _stages)
 machine_lock := env_var_or_default("MACHINE_LOCK", home_directory() / ".claude/bin/with-machine-lock")
 locked := quote(machine_lock) + " " + quote(just_executable()) + " --justfile " + quote(justfile())
 
@@ -42,56 +51,286 @@ default:
 
 # ── Checks ── `check` while developing, `full-check` before merging ─────────
 
-# FAST (~6 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples + refinement evaluation
+# Only the model stages take the machine lock, held ≈ 5.3 min (measured), after the code checks, the build and
+# build-e2e ran without it (see _stages). Incremental, no `cargo clean`
+# FAST (~6.5 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples + refinement evaluation
 check:
-    @{{locked}} _check
+    @{{just_executable()}} _stages fmt lint test build build-e2e e2e-smoke e2e-quick refine-eval
 
-_check:
-    {{just_executable()}} _stages fmt lint test build e2e-smoke e2e-quick refine-eval
+# Only the model stages take the machine lock, held ≈ 11 min with 100 recordings and ≈ 9.5 min with 10 (measured)
+# (see _stages). Incremental like `check`, no `cargo clean`: the clean build is `release`'s. Accuracy runs on 100
+# recordings when the branch changes the recognition path (recognition_paths), on main itself or when that cannot
+# be told, else on 10 (_accuracy-stage); VOICEPUNCHER_ACCURACY_SAMPLE=100 forces 100
+# FULL (~11–12 min), run before merging: code checks + E2E (seams and outages included) + accuracy on 100 or 10 samples + refinement evaluation
+full-check: _require-models _require-corpus
+    #!/usr/bin/env bash
+    set -euo pipefail
+    choice=$({{just_executable()}} _accuracy-stage)
+    stage=${choice%% *}
+    reason=${choice#* — }
+    case "$stage" in
+        e2e-bench) count=100 ;;
+        e2e-quick) count=10 ;;
+        *) echo "✗ _accuracy-stage printed no stage: '$choice'" >&2; exit 1 ;;
+    esac
+    accuracy="accuracy: $count recordings ($stage) — $reason"
+    echo "● $accuracy"
+    {{just_executable()}} _stages fmt lint test build build-e2e e2e-smoke e2e-seams e2e-resilience "$stage" refine-eval
+    echo "✓ full-check passed — $accuracy; before a release also walk through README.md § Release checklist (manual run)"
 
-# FULL (~14 min), run before merging: clean build + code checks + E2E (seams and outages included) + accuracy on 100 samples
-full-check:
-    @{{locked}} _full-check
+# The paths whose change makes full-check run the accuracy stage on 100 recordings: what the two @accuracy
+# scenarios run — file mode, transcription and chunking; text refinement; command spotting (keywords.txt is
+# compiled in) and voice-command matching; the WER and corpus test code; the justfile whole (models, service
+# settings); the Cargo files when a line other than `version = "…"` changed. One glob per line, matched with
+# bash `[[ == ]]` (`*` spans `/`). A branch that adds a file on this path adds it here
+recognition_paths := '''
+    app/src/main.rs
+    app/src/adapters/primary/cli/*
+    app/src/config.rs
+    app/src/config/*
+    app/src/adapters/secondary/recording/filesystem/*
+    app/src/adapters/secondary/transcription/*
+    app/src/adapters/secondary/http/*
+    app/src/adapters/secondary/textpasting/stdio/*
+    app/src/core/application/pipeline.rs
+    app/src/core/application/chunking.rs
+    app/src/core/application/transcriber.rs
+    app/src/core/application/transcript_filter.rs
+    app/src/core/domain/audio_buffer.rs
+    app/src/core/domain/raw_transcript.rs
+    app/src/adapters/secondary/textrefinement/*
+    app/src/core/application/text_refiner.rs
+    app/src/core/domain/cleaned_text.rs
+    app/src/core/domain/filler_sounds.rs
+    app/src/core/domain/normalization_check.rs
+    app/src/core/domain/command_words.rs
+    command-spotting/src/*
+    command-spotting/keywords.txt
+    app/src/adapters/secondary/commandspotting/websocket/client.rs
+    app/src/core/domain/voice_command.rs
+    app/src/core/domain/voice_command_recognizer.rs
+    e2e-test/src/corpus.rs
+    e2e-test/src/wer.rs
+    e2e-test/src/concurrency.rs
+    e2e-test/src/speech.rs
+    e2e-test/src/voice_commands.rs
+    e2e-test/tests/cucumber_e2e.rs
+    e2e-test/tests/steps/mod.rs
+    e2e-test/tests/steps/file_transcription.rs
+    e2e-test/tests/steps/voice_control.rs
+    e2e-test/tests/features/file_transcription.feature
+    e2e-test/tests/features/voice_control.feature
+    justfile
+'''
 
-_full-check: _require-models _require-corpus
-    cargo clean
-    {{just_executable()}} _stages fmt lint test build e2e-smoke e2e-seams e2e-resilience e2e-bench refine-eval
-    @echo "✓ full-check passed — before a release also walk through README.md § Release checklist (manual run)"
+# Prints the accuracy stage full-check runs and why: `e2e-bench — <reason>` (100 recordings) or `e2e-quick —
+# <reason>` (10). 100 when VOICEPUNCHER_ACCURACY_SAMPLE=100 (any other value fails), when the changed paths
+# against the merge base with <base> (local ref, no fetch; committed, uncommitted and untracked, renames as
+# delete + add) cannot be read, when there are none (main itself), or when one matches recognition_paths or
+# changes a Cargo file beyond its `version = "…"` lines; else 10
+_accuracy-stage base="origin/main":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    choose() { echo "$1 — $2"; exit 0; }
+    case "${VOICEPUNCHER_ACCURACY_SAMPLE:-}" in
+        "") ;;
+        100) choose e2e-bench "forced by VOICEPUNCHER_ACCURACY_SAMPLE=100" ;;
+        *) echo "✗ VOICEPUNCHER_ACCURACY_SAMPLE=${VOICEPUNCHER_ACCURACY_SAMPLE}: only 100 is allowed (the switch can only add recordings)" >&2; exit 1 ;;
+    esac
+    unreadable="cannot tell what the branch changed against {{base}}"
+    merge_base=$(git merge-base HEAD "{{base}}" 2>/dev/null) || choose e2e-bench "$unreadable"
+    changed=$(git diff --name-only --no-renames "$merge_base" 2>/dev/null) || choose e2e-bench "$unreadable"
+    untracked=$(git ls-files --others --exclude-standard 2>/dev/null) || choose e2e-bench "$unreadable"
+    changed=$(printf '%s\n%s\n' "$changed" "$untracked" | sed '/^$/d' | sort -u)
+    [[ -n "$changed" ]] || choose e2e-bench "no change against {{base}} (main itself)"
+    # A Cargo file counts when a line other than `version = "…"` changed (an untracked one counts whole)
+    beyond_version() {
+        local diff line
+        git ls-files --error-unmatch -- "$1" >/dev/null 2>&1 || return 0
+        diff=$(git diff --no-renames -U0 "$merge_base" -- "$1") || return 0
+        while IFS= read -r line; do
+            case "$line" in
+                "+++ "* | "--- "*) ;;
+                [+-]'version = "'*'"') ;;
+                [+-]*) return 0 ;;
+            esac
+        done <<<"$diff"
+        return 1
+    }
+    patterns='{{recognition_paths}}'
+    set -f
+    total=0 matches="" count=0
+    while IFS= read -r path; do
+        total=$((total + 1))
+        hit=""
+        case "$path" in
+            Cargo.lock | Cargo.toml | */Cargo.toml) ! beyond_version "$path" || hit=1 ;;
+            *) for pattern in $patterns; do [[ "$path" != $pattern ]] || { hit=1; break; }; done ;;
+        esac
+        [[ -n "$hit" ]] || continue
+        count=$((count + 1))
+        (( count > 3 )) || matches+="${matches:+, }$path"
+    done <<<"$changed"
+    if (( count > 3 )); then
+        choose e2e-bench "recognition paths changed: $matches and $((count - 3)) more"
+    elif (( count > 0 )); then
+        choose e2e-bench "recognition paths changed: $matches"
+    fi
+    choose e2e-quick "no recognition path among the $total changed files"
 
-# Runs the named stages (private recipes without their `_`) one by one: the services start once,
-# before the first stage that needs them, and stop at the end; ends with each stage's time
+# Runs the named stages (private recipes without their `_`) in two phases. The stages before the first model
+# stage (`e2e*` or `refine-eval`) run one by one without the machine lock, each through the wrapper with a lock
+# directory of the run's own — the device `test` uses, borrowed: it only gives the stage the time limit
+# (MACHINE_LOCK_TIMEOUT, exit 124; the timeout message says `[machine-lock]`, though no machine lock is held; a
+# run killed with KILL leaves that directory, holding an empty tests.lock, in $TMPDIR, which macOS clears); fmt,
+# lint, build and build-e2e run at the utility QoS clamp. The rest runs in _model-stages under the machine
+# lock (at once when the caller already holds it). A failing stage ends the run before the lock is requested.
+# Ends with one table: each stage's time, the lock wait and the lock hold. Two checks of one worktree must not
+# overlap: the lock no longer keeps their builds apart
 _stages +stages:
     #!/usr/bin/env bash
     set -euo pipefail
     now() { perl -MTime::HiRes=time -e 'printf "%.1f", time'; }
+    since() { perl -e "printf '%.1f', ${2:-$(now)} - $1"; }
+    row() { printf '  %s %-14s %s\n' "$1" "$2" "$3"; }
     started=$(now)
-    report=""
-    services=""
+    report=$(mktemp)
+    stage_lock_dir=$(mktemp -d)
+    export VOICEPUNCHER_STAGES_REPORT="$report"
+    caller=""
+    if [[ "${MACHINE_LOCK_HELD:-}" == "${MACHINE_LOCK_DIR:-$HOME/.cache/machine-lock}/tests.lock" ]]; then
+        caller=1
+        export VOICEPUNCHER_STAGES_CALLER_LOCK=1
+    fi
+    unlocked="" model=""
+    for stage in {{stages}}; do
+        if [[ -n "$model" || "$stage" == e2e* || "$stage" == refine-eval ]]; then
+            model+=" $stage"
+        else
+            unlocked+=" $stage"
+        fi
+    done
+    run="" status=0 interrupted="" requested="" returned=""
     finish() {
         code=$?
+        [[ -z "$interrupted" || $code -ne 0 ]] || code=130
+        [[ -z "$requested" || -n "$returned" ]] || returned=$(now)
+        printf '\nstages:\n'
+        locked=""
+        while read -r kind a b c; do
+            case "$kind" in
+                stage) row "$a" "$b" "$(printf '%7ss' "$c")" ;;
+                locked)
+                    locked=$a
+                    if [[ -n "$caller" ]]; then
+                        row "●" "lock wait" "held by the caller"
+                    else
+                        row "●" "lock wait" "$(printf '%7ss' "$(since "$requested" "$locked")")"
+                    fi ;;
+            esac
+        done <"$report"
+        if [[ -n "$requested" && -z "$locked" ]]; then
+            row "✗" "lock wait" "$(printf '%7ss' "$(since "$requested" "$returned")")"
+        elif [[ -n "$locked" && -n "$caller" ]]; then
+            row "●" "lock held" "held by the caller"
+        elif [[ -n "$locked" ]]; then
+            row "●" "lock held" "$(printf '%7ss' "$(since "$locked" "$returned")")"
+        fi
+        printf '  %-16s %7ss\n' total "$(since "$started")"
+        rm -rf "$report" "$stage_lock_dir"
+        exit "$code"
+    }
+    trap finish EXIT
+    # Each phase runs in the background, so a signal to this script reaches its wrapper and stops it
+    trap 'interrupted=1; [[ -z "$run" ]] || kill -TERM "$run" 2>/dev/null || true' TERM INT HUP
+    run_phase() {
+        "$@" &
+        run=$!
+        while true; do
+            wait "$run" && status=0 || status=$?
+            kill -0 "$run" 2>/dev/null || break
+        done
+        run=""
+    }
+    for stage in $unlocked; do
+        t0=$(now)
+        # Builds run at the utility QoS clamp, so they yield the CPU to another run's model stages; the
+        # `test` stage clamps only its own build phase (see _test)
+        clamp=()
+        case "$stage" in fmt|lint|build|build-e2e) clamp=(taskpolicy -c utility) ;; esac
+        run_phase ${clamp[@]+"${clamp[@]}"} env MACHINE_LOCK_DIR="$stage_lock_dir" {{locked}} "_$stage"
+        mark="✓"
+        [[ $status -eq 0 && -z "$interrupted" ]] || mark="✗"
+        echo "stage $mark $stage $(since "$t0")" >>"$report"
+        [[ $status -eq 0 ]] || exit "$status"
+        [[ -z "$interrupted" ]] || exit 130
+    done
+    [[ -n "$model" ]] || exit 0
+    requested=$(now)
+    echo "requested $requested" >>"$report"
+    if [[ -n "$caller" ]]; then
+        echo "● $(date +%H:%M:%S) the caller holds the machine lock:$model"
+    else
+        echo "→ $(date +%H:%M:%S) waiting for the machine lock:$model"
+    fi
+    run_phase {{locked}} _model-stages $model
+    returned=$(now)
+    [[ $status -eq 0 ]] || exit "$status"
+    [[ -z "$interrupted" ]] || exit 130
+
+# The model stages of _stages, run under the machine lock: starts the services it does not find running, runs
+# the stages with VOICEPUNCHER_E2E_SERVICES_HELD=1, so no E2E recipe starts or stops one, and stops what it
+# started on exit, also when the start or a stage is interrupted; appends its rows to VOICEPUNCHER_STAGES_REPORT
+_model-stages +stages:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    now() { perl -MTime::HiRes=time -e 'printf "%.1f", time'; }
+    since() { perl -e "printf '%.1f', $(now) - $1"; }
+    report="${VOICEPUNCHER_STAGES_REPORT:-/dev/null}"
+    taken=$(now)
+    echo "locked $taken" >>"$report"
+    requested=$(sed -n 's/^requested //p' "$report" | tail -1)
+    if [[ -n "$requested" && -z "${VOICEPUNCHER_STAGES_CALLER_LOCK:-}" ]]; then
+        echo "● $(date +%H:%M:%S) machine lock taken after $(perl -e "printf '%.0f', $taken - $requested") s"
+    fi
+    services="" current="" t0=""
+    finish() {
+        code=$?
+        [[ -z "$current" ]] || echo "stage ✗ $current $(since "$t0")" >>"$report"
         if [[ -n "$services" ]]; then
             unset VOICEPUNCHER_E2E_SERVICES_HELD
             {{just_executable()}} _stop-model-servers-for-e2e || true
         fi
-        printf '\nstages:\n%b' "$report"
-        printf '  %-12s %7ss\n' total "$(perl -e "printf '%.1f', $(now) - $started")"
         exit "$code"
     }
     trap finish EXIT
+    trap 'exit 143' TERM
+    trap 'exit 130' INT
+    trap 'exit 129' HUP
+    # Set before the start: the markers of the services it starts exist before they do
+    services=up
+    {{just_executable()}} _start-model-servers-for-e2e
+    export VOICEPUNCHER_E2E_SERVICES_HELD=1
     for stage in {{stages}}; do
-        if [[ -z "$services" && ( "$stage" == e2e* || "$stage" == refine-eval ) ]]; then
-            {{just_executable()}} _start-model-servers-for-e2e
-            services=up
-            export VOICEPUNCHER_E2E_SERVICES_HELD=1
-        fi
+        current=$stage
         t0=$(now)
         status=0
         {{just_executable()}} "_$stage" || status=$?
         mark="✓"
         [[ $status -eq 0 ]] || mark="✗"
-        report+="  $mark $(printf '%-10s %7ss' "$stage" "$(perl -e "printf '%.1f', $(now) - $t0")")\n"
+        echo "stage $mark $stage $(since "$t0")" >>"$report"
+        current=""
         [[ $status -eq 0 ]] || exit "$status"
     done
+
+# Builds what the model stages run — the command spotting service and their test binaries — so nothing
+# compiles under the machine lock; warm, five no-op cargo calls
+_build-e2e:
+    cargo build --release {{command_spotting_build}}
+    cargo test {{e2e_smoke_tests}} --no-run
+    cargo test {{e2e_seams_tests}} --no-run
+    cargo test {{placed_commands_tests}} --no-run
+    cargo test {{cucumber_e2e_tests}} --no-run
 
 # Formatting check
 fmt:
@@ -129,7 +368,8 @@ _test:
     #!/usr/bin/env bash
     set -euo pipefail
     # One build per selection, then every test binary at once, each in its package directory
-    # as cargo runs it; a binary's output is printed whole when it ends.
+    # as cargo runs it; a binary's output is printed whole when it ends. The builds run at the
+    # utility QoS clamp; the test binaries keep the default QoS (clamped timers fire late under load).
     root=$PWD
     tab=$'\t'
     runs=$(mktemp -d)
@@ -140,7 +380,7 @@ _test:
         set -- $selection
         dir=$1
         shift
-        cargo test "$@" --no-run 2>"$runs/build.log" || { cat "$runs/build.log" >&2; exit 101; }
+        taskpolicy -c utility cargo test "$@" --no-run 2>"$runs/build.log" || { cat "$runs/build.log" >&2; exit 101; }
         grep -v '^ *Executable ' "$runs/build.log" >&2 || true
         sed -n "s|^ *Executable \(.*\) (\(.*\))$|$dir$tab\1$tab\2|p" "$runs/build.log" >>"$runs/binaries"
     done
@@ -211,11 +451,11 @@ _e2e-smoke: _require-models _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
-    cargo test -p voicepuncher --test transcription_openai_it --test textrefinement_openai_it --test commandspotting_websocket_it --test voice_samples_it --test voice_forms_it -- --nocapture
-    cargo test -p voicepuncher-command-spotting --test placed_commands_it
-    cargo test -p voicepuncher-e2e-test --test cucumber_e2e -- --tags '@smoke and not @wip'
+    cargo test {{e2e_smoke_tests}} -- --nocapture
+    cargo test {{placed_commands_tests}}
+    cargo test {{cucumber_e2e_tests}} -- --tags '@smoke and not @wip'
 
-# WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 %, and no command in 20 recordings of ordinary speech (~1 min)
+# WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 %, and no command in 10 recordings of ordinary speech (~1 min)
 e2e-quick:
     @{{locked}} _e2e-quick
 
@@ -225,7 +465,7 @@ _e2e-quick: _require-models _require-corpus _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" VOICEPUNCHER_BENCH_LIMIT=10 \
-        cargo test -p voicepuncher-e2e-test --test cucumber_e2e -- --tags '@accuracy and not @wip'
+        cargo test {{cucumber_e2e_tests}} -- --tags '@accuracy and not @wip'
 
 # Text refinement on the live services: dictated commands, normalization, evaluation per category (@refinement) (~30 s)
 refine-eval:
@@ -237,14 +477,14 @@ _refine-eval: _require-models _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" \
-        cargo test -p voicepuncher-e2e-test --test cucumber_e2e -- --tags '@refinement and not @wip'
+        cargo test {{cucumber_e2e_tests}} -- --tags '@refinement and not @wip'
 
 # Outages: services that hang, die and come back while voice control runs (@resilience), each scenario on service ports of its own, so the shared services are never touched (~4 min)
 e2e-resilience:
     @{{locked}} _e2e-resilience
 
 _e2e-resilience: _require-models _build
-    cargo test -p voicepuncher-e2e-test --test cucumber_e2e -- --tags '@resilience and not @wip'
+    cargo test {{cucumber_e2e_tests}} -- --tags '@resilience and not @wip'
 
 # Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words (~2.5 min)
 e2e-seams:
@@ -256,8 +496,8 @@ _e2e-seams: _require-models _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}"
-    cargo test -p voicepuncher --test chunked_transcription_it -- --nocapture
-    cargo test -p voicepuncher-e2e-test --test cucumber_e2e -- --tags '@seams and not @wip'
+    cargo test {{e2e_seams_tests}} -- --nocapture
+    cargo test {{cucumber_e2e_tests}} -- --tags '@seams and not @wip'
 
 # WER accuracy on a fixed sample of 100 recordings (50 per language), two at a time — fails if mean WER > 30 %, and no command in 20 recordings of ordinary speech (~2.5 min)
 e2e-bench:
@@ -269,7 +509,7 @@ _e2e-bench: _require-models _require-corpus _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" \
-        cargo test -p voicepuncher-e2e-test --test cucumber_e2e -- --tags '@accuracy and not @wip'
+        cargo test {{cucumber_e2e_tests}} -- --tags '@accuracy and not @wip'
 
 # Manual: @real_keyboard scenarios drive the real hotkey + paste — needs Accessibility and Input Monitoring for the terminal, a GUI session, hands off the keyboard
 test-real-keyboard:
@@ -280,26 +520,56 @@ _test-real-keyboard:
 
 # ── Release ── after the merge, on a clean checkout of origin/main ──────────
 
-# Tag v<app version>, build, publish a GitHub Release with the binary tarball + sha256
+# Runs without the machine-wide lock, like `test`: it uses no shared service, port or GPU; a lock directory of the
+# run's own only gives it the wrapper's time limit (MACHINE_LOCK_TIMEOUT, exit 124; the timeout message says
+# `[machine-lock]`; a run killed with KILL leaves that directory, holding an empty tests.lock, in $TMPDIR).
+# `cargo clean` deletes target/release/voicepuncher, which the user may be running: in the main checkout, ask first
+# Tag v<app version>, clean build, publish a GitHub Release with the binary tarball + sha256
 release:
-    @{{locked}} _release
+    #!/usr/bin/env bash
+    set -euo pipefail
+    lock_dir=$(mktemp -d)
+    trap 'rm -rf "$lock_dir"' EXIT
+    # The wrapper runs in the background, so a signal to this script reaches it and stops the whole run
+    MACHINE_LOCK_DIR="$lock_dir" {{locked}} _release &
+    run=$!
+    trap 'kill -TERM "$run" 2>/dev/null || true' TERM INT HUP
+    while true; do
+        wait "$run" && code=0 || code=$?
+        kill -0 "$run" 2>/dev/null || exit "$code"
+    done
 
-_release: _require-release-head _test _build
+# The checks of the checkout, the clean build and package, then the only steps that publish: tag, push, release
+_release: _require-release-head _release-package
     #!/usr/bin/env bash
     set -euo pipefail
     version=$(sed -n 's/^version = "\(.*\)"/\1/p' app/Cargo.toml | head -1)
     tag="v$version"
     name="voicepuncher-$tag-aarch64-apple-darwin"
     dist=target/dist
-    rm -rf "$dist" && mkdir -p "$dist/$name"
-    cp target/release/voicepuncher README.md "$dist/$name/"
-    tar -C "$dist" -czf "$dist/$name.tar.gz" "$name"
-    (cd "$dist" && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
     git tag -a "$tag" -m "voicepuncher $tag"
     git push origin "$tag"
     gh release create "$tag" "$dist/$name.tar.gz" "$dist/$name.tar.gz.sha256" \
         --title "voicepuncher $tag" --generate-notes --verify-tag
     echo "✓ released $tag"
+
+# Everything of a release that publishes nothing, safe to run alone: `cargo clean`, every test (_test: its build
+# at the utility QoS clamp, its test binaries at the default QoS), the release build from scratch at the utility
+# clamp, then the tarball and its .sha256 in target/dist
+_release-package:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo clean
+    {{just_executable()}} --justfile {{quote(justfile())}} _test
+    taskpolicy -c utility cargo build --release
+    version=$(sed -n 's/^version = "\(.*\)"/\1/p' app/Cargo.toml | head -1)
+    name="voicepuncher-v$version-aarch64-apple-darwin"
+    dist=target/dist
+    rm -rf "$dist" && mkdir -p "$dist/$name"
+    cp target/release/voicepuncher README.md "$dist/$name/"
+    tar -C "$dist" -czf "$dist/$name.tar.gz" "$name"
+    (cd "$dist" && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
+    echo "✓ packaged $dist/$name.tar.gz"
 
 # ── Services ── local processes the app talks to over loopback ────────────────
 
@@ -537,7 +807,18 @@ start-model-servers *services:
         fi
         require_model_dir VOICEPUNCHER_KWS_MODEL_DIR
         require_model VOICEPUNCHER_KWS_VAD_MODEL
-        cargo build --release -p voicepuncher-command-spotting
+        # The build drops the variables cargo sets for a test it runs, because the @local_services and
+        # @resilience steps run this recipe inside `cargo test`: ring's build script reruns when CARGO_PKG_* or
+        # CARGO_MANIFEST_DIR change, so the service and its dependencies would be built again under the machine
+        # lock, and once more by the next plain build
+        (
+            for var in $(compgen -e); do
+                case "$var" in
+                    CARGO_MANIFEST_* | CARGO_PKG_* | CARGO_CRATE_NAME | CARGO_BIN_NAME | CARGO_PRIMARY_PACKAGE | CARGO_TARGET_TMPDIR | CARGO_RUSTC_CURRENT_DIR) unset "$var" ;;
+                esac
+            done
+            cargo build --release {{command_spotting_build}}
+        )
         start_service voicepuncher-command-spotting "{{kws_port}}" "command spotting service" kws_ready \
             "http://127.0.0.1:{{kws_port}}/health" "{{kws_binary}}" --port "{{kws_port}}" \
             --model-dir "$VOICEPUNCHER_KWS_MODEL_DIR" --vad-model "$VOICEPUNCHER_KWS_VAD_MODEL" \

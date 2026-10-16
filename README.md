@@ -242,21 +242,23 @@ All checks run through [`just`](https://github.com/casey/just) (`brew install ju
 
 | Command | What it runs | Time | When |
 |---|---|---|---|
-| `just test` | unit + architecture + integration tests, every test binary at once | ~20 s | after every edit |
-| `just check` | fmt, clippy, `test`, release build, E2E smoke, WER accuracy on 10 samples, refinement evaluation | ~6 min | often while developing, before every commit you push |
-| `just full-check` | `cargo clean`, fmt, clippy, `test`, release build, E2E smoke, chunk seams, outages (`e2e-resilience`), WER accuracy on a fixed sample of 100 recordings, refinement evaluation | ~14 min | before merging a branch and before every release |
+| `just test` | unit + architecture + integration tests, every test binary at once | ~1 min | after every edit |
+| `just check` | fmt, clippy, `test`, release build, E2E smoke, WER accuracy on 10 samples, refinement evaluation | ~6.5 min (machine lock ≈ 5.3 min) | often while developing, before every commit you push |
+| `just full-check` | fmt, clippy, `test`, release build, E2E smoke, chunk seams, outages (`e2e-resilience`), WER accuracy on a fixed sample of 100 recordings (or 10, below), refinement evaluation | ~11–12 min (machine lock ≈ 9.5 min with 10 recordings, ≈ 11 min with 100) | before merging a branch and before every release |
 
 Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-quick` (10 samples), `e2e-seams` (the seam sweep, plus Russian and English speech under 11 recording conditions, transcribed in chunks), `e2e-bench` (100 samples, two at a time), `e2e-resilience` (the `@resilience` scenarios: a speech recognition service paused while voice control runs, a command spotting service killed or paused and started again by the scripts, a request abandoned in the queue — each on service ports of its own, so the shared services are never touched), `e2e` (smoke + seams + 100 samples + refinement evaluation), `refine-eval` (the `@refinement` scenarios: dictated commands, normalization, and a per-category score of the 41 dictations in `e2e-test/refinement/eval_set.jsonl` against the live text refinement service, next to the raw-transcript baseline; fails when a dictated command is carried out or the language changes). The E2E recipes start each local service that is not running and stop it afterwards, also when a test fails; a service that is already running — your everyday one included — is reused and left running. `check` and `full-check` start the services once for all their E2E stages and end with each stage's time. Speech synthesized with `say` is cached in `~/.cache/voicepuncher/speech/`; delete it to synthesize everything again.
 
 **Models and corpus** are found automatically: the largest `ggml-*.bin` and `*.gguf` in `~/.voicepuncher/` or `~/.voicepuncher/models/`, and the corpus in `e2e-test/corpus/`. Override with `VOICEPUNCHER_WHISPER_MODEL`, `VOICEPUNCHER_LLM_MODEL`, `VOICEPUNCHER_BENCH_CORPUS` (env or `.env`). If they are missing, `check`, `full-check` and the E2E recipes stop with an error instead of skipping. First-time setup: `just models`, `just corpus`.
 
-`full-check` runs `cargo clean`, so `target/release/voicepuncher` is gone until the build finishes.
+**The machine-wide test lock.** Checks from several checkouts on one machine take turns through agent-kit's `with-machine-lock`. `check` and `full-check` run fmt, clippy, `test`, the release build and the E2E test builds right away, without the lock (every build at a low CPU priority, the test binaries at the normal one), and wait for the lock only for their stages on the local services (E2E, accuracy, refinement evaluation), which start and stop the services inside it. `just test` and `just release` never wait for it. `full-check` builds incrementally like `check` and runs no `cargo clean`.
+
+**The accuracy sample of `full-check`:** a fixed sample of 100 recordings when the branch changes the recognition path (`recognition_paths` in the `justfile`), on `main` itself and when the changes cannot be read; else 10, like `check`. It says which and why before its first stage. `VOICEPUNCHER_ACCURACY_SAMPLE=100 just full-check` forces 100, e.g. after a new model.
 
 **Your own voice.** Voice control is tested on recordings of your own commands when they exist in `~/.voicepuncher/voice-samples/` (never committed): `<session>.wav` (16 kHz mono, e.g. `rec -r 16000 -c 1 -b 16 session-1.wav` from Homebrew `sox`) with `<session>/manifest.jsonl`, one line per command said (`file`, `start`, `end`, `said`, `command`, `note`, optional `unclear`). `just e2e-smoke` then checks that every clear recording is recognized as its command, with no extra command, and runs whole hands-free sessions with your recorded commands.
 
 ### Release checklist
 
-1. `just full-check` passes.
+1. `just full-check` passes (on `origin/main` itself it runs the 100 recordings).
 2. Manual run (required before merging a change to hotkey, recording, overlay, paste or permissions) — `cargo run --release -p voicepuncher`, then check:
    - [ ] Short phrase: press, speak, release → text is pasted.
    - [ ] Long dictation (> 30 s, crosses a chunk boundary) → no repeated or missing words at the seam.
@@ -272,7 +274,7 @@ Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-qui
    - [ ] `just test-real-keyboard` passes (hotkey still registered after a paste).
    - [ ] Voice control (`cargo run --release -p voicepuncher -- --voice-control`): the app plays the listening-on sound at start; in a chat input "start dictation", a sentence, "stop dictation" → the sentence is pasted without the stop phrase; "press enter" → the message is sent; "start dictation", speech, "cancel dictation" → nothing is pasted; type text, "clear all text" → it is erased; "I will press enter later" said without pausing → nothing happens; "start", a sentence, "stop" → the sentence is pasted; "start start" and a sentence at once, then "stop" → the whole sentence is pasted from its first word; "start", a short pause, a sentence, "stop" → the same; the hotkey starts a dictation with the overlay and start sound, and "stop dictation" ends it; "start dictation", then the hotkey → pasted, listening stays on. The log shows each `voice control: "…"` line.
    - [ ] `just stop-model-servers voicepuncher-command-spotting`, then start with `--voice-control` → it exits naming the command spotting service and `just start-model-servers`.
-3. After the merge, on a clean checkout of `origin/main` with a bumped `version` in `app/Cargo.toml`: `just release` — tags `vX.Y.Z` and publishes a GitHub Release with the binary tarball and its SHA-256.
+3. After the merge, on a clean checkout of `origin/main` with a bumped `version` in `app/Cargo.toml`: `just release` — cleans `target/`, runs the tests and builds from scratch without the machine-wide lock, then tags `vX.Y.Z` and publishes a GitHub Release with the binary tarball and its SHA-256. In the main checkout, `target/release/voicepuncher` is gone until it finishes.
 
 ### Model comparison (not a release gate)
 

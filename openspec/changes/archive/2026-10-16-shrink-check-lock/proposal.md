@@ -17,6 +17,8 @@ Lock held per run, from the stage tables of every run on 2026-10-14/15 (`researc
 
 Without its wait, `full-check` then takes ≈ 770–860 s instead of ≈ 920 s — its ≈ 695 s of model stages plus `check`'s ≈ 75–165 s of unlocked ones, warm or after an edit — and ≈ 670–760 s when it measures 10 recordings. `check` keeps its ≈ 375–465 s; only its share under the lock shrinks.
 
+Measured on the branch (`research/README.md`): the lock held 317 s for `check` warm and 320 s after an edit, 647 s for `full-check` with 100 recordings and 579 s with 10; `full-check` took ≈ 715 s and ≈ 650 s without its wait, `check` ≈ 385–405 s.
+
 The last row is rare in this repository's history: applied to the 35 merges since 2026-09-15 that changed a build input, the recognition path list of `design.md` picks the 100 recordings for 34 — 28 through an app, service or test path or a dependency, 6 through the `justfile` alone; only UI and tooling branches such as the web-content focus fix (0.13.2) pick 10. The lock split carries most of the saving. The WER choice stays because the user asked for it; it saves ≈ 100 s per `full-check` where it applies and can be dropped later without touching the rest.
 
 Three more costs come with today's checks. A run whose lint, tests or build fail learns it only after its wait. `full-check` starts with `cargo clean` on every branch and compiles everything cold, although cargo already rebuilds whatever a change affects. And `full-check` measures WER on 100 recordings (`e2e-bench`, 130 s median; 30 s for 10 recordings) on every branch, although on a branch that does not touch recognition it measures what the last recognition change already measured.
@@ -78,4 +80,4 @@ None. The `file-transcription` requirement "Transcription meets the accuracy bar
 
 ## Release
 
-No release: no app behavior changes; `app/Cargo.toml` keeps its version (0.14.0 at this writing).
+No release: no app behavior changes; `app/Cargo.toml` keeps its version (0.14.1 at this writing).
