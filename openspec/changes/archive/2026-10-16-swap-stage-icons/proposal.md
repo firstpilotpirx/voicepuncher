@@ -2,7 +2,7 @@
 
 ## Why
 
-Since 0.14.0 the overlay shows 👂 (ear) for the speech recognition stage and ✏️ (pencil) for the text refinement stage. Shown alternatives, the user picked 🎧 (headphones), which reads more as listening, and ✨ (sparkles), the usual sign of AI at work, which fits text refinement by a language model better than a pencil. The icons exist so the user knows at a glance which stage runs, so they should be the ones the user reads that way.
+Since `show-processing-stages` the overlay shows 👂 (ear) for the speech recognition stage and ✏️ (pencil) for the text refinement stage. Shown alternatives, the user picked 🎧 (headphones), which reads more as listening, and ✨ (sparkles), the usual sign of AI at work, which fits text refinement by a language model better than a pencil. The icons exist so the user knows at a glance which stage runs, so they should be the ones the user reads that way.
 
 ## What Changes
 
@@ -36,7 +36,7 @@ None.
 
 ## Release
 
-PATCH, 0.14.1 → 0.14.2 (or the next patch above `main` if another change bumps it first). No new capability and nothing breaks — no config, CLI or port change; the change corrects how an existing requirement is drawn. Earlier MINOR bumps of existing capabilities each added something the app could not do before (new phrases, a new duty, a new overlay state); this one adds nothing.
+PATCH, to 0.14.2 from 0.14.1 (or the next patch above `main` if another change bumps it first). No new capability and nothing breaks — no config, CLI or port change; the change corrects how an existing requirement is drawn. Earlier MINOR bumps of existing capabilities each added something the app could not do before (new phrases, a new duty, a new overlay state); this one adds nothing.
 
 ## Impact
 

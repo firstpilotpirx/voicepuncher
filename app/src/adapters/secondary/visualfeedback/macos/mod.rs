@@ -34,8 +34,8 @@ const WAITING_FOR_FOCUS_SIGN: &str = "⌨ FOCUS";
 /// The icon of a processing stage; `None` for a state that is not one.
 fn stage_icon(state: OverlayState) -> Option<&'static str> {
     match state {
-        OverlayState::RecognizingSpeech => Some("👂"),
-        OverlayState::RefiningText => Some("✏️"),
+        OverlayState::RecognizingSpeech => Some("🎧"),
+        OverlayState::RefiningText => Some("✨"),
         _ => None,
     }
 }
@@ -469,7 +469,7 @@ unsafe extern "C" fn pulse_trampoline(ptr: *mut std::ffi::c_void) {
     schedule_pulse(windows, generation, pulse_gen, !bright);
 }
 
-/// The icon of the processing stage on the left, the spinner turning beside it.
+/// The icon of the processing stage on the left, the spinner turning to its right.
 fn apply_processing_state(
     windows: Vec<Arc<WindowSet>>,
     stage: OverlayState,
@@ -625,6 +625,19 @@ mod tests {
             assert_ne!(icon, RECORDING_SIGN);
             assert_ne!(icon, WAITING_FOR_FOCUS_SIGN);
         }
+    }
+
+    #[test]
+    fn should_show_headphones_for_the_speech_recognition_stage() {
+        assert_eq!(
+            stage_icon(OverlayState::RecognizingSpeech),
+            Some("\u{1F3A7}")
+        );
+    }
+
+    #[test]
+    fn should_show_sparkles_for_the_text_refinement_stage() {
+        assert_eq!(stage_icon(OverlayState::RefiningText), Some("\u{2728}"));
     }
 
     #[test]
