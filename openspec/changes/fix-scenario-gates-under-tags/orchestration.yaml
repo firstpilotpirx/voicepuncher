@@ -1,0 +1,4 @@
+depends_on:
+  - change: fail-hung-tests-fast
+    why: its D4 rewrites the entry points of both Gherkin harnesses to read their own command line; the gates build on that reading
+autonomy: auto
