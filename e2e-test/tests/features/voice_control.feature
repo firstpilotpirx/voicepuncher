@@ -337,6 +337,19 @@ Feature: voice-control
       When the hands-free session is spoken with the user's recorded commands and long pauses
       Then the app does everything the session said, in order
 
+  Rule: Confirmations are not steered by a prompt
+
+    @smoke
+    Scenario Outline: Speech that is no command is not turned into a command
+      Given the command spotting service is running
+      When someone says <speech>, each on its own with a pause around it
+      Then no command takes effect
+
+      Examples:
+        | speech                 |
+        | short Russian phrases  |
+        | Russian counting words |
+
   Rule: Voice control needs the command spotting service to start
 
     @smoke

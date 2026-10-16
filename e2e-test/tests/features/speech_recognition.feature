@@ -148,3 +148,30 @@ Feature: speech-recognition
       Given the service scripts started the speech recognition service
       When the command spotting service asks it to confirm an utterance that holds no speech
       Then no words are heard and the service answers the next request
+
+  Rule: The configured prompt steers recognition
+
+    @smoke
+    Scenario: A domain term named in the prompt is recognized
+      Given the configured prompt names a domain term that speech recognition misses without it
+      And a recording file of a Russian sentence that says the term
+      When the user transcribes the recording file without refinement
+      Then the printed text holds the term as written in the prompt
+
+    @smoke
+    Scenario: The prompt holds in every window of a long chunk
+      Given the configured prompt names a domain term that speech recognition misses without it
+      And a recording is transcribed as one chunk however long it is
+      And a recording file of Russian speech that says the term only after its first 30 seconds and goes on after it
+      When the user transcribes the recording file without refinement
+      Then the printed text holds the term as written in the prompt
+
+  Rule: Text of one request never steers another
+
+    @smoke
+    Scenario: A dictation does not echo the previous one
+      Given the configured prompt names a domain term that speech recognition misses without it
+      And the user transcribed a recording file of a Russian sentence
+      And a recording file of an unrelated Russian sentence
+      When the user transcribes the recording file without refinement
+      Then the printed text holds no word of the first sentence that the second one does not say

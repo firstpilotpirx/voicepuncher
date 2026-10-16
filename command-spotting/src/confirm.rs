@@ -10,9 +10,12 @@ use serde::Deserialize;
 
 const BOUNDARY: &str = "voicepuncher-command-spotting-3f9a";
 const LANGUAGE: &str = "en";
-/// The commands, as a hint that steers the speech recognition service towards them.
-const PROMPT: &str =
-    "start dictation. stop dictation. cancel dictation. restart dictation. press enter. clear text. clear all text.";
+// No prompt: with the command phrases as the prompt (whisper-server runs with `-mc 0`, which
+// drops a prompt unless the request sets its own `max_context`), Russian speech such as
+// "четыре", "пять" or "очисти" was heard as "clear all text." or "press enter.", the user's
+// recorded speech gave four wrong commands instead of one, and the slowest confirmations of
+// Russian speech took 1.7 s instead of 0.2 s (restore-recognition-prompt, design.md § Results).
+
 /// The temperature step of a retry when a decoding fails (stuck repeating, or too unsure):
 /// 0 turns the retries off. The service's default 0.2 retries at 0.2, 0.4, … 1.0, and
 /// speech in another language that gets stuck repeating in English used those up for
@@ -175,7 +178,6 @@ fn multipart_body(wav: &[u8]) -> Vec<u8> {
     let mut body = Vec::with_capacity(wav.len() + 512);
     for (name, value) in [
         ("language", LANGUAGE),
-        ("prompt", PROMPT),
         ("temperature", "0"),
         ("temperature_inc", TEMPERATURE_STEP),
         ("response_format", "verbose_json"),
@@ -224,7 +226,6 @@ mod tests {
         assert!(language < file);
         assert!(body.contains("name=\"language\"\r\n\r\nen\r\n"));
         assert!(body.contains("name=\"temperature\"\r\n\r\n0\r\n"));
-        assert!(body.contains("press enter"));
         assert!(body.contains("name=\"response_format\"\r\n\r\nverbose_json\r\n"));
         assert!(body.contains("name=\"timestamp_granularities[]\"\r\n\r\nword\r\n"));
         assert!(body.ends_with(&format!("--{BOUNDARY}--\r\n")));
@@ -237,6 +238,16 @@ mod tests {
         // Then
         assert!(body.contains("name=\"temperature\"\r\n\r\n0\r\n"));
         assert!(body.contains("name=\"temperature_inc\"\r\n\r\n0\r\n"));
+    }
+
+    #[test]
+    fn should_send_no_prompt_with_a_confirmation() {
+        // When
+        let body = String::from_utf8_lossy(&multipart_body(b"RIFF")).into_owned();
+        // Then
+        assert!(!body.contains("name=\"prompt\""));
+        assert!(!body.contains("name=\"max_context\""));
+        assert!(!body.contains("name=\"carry_initial_prompt\""));
     }
 
     #[test]

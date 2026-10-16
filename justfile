@@ -716,7 +716,10 @@ start-model-servers *services:
         exit 1
     }
     # whisper_args <port> <threads>: the whisper-server command line, in whisper_cmd.
-    # Greedy, no cross-request text context, non-speech tokens suppressed. -nf (no
+    # Greedy, non-speech tokens suppressed, no text context (-mc 0): text decoded in one 30 s window
+    # of a request does not steer the next (requests never share text: whisper-server clears it
+    # before every request). -mc 0 drops a request's prompt too, so a dictation request with a
+    # prompt sets its own context (max_context 224, carry_initial_prompt). -nf (no
     # temperature fallback) is ignored by whisper-server 1.9.5: dictation keeps the server's
     # fallback (retries at 0.2, 0.4, … 1.0), and the command spotting service's confirmations
     # turn it off per request; -nf stays for a whisper-server that honours it.

@@ -110,7 +110,11 @@ fn mean_wer_below_bar(world: &mut E2eWorld) -> Result<()> {
     Ok(())
 }
 
-fn transcribe(recording: &Path, config: Option<&Path>, with_refinement: bool) -> Result<Output> {
+pub fn transcribe(
+    recording: &Path,
+    config: Option<&Path>,
+    with_refinement: bool,
+) -> Result<Output> {
     let mut cmd = Command::new(sut_bin());
     cmd.arg("--config")
         .arg(config.unwrap_or(Path::new(NO_CONFIG)))

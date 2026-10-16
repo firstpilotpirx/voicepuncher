@@ -17,6 +17,8 @@ use crate::steps::file_transcription::{
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
+mod prompt;
+
 const MAX_STARTUP_FAILURE: Duration = Duration::from_secs(3);
 const REMOTE_SERVICE_URL: &str = "http://192.168.1.10:8081/v1";
 const START_COMMAND: &str = "just start-model-servers";

@@ -43,6 +43,20 @@ const SHORT_RUSSIAN_PHRASES: [&str; 8] = [
     "Окей, понял",
 ];
 
+/// Russian counting words: short, and each could sound like a command forced to English.
+const RUSSIAN_COUNTING_WORDS: [&str; 10] = [
+    "Один",
+    "Два",
+    "Три",
+    "Четыре",
+    "Пять",
+    "Шесть",
+    "Семь",
+    "Восемь",
+    "Девять",
+    "Десять",
+];
+
 /// Said after a command and a short pause; it opens with a hard consonant, whose first sound
 /// a confirmation clip running past the pause would take in.
 const SENTENCE_AFTER_PAUSE: &str = "Coffee machine on the third floor is broken";
@@ -136,13 +150,25 @@ async fn says_in_sentence(world: &mut E2eWorld, sentence: String) -> Result<()> 
 #[when("someone says short Russian phrases, each on its own with a pause around it")]
 async fn says_short_russian(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, move |world| {
-        let mut audio = Vec::new();
-        for phrase in SHORT_RUSSIAN_PHRASES {
-            audio.extend(spoken_by(RUSSIAN_VOICE, phrase)?);
-        }
-        heard_in_both_states(world, &audio)
+        says_russian(world, &SHORT_RUSSIAN_PHRASES)
     })
     .await
+}
+
+#[when("someone says Russian counting words, each on its own with a pause around it")]
+async fn says_russian_counting(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        says_russian(world, &RUSSIAN_COUNTING_WORDS)
+    })
+    .await
+}
+
+fn says_russian(world: &mut E2eWorld, phrases: &[&str]) -> Result<()> {
+    let mut audio = Vec::new();
+    for phrase in phrases {
+        audio.extend(spoken_by(RUSSIAN_VOICE, phrase)?);
+    }
+    heard_in_both_states(world, &audio)
 }
 
 /// Every command `audio` gives while listening in standby and while dictating.

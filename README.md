@@ -55,6 +55,8 @@ llama-server -m ~/.voicepuncher/models/Qwen2.5-3B-Instruct-Q4_K_M.gguf \
 
 whisper-server 1.9.5 accepts `-nf` (no temperature fallback) but ignores it: every request still decodes again at temperatures 0.2, 0.4, … 1.0 when the first decoding fails. `-nf` stays on the command line for a whisper-server that honours it. Dictation keeps the server's fallback; a command confirmation turns the retries off per request (`temperature_inc` 0), so on an idle service one confirmation takes at most about 1.5 s.
 
+`-mc 0` gives a request without a prompt no text context: text decoded in one 30 s window of a request does not steer the next. Requests never share text in any case — whisper-server clears it before every request. With no text context whisper.cpp also drops the request's prompt, so a dictation request with a `[transcription] prompt` sets its own context (`max_context` 224) and keeps the prompt first in every window (`carry_initial_prompt`), followed by the text decoded earlier in the same request; whisper.cpp still decodes the last piece of a request shorter than 5 s without either. Command confirmations send no prompt: with the command phrases as the prompt, Russian speech that is no command was heard as a command.
+
 The app checks both services at startup and exits with code 2 if one is not reachable, or if the text refinement service offers several models and none matches `[refinement].model`. Only addresses on this machine are accepted (`localhost`, `127.0.0.0/8`, `[::1]`). With `--no-llm` the text refinement service is neither checked nor used. If refinement fails during a recording (service stopped, timeout, cut-off or too short answer), the raw transcript is pasted.
 
 ### Command spotting (voice control)

@@ -11,6 +11,8 @@ const WAV_CONTENT_TYPE: &str = "audio/wav";
 const RESPONSE_FORMAT: &str = "json";
 const BITS_PER_SAMPLE: u16 = 16;
 const MONO: u16 = 1;
+/// The largest text context whisper-server gives a request, in tokens (half the model's).
+const MAX_TEXT_CONTEXT_TOKENS: &str = "224";
 
 pub fn content_type() -> String {
     format!("multipart/form-data; boundary={MULTIPART_BOUNDARY}")
@@ -41,7 +43,14 @@ pub fn multipart_body(cfg: &TranscriptionCfg, wav: &[u8]) -> Vec<u8> {
         push_field(&mut body, "language", &cfg.language);
     }
     if !cfg.prompt.is_empty() {
+        // whisper-server runs with no text context (`-mc 0`), which drops the prompt too. The
+        // request's own context holds the prompt, kept apart and put first in every 30 s window
+        // (`carry_initial_prompt`), and the text decoded before it in the rest: with the prompt
+        // alone a term in a later window was missed, and the decoded text changed no transcript
+        // of the 100 recordings (restore-recognition-prompt, design.md § Results).
         push_field(&mut body, "prompt", &cfg.prompt);
+        push_field(&mut body, "carry_initial_prompt", "true");
+        push_field(&mut body, "max_context", MAX_TEXT_CONTEXT_TOKENS);
     }
     push_field(&mut body, "temperature", &cfg.temperature.to_string());
     push_field(&mut body, "response_format", RESPONSE_FORMAT);
@@ -139,6 +148,29 @@ mod tests {
         // Then
         assert!(body.contains("name=\"language\"\r\n\r\nen\r\n"));
         assert!(body.contains("name=\"prompt\"\r\n\r\nDocker, Kubernetes\r\n"));
+    }
+
+    #[test]
+    fn should_make_the_service_use_the_prompt_in_every_window() {
+        // Given
+        let cfg = TranscriptionCfg {
+            prompt: "Docker, Kubernetes".into(),
+            ..TranscriptionCfg::default()
+        };
+        // When
+        let body = body_text(&cfg);
+        // Then
+        assert!(body.contains("name=\"carry_initial_prompt\"\r\n\r\ntrue\r\n"));
+        assert!(body.contains("name=\"max_context\"\r\n\r\n224\r\n"));
+    }
+
+    #[test]
+    fn should_leave_the_text_context_to_the_service_without_a_prompt() {
+        // When
+        let body = body_text(&TranscriptionCfg::default());
+        // Then
+        assert!(!body.contains("name=\"max_context\""));
+        assert!(!body.contains("name=\"carry_initial_prompt\""));
     }
 
     #[test]

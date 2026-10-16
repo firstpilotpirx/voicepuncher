@@ -13,7 +13,8 @@ pub struct TranscriptionCfg {
     /// Spoken language code (`ru`, `en`, …) or `auto` to let the service detect it.
     #[serde(default = "TranscriptionCfg::default_language")]
     pub language: String,
-    /// Prompt that biases recognition toward domain terms and punctuation style.
+    /// Prompt that biases recognition toward domain terms and punctuation style, used in every
+    /// 30 s window of every chunk.
     #[serde(default)]
     pub prompt: String,
     #[serde(default)]
