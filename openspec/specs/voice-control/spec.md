@@ -436,6 +436,13 @@ The system SHALL carry out a chain of two or three different commands said one r
 - **WHEN** the user says "enter stop" or "start stop"
 - **THEN** no command takes effect
 
+#### Scenario: The end of a chain heard only when the utterance ends still counts
+- **GIVEN** a dictation runs
+- **AND** while the user speaks, the system has heard only the first two commands of "never mind cancel enter start" and carried them out
+- **WHEN** the utterance ends and the system hears all of it
+- **THEN** "start dictation" is carried out after them
+- **AND** "cancel dictation" and "press enter" are not carried out again
+
 ### Requirement: Which chains exist
 Since "start dictation" leads to dictating and "stop dictation" or "cancel dictation" lead back to standby, the chains SHALL be exactly those where "start" comes last: during a dictation, "stop" or "cancel" followed by one or two of "enter", "clear", "start" (each once, "start" last), or "enter" followed by one or two of "clear", "start" ("enter" ends the dictation and pastes first); with no dictation, two or three of "enter", "clear", "start" (each once, "start" last).
 

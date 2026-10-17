@@ -2,6 +2,8 @@
 //! start, and doubled or chained commands anywhere. Works on the words of a transcript,
 //! so the caller can place what it finds in the audio by the words' times.
 
+use std::ops::Range;
+
 use super::PhraseMatcher;
 
 /// Where in the utterance the command words sat.
@@ -17,10 +19,11 @@ pub enum Placement {
 }
 
 /// Commands found in a transcript: carried out in order; `first..=last` are the indices
-/// of their words in the words given.
+/// of their words in the words given, and `spans` those of each command's words.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Found {
     pub commands: Vec<String>,
+    pub spans: Vec<(usize, usize)>,
     pub first: usize,
     pub last: usize,
     pub placement: Placement,
@@ -160,6 +163,7 @@ impl PhraseMatcher {
             let (phrase, used) = command_at(&tokens, from)?;
             (from + used == tokens.len() && accepted.contains(&phrase)).then(|| Found {
                 commands: vec![phrase.to_owned()],
+                spans: vec![(tokens[from].at, tokens[tokens.len() - 1].at)],
                 first: tokens[from].at,
                 last: tokens[tokens.len() - 1].at,
                 placement: Placement::Tail,
@@ -175,6 +179,7 @@ impl PhraseMatcher {
         (phrase == START && self.accepted().contains(&START) && used == tokens.len()).then(|| {
             Found {
                 commands: vec![START.to_owned()],
+                spans: vec![(tokens[0].at, tokens[used - 1].at)],
                 first: tokens[0].at,
                 last: tokens[used - 1].at,
                 placement: Placement::Head,
@@ -194,6 +199,7 @@ impl PhraseMatcher {
             && !command_follows)
             .then(|| Found {
                 commands: vec![START.to_owned()],
+                spans: vec![(tokens[0].at, tokens[used - 1].at)],
                 first: tokens[0].at,
                 last: tokens[used - 1].at,
                 placement: Placement::Head,
@@ -209,18 +215,23 @@ impl PhraseMatcher {
             if !accepted.contains(&first) {
                 return None;
             }
-            let (commands, end) = chain_from(&tokens, first, from + used);
-            let end = if commands.len() >= 2 {
-                end
+            let chain = chain_from(&tokens, first, from, from + used);
+            let chain = if chain.len() >= 2 {
+                chain
             } else {
                 let (again, used_again) = command_at(&tokens, from + used)?;
                 if again != first {
                     return None;
                 }
-                from + used + used_again
+                vec![(first, from..from + used + used_again)]
             };
+            let end = chain[chain.len() - 1].1.end;
             Some(Found {
-                commands: commands.iter().map(|c| (*c).to_owned()).collect(),
+                commands: chain.iter().map(|(c, _)| (*c).to_owned()).collect(),
+                spans: chain
+                    .iter()
+                    .map(|(_, said)| (tokens[said.start].at, tokens[said.end - 1].at))
+                    .collect(),
                 first: tokens[from].at,
                 last: tokens[end - 1].at,
                 placement: Placement::Anywhere,
@@ -229,39 +240,39 @@ impl PhraseMatcher {
     }
 }
 
-/// The commands said one after another from `first`, each accepted after the one before
-/// and each once, "start" only last; and the token after the last of them.
+/// The commands said one after another from `first`, said in tokens `from..next`, each
+/// accepted after the one before and each once, "start" only last; with the tokens of each.
 fn chain_from(
     tokens: &[Token],
     first: &'static str,
+    from: usize,
     mut next: usize,
-) -> (Vec<&'static str>, usize) {
+) -> Vec<(&'static str, Range<usize>)> {
     const LONGEST_CHAIN: usize = 3;
-    let mut commands = vec![first];
-    while commands.len() < LONGEST_CHAIN {
-        let last = commands[commands.len() - 1];
+    let mut chain = vec![(first, from..next)];
+    while chain.len() < LONGEST_CHAIN {
+        let last = chain[chain.len() - 1].0;
         if last == START || last == RESTART {
             break;
         }
-        if commands.len() + 2 <= LONGEST_CHAIN
+        if chain.len() + 2 <= LONGEST_CHAIN
             && ends_with_and_restart(tokens, next)
             && accepted_after(last).contains(&ENTER)
         {
             // "enter start" said quickly, heard as "and restart", ends the chain.
-            commands.extend([ENTER, START]);
-            next += 2;
+            chain.extend([(ENTER, next..next + 1), (START, next + 1..next + 2)]);
             break;
         }
         let Some((command, used)) = command_at(tokens, next) else {
             break;
         };
-        if commands.contains(&command) || !accepted_after(last).contains(&command) {
+        if chain.iter().any(|(c, _)| *c == command) || !accepted_after(last).contains(&command) {
             break;
         }
-        commands.push(command);
+        chain.push((command, next..next + used));
         next += used;
     }
-    (commands, next)
+    chain
 }
 
 /// "and restart" closes the transcript at `next`: how the speech recognition service hears
@@ -299,11 +310,13 @@ mod tests {
         text.split_whitespace().collect()
     }
 
-    fn found(commands: &[&str], first: usize, last: usize, placement: Placement) -> Option<Found> {
+    /// Each command with the indices of its first and last word.
+    fn found(commands: &[(&str, usize, usize)], placement: Placement) -> Option<Found> {
         Some(Found {
-            commands: commands.iter().map(|c| (*c).to_owned()).collect(),
-            first,
-            last,
+            commands: commands.iter().map(|(c, _, _)| (*c).to_owned()).collect(),
+            spans: commands.iter().map(|&(_, f, l)| (f, l)).collect(),
+            first: commands[0].1,
+            last: commands[commands.len() - 1].2,
             placement,
         })
     }
@@ -312,23 +325,23 @@ mod tests {
     fn should_find_a_command_that_ends_the_utterance() {
         assert_eq!(
             dictating().at_end(&words("We meet on Friday. Stop.")),
-            found(&["stop dictation"], 4, 4, Placement::Tail)
+            found(&[("stop dictation", 4, 4)], Placement::Tail)
         );
         assert_eq!(
             dictating().at_end(&words("that is all stop dictation please")),
-            found(&["stop dictation"], 3, 5, Placement::Tail)
+            found(&[("stop dictation", 3, 5)], Placement::Tail)
         );
         assert_eq!(
             dictating().at_end(&words("never mind, cancel dictation.")),
-            found(&["cancel dictation"], 2, 3, Placement::Tail)
+            found(&[("cancel dictation", 2, 3)], Placement::Tail)
         );
         assert_eq!(
             standby().at_end(&words("Okay, press enter.")),
-            found(&["press enter"], 1, 2, Placement::Tail)
+            found(&[("press enter", 1, 2)], Placement::Tail)
         );
         assert_eq!(
             standby().at_end(&words("okay enter")),
-            found(&["press enter"], 1, 1, Placement::Tail)
+            found(&[("press enter", 1, 1)], Placement::Tail)
         );
     }
 
@@ -347,7 +360,7 @@ mod tests {
         assert_eq!(standby().at_end(&words("we should stop")), None);
         assert_eq!(
             dictating().at_end(&words("please cancel")),
-            found(&["cancel dictation"], 1, 1, Placement::Tail)
+            found(&[("cancel dictation", 1, 1)], Placement::Tail)
         );
     }
 
@@ -355,11 +368,11 @@ mod tests {
     fn should_find_start_opening_the_utterance() {
         assert_eq!(
             standby().start_at_head(&words("Start, meeting moved to Friday.")),
-            found(&["start dictation"], 0, 0, Placement::Head)
+            found(&[("start dictation", 0, 0)], Placement::Head)
         );
         assert_eq!(
             standby().start_at_head(&words("start dictation we meet at ten")),
-            found(&["start dictation"], 0, 1, Placement::Head)
+            found(&[("start dictation", 0, 1)], Placement::Head)
         );
     }
 
@@ -381,23 +394,23 @@ mod tests {
     fn should_find_a_doubled_short_form_anywhere() {
         assert_eq!(
             dictating().anywhere(&words("we move to Friday stop stop and more")),
-            found(&["stop dictation"], 4, 5, Placement::Anywhere)
+            found(&[("stop dictation", 4, 5)], Placement::Anywhere)
         );
         assert_eq!(
             standby().anywhere(&words("fine, enter, enter, thanks")),
-            found(&["press enter"], 1, 2, Placement::Anywhere)
+            found(&[("press enter", 1, 2)], Placement::Anywhere)
         );
         assert_eq!(
             dictating().anywhere(&words("forget it cancel cancel")),
-            found(&["cancel dictation"], 2, 3, Placement::Anywhere)
+            found(&[("cancel dictation", 2, 3)], Placement::Anywhere)
         );
         assert_eq!(
             standby().anywhere(&words("Clear. Clear.")),
-            found(&["clear all text"], 0, 1, Placement::Anywhere)
+            found(&[("clear all text", 0, 1)], Placement::Anywhere)
         );
         assert_eq!(
             standby().anywhere(&words("start start")),
-            found(&["start dictation"], 0, 1, Placement::Anywhere)
+            found(&[("start dictation", 0, 1)], Placement::Anywhere)
         );
     }
 
@@ -406,54 +419,50 @@ mod tests {
         assert_eq!(
             dictating().anywhere(&words("that is it, stop, enter.")),
             found(
-                &["stop dictation", "press enter"],
-                3,
-                4,
+                &[("stop dictation", 3, 3), ("press enter", 4, 4)],
                 Placement::Anywhere
             )
         );
         assert_eq!(
             dictating().anywhere(&words("stop enter start")),
             found(
-                &["stop dictation", "press enter", "start dictation"],
-                0,
-                2,
+                &[
+                    ("stop dictation", 0, 0),
+                    ("press enter", 1, 1),
+                    ("start dictation", 2, 2)
+                ],
                 Placement::Anywhere
             )
         );
         assert_eq!(
             dictating().anywhere(&words("stop dictation press enter please")),
             found(
-                &["stop dictation", "press enter"],
-                0,
-                4,
+                &[("stop dictation", 0, 1), ("press enter", 2, 4)],
                 Placement::Anywhere
             )
         );
         assert_eq!(
             dictating().anywhere(&words("cancel clear")),
             found(
-                &["cancel dictation", "clear all text"],
-                0,
-                1,
+                &[("cancel dictation", 0, 0), ("clear all text", 1, 1)],
                 Placement::Anywhere
             )
         );
         assert_eq!(
             dictating().anywhere(&words("stop clear enter")),
             found(
-                &["stop dictation", "clear all text", "press enter"],
-                0,
-                2,
+                &[
+                    ("stop dictation", 0, 0),
+                    ("clear all text", 1, 1),
+                    ("press enter", 2, 2)
+                ],
                 Placement::Anywhere
             )
         );
         assert_eq!(
             standby().anywhere(&words("ok enter start")),
             found(
-                &["press enter", "start dictation"],
-                1,
-                2,
+                &[("press enter", 1, 1), ("start dictation", 2, 2)],
                 Placement::Anywhere
             )
         );
@@ -480,9 +489,7 @@ mod tests {
         assert_eq!(
             dictating().anywhere(&words("enter clear")),
             found(
-                &["press enter", "clear all text"],
-                0,
-                1,
+                &[("press enter", 0, 0), ("clear all text", 1, 1)],
                 Placement::Anywhere
             )
         );
@@ -502,11 +509,11 @@ mod tests {
     fn should_find_restart_like_the_other_commands() {
         assert_eq!(
             dictating().at_end(&words("let me say it again restart")),
-            found(&["restart dictation"], 5, 5, Placement::Tail)
+            found(&[("restart dictation", 5, 5)], Placement::Tail)
         );
         assert_eq!(
             dictating().anywhere(&words("wait restart restart")),
-            found(&["restart dictation"], 1, 2, Placement::Anywhere)
+            found(&[("restart dictation", 1, 2)], Placement::Anywhere)
         );
         // After "cancel" no dictation runs, so a "restart" after it is no chain.
         assert_eq!(dictating().anywhere(&words("cancel restart")), None);
@@ -524,7 +531,7 @@ mod tests {
     fn should_find_start_as_all_said_so_far_in_a_running_utterance() {
         assert_eq!(
             standby().start_so_far(&words("Start dictation.")),
-            found(&["start dictation"], 0, 1, Placement::Head)
+            found(&[("start dictation", 0, 1)], Placement::Head)
         );
         assert_eq!(standby().start_so_far(&words("start the meeting")), None);
         assert_eq!(dictating().start_so_far(&words("start")), None);
@@ -534,11 +541,11 @@ mod tests {
     fn should_tell_restart_dictation_from_start_dictation() {
         assert_eq!(
             dictating().at_end(&words("Let me try once more, restart dictation.")),
-            found(&["restart dictation"], 5, 6, Placement::Tail)
+            found(&[("restart dictation", 5, 6)], Placement::Tail)
         );
         assert_eq!(
             standby().at_end(&words("Okay, start dictation.")),
-            found(&["start dictation"], 1, 2, Placement::Tail)
+            found(&[("start dictation", 1, 2)], Placement::Tail)
         );
     }
 
@@ -555,7 +562,7 @@ mod tests {
     fn should_take_stuck_dictation_as_start_dictation() {
         assert_eq!(
             standby().start_at_head(&words("Stuck dictation, the build is green again.")),
-            found(&["start dictation"], 0, 1, Placement::Head)
+            found(&[("start dictation", 0, 1)], Placement::Head)
         );
     }
 
@@ -565,9 +572,11 @@ mod tests {
         assert_eq!(
             dictating().anywhere(&words("That is all. Stop and restart.")),
             found(
-                &["stop dictation", "press enter", "start dictation"],
-                3,
-                5,
+                &[
+                    ("stop dictation", 3, 3),
+                    ("press enter", 4, 4),
+                    ("start dictation", 5, 5)
+                ],
                 Placement::Anywhere
             )
         );

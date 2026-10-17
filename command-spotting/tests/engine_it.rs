@@ -881,3 +881,127 @@ fn should_not_hear_start_again_when_restart_is_not_selected() {
     // Then
     assert_eq!(hear.clips(), 1);
 }
+
+/// Hears exactly the words of the stream that a clip holds, with their times in the clip: a
+/// word the clip's end cuts off is heard as "style", as the speech recognition service heard
+/// the user's cut-off "start". Records the words a clip cut off.
+struct HearsTheWordsInTheClip {
+    stream: Vec<f32>,
+    /// Each word and the stream samples it spans.
+    words: Vec<(&'static str, std::ops::Range<usize>)>,
+    cut_off: Mutex<Vec<&'static str>>,
+}
+
+/// Loud enough to be the start of a word, not the room.
+const SOUND_LEVEL: f32 = 0.01;
+/// Samples that place a clip in the stream.
+const MARK_LEN: usize = 64;
+
+impl HearsTheWordsInTheClip {
+    /// `words` said one after another, `gap_secs` of silence between them, after a pause.
+    fn said(words: &[&'static str], gap_secs: f32) -> Arc<Self> {
+        let gap = vec![0.0f32; (gap_secs * SAMPLE_RATE as f32) as usize];
+        let mut stream = vec![0.0f32; (PAUSE_SECS * SAMPLE_RATE as f32) as usize];
+        let mut spans = Vec::new();
+        for (n, word) in words.iter().enumerate() {
+            if n > 0 {
+                stream.extend(&gap);
+            }
+            let start = stream.len();
+            stream.extend(without_silence(&common::spoken_by(None, word)));
+            spans.push((*word, start..stream.len()));
+        }
+        stream.extend(vec![0.0f32; (PAUSE_SECS * SAMPLE_RATE as f32) as usize]);
+        Arc::new(Self {
+            stream,
+            words: spans,
+            cut_off: Mutex::new(Vec::new()),
+        })
+    }
+
+    /// Where `clip` starts in the stream, found by its first sound.
+    fn origin(&self, clip: &[f32]) -> Option<usize> {
+        let at = clip.iter().position(|s| s.abs() > SOUND_LEVEL)?;
+        let mark = clip.get(at..at + MARK_LEN)?;
+        let found = self.stream.windows(MARK_LEN).position(|w| w == mark)?;
+        found.checked_sub(at)
+    }
+}
+
+/// `audio` from its first sound to its last: `say` puts silence around every word.
+fn without_silence(audio: &[f32]) -> &[f32] {
+    let first = audio
+        .iter()
+        .position(|s| s.abs() > SOUND_LEVEL)
+        .unwrap_or(0);
+    let last = audio
+        .iter()
+        .rposition(|s| s.abs() > SOUND_LEVEL)
+        .unwrap_or(0);
+    &audio[first..=last.max(first)]
+}
+
+impl Hear for HearsTheWordsInTheClip {
+    fn hear(&self, clip: &[f32], _: Duration) -> anyhow::Result<Heard> {
+        let Some(origin) = self.origin(clip) else {
+            return Ok(Heard::default());
+        };
+        let end = origin + clip.len();
+        let secs = |at: usize| (at - origin) as f32 / SAMPLE_RATE as f32;
+        let mut words = Vec::new();
+        for (word, span) in &self.words {
+            if span.start < origin || span.start >= end {
+                continue;
+            }
+            let cut = span.end > end;
+            if cut {
+                self.cut_off.lock().unwrap().push(word);
+            }
+            words.push(voicepuncher_command_spotting::confirm::TimedWord {
+                text: format!(" {}", if cut { "style" } else { word }),
+                start: secs(span.start),
+                end: secs(span.end.min(end)),
+            });
+        }
+        Ok(Heard {
+            text: words.iter().map(|w| w.text.as_str()).collect(),
+            words,
+        })
+    }
+}
+
+/// Every event for `audio` fed frame by frame, each confirmation answered before the next
+/// frame: a service that answers at once, so every check of the running utterance is asked.
+fn fed_answering_at_once(session: &mut Session<'_>, audio: &[f32]) -> Vec<ServerEvent> {
+    let mut events = Vec::new();
+    for frame in audio.chunks(FRAME_SAMPLES) {
+        events.extend(session.accept(frame));
+        events.extend(session.settle());
+    }
+    events.extend(session.settle());
+    events
+}
+
+#[test]
+fn should_carry_out_the_rest_of_a_chain_a_check_heard_only_in_part() {
+    let Some(_shared) = engine() else { return };
+    // Given a running utterance whose check is cut off inside its last command
+    let hear = HearsTheWordsInTheClip::said(&["never mind", "cancel", "enter", "start"], 0.12);
+    let engine = own_engine(None).unwrap().hearing(hear.clone());
+    let mut session = engine.session().unwrap();
+    let phrases: Vec<String> = DICTATING_PHRASES.iter().map(|p| (*p).to_owned()).collect();
+    session.listen_for(&phrases).unwrap();
+    // When the whole utterance is heard once it ends
+    let events = fed_answering_at_once(&mut session, &hear.stream);
+    // Then
+    assert!(
+        hear.cut_off.lock().unwrap().contains(&"start"),
+        "no check was cut off inside \"start\": {:?}",
+        hear.cut_off.lock().unwrap()
+    );
+    assert_eq!(
+        reported_phrases(&events),
+        ["cancel dictation", "press enter", "start dictation"],
+        "{events:?}"
+    );
+}

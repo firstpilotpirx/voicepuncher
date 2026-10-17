@@ -1,7 +1,7 @@
 //! The confirmations of a session: what each asks the speech recognition service, and what
 //! its answer makes of the utterance once it arrives.
 
-use crate::confirm::Heard;
+use crate::confirm::{Heard, TimedWord};
 use crate::matcher::{Found, PhraseMatcher, Placement};
 use crate::orderer::{Segment, Spotted};
 use crate::protocol::ServerEvent;
@@ -432,8 +432,10 @@ impl Session<'_> {
         })
     }
 
-    /// The command `find` sees in `heard` (audio sent from sample `from`), as an event
-    /// placed in the stream; none when the utterance already reported it.
+    /// The commands `find` sees in `heard` (audio sent from sample `from`), as an event
+    /// placed in the stream; of a chain the utterance already reported in part, only the
+    /// commands after what it reported ("start" after a check heard "cancel enter"), none
+    /// when nothing is left.
     fn place(
         &mut self,
         heard: &Heard,
@@ -442,23 +444,31 @@ impl Session<'_> {
         find: impl Fn(&PhraseMatcher, &[&str]) -> Option<Found>,
     ) -> Option<ServerEvent> {
         let found = find(&self.matcher, &heard.word_texts())?;
-        let (first, last) = (&heard.words[found.first], &heard.words[found.last]);
-        let start = from + samples_in(first.start);
-        let end = from + samples_in(last.end);
+        let at =
+            |word: usize, time: fn(&TimedWord) -> f32| from + samples_in(time(&heard.words[word]));
+        let reported_until = self
+            .utterances
+            .get(&utterance)
+            .map_or(0, |r| r.reported_until);
+        // Word times differ by about 0.1 s between two clips of the same speech: a command
+        // lies after the report when the middle of its words does.
+        let after_report = |&(first, last): &(usize, usize)| {
+            (at(first, |w| w.start) + at(last, |w| w.end)) / 2 > reported_until
+        };
+        let kept = if at(found.first, |w| w.start) < reported_until {
+            found.spans.iter().position(after_report)?
+        } else {
+            0
+        };
+        let start = at(found.spans[kept].0, |w| w.start);
+        let end = at(found.last, |w| w.end);
         if let Some(running) = self.utterances.get_mut(&utterance) {
-            if start < running.reported_until {
-                return None;
-            }
             running.reported_until = end;
         }
-        log::info!(
-            "conn={} {:?} {:?}",
-            self.conn,
-            found.placement,
-            found.commands
-        );
+        let commands = found.commands[kept..].to_vec();
+        log::info!("conn={} {:?} {:?}", self.conn, found.placement, commands);
         Some(ServerEvent::Command {
-            commands: found.commands,
+            commands,
             start: seconds(start),
             end: seconds(end),
             placement: found.placement,
