@@ -1,0 +1,4 @@
+depends_on:
+  - change: raise-accuracy-under-hard-conditions
+    why: reworks the same service start in the justfile (_start-model-servers-for-e2e, start-model-servers) and adds the commands service on port 8085 that this change must move to a test port too
+autonomy: auto
