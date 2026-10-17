@@ -1,0 +1,3 @@
+depends_on:
+  - change: fail-hung-tests-fast
+    why: reworks the same justfile E2E recipes, e2e harness and commandspotting_websocket_it this change extends for the command service

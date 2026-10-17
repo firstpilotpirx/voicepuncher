@@ -166,3 +166,7 @@ No unit tests: no Rust production code changes, and the behaviour lives in the s
 4. **After the merge** and the main checkout's update, the user restarts the services from the main checkout (`just run`, or `just stop-model-servers && just start-model-servers`): dictation on turbo at 8081, commands on small at 8085, command spotting confirming through 8085. The session's report says so.
 5. **Branches in flight** merge `main` (`kit sync-base`) before their next model stage: from step 3 on, an older justfile starts its single service on turbo when it starts one itself.
 6. **Rollback:** revert the squash commit, move turbo out of `~/.voicepuncher/models/` (or set `VOICEPUNCHER_WHISPER_MODEL` to small) — the old largest-model rule would pick it for confirmations too — and restart the services.
+
+## Dependencies
+
+Waits for `fail-hung-tests-fast`: it reworks the same `justfile` E2E recipes, the E2E harness (`e2e-test/tests/cucumber_e2e.rs`, `e2e-test/src/`) and `commandspotting_websocket_it` that this change extends for the speech recognition service for commands.
