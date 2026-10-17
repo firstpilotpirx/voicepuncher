@@ -38,3 +38,7 @@ None: the checks and their `justfile` recipes change; the product's behavior doe
 
 - Whether a stale service is detected by binary (path, build time) or by its start arguments, or avoided by always using own ports.
 - Whether the speech recognition services for dictation and text refinement need the same rule.
+
+## Absorbed by
+
+`isolate-check-services`: it makes every check, E2E and benchmark recipe start all its services — command spotting and the speech recognition service for commands included — from the checkout's own code on test ports of its own, and never reuse a service it did not start. That removes the stale shared service on 8082 this change was filed for, so it closes without its own implementation.
