@@ -34,5 +34,6 @@ The clips, the requests, the models and the matcher's chains stay as they are; o
 | The end of a chain heard only when the utterance ends still counts | command spotting integration, plain Rust (scripted hearing: window "Nevermind, cancel, enter style.", segment "Nevermind, cancel, enter, start.") | `command-spotting/tests/engine_it.rs` |
 | same, the user's recording | adapter integration with the user's recordings | `app/tests/voice_forms_it.rs` (unchanged; run with this branch's service, and with `detect-quiet-clear-all-text`'s detector merged in by that change) |
 | Word ranges of each command of a chain | unit | `command-spotting/src/matcher/placed.rs` tests |
+| Stop enter pastes and sends; Stop enter start sends and starts the next dictation; Cancel clear discards and clears; A chain the states do not allow is no command | E2E `.feature`, unchanged | `e2e-test/tests/features/voice_control.feature` |
 
 No `.feature` scenario: what a check hears while the utterance runs cannot be set from synthesized speech; the chain scenarios already in `voice_control.feature` keep covering chains end to end.
