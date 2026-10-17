@@ -2,8 +2,16 @@ set dotenv-load
 
 # ── Settings ── override any of these via env or .env ─────────────────────────
 
-# Models: explicit env var wins; otherwise the largest model found in ~/.voicepuncher or ~/.voicepuncher/models
-export VOICEPUNCHER_WHISPER_MODEL := env_var_or_default("VOICEPUNCHER_WHISPER_MODEL", `find ~/.voicepuncher -maxdepth 2 -name 'ggml-*.bin' ! -name 'ggml-silero-*' -exec ls -S {} + 2>/dev/null | head -1 || true`)
+# Models: explicit env var wins; otherwise the model `just models` downloads for each speech recognition
+# service, found by its exact file name in ~/.voicepuncher or ~/.voicepuncher/models (empty when not on disk:
+# the start and _require-models then fail with "Run 'just models' or set it in .env")
+dictation_model_file := "ggml-large-v3-turbo-q5_0.bin"
+command_model_file := "ggml-small.bin"
+find_model := 'find ~/.voicepuncher -maxdepth 2 -name "$1" 2>/dev/null | head -1 || true'
+# Speech recognition service for dictation (what the app uses)
+export VOICEPUNCHER_WHISPER_MODEL := env_var_or_default("VOICEPUNCHER_WHISPER_MODEL", shell(find_model, dictation_model_file))
+# Speech recognition service for commands (the command spotting service's confirmations)
+export VOICEPUNCHER_COMMAND_WHISPER_MODEL := env_var_or_default("VOICEPUNCHER_COMMAND_WHISPER_MODEL", shell(find_model, command_model_file))
 # Voice activity detection model of the speech recognition service: the newest Silero model found
 export VOICEPUNCHER_VAD_MODEL := env_var_or_default("VOICEPUNCHER_VAD_MODEL", `find ~/.voicepuncher -maxdepth 2 -name 'ggml-silero-*.bin' -exec ls -t {} + 2>/dev/null | head -1 || true`)
 export VOICEPUNCHER_LLM_MODEL := env_var_or_default("VOICEPUNCHER_LLM_MODEL", `find ~/.voicepuncher -maxdepth 2 -name '*.gguf' -exec ls -S {} + 2>/dev/null | head -1 || true`)
@@ -22,6 +30,11 @@ stt_url := "http://127.0.0.1:" + stt_port + "/v1"
 # Copies of the speech recognition service behind HAProxy on its port: whisper-server serves one
 # request at a time, and two to four copies on one GPU are twice as fast on long speech
 stt_instances := env_var_or_default("VOICEPUNCHER_STT_INSTANCES", "3")
+# The speech recognition service for commands: only the command spotting service confirms utterances with it.
+# Its copies listen 10000 above its port (18086–18088), clear of up to four copies of the one for dictation
+command_stt_port := env_var_or_default("VOICEPUNCHER_COMMAND_STT_PORT", "8085")
+command_stt_url := "http://127.0.0.1:" + command_stt_port + "/v1"
+command_stt_instances := env_var_or_default("VOICEPUNCHER_COMMAND_STT_INSTANCES", "3")
 llm_port := env_var_or_default("VOICEPUNCHER_LLM_PORT", "8080")
 llm_url := "http://127.0.0.1:" + llm_port + "/v1"
 kws_port := env_var_or_default("VOICEPUNCHER_KWS_PORT", "8082")
@@ -60,17 +73,17 @@ default:
 
 # ── Checks ── `check` while developing, `full-check` before merging ─────────
 
-# Only the model stages take the machine lock, held ≈ 5.6 min (measured), after the code checks, the build and
+# Only the model stages take the machine lock, held ≈ 7.3 min (measured), after the code checks, the build and
 # build-e2e ran without it (see _stages). Incremental, no `cargo clean`
-# FAST (~7 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples + refinement evaluation
+# FAST (~8.5 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples + refinement evaluation
 check:
     @{{just_executable()}} _stages fmt lint test build build-e2e e2e-smoke e2e-quick refine-eval
 
-# Only the model stages take the machine lock, held ≈ 11 min with 100 recordings and ≈ 9.5 min with 10 (measured)
+# Only the model stages take the machine lock, held ≈ 16.3 min with 100 recordings and ≈ 14.5 min with 10 (measured)
 # (see _stages). Incremental like `check`, no `cargo clean`: the clean build is `release`'s. Accuracy runs on 100
 # recordings when the branch changes the recognition path (recognition_paths), on main itself or when that cannot
 # be told, else on 10 (_accuracy-stage); VOICEPUNCHER_ACCURACY_SAMPLE=100 forces 100
-# FULL (~11–12 min), run before merging: code checks + E2E (seams and outages included) + accuracy on 100 or 10 samples + refinement evaluation
+# FULL (~15.5–17.5 min), run before merging: code checks + E2E (seams and outages included) + accuracy on 100 or 10 samples + refinement evaluation
 full-check: _require-models _require-corpus
     #!/usr/bin/env bash
     set -euo pipefail
@@ -385,7 +398,7 @@ _test: _require-nextest
     taskpolicy -c utility cargo nextest run {{test_selection}} --no-run
     cargo nextest run {{test_selection}}
 
-# Run the app for real use with one command: download missing models, restart the three services (the command spotting service is rebuilt), build and start the app with voice control; extra arguments go to the app (`just run --no-llm`)
+# Run the app for real use with one command: download missing models, restart the four services (the command spotting service is rebuilt), build and start the app with voice control; extra arguments go to the app (`just run --no-llm`)
 run *args: models
     just stop-model-servers
     just start-model-servers
@@ -398,7 +411,7 @@ build:
 _build:
     cargo build --release
 
-# E2E on real models: smoke + chunk seams + WER accuracy on 100 samples + refinement evaluation (~8 min)
+# E2E on real models: smoke + chunk seams + WER accuracy on 100 samples + refinement evaluation (~13 min)
 e2e:
     @{{locked}} _e2e
 
@@ -417,6 +430,7 @@ _e2e-smoke: _require-nextest _require-models _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
+    export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
     for binary in {{e2e_smoke_binaries}}; do
         cargo nextest run --profile e2e-smoke -p voicepuncher --test "$binary"
     done
@@ -454,7 +468,7 @@ e2e-resilience:
 _e2e-resilience: _require-nextest _require-models _build
     cargo nextest run --profile e2e-resilience {{cucumber_e2e_tests}} --no-capture
 
-# Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words (~2.5 min)
+# Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words (~4 min)
 e2e-seams:
     @{{locked}} _e2e-seams
 
@@ -467,7 +481,7 @@ _e2e-seams: _require-nextest _require-models _build
     cargo nextest run --profile e2e-seams {{e2e_seams_tests}}
     cargo nextest run --profile e2e-seams {{cucumber_e2e_tests}} --no-capture
 
-# WER accuracy on a fixed sample of 100 recordings (50 per language), two at a time — fails if mean WER > 30 %, and no command in 20 recordings of ordinary speech (~2.5 min)
+# WER accuracy on a fixed sample of 100 recordings (50 per language), two at a time — fails if mean WER > 30 %, and no command in 20 recordings of ordinary speech (~3 min)
 e2e-bench:
     @{{locked}} _e2e-bench
 
@@ -548,7 +562,7 @@ _start-model-servers-for-e2e:
     set -euo pipefail
     [[ -z "${VOICEPUNCHER_E2E_SERVICES_HELD:-}" ]] || exit 0
     mkdir -p "{{services_run_dir}}"
-    for service in whisper-server:{{stt_port}} llama-server:{{llm_port}} voicepuncher-command-spotting:{{kws_port}}; do
+    for service in whisper-server:{{stt_port}} whisper-server-commands:{{command_stt_port}} llama-server:{{llm_port}} voicepuncher-command-spotting:{{kws_port}}; do
         if nc -z 127.0.0.1 "${service#*:}" >/dev/null 2>&1; then
             echo "✓ reusing ${service%%:*} already running on port ${service#*:}; it stays running"
         else
@@ -562,7 +576,7 @@ _stop-model-servers-for-e2e:
     #!/usr/bin/env bash
     set -euo pipefail
     [[ -z "${VOICEPUNCHER_E2E_SERVICES_HELD:-}" ]] || exit 0
-    for service in whisper-server:{{stt_port}} llama-server:{{llm_port}} voicepuncher-command-spotting:{{kws_port}}; do
+    for service in whisper-server:{{stt_port}} whisper-server-commands:{{command_stt_port}} llama-server:{{llm_port}} voicepuncher-command-spotting:{{kws_port}}; do
         marker="{{services_run_dir}}/${service%%:*}-${service#*:}.e2e"
         if [[ -f "$marker" ]]; then
             rm -f "$marker"
@@ -570,7 +584,7 @@ _stop-model-servers-for-e2e:
         fi
     done
 
-# Start the speech recognition (whisper-server), text refinement (llama-server) and command spotting (voicepuncher-command-spotting) services, or only the named ones; one that already answers on its port is skipped
+# Start the speech recognition services for dictation (whisper-server) and for commands (whisper-server-commands), text refinement (llama-server) and command spotting (voicepuncher-command-spotting), or only the named ones; one that already answers on its port is skipped
 start-model-servers *services:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -578,7 +592,6 @@ start-model-servers *services:
     log_dir="{{services_log_dir}}"
     mkdir -p "$run_dir" "$log_dir"
     port_open() { nc -z 127.0.0.1 "$1" >/dev/null 2>&1; }
-    whisper_ready() { port_open "{{stt_port}}"; }
     llama_ready() { curl -sf -o /dev/null --max-time 1 "http://127.0.0.1:{{llm_port}}/health"; }
     require_binary() {
         local binary=$1 formula=$2
@@ -683,7 +696,8 @@ start-model-servers *services:
         rm -f "$pid_file"
         exit 1
     }
-    # whisper_args <port> <threads>: the whisper-server command line, in whisper_cmd.
+    # whisper_args <model> <port> <threads>: the whisper-server command line, in whisper_cmd; both
+    # speech recognition services run these flags, each with its own model.
     # Greedy, non-speech tokens suppressed, no text context (-mc 0): text decoded in one 30 s window
     # of a request does not steer the next (requests never share text: whisper-server clears it
     # before every request). -mc 0 drops a request's prompt too, so a dictation request with a
@@ -698,22 +712,24 @@ start-model-servers *services:
     # whisper-server 1.9.5 crashes on a verbose_json request whose audio VAD leaves empty,
     # as the command spotting service's confirmation of an utterance without speech
     whisper_args() {
-        whisper_cmd=(whisper-server -m "$VOICEPUNCHER_WHISPER_MODEL" --host 127.0.0.1 --port "$1"
-            --inference-path /v1/audio/transcriptions -l auto -t "$2"
+        whisper_cmd=(whisper-server -m "$1" --host 127.0.0.1 --port "$2"
+            --inference-path /v1/audio/transcriptions -l auto -t "$3"
             -bo 1 -nf -sns -mc 0 --vad -vm "$VOICEPUNCHER_VAD_MODEL" -vsd 2000 -vp 500 -nlp)
     }
-    # haproxy_config <copy port…>: one address for the copies. A request goes to a free copy
-    # (leastconn, one request per copy) or waits in the queue; short audio (under 160 kB,
+    # haproxy_config <frontend port> <copy port…>: one address for the copies. A request goes to a
+    # free copy (leastconn, one request per copy) or waits in the queue; short audio (under 160 kB,
     # about 5 s: a command confirmation) waits ahead of long dictation chunks. A copy whose
     # port does not answer — at the first refused connection, or by the health check — gets no
     # requests while its supervisor restarts it, and a request that could not reach a copy is
     # retried on another one. A waiting request whose client gave up is dropped (abortonclose),
     # so the command spotting service's abandoned confirmations never occupy a copy
     haproxy_config() {
+        local frontend=$1
+        shift
         printf '%s\n' "global" "    maxconn 256" "defaults" "    mode http" \
             "    timeout connect 2s" "    timeout client 300s" "    timeout server 300s" \
             "    timeout queue 300s" "    option http-server-close" "    option abortonclose" "    retries 3" "    option redispatch 1" \
-            "frontend speech_recognition" "    bind 127.0.0.1:{{stt_port}}" \
+            "frontend speech_recognition" "    bind 127.0.0.1:$frontend" \
             "    http-request set-priority-class int(-1) if { req.hdr_val(content-length) -m int lt 160000 }" \
             "    default_backend copies" "backend copies" "    balance leastconn"
         local i=0 port
@@ -722,40 +738,44 @@ start-model-servers *services:
             echo "    server copy$i 127.0.0.1:$port maxconn 1 check inter 1s fall 2 rise 1 observe layer4 error-limit 1 on-error mark-down"
         done
     }
+    # start_whisper <name> <port> <copies> <model variable> <label>: one speech recognition service,
+    # as one whisper-server on its port or as copies behind HAProxy there. Its PID, log, copy-list
+    # and HAProxy files are named by its port, so the two services never share a file
     start_whisper() {
+        local name=$1 port=$2 copies=$3 model_var=$4 label=$5
         require_binary whisper-server whisper-cpp
-        if port_open "{{stt_port}}"; then
-            echo "✓ speech recognition service already running at {{stt_url}}"
+        if port_open "$port"; then
+            echo "✓ $label already running at http://127.0.0.1:$port/v1"
             return 0
         fi
-        require_model VOICEPUNCHER_WHISPER_MODEL
+        require_model "$model_var"
         require_model VOICEPUNCHER_VAD_MODEL
-        local copies={{stt_instances}} cores
+        local model="${!model_var}" cores
         cores=$(sysctl -n hw.ncpu)
         if (( copies <= 1 )); then
             # A copy list left from an earlier start would make the stop look for copies
-            rm -f "$run_dir/whisper-server-{{stt_port}}.copies" "$run_dir/haproxy-{{stt_port}}.cfg"
-            whisper_args "{{stt_port}}" "$cores"
-            start_service whisper-server "{{stt_port}}" "speech recognition service" whisper_ready - "${whisper_cmd[@]}"
+            rm -f "$run_dir/whisper-server-$port.copies" "$run_dir/haproxy-$port.cfg"
+            whisper_args "$model" "$port" "$cores"
+            start_service whisper-server "$port" "$label" "port_open $port" - "${whisper_cmd[@]}"
             return 0
         fi
         require_binary haproxy haproxy
         local threads=$(( cores / copies > 0 ? cores / copies : 1 ))
-        local base=$(( {{stt_port}} + 10000 + copies <= 65535 ? {{stt_port}} + 10000 : {{stt_port}} - 10000 ))
-        local list="$run_dir/whisper-server-{{stt_port}}.copies" config="$run_dir/haproxy-{{stt_port}}.cfg"
+        local base=$(( port + 10000 + copies <= 65535 ? port + 10000 : port - 10000 ))
+        local list="$run_dir/whisper-server-$port.copies" config="$run_dir/haproxy-$port.cfg"
         local ports=() i
         for i in $(seq 1 "$copies"); do ports+=($(( base + i ))); done
         echo "${ports[*]}" >"$list"
-        # A copy or HAProxy that cannot start stops what this start already started
-        trap 'code=$?; (( code == 0 )) || {{quote(just_executable())}} --justfile {{quote(justfile())}} stop-model-servers whisper-server >/dev/null 2>&1 || true' EXIT
+        # A copy or HAProxy that cannot start stops what this start already started of this service only
+        trap 'code=$?; (( code == 0 )) || {{quote(just_executable())}} --justfile {{quote(justfile())}} stop-model-servers '"$name"' >/dev/null 2>&1 || true' EXIT
         for i in "${!ports[@]}"; do
-            whisper_args "${ports[$i]}" "$threads"
-            start_service whisper-server "${ports[$i]}" "speech recognition copy $((i + 1)) of $copies" \
+            whisper_args "$model" "${ports[$i]}" "$threads"
+            start_service whisper-server "${ports[$i]}" "$label: copy $((i + 1)) of $copies" \
                 "port_open ${ports[$i]}" - "${whisper_cmd[@]}"
         done
-        haproxy_config "${ports[@]}" >"$config"
+        haproxy_config "$port" "${ports[@]}" >"$config"
         haproxy -c -q -f "$config"
-        start_service haproxy "{{stt_port}}" "speech recognition service ($copies copies)" whisper_ready - \
+        start_service haproxy "$port" "$label ($copies copies)" "port_open $port" - \
             haproxy -db -f "$config"
         trap - EXIT
     }
@@ -793,20 +813,22 @@ start-model-servers *services:
         start_service voicepuncher-command-spotting "{{kws_port}}" "command spotting service" kws_ready \
             "http://127.0.0.1:{{kws_port}}/health" "{{kws_binary}}" --port "{{kws_port}}" \
             --model-dir "$VOICEPUNCHER_KWS_MODEL_DIR" --vad-model "$VOICEPUNCHER_KWS_VAD_MODEL" \
-            --transcription-url "{{stt_url}}" \
+            --transcription-url "{{command_stt_url}}" \
             ${VOICEPUNCHER_KWS_SAVE_SPEECH_DIR:+--save-speech-dir "$VOICEPUNCHER_KWS_SAVE_SPEECH_DIR"}
     }
     selected="{{services}}"
-    for service in ${selected:-whisper-server llama-server voicepuncher-command-spotting}; do
+    # The service for commands starts before the command spotting service, so its first confirmation finds it ready
+    for service in ${selected:-whisper-server whisper-server-commands llama-server voicepuncher-command-spotting}; do
         case "$service" in
-            whisper-server) start_whisper ;;
+            whisper-server) start_whisper whisper-server "{{stt_port}}" "{{stt_instances}}" VOICEPUNCHER_WHISPER_MODEL "speech recognition service for dictation" ;;
+            whisper-server-commands) start_whisper whisper-server-commands "{{command_stt_port}}" "{{command_stt_instances}}" VOICEPUNCHER_COMMAND_WHISPER_MODEL "speech recognition service for commands" ;;
             llama-server) start_llama ;;
             voicepuncher-command-spotting) start_command_spotting ;;
-            *) echo "✗ unknown service '$service' — use whisper-server, llama-server or voicepuncher-command-spotting" >&2; exit 1 ;;
+            *) echo "✗ unknown service '$service' — use whisper-server, whisper-server-commands, llama-server or voicepuncher-command-spotting" >&2; exit 1 ;;
         esac
     done
 
-# Stop the services that start-model-servers launched (all, or the named ones: whisper-server, llama-server, voicepuncher-command-spotting); services started by hand keep running
+# Stop the services that start-model-servers launched (all, or the named ones: whisper-server, whisper-server-commands, llama-server, voicepuncher-command-spotting); services started by hand keep running
 stop-model-servers *services:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -837,45 +859,61 @@ stop-model-servers *services:
         fi
         rm -f "$pid_file"
     }
-    # The speech recognition service: HAProxy and its copies when it runs as several, or the
-    # one whisper-server on its port
+    # stop_speech_recognition <port> <label>: the speech recognition service on that port, HAProxy
+    # and its copies when it runs as several, or the one whisper-server on its port
     stop_speech_recognition() {
-        local list="{{services_run_dir}}/whisper-server-{{stt_port}}.copies" port
+        local service_port=$1 label=$2
+        local list="{{services_run_dir}}/whisper-server-$service_port.copies" port
         if [[ ! -f "$list" ]]; then
-            stop_service whisper-server "{{stt_port}}" "speech recognition service"
+            stop_service whisper-server "$service_port" "$label"
             return 0
         fi
-        stop_service haproxy "{{stt_port}}" "speech recognition load balancer"
+        stop_service haproxy "$service_port" "load balancer of the $label"
         for port in $(cat "$list"); do
-            stop_service whisper-server "$port" "speech recognition copy on port $port"
+            stop_service whisper-server "$port" "$label: copy on port $port"
         done
-        rm -f "$list" "{{services_run_dir}}/haproxy-{{stt_port}}.cfg"
+        rm -f "$list" "{{services_run_dir}}/haproxy-$service_port.cfg"
     }
     selected="{{services}}"
-    for service in ${selected:-whisper-server llama-server voicepuncher-command-spotting}; do
+    for service in ${selected:-whisper-server whisper-server-commands llama-server voicepuncher-command-spotting}; do
         case "$service" in
-            whisper-server) stop_speech_recognition ;;
+            whisper-server) stop_speech_recognition "{{stt_port}}" "speech recognition service for dictation" ;;
+            whisper-server-commands) stop_speech_recognition "{{command_stt_port}}" "speech recognition service for commands" ;;
             llama-server) stop_service llama-server "{{llm_port}}" "text refinement service" ;;
             voicepuncher-command-spotting) stop_service voicepuncher-command-spotting "{{kws_port}}" "command spotting service" ;;
-            *) echo "✗ unknown service '$service' — use whisper-server, llama-server or voicepuncher-command-spotting" >&2; exit 1 ;;
+            *) echo "✗ unknown service '$service' — use whisper-server, whisper-server-commands, llama-server or voicepuncher-command-spotting" >&2; exit 1 ;;
         esac
     done
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
-# Download default models into ~/.voicepuncher/models (whisper small ~460 MB, Silero VAD ~1 MB, Qwen2.5-1.5B ~1 GB, keyword spotting ~20 MB, Silero VAD for sherpa-onnx ~1 MB)
+# Download default models into ~/.voicepuncher/models (whisper large-v3-turbo q5_0 ~550 MB for dictation, whisper small ~460 MB for commands, Silero VAD ~1 MB, Qwen2.5-1.5B ~1 GB, keyword spotting ~20 MB, Silero VAD for sherpa-onnx ~1 MB)
 models:
     #!/usr/bin/env bash
     set -euo pipefail
     dir=~/.voicepuncher/models
     mkdir -p "$dir"
+    # fetch <url> <file> [sha256]: a file already present is skipped without hashing; with a sha256, the
+    # download is moved into place only when it matches, else it is removed and the recipe fails
     fetch() {
         [[ -f "$dir/$2" ]] && { echo "✓ $2 already present"; return; }
         echo "↓ $2"
         curl -fL --progress-bar -o "$dir/$2.download" "$1"
+        if [[ -n "${3:-}" ]]; then
+            local got
+            got=$(shasum -a 256 "$dir/$2.download" | cut -d' ' -f1)
+            if [[ "$got" != "$3" ]]; then
+                rm -f "$dir/$2.download"
+                echo "✗ $2: sha256 $got, expected $3 — download removed" >&2
+                exit 1
+            fi
+        fi
         mv "$dir/$2.download" "$dir/$2"
     }
-    fetch https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin ggml-small.bin
+    # The Whisper models of the two speech recognition services, pinned to one revision and checked
+    whisper=https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1
+    fetch "$whisper/{{dictation_model_file}}" {{dictation_model_file}} 394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2
+    fetch "$whisper/{{command_model_file}}" {{command_model_file}} 1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b
     fetch https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin ggml-silero-v5.1.2.bin
     fetch https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf Qwen2.5-1.5B-Instruct-Q4_K_M.gguf
     fetch https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx silero_vad.onnx
@@ -917,15 +955,18 @@ _bench-smoke:
 _require-models:
     #!/usr/bin/env bash
     set -euo pipefail
-    for var in VOICEPUNCHER_WHISPER_MODEL VOICEPUNCHER_LLM_MODEL; do
-        path="${!var:-}"
+    # Defaults are found by exact file name (see the settings at the top); a default that is not on disk is empty
+    for entry in VOICEPUNCHER_WHISPER_MODEL={{dictation_model_file}} VOICEPUNCHER_COMMAND_WHISPER_MODEL={{command_model_file}} \
+        "VOICEPUNCHER_LLM_MODEL=the largest *.gguf"; do
+        var=${entry%%=*} path="${!var:-}"
         if [[ -z "$path" || ! -f "$path" ]]; then
-            echo "✗ $var: no model file (got '${path}'). Run 'just models' or set it in .env" >&2
+            echo "✗ $var: no model file (got '${path}', default ${entry#*=} in ~/.voicepuncher or ~/.voicepuncher/models). Run 'just models' or set it in .env" >&2
             exit 1
         fi
     done
-    echo "whisper: $VOICEPUNCHER_WHISPER_MODEL"
-    echo "llm:     $VOICEPUNCHER_LLM_MODEL"
+    echo "whisper (dictation): $VOICEPUNCHER_WHISPER_MODEL"
+    echo "whisper (commands):  $VOICEPUNCHER_COMMAND_WHISPER_MODEL"
+    echo "llm:                 $VOICEPUNCHER_LLM_MODEL"
 
 # The test runner every test recipe uses, pinned like .config/nextest.toml's nextest-version; installs nothing
 _require-nextest:

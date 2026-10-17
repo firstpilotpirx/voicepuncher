@@ -6,8 +6,18 @@ Feature: local-services
 
     Scenario: Only the speech recognition service is started
       Given no local service runs on the chosen ports
-      When the user starts only the speech recognition service with the service scripts
-      Then the speech recognition service answers and nothing answers on the text refinement and command spotting ports
+      When the user starts only the speech recognition service for dictation with the service scripts
+      Then the speech recognition service for dictation answers and nothing answers on the ports of the speech recognition service for commands, the text refinement service and the command spotting service
+
+  @smoke @serial
+  Rule: Voice commands are confirmed by a speech recognition service of their own
+
+    Scenario: A command is confirmed by the speech recognition service for commands
+      Given the models that the service scripts download are on disk
+      And the user started all services with the service scripts
+      When an app streams "press enter" to the command spotting service
+      Then the command spotting service reports "press enter"
+      And the speech recognition service for commands answered its confirmation with the small model, and the speech recognition service for dictation got no request
 
   @smoke @serial
   Rule: A service that stops is started again
@@ -42,7 +52,7 @@ Feature: local-services
   Rule: The speech recognition service runs as several copies behind one address
 
     Scenario: Requests that arrive at once are shared by the copies
-      Given the service scripts started the speech recognition service without a number of copies
+      Given the service scripts started the speech recognition service for dictation without a number of copies
       When several transcription requests arrive at once
       Then every request gets its transcript, and each of the three copies transcribed some of them
 
@@ -58,7 +68,7 @@ Feature: local-services
   Rule: Short speech is transcribed ahead of long speech
 
     Scenario: A short utterance overtakes long speech that waits
-      Given the speech recognition service runs as two copies, both busy with long speech, and more long speech waits
+      Given the speech recognition service for dictation runs as two copies, both busy with long speech, and more long speech waits
       When a short utterance arrives
       Then the short utterance is transcribed before the long speech that waited
 
@@ -87,8 +97,8 @@ Feature: local-services
       Then the service answers on its port again within 30 seconds, and its log notes that it was restarted because it stopped answering
 
     Scenario: A busy service is not restarted
-      Given the service scripts started the command spotting service with a speech recognition service that answers in 4 seconds
-      When an app streams speech to it for a minute while its confirmations are slow
+      Given the service scripts started the command spotting service
+      When an app streams speech to it for a minute while the speech recognition service for commands answers its confirmations slowly
       Then the service is not restarted
 
   @serial @resilience
@@ -104,11 +114,11 @@ Feature: local-services
   Rule: Speech that is no command is confirmed quickly
 
     Scenario: Russian speech that makes speech recognition repeat itself
-      Given voice control runs and the speech recognition service is otherwise idle
+      Given voice control runs and the speech recognition service for commands is otherwise idle
       When the user says Russian counting and filler words
       Then every confirmation of that speech is answered in under 2 seconds
 
     Scenario: A command right after such speech is carried out
-      Given voice control runs and the speech recognition service is otherwise idle
+      Given voice control runs and the speech recognition service for commands is otherwise idle
       When the user says Russian counting and filler words and then "press enter"
       Then the command spotting service reports "press enter"

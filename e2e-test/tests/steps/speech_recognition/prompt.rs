@@ -12,7 +12,10 @@ use crate::E2eWorld;
 
 /// A term whisper writes in Cyrillic ("кубернетис") when it hears it in Russian speech.
 const DOMAIN_TERM: &str = "Kubernetes";
-const PROMPT: &str = "Kubernetes, Grafana, Terraform, Kafka.";
+/// A phrase in the language of the speech that names the terms: large-v3-turbo ignores a bare
+/// list of English terms in Russian speech ("Kubernetes, Grafana, …" still gave "Кубернетис"
+/// with every whisper-server 1.9.5 setting), and writes the term as this phrase does.
+const PROMPT: &str = "Мы развернули сервис в Kubernetes, смотрим метрики в Grafana.";
 const RUSSIAN_VOICE: &str = "Milena";
 const SENTENCE_WITH_TERM: &str = "Сегодня мы развернули новый сервис в кубернетис.";
 /// Speech before the term in a long chunk, and after it: at least this long, so the term falls

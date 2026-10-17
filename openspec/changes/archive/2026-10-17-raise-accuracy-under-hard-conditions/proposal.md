@@ -39,4 +39,4 @@ The seam sweep (`chunked_transcription_it`) already shows Russian at 8.6–12 % 
 
 ## Release
 
-MINOR: the spec's promise changes (the dictation model, a second speech recognition service). Target version 0.15.0 (from 0.14.2).
+MINOR: the spec's promise changes (the dictation model, a second speech recognition service). Target version 0.15.0 (from 0.14.3).

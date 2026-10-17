@@ -1,6 +1,6 @@
 //! Steps of `local_services.feature` about how long a confirmation takes: Russian speech
 //! that makes speech recognition, forced to English, repeat itself is streamed to a command
-//! spotting service and a speech recognition service of the scenario's own, and the
+//! spotting service and a speech recognition service for commands of the scenario's own, and the
 //! confirmation times are read from the command spotting service's log.
 
 use std::io::{Read, Seek, SeekFrom};
@@ -14,7 +14,7 @@ use voicepuncher_e2e_test::voice_commands::{
     recognized_commands, spoken_by, spoken_with_pauses, spotting_events,
 };
 
-use super::{services, ScenarioServices, COMMAND_SPOTTING, SPEECH_RECOGNITION};
+use super::{services, ScenarioServices, COMMAND_SPEECH_RECOGNITION, COMMAND_SPOTTING};
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
@@ -37,15 +37,15 @@ const RUSSIAN_SPEECH: [&str; 8] = [
 /// The longest one confirmation may take on an otherwise idle service.
 const ANSWERED_WITHIN: Duration = Duration::from_secs(2);
 /// What the command spotting service logs for each answered confirmation, before its time.
-const ANSWERED: &str = " answered in ";
+pub(super) const ANSWERED: &str = " answered in ";
 /// What it logs for a confirmation that waited out its deadline.
-const GIVEN_UP: &str = " given up after ";
+pub(super) const GIVEN_UP: &str = " given up after ";
 
-#[given("voice control runs and the speech recognition service is otherwise idle")]
+#[given("voice control runs and the speech recognition service for commands is otherwise idle")]
 async fn voice_control_on_idle_service(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let mut services = ScenarioServices::with_copies(None)?;
-        services.start(&[SPEECH_RECOGNITION, COMMAND_SPOTTING])?;
+        services.start(&[COMMAND_SPEECH_RECOGNITION, COMMAND_SPOTTING])?;
         world.local_services = Some(services);
         Ok(())
     })
@@ -83,12 +83,12 @@ fn hear(world: &mut E2eWorld, command: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-fn log_len(services: &ScenarioServices) -> Result<u64> {
+pub(super) fn log_len(services: &ScenarioServices) -> Result<u64> {
     Ok(std::fs::metadata(services.command_spotting_log())?.len())
 }
 
 /// The command spotting service's log since the speech began.
-fn log_since_speech(services: &ScenarioServices) -> Result<String> {
+pub(super) fn log_since_speech(services: &ScenarioServices) -> Result<String> {
     let from = services
         .log_before_speech
         .context("no speech was streamed")?;

@@ -1,6 +1,6 @@
 //! Voice control through outages of the real services, started by the service scripts on
-//! ports of the scenario's own: a speech recognition service that stops answering for a
-//! while, a command spotting service that is killed and started again by the scripts.
+//! ports of the scenario's own: a speech recognition service for commands that stops
+//! answering for a while, a command spotting service that is killed and started again by the scripts.
 
 use std::process::Command;
 use std::time::Duration;
@@ -34,11 +34,11 @@ fn scenario_services(world: &mut E2eWorld) -> Result<&mut ScenarioServices> {
         .context("the services were not started")
 }
 
-#[given("the speech recognition and command spotting services run on ports of their own")]
+#[given("the speech recognition service for commands and the command spotting service run on ports of their own")]
 async fn own_services(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let mut services = ScenarioServices::for_outages()?;
-        services.start(&["whisper-server", "voicepuncher-command-spotting"])?;
+        services.start(&["whisper-server-commands", "voicepuncher-command-spotting"])?;
         world.local_services = Some(services);
         Ok(())
     })
@@ -72,12 +72,14 @@ async fn dictation_on_own_services(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[given("the speech recognition service stops answering for 15 seconds")]
+/// Pauses the one copy of the speech recognition service for commands for 15 seconds, so the
+/// confirmation it holds is answered only then.
+#[given("the speech recognition service for commands takes 15 seconds to answer one confirmation of the command spotting service")]
 fn speech_recognition_stalls(world: &mut E2eWorld) -> Result<()> {
     let services = scenario_services(world)?;
     let pid = services
-        .speech_recognition_process()
-        .context("no speech recognition service process was found")?;
+        .command_speech_recognition_process()
+        .context("no process of the speech recognition service for commands was found")?;
     services.pause(pid)?;
     std::thread::spawn(move || {
         std::thread::sleep(STALL);

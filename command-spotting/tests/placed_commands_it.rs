@@ -1,7 +1,8 @@
 //! Commands said without a pause around them, heard by the real keyword spotter, voice
-//! activity detector and speech recognition service, on speech synthesized with macOS
-//! `say`. Gated on the model paths and the speech recognition service URL the justfile
-//! exports.
+//! activity detector and speech recognition service for commands, on speech synthesized
+//! with macOS `say`. Gated on the model paths and the URL of the speech recognition service
+//! for commands the justfile exports, so the engine confirms as the command spotting service
+//! does.
 
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -44,10 +45,10 @@ fn load_engine() -> Option<Engine> {
     let (Ok(model_dir), Ok(vad_model), Ok(transcription_url)) = (
         std::env::var("VOICEPUNCHER_KWS_MODEL_DIR"),
         std::env::var("VOICEPUNCHER_KWS_VAD_MODEL"),
-        std::env::var("VOICEPUNCHER_TRANSCRIPTION_URL"),
+        std::env::var("VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL"),
     ) else {
         eprintln!(
-            "GATED: VOICEPUNCHER_KWS_MODEL_DIR / VOICEPUNCHER_KWS_VAD_MODEL / VOICEPUNCHER_TRANSCRIPTION_URL not set, skipping"
+            "GATED: VOICEPUNCHER_KWS_MODEL_DIR / VOICEPUNCHER_KWS_VAD_MODEL / VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL not set, skipping"
         );
         return None;
     };

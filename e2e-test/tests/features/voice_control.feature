@@ -363,9 +363,9 @@ Feature: voice-control
   Rule: A slow command spotting service does not stop listening
 
     Scenario: A confirmation that takes longer than 10 seconds keeps listening on
-      Given the speech recognition and command spotting services run on ports of their own
+      Given the speech recognition service for commands and the command spotting service run on ports of their own
       And listening is on with them and a dictation runs
-      And the speech recognition service stops answering for 15 seconds
+      And the speech recognition service for commands takes 15 seconds to answer one confirmation of the command spotting service
       When the user keeps dictating through those 15 seconds and then says "stop dictation"
       Then listening is still on and no error about the command spotting service is logged
       And the dictation ends and its text is pasted
@@ -374,7 +374,7 @@ Feature: voice-control
   Rule: Listening comes back when the command spotting service is back
 
     Scenario: Commands work again after the command spotting service restarts
-      Given the speech recognition and command spotting services run on ports of their own
+      Given the speech recognition service for commands and the command spotting service run on ports of their own
       And listening is on with them
       And the command spotting service went away and was started again
       When the user says "press enter" 5 seconds after the service answers again
@@ -385,7 +385,7 @@ Feature: voice-control
   Rule: A dictation keeps recording while the command spotting service is away
 
     Scenario: "stop dictation" ends a dictation after the service is back
-      Given the speech recognition and command spotting services run on ports of their own
+      Given the speech recognition service for commands and the command spotting service run on ports of their own
       And listening is on with them and a dictation runs
       And the command spotting service went away during it and is back
       When the user says "stop dictation" once the service is back

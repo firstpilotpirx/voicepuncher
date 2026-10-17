@@ -97,9 +97,19 @@
 
 ### Speech recognition service
 - **Type:** External system (outside the app process)
-- **Definition:** A process on the same machine that turns audio into a `RawTranscript` over the OpenAI Audio Transcriptions API — whisper.cpp `whisper-server` is the supported one. The user starts it (normally with `just start-model-servers`); the app only connects to it, checks it is reachable at startup, and rejects any address that is not loopback.
+- **Definition:** A process on the same machine that turns audio into a `RawTranscript` over the OpenAI Audio Transcriptions API — whisper.cpp `whisper-server` is the supported one. The service scripts run two: the *speech recognition service for dictation* and the *speech recognition service for commands*. The user starts them (normally with `just start-model-servers`); the app only connects to the one for dictation, checks it is reachable at startup, and rejects any address that is not loopback.
 - **Code:** `app/src/adapters/secondary/transcription/openai/` — `OpenAiTranscriber`; config section `[transcription]` (`app/src/config/transcription.rs`)
 - **Synonyms to AVOID:** "STT server", "Whisper server" (names one implementation), "backend", "engine"
+
+### Speech recognition service for dictation
+- **Type:** External system (a *speech recognition service*)
+- **Definition:** The *speech recognition service* the app sends dictations and recording files to (`[transcription].base_url`, port 8081 by default). The service scripts start it as `whisper-server` (three copies behind HAProxy) with the Whisper large-v3-turbo model, 5-bit quantized (`ggml-large-v3-turbo-q5_0.bin`), unless the user names another model in `VOICEPUNCHER_WHISPER_MODEL`.
+- **Synonyms to AVOID:** "turbo server", "main whisper", "dictation whisper"
+
+### Speech recognition service for commands
+- **Type:** External system (a *speech recognition service*)
+- **Definition:** The *speech recognition service* the *command spotting service* confirms utterances with (port 8085 by default, `VOICEPUNCHER_COMMAND_STT_PORT`). The service scripts start it as `whisper-server-commands` (three copies behind HAProxy) with the Whisper small model (`ggml-small.bin`), unless the user names another model in `VOICEPUNCHER_COMMAND_WHISPER_MODEL`. The app never talks to it.
+- **Synonyms to AVOID:** "command whisper", "confirmation server", "second whisper", "small server"
 
 ### Text refinement service
 - **Type:** External system (outside the app process)
@@ -232,7 +242,7 @@
 
 ### Confirmation deadline
 - **Type:** Rule of the *command spotting service*
-- **Definition:** How long one confirmation by the *speech recognition service* may take before the service gives it up (3 s, `--confirmation-deadline-secs`). The confirmation of a closed utterance is tried twice; a check of a running utterance is skipped while another one waits. Confirmations run off the audio path, so a slow one delays only its own check.
+- **Definition:** How long one confirmation by the *speech recognition service for commands* may take before the service gives it up (3 s, `--confirmation-deadline-secs`). The confirmation of a closed utterance is tried twice; a check of a running utterance is skipped while another one waits. Confirmations run off the audio path, so a slow one delays only its own check.
 - **Code:** `command-spotting/src/worker.rs`
 
 ### Health check
@@ -266,7 +276,7 @@
 
 ### Command spotting service
 - **Type:** Local service (separate process, loopback WebSocket)
-- **Definition:** The `voicepuncher-command-spotting` program in `command-spotting/`: sherpa-onnx keyword spotting plus a voice activity detector, with each short utterance confirmed by the *speech recognition service* (the whole transcript must be a command phrase). It turns streamed microphone audio into *spotting events*; it opens no microphone itself.
+- **Definition:** The `voicepuncher-command-spotting` program in `command-spotting/`: sherpa-onnx keyword spotting plus a voice activity detector, with each short utterance confirmed by the *speech recognition service for commands* (the whole transcript must be a command phrase). It turns streamed microphone audio into *spotting events*; it opens no microphone itself.
 - **Synonyms to AVOID:** "KWS server", "wake word engine"
 
 ### Key press

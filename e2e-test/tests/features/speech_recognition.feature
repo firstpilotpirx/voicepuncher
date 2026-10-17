@@ -55,6 +55,20 @@ Feature: speech-recognition
         | 10      |
         | 60      |
 
+  @smoke @serial
+  Rule: Dictation is recognized with the large-v3-turbo model
+
+    Scenario: Dictation is recognized with the large-v3-turbo model by default
+      Given the models that the service scripts download are on disk
+      When the user starts the services with the service scripts without naming a model
+      Then the speech recognition service for dictation recognizes speech with the large-v3-turbo model
+
+    Scenario: Dictation is recognized with the model the user names
+      Given the models that the service scripts download are on disk
+      When the user starts the services with the service scripts and names another speech recognition model for dictation
+      Then the speech recognition service for dictation recognizes speech with the named model
+      And the speech recognition service for commands keeps the small model
+
   Rule: Long recordings are transcribed in chunks
 
     @smoke
@@ -84,35 +98,23 @@ Feature: speech-recognition
         | Russian  | with pauses between words     |
         | Russian  | with low background noise     |
         | Russian  | spoken quietly                |
-        | English  | spoken at a normal pace       |
-        | English  | spoken slowly                 |
-        | English  | spoken fast                   |
-        | English  | with pauses between sentences |
-        | English  | with pauses between words     |
-        | English  | with low background noise     |
-        | English  | through a phone-quality line  |
-        | English  | spoken quietly                |
-        | English  | clipped                       |
-        | English  | with short audio dropouts     |
-
-    # Known red with ggml-small (10–19 % words missing): the change raise-accuracy-under-hard-conditions
-    # owns these rows and drops the @wip tag when they meet the bar.
-    @seams @wip
-    Scenario Outline: Long speech under the hardest recording conditions
-      Given a recording file of <language> speech longer than the chunk threshold, <condition>
-      When the user transcribes the recording file without refinement
-      Then the printed text repeats no phrase of the speech
-      And the printed text misses at most one spoken word in ten
-
-      Examples:
-        | language | condition                     |
         | Russian  | spoken slowly                 |
         | Russian  | with pauses between sentences |
         | Russian  | with high background noise    |
         | Russian  | through a phone-quality line  |
         | Russian  | clipped                       |
         | Russian  | with short audio dropouts     |
+        | English  | spoken at a normal pace       |
+        | English  | spoken slowly                 |
+        | English  | spoken fast                   |
+        | English  | with pauses between sentences |
+        | English  | with pauses between words     |
+        | English  | with low background noise     |
         | English  | with high background noise    |
+        | English  | through a phone-quality line  |
+        | English  | spoken quietly                |
+        | English  | clipped                       |
+        | English  | with short audio dropouts     |
 
   Rule: Speech after a pause is transcribed
 
@@ -145,7 +147,7 @@ Feature: speech-recognition
 
     @smoke
     Scenario: Command confirmation of an utterance without speech
-      Given the service scripts started the speech recognition service
+      Given the service scripts started the speech recognition service for commands
       When the command spotting service asks it to confirm an utterance that holds no speech
       Then no words are heard and the service answers the next request
 

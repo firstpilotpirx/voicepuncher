@@ -56,11 +56,20 @@ pub struct PoolRun {
 impl ScenarioServices {
     /// The ports of the copies the service scripts started, from the list they keep.
     pub(super) fn running_copy_ports(&self) -> Vec<u16> {
-        std::fs::read_to_string(copy_list(self.stt_port))
-            .unwrap_or_default()
-            .split_whitespace()
-            .filter_map(|port| port.parse().ok())
-            .collect()
+        self.copy_ports_of(self.stt_port)
+    }
+
+    /// The ports of the copies of the speech recognition service on `port`, from the list the
+    /// service scripts keep in the scenario's home.
+    pub(super) fn copy_ports_of(&self, port: u16) -> Vec<u16> {
+        std::fs::read_to_string(
+            self.dir("run")
+                .join(format!("{SPEECH_RECOGNITION}-{port}.copies")),
+        )
+        .unwrap_or_default()
+        .split_whitespace()
+        .filter_map(|port| port.parse().ok())
+        .collect()
     }
 }
 
@@ -86,7 +95,7 @@ pub(super) fn remove_balancer_files(stt_port: u16) {
 }
 
 /// The transcript the service at `url` gives for `samples`, through the app's own client.
-fn transcribe(url: &str, samples: Vec<i16>) -> Result<String> {
+pub(super) fn transcribe(url: &str, samples: Vec<i16>) -> Result<String> {
     let mut client = OpenAiTranscriber::connect(TranscriptionCfg {
         base_url: url.to_owned(),
         ..TranscriptionCfg::default()
@@ -113,7 +122,7 @@ fn answered_at_once(url: &str, count: usize) -> Result<usize> {
         .count())
 }
 
-fn short_speech() -> Result<Vec<i16>> {
+pub(super) fn short_speech() -> Result<Vec<i16>> {
     synthesized(&SayRequest {
         voice: None,
         words_per_minute: None,
@@ -139,7 +148,9 @@ fn started_with(world: &mut E2eWorld, copies: Option<u32>) -> Result<()> {
     Ok(())
 }
 
-#[given("the service scripts started the speech recognition service without a number of copies")]
+#[given(
+    "the service scripts started the speech recognition service for dictation without a number of copies"
+)]
 async fn started_by_default(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| started_with(world, None)).await
 }
@@ -149,7 +160,7 @@ async fn started_as_copies(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| started_with(world, Some(SEVERAL_COPIES))).await
 }
 
-#[given("the speech recognition service runs as two copies, both busy with long speech, and more long speech waits")]
+#[given("the speech recognition service for dictation runs as two copies, both busy with long speech, and more long speech waits")]
 async fn copies_busy(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         started_with(world, Some(SEVERAL_COPIES))?;
@@ -445,7 +456,7 @@ const ABORTED_LOG_LINE: &str = "client disconnected, aborted processing";
 /// How long the long requests may take to reach both copies.
 const BUSY_WITHIN: Duration = Duration::from_secs(20);
 /// What a copy logs for every request it takes, with the length of its audio.
-const REQUEST_LOG_LINE: &str = "processing '";
+pub(super) const REQUEST_LOG_LINE: &str = "processing '";
 
 #[given("the speech recognition service runs as two copies, both busy with long speech, and a third request waits and its client gives up")]
 async fn abandoned_request(world: &mut E2eWorld) -> Result<()> {

@@ -516,7 +516,7 @@ The system SHALL keep listening while the command spotting service answers late,
 
 #### Scenario: A confirmation that takes longer than 10 seconds keeps listening on
 - **GIVEN** listening is on and a dictation runs
-- **AND** the speech recognition service takes 15 seconds to answer one confirmation of the command spotting service
+- **AND** the speech recognition service for commands takes 15 seconds to answer one confirmation of the command spotting service
 - **WHEN** the user keeps dictating through those 15 seconds and then says "stop dictation"
 - **THEN** listening is still on and no error about the command spotting service is logged
 - **AND** the dictation ends and its text is pasted

@@ -15,8 +15,13 @@ use crate::E2eWorld;
 mod confirmations;
 mod copies;
 mod hangs;
+mod models;
+
+pub use models::Role;
 
 const SPEECH_RECOGNITION: &str = "whisper-server";
+/// The speech recognition service for commands, by its name in the service scripts.
+const COMMAND_SPEECH_RECOGNITION: &str = "whisper-server-commands";
 const COMMAND_SPOTTING: &str = "voicepuncher-command-spotting";
 /// How long a health check may take before it counts as failed.
 const HEALTH_CHECK_WAIT: Duration = Duration::from_secs(1);
@@ -36,9 +41,21 @@ const BROKEN_MODEL_LOG_LINE: &str = "failed to load model";
 #[derive(Debug)]
 pub struct ScenarioServices {
     pub stt_port: u16,
+    /// The port of the speech recognition service for commands, passed on every call of the
+    /// service scripts, so they never stop or reuse the shared one.
+    command_stt_port: u16,
     llm_port: u16,
     kws_port: u16,
     speech_model: Option<PathBuf>,
+    /// Whether the dictation and commands model variables are removed from the scripts'
+    /// environment, so the scripts pick their own default models.
+    default_speech_model: bool,
+    default_command_model: bool,
+    /// A home of the scenario's own, holding the models the scripts download; the service
+    /// scripts run in it (models, logs, PID files) when set.
+    home: Option<tempfile::TempDir>,
+    /// What each start of a single service by name printed, in start order.
+    starts: Vec<(String, Output)>,
     _model_dir: Option<tempfile::TempDir>,
     started: Option<Output>,
     start_took: Option<Duration>,
@@ -48,6 +65,9 @@ pub struct ScenarioServices {
     /// How many copies of the speech recognition service to start; the scripts' default
     /// when `None`.
     copies: Option<u32>,
+    /// How many copies of the speech recognition service for commands to start; the
+    /// scripts' default when `None`.
+    command_copies: Option<u32>,
     /// The ports of the copies the start left running.
     copy_ports: Vec<u16>,
     pool: copies::PoolRun,
@@ -69,9 +89,14 @@ impl ScenarioServices {
     fn with_copies(copies: Option<u32>) -> Result<Self> {
         Ok(Self {
             stt_port: free_port()?,
+            command_stt_port: free_port()?,
             llm_port: free_port()?,
             kws_port: free_port()?,
             speech_model: None,
+            default_speech_model: false,
+            default_command_model: false,
+            home: None,
+            starts: Vec::new(),
             _model_dir: None,
             started: None,
             start_took: None,
@@ -79,6 +104,7 @@ impl ScenarioServices {
             service: None,
             heard_words: None,
             copies,
+            command_copies: None,
             copy_ports: Vec::new(),
             pool: copies::PoolRun::default(),
             paused: Vec::new(),
@@ -87,10 +113,21 @@ impl ScenarioServices {
         })
     }
 
-    /// Services on free ports, the speech recognition service as one copy, for the voice
-    /// control scenarios that make them fail.
+    /// Services on free ports, the speech recognition service for commands as one copy, for
+    /// the voice control scenarios that make them fail: a paused copy then stalls every
+    /// confirmation, as no other copy routes around it.
     pub fn for_outages() -> Result<Self> {
-        Self::on_free_ports()
+        let mut services = Self::on_free_ports()?;
+        services.command_copies = Some(1);
+        Ok(services)
+    }
+
+    /// The speech recognition service for commands started by the service scripts as one
+    /// copy, on free ports.
+    pub fn with_command_service() -> Result<Self> {
+        let mut services = Self::for_outages()?;
+        services.start(&[COMMAND_SPEECH_RECOGNITION])?;
+        Ok(services)
     }
 
     /// Starts the named services with the service scripts; fails with their output when the
@@ -127,12 +164,23 @@ impl ScenarioServices {
         ))
     }
 
-    pub fn speech_recognition_process(&self) -> Option<u32> {
-        service_process(self.stt_port)
+    /// The speech recognition service for commands, run as one copy: its process itself.
+    pub fn command_speech_recognition_process(&self) -> Option<u32> {
+        service_process(self.command_stt_port)
     }
 
     pub fn command_spotting_log(&self) -> PathBuf {
-        services_dir("logs").join(format!("{COMMAND_SPOTTING}-{}.log", self.kws_port))
+        self.dir("logs")
+            .join(format!("{COMMAND_SPOTTING}-{}.log", self.kws_port))
+    }
+
+    /// A directory of the service scripts (`run`, `logs`), in the scenario's home when it
+    /// has one.
+    fn dir(&self, name: &str) -> PathBuf {
+        match &self.home {
+            Some(home) => home.path().join(".voicepuncher").join(name),
+            None => services_dir(name),
+        }
     }
 
     /// Stops `pid` without ending it, as a process that hangs; resumed when the services stop.
@@ -151,18 +199,38 @@ impl ScenarioServices {
         format!("http://127.0.0.1:{}/v1", self.stt_port)
     }
 
+    /// The address of the speech recognition service for commands.
+    pub fn command_transcription_url(&self) -> String {
+        format!("http://127.0.0.1:{}/v1", self.command_stt_port)
+    }
+
     fn just(&self, args: &[&str]) -> Result<Output> {
         let mut just = Command::new("just");
         just.current_dir(workspace_root())
             .args(args)
             .env("VOICEPUNCHER_STT_PORT", self.stt_port.to_string())
+            .env(
+                "VOICEPUNCHER_COMMAND_STT_PORT",
+                self.command_stt_port.to_string(),
+            )
             .env("VOICEPUNCHER_LLM_PORT", self.llm_port.to_string())
             .env("VOICEPUNCHER_KWS_PORT", self.kws_port.to_string());
+        if let Some(home) = &self.home {
+            just.env("HOME", home.path());
+        }
         if let Some(copies) = self.copies {
             just.env("VOICEPUNCHER_STT_INSTANCES", copies.to_string());
         }
+        if let Some(copies) = self.command_copies {
+            just.env("VOICEPUNCHER_COMMAND_STT_INSTANCES", copies.to_string());
+        }
         if let Some(model) = &self.speech_model {
             just.env("VOICEPUNCHER_WHISPER_MODEL", model);
+        } else if self.default_speech_model {
+            just.env_remove("VOICEPUNCHER_WHISPER_MODEL");
+        }
+        if self.default_command_model {
+            just.env_remove("VOICEPUNCHER_COMMAND_WHISPER_MODEL");
         }
         just.output().context("just runs")
     }
@@ -207,16 +275,20 @@ impl Drop for ScenarioServices {
             let _ = signal(pid, "-CONT");
         }
         let left_spotting = self.command_spotting_process();
+        let command_copy_ports = self.copy_ports_of(self.command_stt_port);
         let _ = self.just(&["stop-model-servers"]);
         let left = self
             .copy_ports
             .iter()
+            .chain(&command_copy_ports)
             .filter_map(|port| any_process(*port))
-            .chain(copies::balancer_process(self.stt_port));
+            .chain(copies::balancer_process(self.stt_port))
+            .chain(copies::balancer_process(self.command_stt_port));
         for pid in [
             self.supervisor,
             self.service,
             service_process(self.stt_port),
+            any_process(self.command_stt_port),
             left_spotting,
             self.command_spotting_process(),
         ]
@@ -232,19 +304,21 @@ impl Drop for ScenarioServices {
         for (dir, ext) in [("run", "pid"), ("logs", "log")] {
             for (binary, port) in [
                 (SPEECH_RECOGNITION, self.stt_port),
+                (SPEECH_RECOGNITION, self.command_stt_port),
                 ("llama-server", self.llm_port),
                 ("voicepuncher-command-spotting", self.kws_port),
             ] {
                 let _ =
                     std::fs::remove_file(services_dir(dir).join(format!("{binary}-{port}.{ext}")));
             }
-            for port in &self.copy_ports {
+            for port in self.copy_ports.iter().chain(&command_copy_ports) {
                 let _ = std::fs::remove_file(
                     services_dir(dir).join(format!("{SPEECH_RECOGNITION}-{port}.{ext}")),
                 );
             }
         }
         copies::remove_balancer_files(self.stt_port);
+        copies::remove_balancer_files(self.command_stt_port);
     }
 }
 
@@ -368,7 +442,7 @@ fn broken_speech_model(world: &mut E2eWorld) -> Result<()> {
 }
 
 #[when(
-    regex = r"^(?:the user starts only the speech recognition service|the service scripts start the speech recognition service)(?: with the service scripts)?$"
+    regex = r"^(?:the user starts only the speech recognition service for dictation|the service scripts start the speech recognition service)(?: with the service scripts)?$"
 )]
 async fn start_speech_recognition(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| services(world)?.start_speech_recognition()).await
@@ -399,7 +473,7 @@ async fn user_stops_service(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[then("the speech recognition service answers and nothing answers on the text refinement and command spotting ports")]
+#[then("the speech recognition service for dictation answers and nothing answers on the ports of the speech recognition service for commands, the text refinement service and the command spotting service")]
 fn only_speech_recognition_answers(world: &mut E2eWorld) -> Result<()> {
     let services = services(world)?;
     let started = services.started.as_ref().context("nothing was started")?;
@@ -411,7 +485,11 @@ fn only_speech_recognition_answers(world: &mut E2eWorld) -> Result<()> {
     );
     ensure!(
         answers(services.stt_port),
-        "the speech recognition service does not answer"
+        "the speech recognition service for dictation does not answer"
+    );
+    ensure!(
+        !answers(services.command_stt_port),
+        "a speech recognition service for commands was started too"
     );
     ensure!(
         !answers(services.llm_port),

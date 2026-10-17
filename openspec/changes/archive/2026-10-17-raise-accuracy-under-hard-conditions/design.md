@@ -30,7 +30,7 @@ Turbo for dictation with small kept for confirmations (the user's pick) passed `
 
 **Non-Goals:**
 - No change to the app's or the command spotting service's code: the app keeps sending to `[transcription].base_url`, the command spotting service to its `--transcription-url`; only the scripts change where each points.
-- No decoding settings, recognition prompt (`restore-recognition-prompt`), hallucination filter or seam merge change.
+- No change to decoding settings, to how the recognition prompt is sent (D11 changes only the prompt text of the E2E scenarios), to the hallucination filter or to the seam merge.
 - No check that a reused running service runs the model the scripts would start; no health check for whisper-server.
 - No pinning of the other four downloads (the two Silero VAD files, Qwen, the sherpa-onnx keyword model); their lines stay as they are.
 - No permanent test of confirmation latency under dictation load: apply measures it once (Test plan).
@@ -102,23 +102,27 @@ The justfile is on it whole (models, service settings), so this branch's `full-c
 
 ### D10. Version
 
-MINOR, 0.14.2 → 0.15.0 in `app/Cargo.toml` (proposal § Release): the specs promise another dictation model and a second service. The app binary itself does not change.
+MINOR, 0.14.3 → 0.15.0 in `app/Cargo.toml` (proposal § Release): the specs promise another dictation model and a second service. The app binary itself does not change.
+
+### D11. With turbo, a prompt is a sentence that uses the terms (found at apply)
+
+No whisper-server 1.9.5 setting makes large-v3-turbo follow a list prompt: with "Kubernetes, Grafana, Terraform, Kafka." it printed "Kubernetes" in 0 of 36 tries (small: 2 of 2), while a Russian sentence naming the terms ("Мы развернули сервис в Kubernetes, смотрим метрики в Grafana.") works on turbo with every server setting tried. So the E2E prompt scenarios of `speech_recognition.feature` use a sentence prompt — the spec asks only that the prompt names the term — and the README says that with turbo `[transcription] prompt` is best written as a sentence using the terms. No app or server change.
 
 ## Test plan
 
 **Red**, on the branch's own ports, before the justfile change:
 
-- The bug's reproduction exists: the `@seams` outline "Long speech under difficult recording conditions", red on main since 0.13.1 (7 of 22 over the bar with small, measured 2026-10-16); it is committed already, so there is no separate red commit — the PR cites that run.
+- The bug's reproduction exists: the `@seams` outline "Long speech under difficult recording conditions" (7 of 22 over the bar with small, measured 2026-10-16), whose 7 failing rows sit on main in a `@wip` outline (#98); the red commit of the new scenarios returns them to the outline, so they get no red commit of their own — the PR cites that run.
 - The three new scenarios, written from the delta specs, fail because the behaviour is missing: the default one finds the dictation service started on the larger file (the old largest-file rule, D7); the named one finds no service for commands; the routing one finds the confirmation answered by the dictation service.
 - The modified scenarios keep their meaning and only name the service they start; their steps move to it in the task group of the justfile change.
 
-**Green:** D2–D7, with the branch's model stages on ports of their own and the dictation model named as the checked copy in `models/research/`; turbo reaches its default path only at merge time (Migration Plan). Acceptance: `just e2e-seams` 29/29 with the seam sweep; corpus WER on the fixed 100 ≤ 0.116 (measured 0.077); `just full-check` passes but for the external `voice_forms_it` failure (Risks).
+**Green:** D2–D7, with the branch's model stages on ports of their own and the dictation model named as the checked copy in `models/research/`; turbo reaches its default path only at merge time (Migration Plan). Acceptance: `just e2e-seams` 29/29 with the seam sweep; corpus WER on the fixed 100 ≤ 0.116 (measured 0.077); `just full-check` passes.
 
 Every scenario of the change's delta specs, with its level:
 
 | Spec scenario (capability) | Level | Test |
 |---|---|---|
-| A command is confirmed by the speech recognition service for commands (local-services, added) | E2E `.feature` | `local_services.feature`, new Rule, `@smoke @serial`: all services started in the real home, one copy each; "press enter" streamed and reported; the commands copy's log shows `ggml-small.bin` and the request, the dictation log none |
+| A command is confirmed by the speech recognition service for commands (local-services, added) | E2E `.feature` | `local_services.feature`, new Rule, `@smoke @serial`: all services started in the real home by one start that names none, one copy of each speech recognition service; "press enter" streamed and reported; the commands copy's log shows `ggml-small.bin` and the request, the command spotting service's log since the stream a confirmation answered and none given up, the dictation log no request |
 | Requests that arrive at once are shared by the copies (local-services) | E2E `.feature` | existing, dictation; Given worded "for dictation" |
 | A short utterance overtakes long speech that waits (local-services) | E2E `.feature` | existing, dictation; Given worded "for dictation" |
 | Only the speech recognition service is started (local-services) | E2E `.feature` | existing; starts the dictation service only; Then also checks the commands port |
@@ -145,6 +149,17 @@ No unit tests: no Rust production code changes, and the behaviour lives in the s
 2. **Memory:** peak footprint of the six copies (expected ≈ 2.2 + 2.1 GB).
 3. **Durations** of `just check` and `just full-check`, for D9.
 
+## Results
+
+Measured at apply on 2026-10-17, on the branch's own ports (dictation 8181, commands 8185, command spotting 8182; text refinement shared on 8080), with `VOICEPUNCHER_WHISPER_MODEL=~/.voicepuncher/models/research/ggml-large-v3-turbo-q5_0.bin`; `ps` showed the three dictation copies (18182–18184) on turbo and the three commands copies (18186–18188) on `ggml-small.bin`, the command spotting service confirming through `http://127.0.0.1:8185/v1`.
+
+- **Red (1.1):** on the branch base, `VOICEPUNCHER_STT_PORT=8181 VOICEPUNCHER_KWS_PORT=8182 VOICEPUNCHER_WHISPER_MODEL=~/.voicepuncher/models/ggml-small.bin just e2e-seams`: seam sweep passed, 22 of 29 `@seams` scenarios passed, 7 failed — Russian spoken slowly 10 % missing, with pauses between sentences 10 %, high background noise 11 %, phone-quality line 10 %, clipped 12 %, short audio dropouts 19 %; English with high background noise repeated "with the" at a seam.
+- **Seams (5.1):** in `VOICEPUNCHER_ACCURACY_SAMPLE=100 kit verify before-merge` (`just full-check`) on 77b894e, same ports and model: seam sweep passed (worst row Russian at a normal pace, 5.2 % missing, no phrase repeated or dropped by the merge), and 29 of 29 `@seams` scenarios passed, every difficult-conditions row of the outline within one missing word in ten (the steps print no per-row rate on a pass).
+- **Accuracy (5.2):** in the same run, mean WER 0.077 over the fixed 100 recordings (bar ≤ 0.116; small: 0.116).
+- **Confirmations under dictation load (5.3):** four clients sent the six longest synthesized recordings (52–115 s) to the dictation service in a loop (35 requests, all 200, ≈ 10 s each) while `commandspotting_websocket_it` (13 of 13 passed) and then `voice_samples_it` (passed, on the user's recordings in `~/.voicepuncher/voice-samples/`) ran against the command spotting service. Its log in that window: 86 confirmations answered, none given up; median 428 ms, p90 598 ms, max 929 ms (bar: none given up, p90 ≤ 1.0 s, max < 1.5 s). Per test binary: `commandspotting_websocket_it` 34 answers, p90 598 ms, max 757 ms; `voice_samples_it` 52 answers, p90 641 ms, max 929 ms. Bar met.
+- **Memory (5.4):** peak physical footprint (`vmmap -summary`) after that load: dictation copies on turbo 752, 771 and 776 MB (≈ 2.3 GB), commands copies on small 695, 696 and 693 MB (≈ 2.1 GB); ≈ 4.4 GB for the six copies, as expected (≈ 2.2 + 2.1 GB).
+- **Durations (5.5):** that `just full-check` passed in 1050 s (≈ 17.5 min; lock wait 0.4 s, lock held 979 s ≈ 16.3 min): fmt 0.4 s, lint 0.4 s, test 66.7 s, build 0.3 s, build-e2e 2.7 s, e2e-smoke 347 s, e2e-seams 231 s, e2e-resilience 184 s, e2e-bench 178 s, refine-eval 29 s. `just check` was not run on its own (the full-check stands for it); from the stages it shares, ≈ 7.4 min plus e2e-quick. The external `voice_forms_it` "restart" failure (Risks) did not recur: it passed. No flake.
+
 ## Risks / Trade-offs
 
 - [Confirmations slow down while turbo copies keep the GPU busy — not measured; turbo's encoder runs a full 30 s window per request, ≈ 1 s even for a 2.5 s clip] → measurement 1 and its bar; a miss returns to design.
@@ -155,8 +170,8 @@ No unit tests: no Rust production code changes, and the behaviour lives in the s
 - [An older justfile takes the largest Whisper model: once turbo is in `~/.voicepuncher/models/`, an older checkout that starts its single service confirms with turbo (2 of 13 voice-control tests fail that way)] → turbo goes there only at merge time; branches in flight merge `main`; a rollback moves it out (Migration Plan 3, 5, 6).
 - [`check` and `full-check` get slower (spike: `e2e-seams` ≈ 224 → 387 s, `e2e-bench` ≈ 117 → 311 s with the services' start), so the stated durations go wrong] → measurement 3, and D9 updates them.
 - [With five or more dictation copies, the dictation copy on 18086 meets the first copy of the commands service] → the start fails naming that copy's log, as for any copy that cannot start; README states the limit.
-- [External, not part of this change: `voice_forms_it` fails on the "restart" form (session-2, 27.23 s, "restart" → nothing) on main too, with small confirmations; `just check` and `just full-check` fail on it until it is fixed elsewhere] → named in the stage report and PR body; no bar loosened.
-- [Overlap: `restore-recognition-prompt` (in progress) changes the confirmation and dictation requests and measures them on today's setup] → the dependencies stage settles the order; whichever merges second measures on the new setup.
+- [External, not part of this change: `voice_forms_it` fails on the "restart" form (session-2, 27.23 s, "restart" → nothing) on main too, with small confirmations; `just check` and `just full-check` would fail on it until it is fixed elsewhere] → named in the stage report and PR body if it recurs; no bar loosened (it passed in this branch's `just full-check`, Results).
+- [Overlap: `restore-recognition-prompt`, merged into this branch from `main`, measured its prompt scenarios on small; turbo ignores a list prompt] → D11: those scenarios use a sentence prompt, and the README says how to write one.
 
 ## Migration Plan
 

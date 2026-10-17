@@ -41,19 +41,8 @@ async fn command_spotting_started(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[given("the service scripts started the command spotting service with a speech recognition service that answers in 4 seconds")]
-async fn command_spotting_with_slow_confirmations(world: &mut E2eWorld) -> Result<()> {
-    off_thread(world, |world| {
-        let mut services = ScenarioServices::for_outages()?;
-        slow_speech_recognition(TcpListener::bind(("127.0.0.1", services.stt_port))?);
-        services.start(&[COMMAND_SPOTTING])?;
-        world.local_services = Some(services);
-        Ok(())
-    })
-    .await
-}
-
-/// A speech recognition service on `listener` that answers every request `SLOW_ANSWER` late.
+/// A speech recognition service for commands on `listener` that answers every request
+/// `SLOW_ANSWER` late.
 fn slow_speech_recognition(listener: TcpListener) {
     std::thread::spawn(move || {
         for mut stream in listener.incoming().flatten() {
@@ -89,10 +78,11 @@ async fn service_hangs(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[when("an app streams speech to it for a minute while its confirmations are slow")]
+#[when("an app streams speech to it for a minute while the speech recognition service for commands answers its confirmations slowly")]
 async fn stream_for_a_minute(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let services = services(world)?;
+        slow_speech_recognition(TcpListener::bind(("127.0.0.1", services.command_stt_port))?);
         services.hung = services.command_spotting_process();
         let speech = speech_as_f32()?;
         let mut client = SpottingClient::connect(&services.command_spotting_url(), Instant::now())?;
