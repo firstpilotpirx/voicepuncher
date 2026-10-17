@@ -1,0 +1,3 @@
+depends_on:
+  - change: detect-quiet-clear-all-text
+    why: touches command-spotting/src/engine.rs
