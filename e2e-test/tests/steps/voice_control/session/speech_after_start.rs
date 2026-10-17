@@ -2,7 +2,7 @@
 //! streams in real time, as from a microphone, so the command spotting service reports the
 //! command while the next words are already being said.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
@@ -43,10 +43,6 @@ const LAST_SOUND_FRACTION: f32 = 0.03;
 const LOUDNESS_FRAME_SAMPLES: usize = 160;
 /// The user's labelled recording sessions, searched in order for a way of saying a command.
 const RECORDED_SESSIONS: [&str; 2] = ["session-2", "session-5"];
-/// Recordings the speech recognition service hears differently with every lead-in, whatever
-/// follows them: the "restart" at 27.23 s in `session-2` comes out as "Let's start" or
-/// "Start". Left to the backlog change recognize-users-quiet-restart.
-const UNSTEADY_RECORDINGS: [(&str, f32); 1] = [("session-2", 27.23)];
 
 #[derive(Deserialize)]
 struct Form {
@@ -74,31 +70,50 @@ pub(in crate::steps::voice_control) fn until_last_sound(mut audio: Vec<f32>) -> 
     audio
 }
 
+/// The user's quiet "restart" that the speech recognition service hears as "Let's start."
+/// unless it is heard again: labelled at 27.23 s in `session-2`.
+const QUIET_RESTART: (&str, f32) = ("session-2", 27.23);
+
+/// The labelled forms of a recording session.
+fn forms_of(root: &Path, session: &str) -> Result<Vec<Form>> {
+    let labels = std::fs::read_to_string(root.join(session).join("forms.jsonl"))?;
+    Ok(labels
+        .lines()
+        .map(serde_json::from_str::<Form>)
+        .collect::<serde_json::Result<Vec<_>>>()?)
+}
+
+/// `form` cut from its recording session with the margins that keep its first and last sounds.
+fn cut(root: &Path, session: &str, form: &Form) -> Result<Vec<f32>> {
+    let audio = to_f32(read_wav(&root.join(format!("{session}.wav")))?);
+    let from = samples_in(form.start - LEAD_MARGIN_SECS);
+    let to = samples_in(form.end + TAIL_MARGIN_SECS).min(audio.len());
+    Ok(audio[from..to].to_vec())
+}
+
 /// The user's first recorded `said`, cut from their labelled recording sessions.
 pub(in crate::steps::voice_control) fn recorded_form(said: &str) -> Result<Vec<f32>> {
     let root = PathBuf::from(env("VOICEPUNCHER_VOICE_SAMPLES")?);
     for session in RECORDED_SESSIONS {
-        let labels = std::fs::read_to_string(root.join(session).join("forms.jsonl"))?;
-        let forms = labels
-            .lines()
-            .map(serde_json::from_str::<Form>)
-            .collect::<serde_json::Result<Vec<_>>>()?;
-        let steady = |form: &Form| {
-            !UNSTEADY_RECORDINGS
-                .iter()
-                .any(|&(name, start)| name == session && form.start == start)
-        };
-        if let Some(form) = forms
+        if let Some(form) = forms_of(&root, session)?
             .into_iter()
-            .find(|form| form.said == said && steady(form))
+            .find(|form| form.said == said)
         {
-            let audio = to_f32(read_wav(&root.join(format!("{session}.wav")))?);
-            let from = samples_in(form.start - LEAD_MARGIN_SECS);
-            let to = samples_in(form.end + TAIL_MARGIN_SECS).min(audio.len());
-            return Ok(audio[from..to].to_vec());
+            return cut(&root, session, &form);
         }
     }
     bail!("no recording of {said:?} in {RECORDED_SESSIONS:?}")
+}
+
+/// The user's quiet recorded "restart", picked by its label.
+pub(in crate::steps::voice_control) fn users_quiet_restart() -> Result<Vec<f32>> {
+    let root = PathBuf::from(env("VOICEPUNCHER_VOICE_SAMPLES")?);
+    let (session, start) = QUIET_RESTART;
+    let form = forms_of(&root, session)?
+        .into_iter()
+        .find(|form| (form.start - start).abs() < 0.01)
+        .with_context(|| format!("no form labelled at {start} s in {session}"))?;
+    cut(&root, session, &form)
 }
 
 impl HandsFreeSession {

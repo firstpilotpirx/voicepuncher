@@ -7,6 +7,7 @@ use crate::orderer::{Segment, Spotted};
 use crate::protocol::ServerEvent;
 use crate::worker::{Answer, Job, JobId, JobKind};
 
+use super::clip::steady_clip;
 use super::pause::first_sound;
 use super::{
     samples_in, seconds, Session, FIRST_WINDOW_SECS, POST_ROLL_SECS, PRE_ROLL_SECS,
@@ -43,6 +44,14 @@ pub(super) enum JobContext {
         utterance: u64,
         from: usize,
     },
+    /// A short segment heard as a near miss of `phrase`, heard again through a clip whose
+    /// first sample stands for stream position `origin`.
+    Rehear {
+        utterance: u64,
+        bounds: Segment,
+        origin: usize,
+        phrase: String,
+    },
 }
 
 /// A closed speech segment by sample position, and the audio sent to confirm it.
@@ -52,6 +61,8 @@ pub(super) struct SegmentSpan {
     short: bool,
     from: usize,
     to: usize,
+    /// At or below this loudness a frame of the segment is quiet.
+    quiet_level: f32,
     /// A quiet pause closed it, and it ran long enough for its tail to be heard again.
     tail_check: bool,
 }
@@ -106,9 +117,22 @@ impl Session<'_> {
         context: JobContext,
     ) -> Option<u64> {
         self.worker.as_ref()?;
+        let audio = self.recent.between(from, to);
+        self.ask_clip(kind, audio, from, to, context)
+    }
+
+    /// Asks the worker what was said in `audio`, the stream from sample `from` to `to`.
+    fn ask_clip(
+        &mut self,
+        kind: JobKind,
+        audio: Vec<f32>,
+        from: usize,
+        to: usize,
+        context: JobContext,
+    ) -> Option<u64> {
+        self.worker.as_ref()?;
         let n = self.next_job;
         self.next_job += 1;
-        let audio = self.recent.between(from, to);
         if let Some(utterance) = context.utterance() {
             self.mark(utterance, |r| r.jobs += 1);
         }
@@ -168,6 +192,7 @@ impl Session<'_> {
             short,
             from,
             to,
+            quiet_level,
             tail_check: by_pause && end - start > samples_in(FIRST_WINDOW_SECS),
         };
         match self.ask(
@@ -214,11 +239,22 @@ impl Session<'_> {
         let utterance = context.utterance();
         let is_check = context.is_check();
         let tail = context.tail_check();
+        let near_miss = match (&context, &answer.heard) {
+            (JobContext::Segment { segment, .. }, Some(heard)) if segment.short => {
+                self.matcher.near_miss(&heard.text)
+            }
+            _ => None,
+        };
+        let rehear = near_miss.and_then(|phrase| context.rehear(phrase));
         let events = match answer.heard {
             Some(heard) => self.apply_heard(heard, context),
             None => Vec::new(),
         };
-        if let (true, Some((utterance, from, to))) = (events.is_empty(), tail) {
+        let heard_again = match rehear {
+            Some(rehear) if events.is_empty() => self.hear_again(n, rehear),
+            _ => false,
+        };
+        if let (true, false, Some((utterance, from, to))) = (events.is_empty(), heard_again, tail) {
             // The segment's events wait for the answer about its tail.
             if let Some(job) = self.ask(
                 JobKind::Tail,
@@ -263,8 +299,73 @@ impl Session<'_> {
             JobContext::Tail { utterance, from } => self
                 .place(&heard, from, utterance, |m, w| m.anywhere(w))
                 .or_else(|| self.place(&heard, from, utterance, |m, w| m.at_end(w))),
+            JobContext::Rehear {
+                bounds,
+                origin,
+                phrase,
+                ..
+            } => self.apply_rehear(&heard, bounds, origin, phrase),
         };
         event.into_iter().collect()
+    }
+
+    /// Hears a short segment heard as a near miss again, through its steady clip; the
+    /// segment's events wait for that answer. False when it cannot be asked.
+    fn hear_again(&mut self, job: u64, rehear: Rehear) -> bool {
+        let Rehear {
+            utterance,
+            bounds,
+            from,
+            to,
+            quiet_level,
+            phrase,
+        } = rehear;
+        let audio = self.recent.between(from, to);
+        let clip = steady_clip(&audio, from, quiet_level);
+        log::debug!(
+            "conn={} near miss of {phrase:?}: heard again from {:.2}s, gain {:.1}",
+            self.conn,
+            seconds(clip.origin),
+            clip.gain
+        );
+        let origin = clip.origin;
+        let context = JobContext::Rehear {
+            utterance,
+            bounds,
+            origin,
+            phrase,
+        };
+        match self.ask_clip(JobKind::Rehear, clip.samples, origin, to, context) {
+            Some(again) => {
+                self.outbox.transfer(job, again);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The near-missed command, when the second hearing says it as a whole.
+    fn apply_rehear(
+        &self,
+        heard: &Heard,
+        bounds: Segment,
+        origin: usize,
+        phrase: String,
+    ) -> Option<ServerEvent> {
+        log::debug!("conn={} heard again: {:?}", self.conn, heard.text);
+        if self.matcher.phrase_in(&heard.text).as_deref() != Some(phrase.as_str()) {
+            return None;
+        }
+        log::info!("conn={} near miss heard again → {phrase:?}", self.conn);
+        let start = heard
+            .words
+            .first()
+            .map_or(bounds.start, |w| seconds(origin + samples_in(w.start)));
+        Some(ServerEvent::Phrase {
+            phrase,
+            start: start.min(bounds.start),
+            end: bounds.end,
+        })
     }
 
     /// The command the segment says: the whole utterance, when it is short enough for a
@@ -386,19 +487,45 @@ impl Session<'_> {
     }
 }
 
+/// What the second hearing of a near miss needs from its segment.
+struct Rehear {
+    utterance: u64,
+    bounds: Segment,
+    from: usize,
+    to: usize,
+    quiet_level: f32,
+    phrase: String,
+}
+
 impl JobContext {
     fn utterance(&self) -> Option<u64> {
         match self {
             JobContext::Head { utterance, .. }
             | JobContext::Window { utterance, .. }
             | JobContext::Segment { utterance, .. }
-            | JobContext::Tail { utterance, .. } => Some(*utterance),
+            | JobContext::Tail { utterance, .. }
+            | JobContext::Rehear { utterance, .. } => Some(*utterance),
             JobContext::Unheld { .. } => None,
         }
     }
 
     fn is_check(&self) -> bool {
         matches!(self, JobContext::Head { .. } | JobContext::Window { .. })
+    }
+
+    /// What a second hearing of this segment as a near miss of `phrase` needs.
+    fn rehear(&self, phrase: String) -> Option<Rehear> {
+        match self {
+            JobContext::Segment { utterance, segment } => Some(Rehear {
+                utterance: *utterance,
+                bounds: segment.bounds,
+                from: segment.from,
+                to: segment.to,
+                quiet_level: segment.quiet_level,
+                phrase,
+            }),
+            _ => None,
+        }
     }
 
     /// The utterance and the audio to hear again when this segment's answer holds no

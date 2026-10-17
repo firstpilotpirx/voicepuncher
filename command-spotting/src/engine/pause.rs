@@ -115,7 +115,7 @@ pub(super) fn first_sound(after_end: &[f32], quiet_level: f32) -> usize {
         .map_or(after_end.len(), |n| n * FRAME_SAMPLES)
 }
 
-fn rms(frame: &[f32]) -> f32 {
+pub(super) fn rms(frame: &[f32]) -> f32 {
     (frame.iter().map(|s| s * s).sum::<f32>() / frame.len().max(1) as f32).sqrt()
 }
 

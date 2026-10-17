@@ -10,7 +10,7 @@ use cucumber::{given, then, when};
 use voicepuncher::core::domain::VoiceCommand;
 use voicepuncher_e2e_test::speech::read_wav;
 use voicepuncher_e2e_test::voice_commands::{
-    carried_out_by_app, from_first_sound, recognized_commands, silence, spoken_by,
+    at_quiet_level, carried_out_by_app, from_first_sound, recognized_commands, silence, spoken_by,
     spoken_with_pauses, spotting_events, without_trailing_silence,
 };
 
@@ -24,7 +24,7 @@ mod session;
 
 pub use session::HandsFreeSession;
 
-use session::{recorded_form, until_last_sound};
+use session::{recorded_form, until_last_sound, users_quiet_restart};
 
 pub use hands_free::HandsFree;
 
@@ -135,6 +135,22 @@ async fn says_alone(world: &mut E2eWorld, phrase: String) -> Result<()> {
     off_thread(world, move |world| {
         let commands = listened_for(command_said(&phrase)?);
         hear(world, &phrase, commands)
+    })
+    .await
+}
+
+#[when(expr = "the user says {string} in a quiet voice with a pause before and after it")]
+async fn says_alone_quietly(world: &mut E2eWorld, said: String) -> Result<()> {
+    off_thread(world, move |world| {
+        let url = world
+            .command_spotting_url
+            .clone()
+            .context("the command spotting service is not set up")?;
+        let mut audio = silence(world.listened_before_secs);
+        audio.extend(at_quiet_level(spoken_with_pauses(&said)?));
+        let commands = listened_for(command_said(&said)?);
+        world.recognized = recognized_commands(spotting_events(&url, &audio, commands)?);
+        Ok(())
     })
     .await
 }
@@ -252,6 +268,51 @@ async fn recorded_command_pause_sentence(
         let command = until_last_sound(recorded_form(&said)?);
         let audio = command_pause_sentence(command, pause_secs)?;
         carried_out(world, &audio, &state)
+    })
+    .await
+}
+
+/// A dictated sentence from its first sound to its last, as `say` speaks it.
+fn dictated_sentence() -> Result<Vec<f32>> {
+    Ok(without_trailing_silence(from_first_sound(
+        spoken_with_pauses(SENTENCE_AFTER_PAUSE)?,
+    )))
+}
+
+#[when(
+    expr = "the user's quiet recorded restart follows a dictated sentence after {float} s of silence while dictating"
+)]
+async fn quiet_restart_after_pause(world: &mut E2eWorld, pause_secs: f32) -> Result<()> {
+    off_thread(world, move |world| {
+        let mut audio = silence(1.0);
+        audio.extend(dictated_sentence()?);
+        audio.extend(silence(pause_secs));
+        audio.extend(until_last_sound(users_quiet_restart()?));
+        audio.extend(silence(1.5));
+        carried_out(world, &audio, "dictating")
+    })
+    .await
+}
+
+#[when(
+    regex = r#"^someone says "([^"]*)" (on its own after a sentence|in one breath), (at a normal level|in a quiet voice), while dictating$"#
+)]
+async fn says_start_while_dictating(
+    world: &mut E2eWorld,
+    words: String,
+    how: String,
+    level: String,
+) -> Result<()> {
+    off_thread(world, move |world| {
+        let mut audio = silence(1.0);
+        if how == "on its own after a sentence" {
+            audio.extend(dictated_sentence()?);
+        }
+        audio.extend(spoken_with_pauses(&words)?);
+        if level == "in a quiet voice" {
+            audio = at_quiet_level(audio);
+        }
+        carried_out(world, &audio, "dictating")
     })
     .await
 }

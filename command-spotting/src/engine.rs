@@ -19,6 +19,7 @@ use crate::outbox::Outbox;
 use crate::protocol::ServerEvent;
 use crate::worker::{ConfirmationWorker, JobKind};
 
+mod clip;
 mod confirming;
 mod pause;
 

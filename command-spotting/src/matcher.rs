@@ -24,6 +24,12 @@ const ALIASES: &[(&str, &str)] = &[
     ("restart", "restart dictation"),
     ("cancel", "cancel dictation"),
 ];
+/// Words the speech recognition service hears in place of a command's short form, with the
+/// command: the user's quiet "restart" comes out as "Let's start." or "Start.".
+const NEAR_MISSES: &[(&str, &str)] = &[("start", "restart dictation")];
+/// The most words a transcript may hold to be a near miss: "Let's start." is "let", "s",
+/// "start"; a longer sentence ending in the word is speech, not a misheard command.
+const NEAR_MISS_WORDS: usize = 3;
 /// Largest share of characters that may differ between a transcript and a phrase.
 const MAX_DIFFERENCE: f32 = 0.25;
 /// Largest share of characters that may differ within one word ("activation" for
@@ -54,6 +60,21 @@ impl PhraseMatcher {
     pub fn phrase_in(&self, transcript: &str) -> Option<String> {
         self.phrase_in_sentence(transcript)
             .or_else(|| self.phrase_in_every_sentence(transcript))
+    }
+
+    /// The selected command `transcript` nearly says without saying it: a short sentence
+    /// ending in a word the speech recognition service hears in place of a command's short
+    /// form ("Let's start." for a quiet "restart").
+    pub fn near_miss(&self, transcript: &str) -> Option<String> {
+        let said = words(transcript);
+        if said.len() > NEAR_MISS_WORDS {
+            return None;
+        }
+        let last = said.last()?;
+        NEAR_MISSES
+            .iter()
+            .find(|(word, phrase)| word == last && self.phrases.iter().any(|p| p == phrase))
+            .map(|(_, phrase)| (*phrase).to_owned())
     }
 
     fn phrase_in_every_sentence(&self, transcript: &str) -> Option<String> {
@@ -303,8 +324,39 @@ mod tests {
         for transcript in ["Hello.", "Thank you.", "Okay.", "Yes.", "Restart.", ""] {
             assert_eq!(standby().phrase_in(transcript), None, "{transcript}");
         }
-        for transcript in ["Start.", "Cancelled.", "Stopped.", "Okay."] {
+        for transcript in ["Start.", "Let's start.", "Cancelled.", "Stopped.", "Okay."] {
             assert_eq!(dictating().phrase_in(transcript), None, "{transcript}");
+        }
+    }
+
+    #[test]
+    fn should_take_start_alone_or_after_lets_as_a_near_miss_of_restart_while_dictating() {
+        for transcript in ["Start.", "Let's start.", "start", "Okay, start."] {
+            assert_eq!(
+                dictating().near_miss(transcript),
+                Some("restart dictation".into()),
+                "{transcript}"
+            );
+        }
+    }
+
+    #[test]
+    fn should_not_take_a_near_miss_of_a_command_not_selected() {
+        assert_eq!(standby().near_miss("Let's start."), None);
+    }
+
+    #[test]
+    fn should_not_take_start_in_a_longer_sentence_as_a_near_miss() {
+        for transcript in [
+            "Let's start with the budget.",
+            "We start at nine tomorrow.",
+            "We are all here, let's start.",
+            "The meeting is about to start.",
+            "Restart.",
+            "Stop.",
+            "",
+        ] {
+            assert_eq!(dictating().near_miss(transcript), None, "{transcript}");
         }
     }
 

@@ -54,7 +54,7 @@ None.
 
 ## Release
 
-PATCH (bug fix): target version 0.14.4, the next patch after 0.14.3 on `main`; if `main` moved on, the next patch after the version on `main` when this lands.
+PATCH (bug fix): target version 0.15.1, the next patch after 0.15.0 on `main`; if `main` moved on, the next patch after the version on `main` when this lands.
 
 ## Impact
 
@@ -62,6 +62,6 @@ PATCH (bug fix): target version 0.14.4, the next patch after 0.14.3 on `main`; i
 - `command-spotting/tests/engine_it.rs`: the second hearing with a scripted speech recognition service.
 - `app/tests/voice_forms_it.rs`: the `KNOWN_WRONG` entry removed.
 - `e2e-test/tests/steps/voice_control/session/speech_after_start.rs`: `UNSTEADY_RECORDINGS` removed; `e2e-test/tests/features/voice_control.feature`, its steps and `e2e-test/src/voice_commands.rs`: the new scenarios and the quiet level.
-- `docs/ubiquitous-language.md`: *Second hearing*, *Steady clip*.
+- `docs/ubiquitous-language.md`: *Near miss*, *Second hearing*, *Steady clip*.
 - `app/Cargo.toml`: version.
 - No manual run: hotkey, recording, overlay, paste and permissions do not change.

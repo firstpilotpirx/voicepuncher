@@ -21,6 +21,8 @@ pub enum JobKind {
     Unheld,
     /// The last seconds of a closed segment in which no command was heard.
     Tail,
+    /// A short segment heard as a near miss of a command, heard again through its steady clip.
+    Rehear,
 }
 
 impl JobKind {
@@ -44,6 +46,7 @@ impl JobKind {
             JobKind::Segment => "segment",
             JobKind::Unheld => "unheld",
             JobKind::Tail => "tail",
+            JobKind::Rehear => "rehear",
         }
     }
 }

@@ -54,6 +54,48 @@ Feature: voice-control
 
   Rule: The user's own way of saying the commands is recognized
 
+    @smoke @voice_samples
+    Scenario Outline: The user's quiet restart after any pause before it
+      Given the command spotting service is running
+      And the user's own recordings of the commands exist on the machine
+      When the user's quiet recorded restart follows a dictated sentence after <pause> s of silence while dictating
+      Then the commands "restart dictation" take effect in order
+
+      Examples:
+        | pause |
+        | 0.3   |
+        | 0.4   |
+        | 0.5   |
+        | 0.6   |
+        | 0.7   |
+        | 0.8   |
+
+    @smoke
+    Scenario Outline: A command said in a quiet voice is recognized
+      Given the command spotting service is running
+      When the user says "<said>" in a quiet voice with a pause before and after it
+      Then the "<command>" command takes effect
+
+      Examples:
+        | said              | command           |
+        | start dictation   | start dictation   |
+        | stop dictation    | stop dictation    |
+        | cancel dictation  | cancel dictation  |
+        | restart dictation | restart dictation |
+        | press enter       | press enter       |
+        | start             | start dictation   |
+        | stop              | stop dictation    |
+        | cancel            | cancel dictation  |
+        | restart           | restart dictation |
+        | enter             | press enter       |
+        | clear             | clear all text    |
+
+      # The voice activity detector misses a quiet "clear all text": change detect-quiet-clear-all-text.
+      @wip
+      Examples:
+        | said              | command           |
+        | clear all text    | clear all text    |
+
     @smoke
     Scenario: A short Russian phrase is no command
       Given the command spotting service is running
@@ -124,6 +166,45 @@ Feature: voice-control
       And the Return key is pressed after it
 
   Rule: Each state accepts its own commands
+
+    @smoke
+    Scenario Outline: Start or let's start on its own during a dictation is ignored
+      Given the command spotting service is running
+      When someone says "<words>" on its own after a sentence, <level>, while dictating
+      Then no command takes effect
+
+      Examples:
+        | words       | level              |
+        | start       | at a normal level  |
+        | start       | in a quiet voice   |
+        | let's start | at a normal level  |
+        | let's start | in a quiet voice   |
+
+    @smoke
+    Scenario Outline: Start ending a dictated sentence is ignored
+      Given the command spotting service is running
+      When someone says "<words>" in one breath, <level>, while dictating
+      Then no command takes effect
+
+      Examples:
+        | words                         | level             |
+        | we are all here, let's start  | at a normal level |
+        | we are all here, let's start  | in a quiet voice  |
+        | the meeting is about to start | at a normal level |
+        | the meeting is about to start | in a quiet voice  |
+
+    @smoke
+    Scenario Outline: Start inside a dictated sentence is ignored
+      Given the command spotting service is running
+      When someone says "<words>" in one breath, <level>, while dictating
+      Then no command takes effect
+
+      Examples:
+        | words                       | level             |
+        | let's start with the budget | at a normal level |
+        | let's start with the budget | in a quiet voice  |
+        | we start at nine tomorrow   | at a normal level |
+        | we start at nine tomorrow   | in a quiet voice  |
 
     @smoke
     Scenario: Stop dictation without a dictation is ignored

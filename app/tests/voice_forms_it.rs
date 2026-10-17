@@ -26,11 +26,7 @@ const CONCURRENT_FORMS: usize = 4;
 /// Forms known to go wrong, by session and start, until the change named beside each fixes
 /// them: still heard and reported, not counted. One that goes right fails the test, so the
 /// entry is removed with the fix.
-const KNOWN_WRONG: &[(&str, f32, &str)] = &[(
-    "session-2",
-    27.23,
-    "recognize-users-quiet-restart: the quiet \"restart\" is heard as \"Let's start\"",
-)];
+const KNOWN_WRONG: &[(&str, f32, &str)] = &[];
 
 #[derive(Debug, Deserialize)]
 struct Form {

@@ -17,6 +17,11 @@ const PAUSE_SECS: f32 = 1.0;
 const SILENCE_LEVEL: f32 = 0.01;
 /// 100 ms of audio per message, as the app sends it.
 const FRAME_SAMPLES: usize = 1_600;
+/// The loudest 10 ms of speech in a quiet voice: the user's quietest recorded commands reach
+/// 0.0045, `say` about 0.24.
+const QUIET_LEVEL: f32 = 0.005;
+/// 10 ms at 16 kHz: the stretch whose loudness is measured.
+const LOUDNESS_FRAME_SAMPLES: usize = 160;
 /// 2 s of audio: sent before waiting for the service to answer it, so the audio in flight
 /// stays far below what the socket holds and a send never blocks on a busy service.
 const SAMPLES_BETWEEN_WAITS: usize = 20 * FRAME_SAMPLES;
@@ -70,6 +75,20 @@ pub fn without_trailing_silence(mut audio: Vec<f32>) -> Vec<f32> {
     let last_sound = audio.iter().rposition(|s| s.abs() > SILENCE_LEVEL);
     audio.truncate(last_sound.map_or(0, |at| at + 1));
     audio
+}
+
+/// `audio` as quiet as the user's quietest recorded commands: scaled so its loudest 10 ms
+/// has an RMS of 0.005.
+pub fn at_quiet_level(audio: Vec<f32>) -> Vec<f32> {
+    let loudest = audio
+        .chunks(LOUDNESS_FRAME_SAMPLES)
+        .map(|frame| (frame.iter().map(|s| s * s).sum::<f32>() / frame.len() as f32).sqrt())
+        .fold(0.0_f32, f32::max);
+    if loudest == 0.0 {
+        return audio;
+    }
+    let gain = QUIET_LEVEL / loudest;
+    audio.into_iter().map(|s| s * gain).collect()
 }
 
 /// `secs` of silence at 16 kHz.

@@ -775,3 +775,109 @@ fn should_hear_a_command_ending_a_long_utterance_in_its_last_seconds() {
     // Then
     assert_eq!(reported_phrases(&events), ["press enter"], "{events:?}");
 }
+
+const DICTATING_PHRASES: [&str; 4] = [
+    "stop dictation",
+    "cancel dictation",
+    "restart dictation",
+    "press enter",
+];
+
+/// Hears each answer in turn, one per clip, and nothing once they run out; counts the clips.
+struct HearsInTurn {
+    answers: Mutex<std::collections::VecDeque<&'static str>>,
+    clips: Mutex<usize>,
+}
+
+impl HearsInTurn {
+    fn new(answers: &[&'static str]) -> Arc<Self> {
+        Arc::new(Self {
+            answers: Mutex::new(answers.iter().copied().collect()),
+            clips: Mutex::new(0),
+        })
+    }
+
+    fn clips(&self) -> usize {
+        *self.clips.lock().unwrap()
+    }
+}
+
+impl Hear for HearsInTurn {
+    fn hear(&self, _: &[f32], _: Duration) -> anyhow::Result<Heard> {
+        *self.clips.lock().unwrap() += 1;
+        let text = self.answers.lock().unwrap().pop_front().unwrap_or("");
+        let words: Vec<&str> = text.split_whitespace().collect();
+        Ok(Heard {
+            text: text.to_owned(),
+            words: timed(&words),
+        })
+    }
+}
+
+/// The events of `words` said on its own while `phrases` are selected, heard by `hear`.
+fn heard_alone(hear: Arc<HearsInTurn>, phrases: &[&str], words: &str) -> Vec<ServerEvent> {
+    let engine = own_engine(None).unwrap().hearing(hear);
+    let mut session = engine.session().unwrap();
+    let phrases: Vec<String> = phrases.iter().map(|p| (*p).to_owned()).collect();
+    session.listen_for(&phrases).unwrap();
+    fed(&mut session, &spoken(words))
+}
+
+#[test]
+fn should_take_a_near_miss_of_restart_as_restart_when_its_second_hearing_says_restart() {
+    let Some(_shared) = engine() else { return };
+    // Given
+    let hear = HearsInTurn::new(&["Let's start.", "Restart."]);
+    // When
+    let events = heard_alone(hear.clone(), &DICTATING_PHRASES, "Restart");
+    // Then
+    assert_eq!(
+        reported_phrases(&events),
+        ["restart dictation"],
+        "{events:?}"
+    );
+    assert_eq!(hear.clips(), 2);
+}
+
+#[test]
+fn should_place_the_restart_of_a_second_hearing_at_the_start_of_its_speech() {
+    let Some(_shared) = engine() else { return };
+    // Given
+    let hear = HearsInTurn::new(&["Let's start.", "Restart."]);
+    // When
+    let events = heard_alone(hear, &DICTATING_PHRASES, "Restart");
+    // Then
+    let (segment, phrase) = segment_and_phrase(&events);
+    assert!(
+        (phrase.0 - segment.0).abs() < LEAD_TOLERANCE_SECS,
+        "lead: segment {segment:?} phrase {phrase:?}"
+    );
+    assert!(
+        phrase.1 <= segment.1 + TAIL_TOLERANCE_SECS,
+        "tail: segment {segment:?} phrase {phrase:?}"
+    );
+}
+
+#[test]
+fn should_take_no_command_when_the_second_hearing_of_a_near_miss_says_it_again() {
+    let Some(_shared) = engine() else { return };
+    // Given
+    let hear = HearsInTurn::new(&["Let's start.", "Let's start."]);
+    // When
+    let events = heard_alone(hear.clone(), &DICTATING_PHRASES, "Let's start");
+    // Then
+    assert!(reported_phrases(&events).is_empty(), "{events:?}");
+    assert_eq!(hear.clips(), 2);
+}
+
+#[test]
+fn should_not_hear_start_again_when_restart_is_not_selected() {
+    let Some(_shared) = engine() else { return };
+    // Given
+    let standby = ["start dictation", "press enter", "clear all text"];
+    let hear = HearsInTurn::new(&["Let's start.", "Restart."]);
+    // When
+    heard_alone(hear.clone(), &standby, "Let's start");
+    // Then
+    assert_eq!(hear.clips(), 1);
+}

@@ -245,6 +245,21 @@
 - **Definition:** How long one confirmation by the *speech recognition service for commands* may take before the service gives it up (3 s, `--confirmation-deadline-secs`). The confirmation of a closed utterance is tried twice; a check of a running utterance is skipped while another one waits. Confirmations run off the audio path, so a slow one delays only its own check.
 - **Code:** `command-spotting/src/worker.rs`
 
+### Near miss
+- **Type:** Rule of the *command spotting service*
+- **Definition:** What the *speech recognition service* hears in place of a command's short form, listed per command: "Start." or "Let's start." (at most three words ending in "start") while "restart dictation" is selected, since the user's quiet "restart" comes out so. A near miss is no command; it only asks for a *second hearing*.
+- **Code:** `NEAR_MISSES`, `PhraseMatcher::near_miss` in `command-spotting/src/matcher.rs`
+
+### Second hearing
+- **Type:** Rule of the *command spotting service*
+- **Definition:** When the confirmation of a short utterance hears no command but a *near miss*, the utterance is heard once more through its *steady clip*, and counts as the near-missed command only when that hearing says it as a whole. Its events wait for the second answer.
+- **Code:** `JobKind::Rehear`, `hear_again` in `command-spotting/src/engine/confirming.rs`
+
+### Steady clip
+- **Type:** Value of the *command spotting service*
+- **Definition:** An utterance cut 0.25 s before its first sound (the first 10 ms louder than 0.4 of its loudest, padded with silence when the audio starts later) and raised toward a loudest 10 ms of 0.1 when quieter, by at most 10 times: the same words sound alike to the speech recognition service whatever sound came before them. Only the *second hearing* sends it.
+- **Code:** `steady_clip` in `command-spotting/src/engine/clip.rs`
+
 ### Health check
 - **Type:** Rule of the service scripts
 - **Definition:** Every 5 s the supervisor of the command spotting and text refinement services asks `/health`; a service that answered once and then fails 3 checks in a row is killed and so restarted, with a note in its log. The command spotting service answers 503 when a connection has audio waiting and its processing made no progress for 10 s.
