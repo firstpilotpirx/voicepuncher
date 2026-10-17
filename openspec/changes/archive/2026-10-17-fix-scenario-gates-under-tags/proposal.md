@@ -42,7 +42,7 @@ None. The voice-control scenarios that need the user's recordings keep their pre
 - Possibly a shared module of the E2E harness library (`e2e-test/src/`), with its unit tests.
 - Possibly the suite selections, only if design.md changes them: in the `justfile` recipes today, in `.config/nextest.toml` (`run-extra-args`) once `fail-hung-tests-fast` has landed.
 - `README.md` § Testing and `AGENTS.md`: wording only, if needed; both already promise that `@voice_samples` scenarios run only where the recordings exist and that `@wip` scenarios do not run.
-- Build inputs change (`app/`, `e2e-test/`, maybe the `justfile`): `just check` after each task group, `just full-check` before the merge. `e2e-test/tests/cucumber_e2e.rs` and the `justfile` are in `recognition_paths`, so that `full-check` runs the 100-recording accuracy sample.
+- Build inputs change (`app/`, `e2e-test/`, maybe the `justfile`): `just check` once the fix is in, `just full-check` before the merge. `e2e-test/tests/cucumber_e2e.rs` and the `justfile` are in `recognition_paths`, so that `full-check` runs the 100-recording accuracy sample.
 - No manual run: the app is untouched; hotkey, recording, overlay, paste and permissions behave as before.
 - In-flight changes: `recognize-users-quiet-restart` adds `@smoke @voice_samples` scenarios, which the gate covers as written; `fix-overlay-hide-test-race` reruns slice scenarios with `--name`, none of them gated, so its runs select what they select today.
 
@@ -61,7 +61,7 @@ None. The voice-control scenarios that need the user's recordings keep their pre
   - Under a filter: without `VOICEPUNCHER_REAL_KEYBOARD_IT`, `cargo test -p voicepuncher --test cucumber_integration -- --name paste` and `-- --tags @component` run no `@real_keyboard` scenario; without recordings, a `cucumber_e2e` run selected by `--tags '@smoke and not @wip'` or by a `--name` that matches a `@voice_samples` scenario runs none of them; no run of either harness, whatever its selection, runs a `@wip` scenario. With the gate open, the same selection still runs the gated scenario: with `VOICEPUNCHER_REAL_KEYBOARD_IT` set, `--tags @real_keyboard` (`just test-real-keyboard`) selects its scenario.
   - Without a filter, both harnesses select what they select today: `just test` runs as many slice and component scenarios as before.
   - No bar is loosened: no scenario is dropped, re-tagged, marked `@wip` or retried.
-  - `just test` passes; `just check` passes after each task group and `just full-check` on the final commit.
+  - `just test` passes; `just check` passes once the fix is in (the reproduction's commit is red by design and gets none) and `just full-check` on the final commit.
 - **Out of scope:**
   - The plain-Rust tests that read the recordings: `app/tests/voice_samples_it.rs` and `voice_forms_it.rs` return no sessions when `read_dir` of the empty path fails, and `command-spotting/tests/engine_it.rs` returns no clip when it cannot open the relative `session-2.wav`. They skip correctly today, only without a GATED line for an empty variable.
   - A variable that names a directory without the recordings the scenarios read: those scenarios run and fail on the missing files, as today; a wrong path is an error to see, not a reason to skip.

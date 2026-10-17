@@ -19,7 +19,7 @@ See proposal.md § Why for the defect. What shapes the fix:
 - `--input <glob>` (`parser::basic::Cli`) replaces the features path the harness passes.
 - `with_parser` drops options already given by `with_cli` (it sets `cli: None`).
 
-**The harnesses today.** Both build their gates from the environment, print a `GATED:` line per closed gate and pass a filter to `filter_run_and_exit`; each keeps its own copy of `has_tag` (feature, rule and scenario tags). No `.feature` holds a `@wip` scenario. `@real_keyboard` tags `push_to_talk.feature` at feature level. `@voice_samples` tags five `@smoke` scenarios (16 runs) of the E2E `voice_control.feature`. A `harness = false` target runs no `#[test]`.
+**The harnesses today.** Both build their gates from the environment, print a `GATED:` line per closed gate and pass a filter to `filter_run_and_exit`; each keeps its own copy of `has_tag` (feature, rule and scenario tags), and `cucumber_e2e`'s `which_scenario` uses its copy to run `@serial` and `@accuracy` scenarios alone. One `.feature` scenario carries `@wip`: the `@seams @wip` Scenario Outline of the E2E `speech_recognition.feature` (known-red rows that `raise-accuracy-under-hard-conditions` owns), kept out of the `@seams` suite by its `and not @wip`. `@real_keyboard` tags `push_to_talk.feature` at feature level. `@voice_samples` tags five `@smoke` scenarios (16 runs) of the E2E `voice_control.feature`. A `harness = false` target runs no `#[test]`.
 
 **The E2E harness library** (`voicepuncher-e2e-test`, `e2e-test/src/`) is a dependency of both harnesses: a dev-dependency of `app`, and the crate of `cucumber_e2e`. `cucumber` and `regex` are only its dev-dependencies. The workspace-wide `cargo build --release` of `_build` and `_release-package` builds its library.
 
@@ -78,11 +78,12 @@ Rejected:
 | `Selection` | everything, `Name(regex::Regex)` or `Tags(TagOperation)`, taken from the options |
 | `ScenarioFilter` | `runs(feature, rule, scenario) -> bool`: the selection and every gate (D3); the `GATED:` lines of its closed gates |
 | `split(opts, gates)` | returns the options without the selection, and the `ScenarioFilter`; the only way to get either |
+| `has_tag(feature, rule, scenario, tag)` | whether the merged tags (D3) hold the tag; for `cucumber_e2e`'s `which_scenario` |
 
-- A harness keeps only its gates, the environment reads, printing the lines and the call. Both copies of `has_tag` go.
+- A harness keeps only its gates, the environment reads, printing the lines and the call. Both copies of `has_tag` go; `cucumber_e2e`'s `which_scenario` calls the module's.
 - `cucumber` (`=0.23.0`) and `regex` (`1`) move from `[dev-dependencies]` to `[dependencies]` of `voicepuncher-e2e-test`, unless fail-hung-tests-fast already moved them. `Cargo.lock` does not change.
 - The module joins `recognition_paths` in the `justfile`, because it decides which `@accuracy` scenarios run (AGENTS.md: a branch that adds a file on the recognition path adds it there).
-- Its tests live in its `#[cfg(test)] mod tests`, like those of the library's other modules.
+- Its tests live in its `#[cfg(test)] mod tests`, like those of the library's other modules, out of line in `scenario_filter/tests.rs`.
 
 Rejected:
 
@@ -200,16 +201,18 @@ There is no spec scenario (`skip_specs: true`), so no `.feature` scenario is add
 | Acceptance item | Level | How |
 |---|---|---|
 | The reproduction fails on today's code because a gated scenario is selected, and is committed alone as intentionally red | unit (E2E harness library, in-process cucumber run, D6) | Red commit: `kit run just test` fails only in the module's cases marked "fails" in D6, the selection cases naming the gated scenarios that ran. The fixture runs of the unmodified harnesses fail the same way; an excerpt goes in the PR. |
-| Without recordings, `VOICEPUNCHER_VOICE_SAMPLES= just e2e-smoke` passes, runs no `@voice_samples` scenario, and says once why; its count drops by exactly the `@voice_samples` runs | recipe run by the agent (stage 6) | It passes with one `GATED: VOICEPUNCHER_VOICE_SAMPLES empty, …` line. Cucumber's `N scenarios` equals that of the run with recordings minus the `@smoke @voice_samples` runs counted in the features at apply time (16 today). |
+| Without recordings, `VOICEPUNCHER_VOICE_SAMPLES= just e2e-smoke` passes, runs no `@voice_samples` scenario, and says once why; its count drops by exactly the `@voice_samples` runs | recipe run by the agent (task 2.9) | It passes with one `GATED: VOICEPUNCHER_VOICE_SAMPLES empty, …` line. Cucumber's `N scenarios` equals that of the run with recordings minus the `@smoke @voice_samples` runs counted in the features at apply time (16 today). |
 | An unset variable counts as an empty one | unit | The voice-samples gate is closed for unset and for empty, open for a path; the two lines differ. |
-| With recordings, `just e2e-smoke` runs the same scenarios and passes | recipe run (stage 6; this machine has the recordings) | `N scenarios` equals the same line in the last `e2e-smoke` or `check` log of `main` (kit run logs). |
-| Without `VOICEPUNCHER_REAL_KEYBOARD_IT`, `cucumber_integration` under `--name paste` and under `--tags @component` runs no `@real_keyboard` scenario | unit, then harness runs (stage 6, after the fixture runs) | `kit run cargo test -p voicepuncher --test cucumber_integration -- --name paste`, then `-- --tags @component`: both pass, and "Hotkey press after a paste is registered" is not in their output. |
-| Without recordings, `cucumber_e2e` under `--tags '@smoke and not @wip'`, or under a `--name` that matches a `@voice_samples` scenario, runs none of them | `--tags`: the recipe run above; `--name`: a harness run without services | `VOICEPUNCHER_VOICE_SAMPLES= kit run cargo test -p voicepuncher-e2e-test --test cucumber_e2e -- --name "user's recorded"`: `0 scenarios`, exit 0. Before the fix the same run fails at once in its first step, since no service URL is set. |
-| No run of either harness runs a `@wip` scenario, whatever its selection | unit, fixture runs | The `@wip` cases of D6; each fixture holds a `@wip` scenario, which no `.feature` does today. |
+| With recordings, `just e2e-smoke` runs the same scenarios and passes | recipe run (task 2.10; this machine has the recordings) | `N scenarios` equals the same line in the last `e2e-smoke` or `check` log of `main` (kit run logs). |
+| Without `VOICEPUNCHER_REAL_KEYBOARD_IT`, `cucumber_integration` under `--name paste` and under `--tags @component` runs no `@real_keyboard` scenario | unit, then harness runs (task 2.7, after the fixture runs of 2.6) | `kit run cargo test -p voicepuncher --test cucumber_integration -- --name paste`, then `-- --tags @component`: both pass, and "Hotkey press after a paste is registered" is not in their output. |
+| Without recordings, `cucumber_e2e` under `--tags '@smoke and not @wip'`, or under a `--name` that matches a `@voice_samples` scenario, runs none of them | `--tags`: the recipe run above; `--name`: a harness run without services (task 2.8) | `VOICEPUNCHER_VOICE_SAMPLES= kit run cargo test -p voicepuncher-e2e-test --test cucumber_e2e -- --name "user's recorded"`: `0 scenarios`, exit 0. Before the fix the same run fails at once in its first step, since no service URL is set. |
+| No run of either harness runs a `@wip` scenario, whatever its selection | unit, fixture runs | The `@wip` cases of D6; each fixture holds a `@wip` scenario. On the real features, at stage 6: `VOICEPUNCHER_VOICE_SAMPLES= kit run cargo test -p voicepuncher-e2e-test --test cucumber_e2e -- --name 'hardest recording conditions'`, a name only the `@seams @wip` outline of `speech_recognition.feature` matches, runs `0 scenarios` and exits 0, without services. |
 | With the gate open, the same selection still runs the gated scenario (`just test-real-keyboard` selects its scenario) | unit, fixture run | The open-gate case. The fixture run with `VOICEPUNCHER_REAL_KEYBOARD_IT=1` and `--tags @real_keyboard` selects the fixture's scenario. `just test-real-keyboard` itself stays the user's release-checklist step. |
 | Without a filter, both harnesses select what they select today; `just test` runs as many slice and component scenarios as before | unit, harness run, recipe run | The no-selection case. `kit run cargo test -p voicepuncher --test cucumber_integration`, without a selection, reports the same `N scenarios` on the Red commit (harnesses untouched) and on Green, where `just test` passes. nextest shows no output of a passing test, so the count is read from the direct run. |
 | No bar is loosened | review | `git diff origin/main -- '*.feature'` is empty; no `@allow.skipped`, `@wip` or retry is added. |
-| `just test` passes; `just check` after each task group; `just full-check` on the final commit | recipe runs | stages 5 and 8 |
+| `just test` passes; `just check` on the Green group, none on the Red commit (D6); `just full-check` on the final commit | recipe runs | task 2.12, stage 8 |
+
+`CUCUMBER_FILTER_TAGS` (Goals, D3) is no acceptance item of its own: clap fills the same `tags_filter` as `--tags`, so the `--tags` unit cases cover its gating. At stage 6 the E2E fixture run with `CUCUMBER_FILTER_TAGS=@voice_samples` in place of `--tags` shows the path: no scenario with `VOICEPUNCHER_VOICE_SAMPLES` empty, only the gated fixture scenario with it set to a path.
 
 ## Risks / Trade-offs
 
@@ -226,6 +229,6 @@ There is no spec scenario (`skip_specs: true`), so no `.feature` scenario is add
 
 1. Once fail-hung-tests-fast is archived on `main`, branch from `origin/main` and read both harness entry points, the argument module and `e2e-test/Cargo.toml` there (D5).
 2. Red commit (D6), then the fixture runs on it; their failure excerpt goes in the PR.
-3. Green commit; `just test`; the fixture runs; `just check`.
-4. Stage 6: the runs of the Test levels table, the real-feature runs last. Stage 8: `just full-check` with 100 recordings, since `cucumber_e2e.rs` and the `justfile` are on the recognition path.
+3. Green (tasks 2.1–2.13): the fix, `just test`, the fixture runs, then the real-feature runs of the Test levels table, `just check`, and the commit.
+4. Stage 6: `opsx:verify`, the `@wip` and `CUCUMBER_FILTER_TAGS` runs of the Test levels table, and the reviewer. Stage 8: `just full-check` with 100 recordings, since `cucumber_e2e.rs` and the `justfile` are on the recognition path.
 5. Rollback: revert the squash commit. The harnesses return to their own filters, and the defect with them.

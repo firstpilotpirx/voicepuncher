@@ -7,8 +7,8 @@ use std::process::ExitStatus;
 use std::time::Duration;
 
 use cucumber::cli::{Empty, Opts, Parser as _};
-use cucumber::gherkin::{Feature, Rule, Scenario};
 use cucumber::{ScenarioType, World};
+use voicepuncher_e2e_test::scenario_filter::{self, has_tag, Gate};
 
 /// The local services are shared with the user's live session; more concurrent
 /// clients make the speech recognition service reset connections it has no room for.
@@ -57,6 +57,12 @@ impl E2eWorld {
     }
 }
 
+/// Runs the scenarios the command line selects that the gates admit: `@wip` never, `@voice_samples`
+/// only where the user's recordings exist.
+///
+/// cucumber never gets the selection (`--name`, `--tags`, `CUCUMBER_FILTER_TAGS`): it would apply
+/// it instead of the filter, and the gates with it. `scenario_filter::split` takes it out of the
+/// options and into the one filter that requires both.
 fn main() {
     // One nextest test, `scenarios`, is the whole run; any other command line is cucumber's own
     let Some(command_line) = voicepuncher_e2e_test::harness_args::cucumber_command_line() else {
@@ -64,10 +70,14 @@ fn main() {
     };
     // The user's recorded commands stay on the machine; scenarios that need them run only
     // where they exist.
-    let has_voice_samples =
-        std::env::var("VOICEPUNCHER_VOICE_SAMPLES").is_ok_and(|d| !d.is_empty());
-    if !has_voice_samples {
-        eprintln!("GATED: VOICEPUNCHER_VOICE_SAMPLES not set, skipping @voice_samples scenarios");
+    let gates = vec![
+        Gate::wip(),
+        Gate::voice_samples(std::env::var("VOICEPUNCHER_VOICE_SAMPLES")),
+    ];
+    let (opts, filter) =
+        scenario_filter::split(Opts::<_, _, _, Empty>::parse_from(command_line), gates);
+    for line in filter.gated_lines() {
+        eprintln!("{line}");
     }
     // The scenario probe for the suite limit (fail-hung-tests-fast, D10): armed, every scenario
     // blocks forever before its first step, so the suite's nextest limit must stop the harness.
@@ -97,15 +107,9 @@ fn main() {
                 })
             })
             .fail_on_skipped()
-            .with_cli(Opts::<_, _, _, Empty>::parse_from(command_line))
+            .with_cli(opts)
             .filter_run_and_exit("tests/features", move |feature, rule, scenario| {
-                let tagged = |tag| has_tag(feature, rule, scenario, tag);
-                !tagged("wip") && (has_voice_samples || !tagged("voice_samples"))
+                filter.runs(feature, rule, scenario)
             }),
     );
-}
-
-fn has_tag(feature: &Feature, rule: Option<&Rule>, scenario: &Scenario, tag: &str) -> bool {
-    let tagged = |tags: &[String]| tags.iter().any(|t| t == tag);
-    tagged(&feature.tags) || rule.is_some_and(|r| tagged(&r.tags)) || tagged(&scenario.tags)
 }

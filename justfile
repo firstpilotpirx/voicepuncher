@@ -123,6 +123,7 @@ recognition_paths := '''
     e2e-test/src/concurrency.rs
     e2e-test/src/speech.rs
     e2e-test/src/voice_commands.rs
+    e2e-test/src/scenario_filter.rs
     e2e-test/tests/cucumber_e2e.rs
     e2e-test/tests/steps/mod.rs
     e2e-test/tests/steps/file_transcription.rs
