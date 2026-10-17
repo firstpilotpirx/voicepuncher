@@ -31,6 +31,10 @@ const REACTION: Duration = Duration::from_secs(3);
 const FOCUS_WAIT: Duration = Duration::from_millis(300);
 /// Long enough for every overlay signal after the paste to arrive.
 const SETTLE: Duration = Duration::from_millis(200);
+/// How late the pipeline's thread records the last event of a reaction, as a busy CPU makes it.
+/// It stays so a step that reads the log right after an earlier event of the reaction fails on
+/// every run instead of now and then.
+const PIPELINE_LAG: Duration = Duration::from_millis(50);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Event {
@@ -154,6 +158,7 @@ impl StagesRun {
     fn start_recording(&mut self) -> Result<()> {
         self.send(PipelineInput::Hotkey(PttSignal::Pressed))?;
         self.wait_for(Event::RecordingStarted)?;
+        self.wait_for(Event::Overlay(Overlay::Recording))?;
         if self.in_parts {
             // the first part is transcribed while the user still speaks
             self.wait_for(Event::TranscriptionFinished)?;
@@ -500,6 +505,7 @@ struct NotingOverlay(Events);
 
 impl VisualIndicator for NotingOverlay {
     fn show_recording(&self) {
+        std::thread::sleep(PIPELINE_LAG);
         record(&self.0, Event::Overlay(Overlay::Recording));
     }
 

@@ -333,6 +333,7 @@ fn listening_on_given(world: &mut IntegrationWorld) -> Result<()> {
     run.voice_control = true;
     run.ensure_started();
     run.wait_for(|e| *e == Event::ListeningStarted)?;
+    run.wait_for(|e| *e == Event::Sound("listening on"))?;
     Ok(())
 }
 

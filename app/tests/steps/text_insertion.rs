@@ -30,6 +30,10 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const REACTION: Duration = Duration::from_secs(1);
 /// How long a scenario watches for something that must not happen.
 const SETTLE: Duration = Duration::from_millis(300);
+/// How late the pipeline's thread records the last event of a reaction, as a busy CPU makes it.
+/// It stays so a step that reads the log right after an earlier event of the reaction fails on
+/// every run instead of now and then.
+const PIPELINE_LAG: Duration = Duration::from_millis(50);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Event {
@@ -332,12 +336,18 @@ fn pasted_after_wait(world: &mut IntegrationWorld) -> Result<()> {
 fn overlay_hides(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     let outcome = run.wait_for(|e| is_pasted(e) || is_left_in_clipboard(e), REACTION)?;
-    let events = run.events();
-    let delivered = events.iter().position(|e| *e == outcome).unwrap();
-    if !events[delivered..].contains(&Event::Hidden) {
-        bail!("overlay not hidden after {outcome:?}: {events:?}");
+    let deadline = Instant::now() + REACTION;
+    loop {
+        let events = run.events();
+        let delivered = events.iter().position(|e| *e == outcome).unwrap();
+        if events[delivered..].contains(&Event::Hidden) {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            bail!("overlay not hidden after {outcome:?}: {events:?}");
+        }
+        std::thread::sleep(Duration::from_millis(5));
     }
-    Ok(())
 }
 
 #[then("the clipboard holds the text")]
@@ -476,6 +486,7 @@ impl VisualIndicator for RecordingIndicator {
         self.0.lock().unwrap().push(Event::WaitingShown);
     }
     fn hide(&self) {
+        std::thread::sleep(PIPELINE_LAG);
         self.0.lock().unwrap().push(Event::Hidden);
     }
 }

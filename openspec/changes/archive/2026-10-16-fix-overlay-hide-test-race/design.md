@@ -81,8 +81,8 @@ No spec scenario (`skip_specs: true`) and no app behavior change: no unit, adapt
 | "Paste once the user clicks into a text input on the web page" fails 10 of 10 with the lag and today's `overlay_hides`, and passes 10 of 10 after the fix | slice `.feature` (`text_insertion.feature`), unchanged | 10 runs by name at Red and at Green (D4); Red fails with `overlay not hidden after Pasted("Meeting moved to Friday."): [RecordingStarted, WaitingShown, Pasted("Meeting moved to Friday.")]` |
 | "A hotkey dictation shows speech recognition after the stop", the same for `start_recording` | component `.feature` (`processing_stages.feature`), unchanged | the same; Red fails with `the stop did not show speech recognition first: [Overlay(Recording), Overlay(RecognizingSpeech), …]` |
 | "Stop dictation without a dictation is ignored", the same for `listening_on_given` | component `.feature` (`voice_control.feature`), unchanged | the same; Red fails with `a sound played: Sound("listening on"); …` |
-| No bar is loosened | review | `git diff origin/main -- app/tests/features` is empty; no timing constant in the diff; no `@wip`, no retry |
-| `just test` passes; `just check` after each task group; `just full-check` on the final commit | recipe runs | stages 5 and 8 |
+| No bar is loosened | review | `git diff origin/main...HEAD -- app/tests/features` is empty; no existing timing constant changes (D5); no `@wip`, no retry |
+| `just test` and `just check` pass after the Green group (the Red group fails by design, D4); `just full-check` on the final commit | recipe runs | stages 5 and 8 |
 
 ## Risks / Trade-offs
 

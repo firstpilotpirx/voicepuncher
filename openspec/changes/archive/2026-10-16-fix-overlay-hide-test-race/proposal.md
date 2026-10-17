@@ -30,7 +30,7 @@ None.
 - `app/tests/steps/text_insertion.rs`: `overlay_hides` and the visual indicator double `RecordingIndicator`.
 - `app/tests/steps/processing_stages.rs`: `start_recording` and the visual indicator double `NotingOverlay`.
 - `app/tests/steps/voice_control.rs`: `listening_on_given`; `app/tests/steps/voice_control/doubles.rs`: the sound double `RecordingSounds`.
-- `app/` is a build input: `just check` after each task group, `just full-check` before the merge. No manual run: hotkey, recording, overlay, paste and permissions behave as before.
+- `app/` is a build input: `just check` after the Green task group (the Red group fails by design), `just full-check` before the merge. No manual run: hotkey, recording, overlay, paste and permissions behave as before.
 - In-flight changes in the same files: `show-spotting-away` reworks the outage steps and the overlay double of the component voice-control scenarios, not these steps; `fail-hung-tests-fast` changes the harness entry point `app/tests/cucumber_integration.rs`, not the steps.
 
 ## Scope
@@ -40,7 +40,7 @@ None.
 - **Acceptance bar:**
   - With the reproduction doubles, each step as it is today fails on each of 10 runs of a scenario that uses it: "Paste once the user clicks into a text input on the web page", "A hotkey dictation shows speech recognition after the stop", "Stop dictation without a dictation is ignored". With the fixed steps, the same scenarios pass 10 of 10.
   - No bar is loosened: `REACTION`, `SETTLE` and every other bound keep their values; no `.feature` text changes; no scenario is dropped, tagged `@wip` or retried.
-  - `just test` passes; `just check` passes after each task group and `just full-check` on the final commit.
+  - `just test` and `just check` pass after the Green task group (the Red group fails by design), and `just full-check` on the final commit.
 - **Out of scope:**
   - App code: the pipeline's order (paste, echo to stderr, hide) is right and stays.
   - Steps checked and found safe: the processing-stages `Then` steps, which wait for `Hidden`, the last event after the stop, before they read; the voice-control steps that compare positions, which read only after waiting for the latest event they compare, and "the listening-on sound played when the service came back", which reads after a wait for a later event of the same pipeline thread; "the text is pasted at once", since `WaitingShown` would come before the paste.

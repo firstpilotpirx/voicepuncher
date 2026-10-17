@@ -19,6 +19,10 @@ const SAMPLES_PER_SEC: f32 = AudioBuffer16k::SAMPLE_RATE_HZ as f32;
 
 /// Long enough that a command spoken right after "stop dictation" arrives before the paste.
 pub const TRANSCRIPTION_TIME: Duration = Duration::from_millis(150);
+/// How late the pipeline's thread records the last event of a reaction, as a busy CPU makes it.
+/// It stays so a step that reads the log right after an earlier event of the reaction fails on
+/// every run instead of now and then.
+const PIPELINE_LAG: Duration = Duration::from_millis(50);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
@@ -162,6 +166,7 @@ impl SoundPlayer for RecordingSounds {
     }
 
     fn play_listening_on(&self) {
+        std::thread::sleep(PIPELINE_LAG);
         record(&self.0, Event::Sound("listening on"));
     }
 
