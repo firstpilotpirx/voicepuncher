@@ -9,7 +9,7 @@ context: |
   Workflow: every change runs the stages of AGENTS.md § Workflow in order: explore -> propose -> user approval -> branch -> apply -> verify -> archive -> full-check -> PR -> manual run -> merge -> release. No code before the user approved the proposal.
   Development is test-first, Red -> Green -> Refactor (AGENTS.md § TDD). A bug gets a failing reproduction test, committed on its own, before any fix.
   Business tests are Gherkin: slice, component and E2E tests are .feature files run by cucumber-rs, one per capability, each written from a spec scenario: same meaning, wording may differ (AGENTS.md § Gherkin). Unit and adapter integration tests stay plain Rust.
-  Verification: `just test` (~1 min) after every edit, `just check` (~6.5 min, machine lock ≈ 5.3 min) after every task group, `just full-check` (~11–12 min, machine lock ≈ 9.5 min with 10 recordings, ≈ 11 min with 100) before merging; both take the machine lock only for their model stages; `full-check` runs the 100 accuracy recordings when the branch changes the recognition path (justfile `recognition_paths`), on `main` itself, when the changes cannot be read and when forced, else 10; the `spec-test-reviewer` subagent checks at verify that every test (.feature and plain Rust) matches the change's OpenSpec documents; manual run by the user for hotkey, recording, overlay, paste and permissions (AGENTS.md § How to verify a change).
+  Verification: `just test` (~1 min) after every edit, `just check` (~6.5 min, machine lock ≈ 5.3 min) after every task group, `just full-check` (~11–12 min, machine lock ≈ 9.5 min with 10 recordings, ≈ 11 min with 100) before merging; both take the machine lock only for their model stages; `full-check` runs the 100 accuracy recordings when the branch changes the recognition path (justfile `recognition_paths`), on `main` itself, when the changes cannot be read and when forced, else 10; the `spec-test-reviewer` subagent checks at verify, for a change that is not small, that every test (.feature and plain Rust) matches the change's OpenSpec documents; manual run by the user for hotkey, recording, overlay, paste and permissions (AGENTS.md § How to verify a change).
   Versioning: SemVer in app/Cargo.toml; pre-1.0 a breaking change or new capability is MINOR, a bug fix is PATCH. `just release` cleans, tests and builds from scratch without the machine lock, then tags vX.Y.Z and publishes the GitHub Release with the binary (AGENTS.md § Release).
   Write all artifacts in English.
 
@@ -18,17 +18,21 @@ rules:
     - State current stage, target stage, scope and acceptance bar.
     - List what is out of scope.
     - State the SemVer bump (MAJOR, MINOR or PATCH) and the target version, or "no release" for a change without behavior change.
+    - At most 300 words. Say why and what changes; leave how to design.md and the steps to tasks.md.
   specs:
     - Scenarios state business intent; never name a type, endpoint, JSON field, config key or env var in GIVEN/WHEN/THEN.
     - Write each scenario so it reads as a Gherkin scenario, with preconditions in GIVEN, exactly one WHEN, observable outcomes in THEN.
     - Give every scenario a name unique within its capability.
     - For a bug fix, add a scenario that reproduces the bug.
   design:
+    - Write decisions only when the change makes a real architectural decision (a new port, adapter, protocol, data format, or a choice between options with trade-offs); otherwise design.md is the line "No architectural decision." and the test-level table.
+    - At most 600 words. Each decision is what was chosen and why, in a few sentences; no code, no restating the proposal or specs.
     - State the test level of every spec scenario (unit, adapter integration, slice/component .feature, E2E .feature, manual run).
   tasks:
     - For each behavior, list a Red task (write the failing test, run it, see it fail) before its Green task (make it pass); for a bug, the Red task is the reproduction test.
     - For a scenario tested at slice, component or E2E level, the Red task adds a scenario with the same meaning to `<capability>.feature`, plus its step definitions.
-    - End each task group with `just check` and a commit.
+    - One line per task: the action and the file or test it touches; no explanations, code or acceptance criteria (they live in specs and design).
+    - End each task group with `just test` and a commit; the last group before the version bump also runs `just check` once (AGENTS.md § Workflow stage 5).
     - End the list with a group that bumps `version` in app/Cargo.toml to the version the proposal states, then lists the manual checks the user performs (AGENTS.md § How to verify a change), or "none".
 
 operations:
@@ -38,10 +42,10 @@ operations:
       - Follow Red -> Green -> Refactor (`tdd` skill); run the new test and see it fail before writing the code that makes it pass.
       - For a bug, commit the failing reproduction test on its own (message says it is intentionally red) before the fix commit.
       - Write slice, component and E2E tests as .feature scenarios written from the change specs (AGENTS.md § Gherkin); unit tests stay plain Rust.
-      - Run `just test` after every edit and `just check` after every task group; fix failures before the next task.
+      - Run `just test` after every edit and `just check` once, after the last task group; fix failures before the next task.
       - Commit after every task group with a Conventional Commit message.
   archive:
     guidance:
-      - "Before archiving, make sure the `spec-test-reviewer` subagent reported `RESULT: PASS` for this change after the last change to its OpenSpec documents or tests; otherwise run it and fix every gap first."
+      - "Before archiving a change that is not small (more than one added or modified requirement, or more than 10 tasks), make sure the `spec-test-reviewer` subagent reported `RESULT: PASS` after the last fix to its tests or OpenSpec documents; a small change archives after `/opsx:verify` reports no CRITICAL issue."
       - Archive on the change branch, in the same PR as the code, and commit the archive.
       - After archiving, continue with AGENTS.md § Workflow stage 8.
