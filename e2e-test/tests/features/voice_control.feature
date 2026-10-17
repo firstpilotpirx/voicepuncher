@@ -88,13 +88,8 @@ Feature: voice-control
         | cancel            | cancel dictation  |
         | restart           | restart dictation |
         | enter             | press enter       |
-        | clear             | clear all text    |
-
-      # The voice activity detector misses a quiet "clear all text": change detect-quiet-clear-all-text.
-      @wip
-      Examples:
-        | said              | command           |
         | clear all text    | clear all text    |
+        | clear             | clear all text    |
 
     @smoke
     Scenario: A short Russian phrase is no command

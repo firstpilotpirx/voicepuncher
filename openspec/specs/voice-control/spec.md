@@ -145,6 +145,12 @@ The system SHALL recognize the commands as the user says them, including small s
 - **WHEN** the user says a command phrase or its short form on its own in a quiet voice, in the state that accepts the command
 - **THEN** that command takes effect
 
+#### Scenario: A quiet clear all text clears the text
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** the user says "clear all text" on its own, as quiet as the user's quietest recorded commands, with a pause before and after it
+- **THEN** the focused text is selected and deleted once
+
 ### Requirement: A whole hands-free session runs as said
 The system SHALL carry out a long hands-free session — dictations ended by "stop dictation" or "cancel dictation", Return presses and clears, in any order, with or without "please" — exactly as said: each stopped dictation pasted with its own words and without the command phrase, each cancelled one dropped, each key press done once, in order.
 

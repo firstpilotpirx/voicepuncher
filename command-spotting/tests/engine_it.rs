@@ -360,6 +360,52 @@ fn should_spot_quiet_speech() {
     }
 }
 
+/// The loudest 10 ms of a quiet voice: the user's quietest recorded commands reach 0.0045.
+const QUIET_VOICE_LEVEL: f32 = 0.005;
+const SHORT_FORMS: [&str; 6] = ["start", "stop", "cancel", "restart", "enter", "clear"];
+
+/// `audio` scaled so its loudest 10 ms has an RMS of `level`.
+fn at_level(audio: Vec<f32>, level: f32) -> Vec<f32> {
+    let loudest = audio
+        .chunks(160)
+        .map(|frame| (frame.iter().map(|s| s * s).sum::<f32>() / frame.len() as f32).sqrt())
+        .fold(0.0_f32, f32::max);
+    audio.into_iter().map(|s| s * level / loudest).collect()
+}
+
+fn speech_segments(events: &[ServerEvent]) -> usize {
+    events
+        .iter()
+        .filter(|e| matches!(e, ServerEvent::SpeechStart { .. }))
+        .count()
+}
+
+#[test]
+fn should_notice_each_command_said_in_a_quiet_voice() {
+    let Some(engine) = engine() else { return };
+    for words in ALL_PHRASES.into_iter().chain(SHORT_FORMS) {
+        // Given
+        let audio = at_level(spoken(words), QUIET_VOICE_LEVEL);
+        // When
+        let events = spotted_in(&engine, &audio);
+        // Then
+        assert_eq!(speech_segments(&events), 1, "quiet {words}: {events:?}");
+    }
+}
+
+#[test]
+fn should_notice_no_speech_in_room_noise_alone() {
+    let Some(engine) = engine() else { return };
+    for rms in [0.003, ROOM_NOISE_RMS, 0.03] {
+        // Given 20 s of steady room noise, from a quiet room to a loud fan
+        let audio = noise(20 * SAMPLE_RATE as usize, rms);
+        // When
+        let events = spotted_in(&engine, &audio);
+        // Then
+        assert_eq!(speech_segments(&events), 0, "noise at {rms}: {events:?}");
+    }
+}
+
 #[test]
 fn should_spot_speech_over_room_noise() {
     let Some(engine) = engine() else { return };
@@ -629,6 +675,39 @@ fn users_quiet_restart() -> Option<Vec<f32>> {
     let at = |secs: f32| (secs * SAMPLE_RATE as f32) as usize;
     // Labelled 27.23–27.52 s; 0.3 s before and 0.2 s after keep its first and last sounds.
     Some(audio[at(26.93)..at(27.72)].to_vec())
+}
+
+/// The user's first two recorded "start dictation"s (session-1, labelled 4.98–6.19 s and
+/// 6.58–7.41 s): 0.32 s of room between them, broken by a click at 6.42 s.
+fn users_two_start_dictations() -> Option<Vec<f32>> {
+    let Ok(root) = std::env::var("VOICEPUNCHER_VOICE_SAMPLES") else {
+        eprintln!("GATED: VOICEPUNCHER_VOICE_SAMPLES not set, skipping");
+        return None;
+    };
+    let path = PathBuf::from(root).join("session-1.wav");
+    let audio: Vec<f32> = hound::WavReader::open(path)
+        .ok()?
+        .samples::<i16>()
+        .map(|s| f32::from(s.unwrap()) / f32::from(i16::MAX))
+        .collect();
+    let at = |secs: f32| (secs * SAMPLE_RATE as f32) as usize;
+    // From the session start: the detector hears the room before them as the app streams it;
+    // silence after them closes the second one.
+    let mut heard = audio[..at(7.9)].to_vec();
+    heard.extend(silence(PAUSE_SECS));
+    Some(heard)
+}
+
+#[test]
+fn should_keep_the_users_two_commands_apart_across_a_short_pause_with_a_click() {
+    let Some(engine) = engine() else { return };
+    let Some(audio) = users_two_start_dictations() else {
+        return;
+    };
+    // When
+    let events = spotted_in(&engine, &audio);
+    // Then
+    assert_eq!(speech_segments(&events), 2, "{events:?}");
 }
 
 #[test]

@@ -34,7 +34,7 @@ None: the requirement already exists (`voice-control`, "The user's own way of sa
 
 ## Release
 
-PATCH (bug fix): 0.15.2, the next patch after 0.15.1 on `main`.
+PATCH (bug fix): 0.15.3, the next patch after 0.15.2 on `main`.
 
 ## Impact
 

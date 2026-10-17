@@ -18,6 +18,6 @@
 
 ## 4. Version and checks
 
-- [ ] 4.1 Bump `version` in `app/Cargo.toml` to the next patch above `main`; `just test` passes
-- [ ] 4.2 `just check` passes
-- [ ] 4.3 Manual checks by the user: none (hotkey, recording, overlay, paste and permissions do not change)
+- [x] 4.1 Bump `version` in `app/Cargo.toml` to the next patch above `main`; `just test` passes
+- [x] 4.2 `just check` passes
+- [x] 4.3 Manual checks by the user: none (hotkey, recording, overlay, paste and permissions do not change)

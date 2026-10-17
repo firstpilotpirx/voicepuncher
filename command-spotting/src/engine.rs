@@ -30,6 +30,11 @@ pub const SAMPLE_RATE: u32 = 16_000;
 const SILERO_WINDOW: usize = 512;
 const VAD_BUFFER_SECS: f32 = 30.0;
 const VAD_SPEECH_THRESHOLD: f32 = 0.5;
+/// How much louder the voice activity detector hears the stream than the microphone gave it:
+/// 3.5 dB, so a command said as quietly as the user's quietest ones (loudest 10 ms at RMS
+/// 0.0045) still reaches the detector's threshold. From about 1.8 times, a click in a 0.32 s
+/// pause between two of the user's commands holds them in one segment.
+const DETECTOR_GAIN: f32 = 1.5;
 /// Shorter speech is noise to the detector: a short "start" or "enter" lasts about 0.2 s.
 const MIN_SPEECH_SECS: f32 = 0.15;
 const MAX_SPEECH_SECS: f32 = 20.0;
@@ -40,8 +45,9 @@ const LAST_TOKEN_SECS: f32 = 0.2;
 const FIRST_TOKEN_SECS: f32 = 0.25;
 /// How far behind the audio fed so far the spotter reports a phrase's end.
 const DETECTION_LAG_SECS: f32 = 0.25;
-/// Longest gap between two tokens of one spoken phrase.
-const MAX_TOKEN_GAP_SECS: f32 = 0.3;
+/// Longest gap between two tokens of one spoken phrase: a quiet "start" is decoded 0.32 s
+/// before "dictation".
+const MAX_TOKEN_GAP_SECS: f32 = 0.4;
 /// Audio kept for the speech recognition of an utterance after its segment closed.
 const RECENT_AUDIO_SECS: f32 = 12.0;
 /// Speech before a segment's start that the voice activity detector cut off: it notices
@@ -270,7 +276,7 @@ impl Session<'_> {
         self.vad_pending.extend_from_slice(samples);
         let windows = self.vad_pending.len() / SILERO_WINDOW;
         for window in self.vad_pending.chunks_exact(SILERO_WINDOW).take(windows) {
-            self.vad.accept_waveform(window);
+            self.vad.accept_waveform(&raised(window));
         }
         self.vad_fed += windows * SILERO_WINDOW;
         self.vad_pending.drain(..windows * SILERO_WINDOW);
@@ -300,7 +306,7 @@ impl Session<'_> {
             };
             log::info!("speech {:.2}–{:.2}s", bounds.start, bounds.end);
             if let Some(dir) = self.engine.save_speech_dir.as_deref() {
-                save_speech(dir, bounds.start, segment.samples());
+                save_speech(dir, bounds.start, &as_given(segment.samples()));
             }
             let segment_events = self.orderer.segment(bounds);
             let quiet_level = self.pause.quiet_level();
@@ -450,6 +456,19 @@ fn samples_in(secs: f32) -> usize {
 }
 
 /// Writes one speech segment as 16 kHz mono 16-bit WAV; a failure is only logged.
+/// `samples` as loud as the voice activity detector hears them.
+fn raised(samples: &[f32]) -> Vec<f32> {
+    samples
+        .iter()
+        .map(|s| (s * DETECTOR_GAIN).clamp(-1.0, 1.0))
+        .collect()
+}
+
+/// Samples the detector heard, back at the level the microphone gave them.
+fn as_given(samples: &[f32]) -> Vec<f32> {
+    samples.iter().map(|s| s / DETECTOR_GAIN).collect()
+}
+
 fn save_speech(dir: &Path, start: f32, samples: &[f32]) {
     let path = dir.join(format!("speech-{}-{start:08.2}s.wav", std::process::id()));
     let spec = hound::WavSpec {
@@ -584,6 +603,39 @@ mod tests {
         let without = phrase_span(27.0, &[0.8, 0.88, 1.08]);
         // Then
         assert_close(with_stray, without);
+    }
+
+    #[test]
+    fn should_keep_a_quiet_first_word_a_little_apart_from_the_next() {
+        // Given a quiet "start" decoded 0.32 s before the first token of "dictation"
+        let token_times = [1.32, 1.64, 1.72, 1.8, 1.92];
+        // When
+        let span = phrase_span(2.4, &token_times);
+        // Then the phrase starts at the first token
+        let duration = 0.6 + FIRST_TOKEN_SECS + LAST_TOKEN_SECS;
+        assert_close(
+            span,
+            (
+                2.4 - DETECTION_LAG_SECS - duration,
+                2.4 - DETECTION_LAG_SECS,
+            ),
+        );
+    }
+
+    #[test]
+    fn should_raise_the_detector_input_by_the_detector_gain() {
+        // When
+        let heard = raised(&[0.002, -0.25, 0.0]);
+        // Then
+        assert_eq!(heard, [0.003, -0.375, 0.0]);
+    }
+
+    #[test]
+    fn should_clamp_the_raised_detector_input_to_full_scale() {
+        // When
+        let heard = raised(&[0.8, -0.7]);
+        // Then
+        assert_eq!(heard, [1.0, -1.0]);
     }
 
     #[test]
