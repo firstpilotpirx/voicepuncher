@@ -34,7 +34,7 @@ None: the requirement already exists (`voice-control`, "The user's own way of sa
 
 ## Release
 
-PATCH (bug fix): the next patch after the version on `main` when it lands.
+PATCH (bug fix): 0.14.5, the next patch after 0.14.4 of `recognize-users-quiet-restart`, which lands first.
 
 ## Impact
 

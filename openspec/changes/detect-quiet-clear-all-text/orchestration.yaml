@@ -1,0 +1,3 @@
+depends_on:
+  - change: recognize-users-quiet-restart
+    why: adds the quiet-command spec scenario and the @wip E2E row this change turns on, and reworks the same confirmation path in command-spotting/src/engine/
