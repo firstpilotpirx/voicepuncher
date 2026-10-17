@@ -32,10 +32,19 @@ services_run_dir := home_directory() / ".voicepuncher/run"
 # The cargo selections the model stages build, shared by their recipes and `_build-e2e`, which builds them
 # before the machine lock: another package or feature selection would build other artifacts
 command_spotting_build := "-p voicepuncher-command-spotting"
-e2e_smoke_tests := "-p voicepuncher --test transcription_openai_it --test textrefinement_openai_it --test commandspotting_websocket_it --test voice_samples_it --test voice_forms_it"
+# The app's service binaries of e2e-smoke, run one after another in this order
+e2e_smoke_binaries := "transcription_openai_it textrefinement_openai_it commandspotting_websocket_it voice_samples_it voice_forms_it"
+e2e_smoke_tests := "-p voicepuncher " + prepend("--test ", e2e_smoke_binaries)
 e2e_seams_tests := "-p voicepuncher --test chunked_transcription_it"
 placed_commands_tests := "-p voicepuncher-command-spotting --test placed_commands_it"
 cucumber_e2e_tests := "-p voicepuncher-e2e-test --test cucumber_e2e"
+# What `test` runs: every test target of the workspace but the E2E harness (one cargo call cannot pick targets
+# per package; a binary the filter excludes is not even listed)
+test_selection := "--workspace -E 'not binary_id(voicepuncher-e2e-test::cucumber_e2e)'"
+
+# nextest prints captured test output unindented, so libtest's `test … FAILED` and `thread '…' panicked at
+# <file:line:col>:` lines start at column 0, where `kit run` finds the failed tests and their locations
+export NEXTEST_NO_OUTPUT_INDENT := "1"
 services_log_dir := home_directory() / ".voicepuncher/logs"
 
 # The machine-wide test lock (agent-kit `with-machine-lock`): one run at a time on this machine, a hung run is
@@ -51,9 +60,9 @@ default:
 
 # ── Checks ── `check` while developing, `full-check` before merging ─────────
 
-# Only the model stages take the machine lock, held ≈ 5.3 min (measured), after the code checks, the build and
+# Only the model stages take the machine lock, held ≈ 5.6 min (measured), after the code checks, the build and
 # build-e2e ran without it (see _stages). Incremental, no `cargo clean`
-# FAST (~6.5 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples + refinement evaluation
+# FAST (~7 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples + refinement evaluation
 check:
     @{{just_executable()}} _stages fmt lint test build build-e2e e2e-smoke e2e-quick refine-eval
 
@@ -324,13 +333,14 @@ _model-stages +stages:
     done
 
 # Builds what the model stages run — the command spotting service and their test binaries — so nothing
-# compiles under the machine lock; warm, five no-op cargo calls
-_build-e2e:
+# compiles under the machine lock; warm, five no-op cargo calls. The test binaries are built as the E2E
+# recipes' nextest runs build them
+_build-e2e: _require-nextest
     cargo build --release {{command_spotting_build}}
-    cargo test {{e2e_smoke_tests}} --no-run
-    cargo test {{e2e_seams_tests}} --no-run
-    cargo test {{placed_commands_tests}} --no-run
-    cargo test {{cucumber_e2e_tests}} --no-run
+    cargo nextest run {{e2e_smoke_tests}} --no-run
+    cargo nextest run {{e2e_seams_tests}} --no-run
+    cargo nextest run {{placed_commands_tests}} --no-run
+    cargo nextest run {{cucumber_e2e_tests}} --no-run
 
 # Formatting check
 fmt:
@@ -349,7 +359,7 @@ _lint:
 # Runs without the machine-wide lock: it uses no shared service, port, GPU or exclusive device. A lock directory
 # of the run's own only gives it the wrapper's time limit (MACHINE_LOCK_TIMEOUT, exit 124; the timeout message
 # says `[machine-lock]`). Departs from agent-kit `machine-lock.md` on purpose until the kit's exception lands.
-# Every test binary of the app, the command spotting service and the E2E harness at once, unlocked (~1 min)
+# Every test of the app, the command spotting service and the E2E harness under cargo-nextest, each within its time limit, unlocked (~1 min)
 test:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -364,63 +374,15 @@ test:
         kill -0 "$run" 2>/dev/null || exit "$code"
     done
 
-_test:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # One build per selection, then every test binary at once, each in its package directory
-    # as cargo runs it; a binary's output is printed whole when it ends. The builds run at the
-    # utility QoS clamp; the test binaries keep the default QoS (clamped timers fire late under load).
-    root=$PWD
-    tab=$'\t'
-    runs=$(mktemp -d)
-    trap 'kill $(jobs -p) 2>/dev/null || true; rm -rf "$runs"' EXIT
-    now() { perl -MTime::HiRes=time -e 'printf "%.1f", time'; }
-    started=$(now)
-    for selection in "app -p voicepuncher --tests" "command-spotting -p voicepuncher-command-spotting" "e2e-test -p voicepuncher-e2e-test --lib"; do
-        set -- $selection
-        dir=$1
-        shift
-        taskpolicy -c utility cargo test "$@" --no-run 2>"$runs/build.log" || { cat "$runs/build.log" >&2; exit 101; }
-        grep -v '^ *Executable ' "$runs/build.log" >&2 || true
-        sed -n "s|^ *Executable \(.*\) (\(.*\))$|$dir$tab\1$tab\2|p" "$runs/build.log" >>"$runs/binaries"
-    done
-    total=0
-    while IFS=$'\t' read -r dir source executable; do
-        total=$((total + 1))
-        (
-            cd "$dir"
-            t0=$(now)
-            code=0
-            "$root/$executable" >"$runs/$total.out" 2>&1 || code=$?
-            echo "$code $(perl -e "printf '%.1f', $(now) - $t0")" >"$runs/$total.tmp"
-            mv "$runs/$total.tmp" "$runs/$total.done"
-        ) &
-    done <"$runs/binaries"
-    finished=0
-    failed=()
-    while [ "$finished" -lt "$total" ]; do
-        for n in $(seq 1 "$total"); do
-            [ -f "$runs/$n.done" ] && [ ! -f "$runs/$n.shown" ] || continue
-            touch "$runs/$n.shown"
-            finished=$((finished + 1))
-            read -r code secs <"$runs/$n.done"
-            IFS=$'\t' read -r dir source executable <<<"$(sed -n "${n}p" "$runs/binaries")"
-            printf '\n     Running %s (%s)\n' "$source" "$executable"
-            cat "$runs/$n.out"
-            echo "$secs $dir/$source" >>"$runs/times"
-            [ "$code" = 0 ] || failed+=("$dir/$source")
-        done
-        sleep 0.2
-    done
-    printf '\nslowest test binaries:\n'
-    sort -rn "$runs/times" | head -5 | while read -r secs name; do printf '  %6ss  %s\n' "$secs" "$name"; done
-    elapsed=$(perl -e "printf '%.0f', $(now) - $started")
-    if [ "${#failed[@]}" -gt 0 ]; then
-        echo "error: ${#failed[@]} target(s) failed:"
-        printf '    `%s`\n' "${failed[@]}"
-        exit 101
-    fi
-    echo "✓ $total test binaries passed in ${elapsed} s"
+# One nextest run over the workspace's test targets (libs, bins, integration tests and the slice/component
+# harness; no doctests, as before) except the E2E harness, whose suites are the E2E recipes'. nextest runs up
+# to one test per core over all binaries, each test in a process of its own in its package directory, with
+# the limits of .config/nextest.toml: a test over its limit is stopped and reported TIMEOUT, and the run ends
+# listing the failed, timed-out and slow tests after its `Summary` line. The build runs at the utility QoS
+# clamp; the tests keep the default QoS (clamped timers fire late under load)
+_test: _require-nextest
+    taskpolicy -c utility cargo nextest run {{test_selection}} --no-run
+    cargo nextest run {{test_selection}}
 
 # Run the app for real use with one command: download missing models, restart the three services (the command spotting service is rebuilt), build and start the app with voice control; extra arguments go to the app (`just run --no-llm`)
 run *args: models
@@ -445,78 +407,83 @@ _e2e: _e2e-smoke _e2e-seams _e2e-bench _refine-eval
 e2e-smoke:
     @{{locked}} _e2e-smoke
 
-_e2e-smoke: _require-models _build
+# One nextest run per test binary, one after another as cargo test ran them, so the shared services see the
+# load of one binary's tests at a time; the first failing binary ends the suite. The scenario selection and
+# the limits are the e2e-smoke profile's (.config/nextest.toml); the Gherkin run streams (--no-capture)
+_e2e-smoke: _require-nextest _require-models _build
     #!/usr/bin/env bash
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
-    cargo test {{e2e_smoke_tests}} -- --nocapture
-    cargo test {{placed_commands_tests}}
-    cargo test {{cucumber_e2e_tests}} -- --tags '@smoke and not @wip'
+    for binary in {{e2e_smoke_binaries}}; do
+        cargo nextest run --profile e2e-smoke -p voicepuncher --test "$binary"
+    done
+    cargo nextest run --profile e2e-smoke {{placed_commands_tests}}
+    cargo nextest run --profile e2e-smoke {{cucumber_e2e_tests}} --no-capture
 
 # WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 %, and no command in 10 recordings of ordinary speech (~1 min)
 e2e-quick:
     @{{locked}} _e2e-quick
 
-_e2e-quick: _require-models _require-corpus _build
+_e2e-quick: _require-nextest _require-models _require-corpus _build
     #!/usr/bin/env bash
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" VOICEPUNCHER_BENCH_LIMIT=10 \
-        cargo test {{cucumber_e2e_tests}} -- --tags '@accuracy and not @wip'
+        cargo nextest run --profile e2e-quick {{cucumber_e2e_tests}} --no-capture
 
 # Text refinement on the live services: dictated commands, normalization, evaluation per category (@refinement) (~30 s)
 refine-eval:
     @{{locked}} _refine-eval
 
-_refine-eval: _require-models _build
+_refine-eval: _require-nextest _require-models _build
     #!/usr/bin/env bash
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" \
-        cargo test {{cucumber_e2e_tests}} -- --tags '@refinement and not @wip'
+        cargo nextest run --profile refine-eval {{cucumber_e2e_tests}} --no-capture
 
 # Outages: services that hang, die and come back while voice control runs (@resilience), each scenario on service ports of its own, so the shared services are never touched (~4 min)
 e2e-resilience:
     @{{locked}} _e2e-resilience
 
-_e2e-resilience: _require-models _build
-    cargo test {{cucumber_e2e_tests}} -- --tags '@resilience and not @wip'
+_e2e-resilience: _require-nextest _require-models _build
+    cargo nextest run --profile e2e-resilience {{cucumber_e2e_tests}} --no-capture
 
 # Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words (~2.5 min)
 e2e-seams:
     @{{locked}} _e2e-seams
 
-_e2e-seams: _require-models _build
+_e2e-seams: _require-nextest _require-models _build
     #!/usr/bin/env bash
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}"
-    cargo test {{e2e_seams_tests}} -- --nocapture
-    cargo test {{cucumber_e2e_tests}} -- --tags '@seams and not @wip'
+    cargo nextest run --profile e2e-seams {{e2e_seams_tests}}
+    cargo nextest run --profile e2e-seams {{cucumber_e2e_tests}} --no-capture
 
 # WER accuracy on a fixed sample of 100 recordings (50 per language), two at a time — fails if mean WER > 30 %, and no command in 20 recordings of ordinary speech (~2.5 min)
 e2e-bench:
     @{{locked}} _e2e-bench
 
-_e2e-bench: _require-models _require-corpus _build
+_e2e-bench: _require-nextest _require-models _require-corpus _build
     #!/usr/bin/env bash
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" \
-        cargo test {{cucumber_e2e_tests}} -- --tags '@accuracy and not @wip'
+        cargo nextest run --profile e2e-bench {{cucumber_e2e_tests}} --no-capture
 
 # Manual: @real_keyboard scenarios drive the real hotkey + paste — needs Accessibility and Input Monitoring for the terminal, a GUI session, hands off the keyboard
 test-real-keyboard:
     @{{locked}} _test-real-keyboard
 
-_test-real-keyboard:
-    VOICEPUNCHER_REAL_KEYBOARD_IT=1 cargo test -p voicepuncher --test cucumber_integration -- --tags @real_keyboard
+_test-real-keyboard: _require-nextest
+    VOICEPUNCHER_REAL_KEYBOARD_IT=1 cargo nextest run --profile real-keyboard -p voicepuncher --test cucumber_integration --no-capture
 
 # ── Release ── after the merge, on a clean checkout of origin/main ──────────
 
@@ -958,6 +925,19 @@ _require-models:
     done
     echo "whisper: $VOICEPUNCHER_WHISPER_MODEL"
     echo "llm:     $VOICEPUNCHER_LLM_MODEL"
+
+# The test runner every test recipe uses, pinned like .config/nextest.toml's nextest-version; installs nothing
+_require-nextest:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    wanted=0.9.146
+    # `cargo-nextest 0.9.146 (<commit> <date>)`; empty when cargo has no nextest subcommand
+    got=$(cargo nextest --version 2>/dev/null | head -1 || true)
+    read -r _ version _ <<<"$got" || true
+    if [[ "${version:-}" != "$wanted" ]]; then
+        echo "✗ cargo-nextest $wanted not found (got '${got}') — run 'cargo +stable install --locked cargo-nextest@$wanted'" >&2
+        exit 1
+    fi
 
 _require-release-head:
     #!/usr/bin/env bash

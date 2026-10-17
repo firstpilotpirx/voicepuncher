@@ -2,10 +2,12 @@
 //! speech synthesized with macOS `say`. `just e2e-smoke` starts the service and sets
 //! `VOICEPUNCHER_COMMAND_SPOTTING_URL`; without it the service tests are skipped.
 
+use std::net::TcpStream;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use tungstenite::Message;
+use tungstenite::stream::MaybeTlsStream;
+use tungstenite::{Message, WebSocket};
 
 use voicepuncher::adapters::secondary::commandspotting::websocket::client::probe;
 use voicepuncher::adapters::secondary::commandspotting::websocket::AudioStream;
@@ -21,6 +23,16 @@ const MIC_BUFFER: usize = 512;
 const SPEECH_RATE_HZ: u32 = 16_000;
 /// How long the service may stay quiet before every event is taken to have arrived.
 const QUIET: Duration = Duration::from_secs(2);
+/// How long connecting and the WebSocket handshake with the service may take.
+const HANDSHAKE_LIMIT: Duration = Duration::from_secs(5);
+const HANDSHAKE_FAILED: &str =
+    "the command spotting service did not complete the handshake within 5 s";
+/// How long the service may take to refuse an unknown phrase: it refuses at once.
+const REFUSAL_LIMIT: Duration = Duration::from_secs(5);
+const NOT_REFUSED: &str =
+    "the command spotting service did not refuse the unknown phrase within 5 s";
+/// How long the events of one utterance may keep coming after the speech was sent.
+const UTTERANCE_EVENTS_LIMIT: Duration = Duration::from_secs(30);
 
 /// A loopback port nothing listens on.
 const NOTHING_LISTENING: &str = "ws://127.0.0.1:1";
@@ -86,20 +98,49 @@ fn should_report_a_spoken_phrase_with_its_speech() {
     );
 }
 
+/// A raw WebSocket to the service: connecting and the handshake are each given up after the
+/// handshake limit, and every read after the refusal limit.
+fn raw_socket(url: &str) -> WebSocket<MaybeTlsStream<TcpStream>> {
+    let addrs = url::Url::parse(url).unwrap().socket_addrs(|| None).unwrap();
+    let stream = TcpStream::connect_timeout(&addrs[0], HANDSHAKE_LIMIT)
+        .unwrap_or_else(|e| panic!("{HANDSHAKE_FAILED}: {e}"));
+    stream.set_read_timeout(Some(HANDSHAKE_LIMIT)).unwrap();
+    stream.set_write_timeout(Some(HANDSHAKE_LIMIT)).unwrap();
+    let (socket, _) = tungstenite::client(url, MaybeTlsStream::Plain(stream))
+        .unwrap_or_else(|e| panic!("{HANDSHAKE_FAILED}: {e}"));
+    if let MaybeTlsStream::Plain(stream) = socket.get_ref() {
+        stream.set_read_timeout(Some(REFUSAL_LIMIT)).unwrap();
+    }
+    socket
+}
+
 #[test]
 fn should_be_refused_a_phrase_the_service_does_not_know() {
     let Some(url) = service_url() else { return };
     // Given
-    let (mut socket, _) = tungstenite::connect(url.as_str()).unwrap();
+    let mut socket = raw_socket(&url);
     // When
     socket
         .send(Message::text(r#"{"phrases": ["open the door"]}"#))
         .unwrap();
     // Then
+    let deadline = Instant::now() + REFUSAL_LIMIT;
     let refusal = loop {
-        match socket.read().unwrap() {
-            Message::Close(frame) => break frame.map(|f| f.reason.to_string()).unwrap_or_default(),
-            _ => continue,
+        assert!(Instant::now() < deadline, "{NOT_REFUSED}");
+        match socket.read() {
+            Ok(Message::Close(frame)) => {
+                break frame.map(|f| f.reason.to_string()).unwrap_or_default()
+            }
+            Ok(_) => continue,
+            Err(tungstenite::Error::Io(e))
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                panic!("{NOT_REFUSED}")
+            }
+            Err(e) => panic!("the connection failed before the refusal: {e}"),
         }
     };
     assert!(refusal.contains("open the door"), "{refusal}");
@@ -146,7 +187,12 @@ fn recognized_from_microphone(
         audio_tx.send(buffer.to_vec()).unwrap();
     }
     let mut events = Vec::new();
+    let deadline = Instant::now() + UTTERANCE_EVENTS_LIMIT;
     while let Ok(input) = inputs_rx.recv_timeout(QUIET) {
+        assert!(
+            Instant::now() < deadline,
+            "the command spotting service still sent events 30 s after the speech"
+        );
         match input {
             PipelineInput::Spotting(event) => events.push(event),
             other => panic!("unexpected input {other:?}"),

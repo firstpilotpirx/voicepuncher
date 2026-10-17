@@ -11,7 +11,7 @@ With several sessions running at once, one hung test stalls them all. The user w
 
 ## What Changes
 
-- **A time limit for every test.** The Rust test suites run through cargo nextest, configured in a checked-in `.config/nextest.toml`. By default a test is reported as slow after 30 s and stopped after four such periods (2 min). The suites that legitimately run long (`e2e-smoke`, `e2e-quick`, `e2e-bench`, `e2e-seams`, `e2e-resilience`, `refine-eval`) get longer limits of their own through overrides. A stopped test is reported as timed out under its name and fails the run, so the recipe exits non-zero and `with-machine-lock` frees the lock at once.
+- **A time limit for every test.** The Rust test suites run through cargo nextest, configured in a checked-in `.config/nextest.toml`. By default a test is reported as slow after 30 s and stopped after four such periods (2 min). The suites that legitimately run long (`e2e-smoke`, `e2e-quick`, `e2e-bench`, `e2e-seams`, `e2e-resilience`, `refine-eval`) get limits of their own through overrides, longer than the default where their longest runs need it (design.md D5). A stopped test is reported as timed out under its name and fails the run, so the recipe exits non-zero and `with-machine-lock` frees the lock at once.
 - **The Gherkin harnesses get a limit too.** `cucumber_integration` and `cucumber_e2e` are custom harnesses (`harness = false`): cucumber does not answer the libtest listing (`--list`) through which nextest finds tests, and the recipes pass the scenario selection (`--tags`) on the command line. design.md decides how they run under a limit; they do not stay unbounded.
 - **Client tests fail on silence instead of hanging.** In the tests that talk to a service over WebSocket or HTTP (`commandspotting_websocket_it`, `commandspotting_client_it`, `commandspotting_reconnect_it`, `transcription_openai_it`, `textrefinement_openai_it`, `http_failure_it`, the command spotting service's `server_it`, the voice test helpers of `e2e-test`), every wait for a response gets a bound of its own, seconds rather than minutes, and fails with a message that names the service and what it waited for. These tests are synchronous (blocking `tungstenite` and `ureq` clients, threads and channels; nothing in the workspace uses tokio), so the bound is one a blocking wait allows (a deadline, a socket read timeout, `recv_timeout`) rather than `tokio::time::timeout`; design.md picks it.
 - **Same entry points.** `just test`, `check`, `full-check`, the E2E recipes, `refine-eval`, `test-real-keyboard` and `release` keep their names and arguments and still run under `with-machine-lock`; only the recipe bodies that run tests change.
@@ -36,12 +36,12 @@ None.
 
 - **Current stage:** PoC. **Target stage:** PoC (test tooling only).
 - **Acceptance bar:**
-  - A deliberately hung test (one that waits forever; design.md says whether it stays as an opt-in probe or runs once and is removed) makes `just test` stop it at its limit plus nextest's grace period, name it as timed out and exit non-zero; the machine-wide test lock is free right after: a `just test` waiting in another checkout starts at once.
-  - A deliberately hung scenario in an E2E recipe is stopped at its suite's longer limit; the run names its harness (and the scenario, if design.md limits scenarios one by one) and the recipe exits non-zero.
+  - A deliberately hung test (one that waits forever; design.md says whether it stays as an opt-in probe or runs once and is removed) makes `just test` stop it at its limit plus nextest's grace period, name it as timed out and exit non-zero.
+  - A deliberately hung scenario in an E2E recipe is stopped at its suite's longer limit; the run names its harness (and the scenario, if design.md limits scenarios one by one) and the recipe exits non-zero; the machine-wide test lock is free right after: a locked recipe waiting in another shell or checkout starts at once (`just test` takes no machine lock since `test-without-machine-lock`).
   - A client test whose service accepts the connection and then stays silent fails within its own bound, in seconds, with a message that names the service and what it waited for: shown for the command spotting WebSocket client and for an HTTP client.
-  - `just test`, `just check` and `just full-check` pass on the final commit, running as many tests as before; the slow suites pass under their own limits.
+  - `just test`, `just check` and `just full-check` pass on the final commit, bar failures that another filed change owns (named in the PR), running as many tests as before; the slow suites pass under their own limits.
   - Recipe names and arguments are unchanged, and every check still runs under `with-machine-lock`.
-  - `just test` and `just check` keep their documented times (~20 s on a warm build, ~6 min), measured before and after on the same machine.
+  - `just test` and `just check` keep their times, measured before and after on the same machine: the median after is at most 1.1 × the median before (design.md § Test levels).
 - **Manual run:** none; the app behaves as before.
 
 ### Out of scope
@@ -60,7 +60,7 @@ No release: no app behavior changes; `version` in `app/Cargo.toml` stays as it i
 
 ## Impact
 
-- `justfile`: `_test` (its parallel binary loop becomes a nextest run), `_e2e-smoke`, `_e2e-quick`, `_e2e-seams`, `_e2e-bench`, `_e2e-resilience`, `_refine-eval`, `_test-real-keyboard`, and a guard that requires cargo-nextest (`_release` runs `_test`, so a release needs it too).
+- `justfile`: `_test` (its parallel binary loop becomes a nextest run), `_e2e-smoke`, `_e2e-quick`, `_e2e-seams`, `_e2e-bench`, `_e2e-resilience`, `_refine-eval`, `_test-real-keyboard`, `_build-e2e` (it builds what those recipes run, shrink-check-lock decision 8), and a guard that requires cargo-nextest (`_release` runs `_test`, so a release needs it too).
 - New `.config/nextest.toml`.
 - Tests: in `app/tests/` `commandspotting_websocket_it`, `commandspotting_client_it`, `commandspotting_reconnect_it`, `transcription_openai_it`, `textrefinement_openai_it`, `http_failure_it`; `command-spotting/tests/server_it.rs`; `e2e-test/src/voice_commands.rs` and the tests that wait through it (`voice_samples_it`, `voice_forms_it`); the harness entry points `app/tests/cucumber_integration.rs` and `e2e-test/tests/cucumber_e2e.rs`.
 - `README.md` § Testing, `AGENTS.md` § How to verify a change, `.claude/kit.yaml`.

@@ -18,6 +18,8 @@ use voicepuncher_command_spotting::server;
 
 const FRAME_SAMPLES: usize = 1_600;
 const READ_WAIT: Duration = Duration::from_millis(10);
+/// How long connecting and the WebSocket handshake with the in-process service may take.
+const HANDSHAKE_LIMIT: Duration = Duration::from_secs(5);
 /// One frame of audio, as long as it lasts in real time.
 const FRAME: Duration = Duration::from_millis(100);
 const PING_EVERY: Duration = Duration::from_millis(250);
@@ -81,9 +83,19 @@ fn start_service(stt_port: u16) -> Option<u16> {
 }
 
 fn connect(port: u16) -> WebSocket<MaybeTlsStream<TcpStream>> {
-    let (mut socket, _) = tungstenite::connect(format!("ws://127.0.0.1:{port}")).unwrap();
+    let handshake_failed = "the command spotting service did not complete the handshake within 5 s";
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let stream = TcpStream::connect_timeout(&addr, HANDSHAKE_LIMIT).expect(handshake_failed);
+    stream.set_read_timeout(Some(HANDSHAKE_LIMIT)).unwrap();
+    stream.set_write_timeout(Some(HANDSHAKE_LIMIT)).unwrap();
+    let (mut socket, _) = tungstenite::client(
+        format!("ws://127.0.0.1:{port}"),
+        MaybeTlsStream::Plain(stream),
+    )
+    .expect(handshake_failed);
     if let MaybeTlsStream::Plain(stream) = socket.get_ref() {
         stream.set_read_timeout(Some(READ_WAIT)).unwrap();
+        stream.set_write_timeout(None).unwrap();
     }
     socket.send(Message::text(PHRASES)).unwrap();
     socket

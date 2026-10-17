@@ -23,6 +23,8 @@ Three TCC permissions are required. Grant each to the terminal app you launch vo
 
 Prerequisites: Rust ≥ 1.88, [`just`](https://github.com/casey/just), Homebrew `whisper-cpp`, `llama.cpp` and `haproxy` (`just start-model-servers` offers to install them).
 
+For the tests, also [cargo-nextest](https://nexte.st) 0.9.146: `cargo +stable install --locked cargo-nextest@0.9.146`.
+
 ```bash
 git clone https://github.com/pirx/voicepuncher
 cd voicepuncher
@@ -244,11 +246,13 @@ All checks run through [`just`](https://github.com/casey/just) (`brew install ju
 
 | Command | What it runs | Time | When |
 |---|---|---|---|
-| `just test` | unit + architecture + integration tests, every test binary at once | ~1 min | after every edit |
-| `just check` | fmt, clippy, `test`, release build, E2E smoke, WER accuracy on 10 samples, refinement evaluation | ~6.5 min (machine lock ≈ 5.3 min) | often while developing, before every commit you push |
+| `just test` | unit + architecture + integration tests under cargo-nextest, each within its time limit | ~1 min | after every edit |
+| `just check` | fmt, clippy, `test`, release build, E2E smoke, WER accuracy on 10 samples, refinement evaluation | ~7 min (machine lock ≈ 5.6 min) | often while developing, before every commit you push |
 | `just full-check` | fmt, clippy, `test`, release build, E2E smoke, chunk seams, outages (`e2e-resilience`), WER accuracy on a fixed sample of 100 recordings (or 10, below), refinement evaluation | ~11–12 min (machine lock ≈ 9.5 min with 10 recordings, ≈ 11 min with 100) | before merging a branch and before every release |
 
 Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-quick` (10 samples), `e2e-seams` (the seam sweep, plus Russian and English speech under 11 recording conditions, transcribed in chunks), `e2e-bench` (100 samples, two at a time), `e2e-resilience` (the `@resilience` scenarios: a speech recognition service paused while voice control runs, a command spotting service killed or paused and started again by the scripts, a request abandoned in the queue — each on service ports of its own, so the shared services are never touched), `e2e` (smoke + seams + 100 samples + refinement evaluation), `refine-eval` (the `@refinement` scenarios: dictated commands, normalization, and a per-category score of the 41 dictations in `e2e-test/refinement/eval_set.jsonl` against the live text refinement service, next to the raw-transcript baseline; fails when a dictated command is carried out or the language changes). The E2E recipes start each local service that is not running and stop it afterwards, also when a test fails; a service that is already running — your everyday one included — is reused and left running. `check` and `full-check` start the services once for all their E2E stages and end with each stage's time. Speech synthesized with `say` is cached in `~/.cache/voicepuncher/speech/`; delete it to synthesize everything again.
+
+**Time limits.** Every Rust test runs under [cargo-nextest](https://nexte.st) 0.9.146 with a time limit, set in `.config/nextest.toml`: 2 min a test by default, and each E2E suite its own (one Gherkin harness run counts as one test, e.g. 7 min for the `@smoke` scenarios, 3 min for `e2e-quick`). A test still running at its limit is stopped and reported `TIMEOUT`, and the recipe fails at once instead of hanging. Without cargo-nextest 0.9.146 every test recipe stops with the install command above. `VOICEPUNCHER_HANG_PROBE=1 just test` and `VOICEPUNCHER_HANG_PROBE=1 just e2e-quick` arm two probes that hang on purpose, to see the limits work: they end with `TIMEOUT` after 2 and 3 min. Measured on Apple Silicon (10 cores): `just test` 67 s, `just check` ≈ 7 min.
 
 **Models and corpus** are found automatically: the largest `ggml-*.bin` and `*.gguf` in `~/.voicepuncher/` or `~/.voicepuncher/models/`, and the corpus in `e2e-test/corpus/`. Override with `VOICEPUNCHER_WHISPER_MODEL`, `VOICEPUNCHER_LLM_MODEL`, `VOICEPUNCHER_BENCH_CORPUS` (env or `.env`). If they are missing, `check`, `full-check` and the E2E recipes stop with an error instead of skipping. First-time setup: `just models`, `just corpus`.
 

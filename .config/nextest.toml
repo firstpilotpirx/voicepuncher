@@ -1,0 +1,101 @@
+# cargo-nextest configuration: the time limit of every Rust test (fail-hung-tests-fast).
+# A test is reported SLOW after each period and stopped (TIMEOUT, SIGTERM to its process group, SIGKILL
+# after nextest's 10 s grace period) after `terminate-after` periods. A limit is the smallest whole number
+# of minutes that is at least twice the longest run of the current code, never below the 2 min default; a
+# suite that grows past half its limit gets a new limit, twice its new longest run, in the same change.
+# Never raise a limit to let a hang pass.
+
+# The version the justfile's _require-nextest guard checks; an older nextest refuses to run
+nextest-version = { required = "0.9.146" }
+
+[profile.default]
+# SLOW at 30 s, stopped at 2 min (+10 s grace)
+slow-timeout = { period = "30s", terminate-after = 4 }
+# Every failure reported, as the former bash loop of _test did
+fail-fast = false
+# The run ends listing the failed, timed-out and slow tests
+final-status-level = "slow"
+
+[test-groups]
+# The tests that load the command spotting models run one at a time: ONNX Runtime aborts when models
+# load or run on several threads, and the shared services must not see more load than before
+command-spotting-models = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = 'binary(engine_it) | binary(placed_commands_it)'
+test-group = "command-spotting-models"
+
+# A 60 s outage by design (61–65 s measured): stopped at 3 min
+[[profile.default.overrides]]
+filter = 'binary(commandspotting_reconnect_it) & test(=should_be_back_within_seconds_once_the_service_answers_after_a_long_outage)'
+slow-timeout = { period = "60s", terminate-after = 3 }
+
+# ── Suite profiles ── one per E2E recipe (`cargo nextest run --profile <recipe>`): its scenario selection
+# next to its limits, so a suite never runs under another suite's limit. Each inherits the default profile
+# and its overrides (the model test group, the outage test). A Gherkin harness run is one test, `scenarios`
+# (e2e-test/src/harness_args.rs), whose `run-extra-args` are cucumber's command line. The service binaries
+# stay captured; their output is printed whole per test, as `-- --nocapture` showed it
+
+# Service binaries: default 2 min a test (voice_forms_it 34 s measured); @smoke run ≈ 190 s: 7 min
+[profile.e2e-smoke]
+success-output = "immediate"
+
+[[profile.e2e-smoke.overrides]]
+filter = 'binary(cucumber_e2e)'
+run-extra-args = ["--tags", "@smoke and not @wip"]
+slow-timeout = { period = "60s", terminate-after = 7 }
+
+# @accuracy on 10 recordings, 62 s measured: 3 min
+[profile.e2e-quick]
+success-output = "immediate"
+
+[[profile.e2e-quick.overrides]]
+filter = 'binary(cucumber_e2e)'
+run-extra-args = ["--tags", "@accuracy and not @wip"]
+slow-timeout = { period = "60s", terminate-after = 3 }
+
+# @refinement, 33 s measured: default 2 min
+[profile.refine-eval]
+success-output = "immediate"
+
+[[profile.refine-eval.overrides]]
+filter = 'binary(cucumber_e2e)'
+run-extra-args = ["--tags", "@refinement and not @wip"]
+
+# @accuracy on 100 recordings, 159 s measured: 6 min
+[profile.e2e-bench]
+success-output = "immediate"
+
+[[profile.e2e-bench.overrides]]
+filter = 'binary(cucumber_e2e)'
+run-extra-args = ["--tags", "@accuracy and not @wip"]
+slow-timeout = { period = "60s", terminate-after = 6 }
+
+# @resilience, 159 s measured: 6 min
+[profile.e2e-resilience]
+success-output = "immediate"
+
+[[profile.e2e-resilience.overrides]]
+filter = 'binary(cucumber_e2e)'
+run-extra-args = ["--tags", "@resilience and not @wip"]
+slow-timeout = { period = "60s", terminate-after = 6 }
+
+# chunked_transcription_it, 72 s measured: 3 min; @seams run ≈ 30 s: default 2 min
+[profile.e2e-seams]
+success-output = "immediate"
+
+[[profile.e2e-seams.overrides]]
+filter = 'binary(chunked_transcription_it)'
+slow-timeout = { period = "60s", terminate-after = 3 }
+
+[[profile.e2e-seams.overrides]]
+filter = 'binary(cucumber_e2e)'
+run-extra-args = ["--tags", "@seams and not @wip"]
+
+# Manual: the @real_keyboard scenarios of the slice/component harness, not measured: default 2 min
+[profile.real-keyboard]
+success-output = "immediate"
+
+[[profile.real-keyboard.overrides]]
+filter = 'binary(cucumber_integration)'
+run-extra-args = ["--tags", "@real_keyboard"]

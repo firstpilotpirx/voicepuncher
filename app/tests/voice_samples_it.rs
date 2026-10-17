@@ -14,6 +14,7 @@ use voicepuncher::adapters::secondary::commandspotting::websocket::client::Spott
 use voicepuncher::core::domain::{SpokenCommand, VoiceCommand, VoiceCommandRecognizer};
 use voicepuncher_e2e_test::concurrency::map_concurrently;
 use voicepuncher_e2e_test::speech::read_wav;
+use voicepuncher_e2e_test::voice_commands::SYNC_ANSWER_LIMIT;
 
 const SAMPLE_RATE_HZ: f32 = 16_000.0;
 const FRAME_SAMPLES: usize = 1_600;
@@ -110,7 +111,7 @@ fn recognized_in(url: &str, session: &Session) -> Vec<(f32, VoiceCommand)> {
             for frame in stretch.chunks(FRAME_SAMPLES) {
                 client.send_audio(frame).unwrap();
             }
-            for event in client.events_for_sent_audio().unwrap() {
+            for event in client.events_for_sent_audio(SYNC_ANSWER_LIMIT).unwrap() {
                 recognized.extend(recognizer.feed(event));
             }
         }

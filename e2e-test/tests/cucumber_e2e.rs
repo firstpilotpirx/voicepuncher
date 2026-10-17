@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 use std::time::Duration;
 
+use cucumber::cli::{Empty, Opts, Parser as _};
 use cucumber::gherkin::{Feature, Rule, Scenario};
 use cucumber::{ScenarioType, World};
 
@@ -57,6 +58,10 @@ impl E2eWorld {
 }
 
 fn main() {
+    // One nextest test, `scenarios`, is the whole run; any other command line is cucumber's own
+    let Some(command_line) = voicepuncher_e2e_test::harness_args::cucumber_command_line() else {
+        return;
+    };
     // The user's recorded commands stay on the machine; scenarios that need them run only
     // where they exist.
     let has_voice_samples =
@@ -64,6 +69,9 @@ fn main() {
     if !has_voice_samples {
         eprintln!("GATED: VOICEPUNCHER_VOICE_SAMPLES not set, skipping @voice_samples scenarios");
     }
+    // The scenario probe for the suite limit (fail-hung-tests-fast, D10): armed, every scenario
+    // blocks forever before its first step, so the suite's nextest limit must stop the harness.
+    let hang_probe = std::env::var("VOICEPUNCHER_HANG_PROBE").as_deref() == Ok("1");
     futures::executor::block_on(
         E2eWorld::cucumber()
             .max_concurrent_scenarios(MAX_CONCURRENT_SCENARIOS)
@@ -77,7 +85,19 @@ fn main() {
                     ScenarioType::Concurrent
                 }
             })
+            .before(move |_feature, _rule, scenario, _world| {
+                Box::pin(async move {
+                    if hang_probe {
+                        eprintln!(
+                            "hang probe armed: holding scenario '{}' forever",
+                            scenario.name
+                        );
+                        futures::future::pending::<()>().await;
+                    }
+                })
+            })
             .fail_on_skipped()
+            .with_cli(Opts::<_, _, _, Empty>::parse_from(command_line))
             .filter_run_and_exit("tests/features", move |feature, rule, scenario| {
                 let tagged = |tag| has_tag(feature, rule, scenario, tag);
                 !tagged("wip") && (has_voice_samples || !tagged("voice_samples"))

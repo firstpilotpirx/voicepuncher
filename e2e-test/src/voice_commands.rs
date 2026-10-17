@@ -1,7 +1,7 @@
 //! Voice control phrases spoken by macOS `say` and streamed to the command spotting service
 //! as the app streams the microphone while listening.
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 
@@ -20,6 +20,9 @@ const FRAME_SAMPLES: usize = 1_600;
 /// 2 s of audio: sent before waiting for the service to answer it, so the audio in flight
 /// stays far below what the socket holds and a send never blocks on a busy service.
 const SAMPLES_BETWEEN_WAITS: usize = 20 * FRAME_SAMPLES;
+/// How long the real command spotting service may take to answer a sync: more than 5 times
+/// its worst normal answer (confirmations give up after 3 s, plus 2 s of audio).
+pub const SYNC_ANSWER_LIMIT: Duration = Duration::from_secs(20);
 
 /// English `words` spoken by `say`, 16 kHz mono, with a pause of silence before and after.
 pub fn spoken_with_pauses(words: &str) -> Result<Vec<f32>> {
@@ -87,7 +90,7 @@ pub fn spotting_events(
         for frame in stretch.chunks(FRAME_SAMPLES) {
             client.send_audio(frame)?;
         }
-        events.extend(client.events_for_sent_audio()?);
+        events.extend(client.events_for_sent_audio(SYNC_ANSWER_LIMIT)?);
     }
     client.close();
     Ok(events)
@@ -136,7 +139,7 @@ pub fn carried_out_by_app(
     };
     for frame in audio.chunks(FRAME_SAMPLES) {
         client.send_audio(frame)?;
-        let events = client.events_for_sent_audio()?;
+        let events = client.events_for_sent_audio(SYNC_ANSWER_LIMIT)?;
         hear(&mut client, events)?;
     }
     client.close();

@@ -66,10 +66,23 @@ fn should_tell_a_reset_connection_as_dropped() {
     assert_eq!(failure_of(&url), Failure::Dropped);
 }
 
+/// Reads the whole request, up to its body `audio`: a stub that answers and closes with part
+/// of the request unread makes the kernel reset the connection, and the client sees no answer.
+fn read_request(stream: &mut TcpStream) {
+    let mut request = Vec::new();
+    let mut buf = [0u8; 4096];
+    while !request.ends_with(b"audio") {
+        match stream.read(&mut buf) {
+            Ok(0) | Err(_) => return,
+            Ok(n) => request.extend_from_slice(&buf[..n]),
+        }
+    }
+}
+
 #[test]
 fn should_tell_a_busy_answer_as_busy() {
     let url = stub(|mut stream| {
-        read_some(&mut stream);
+        read_request(&mut stream);
         let _ = std::io::Write::write_all(
             &mut stream,
             b"HTTP/1.1 503 Busy\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",

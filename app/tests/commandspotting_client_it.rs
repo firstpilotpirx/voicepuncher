@@ -1,5 +1,6 @@
 //! The command spotting client's wait for the service against stub services on loopback:
-//! one that answers pings at once but its events late, and one that stops answering.
+//! one that answers pings at once but its events late, one that answers pings but never
+//! the sync, and one that stops answering.
 
 use std::net::{TcpListener, TcpStream};
 use std::time::{Duration, Instant};
@@ -20,6 +21,13 @@ const READ_WAIT: Duration = Duration::from_millis(10);
 const PATIENT_FOR_AT_LEAST: Duration = Duration::from_millis(4_500);
 /// The silence limit plus a margin: a silent service is noticed within it.
 const HANG_NOTICED_WITHIN: Duration = Duration::from_secs(7);
+/// How long the client waits for the answer to a sync from a service that sends it, at
+/// most 12 s late: the bound the E2E tests give the real service.
+const SYNC_ANSWER_LIMIT: Duration = Duration::from_secs(20);
+/// How long the client waits for the answer to a sync from a service that never sends it.
+const SYNC_BOUND: Duration = Duration::from_secs(2);
+/// The sync bound plus a margin: the client gives up within it.
+const SYNC_GIVEN_UP_WITHIN: Duration = Duration::from_secs(4);
 
 /// A service that answers pings at once and each audio message with a speech start `delay`
 /// after it came, and a sync once every earlier audio message is answered.
@@ -66,6 +74,26 @@ fn answer_late(mut socket: WebSocket<TcpStream>, delay: Duration) {
     }
 }
 
+/// A service that answers pings, and reads everything else without ever answering it: the
+/// sync is never answered.
+fn service_never_answering_the_sync() -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("ws://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        stream.set_read_timeout(Some(READ_WAIT)).unwrap();
+        let mut socket = tungstenite::accept(stream).unwrap();
+        loop {
+            match socket.read() {
+                Ok(_) => {}
+                Err(tungstenite::Error::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(_) => return,
+            }
+        }
+    });
+    url
+}
+
 /// A service that accepts the connection, then hangs: it never reads or answers again.
 fn hanging_service() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -92,18 +120,18 @@ fn should_return_every_event_for_the_audio_sent_once_the_service_answered_it() {
     // Given
     let mut client = client_with_audio_sent(&service_answering_late(QUICK_EVENTS));
     // When
-    let events = client.events_for_sent_audio().unwrap();
+    let events = client.events_for_sent_audio(SYNC_ANSWER_LIMIT).unwrap();
     // Then
     assert_eq!(events.len(), FRAMES, "{events:?}");
 }
 
 #[test]
-fn should_wait_for_a_service_that_answers_pings_however_late_its_events_come() {
+fn should_wait_for_a_service_that_answers_pings_when_its_events_come_late_within_the_bound() {
     // Given
     let mut client = client_with_audio_sent(&service_answering_late(LATE_EVENTS));
     // When
     let started = Instant::now();
-    let events = client.events_for_sent_audio().unwrap();
+    let events = client.events_for_sent_audio(SYNC_ANSWER_LIMIT).unwrap();
     // Then
     assert_eq!(events.len(), FRAMES, "{events:?}");
     assert!(started.elapsed() >= LATE_EVENTS);
@@ -117,7 +145,10 @@ fn should_fail_the_wait_when_the_service_stops_answering() {
     client.send_audio(&[0.0; FRAME_SAMPLES]).unwrap();
     // When
     let started = Instant::now();
-    let error = format!("{:#}", client.events_for_sent_audio().unwrap_err());
+    let error = format!(
+        "{:#}",
+        client.events_for_sent_audio(SYNC_ANSWER_LIMIT).unwrap_err()
+    );
     // Then
     let waited = started.elapsed();
     assert!(
@@ -125,5 +156,26 @@ fn should_fail_the_wait_when_the_service_stops_answering() {
         "gave up after {waited:?}: {error}"
     );
     assert!(waited < HANG_NOTICED_WITHIN, "{error}");
-    assert!(error.contains("stopped answering"), "{error}");
+    assert!(
+        error.contains("command spotting service stopped answering"),
+        "{error}"
+    );
+}
+
+#[test]
+fn should_fail_the_wait_within_its_bound_when_the_service_answers_pings_but_never_the_sync() {
+    // Given
+    let mut client = client_with_audio_sent(&service_never_answering_the_sync());
+    // When
+    let started = Instant::now();
+    let error = format!(
+        "{:#}",
+        client.events_for_sent_audio(SYNC_BOUND).unwrap_err()
+    );
+    // Then
+    let waited = started.elapsed();
+    assert!(waited >= SYNC_BOUND, "gave up after {waited:?}: {error}");
+    assert!(waited < SYNC_GIVEN_UP_WITHIN, "{error}");
+    assert!(error.contains("command spotting service"), "{error}");
+    assert!(error.contains("sync 1"), "{error}");
 }

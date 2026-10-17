@@ -4,6 +4,7 @@ mod steps;
 
 use std::sync::mpsc::Receiver;
 
+use cucumber::cli::{Empty, Opts, Parser as _};
 use cucumber::gherkin::{Feature, Rule, Scenario};
 use cucumber::World;
 
@@ -21,6 +22,10 @@ pub struct IntegrationWorld {
 }
 
 fn main() {
+    // One nextest test, `scenarios`, is the whole run; any other command line is cucumber's own
+    let Some(command_line) = voicepuncher_e2e_test::harness_args::cucumber_command_line() else {
+        return;
+    };
     let real_keyboard = std::env::var("VOICEPUNCHER_REAL_KEYBOARD_IT").is_ok();
     if !real_keyboard {
         eprintln!(
@@ -30,6 +35,7 @@ fn main() {
     futures::executor::block_on(
         IntegrationWorld::cucumber()
             .fail_on_skipped()
+            .with_cli(Opts::<_, _, _, Empty>::parse_from(command_line))
             .filter_run_and_exit("tests/features", move |feature, rule, scenario| {
                 let excluded = has_tag(feature, rule, scenario, "wip")
                     || (!real_keyboard && has_tag(feature, rule, scenario, "real_keyboard"));

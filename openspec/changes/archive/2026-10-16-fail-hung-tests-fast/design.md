@@ -10,7 +10,7 @@ See proposal.md (Why). This section covers only the current state that shapes th
 
 | Run | Duration |
 |---|---|
-| `just test`, warm build | 63–81 s, median ≈ 69 s, not the documented ~20 s. The critical path is `commandspotting_reconnect_it::should_be_back_within_seconds_once_the_service_answers_after_a_long_outage`, which waits out a 60 s outage (61–65 s over ~40 runs). |
+| `just test`, warm build | 63–81 s, median ≈ 69 s. The critical path is `commandspotting_reconnect_it::should_be_back_within_seconds_once_the_service_answers_after_a_long_outage`, which waits out a 60 s outage (61–65 s over ~40 runs). |
 | `just check` | 374–410 s, median ≈ 398 s |
 | `e2e-smoke` stage | 242–269 s: the app's service binaries take ≤ 34 s each (`voice_forms_it` is the longest) and ≈ 80 s together; the `@smoke` scenarios take ≈ 160–190 s. In one day the `@smoke` scenarios grew from ≈ 80 s to ≈ 190 s as scenarios were added. |
 | `e2e-quick` | 26–62 s |
@@ -24,7 +24,7 @@ See proposal.md (Why). This section covers only the current state that shapes th
 **Waits that have no bound**, checked against the code:
 
 - `SpottingClient::events_for_sent_audio` (`app/src/adapters/secondary/commandspotting/websocket/client.rs`) waits for the answer to its sync for as long as the service answers pings. This is the 2026-10-15 hang. Only tests call it: `commandspotting_client_it`, `voice_samples_it`, and `e2e-test/src/voice_commands.rs`, which in turn serves `commandspotting_websocket_it`, `voice_forms_it` and the E2E voice steps. The app's own path (`AudioStream`) uses `read_events` and `keep_alive` and never calls it.
-- `commandspotting_websocket_it::should_be_refused_a_phrase_the_service_does_not_know` reads with no read timeout until the service closes the connection.
+- `commandspotting_websocket_it::should_be_refused_a_phrase_the_service_does_not_know` makes the WebSocket handshake with no timeout, then reads with no read timeout until the service closes the connection.
 - `commandspotting_websocket_it::recognized_from_microphone` waits until 2 s pass without an event, with no overall bound while events keep coming.
 - `command-spotting/tests/server_it.rs`: its `connect` makes the WebSocket handshake with no timeout.
 
@@ -66,7 +66,7 @@ Their stub threads may block forever, but they are not the test's thread.
 
 - Pin 0.9.146: the newest release at least two weeks old.
 - A private recipe `_require-nextest`, written like `_require-models`, checks that `cargo nextest --version` reports exactly 0.9.146. Otherwise it stops with `✗ cargo-nextest 0.9.146 not found (got '…') — run 'cargo +stable install --locked cargo-nextest@0.9.146'`.
-- The guard is a dependency of `_test`, `_e2e-smoke`, `_e2e-quick`, `_e2e-seams`, `_e2e-bench`, `_e2e-resilience`, `_refine-eval` and `_test-real-keyboard`. `_release` gets it through `_test`.
+- The guard is a dependency of `_test`, `_build-e2e`, `_e2e-smoke`, `_e2e-quick`, `_e2e-seams`, `_e2e-bench`, `_e2e-resilience`, `_refine-eval` and `_test-real-keyboard`. `_release` gets it through `_test`. `_build-e2e` builds each selection the E2E recipes run with that run's nextest command plus `--no-run`, so the locked stages compile nothing (shrink-check-lock decision 8).
 - `.config/nextest.toml` also sets `nextest-version = { required = "0.9.146" }`, so a direct `cargo nextest run` with an older nextest refuses to run.
 - `+stable` is needed because the repo's 1.88 toolchain cannot build nextest (MSRV 1.91). The installed binary then runs under the 1.88 cargo like any cargo subcommand.
 - Rejected:
@@ -114,7 +114,7 @@ slow-timeout = { period = "60s", terminate-after = 7 }
 
 ### D3. `_test` is one nextest run over the workspace, except the E2E harness
 
-The recipe becomes `_test: _require-nextest`, then `cargo nextest run --workspace -E 'not binary_id(voicepuncher-e2e-test::cucumber_e2e)'`.
+The recipe becomes `_test: _require-nextest`, then `cargo nextest run --workspace -E 'not binary_id(voicepuncher-e2e-test::cucumber_e2e)'`. Its build runs first at the utility QoS clamp, as the same command under `taskpolicy -c utility` with `--no-run`, then the run itself unclamped (shrink-check-lock decisions 5 and 8).
 
 - That selects today's three selections plus D10's probe:
   - the workspace's default test targets are libs, bins and integration tests;
@@ -224,9 +224,9 @@ The repo already uses this pattern (the component steps' `REACTION`, `feed_until
 |---|---|---|---|
 | Answer to a sync, `events_for_sent_audio` | adapter method; the caller passes the bound (`within: Duration`) | real service: 20 s (`SYNC_ANSWER_LIMIT` in `e2e-test` `voice_commands`, also used by `voice_samples_it`). Stubs in `commandspotting_client_it`: 20 s for the service 12 s late, 2 s for the service that never answers the sync | the command spotting service did not answer sync N, the events for the audio sent, within the bound, though it answers pings |
 | Silence, no answer at all | adapter, unchanged | 5 s silence limit | "command spotting service stopped answering" |
-| Refusal of an unknown phrase | `commandspotting_websocket_it`: socket read timeout plus deadline | 5 s | the service did not refuse the unknown phrase within 5 s |
-| Events of one utterance from the microphone | `commandspotting_websocket_it`: overall deadline over the `recv_timeout(QUIET)` loop | 30 s | the service still sent events 30 s after the speech |
-| WebSocket handshake with the in-process service | `server_it`: connect timeout plus socket timeouts during the handshake | 5 s | the service did not complete the handshake within 5 s |
+| Refusal of an unknown phrase | `commandspotting_websocket_it`: socket read timeout plus deadline | 5 s | the command spotting service did not refuse the unknown phrase within 5 s |
+| Events of one utterance from the microphone | `commandspotting_websocket_it`: overall deadline over the `recv_timeout(QUIET)` loop | 30 s | the command spotting service still sent events 30 s after the speech |
+| WebSocket handshake: with the in-process service in `server_it`, with the real one in the refusal test of `commandspotting_websocket_it` | connect timeout plus socket timeouts during the handshake | 5 s | the command spotting service did not complete the handshake within 5 s |
 | HTTP requests | adapters and `ureq`, unchanged | per request 5 s + half the audio (≤ 60 s), 3 attempts; refinement 30 s; failure stub 300 ms | "speech recognition request to … failed"; WARN "speech recognition service did not answer in time" |
 
 **Values.** 20 s is more than 5 times the service's worst normal answer: its confirmations give up after 3 s (`--confirmation-deadline-secs`), plus processing 2 s of audio. 5 s is more than 10 times an answer that comes at once. 30 s is 6 times an utterance plus 2 s of quiet. Every bound is far below the runner's limits, so the test, not nextest, reports a silent service.
@@ -254,7 +254,7 @@ What stays wrong until agent-kit learns nextest:
 - The test-results card finds no results on a green nextest run.
 - `kit log --test` does not find nextest's output blocks.
 
-The agent-kit change **`read-nextest-output`** fixes this. It is filed in agent-kit with `create-change` and is out of scope here. It should:
+The agent-kit change **`read-nextest-output`** fixes this. It is filed in agent-kit with `create-change`, a follow-up of this change (tasks.md § Workflow follow-up), and is out of scope here. It should:
 
 - read nextest's status lines (`FAIL`, `TIMEOUT`, `SIGSEGV`/`SIGABRT`, `LEAK-FAIL`) as failures named `<binary-id> <test>`;
 - read its `Summary [ … ] N tests run: X passed, Y failed, Z timed out` line for the verdict summary and the test-results card;
@@ -298,7 +298,7 @@ Rejected: a one-off test removed before merge. It proves the mechanism once and 
   - `TIMEOUT` means hung: report it, never rerun it unchanged, never raise a limit to let a hang pass;
   - the growth rule of D5;
   - `.config/nextest.toml` joins the build inputs;
-  - the times become the medians measured after the change: ≈ 70 s and ≈ 7 min expected, replacing the stale ~20 s.
+  - the times become the medians measured after the change: ≈ 70 s (`just test` stays ~1 min) and ≈ 7 min expected.
 - **openspec/config.yaml** `context`: the same times.
 - **`.claude/kit.yaml`** `checks.build_inputs`: add `".config/**"`.
 
@@ -315,14 +315,14 @@ There are no specs (`skip_specs`). Each acceptance item of proposal.md, and each
 | The harness argument reading: a listing is one test, `--ignored` lists none, a nextest run keeps only the extra arguments, a direct run keeps cucumber's own | unit (E2E harness library) | Red, then Green; run by `just test` |
 | The sync wait ends within its bound, naming the service and the sync, when the service answers pings but never the sync | adapter integration (`commandspotting_client_it`) | new test, Red first: it hangs and nextest reports TIMEOUT at 2 min, so nextest must come first; Green: the bound |
 | The sync wait still waits for late events inside its bound | adapter integration (existing test, bound passed) | `just test` |
-| A WebSocket service that accepts and stays silent fails the wait in seconds, naming the service | adapter integration (existing `should_fail_the_wait_when_the_service_stops_answering`) | unchanged, `just test` |
+| A WebSocket service that accepts and stays silent fails the wait in seconds, naming the service | adapter integration (existing `should_fail_the_wait_when_the_service_stops_answering`) | the 20 s bound passed, the service's name now asserted (a scratch message without it fails the test), `just test` |
 | An HTTP service that accepts and stays silent fails the request in seconds, naming the service | adapter integration (existing `should_give_up_a_short_recording_the_service_never_answers_within_half_a_minute`) | unchanged, `just test` |
 | The waits bounded inside test code (refusal, microphone loop, handshake) | none: test code | review. A test of a test is not written. |
-| A hung test in `just test` is stopped at 2 min + ≤ 10 s, named TIMEOUT, the recipe exits non-zero, and the lock frees at once | recipe run by the agent at stage 6 (not a manual run of the app) | `VOICEPUNCHER_HANG_PROBE=1 just test`, with a second `just test` queued behind it. It must take the lock within a second of the first one's exit. The excerpt and timings go in the PR. |
-| A hung scenario in an E2E recipe is stopped at its suite limit, the harness and the scenario are named, the recipe exits non-zero, and the services stop | recipe run (stage 6) | `VOICEPUNCHER_HANG_PROBE=1 just e2e-quick` |
-| `test`, `check` and `full-check` pass and run as many tests as before; the slow suites pass under their limits | recipe runs (stages 5 and 8) | `cargo nextest list` against `cargo test -- --list` for the libtest tests; cucumber's `N scenarios` per suite against the baseline logs |
+| A hung test in `just test` is stopped at 2 min + ≤ 10 s, named TIMEOUT, and the recipe exits non-zero | recipe run by the agent at stage 6 (not a manual run of the app) | `VOICEPUNCHER_HANG_PROBE=1 just test`. `just test` takes no machine lock (`test-without-machine-lock`), so the next row shows the lock freeing. The excerpt and timings go in the PR. |
+| A hung scenario in an E2E recipe is stopped at its suite limit, the harness and the scenario are named, the recipe exits non-zero, the services it started stop, and the lock frees at once | recipe run (stage 6) | `VOICEPUNCHER_HANG_PROBE=1 just e2e-quick` on service ports of its own, so that it starts the services itself, with a locked recipe (`just fmt`) queued behind it from another shell. That recipe must take the lock within a second of the probe run's exit. |
+| `test`, `check` and `full-check` pass, bar failures that another filed change owns (named in the PR), and run as many tests as before; the slow suites pass under their limits | recipe runs (stages 5 and 8) | `cargo nextest list` against `cargo test -- --list` for the libtest tests; cucumber's `N scenarios` per suite against the baseline logs |
 | Recipe names and arguments are unchanged, and every check runs under `with-machine-lock` | review | `just --list` before and after; every public recipe is still `{{locked}} _<name>` |
-| `just test` and `just check` keep their times | recipe runs (stage 5) | median of the runs during apply ≤ 1.1 × baseline median (`just test` 69 s, `just check` 398 s) |
+| `just test` and `just check` keep their times | recipe runs (stages 5 and 6) | median of the change's runs that ran to their end, lock waits left out, ≤ 1.1 × baseline median (`just test` 69 s, `just check` 398 s) |
 
 ## Risks / Trade-offs
 

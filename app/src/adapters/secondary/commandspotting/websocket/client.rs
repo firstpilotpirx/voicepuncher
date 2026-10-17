@@ -136,14 +136,22 @@ impl SpottingClient {
 
     /// Every event for the audio sent so far, once the service has answered all of it: the
     /// service answers a sync only after the events for every message sent before it. A
-    /// service that keeps answering pings is waited for however long its spotting takes.
-    pub fn events_for_sent_audio(&mut self) -> Result<Vec<SpottingEvent>> {
+    /// service that keeps answering pings is waited for up to `within`; a service that
+    /// answers nothing fails the wait at the silence limit.
+    pub fn events_for_sent_audio(&mut self, within: Duration) -> Result<Vec<SpottingEvent>> {
         self.answer_waits += 1;
         let id = self.answer_waits;
         self.socket
             .send(Message::text(serde_json::json!({ "sync": id }).to_string()))?;
+        let deadline = Instant::now() + within;
         let mut events = Vec::new();
         loop {
+            if deadline.checked_duration_since(Instant::now()).is_none() {
+                bail!(
+                    "the command spotting service did not answer sync {id}, the events for the \
+                     audio sent, within {within:?}, though it answers pings"
+                );
+            }
             self.keep_alive()?;
             if let Some(Message::Text(text)) = self.next_message()? {
                 match self.parse(text.as_str()) {
