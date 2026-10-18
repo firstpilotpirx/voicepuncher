@@ -26,11 +26,11 @@ Out of scope: changing the default model; IT terms split into syllables.
 
 ## Open points
 
-- How to fix it: a prompt rule, a new example, or both; proposed: decide in design after measuring on the evaluation's `english` category, and keep the new phrases unlike every example.
+- How to fix it: a rule wording plus one new example, chosen by measurement (design.md); the new phrases stay unlike every example.
 - Whether «репит» counts as a loanword some speakers keep in Cyrillic; proposed: no, it is expected in Latin script.
-- Target version: proposed 0.17.1 (PATCH on 0.17.0).
+- Target version: 0.18.1 (PATCH on 0.18.0).
 
 ## Release
 
 SemVer: PATCH — a fix of refinement behavior the spec already requires.
-Target version: 0.17.1.
+Target version: 0.18.1.
