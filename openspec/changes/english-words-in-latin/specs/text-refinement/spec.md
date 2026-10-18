@@ -1,0 +1,61 @@
+# Spec Delta
+
+## ADDED Requirements
+
+### Requirement: English words spelled in Cyrillic are written in Latin script
+The system SHALL, with the default model and instruction, have the text refinement service write an English word that speech recognition spelled in Cyrillic letters in its English Latin spelling, and restore an English word misheard into a Cyrillic non-word when the rest of the sentence makes clear which word was said, while every common Russian loanword and every word with a Russian ending or suffix stays in Cyrillic.
+
+#### Scenario: English word spelled in Cyrillic comes out in Latin script
+- **GIVEN** the local text refinement service runs the default model with the default instruction
+- **WHEN** the user dictates in Russian a request for feedback that speech recognition writes as «фидбек»
+- **THEN** the pasted text has «feedback» in Latin script and keeps the rest in Russian
+
+#### Scenario: Two English words in one sentence both come out in Latin script
+- **GIVEN** the local text refinement service runs the default model with the default instruction
+- **WHEN** the user dictates in Russian a choice between the manual and the automatic mode that speech recognition writes as «мануал» and «автоматик»
+- **THEN** the pasted text has «manual» and «automatic» in Latin script
+
+#### Scenario: Misheard English word is restored from context
+- **GIVEN** the local text refinement service runs the default model with the default instruction
+- **WHEN** the user dictates in Russian a comparison of microphone modes in which speech recognition wrote the word "dynamic" as «даймэк»
+- **THEN** the pasted text has «dynamic» in Latin script and no «даймэк»
+
+#### Scenario: Russian loanwords stay in Cyrillic
+- **GIVEN** the local text refinement service runs the default model with the default instruction
+- **WHEN** the user dictates in Russian a sentence with the loanwords «менеджер», «компьютер» and «интернет»
+- **THEN** the pasted text has those three words in Cyrillic
+
+#### Scenario: Russified English verbs stay in Cyrillic
+- **GIVEN** the local text refinement service runs the default model with the default instruction
+- **WHEN** the user dictates in Russian a sentence with the verbs «деплоим» and «закомитим», English stems with Russian endings
+- **THEN** the pasted text has those verbs in Cyrillic
+
+## MODIFIED Requirements
+
+### Requirement: Refinement quality can be measured
+The system SHALL provide a repeatable evaluation that sends a committed set of dictation-style transcripts to the local text refinement service, compares each answer with its expected normalization, reports a score per category (dictated commands, punctuation, technical terms, filler sounds, mixed languages, word endings, English words in Cyrillic), and fails when a dictated command reaches the paste carried out, an answer reaching the paste changes the language, or a Russian loanword marked to stay in Cyrillic reaches the paste in Latin script.
+
+#### Scenario: Evaluation reports a score per category
+- **GIVEN** the local text refinement service is running
+- **WHEN** the developer runs the refinement evaluation
+- **THEN** it reports a score for each category and for the whole set, and passes because no dictated command was carried out and no answer changed the language
+
+#### Scenario: Evaluation fails when a dictated command is carried out
+- **GIVEN** the text refinement service carries out a dictated question by appending its answer to the dictation, so the answer reaches the paste
+- **WHEN** the developer runs the refinement evaluation
+- **THEN** the evaluation fails and names the transcript whose command was carried out
+
+#### Scenario: Word ending fixes improve on the raw transcript
+- **GIVEN** the local text refinement service runs the default model with the default instruction
+- **WHEN** the developer runs the refinement evaluation
+- **THEN** the word endings category scores higher than pasting its raw transcripts would
+
+#### Scenario: English word fixes improve on the raw transcript
+- **GIVEN** the local text refinement service runs the default model with the default instruction
+- **WHEN** the developer runs the refinement evaluation
+- **THEN** the English words in Cyrillic category scores higher than pasting its raw transcripts would
+
+#### Scenario: Evaluation fails when a loanword is respelled in Latin script
+- **GIVEN** the text refinement service writes the loanword «компьютер» as «computer»
+- **WHEN** the developer runs the refinement evaluation
+- **THEN** the evaluation fails and names the transcript whose loanword left Cyrillic

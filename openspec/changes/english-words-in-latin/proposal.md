@@ -10,7 +10,7 @@ Refinement already writes technical terms and product names in Latin script (д�
 
 - Refinement writes an English word that speech recognition spelled in Cyrillic in its English Latin spelling (автоматик → automatic, фидбек → feedback, мануал → manual), and restores one that was misheard into a sound-alike non-word when the context makes it clear (даймэк → dynamic).
 - Refinement keeps in Cyrillic every common Russian loanword (компьютер, менеджер, интернет, релиз, файл) and every Russified word with a Russian ending or suffix (деплоим, закомитить, пушнул).
-- The default refinement model changes from Qwen2.5-1.5B-Instruct to a larger local model chosen by the research: google gemma-3-12b-it Q4_K_M (best quality, about 1.7 s on a long phrase) or Qwen3-4B-Instruct-2507 Q4_K_M (about 0.8 s, weaker on misheard words). The choice and its latency budget are settled at the start of the implementation (`design.md` § Open question).
+- The default refinement model changes from Qwen2.5-1.5B-Instruct (1.0 GB) to Qwen3-4B-Instruct-2507 Q4_K_M (2.5 GB, about 0.8 s on a 180-character phrase). The user chose it over gemma-3-12b-it on 2026-10-18: gemma fixes the user's whole phrase but takes 1.7–2.6 s; Qwen3-4B restores «даймэк» → «dynamic» but leaves «автоматик» in that phrase.
 - The refinement evaluation gains a category for English words in Cyrillic, with loanword controls, built from the research cases.
 
 ## Capabilities
@@ -27,7 +27,7 @@ None.
 
 - Current stage: PoC. Target stage: PoC.
 - In scope: Russian dictation with English words that speech recognition spelled in Cyrillic or misheard into sound-alikes; the default refinement model and instruction; the refinement evaluation set.
-- Acceptance bar: the user's dictation above is pasted with «automatic» and «dynamic» in Latin script and the rest unchanged; at least 8 of the 10 research cases pass, with all three loanword controls; no category of the refinement evaluation scores lower than with the current model; the refinement latency on a 180-character phrase stays within the budget the design settles.
+- Acceptance bar: at least 8 of the 10 research cases pass, with all three loanword controls; in the user's dictation above, «даймэк» comes out as «dynamic» («автоматик» may stay, a known limit of the chosen model); no category of the refinement evaluation scores lower than with the current model; the refinement of a 180-character phrase takes at most 1.5 s.
 
 ## Out of scope
 
@@ -38,12 +38,12 @@ None.
 
 ## Release
 
-MINOR (behavior change: new refinement behavior and a new default model), the next minor version after the current one in `app/Cargo.toml` (0.9.0 → 0.10.0 at the time of writing).
+MINOR (behavior change: new refinement behavior and a new default model), the next minor version after the current one in `app/Cargo.toml` (0.15.3 → 0.16.0 at the time of writing).
 
 ## Impact
 
 - Default refinement instruction and examples (`app/src/config/refinement.rs`).
-- Default model download in `just models` and the README model instructions; users must download the new model (7.3 GB for gemma-3-12b, 2.5 GB for Qwen3-4B).
-- `justfile` model auto-discovery picks the largest `.gguf`, so the new default wins once downloaded.
+- Default model download in `just models` and the README model instructions; users must download the new model (2.5 GB).
+- `justfile` model auto-discovery picks the largest `.gguf`, so the new default wins over Qwen2.5-1.5B once downloaded; the refinement evaluation in `just check` gets about twice as slow.
 - Refinement evaluation set and the `@refinement` E2E scenarios.
 - Research data: `research/` in this change (method, results, raw answers, benchmark script).
