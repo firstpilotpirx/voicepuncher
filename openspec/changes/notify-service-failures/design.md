@@ -44,3 +44,7 @@ Every failure in scope ends today in a log line and `VisualIndicator::hide()`. A
 - `show-spotting-away`, `confirm-voice-commands` and `show-live-transcript` also add overlay states and text; whichever lands later merges with this one's port method and window sizing.
 - Checking accessibility trust before each paste adds a cheap system call per paste; a permission revoked while the app runs now shows a notice instead of pasting nothing.
 - Four seconds may be short for the longest message; the manual run checks it reads in time.
+
+## Dependencies
+
+Waits for `show-live-transcript` (reworks the `VisualIndicator` port, the overlay window and the live transcription worker), `confirm-voice-commands` (timed text messages in the same overlay, voice command handling) and `speed-up-voice-start` (reworks the recording start paths whose failures this change announces): the notice builds on their overlay and pipeline instead of conflicting with them.

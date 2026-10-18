@@ -1,0 +1,7 @@
+depends_on:
+  - change: show-live-transcript
+    why: reworks the VisualIndicator port, the macOS overlay window and the live transcription worker this change extends
+  - change: confirm-voice-commands
+    why: adds timed text messages to the same overlay and reworks voice command handling in voice_control.rs
+  - change: speed-up-voice-start
+    why: reworks start_recording_from and the voice start paths whose failures this change announces
