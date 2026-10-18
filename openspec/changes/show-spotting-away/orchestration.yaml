@@ -1,0 +1,8 @@
+autonomy: review
+depends_on:
+  - change: show-live-transcript
+    why: reworks the VisualIndicator port, the macOS overlay adapter (WindowSet, recording state) and voice_control.rs this change extends
+  - change: confirm-voice-commands
+    why: adds timed command signs to the same overlay label and VisualIndicator port that the commands-unavailable sign composes with
+  - change: notify-service-failures
+    why: adds a VoiceCommandsUnavailable failure notice and overlay window sizing for the same command spotting loss this change signals

@@ -25,6 +25,10 @@ The command spotting adapter (`commandspotting/websocket`) already tracks an out
 - The label gets longer while recording; `⊘ CMD` is short and the overlay already sizes to its text. The manual run confirms readability.
 - `notify-service-failures` also changes the overlay. Whichever lands later builds on the flag (decision 2) rather than adding a competing state.
 
+## Dependencies
+
+Waits for `show-live-transcript` (reworks the `VisualIndicator` port, the overlay adapter and `voice_control.rs`), `confirm-voice-commands` (timed command signs in the same label) and `notify-service-failures` (a "voice commands unavailable" notice for the same loss, and the overlay window sizing). Once they are on `main`, the sign composes with their signals, and any overlap with the notice is settled here.
+
 ## Test levels
 
 | Scenario | Level |
