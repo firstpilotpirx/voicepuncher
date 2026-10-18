@@ -1,0 +1,5 @@
+depends_on:
+  - change: speed-up-voice-start
+    why: touches openspec/changes/speed-up-voice-start/tasks.md
+  - change: speed-up-tests
+    why: both change which stages check and full-check run (justfile _stages, check, full-check)
