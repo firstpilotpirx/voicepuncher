@@ -27,5 +27,5 @@
 
 ## 5. Version and manual run
 
-- [ ] 5.1 Bump `version` in `app/Cargo.toml` to 0.16.0; `just test`; commit (`chore: bump version to 0.16.0`)
+- [ ] 5.1 Bump `version` in `app/Cargo.toml` to 0.18.0; `just test`; commit (`chore: bump version to 0.18.0`)
 - [ ] 5.2 Manual run by the user: "enter", "clear", "restart", "enter start" and a hotkey dictation show and sound as the spec says

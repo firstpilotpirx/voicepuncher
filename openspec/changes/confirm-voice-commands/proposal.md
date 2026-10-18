@@ -36,7 +36,7 @@ None.
 
 ## Release
 
-MINOR (new behavior): 0.16.0, the next minor version after 0.15.3.
+MINOR (new behavior): 0.18.0, the next minor version after 0.17.0.
 
 ## Impact
 

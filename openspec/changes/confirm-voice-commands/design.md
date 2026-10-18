@@ -18,7 +18,7 @@ Voice control carries out commands in `Pipeline` (`pipeline/voice_control.rs`). 
 
 ## Dependencies
 
-Waits for `show-live-transcript`: it reworks the same `VisualIndicator` port, macOS overlay adapter (`WindowSet`, the recording state) and glossary entry, and also targets 0.16.0. Once it is on `main`, the restart sign must leave its live transcript window as the recording shows it, and this change takes the next minor version.
+Waited for `show-live-transcript` (same `VisualIndicator` port, macOS overlay adapter and glossary entry), now on `main`. Its live transcript window belongs to the recording state and `show_recording` clears it, so the restart's new recording starts without text; the command sign changes only the pill's label, never that window. `main` is at 0.17.0, so this change takes 0.18.0.
 
 ## Risks / Trade-offs
 
