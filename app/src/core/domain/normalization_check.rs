@@ -1,3 +1,4 @@
+use crate::core::domain::respelling::find_respellings;
 use crate::core::domain::{is_filler_sound, CleanedText, RawTranscript};
 
 /// Why a text refinement answer is not a normalization of the transcript.
@@ -17,14 +18,70 @@ pub enum NotANormalization {
 const MAX_CYRILLIC_SHIFT_PERCENT: f64 = 50.0;
 /// Accepts `answer` only when it is still the user's dictation: the same writing system
 /// and at least half of the transcript's words in each alphabet, also with a corrected
-/// ending, so a translation, an answer or a rewrite
+/// ending or respelled in Latin script by sound, so a translation, an answer or a rewrite
 /// is never pasted in place of what the user said.
 pub fn check_normalization(
     raw: &RawTranscript,
     answer: &CleanedText,
 ) -> Result<(), NotANormalization> {
-    check_writing_system(raw.as_str(), answer.as_str())?;
-    check_words_kept(raw.as_str(), answer.as_str())
+    let dictated: Vec<String> = words(raw.as_str()).collect();
+    let answer_words: Vec<String> = words(answer.as_str()).collect();
+    let respelled = Respelled::find(&dictated, &answer_words);
+    check_writing_system(
+        &respelled.without_cyrillic(&dictated),
+        &respelled.without_latin(&answer_words),
+    )?;
+    check_words_kept(&dictated, &answer_words, &respelled)
+}
+
+/// Dictated Cyrillic words missing from the answer that it respelled as new Latin words.
+struct Respelled {
+    cyrillic: Vec<String>,
+    latin: Vec<String>,
+}
+
+impl Respelled {
+    fn find(dictated: &[String], answer: &[String]) -> Self {
+        let missing: Vec<String> = dictated
+            .iter()
+            .filter(|w| w.chars().any(is_cyrillic) && !answer.iter().any(|a| same_word(w, a)))
+            .cloned()
+            .collect();
+        let new_latin: Vec<String> = answer
+            .iter()
+            .filter(|w| !w.chars().any(is_cyrillic) && !dictated.iter().any(|d| same_word(d, w)))
+            .cloned()
+            .collect();
+        let (cyr_flags, lat_flags) = find_respellings(&missing, &new_latin);
+        let flagged = |words: Vec<String>, flags: Vec<bool>| -> Vec<String> {
+            words
+                .into_iter()
+                .zip(flags)
+                .filter_map(|(word, flag)| flag.then_some(word))
+                .collect()
+        };
+        Self {
+            cyrillic: flagged(missing, cyr_flags),
+            latin: flagged(new_latin, lat_flags),
+        }
+    }
+
+    fn without_cyrillic(&self, words: &[String]) -> String {
+        without(words, &self.cyrillic)
+    }
+
+    fn without_latin(&self, words: &[String]) -> String {
+        without(words, &self.latin)
+    }
+}
+
+fn without(words: &[String], respelled: &[String]) -> String {
+    words
+        .iter()
+        .filter(|w| !respelled.contains(w))
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn check_writing_system(raw: &str, answer: &str) -> Result<(), NotANormalization> {
@@ -44,18 +101,28 @@ fn check_writing_system(raw: &str, answer: &str) -> Result<(), NotANormalization
 
 /// Each writing system is counted on its own, so translating only the Russian part of a
 /// mixed dictation is rejected even when the English words survive.
-fn check_words_kept(raw: &str, answer: &str) -> Result<(), NotANormalization> {
-    let answer_words: Vec<String> = words(answer).collect();
-    let dictated: Vec<String> = words(raw).filter(|word| !is_filler_sound(word)).collect();
+fn check_words_kept(
+    dictated: &[String],
+    answer_words: &[String],
+    respelled: &Respelled,
+) -> Result<(), NotANormalization> {
+    let dictated: Vec<&String> = dictated
+        .iter()
+        .filter(|word| !is_filler_sound(word))
+        .collect();
     for in_cyrillic in [true, false] {
         let script: Vec<&String> = dictated
             .iter()
+            .copied()
             .filter(|word| word.chars().any(is_cyrillic) == in_cyrillic)
             .collect();
         let total = script.len();
         let kept = script
             .iter()
-            .filter(|word| answer_words.iter().any(|kept| same_word(word, kept)))
+            .filter(|word| {
+                answer_words.iter().any(|kept| same_word(word, kept))
+                    || respelled.cyrillic.contains(word)
+            })
             .count();
         if kept * 2 < total {
             return Err(NotANormalization::WordsLost { kept, total });
@@ -195,6 +262,49 @@ mod tests {
             "Ну вот смотри: мы деплоим это в Kubernetes через Docker, а потом GitHub Actions прогоняет тесты.",
         );
         assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    fn should_accept_english_words_respelled_in_latin_by_sound() {
+        for (dictated, respelled) in [
+            (
+                "дай мне фидбек по этому пулл реквесту",
+                "Дай мне feedback по этому pull request.",
+            ),
+            (
+                "поставь о май зш и тему пауэрлевел десять к",
+                "Поставь oh-my-zsh и тему Powerlevel10k.",
+            ),
+            (
+                "нужно обновить гит хаб экшнс и вс код",
+                "Нужно обновить GitHub Actions и VS Code.",
+            ),
+            (
+                "включи в настройках опцию сайлент мод",
+                "Включи в настройках опцию silent mode.",
+            ),
+            (
+                "у этого микрофона есть режим дайнемик и режим кардиоид",
+                "У этого микрофона есть режим dynamic и режим cardioid.",
+            ),
+        ] {
+            assert_eq!(
+                check(dictated, respelled),
+                Ok(()),
+                "{dictated} -> {respelled}"
+            );
+        }
+    }
+
+    #[test]
+    fn should_reject_translation_that_does_not_sound_like_the_dictation() {
+        // Given / When
+        let result = check(
+            "дай мне фидбек по этому пулл реквесту",
+            "Give me feedback on this pull request.",
+        );
+        // Then
+        assert!(result.is_err(), "{result:?}");
     }
 
     #[test]

@@ -72,3 +72,36 @@ The system SHALL provide a repeatable evaluation that sends a committed set of d
 - **GIVEN** the text refinement service writes the loanword «компьютер» as «computer»
 - **WHEN** the developer runs the refinement evaluation
 - **THEN** the evaluation fails and names the transcript whose loanword left Cyrillic
+
+### Requirement: Answer that is not a normalization falls back to the raw transcript
+The system SHALL paste the raw transcript, and log why, when the text refinement service's answer is in a different writing system than the transcript or keeps fewer than half of the transcript's Cyrillic or of its Latin words, so a translation, an answer or a rewrite is never pasted in place of what the user said. A transcript word counts as kept when the answer has the same word, also with a different ending, or when the answer respells it, alone or with its neighbours, as Latin words that sound alike; respelled words do not count toward a change of writing system.
+
+#### Scenario: Service answers with a translation
+- **GIVEN** the text refinement service answers a Russian transcript with its English translation
+- **WHEN** the user transcribes a recording of speech with refinement
+- **THEN** the raw transcript is pasted and the rejected answer is logged
+
+#### Scenario: Service answers instead of correcting
+- **GIVEN** the text refinement service answers with text that shares few words with the transcript
+- **WHEN** the user transcribes a recording of speech with refinement
+- **THEN** the raw transcript is pasted and the rejected answer is logged
+
+#### Scenario: Service answers with a normalization
+- **GIVEN** the text refinement service answers with the transcript plus punctuation, capitals and one technical term respelled in Latin script
+- **WHEN** the user transcribes a recording of speech with refinement
+- **THEN** the service's answer is pasted
+
+#### Scenario: Service answers with most word endings corrected
+- **GIVEN** the text refinement service answers a short Russian transcript with the endings of most of its words corrected
+- **WHEN** the user transcribes a recording of speech with refinement
+- **THEN** the service's answer is pasted, not the raw transcript
+
+#### Scenario: Service respells most of a short dictation in Latin script
+- **GIVEN** the text refinement service answers a short Russian dictation with its English words and IT terms respelled in Latin script, so most of its letters are Latin
+- **WHEN** the user dictates that sentence with refinement
+- **THEN** the service's answer is pasted, not the raw transcript
+
+#### Scenario: Service translates the Russian part of a mixed dictation
+- **GIVEN** the text refinement service answers a Russian sentence with English words in it by translating its Russian words into English
+- **WHEN** the user dictates that sentence with refinement
+- **THEN** the raw transcript is pasted

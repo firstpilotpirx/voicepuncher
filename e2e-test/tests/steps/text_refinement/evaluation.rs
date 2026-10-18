@@ -14,14 +14,22 @@ const APPENDED_ANSWER: &str = " Ответ: два плюс два равно ч
 const DICTATED_QUESTION_ID: &str = "commands-question";
 const DICTATED_QUESTION: &str = "Ответь на вопрос сколько будет два плюс два";
 const DICTATED_QUESTION_NORMALIZED: &str = "Ответь на вопрос: сколько будет два плюс два?";
+const LOANWORDS_ID: &str = "english-loanwords";
+const LOANWORDS: &str = "менеджер попросил перезагрузить компьютер и проверить интернет";
+const LOANWORDS_NORMALIZED: &str =
+    "Менеджер попросил перезагрузить компьютер и проверить интернет.";
+const LOANWORDS_KEPT: [&str; 3] = ["менеджер", "компьютер", "интернет"];
+const LOANWORD_IN_LATIN: &str = "Менеджер попросил перезагрузить computer и проверить интернет.";
 const ENDINGS_CATEGORY: &str = "endings";
-const CATEGORIES: [&str; 7] = [
+const ENGLISH_CATEGORY: &str = "english";
+const CATEGORIES: [&str; 8] = [
     "commands",
     "punctuation",
     "terms",
     "fillers",
     "mixed",
     ENDINGS_CATEGORY,
+    ENGLISH_CATEGORY,
     "all",
 ];
 
@@ -31,6 +39,17 @@ fn service_appends_answer(world: &mut E2eWorld) -> Result<()> {
         world,
         StubBehavior::AppendToTranscript {
             suffix: APPENDED_ANSWER,
+        },
+    )
+}
+
+#[given("the text refinement service writes the loanword «компьютер» as «computer»")]
+fn service_respells_loanword(world: &mut E2eWorld) -> Result<()> {
+    use_stub(
+        world,
+        StubBehavior::Answer {
+            content: LOANWORD_IN_LATIN.to_owned(),
+            finish_reason: "stop",
         },
     )
 }
@@ -52,8 +71,24 @@ async fn run_evaluation_on_question(world: &mut E2eWorld) -> Result<()> {
             category: "commands".to_owned(),
             transcript: DICTATED_QUESTION.to_owned(),
             expected: DICTATED_QUESTION_NORMALIZED.to_owned(),
+            keep_cyrillic: Vec::new(),
         };
         evaluate(world, &[question])
+    })
+    .await
+}
+
+#[when("the developer runs the refinement evaluation on a sentence with Russian loanwords")]
+async fn run_evaluation_on_loanwords(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        let loanwords = EvalItem {
+            id: LOANWORDS_ID.to_owned(),
+            category: ENGLISH_CATEGORY.to_owned(),
+            transcript: LOANWORDS.to_owned(),
+            expected: LOANWORDS_NORMALIZED.to_owned(),
+            keep_cyrillic: LOANWORDS_KEPT.iter().map(|w| (*w).to_owned()).collect(),
+        };
+        evaluate(world, &[loanwords])
     })
     .await
 }
@@ -76,33 +111,48 @@ fn reports_and_passes(world: &mut E2eWorld) -> Result<()> {
 
 #[then("the word endings category scores higher than pasting its raw transcripts would")]
 fn endings_beat_raw(world: &mut E2eWorld) -> Result<()> {
+    expect_category_beats_raw(world, ENDINGS_CATEGORY)
+}
+
+#[then(
+    "the English words in Cyrillic category scores higher than pasting its raw transcripts would"
+)]
+fn english_beats_raw(world: &mut E2eWorld) -> Result<()> {
+    expect_category_beats_raw(world, ENGLISH_CATEGORY)
+}
+
+fn expect_category_beats_raw(world: &E2eWorld, category: &str) -> Result<()> {
     let report = world
         .refinement_report
         .as_ref()
         .context("no evaluation ran")?;
-    let endings = report
+    let scores = report
         .category_scores()
         .into_iter()
-        .find(|c| c.category == ENDINGS_CATEGORY)
-        .with_context(|| {
-            format!(
-                "the report has no '{ENDINGS_CATEGORY}' score:\n{}",
-                report.table()
-            )
-        })?;
-    if endings.score <= endings.raw_score {
+        .find(|c| c.category == category)
+        .with_context(|| format!("the report has no '{category}' score:\n{}", report.table()))?;
+    if scores.score <= scores.raw_score {
         bail!(
-            "'{ENDINGS_CATEGORY}' scores {:.3}, not above the raw {:.3}:\n{}",
-            endings.score,
-            endings.raw_score,
+            "'{category}' scores {:.3}, not above the raw {:.3}:\n{}",
+            scores.score,
+            scores.raw_score,
             report.table()
         );
     }
     Ok(())
 }
 
+#[then("the evaluation fails and names the transcript whose loanword left Cyrillic")]
+fn evaluation_fails_on_loanword(world: &mut E2eWorld) -> Result<()> {
+    expect_only_failure(world, LOANWORDS_ID)
+}
+
 #[then("the evaluation fails and names the transcript whose command was carried out")]
 fn evaluation_fails(world: &mut E2eWorld) -> Result<()> {
+    expect_only_failure(world, DICTATED_QUESTION_ID)
+}
+
+fn expect_only_failure(world: &E2eWorld, id: &str) -> Result<()> {
     let report = world
         .refinement_report
         .as_ref()
@@ -112,11 +162,8 @@ fn evaluation_fails(world: &mut E2eWorld) -> Result<()> {
         .iter()
         .map(|r| r.item.id.as_str())
         .collect();
-    if failed != [DICTATED_QUESTION_ID] || !report.table().contains(DICTATED_QUESTION_ID) {
-        bail!(
-            "expected '{DICTATED_QUESTION_ID}' to fail, got:\n{}",
-            report.table()
-        );
+    if failed != [id] || !report.table().contains(id) {
+        bail!("expected '{id}' to fail, got:\n{}", report.table());
     }
     Ok(())
 }

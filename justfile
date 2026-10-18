@@ -7,6 +7,8 @@ set dotenv-load
 # the start and _require-models then fail with "Run 'just models' or set it in .env")
 dictation_model_file := "ggml-large-v3-turbo-q5_0.bin"
 command_model_file := "ggml-small.bin"
+# Text refinement model (llama-server)
+refinement_model_file := "Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 find_model := 'find ~/.voicepuncher -maxdepth 2 -name "$1" 2>/dev/null | head -1 || true'
 # Speech recognition service for dictation (what the app uses)
 export VOICEPUNCHER_WHISPER_MODEL := env_var_or_default("VOICEPUNCHER_WHISPER_MODEL", shell(find_model, dictation_model_file))
@@ -14,7 +16,7 @@ export VOICEPUNCHER_WHISPER_MODEL := env_var_or_default("VOICEPUNCHER_WHISPER_MO
 export VOICEPUNCHER_COMMAND_WHISPER_MODEL := env_var_or_default("VOICEPUNCHER_COMMAND_WHISPER_MODEL", shell(find_model, command_model_file))
 # Voice activity detection model of the speech recognition service: the newest Silero model found
 export VOICEPUNCHER_VAD_MODEL := env_var_or_default("VOICEPUNCHER_VAD_MODEL", `find ~/.voicepuncher -maxdepth 2 -name 'ggml-silero-*.bin' -exec ls -t {} + 2>/dev/null | head -1 || true`)
-export VOICEPUNCHER_LLM_MODEL := env_var_or_default("VOICEPUNCHER_LLM_MODEL", `find ~/.voicepuncher -maxdepth 2 -name '*.gguf' -exec ls -S {} + 2>/dev/null | head -1 || true`)
+export VOICEPUNCHER_LLM_MODEL := env_var_or_default("VOICEPUNCHER_LLM_MODEL", shell(find_model, refinement_model_file))
 # Command spotting service (voice control): sherpa-onnx keyword spotting model directory and its Silero VAD
 export VOICEPUNCHER_KWS_MODEL_DIR := env_var_or_default("VOICEPUNCHER_KWS_MODEL_DIR", `find ~/.voicepuncher -maxdepth 2 -type d -name 'sherpa-onnx-kws-*' 2>/dev/null | head -1 || true`)
 # The user's own recorded voice commands (never committed): tests run on them when they exist
@@ -887,7 +889,7 @@ stop-model-servers *services:
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
-# Download default models into ~/.voicepuncher/models (whisper large-v3-turbo q5_0 ~550 MB for dictation, whisper small ~460 MB for commands, Silero VAD ~1 MB, Qwen2.5-1.5B ~1 GB, keyword spotting ~20 MB, Silero VAD for sherpa-onnx ~1 MB)
+# Download default models into ~/.voicepuncher/models (whisper large-v3-turbo q5_0 ~550 MB for dictation, whisper small ~460 MB for commands, Silero VAD ~1 MB, Qwen3-4B-Instruct-2507 ~2.5 GB, keyword spotting ~20 MB, Silero VAD for sherpa-onnx ~1 MB)
 models:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -915,7 +917,8 @@ models:
     fetch "$whisper/{{dictation_model_file}}" {{dictation_model_file}} 394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2
     fetch "$whisper/{{command_model_file}}" {{command_model_file}} 1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b
     fetch https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin ggml-silero-v5.1.2.bin
-    fetch https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf Qwen2.5-1.5B-Instruct-Q4_K_M.gguf
+    # The text refinement model, pinned to one revision and checked
+    fetch https://huggingface.co/bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF/resolve/ae44f08e1392f39c0e474af10c3ff8355c8b6688/{{refinement_model_file}} {{refinement_model_file}} 2fde00ce69dd4899c70d020845e2638353015bba0fdf161b3eb965f2bca4464e
     fetch https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx silero_vad.onnx
     kws=sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01
     if [[ -d "$dir/$kws" ]]; then
@@ -957,7 +960,7 @@ _require-models:
     set -euo pipefail
     # Defaults are found by exact file name (see the settings at the top); a default that is not on disk is empty
     for entry in VOICEPUNCHER_WHISPER_MODEL={{dictation_model_file}} VOICEPUNCHER_COMMAND_WHISPER_MODEL={{command_model_file}} \
-        "VOICEPUNCHER_LLM_MODEL=the largest *.gguf"; do
+        VOICEPUNCHER_LLM_MODEL={{refinement_model_file}}; do
         var=${entry%%=*} path="${!var:-}"
         if [[ -z "$path" || ! -f "$path" ]]; then
             echo "✗ $var: no model file (got '${path}', default ${entry#*=} in ~/.voicepuncher or ~/.voicepuncher/models). Run 'just models' or set it in .env" >&2

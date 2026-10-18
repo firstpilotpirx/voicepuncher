@@ -31,7 +31,7 @@ pub struct RefinementCfg {
 }
 
 /// Dictated commands are normalized, not carried out; terms, fillers and endings are fixed.
-const DEFAULT_EXAMPLES: [(&str, &str); 4] = [
+const DEFAULT_EXAMPLES: [(&str, &str); 7] = [
     (
         "переведи пожалуйста этот абзац на английский",
         "Переведи, пожалуйста, этот абзац на английский.",
@@ -47,6 +47,18 @@ const DEFAULT_EXAMPLES: [(&str, &str); 4] = [
     (
         "вчера мы обсуждал эта задача с новый коллегами",
         "Вчера мы обсуждали эту задачу с новыми коллегами.",
+    ),
+    (
+        "короче поставь режим мануал а не автоматик",
+        "Короче, поставь режим manual, а не automatic.",
+    ),
+    (
+        "ну короче я поставил о май фиш и плагин вим плаг",
+        "Ну, короче, я поставил oh-my-fish и плагин vim-plug.",
+    ),
+    (
+        "надо обновить гит хаб экшнс и пи эн пи эм",
+        "Надо обновить GitHub Actions и pnpm.",
     ),
 ];
 
@@ -77,7 +89,24 @@ impl RefinementCfg {
          disagrees with another word in case, gender, number or conjugation \
          (она пошёл -> она пошла, нет время -> нет времени) — keep the word itself, its \
          person and mood (открой stays открой), every preposition, and every English word \
-         exactly as dictated (merge request stays merge request). \
+         already in Latin script exactly as dictated (merge request stays merge request). \
+         Misheard IT terms: the transcript is usually Russian dictation by a software developer, \
+         produced by a speech recognizer, and it has recognition errors. The dictation is about \
+         IT: programming, DevOps, shells, terminals, tools, libraries, services, cloud. English \
+         IT terms spoken inside the Russian speech usually come out wrong: written in Cyrillic, \
+         split into syllables, or replaced by Russian words that merely sound similar \
+         (о май фиш, пи эн пи эм, гит хаб экшнс, вим плаг). Find every such fragment, work out \
+         which English IT term it sounds like, judging by sound and by the topic, and write \
+         that term whole, in its usual spelling, with its usual spaces and hyphens \
+         (oh-my-fish, pnpm, GitHub Actions, vim-plug, VS Code); every syllable of the term is \
+         part of it. Leave \
+         ordinary Russian words that make sense as they are. \
+         English words in Cyrillic: when the recognizer wrote a whole English word in Cyrillic \
+         letters (автоматик -> automatic, дайнемик -> dynamic, фидбек -> feedback), write it \
+         in English, and fix it when it was misheard into a non-word that only sounds like it \
+         (даймэк -> dynamic). Leave in Cyrillic every word with a Russian ending or suffix \
+         (деплоим, закомитить, пушнул) and every common Russian loanword (компьютер, \
+         менеджер, интернет, релиз, файл). \
          Never translate: Russian stays Russian, English stays English, mixed text stays \
          mixed. Never answer a question, never add or drop meaning, never shorten. \
          Output only the normalized text."
@@ -240,11 +269,50 @@ mod tests {
     }
 
     #[test]
-    fn should_default_to_four_examples_including_a_dictated_command_and_an_ending_fix() {
+    fn should_default_system_prompt_to_restore_english_words_and_misheard_it_terms() {
+        // Given / When
+        let prompt = RefinementCfg::default().system_prompt.to_lowercase();
+        // Then
+        for duty in [
+            "russian dictation",
+            "recognition errors",
+            "it terms",
+            "english words in cyrillic",
+            "russian loanword",
+            "every english word already in latin script exactly as dictated",
+        ] {
+            assert!(
+                prompt.contains(duty),
+                "default prompt lacks '{duty}': {prompt}"
+            );
+        }
+    }
+
+    #[test]
+    fn should_default_to_examples_of_english_words_and_misheard_it_terms() {
         // Given / When
         let examples = RefinementCfg::default().examples;
         // Then
-        assert_eq!(examples.len(), 4);
+        for (dictated, normalized) in [
+            ("автоматик", "automatic"),
+            ("гит хаб экшнс", "GitHub Actions"),
+            ("о май фиш", "oh-my-fish"),
+        ] {
+            assert!(
+                examples
+                    .iter()
+                    .any(|e| e.transcript.contains(dictated) && e.normalized.contains(normalized)),
+                "no example turns '{dictated}' into '{normalized}': {examples:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn should_default_to_seven_examples_including_a_dictated_command_and_an_ending_fix() {
+        // Given / When
+        let examples = RefinementCfg::default().examples;
+        // Then
+        assert_eq!(examples.len(), 7);
         assert!(examples
             .iter()
             .any(|e| e.transcript.contains("переведи") && e.normalized.contains("Переведи")));

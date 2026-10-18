@@ -11,6 +11,7 @@ Refinement already writes technical terms and product names in Latin script (д�
 - Refinement writes an English word that speech recognition spelled in Cyrillic in its English Latin spelling (автоматик → automatic, фидбек → feedback, мануал → manual), and restores one that was misheard into a sound-alike non-word when the context makes it clear (даймэк → dynamic).
 - Refinement restores an English IT term that speech recognition split into Cyrillic syllables or sound-alike Russian words (о май зэ эс эйч → oh-my-zsh, пауэрлевел десять к → Powerlevel10k, вс код → VS Code). The instruction says outright that the input is Russian dictation by a software developer with recognition errors, that English terms in it come out as misspelled Russian, and that they almost always come from IT (programming, DevOps). The user moved this rule here from `recognize-english-terms` on 2026-10-18; measurements are in `research/misheard-terms.md`.
 - Refinement keeps in Cyrillic every common Russian loanword (компьютер, менеджер, интернет, релиз, файл) and every Russified word with a Russian ending or suffix (деплоим, закомитить, пушнул).
+- The check that rejects a translation or a rewrite instead of a normalization recognizes Russian words respelled in Latin script by sound (фидбек → feedback, вс код → VS Code), so an answer with several such words is pasted instead of the raw transcript; a translation still falls back. The user chose this over a lower threshold on 2026-10-18.
 - The default refinement model changes from Qwen2.5-1.5B-Instruct (1.0 GB) to Qwen3-4B-Instruct-2507 Q4_K_M (2.5 GB, about 0.8 s on a 180-character phrase). The user chose it over gemma-3-12b-it on 2026-10-18: gemma fixes the user's whole phrase but takes 1.7–2.6 s; Qwen3-4B restores «даймэк» → «dynamic» but leaves «автоматик» in that phrase.
 - The refinement evaluation gains a category for English words in Cyrillic, with loanword controls, built from the research cases.
 
@@ -22,7 +23,7 @@ None.
 
 ### Modified Capabilities
 
-- `text-refinement`: a requirement that English words written in Cyrillic come out in Latin script while Russian loanwords stay Cyrillic; a requirement that IT terms split into Cyrillic syllables are restored; the evaluation reports the new category; the default model changes.
+- `text-refinement`: a requirement that English words written in Cyrillic come out in Latin script while Russian loanwords stay Cyrillic; a requirement that IT terms split into Cyrillic syllables are restored; the not-a-normalization check accepts respellings by sound; the evaluation reports the new category; the default model changes.
 
 ## Scope
 
@@ -39,12 +40,12 @@ None.
 
 ## Release
 
-MINOR (behavior change: new refinement behavior and a new default model), the next minor version after the current one in `app/Cargo.toml` (0.15.3 → 0.16.0 at the time of writing).
+MINOR (behavior change: new refinement behavior and a new default model), target version 0.16.0, the next minor version after the one in `app/Cargo.toml` at the time of writing.
 
 ## Impact
 
 - Default refinement instruction and examples (`app/src/config/refinement.rs`).
 - Default model download in `just models` and the README model instructions; users must download the new model (2.5 GB).
-- `justfile` model auto-discovery picks the largest `.gguf`, so the new default wins over Qwen2.5-1.5B once downloaded; the refinement evaluation in `just check` gets about twice as slow.
+- `justfile` finds the refinement model by its file name instead of taking the largest `.gguf` (design decision 5); the refinement evaluation in `just check` gets about twice as slow.
 - Refinement evaluation set and the `@refinement` E2E scenarios.
 - Research data: `research/` in this change (method, results, raw answers, benchmark script).

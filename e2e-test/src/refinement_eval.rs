@@ -27,6 +27,10 @@ pub struct EvalItem {
     pub category: String,
     pub transcript: String,
     pub expected: String,
+    /// Russian loanwords that must reach the paste in Cyrillic, each as the stem the
+    /// pasted text must hold, compared ignoring case.
+    #[serde(default)]
+    pub keep_cyrillic: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,6 +41,9 @@ pub enum Verdict {
     LanguageChanged {
         from_cyrillic: f64,
         to_cyrillic: f64,
+    },
+    LoanwordLeftCyrillic {
+        word: String,
     },
 }
 
@@ -113,6 +120,14 @@ fn verdict(item: &EvalItem, pasted: &str) -> Option<Verdict> {
             from_cyrillic,
             to_cyrillic,
         });
+    }
+    let lowercase = pasted.to_lowercase();
+    if let Some(word) = item
+        .keep_cyrillic
+        .iter()
+        .find(|word| !lowercase.contains(&word.to_lowercase()))
+    {
+        return Some(Verdict::LoanwordLeftCyrillic { word: word.clone() });
     }
     let word_error_rate = wer(&item.expected, pasted);
     (item.category == COMMANDS_CATEGORY && word_error_rate > COMMAND_MAX_WER).then_some(
@@ -226,6 +241,7 @@ mod tests {
             category: category.to_owned(),
             transcript: transcript.to_owned(),
             expected: expected.to_owned(),
+            keep_cyrillic: Vec::new(),
         }
     }
 
@@ -332,12 +348,70 @@ mod tests {
         }
     }
 
+    fn with_keep_cyrillic(mut it: EvalItem, words: &[&str]) -> EvalItem {
+        it.keep_cyrillic = words.iter().map(|w| (*w).to_owned()).collect();
+        it
+    }
+
+    #[test]
+    fn should_flag_loanword_respelled_in_latin() {
+        // Given
+        let it = with_keep_cyrillic(
+            item(
+                "english",
+                "менеджер попросил перезагрузить компьютер",
+                "Менеджер попросил перезагрузить компьютер.",
+            ),
+            &["менеджер", "компьютер"],
+        );
+        // When
+        let result = judge(&it, "Менеджер попросил перезагрузить computer.");
+        // Then
+        assert_eq!(
+            result.verdict,
+            Some(Verdict::LoanwordLeftCyrillic {
+                word: "компьютер".to_owned()
+            })
+        );
+        assert!(
+            report(&[(&it, "Менеджер попросил перезагрузить computer.")])
+                .table()
+                .contains("компьютер")
+        );
+    }
+
+    #[test]
+    fn should_accept_loanword_kept_with_another_ending() {
+        // Given
+        let it = with_keep_cyrillic(
+            item(
+                "english",
+                "мы деплоим релиз и закомитим фикс",
+                "Мы деплоим релиз и закомитим фикс.",
+            ),
+            &["деплои", "закомит"],
+        );
+        // When
+        let result = judge(&it, "Мы деплоили релиз и Закомитили фикс.");
+        // Then
+        assert_eq!(result.verdict, None);
+    }
+
     #[test]
     fn should_load_the_committed_evaluation_set() {
         // Given / When
         let items = load_eval_set(&default_eval_set()).unwrap();
         // Then
         assert!(items.len() >= 40, "{}", items.len());
+        assert!(
+            items
+                .iter()
+                .filter(|i| i.category == "english")
+                .filter(|i| !i.keep_cyrillic.is_empty())
+                .count()
+                >= 3,
+            "fewer than 3 loanword controls"
+        );
         for category in [
             "commands",
             "punctuation",
@@ -345,6 +419,7 @@ mod tests {
             "fillers",
             "mixed",
             "endings",
+            "english",
         ] {
             assert!(
                 items.iter().any(|i| i.category == category),

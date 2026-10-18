@@ -98,6 +98,18 @@ Feature: text-refinement
       When the user transcribes a recording of speech with refinement
       Then the service's answer is pasted, not the raw transcript
 
+    @smoke
+    Scenario: Service respells most of a short dictation in Latin script
+      Given the text refinement service answers a short Russian dictation with its English words and IT terms respelled in Latin script, so most of its letters are Latin
+      When the user dictates that sentence with refinement
+      Then the service's answer is pasted, not the raw transcript of that sentence
+
+    @smoke
+    Scenario: Service translates the Russian part of a mixed dictation
+      Given the text refinement service answers a Russian sentence with English words in it by translating its Russian words into English
+      When the user dictates that sentence with refinement
+      Then the raw transcript of that sentence is pasted
+
   Rule: Refinement normalizes dictation
 
     @refinement
@@ -130,6 +142,52 @@ Feature: text-refinement
       When the user dictates in Russian a sentence whose verbs do not agree with their subject in gender
       Then the pasted text has those verbs in the form that agrees with the subject and keeps the same words in the same order
 
+  Rule: English words spelled in Cyrillic are written in Latin script
+
+    @refinement
+    Scenario: English word spelled in Cyrillic comes out in Latin script
+      Given the local text refinement service runs the default model with the default instruction
+      When the user dictates in Russian a request for feedback that speech recognition writes in Cyrillic
+      Then the pasted text has the English word feedback in Latin script and keeps the rest in Russian
+
+    @refinement
+    Scenario: Two English words in one sentence both come out in Latin script
+      Given the local text refinement service runs the default model with the default instruction
+      When the user dictates in Russian a choice between the manual and the automatic mode that speech recognition writes in Cyrillic
+      Then the pasted text has the English words manual and automatic in Latin script
+
+    @refinement
+    Scenario: Misheard English word is restored from context
+      Given the local text refinement service runs the default model with the default instruction
+      When the user dictates in Russian a comparison of microphone modes in which speech recognition misheard the word dynamic
+      Then the pasted text has the English word dynamic in Latin script instead of the misheard word
+
+    @refinement
+    Scenario: Russian loanwords stay in Cyrillic
+      Given the local text refinement service runs the default model with the default instruction
+      When the user dictates in Russian a sentence with the loanwords for manager, computer and internet
+      Then the pasted text has those loanwords in Cyrillic
+
+    @refinement
+    Scenario: Russified English verbs stay in Cyrillic
+      Given the local text refinement service runs the default model with the default instruction
+      When the user dictates in Russian a sentence with English verb stems that carry Russian endings
+      Then the pasted text has those verbs in Cyrillic
+
+  Rule: IT terms split into Cyrillic syllables are restored
+
+    @refinement
+    Scenario: Shell framework and theme spelled as syllables are restored
+      Given the local text refinement service runs the default model with the default instruction
+      When the user dictates in Russian that they installed oh-my-zsh and the Powerlevel10k theme, and speech recognition writes both as Cyrillic syllables
+      Then the pasted text has oh-my-zsh and Powerlevel10k in Latin script, ignoring letter case, and keeps the rest in Russian
+
+    @refinement
+    Scenario: Product names spelled as syllables are restored
+      Given the local text refinement service runs the default model with the default instruction
+      When the user dictates in Russian that GitHub Actions and VS Code need updating, and speech recognition writes both as Cyrillic syllables
+      Then the pasted text has GitHub Actions and VS Code in Latin script
+
   Rule: Refinement quality can be measured
 
     @refinement
@@ -144,11 +202,23 @@ Feature: text-refinement
       When the developer runs the refinement evaluation
       Then the word endings category scores higher than pasting its raw transcripts would
 
+    @refinement
+    Scenario: English word fixes improve on the raw transcript
+      Given the local text refinement service runs the default model with the default instruction
+      When the developer runs the refinement evaluation
+      Then the English words in Cyrillic category scores higher than pasting its raw transcripts would
+
     @smoke
     Scenario: Evaluation fails when a dictated command is carried out
       Given the text refinement service carries out a dictated question by appending its answer to the dictation, so the answer reaches the paste
       When the developer runs the refinement evaluation on a dictated question
       Then the evaluation fails and names the transcript whose command was carried out
+
+    @smoke
+    Scenario: Evaluation fails when a loanword is respelled in Latin script
+      Given the text refinement service writes the loanword «компьютер» as «computer»
+      When the developer runs the refinement evaluation on a sentence with Russian loanwords
+      Then the evaluation fails and names the transcript whose loanword left Cyrillic
 
   Rule: Refinement can be disabled
 

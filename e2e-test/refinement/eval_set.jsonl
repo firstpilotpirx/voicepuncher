@@ -47,3 +47,18 @@
 {"id": "endings-06", "category": "endings", "transcript": "моя сестра вчера пришёл домой поздно", "expected": "Моя сестра вчера пришла домой поздно."}
 {"id": "endings-07", "category": "endings", "transcript": "мы вчера обсуждали эта проблема с командой", "expected": "Мы вчера обсуждали эту проблему с командой."}
 {"id": "endings-08", "category": "endings", "transcript": "девочка прочитал книгу и написал отзыв", "expected": "Девочка прочитала книгу и написала отзыв."}
+{"id": "english-01", "category": "english", "transcript": "Ну, лучше тогда автоматик, потому что у меня люди в помещении этой же квартиры, тут может ребенок закричать. В этом плане, наверное, автоматик лучше, чем даймэк.", "expected": "Ну, лучше тогда automatic, потому что у меня люди в помещении этой же квартиры, тут может ребенок закричать. В этом плане, наверное, automatic лучше, чем dynamic."}
+{"id": "english-02", "category": "english", "transcript": "у этого микрофона есть режим дайнемик и режим кардиоид", "expected": "У этого микрофона есть режим dynamic и режим cardioid."}
+{"id": "english-03", "category": "english", "transcript": "дай мне фидбек по этому пулл реквесту", "expected": "Дай мне feedback по этому pull request."}
+{"id": "english-04", "category": "english", "transcript": "включи в настройках опцию сайлент мод", "expected": "Включи в настройках опцию silent mode."}
+{"id": "english-05", "category": "english", "transcript": "это был такой воркараунд на время", "expected": "Это был такой workaround на время."}
+{"id": "english-06", "category": "english", "transcript": "у нас будет стендап в десять утра", "expected": "У нас будет стендап в десять утра."}
+{"id": "english-07", "category": "english", "transcript": "поставь режим мануал а не автоматик", "expected": "Поставь режим manual, а не automatic."}
+{"id": "english-08", "category": "english", "transcript": "менеджер попросил перезагрузить компьютер и проверить интернет", "expected": "Менеджер попросил перезагрузить компьютер и проверить интернет.", "keep_cyrillic": ["менеджер", "компьютер", "интернет"]}
+{"id": "english-09", "category": "english", "transcript": "мы деплоим релиз завтра а потом закомитим фикс", "expected": "Мы деплоим релиз завтра, а потом закомитим фикс.", "keep_cyrillic": ["деплои", "релиз", "закомит"]}
+{"id": "english-10", "category": "english", "transcript": "скинь мне файл в чат и поставь лайк", "expected": "Скинь мне файл в чат и поставь лайк.", "keep_cyrillic": ["файл", "чат", "лайк"]}
+{"id": "terms-misheard-01", "category": "terms", "transcript": "погляди был ли сохранен конфиг о май зэ эс эйч зэ эс эйч и пауэрлевел 10к настройки", "expected": "Погляди, был ли сохранен конфиг oh-my-zsh, zsh и Powerlevel10k настройки?"}
+{"id": "terms-misheard-02", "category": "terms", "transcript": "поставь о май зш и тему пауэрлевел десять к", "expected": "Поставь oh-my-zsh и тему Powerlevel10k."}
+{"id": "terms-misheard-03", "category": "terms", "transcript": "поставил о май зи эс эйч и тему пауэрлевел 10к", "expected": "Поставил oh-my-zsh и тему Powerlevel10k."}
+{"id": "terms-misheard-04", "category": "terms", "transcript": "нужно обновить гит хаб экшнс и вс код", "expected": "Нужно обновить GitHub Actions и VS Code."}
+{"id": "terms-latin-01", "category": "terms", "transcript": "погляди был ли сохранен конфиг oh-my-zsh zsh и Powerlevel10k настройки", "expected": "Погляди, был ли сохранен конфиг: oh-my-zsh, zsh и Powerlevel10k настройки."}

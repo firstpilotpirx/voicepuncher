@@ -22,6 +22,23 @@ const TERM_IN_LATIN: &str = "Docker";
 const TERM_SENTENCE_RU_WORDS: [&str; 2] = ["деплоим", "пятницу"];
 const MIXED_RU_EN: &str = "Сделай code review этого pull request до вечера";
 const MIXED_KEPT: [&str; 4] = ["сделай", "code review", "pull request", "вечера"];
+const FEEDBACK_RU: &str = "дай мне фидбек по этому пулл реквесту";
+const FEEDBACK_EN: [&str; 1] = ["feedback"];
+const FEEDBACK_RU_WORDS: [&str; 2] = ["дай", "этому"];
+const MANUAL_AUTOMATIC_RU: &str = "поставь режим мануал а не автоматик";
+const MANUAL_AUTOMATIC_EN: [&str; 2] = ["manual", "automatic"];
+const MISHEARD_DYNAMIC_RU: &str = "Ну, лучше тогда автоматик, потому что у меня люди в помещении этой же квартиры, тут может ребенок закричать. В этом плане, наверное, автоматик лучше, чем даймэк.";
+const MISHEARD_DYNAMIC_EN: [&str; 1] = ["dynamic"];
+const MISHEARD_DYNAMIC_HEARD: &str = "даймэк";
+const LOANWORDS_RU: &str = "менеджер попросил перезагрузить компьютер и проверить интернет";
+const LOANWORDS_KEPT: [&str; 3] = ["менеджер", "компьютер", "интернет"];
+const RUSSIFIED_VERBS_RU: &str = "мы деплоим релиз завтра а потом закомитим фикс";
+const RUSSIFIED_VERBS_KEPT: [&str; 2] = ["деплои", "закомит"];
+const SHELL_SYLLABLES_RU: &str = "поставь о май зш и тему пауэрлевел десять к";
+const SHELL_TERMS: [&str; 2] = ["oh-my-zsh", "powerlevel10k"];
+const SHELL_SENTENCE_RU_WORDS: [&str; 2] = ["поставь", "тему"];
+const PRODUCT_SYLLABLES_RU: &str = "нужно обновить гит хаб экшнс и вс код";
+const PRODUCT_TERMS: [&str; 2] = ["GitHub Actions", "VS Code"];
 const DISAGREEING_VERBS_RU: &str = "мама сказал что она купил новый телефон";
 const AGREEING_WORDS_RU: [&str; 7] = [
     "мама",
@@ -93,6 +110,118 @@ async fn dictate_disagreeing_verbs(world: &mut E2eWorld) -> Result<()> {
         refine_with_live_service(world, DISAGREEING_VERBS_RU)
     })
     .await
+}
+
+#[when("the user dictates in Russian a request for feedback that speech recognition writes in Cyrillic")]
+async fn dictate_feedback(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        refine_with_live_service(world, FEEDBACK_RU)
+    })
+    .await
+}
+
+#[when("the user dictates in Russian a choice between the manual and the automatic mode that speech recognition writes in Cyrillic")]
+async fn dictate_manual_automatic(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        refine_with_live_service(world, MANUAL_AUTOMATIC_RU)
+    })
+    .await
+}
+
+#[when("the user dictates in Russian a comparison of microphone modes in which speech recognition misheard the word dynamic")]
+async fn dictate_misheard_dynamic(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        refine_with_live_service(world, MISHEARD_DYNAMIC_RU)
+    })
+    .await
+}
+
+#[when(
+    "the user dictates in Russian a sentence with the loanwords for manager, computer and internet"
+)]
+async fn dictate_loanwords(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        refine_with_live_service(world, LOANWORDS_RU)
+    })
+    .await
+}
+
+#[when(
+    "the user dictates in Russian a sentence with English verb stems that carry Russian endings"
+)]
+async fn dictate_russified_verbs(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        refine_with_live_service(world, RUSSIFIED_VERBS_RU)
+    })
+    .await
+}
+
+#[when("the user dictates in Russian that they installed oh-my-zsh and the Powerlevel10k theme, and speech recognition writes both as Cyrillic syllables")]
+async fn dictate_shell_syllables(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        refine_with_live_service(world, SHELL_SYLLABLES_RU)
+    })
+    .await
+}
+
+#[when("the user dictates in Russian that GitHub Actions and VS Code need updating, and speech recognition writes both as Cyrillic syllables")]
+async fn dictate_product_syllables(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        refine_with_live_service(world, PRODUCT_SYLLABLES_RU)
+    })
+    .await
+}
+
+#[then(
+    "the pasted text has the English word feedback in Latin script and keeps the rest in Russian"
+)]
+fn feedback_in_latin(world: &mut E2eWorld) -> Result<()> {
+    expect_contains_all(&world.stdout, &FEEDBACK_EN)?;
+    expect_contains_all(&world.stdout, &FEEDBACK_RU_WORDS)
+}
+
+#[then("the pasted text has the English words manual and automatic in Latin script")]
+fn manual_automatic_in_latin(world: &mut E2eWorld) -> Result<()> {
+    expect_contains_all(&world.stdout, &MANUAL_AUTOMATIC_EN)
+}
+
+#[then("the pasted text has the English word dynamic in Latin script instead of the misheard word")]
+fn dynamic_restored(world: &mut E2eWorld) -> Result<()> {
+    expect_contains_all(&world.stdout, &MISHEARD_DYNAMIC_EN)?;
+    if world.stdout.to_lowercase().contains(MISHEARD_DYNAMIC_HEARD) {
+        bail!(
+            "the misheard '{MISHEARD_DYNAMIC_HEARD}' was pasted: {:?}",
+            world.stdout
+        );
+    }
+    Ok(())
+}
+
+#[then("the pasted text has those loanwords in Cyrillic")]
+fn loanwords_kept(world: &mut E2eWorld) -> Result<()> {
+    expect_contains_all(&world.stdout, &LOANWORDS_KEPT)
+}
+
+#[then("the pasted text has those verbs in Cyrillic")]
+fn russified_verbs_kept(world: &mut E2eWorld) -> Result<()> {
+    expect_contains_all(&world.stdout, &RUSSIFIED_VERBS_KEPT)
+}
+
+#[then("the pasted text has oh-my-zsh and Powerlevel10k in Latin script, ignoring letter case, and keeps the rest in Russian")]
+fn shell_terms_restored(world: &mut E2eWorld) -> Result<()> {
+    expect_contains_all(&world.stdout, &SHELL_TERMS)?;
+    expect_contains_all(&world.stdout, &SHELL_SENTENCE_RU_WORDS)
+}
+
+#[then("the pasted text has GitHub Actions and VS Code in Latin script")]
+fn product_terms_restored(world: &mut E2eWorld) -> Result<()> {
+    match PRODUCT_TERMS
+        .iter()
+        .find(|term| !world.stdout.contains(*term))
+    {
+        Some(missing) => bail!("expected '{missing}' in the pasted text {:?}", world.stdout),
+        None => Ok(()),
+    }
 }
 
 #[then("the pasted text starts with a capital letter, separates its clauses with punctuation and ends with a sentence mark")]

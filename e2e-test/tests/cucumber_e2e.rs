@@ -23,6 +23,8 @@ pub struct E2eWorld {
     pub workdir: Option<tempfile::TempDir>,
     pub recording: Option<PathBuf>,
     pub spoken: Option<voicepuncher_e2e_test::speech::Lang>,
+    /// A transcript the user dictates without a recording, refined as the app refines it.
+    pub dictated: Option<&'static str>,
     pub exit_status: Option<ExitStatus>,
     pub corpus: Vec<voicepuncher_e2e_test::corpus::Sample>,
     pub word_error_rates: Vec<f64>,

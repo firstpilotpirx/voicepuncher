@@ -8,6 +8,7 @@ pub mod normalization_check;
 pub mod ptt_signal;
 pub mod raw_transcript;
 pub mod recording_mode;
+mod respelling;
 pub mod text_focus;
 pub mod voice_command;
 pub mod voice_command_recognizer;
