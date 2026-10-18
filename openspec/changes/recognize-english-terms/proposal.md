@@ -2,14 +2,19 @@
 
 ## Why
 
-English technical terms inside Russian dictation come out garbled, and refinement does not repair them. In a real dictation the user said "Погляди, был ли сохранен конфиг: oh-my-zsh, zsh и Powerlevel10k настройки". The app pasted "Погляди, был ли сохранен конфиг. Ох, мой, за ТСАж, за ТСАж и Powerline 10K настройки." The `text-refinement` spec already promises that technical terms come out in their usual Latin spelling, so this is a bug. The raw transcript looks worse than it used to, so speech recognition itself may have regressed.
+English technical terms inside Russian dictation come out garbled. The user said "Погляди, был ли сохранен конфиг: oh-my-zsh, zsh и Powerlevel10k настройки"; the app pasted "Погляди, был ли сохранен конфиг. Ох, мой, за ТСАж, за ТСАж и Powerline 10K настройки."
+
+The exploration (2026-10-18, synthesized speech, local services) found where the terms get lost:
+
+- Speech recognition: without a prompt it writes "о мой ZSH, ZSH PowerLVL10 к настройке"; with a prompt naming the terms it writes "oh my zsh, zsh Powerlevel10…". No prompt is configured by default.
+- Refinement cannot repair them: Qwen2.5-1.5B, Qwen3-4B and gemma-3-12b all leave "Ох, мой, за ТСАж" as it is or invent other words ("my SSH", "oh-my-fish"). A misheard term carries too little of the word to restore it from context.
+- No regression of speech recognition was found.
 
 ## What Changes
 
-- Find where the terms get lost. Compare the raw transcript with the refined text for this dictation and for similar ones, and check whether speech recognition regressed against an earlier version, model or decoding setup.
-- Fix speech recognition so the raw transcript keeps English terms recognizable, if it turns out to be the cause.
-- Fix refinement so terms that speech recognition misheard in Cyrillic or as other words ("Ох, мой, за ТСАж" → "oh-my-zsh", "Powerline 10K" → "Powerlevel10k") reach the paste in their usual Latin spelling.
-- Add the reported dictation as a reproduction case to the refinement evaluation and to the tests.
+- Speech recognition gets a default prompt that names common developer terms (shell, tool and service names), so they reach the raw transcript in their usual Latin spelling. A prompt the user configures replaces it; an explicitly empty prompt turns it off.
+- The reported dictation becomes an E2E reproduction case for speech recognition, and its correct transcript a technical-terms case in the refinement evaluation, so refinement must keep such terms unchanged.
+- The refinement instruction stays as it is: `english-words-in-latin` rewrites it.
 
 ## Capabilities
 
@@ -19,27 +24,26 @@ None.
 
 ### Modified Capabilities
 
-- `text-refinement`: add a scenario that reproduces the bug. Misheard English terms in a Russian dictation are restored to their usual Latin spelling.
-- `speech-recognition`: if the cause is there, add a requirement that English terms spoken inside Russian speech come out recognizable in the raw transcript.
+- `speech-recognition`: common developer terms are recognized in their Latin spelling without any configuration.
 
 ## Scope
 
 - Current stage: PoC. Target stage: PoC.
-- In scope: English technical terms (tool, shell and library names) spoken inside Russian dictation, and the cause of the suspected recognition regression.
-- Acceptance bar: the reported dictation is pasted with "oh-my-zsh", "zsh" and "Powerlevel10k" in Latin script and the rest in Russian. The refinement evaluation's technical-terms score does not drop.
+- In scope: the default speech recognition prompt, the reproduction test, one refinement evaluation case.
+- Acceptance bar: the reported sentence, synthesized, has "zsh" and "Powerlevel10k" in Latin script in the raw transcript; dictation WER on the 100 recordings of `just full-check` is not worse than without the prompt; the refinement evaluation's technical-terms score does not drop.
 
 ## Out of scope
 
-- A user-editable vocabulary or term list.
-- Changing the default speech recognition or refinement model, unless the investigation shows the regression comes from the model.
+- A user-editable term list beyond the existing prompt setting.
+- Changing the speech recognition or refinement model, or the refinement instruction.
+- Comparing with the unquantized recognition model.
 - Languages other than Russian and English.
 
 ## Release
 
-PATCH (bug fix), next patch version after the current one in `app/Cargo.toml` (0.6.0 → 0.6.1 at the time of writing).
+PATCH (bug fix): 0.15.3 → 0.15.4.
 
 ## Impact
 
-- Default refinement instruction and the refinement evaluation set.
-- Possibly speech recognition settings (prompt, decoding parameters) in the speech recognition adapter.
-- E2E and accuracy benchmarks: a new case with mixed Russian and English terms.
+- Default `[transcription] prompt` (`app/src/config/transcription.rs`), README and the setting's doc comment.
+- `speech_recognition.feature` E2E scenarios, `e2e-test/refinement/eval_set.jsonl`.
