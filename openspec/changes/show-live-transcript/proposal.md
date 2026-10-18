@@ -36,7 +36,7 @@ None.
 
 ## Release
 
-MINOR (new capability), next minor version after the current one in `app/Cargo.toml` (0.9.0 → 0.10.0 at the time of writing).
+MINOR (new capability), next minor version after the current one in `app/Cargo.toml` (0.15.3 → 0.16.0 at the time of writing).
 
 ## Impact
 
