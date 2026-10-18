@@ -2,6 +2,27 @@
 
 Checks waste about a third of their time on failed runs that are then rerun. Research of 2026-10-18 (report https://claude.ai/artifact/HaDTCo6LEo833xZijMqCh7) read the stage tables of 140 `just check` / `just full-check` runs from session transcripts and scratchpad logs (14–18 Oct): 294 of 954 minutes were spent in runs that failed. Failed stages: `e2e-smoke` 52 times, `e2e-seams` 10, `test` 5, `fmt` 3, `refine-eval` 2, `e2e-bench` 1. The audit of 2026-10-16 already saw `e2e-smoke` red in 44 of 80 runs and `e2e-seams` red in 18 of 18. The user's rule: when the behavior a test checks is fine, the test must never fail. Every rerun also holds the machine-wide lock, so other sessions wait too.
 
+Tests that failed most often in session transcripts of 9–18 Oct (153 distinct failures counted; some may be expected red runs during development, see Open points):
+
+| Failures | File | Test |
+|---|---|---|
+| 26 | `app/tests/voice_forms_it.rs` | `should_carry_out_every_recorded_way_of_saying_the_commands` (typically "1 of 82 recorded forms went wrong") |
+| 13 | `app/tests/chunked_transcription_it.rs` | `should_merge_chunked_speech_without_repeating_or_dropping_a_phrase` |
+| 12 | `app/tests/transcription_openai_it.rs` | `should_transcribe_corpus_sample_through_real_service` |
+| 11 | `app/tests/commandspotting_websocket_it.rs` | `should_serve_several_apps_listening_at_once` |
+| 10 | `app/tests/voice_samples_it.rs` | `should_recognize_every_recorded_command_of_the_user` (typically "1 of 37 recorded commands missed") |
+| 7 | `app/tests/commandspotting_websocket_it.rs` | `should_recognize_each_command_streamed_from_a_48_khz_microphone` |
+| 6 | `app/tests/commandspotting_websocket_it.rs` | `should_recognize_commands_after_long_listening_with_the_phrase_set_switched` |
+| 5 | `app/tests/commandspotting_websocket_it.rs` | `should_report_a_spoken_phrase_between_the_bounds_of_its_speech` |
+| 4 | `command-spotting/tests/engine_it.rs` | `should_spot_speech_over_room_noise` |
+| 3 | `command-spotting/tests/engine_it.rs` | `should_keep_the_users_two_commands_apart_across_a_short_pause_with_a_click` |
+| 3 | `app/tests/commandspotting_websocket_it.rs` | `should_ignore_a_command_phrase_said_inside_a_sentence_after_long_listening` |
+| 2 | `app/tests/commandspotting_reconnect_it.rs` | `should_be_back_within_seconds_once_the_service_answers_after_a_long_outage` |
+| 2 | `app/tests/commandspotting_client_it.rs` | `should_wait_for_a_service_that_answers_pings_however_late_its_events_come` |
+| 2 | `app/tests/commandspotting_websocket_it.rs` | `should_ignore_a_command_phrase_with_words_only_before_it` |
+
+The `@smoke` Gherkin run of `e2e-smoke` also failed with a few of its ~178 scenarios red; which ones is not in the counted lines. One session ran `just full-check` 4 times in 10 minutes on unchanged code, failing each time on `voice_forms_it` or `should_serve_several_apps_listening_at_once`, then passing.
+
 ## What Changes
 
 - Every failure of a test stage found in past run logs and session transcripts is traced to its cause: a real defect, a race or timing effect in the test or the code (real-time audio pacing, service warm-up, timeouts, shared services, GPU load from other runs), or an acceptance bar stricter than the spec promises.
