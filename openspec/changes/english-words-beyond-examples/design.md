@@ -29,3 +29,7 @@ With the default instruction and seven examples (`app/src/config/refinement.rs`)
 | Misheard English word is restored from context | E2E `.feature`, `@refinement`, live service (existing, unchanged) |
 | Russian loanwords stay in Cyrillic | E2E `.feature`, `@refinement`, live service (existing, unchanged) |
 | Russified English verbs stay in Cyrillic | E2E `.feature`, `@refinement`, live service (existing, unchanged) |
+
+## Dependencies
+
+Waits for `refinement-scenarios-unlike-prompt`: it rewrites the same `@refinement` scenarios and steps (`text_refinement.feature`, `normalization.rs`), and its new dictations must stay unlike the prompt this change rewords; after it merges, the new rule and example are measured again on its dictations.

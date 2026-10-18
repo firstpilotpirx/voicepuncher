@@ -1,0 +1,3 @@
+depends_on:
+  - change: refinement-scenarios-unlike-prompt
+    why: rewrites the same @refinement scenarios and steps, and its new dictations must stay unlike the prompt this change rewords
