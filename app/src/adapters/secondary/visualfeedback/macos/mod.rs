@@ -1,5 +1,7 @@
+mod live_text;
 mod screen_watcher;
 mod topology;
+mod transcript_window;
 mod window_set;
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
@@ -8,9 +10,10 @@ use std::sync::{Arc, Mutex};
 use objc2::MainThreadMarker;
 use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSScreen};
 
-use crate::core::application::{AudioLevelSource, VisualIndicator};
+use crate::core::application::{AudioLevelSource, LiveTranscriptView, VisualIndicator};
 use crate::core::domain::{level_to_pills, AudioLevel};
 
+use live_text::LiveTranscriptText;
 use screen_watcher::ScreenWatcher;
 use topology::{diff_screens, ScreenChange, ScreenTopology};
 use window_set::WindowSet;
@@ -82,6 +85,7 @@ pub struct MacosVisualIndicator {
     windows: Arc<Mutex<Vec<Arc<WindowSet>>>>,
     pulse_generation: Arc<AtomicU64>,
     level_register: Arc<AtomicU32>,
+    live_transcript: LiveTranscriptText,
     #[allow(dead_code)]
     last_topology: Arc<Mutex<ScreenTopology>>,
     _watcher: ScreenWatcher,
@@ -118,12 +122,14 @@ impl MacosVisualIndicator {
         let windows = Arc::new(Mutex::new(initial_windows));
         let pulse_generation = Arc::new(AtomicU64::new(0));
         let last_topology = Arc::new(Mutex::new(initial_topology));
+        let live_transcript = LiveTranscriptText::default();
 
         let state_for_watcher = Arc::clone(&state);
         let windows_for_watcher = Arc::clone(&windows);
         let pulse_generation_for_watcher = Arc::clone(&pulse_generation);
         let last_topology_for_watcher = Arc::clone(&last_topology);
         let level_register_for_watcher = Arc::clone(&level_register);
+        let live_transcript_for_watcher = live_transcript.clone();
 
         let handler: Arc<dyn Fn() + Send + Sync + 'static> = Arc::new(move || {
             let state = Arc::clone(&state_for_watcher);
@@ -131,6 +137,7 @@ impl MacosVisualIndicator {
             let pulse_generation = Arc::clone(&pulse_generation_for_watcher);
             let last_topology = Arc::clone(&last_topology_for_watcher);
             let level_register = Arc::clone(&level_register_for_watcher);
+            let live_transcript = live_transcript_for_watcher.clone();
 
             dispatch_to_main(move || {
                 let Some(mtm) = MainThreadMarker::new() else {
@@ -146,11 +153,12 @@ impl MacosVisualIndicator {
                     OverlayState::Recording => {
                         let ws_vec = windows.lock().unwrap().clone();
                         apply_recording_state(
-                            ws_vec,
+                            ws_vec.clone(),
                             generation,
                             Arc::clone(&pulse_generation),
                             Arc::clone(&level_register),
                         );
+                        apply_live_transcript(&ws_vec, live_transcript.shown(current_state));
                     }
                     OverlayState::RecognizingSpeech | OverlayState::RefiningText => {
                         let ws_vec = windows.lock().unwrap().clone();
@@ -181,6 +189,7 @@ impl MacosVisualIndicator {
             windows,
             pulse_generation,
             level_register,
+            live_transcript,
             last_topology,
             _watcher: watcher,
         }
@@ -195,6 +204,7 @@ impl MacosVisualIndicator {
             &self.pulse_generation,
             &self.last_topology,
             &self.level_register,
+            &self.live_transcript,
         );
     }
 
@@ -271,6 +281,7 @@ fn rebuild_window_set_inner(
     pulse_generation: &Arc<AtomicU64>,
     last_topology: &Arc<Mutex<ScreenTopology>>,
     level_register: &Arc<AtomicU32>,
+    live_transcript: &LiveTranscriptText,
 ) {
     let new_topology = collect_topology(mtm);
 
@@ -291,7 +302,8 @@ fn rebuild_window_set_inner(
             let ws_vec = windows.lock().unwrap().clone();
             let pg = Arc::clone(pulse_generation);
             let lr = Arc::clone(level_register);
-            apply_recording_state(ws_vec, generation, pg, lr);
+            apply_recording_state(ws_vec.clone(), generation, pg, lr);
+            apply_live_transcript(&ws_vec, live_transcript.shown(current_state));
         }
         OverlayState::RecognizingSpeech | OverlayState::RefiningText => {
             let ws_vec = windows.lock().unwrap().clone();
@@ -316,6 +328,7 @@ impl VisualIndicator for MacosVisualIndicator {
         let level_register = Arc::clone(&self.level_register);
 
         *self.state.lock().unwrap() = OverlayState::Recording;
+        self.live_transcript.clear();
         log::debug!("overlay: recording requested");
 
         dispatch_to_main(move || {
@@ -343,6 +356,42 @@ impl VisualIndicator for MacosVisualIndicator {
 
     fn hide(&self) {
         self.hide_overlay();
+    }
+
+    fn live_transcript_view(&self) -> Box<dyn LiveTranscriptView> {
+        Box::new(MacosLiveTranscriptView {
+            state: Arc::clone(&self.state),
+            windows: Arc::clone(&self.windows),
+            live_transcript: self.live_transcript.clone(),
+        })
+    }
+}
+
+/// Draws the live transcript under the pill of every screen while the recording runs.
+struct MacosLiveTranscriptView {
+    state: Arc<Mutex<OverlayState>>,
+    windows: Arc<Mutex<Vec<Arc<WindowSet>>>>,
+    live_transcript: LiveTranscriptText,
+}
+
+impl LiveTranscriptView for MacosLiveTranscriptView {
+    fn show_live_transcript(&self, text: &str) {
+        self.live_transcript
+            .update(*self.state.lock().unwrap(), text);
+        let state = Arc::clone(&self.state);
+        let windows = Arc::clone(&self.windows);
+        let live_transcript = self.live_transcript.clone();
+        dispatch_to_main(move || {
+            // WHY: read on the main queue, so a stage shown after this update was queued wins
+            let shown = live_transcript.shown(*state.lock().unwrap());
+            apply_live_transcript(&windows.lock().unwrap(), shown);
+        });
+    }
+}
+
+fn apply_live_transcript(windows: &[Arc<WindowSet>], shown: Option<String>) {
+    for ws in windows {
+        ws.transcript.show(shown.as_deref());
     }
 }
 
@@ -421,6 +470,7 @@ fn apply_recording_state(
         ws.label.setStringValue(&text);
         ws.label.setTextColor(Some(&NSColor::redColor()));
         ws.label.setHidden(false);
+        ws.transcript.show(None);
         ws.eq_label.setHidden(false);
         ws.spinner.setHidden(true);
         unsafe { ws.spinner.stopAnimation(None) };
@@ -486,6 +536,7 @@ fn apply_processing_state(
         ws.label.setAlphaValue(1.0);
         ws.label.setHidden(false);
         ws.eq_label.setHidden(true);
+        ws.transcript.show(None);
         ws.spinner.setHidden(false);
         unsafe { ws.spinner.startAnimation(None) };
         ws.window.orderFrontRegardless();
@@ -514,6 +565,7 @@ fn apply_waiting_for_focus_state(
         ws.label.setStringValue(&text);
         ws.label.setTextColor(Some(&NSColor::orangeColor()));
         ws.label.setHidden(false);
+        ws.transcript.show(None);
         ws.eq_label.setHidden(true);
         ws.spinner.setHidden(true);
         unsafe { ws.spinner.stopAnimation(None) };
@@ -567,6 +619,7 @@ fn apply_hidden_state(windows: Vec<Arc<WindowSet>>) {
         ws.eq_label.setHidden(true);
         unsafe { ws.spinner.stopAnimation(None) };
         ws.window.orderOut(None);
+        ws.transcript.show(None);
     }
 }
 

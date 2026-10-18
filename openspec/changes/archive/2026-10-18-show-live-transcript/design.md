@@ -16,7 +16,8 @@ With live chunking the recorder hands chunks to a `live-transcription` thread (`
 2. **The worker merges after every chunk with text** — `merge_chunk_texts` over the texts so far, then `show_live_transcript`. A chunk without text (hallucination dropped, lost chunk) shows nothing new. Merging every time is quadratic in chunks but a dictation has few chunks of ~30 s; the final merge at the stop is unchanged, so the pasted text is the same.
 3. **The overlay draws the text in a second borderless window per screen**, under the pill, 480 pt wide, two lines at 14 pt, part of `WindowSet`. It is shown only in the recording state with a non-empty text. The text lives in the indicator's shared state next to `OverlayState`: `show_recording` clears it, every other state hides the window, and a screen rebuild redraws it. An update that reaches the main queue after the state left recording is dropped. *Rejected:* growing the pill (changes the look the processing-stages spec fixes).
 4. **The latest words are cut in code, not by AppKit**: a pure function keeps the longest tail of whole words within a character budget (110) and prefixes `…` when it cut. AppKit's head truncation works for one line only.
-5. **Glossary:** *Live transcript* — the stitched raw transcript of the chunks transcribed so far, shown while the user dictates.
+5. **What the text window shows is a pure function of the overlay state and the stored text** (`None` hides it), unit-tested in the adapter. The AppKit tests of `visualfeedback_macos_it.rs` return early off the main thread, as nextest runs them, so the drawing itself is checked by the manual run.
+6. **Glossary:** *Live transcript* — the stitched raw transcript of the chunks transcribed so far, shown while the user dictates.
 
 ## Risks / Trade-offs
 
@@ -32,7 +33,7 @@ With live chunking the recorder hands chunks to a `live-transcription` thread (`
 | A dictation started by voice shows its text so far | component `.feature` |
 | A short dictation shows the recording sign alone | component `.feature` |
 | A part without speech adds no text | component `.feature` |
-| A long text shows its latest words | unit (tail cut) + adapter integration (label text) + manual run |
-| Stopping a dictation clears its text | component `.feature` (pasted text) + adapter integration (window hidden) |
-| Cancelling a dictation clears its text | adapter integration |
-| The next dictation starts without text | adapter integration |
+| A long text shows its latest words | unit (tail cut) + manual run |
+| Stopping a dictation clears its text | component `.feature` + unit (adapter: hidden outside recording) |
+| Cancelling a dictation clears its text | unit (adapter: hidden outside recording) + manual run |
+| The next dictation starts without text | unit (adapter: a new recording clears the text) + manual run |

@@ -254,6 +254,7 @@ mod tests {
     use crate::core::application::audio_recorder::MockAudioRecorder;
     use crate::core::application::command_spotter::MockCommandSpotter;
     use crate::core::application::key_presser::MockKeyPresser;
+    use crate::core::application::live_transcript_view::HiddenLiveTranscript;
     use crate::core::application::pipeline::PipelineConfig;
     use crate::core::application::sound_player::MockSoundPlayer;
     use crate::core::application::text_paster::MockTextPaster;
@@ -288,6 +289,9 @@ mod tests {
         overlay.expect_show_recognizing_speech().return_const(());
         overlay.expect_show_refining_text().return_const(());
         overlay.expect_hide().return_const(());
+        overlay
+            .expect_live_transcript_view()
+            .returning(|| Box::new(HiddenLiveTranscript));
         overlay
     }
 

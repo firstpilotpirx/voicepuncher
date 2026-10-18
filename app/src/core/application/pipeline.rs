@@ -1,3 +1,4 @@
+mod live_transcript;
 mod voice_control;
 
 use std::collections::VecDeque;
@@ -6,11 +7,13 @@ use std::time::Instant;
 
 use crate::core::application::audio_recorder::LiveChunk;
 use crate::core::application::chunking::{merge_chunk_texts, split_into_chunks, ChunkingCfg};
+use crate::core::application::pipeline::live_transcript::{LiveTranscript, RecordingEnd};
 use crate::core::application::text_refiner::refine_or_raw;
 use crate::core::application::{
     hotkey_pressed_during_wait, insert_text, AudioRecorder, FocusProbe, FocusWaitCfg, Insertion,
     PipelineInput, SoundPlayer, TextPaster, TextRefiner, Transcriber, VisualIndicator,
 };
+
 use crate::core::domain::{
     without_leading_command, without_trailing_command, AudioBuffer16k, CleanedText, PttSignal,
     RawTranscript, RecordingMode, VoiceCommand,
@@ -34,6 +37,7 @@ enum PipelineState {
 
 struct LiveTranscriptionSession {
     results_rx: mpsc::Receiver<LiveSessionResult>,
+    recording_end: RecordingEnd,
 }
 
 struct LiveSessionResult {
@@ -199,11 +203,18 @@ impl Pipeline {
                 );
                 let transcriber = self.transcriber.take().expect("transcriber already taken");
                 let (results_tx, results_rx) = mpsc::sync_channel(1);
+                let (live_transcript, recording_end) =
+                    LiveTranscript::new(self.visual_indicator.live_transcript_view());
                 std::thread::Builder::new()
                     .name("live-transcription".into())
-                    .spawn(move || run_live_worker(transcriber, chunk_rx, results_tx))
+                    .spawn(move || {
+                        run_live_worker(transcriber, chunk_rx, results_tx, live_transcript)
+                    })
                     .expect("failed to spawn live transcription thread");
-                self.live_session = Some(LiveTranscriptionSession { results_rx });
+                self.live_session = Some(LiveTranscriptionSession {
+                    results_rx,
+                    recording_end,
+                });
             }
         }
         self.visual_indicator.show_recording();
@@ -217,6 +228,7 @@ impl Pipeline {
         self.sound_player.play_stop();
         self.visual_indicator.show_recognizing_speech();
         if let Some(session) = self.live_session.take() {
+            session.recording_end.signal();
             self.state = PipelineState::Idle;
             let t_drain_start = std::time::Instant::now();
             self.recorder.flush_live_chunks();
@@ -274,6 +286,7 @@ impl Pipeline {
         self.follow_dictation(false);
         self.command_words = CommandWords::default();
         if let Some(session) = self.live_session.take() {
+            session.recording_end.signal();
             self.recorder.flush_live_chunks();
             let _ = self.recorder.stop();
             if let Ok(result) = session.results_rx.recv() {
@@ -458,6 +471,7 @@ fn run_live_worker(
     mut transcriber: Box<dyn Transcriber>,
     chunk_rx: mpsc::Receiver<LiveChunk>,
     results_tx: mpsc::SyncSender<LiveSessionResult>,
+    live_transcript: LiveTranscript,
 ) {
     let mut texts = Vec::new();
     let mut chunk_num = 0usize;
@@ -480,6 +494,7 @@ fn run_live_worker(
                     t0.elapsed().as_secs_f32(),
                 );
                 texts.push(raw.as_str().to_owned());
+                live_transcript.show(&texts);
             }
             Ok(None) => {
                 log::info!(
@@ -503,6 +518,9 @@ mod tests {
     use super::*;
     use crate::core::application::audio_recorder::MockAudioRecorder;
     use crate::core::application::chunking::ChunkingCfg;
+    use crate::core::application::live_transcript_view::{
+        HiddenLiveTranscript, MockLiveTranscriptView,
+    };
     use crate::core::application::sound_player::MockSoundPlayer;
     use crate::core::application::text_paster::MockTextPaster;
     use crate::core::application::text_refiner::MockTextRefiner;
@@ -510,6 +528,65 @@ mod tests {
     use crate::core::application::visual_indicator::MockVisualIndicator;
     use crate::core::domain::{CleanedText, RawTranscript};
     use anyhow::anyhow;
+
+    /// Runs the live worker over chunks the transcriber answers with `answers` in turn.
+    fn run_worker_over(answers: Vec<Option<&'static str>>, view: MockLiveTranscriptView) {
+        let mut transcriber = MockTranscriber::new();
+        let mut answers = answers.into_iter();
+        transcriber.expect_transcribe().returning(move |_| {
+            Ok(answers
+                .next()
+                .flatten()
+                .map(|t| RawTranscript::new(t.to_owned()).unwrap()))
+        });
+        let (chunk_tx, chunk_rx) = mpsc::channel();
+        for _ in 0..2 {
+            chunk_tx
+                .send(LiveChunk {
+                    audio: one_second_audio(),
+                    enqueued_at: Instant::now(),
+                })
+                .unwrap();
+        }
+        drop(chunk_tx);
+        let (results_tx, _results_rx) = mpsc::sync_channel(1);
+        let (live_transcript, _recording_end) = LiveTranscript::new(Box::new(view));
+        run_live_worker(Box::new(transcriber), chunk_rx, results_tx, live_transcript);
+    }
+
+    #[test]
+    fn should_show_the_stitched_text_after_every_chunk_with_text() {
+        // Given
+        let mut view = MockLiveTranscriptView::new();
+        let mut seq = mockall::Sequence::new();
+        view.expect_show_live_transcript()
+            .withf(|text| text == "one two three")
+            .once()
+            .in_sequence(&mut seq)
+            .return_const(());
+        view.expect_show_live_transcript()
+            .withf(|text| text == "one two three four five")
+            .once()
+            .in_sequence(&mut seq)
+            .return_const(());
+        // When / Then
+        run_worker_over(
+            vec![Some("one two three"), Some("two three four five")],
+            view,
+        );
+    }
+
+    #[test]
+    fn should_show_nothing_new_for_a_chunk_without_text() {
+        // Given
+        let mut view = MockLiveTranscriptView::new();
+        view.expect_show_live_transcript()
+            .withf(|text| text == "one two three")
+            .once()
+            .return_const(());
+        // When / Then
+        run_worker_over(vec![Some("one two three"), None], view);
+    }
 
     fn one_second_audio() -> AudioBuffer16k {
         AudioBuffer16k::new(vec![0i16; 16_000])
@@ -531,6 +608,9 @@ mod tests {
             .return_const(());
         v.expect_show_refining_text().times(..).return_const(());
         v.expect_hide().times(..).return_const(());
+        v.expect_live_transcript_view()
+            .times(..)
+            .returning(|| Box::new(HiddenLiveTranscript));
         v
     }
 

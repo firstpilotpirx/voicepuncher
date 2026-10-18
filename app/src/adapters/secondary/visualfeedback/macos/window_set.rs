@@ -11,12 +11,17 @@ use objc2_app_kit::{
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 use objc2_quartz_core::kCACornerCurveContinuous;
 
+use super::transcript_window::TranscriptWindow;
+
+const PILL_CORNER_RADIUS: f64 = 20.0;
+
 pub(super) struct WindowSet {
     pub(super) window: Retained<NSWindow>,
     pub(super) label: Retained<NSTextField>,
     #[allow(dead_code)]
     pub(super) eq_label: Retained<NSTextField>,
     pub(super) spinner: Retained<NSProgressIndicator>,
+    pub(super) transcript: TranscriptWindow,
 }
 
 impl WindowSet {
@@ -35,51 +40,7 @@ impl WindowSet {
             },
         };
 
-        let window = unsafe {
-            NSWindow::initWithContentRect_styleMask_backing_defer(
-                mtm.alloc::<NSWindow>(),
-                frame,
-                NSWindowStyleMask::Borderless,
-                NSBackingStoreType::Buffered,
-                false,
-            )
-        };
-
-        window.setLevel(3);
-        window.setOpaque(false);
-        window.setBackgroundColor(Some(&NSColor::clearColor()));
-        window.setIgnoresMouseEvents(true);
-        window.setCollectionBehavior(
-            NSWindowCollectionBehavior::CanJoinAllSpaces
-                | NSWindowCollectionBehavior::Stationary
-                | NSWindowCollectionBehavior::IgnoresCycle
-                | NSWindowCollectionBehavior::FullScreenAuxiliary,
-        );
-
-        let content_frame = NSRect {
-            origin: NSPoint { x: 0.0, y: 0.0 },
-            size: NSSize {
-                width: window_width,
-                height: window_height,
-            },
-        };
-        let effect_view =
-            NSVisualEffectView::initWithFrame(mtm.alloc::<NSVisualEffectView>(), content_frame);
-        effect_view.setMaterial(NSVisualEffectMaterial::Menu);
-        effect_view.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
-        effect_view.setState(NSVisualEffectState::Active);
-        effect_view.setWantsLayer(true);
-        if let Some(layer) = effect_view.layer() {
-            let continuous_curve = unsafe { kCACornerCurveContinuous };
-            layer.setCornerCurve(continuous_curve);
-            layer.setCornerRadius(20.0);
-            layer.setMasksToBounds(true);
-            layer.setBackgroundColor(None);
-            let border = NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 1.0, 1.0, 0.18);
-            layer.setBorderColor(Some(&border.CGColor()));
-            layer.setBorderWidth(0.5);
-        }
-        window.setContentView(Some(&*effect_view));
+        let (window, effect_view) = floating_panel(mtm, frame, PILL_CORNER_RADIUS);
 
         let font = NSFont::boldSystemFontOfSize(28.0);
         let label_height = (font.ascender() - font.descender()).ceil() + 4.0;
@@ -153,13 +114,68 @@ impl WindowSet {
 
         effect_view.addSubview(&spinner);
 
+        let transcript = TranscriptWindow::build(mtm, frame);
+
         Arc::new(Self {
             window,
             label,
             eq_label,
             spinner,
+            transcript,
         })
     }
+}
+
+/// A borderless, click-through window on every space with a rounded menu-material
+/// background, and the view its content goes into.
+pub(super) fn floating_panel(
+    mtm: MainThreadMarker,
+    frame: NSRect,
+    corner_radius: f64,
+) -> (Retained<NSWindow>, Retained<NSVisualEffectView>) {
+    let window = unsafe {
+        NSWindow::initWithContentRect_styleMask_backing_defer(
+            mtm.alloc::<NSWindow>(),
+            frame,
+            NSWindowStyleMask::Borderless,
+            NSBackingStoreType::Buffered,
+            false,
+        )
+    };
+
+    window.setLevel(3);
+    window.setOpaque(false);
+    window.setBackgroundColor(Some(&NSColor::clearColor()));
+    window.setIgnoresMouseEvents(true);
+    window.setCollectionBehavior(
+        NSWindowCollectionBehavior::CanJoinAllSpaces
+            | NSWindowCollectionBehavior::Stationary
+            | NSWindowCollectionBehavior::IgnoresCycle
+            | NSWindowCollectionBehavior::FullScreenAuxiliary,
+    );
+
+    let content_frame = NSRect {
+        origin: NSPoint { x: 0.0, y: 0.0 },
+        size: frame.size,
+    };
+    let effect_view =
+        NSVisualEffectView::initWithFrame(mtm.alloc::<NSVisualEffectView>(), content_frame);
+    effect_view.setMaterial(NSVisualEffectMaterial::Menu);
+    effect_view.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
+    effect_view.setState(NSVisualEffectState::Active);
+    effect_view.setWantsLayer(true);
+    if let Some(layer) = effect_view.layer() {
+        let continuous_curve = unsafe { kCACornerCurveContinuous };
+        layer.setCornerCurve(continuous_curve);
+        layer.setCornerRadius(corner_radius);
+        layer.setMasksToBounds(true);
+        layer.setBackgroundColor(None);
+        let border = NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 1.0, 1.0, 0.18);
+        layer.setBorderColor(Some(&border.CGColor()));
+        layer.setBorderWidth(0.5);
+    }
+    window.setContentView(Some(&*effect_view));
+    (window, effect_view)
 }
 
 // Safety: WindowSet is accessed exclusively on the main thread. All reads and
@@ -177,5 +193,6 @@ impl Drop for WindowSet {
             "WindowSet must be dropped on the main thread"
         );
         self.window.orderOut(None);
+        self.transcript.window.orderOut(None);
     }
 }

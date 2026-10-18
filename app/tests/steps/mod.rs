@@ -1,3 +1,4 @@
+pub mod live_transcript;
 pub mod processing_stages;
 mod push_to_talk;
 pub mod speech_recognition;

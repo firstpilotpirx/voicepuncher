@@ -89,6 +89,12 @@
 - **Code:** `app/src/core/application/visual_indicator.rs`
 - **Synonyms to AVOID:** "Overlay", "HUD", "StatusBadge", "Toast", "Indicator" (alone — too generic)
 
+### Live transcript
+- **Type:** Domain concept (overlay content)
+- **Definition:** The raw transcript of the chunks transcribed so far, stitched at their seams as the pasted transcript is, shown next to the recording sign while the user dictates and updated after every chunk with text. It is gone once the recording ends; the pasted text may still differ after text refinement. A dictation shorter than the chunk threshold has none.
+- **Code:** `LiveTranscriptView` (driven port in `app/src/core/application/live_transcript_view.rs`), handed out by `VisualIndicator::live_transcript_view`; `app/src/core/application/pipeline/live_transcript.rs`
+- **Synonyms to AVOID:** "partial transcript", "preview", "text so far" (in code)
+
 ### Processing stage
 - **Type:** Domain concept (overlay state)
 - **Definition:** The step a dictation is in between the end of its recording and the paste, as the overlay shows it with an icon of its own: **speech recognition** from the stop until the transcript is ready (with live chunks, the transcription still running after the stop), then **text refinement** from its start until the corrected text is ready. With text refinement off only speech recognition is shown.
