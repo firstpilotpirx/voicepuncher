@@ -18,13 +18,13 @@ Voice control carries out commands in `Pipeline` (`pipeline/voice_control.rs`). 
 
 ## Dependencies
 
-None declared yet; stage "dependencies" compares with the running overlay changes.
+Waits for `show-live-transcript`: it reworks the same `VisualIndicator` port, macOS overlay adapter (`WindowSet`, the recording state) and glossary entry, and also targets 0.16.0. Once it is on `main`, the restart sign must leave its live transcript window as the recording shows it, and this change takes the next minor version.
 
 ## Risks / Trade-offs
 
 - [The 1 s return races a later signal] → the generation check runs on the main queue, where every overlay update runs, so a stale return is dropped.
 - [Enter during a dictation pastes asynchronously after focus waits] → the sign is shown after `stop_recording` returns, when the paste flow has finished, as the key press is today.
-- [Other changes in flight also add overlay signals] → see § Dependencies.
+- [Other changes in flight also add overlay signals] → see § Dependencies; `show-spotting-away` and `notify-service-failures` compare with this change when they start.
 
 ## Test levels
 

@@ -1,0 +1,3 @@
+depends_on:
+  - change: show-live-transcript
+    why: reworks the same VisualIndicator port, macOS overlay adapter (WindowSet, recording state) and glossary entry, and also targets version 0.16.0
