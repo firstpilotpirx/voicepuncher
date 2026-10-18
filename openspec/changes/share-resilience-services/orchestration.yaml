@@ -1,0 +1,4 @@
+depends_on:
+  - change: speed-up-voice-start
+    why: touches e2e-test/tests/steps/voice_control/session.rs
+autonomy: explore
