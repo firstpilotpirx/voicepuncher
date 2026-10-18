@@ -1,0 +1,3 @@
+depends_on:
+  - change: reuse-passed-check-stages
+    why: both change the stage runner (_stages, _model-stages) of the justfile
