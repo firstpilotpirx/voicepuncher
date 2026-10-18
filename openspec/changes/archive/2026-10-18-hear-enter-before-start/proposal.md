@@ -35,3 +35,7 @@ Out of scope: the other placements of the start command, which already meet the 
 
 SemVer: PATCH — a bug fix: one start placement misses the existing 0.7 s cue bar.
 Target version: 0.18.3.
+
+## Closed without implementation
+
+Explored on 2026-10-18 and closed by the user's choice. The synthesized voice says "Enter" so that it sounds like "and a": the dictation model hears "and a start" as well, and the command model hears "and a", "and to" or "Enter" depending on the clip length, so the early checks are asked in time but cannot hear the word. A trigger-only keyword for "enter" would only ask a check that already runs. A command prompt in the early checks heard "and then start the engine" as "Enter start dictation." (a false Return); taking "and a" before "start" as "enter" was offered and declined. "enter start" from standby keeps its cue at about 0.79 s, and its E2E scenario stays `@wip`.
