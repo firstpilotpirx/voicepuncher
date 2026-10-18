@@ -6,3 +6,5 @@ depends_on:
     why: adds timed command signs to the same overlay label and VisualIndicator port that the commands-unavailable sign composes with
   - change: notify-service-failures
     why: adds a VoiceCommandsUnavailable failure notice and overlay window sizing for the same command spotting loss this change signals
+  - change: show-dictation-cursor
+    why: its PointerSignIndicator decorator implements VisualIndicator and must forward the commands-unavailable calls this change adds

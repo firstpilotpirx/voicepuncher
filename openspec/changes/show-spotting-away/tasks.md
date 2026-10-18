@@ -11,7 +11,7 @@
 ## 2. Overlay: the "commands unavailable" sign
 
 - [ ] 2.1 Red: unit tests in `visualfeedback/macos/mod.rs` for the label composition — recording with the flag reads `◉ REC ⊘ CMD`, a processing stage reads its icon then `⊘ CMD`, hidden with the flag reads `⊘ CMD` alone, without the flag nothing changes; run them and see them fail
-- [ ] 2.2 Green: `VisualIndicator::show_commands_unavailable` and `hide_commands_unavailable`; the macOS adapter keeps the flag beside `OverlayState`, composes the label and keeps the sign shown on `hide()`; trivial implementations in `main.rs` and every test double
+- [ ] 2.2 Green: `VisualIndicator::show_commands_unavailable` and `hide_commands_unavailable`; the macOS adapter keeps the flag beside `OverlayState`, composes the label and keeps the sign shown on `hide()`; no-op defaults; the pointer sign decorator forwards both; the voice-control test double records them
 - [ ] 2.3 `just test` and commit
 
 ## 3. Core: silence on loss and return, the sign on a long outage
@@ -29,6 +29,6 @@
 
 ## 5. Release
 
-- [ ] 5.1 Bump `version` in `app/Cargo.toml` to 0.16.0
+- [ ] 5.1 Bump `version` in `app/Cargo.toml` to the next minor version above `main` (0.20.0 at the time of writing)
 - [ ] 5.2 `just check` once and commit
 - [ ] 5.3 Manual run by the user: with `just start-model-servers` running, `cargo run --release -p voicepuncher`; stop the command spotting service for 10 s in standby and during a dictation — `⊘ CMD` appears, is readable, takes no focus and goes away when the service is back; a restart within 5 s shows nothing and plays no sound
