@@ -13,7 +13,7 @@ No spec scenario (`skip_specs: true`): each behavior is checked by running the r
 
 ## 2. Held test ports (D2)
 
-- [ ] 2.1 Red: plant a listener on a test port (`nc -l 18081`); see today's recipe reuse or hang on it.
+- [ ] 2.1 Red: plant a listener on a test port (`nc -l 28081`); see today's recipe reuse or hang on it.
 - [ ] 2.2 Green: fail before the first stage with the message of D2, naming the holder's PID and command; the planted listener keeps running.
 - [ ] 2.3 Kill a locked run with KILL after its services start; the next run stops that leftover service and starts fresh.
 - [ ] 2.4 Update AGENTS.md § Local services, README and the justfile comments to say checks use ports of their own and never reuse.

@@ -12,6 +12,7 @@ With many sessions in parallel, a running service must never make a check fail o
 - It never stops or restarts a service it did not start.
 - When a port it needs is held by something it cannot account for, it stops before any stage with a message naming the port and the process holding it, instead of testing that process.
 - Each run names the services, ports and models it started.
+- Absorbs `fix-checks-reuse-stale-command-spotting`: its stale service on 8082 is no longer reached by any check.
 
 ## Capabilities
 
