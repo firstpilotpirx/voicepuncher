@@ -18,7 +18,7 @@ The dictation sign is one borderless, transparent window (about 28 × 28 pt) hol
 
 ### The sign is driven by the overlay's signals, in the adapter layer
 
-A decorator `PointerSignIndicator` implements `VisualIndicator`: it forwards every call to the overlay and shows the dictation sign on `show_recording`, hides it on every other call. The core does not change: it already sends these signals for the hotkey, voice control, cancel, restart, too-short drops and failures. The sign's view sits behind an adapter-internal trait (`PointerSignView`: show, hide) so the decorator is tested with a fake and `main.rs` wires the macOS view. Rejected: a new core port with its own calls — it would repeat every overlay call in the pipeline and could drift from it.
+A decorator `PointerSignIndicator` implements `VisualIndicator`: it forwards every call to the overlay, shows the dictation sign on `show_recording` and hides it on the processing stages, the wait for focus and `hide`; signals that do not end a recording (a command sign, a failure notice, the live transcript view) pass through and leave the sign as it is. The core does not change: it already sends these signals for the hotkey, voice control, cancel, restart, too-short drops and failures. The sign's view sits behind an adapter-internal trait (`PointerSignView`: show, hide) so the decorator is tested with a fake and `main.rs` wires the macOS view. Rejected: a new core port with its own calls — it would repeat every overlay call in the pipeline and could drift from it.
 
 ### Quitting needs no code
 
@@ -48,3 +48,7 @@ The sign's origin from the pointer location and the sign's size is a pure functi
 - The sign lags the pointer by up to one 16 ms tick; acceptable for a status sign.
 - macOS hides the pointer while the user types; the sign stays visible then. Accepted for the PoC.
 - A 60 Hz timer runs only while recording; its cost is a pointer read and an occasional window move.
+
+## Dependencies
+
+This change waits for `confirm-voice-commands`, `notify-service-failures` and `show-live-transcript`: each adds a method to `VisualIndicator`, which the decorator implements and must forward, and the command sign arrives during a recording, so the decorator must know it does not end one.

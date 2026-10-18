@@ -1,0 +1,8 @@
+autonomy: review
+depends_on:
+  - change: confirm-voice-commands
+    why: adds a command sign to VisualIndicator that shows during a recording; the pointer sign decorator must forward it without ending the sign
+  - change: notify-service-failures
+    why: adds a failure notice to VisualIndicator, which the pointer sign decorator implements and forwards
+  - change: show-live-transcript
+    why: adds the live transcript view to VisualIndicator and reworks the macOS overlay adapter this change extends
