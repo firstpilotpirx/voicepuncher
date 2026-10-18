@@ -26,7 +26,7 @@ See proposal.md § Known and suspected causes. The keyword spotter reports "star
 
 ## Dependencies
 
-None declared yet; stage `dependencies` re-judges them.
+Waits for `show-live-transcript` (it reworks the live transcription worker, `pipeline.rs` and `voice_control.rs`) and `confirm-voice-commands` (it gives restart a sound of its own and splits the cancel and start paths). Once both are on `main`, D6 hands the transcriber over in their reworked paths, and restart's start cue is the restart sound they define.
 
 ## Test levels
 

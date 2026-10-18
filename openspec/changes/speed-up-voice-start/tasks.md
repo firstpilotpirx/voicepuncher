@@ -32,7 +32,7 @@
 
 ## 4. Restart without waiting for the dropped dictation (D6)
 
-- [ ] 4.1 Red: unit test in `app/src/core/application/pipeline.rs` — "restart" plays the cancel and start cues before the live worker returns its text
+- [ ] 4.1 Red: unit test in `app/src/core/application/pipeline.rs` — "restart" gives its start cue before the live worker returns its text
 - [ ] 4.2 Green: cancel without flushing; the new live session takes the transcriber back from the old worker
 - [ ] 4.3 `just test`, commit
 

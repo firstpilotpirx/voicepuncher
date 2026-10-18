@@ -1,0 +1,5 @@
+depends_on:
+  - change: show-live-transcript
+    why: reworks the live transcription worker, pipeline.rs and voice_control.rs, which restart's transcriber handoff and the timing log change
+  - change: confirm-voice-commands
+    why: reworks restart's cues and splits cancel_recording and start_recording_from, the paths this change makes faster

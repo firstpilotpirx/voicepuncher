@@ -3,7 +3,7 @@
 ## ADDED Requirements
 
 ### Requirement: A voice start gives its start cue within 0.7 s
-When a voice command starts a dictation from standby, or "restart" starts one over, the system SHALL give the start cue — the start sound, the overlay's recording sign and the recording running — as soon as the command is confirmed, within 0.7 s of the end of the command's words in at least 9 of 10 starts, with the services otherwise idle. This holds for every placement of "start" and every form of "restart".
+When a voice command starts a dictation from standby, or "restart" starts one over, the system SHALL give the start cue — the sound that start plays, the overlay's recording sign and the recording running — as soon as the command is confirmed, within 0.7 s of the end of the command's words in at least 9 of 10 starts, with the services otherwise idle. This holds for every placement of "start" and every form of "restart".
 
 #### Scenario: Start start followed by the dictation at once gives its cue at once
 - **GIVEN** listening is on
@@ -33,13 +33,13 @@ When a voice command starts a dictation from standby, or "restart" starts one ov
 - **GIVEN** a dictation runs
 - **AND** the user has said a sentence in it
 - **WHEN** the user says "restart restart" and another sentence without a pause
-- **THEN** the cancel sound and the start cue come within 0.7 s of the end of "restart restart"
+- **THEN** the start cue of the new dictation comes within 0.7 s of the end of "restart restart"
 
 #### Scenario: Restart said on its own gives its cue at once
 - **GIVEN** a dictation runs
 - **AND** the user has dictated for about 20 s
 - **WHEN** the user says "restart" and stays silent
-- **THEN** the cancel sound and the start cue come within 0.7 s of the end of "restart"
+- **THEN** the start cue of the new dictation comes within 0.7 s of the end of "restart"
 
 #### Scenario: The user's recorded starts give their cue at once
 - **GIVEN** the user's own recordings of the commands exist on the machine
