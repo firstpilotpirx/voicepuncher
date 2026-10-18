@@ -33,5 +33,6 @@ Three `@refinement` scenarios of `text-refinement` dictate words the default ins
 
 ## Risks / Trade-offs
 
+- [`english-words-beyond-examples`, still unstarted, changes the same prompt, examples and feature file] → whichever lands second merges the other and checks that the three dictations still share no word with the prompt or examples.
 - [A later prompt change may name one of the new words] → the requirement now says the dictation differs from every word the instruction names, so such a change must pick new phrases too.
 - [Model output varies between llama.cpp builds] → the checks look for the restored terms only, ignoring case, as before.
