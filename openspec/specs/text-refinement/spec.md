@@ -222,6 +222,11 @@ The system SHALL, with the default model and instruction, have the text refineme
 - **WHEN** the user dictates in Russian a sentence with the verbs «деплоим» and «закомитим», English stems with Russian endings
 - **THEN** the pasted text has those verbs in Cyrillic
 
+#### Scenario: English words the instruction never shows come out in Latin script
+- **GIVEN** the local text refinement service runs the default model with the default instruction
+- **WHEN** the user dictates in Russian to turn shuffle on and repeat off in a music player, English words that neither the instruction nor its examples show, and speech recognition writes «шаффл» and «репит»
+- **THEN** the pasted text has «shuffle» and «repeat» in Latin script and keeps the rest in Russian
+
 ### Requirement: IT terms split into Cyrillic syllables are restored
 The system SHALL, with the default model and instruction, have the text refinement service replace a run of Cyrillic syllables or sound-alike Russian words that sounds like a known English IT term and fits the topic of the sentence with that term in its usual Latin spelling, and keep ordinary Russian words that make sense as they are. This holds for dictation whose sentence structure and IT terms differ from every example the default instruction shows the model and from every term the instruction names.
 

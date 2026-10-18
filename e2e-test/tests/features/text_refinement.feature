@@ -174,6 +174,12 @@ Feature: text-refinement
       When the user dictates in Russian a sentence with English verb stems that carry Russian endings
       Then the pasted text has those verbs in Cyrillic
 
+    @refinement
+    Scenario: English words the instruction never shows come out in Latin script
+      Given the local text refinement service runs the default model with the default instruction
+      When the user dictates in Russian to turn shuffle on and repeat off in a music player, and speech recognition writes both in Cyrillic
+      Then the pasted text has the English words shuffle and repeat in Latin script and keeps the rest in Russian
+
   Rule: IT terms split into Cyrillic syllables are restored
 
     @refinement

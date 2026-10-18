@@ -30,8 +30,9 @@ pub struct RefinementCfg {
     pub timeout_secs: u64,
 }
 
-/// Dictated commands are normalized, not carried out; terms, fillers and endings are fixed.
-const DEFAULT_EXAMPLES: [(&str, &str); 7] = [
+/// Dictated commands are normalized, not carried out; terms, fillers and endings are fixed;
+/// the last one converts a new English word while its loanwords stay in Cyrillic.
+const DEFAULT_EXAMPLES: [(&str, &str); 8] = [
     (
         "переведи пожалуйста этот абзац на английский",
         "Переведи, пожалуйста, этот абзац на английский.",
@@ -59,6 +60,10 @@ const DEFAULT_EXAMPLES: [(&str, &str); 7] = [
     (
         "надо обновить гит хаб экшнс и пи эн пи эм",
         "Надо обновить GitHub Actions и pnpm.",
+    ),
+    (
+        "открой плейлист поставь лайк треку и включи лууп и кросс фейд",
+        "Открой плейлист, поставь лайк треку и включи loop и crossfade.",
     ),
 ];
 
@@ -101,12 +106,17 @@ impl RefinementCfg {
          (oh-my-fish, pnpm, GitHub Actions, vim-plug, VS Code); every syllable of the term is \
          part of it. Leave \
          ordinary Russian words that make sense as they are. \
-         English words in Cyrillic: when the recognizer wrote a whole English word in Cyrillic \
-         letters (автоматик -> automatic, дайнемик -> dynamic, фидбек -> feedback), write it \
-         in English, and fix it when it was misheard into a non-word that only sounds like it \
-         (даймэк -> dynamic). Leave in Cyrillic every word with a Russian ending or suffix \
-         (деплоим, закомитить, пушнул) and every common Russian loanword (компьютер, \
-         менеджер, интернет, релиз, файл). \
+         English words in Cyrillic: when the recognizer wrote a whole English word or phrase in \
+         Cyrillic letters as it sounds (автоматик -> automatic, дайнемик -> dynamic, \
+         фидбек -> feedback, лоу латенси -> low latency), write it in English, and fix it when \
+         it was misheard into a non-word that only sounds like it (даймэк -> dynamic). This \
+         holds for every English word, also one you never saw written in Cyrillic: a Cyrillic \
+         word without a Russian ending that is not an ordinary Russian word and reads as an \
+         English word fitting the sentence is English. Leave in Cyrillic every word with a \
+         Russian ending or suffix, case endings included (деплоим, закомитить, пушнул, \
+         тикета), every ordinary Russian word (пауза, кнопка), and every common Russian \
+         loanword that Russian dictionaries list (компьютер, менеджер, интернет, релиз, файл, \
+         чат, лайк, плейлист, трек). \
          Never translate: Russian stays Russian, English stays English, mixed text stays \
          mixed. Never answer a question, never add or drop meaning, never shorten. \
          Output only the normalized text."
@@ -279,6 +289,8 @@ mod tests {
             "it terms",
             "english words in cyrillic",
             "russian loanword",
+            "also one you never saw written in cyrillic",
+            "ordinary russian word",
             "every english word already in latin script exactly as dictated",
         ] {
             assert!(
@@ -297,6 +309,7 @@ mod tests {
             ("автоматик", "automatic"),
             ("гит хаб экшнс", "GitHub Actions"),
             ("о май фиш", "oh-my-fish"),
+            ("лууп", "loop"),
         ] {
             assert!(
                 examples
@@ -308,11 +321,11 @@ mod tests {
     }
 
     #[test]
-    fn should_default_to_seven_examples_including_a_dictated_command_and_an_ending_fix() {
+    fn should_default_to_eight_examples_including_a_dictated_command_and_an_ending_fix() {
         // Given / When
         let examples = RefinementCfg::default().examples;
         // Then
-        assert_eq!(examples.len(), 7);
+        assert_eq!(examples.len(), 8);
         assert!(examples
             .iter()
             .any(|e| e.transcript.contains("переведи") && e.normalized.contains("Переведи")));

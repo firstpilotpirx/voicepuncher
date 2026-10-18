@@ -35,6 +35,9 @@ const LOANWORDS_RU: &str = "менеджер попросил перезагру
 const LOANWORDS_KEPT: [&str; 3] = ["менеджер", "компьютер", "интернет"];
 const RUSSIFIED_VERBS_RU: &str = "мы деплоим релиз завтра а потом закомитим фикс";
 const RUSSIFIED_VERBS_KEPT: [&str; 2] = ["деплои", "закомит"];
+const PLAYER_MODES_RU: &str = "в плеере включи шаффл и выключи репит";
+const PLAYER_MODES_EN: [&str; 2] = ["shuffle", "repeat"];
+const PLAYER_MODES_RU_WORDS: [&str; 3] = ["плеере", "включи", "выключи"];
 const SHELL_SYLLABLES_RU: &str = "для баша есть фреймворк баш ит с темой пауэр лайн";
 const SHELL_TERMS: [&str; 2] = ["bash-it", "powerline"];
 const SHELL_SENTENCE_RU_WORDS: [&str; 2] = ["фреймворк", "темой"];
@@ -204,6 +207,20 @@ fn loanwords_kept(world: &mut E2eWorld) -> Result<()> {
 #[then("the pasted text has those verbs in Cyrillic")]
 fn russified_verbs_kept(world: &mut E2eWorld) -> Result<()> {
     expect_contains_all(&world.stdout, &RUSSIFIED_VERBS_KEPT)
+}
+
+#[when("the user dictates in Russian to turn shuffle on and repeat off in a music player, and speech recognition writes both in Cyrillic")]
+async fn dictate_player_modes(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, move |world| {
+        refine_with_live_service(world, PLAYER_MODES_RU)
+    })
+    .await
+}
+
+#[then("the pasted text has the English words shuffle and repeat in Latin script and keeps the rest in Russian")]
+fn player_modes_in_latin(world: &mut E2eWorld) -> Result<()> {
+    expect_contains_all(&world.stdout, &PLAYER_MODES_EN)?;
+    expect_contains_all(&world.stdout, &PLAYER_MODES_RU_WORDS)
 }
 
 #[then("the pasted text has Bash-it and Powerline in Latin script, ignoring letter case, and keeps the rest in Russian")]
