@@ -35,3 +35,20 @@ Out of scope: changing which outages are tested or what the voice control promis
 
 SemVer: no release — test tooling only; no behavior change.
 Target version: 0.18.0.
+
+## Closed without implementation
+
+Measured on 2026-10-18 (one `just e2e-resilience` run, output timestamped per step, commit `eb9d880`): the 8 scenarios took 197 s. Starting services took about 31 s of it (16 %): 16.7 s in the first scenario, which loads the speech recognition model for commands cold, and 1.3–3.4 s in each later one. The rest is the outages themselves: a minute of streamed speech (busy service not restarted), about 27 s to detect and restart a hung service, 29 s for the abandoned request, 18 s for the 15-second stall, about 10 s per Russian-speech scenario.
+
+| Scenario | Service start | Outage and checks |
+|---|---|---|
+| Confirmation longer than 10 s keeps listening | 16.7 s (cold model load) | 18.5 s |
+| Commands work again after a restart | 1.9 s | 8.0 s |
+| "stop dictation" after the service is back | 1.9 s | 3.2 s |
+| The command spotting service hangs | 1.3 s | 27.3 s |
+| A busy service is not restarted | 1.3 s | 60.7 s |
+| An abandoned request is not transcribed | about 1.5 s (in a step that also fills both copies) | about 29 s |
+| Russian speech confirmed quickly | 3.4 s | 9.7 s |
+| A command right after such speech | 3.3 s | 9.6 s |
+
+Shared services would keep the cold model load and save at most about 14 s per run (about 7 %), far below the one-third threshold and the 30 % target of this proposal, while making scenarios depend on each other. The user chose to record the measurement and close the change without code changes.
