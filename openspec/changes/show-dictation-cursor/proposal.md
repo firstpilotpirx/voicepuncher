@@ -9,6 +9,7 @@ While dictating the user looks at the place the text goes to, not at the overlay
 - While a recording runs, the mouse pointer shows a dictation sign (for example a microphone) wherever it is on screen.
 - The pointer returns to normal as soon as the recording ends: stopped, cancelled, failed, or the app quits.
 - The same for a recording started by the hotkey and one started by voice.
+- The sign follows the pointer on every screen.
 
 ## Capabilities
 
@@ -30,11 +31,12 @@ None.
 
 - A pointer sign while processing or while waiting for focus.
 - User-chosen pointer images.
+- A sign that moves with the voice level.
 - A sign at the text caret instead of the pointer.
 
 ## Release
 
-MINOR (new capability), next minor version after the current one in `app/Cargo.toml` (0.9.0 → 0.10.0 at the time of writing).
+MINOR (new capability), next minor version after the current one in `app/Cargo.toml` (0.15.3 → 0.16.0).
 
 ## Impact
 
