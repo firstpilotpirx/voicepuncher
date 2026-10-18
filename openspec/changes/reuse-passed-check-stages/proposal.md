@@ -11,6 +11,7 @@ The user wants more changes done in the same time without losing quality, and te
 - A stage that passed on exactly the same inputs is not run again: `just full-check` after a passing `just check` on the same commit runs only the stages `check` does not have (`e2e-seams`, `e2e-resilience`, the 100-recording accuracy sample when chosen) and reports the reused stages as passed earlier, with the run they came from.
 - After merging `main` (`kit sync-base`), only the stages whose inputs the merged commits changed run again; a stage whose inputs did not change keeps its earlier pass.
 - A rerun after a failure runs the failed stage and the stages after it, not the stages that already passed on the same inputs.
+- A stage that passed on `main` (or in any worktree of this machine) on exactly the same inputs is not run again on a branch (user agreed 2026-10-18): a change that touches only text refinement does not rerun the voice control scenarios whose files and services it did not touch. The record of passed stages is shared across worktrees, keyed by the stage's input hash.
 - Quality stays: a stage is reused only when every input it depends on is unchanged (code, tests, features, recipes, config, toolchain, models and corpus); when its inputs cannot be told, the stage runs.
 
 Current stage: PoC. Target stage: PoC.
@@ -32,9 +33,10 @@ Out of scope: fixing flaky tests (`fix-flaky-tests`); making stages themselves f
 ## Open points
 
 - What a stage's inputs are: proposed — a hash of the tracked files the stage builds or reads (per stage path lists, like `recognition_paths`), plus the toolchain, nextest version, model files and corpus; everything else counts as an input of every stage until listed.
-- Where the record of passed stages lives and how long it is trusted: proposed — per worktree, keyed by input hash, any age.
+- How long a recorded pass is trusted: proposed — any age, while its inputs hash the same.
 - Whether `kit` or the `justfile` decides what runs after `kit sync-base`: proposed — the `justfile` skips stages by input hash, `kit sync-base` keeps naming the check; a kit change only if needed (`~/.claude/rules-custom/kit-placement.md`).
-- Whether a stage passed in another worktree on the same inputs counts: proposed — no for now.
+- Whether a stage passed in another worktree on the same inputs counts: decided — yes (user, 2026-10-18), including passes on `main`. Open: how fine-grained stage inputs must be for a change to skip a stage (proposed — split `e2e-smoke` by capability: voice control, speech recognition, refinement, local services, each with its own path list).
+- Where the record lives: proposed — a machine-wide directory (e.g. `~/.cache/voicepuncher/stage-passes/`), written only by a passing stage, never by hand.
 - Target version: proposed no release — tooling only.
 
 ## Release
