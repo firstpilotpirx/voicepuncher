@@ -47,6 +47,7 @@ Out of scope: fixing flaky tests (`fix-flaky-tests`); smaller accuracy samples; 
 - How the smaller voice control set is chosen: proposed — a tag (e.g. `@smoke` for the per-command set, a new tag for the rest) that `check` and `full-check` select.
 - Whether `full-check` runs the full voice control set always or only when voice control paths change: proposed — always for now.
 - How many scenarios run at once and how shared services hold the load (three copies of the command speech recognition service, one command spotting service): proposed — measure 2, 3 and 4 and pick the fastest that stays green.
+- The 60 s outage test (user's idea, 2026-10-18): nextest already runs it beside the other tests, but `just test` cannot end before its longest test, so it alone sets the 65 s. Two ways out: (a) move it out of `just test` into a stage that runs anyway beside long work (e.g. started at once with `e2e-smoke`, whose Gherkin scenarios take 250–270 s), so its 60 s hides behind them; (b) give it a short outage for the test. Proposed — (b) when the client's retry timings can be injected without changing what the spec promises (a minute-long outage survived); else (a). Either way only this one test needs the long outage, no other test waits for it.
 - Which side of each duplicate stays: proposed — the Gherkin scenario where a spec scenario traces to it, the plain Rust test where it checks an adapter detail.
 - Target version: proposed no release — only tests and recipes change; PATCH if a timing becomes configurable in app code.
 
