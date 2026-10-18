@@ -10,12 +10,25 @@ const SAMPLE_RATE: f32 = AudioBuffer16k::SAMPLE_RATE_HZ as f32;
 /// How much audio is held: more than the time from a "start" or "restart" to its report,
 /// which waits behind a dictation's own requests at the speech recognition service.
 const HELD_SECS: f32 = 10.0;
+/// How long one 16 kHz sample lasts.
+const SAMPLE_NANOS: u64 = 1_000_000_000 / AudioBuffer16k::SAMPLE_RATE_HZ as u64;
+
+/// A block of streamed samples: the stream position just past its last sample, and when that
+/// sample was captured.
+#[derive(Debug, Clone, Copy)]
+struct Block {
+    end: usize,
+    captured_at: Instant,
+}
 
 pub struct HeardAudio {
     audio_start: Instant,
     /// Position in the stream of the first sample held.
     first: usize,
     samples: VecDeque<f32>,
+    /// The blocks of the samples held, oldest first: audio lost before a block leaves its
+    /// stream position behind the clock.
+    blocks: VecDeque<Block>,
 }
 
 impl HeardAudio {
@@ -25,17 +38,46 @@ impl HeardAudio {
             audio_start,
             first: 0,
             samples: VecDeque::new(),
+            blocks: VecDeque::new(),
         }
     }
 
-    pub fn push(&mut self, samples: &[f32]) {
+    /// Holds `samples`, the last of them captured at `captured_at`.
+    pub fn push(&mut self, samples: &[f32], captured_at: Instant) {
         self.samples.extend(samples.iter().copied());
+        self.blocks.push_back(Block {
+            end: self.first + self.samples.len(),
+            captured_at,
+        });
         let excess = self
             .samples
             .len()
             .saturating_sub((HELD_SECS * SAMPLE_RATE) as usize);
         self.samples.drain(..excess);
         self.first += excess;
+        while self.blocks.front().is_some_and(|b| b.end <= self.first) {
+            self.blocks.pop_front();
+        }
+    }
+
+    /// When the sample at the stream position `dated` stands for — the moment it would have
+    /// been captured had no audio been lost — was really captured.
+    pub fn captured_at(&self, dated: Instant) -> Instant {
+        let position = Self::position(dated.saturating_duration_since(self.audio_start));
+        match self.blocks.iter().find(|b| b.end > position) {
+            Some(block) => block.captured_at - Self::span(block.end - position),
+            None => self.blocks.back().map_or(dated, |last| {
+                last.captured_at + Self::span(position - last.end)
+            }),
+        }
+    }
+
+    fn position(since_audio_start: Duration) -> usize {
+        (since_audio_start.as_nanos() / u128::from(SAMPLE_NANOS)) as usize
+    }
+
+    fn span(samples: usize) -> Duration {
+        Duration::from_nanos(samples as u64 * SAMPLE_NANOS)
     }
 
     /// The samples heard from `since` on, as far as they are still held, and when the first
@@ -77,11 +119,49 @@ mod tests {
         // Given one second heard
         let start = Instant::now();
         let mut heard = HeardAudio::new(start);
-        heard.push(&vec![0.5; SAMPLE_RATE as usize]);
+        heard.push(&vec![0.5; SAMPLE_RATE as usize], start);
         // When
         let last_quarter = heard.since(start + Duration::from_millis(750));
         // Then
         assert_eq!(last_quarter.duration_ms(), 250);
+    }
+
+    #[test]
+    fn should_map_a_stream_position_to_its_capture_time_after_audio_was_lost() {
+        // Given one second heard, three seconds that never arrived, then one more second
+        let start = Instant::now();
+        let mut heard = HeardAudio::new(start);
+        heard.push(
+            &vec![0.0; SAMPLE_RATE as usize],
+            start + Duration::from_secs(1),
+        );
+        heard.push(
+            &vec![0.0; SAMPLE_RATE as usize],
+            start + Duration::from_secs(5),
+        );
+        // When the middle of the second second, dated by its stream position, is mapped
+        let captured = heard.captured_at(start + Duration::from_millis(1_500));
+        // Then it was captured after the lost seconds
+        assert_eq!(captured, start + Duration::from_millis(4_500));
+    }
+
+    #[test]
+    fn should_map_a_stream_position_to_its_own_moment_when_no_audio_was_lost() {
+        // Given two seconds heard as they were captured
+        let start = Instant::now();
+        let mut heard = HeardAudio::new(start);
+        heard.push(
+            &vec![0.0; SAMPLE_RATE as usize],
+            start + Duration::from_secs(1),
+        );
+        heard.push(
+            &vec![0.0; SAMPLE_RATE as usize],
+            start + Duration::from_secs(2),
+        );
+        // When
+        let captured = heard.captured_at(start + Duration::from_millis(750));
+        // Then
+        assert_eq!(captured, start + Duration::from_millis(750));
     }
 
     #[test]
@@ -90,7 +170,7 @@ mod tests {
         let start = Instant::now();
         let mut heard = HeardAudio::new(start);
         for _ in 0..12 {
-            heard.push(&vec![0.0; SAMPLE_RATE as usize]);
+            heard.push(&vec![0.0; SAMPLE_RATE as usize], Instant::now());
         }
         // When asked from the start
         let all = heard.since(start);
@@ -104,7 +184,7 @@ mod tests {
         let start = Instant::now();
         let mut heard = HeardAudio::new(start);
         for _ in 0..12 {
-            heard.push(&vec![0.0; SAMPLE_RATE as usize]);
+            heard.push(&vec![0.0; SAMPLE_RATE as usize], Instant::now());
         }
         // When
         let (first_at, samples) = heard.replay_from(start + Duration::from_secs(9));
@@ -119,7 +199,7 @@ mod tests {
         let start = Instant::now();
         let mut heard = HeardAudio::new(start);
         for _ in 0..12 {
-            heard.push(&vec![0.0; SAMPLE_RATE as usize]);
+            heard.push(&vec![0.0; SAMPLE_RATE as usize], Instant::now());
         }
         // When
         let (first_at, samples) = heard.replay_from(start);

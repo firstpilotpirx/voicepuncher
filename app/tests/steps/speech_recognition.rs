@@ -144,7 +144,7 @@ fn three_chunk_dictation(world: &mut IntegrationWorld) {
 
 #[given("the speech recognition service fails every attempt for the second chunk")]
 fn second_chunk_fails(world: &mut IntegrationWorld) -> Result<()> {
-    crate::steps::voice_control::error_log();
+    crate::steps::voice_control::pipeline_log();
     world
         .dictation
         .as_mut()
@@ -160,8 +160,8 @@ fn first_and_third_pasted(world: &mut IntegrationWorld) -> Result<()> {
 
 #[then("the lost second chunk is logged")]
 fn lost_chunk_logged(_world: &mut IntegrationWorld) -> Result<()> {
-    let errors = crate::steps::voice_control::error_log()
-        .0
+    let errors = crate::steps::voice_control::pipeline_log()
+        .errors
         .lock()
         .unwrap()
         .clone();

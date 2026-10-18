@@ -81,6 +81,7 @@ fn phrase_event(spotted: Spotted) -> ServerEvent {
         phrase: spotted.phrase,
         start: spotted.start,
         end: spotted.end,
+        timing: None,
     }
 }
 
@@ -101,6 +102,7 @@ mod tests {
             phrase: "press enter".into(),
             start,
             end,
+            timing: None,
         }
     }
 

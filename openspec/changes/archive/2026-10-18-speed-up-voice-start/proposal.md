@@ -10,7 +10,7 @@ Hands-free, the user waits for the start sound and the overlay before speaking, 
 
 - **Measure first.** Before any fix, time each stage between the end of the command's words and the start cue on the developer machine, on the user's recorded commands and in live use. The causes below are estimates from the code and the service log; the measurement replaces them in `design.md` and picks the fixes.
 - **A timing log for every voice start**, like `stop→paste`: one line with the time from the end of the command's words to the start cue and the share of each stage. It stays right after microphone audio was lost: the app dates the service's events from the capture start, and on 2026-10-16 the service's stream time fell ≈8 s behind the clock at about 14:30 UTC and stayed there, as about 8 s of microphone audio never reached it.
-- **The start cue follows the command as soon as the command is confirmed**, for every voice start: "start dictation" or "start" said alone, opening or ending an utterance, doubled, or last in a chain from standby, and "restart" in each of its forms. The start cue is the start sound, the overlay's recording sign and the recording running. What the dictation holds stays as it is: it begins where the command's words end.
+- **The start cue follows the command as soon as the command is confirmed**, for every voice start: "start dictation" or "start" said alone, opening or ending an utterance, or doubled, and "restart" in each of its forms. The start cue is the start sound, the overlay's recording sign and the recording running. What the dictation holds stays as it is: it begins where the command's words end.
 - **Commands stay as reliable as today**: command accuracy and the protections against false starts (a command phrase inside a sentence, ordinary speech, short Russian phrases, "start stop") do not get worse.
 
 ### Known and suspected causes
@@ -62,10 +62,11 @@ None.
   - The command set, what counts as a command, and the 0.3 s of silence that ends an utterance.
   - Dropping the confirmation by the speech recognition service for a start, unless the design shows that every accuracy and false-start scenario still passes without it.
   - The hotkey's recording start (push-to-talk latency).
+  - A chain ending in start from standby ("enter start"): the early checks hear the synthesized "Enter" as "and a", so it gives its cue at about 0.79 s; left to the follow-up change `hear-enter-before-start`.
   - A start after "stop" or "enter" in a chain during a dictation: it still waits for that dictation's paste, since commands are carried out in the order spoken.
   - The speech recognition model and its service settings; the time macOS takes to play a sound on a Bluetooth headset.
   - Bars for the other commands; they may get faster on the way ("cancel" through row 5).
 
 ## Release
 
-PATCH: a bug fix. Target version **0.18.1** (from 0.18.0), or the next patch above `main` if another change releases first.
+PATCH: a bug fix. Target version **0.18.2** (from 0.18.1), or the next patch above `main` if another change releases first.

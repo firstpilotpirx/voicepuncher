@@ -12,6 +12,7 @@ mod respelling;
 pub mod text_focus;
 pub mod voice_command;
 pub mod voice_command_recognizer;
+pub mod voice_start_timing;
 
 pub use audio_buffer::AudioBuffer16k;
 pub use audio_level::{level_to_pills, AudioLevel};
@@ -26,3 +27,4 @@ pub use recording_mode::RecordingMode;
 pub use text_focus::{FocusedElement, TextFocus};
 pub use voice_command::{CommandPlacement, SpokenCommand, VoiceCommand};
 pub use voice_command_recognizer::{SpottingEvent, VoiceCommandRecognizer};
+pub use voice_start_timing::{ConfirmationTiming, ReportTiming, VoiceStartTiming};

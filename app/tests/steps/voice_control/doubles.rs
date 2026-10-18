@@ -3,6 +3,7 @@
 
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
+use std::thread::ThreadId;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
@@ -257,17 +258,33 @@ impl CommandSpotter for ScriptedSpotter {
     }
 }
 
-/// Keeps every error the pipeline logs, so a scenario can check one was logged.
-pub struct ErrorLog(pub Mutex<Vec<String>>);
+/// The start of the line the pipeline logs at every voice start.
+pub const VOICE_START_LINE: &str = "voice start:";
 
-impl log::Log for ErrorLog {
+/// Keeps every error the pipeline logs, and every voice start timing line with the thread
+/// that logged it, so a scenario can check what its own pipeline logged.
+#[derive(Default)]
+pub struct PipelineLog {
+    pub errors: Mutex<Vec<String>>,
+    pub voice_starts: Mutex<Vec<(ThreadId, String)>>,
+}
+
+impl log::Log for PipelineLog {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
-        metadata.level() <= log::Level::Error
+        metadata.level() <= log::Level::Info
     }
 
     fn log(&self, record: &log::Record) {
-        if self.enabled(record.metadata()) {
-            self.0.lock().unwrap().push(record.args().to_string());
+        match record.level() {
+            log::Level::Error => self.errors.lock().unwrap().push(record.args().to_string()),
+            log::Level::Info => {
+                let line = record.args().to_string();
+                if line.starts_with(VOICE_START_LINE) {
+                    let thread = std::thread::current().id();
+                    self.voice_starts.lock().unwrap().push((thread, line));
+                }
+            }
+            _ => {}
         }
     }
 

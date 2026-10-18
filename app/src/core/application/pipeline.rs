@@ -26,8 +26,7 @@ pub struct PipelineConfig {
     pub chunking: ChunkingCfg,
 }
 
-/// The cue a recording starts with: the start sound, or none when "restart dictation" plays
-/// its own.
+/// The cue a recording starts with, played before the recorder opens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StartCue {
     Start,
@@ -53,6 +52,23 @@ struct LiveSessionResult {
     transcriber: Box<dyn Transcriber>,
 }
 
+/// Where a live worker gets the transcriber from: at once, or from the worker of a dropped
+/// dictation once its last request ends.
+enum TranscriberSource {
+    Ready(Box<dyn Transcriber>),
+    ReturnedBy(mpsc::Receiver<LiveSessionResult>),
+}
+
+impl TranscriberSource {
+    /// The transcriber, once it is back; none when the dropped dictation's worker died.
+    fn take(self) -> Option<Box<dyn Transcriber>> {
+        match self {
+            TranscriberSource::Ready(transcriber) => Some(transcriber),
+            TranscriberSource::ReturnedBy(results) => results.recv().ok().map(|r| r.transcriber),
+        }
+    }
+}
+
 pub struct Pipeline {
     pub recorder: Box<dyn AudioRecorder>,
     pub transcriber: Option<Box<dyn Transcriber>>,
@@ -63,6 +79,9 @@ pub struct Pipeline {
     pub cfg: PipelineConfig,
     state: PipelineState,
     live_session: Option<LiveTranscriptionSession>,
+    /// The worker of a dictation "restart dictation" dropped, which returns the transcriber
+    /// once its last request ends.
+    dropped_worker: Option<mpsc::Receiver<LiveSessionResult>>,
     focus_probe: Option<Box<dyn FocusProbe>>,
     focus_wait: FocusWaitCfg,
     inputs: Option<mpsc::Receiver<PipelineInput>>,
@@ -104,6 +123,7 @@ impl Pipeline {
             cfg,
             state: PipelineState::Idle,
             live_session: None,
+            dropped_worker: None,
             focus_probe: None,
             focus_wait: FocusWaitCfg::OFF,
             inputs: None,
@@ -192,8 +212,9 @@ impl Pipeline {
         // starts, so a "stop dictation" said right away is heard.
         self.follow_dictation(true);
         self.command_words = CommandWords::default();
-        if cue == StartCue::Start {
-            self.sound_player.play_start();
+        match cue {
+            StartCue::Start => self.sound_player.play_start(),
+            StartCue::Restart => self.sound_player.play_restart(),
         }
         if let Err(e) = self.recorder.start() {
             self.follow_dictation(false);
@@ -215,7 +236,7 @@ impl Pipeline {
                     self.cfg.chunking.chunk_overlap_secs,
                     target_chunk_secs,
                 );
-                let transcriber = self.transcriber.take().expect("transcriber already taken");
+                let transcriber = self.transcriber_source();
                 let (results_tx, results_rx) = mpsc::sync_channel(1);
                 let (live_transcript, recording_end) =
                     LiveTranscript::new(self.visual_indicator.live_transcript_view());
@@ -234,6 +255,22 @@ impl Pipeline {
         self.visual_indicator.show_recording();
         self.state = PipelineState::Recording;
         Ok(())
+    }
+
+    /// The transcriber for a new live worker: here, or still with a dropped dictation's worker.
+    fn transcriber_source(&mut self) -> TranscriberSource {
+        match (self.transcriber.take(), self.dropped_worker.take()) {
+            (Some(transcriber), _) => TranscriberSource::Ready(transcriber),
+            (None, Some(results)) => TranscriberSource::ReturnedBy(results),
+            (None, None) => panic!("transcriber already taken"),
+        }
+    }
+
+    /// Waits for the transcriber a dropped dictation's worker still holds.
+    fn reclaim_transcriber(&mut self) {
+        if let Some(results) = self.dropped_worker.take() {
+            self.transcriber = TranscriberSource::ReturnedBy(results).take();
+        }
     }
 
     fn stop_recording(&mut self) -> anyhow::Result<()> {
@@ -304,6 +341,25 @@ impl Pipeline {
         Ok(())
     }
 
+    /// Stops the recording and drops it at once, its last chunk unheard, with no cue: the
+    /// worker still transcribing it hands the transcriber to the next live worker.
+    fn drop_recording(&mut self) -> anyhow::Result<()> {
+        self.follow_dictation(false);
+        self.command_words = CommandWords::default();
+        match self.live_session.take() {
+            Some(session) => {
+                session.recording_end.signal();
+                let _ = self.recorder.stop();
+                self.dropped_worker = Some(session.results_rx);
+            }
+            None => {
+                self.recorder.stop()?;
+            }
+        }
+        self.state = PipelineState::Idle;
+        Ok(())
+    }
+
     /// Stops the recording and drops it, with no cue: the caller gives its own.
     fn discard_recording(&mut self) -> anyhow::Result<()> {
         self.follow_dictation(false);
@@ -329,6 +385,7 @@ impl Pipeline {
     }
 
     pub fn run_once(&mut self, audio: AudioBuffer16k) -> anyhow::Result<()> {
+        self.reclaim_transcriber();
         let chunks = split_into_chunks(&audio, self.cfg.chunking);
         if chunks.len() > 1 {
             log::info!("file mode: {} chunks", chunks.len());
@@ -385,6 +442,7 @@ impl Pipeline {
         let duration_s = audio.duration_ms() as f32 / 1000.0;
         self.state = PipelineState::Transcribing;
         log::info!("transcribing…");
+        self.reclaim_transcriber();
         let t_transcribe = std::time::Instant::now();
         let raw = match self
             .transcriber
@@ -488,11 +546,15 @@ impl Pipeline {
 }
 
 fn run_live_worker(
-    mut transcriber: Box<dyn Transcriber>,
+    transcriber: TranscriberSource,
     chunk_rx: mpsc::Receiver<LiveChunk>,
     results_tx: mpsc::SyncSender<LiveSessionResult>,
     live_transcript: LiveTranscript,
 ) {
+    let Some(mut transcriber) = transcriber.take() else {
+        log::error!("live worker: the dropped dictation's worker never returned the transcriber");
+        return;
+    };
     let mut texts = Vec::new();
     let mut chunk_num = 0usize;
     while let Ok(chunk) = chunk_rx.recv() {
@@ -571,7 +633,8 @@ mod tests {
         drop(chunk_tx);
         let (results_tx, _results_rx) = mpsc::sync_channel(1);
         let (live_transcript, _recording_end) = LiveTranscript::new(Box::new(view));
-        run_live_worker(Box::new(transcriber), chunk_rx, results_tx, live_transcript);
+        let transcriber = TranscriberSource::Ready(Box::new(transcriber));
+        run_live_worker(transcriber, chunk_rx, results_tx, live_transcript);
     }
 
     #[test]

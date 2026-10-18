@@ -26,6 +26,7 @@ use voicepuncher_e2e_test::speech::read_wav;
 use voicepuncher_e2e_test::voice_commands::spoken_by;
 
 mod speech_after_start;
+mod start_cue;
 
 pub(super) use speech_after_start::{recorded_form, until_last_sound, users_quiet_restart};
 
@@ -175,12 +176,17 @@ impl Microphone {
 }
 
 type Events = Arc<Mutex<Vec<Event>>>;
+/// When each start cue was given: the start sound or the restart sound.
+type Cues = Arc<Mutex<Vec<Instant>>>;
 
 /// What the session scenario shares with the pipeline thread.
 pub struct HandsFreeSession {
     events: Events,
+    cues: Cues,
     microphone: Arc<Microphone>,
     to_spotter: Sender<Vec<f32>>,
+    /// The voice starts the scenario measured, in order.
+    starts: Mutex<Vec<start_cue::MeasuredStart>>,
 }
 
 impl std::fmt::Debug for HandsFreeSession {
@@ -194,6 +200,7 @@ impl std::fmt::Debug for HandsFreeSession {
 impl HandsFreeSession {
     fn start(spotting_url: String, transcription_url: String) -> Result<Self> {
         let events = Events::default();
+        let cues = Cues::default();
         let microphone = Arc::new(Microphone::default());
         let (to_spotter, heard) = mpsc::channel();
         let (inputs_tx, inputs_rx) = mpsc::channel();
@@ -221,7 +228,7 @@ impl HandsFreeSession {
             Box::new(transcriber),
             Box::new(PassthroughTextRefiner),
             Box::new(RecordingPaster(Arc::clone(&events))),
-            Box::new(RecordingSounds(Arc::clone(&events))),
+            Box::new(RecordingSounds(Arc::clone(&events), Arc::clone(&cues))),
             Box::new(NoOverlay),
             PipelineConfig {
                 min_press_ms: 0,
@@ -239,8 +246,10 @@ impl HandsFreeSession {
         std::thread::spawn(move || pipeline.run(inputs_rx));
         Ok(Self {
             events,
+            cues,
             microphone,
             to_spotter,
+            starts: Mutex::default(),
         })
     }
 
@@ -560,13 +569,18 @@ impl KeyPresser for RecordingKeys {
     }
 }
 
-struct RecordingSounds(Events);
+struct RecordingSounds(Events, Cues);
 
 impl SoundPlayer for RecordingSounds {
-    fn play_start(&self) {}
+    fn play_start(&self) {
+        self.1.lock().unwrap().push(Instant::now());
+    }
     fn play_stop(&self) {}
     fn play_cancel(&self) {
         self.0.lock().unwrap().push(Event::Cancelled);
+    }
+    fn play_restart(&self) {
+        self.1.lock().unwrap().push(Instant::now());
     }
 }
 

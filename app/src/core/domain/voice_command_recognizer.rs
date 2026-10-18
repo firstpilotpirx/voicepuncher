@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 
 use super::voice_command::{CommandPlacement, SpokenCommand, VoiceCommand};
+use super::voice_start_timing::ReportTiming;
 
 /// What the command spotting service reports about the audio it hears.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,6 +12,7 @@ pub enum SpottingEvent {
         phrase: String,
         start: Instant,
         end: Instant,
+        timing: Option<ReportTiming>,
     },
     /// Commands said without a pause around them, to carry out at once and in order:
     /// `start..end` spans their words.
@@ -19,6 +21,7 @@ pub enum SpottingEvent {
         start: Instant,
         end: Instant,
         placement: CommandPlacement,
+        timing: Option<ReportTiming>,
     },
 }
 
@@ -34,6 +37,7 @@ struct Spotted {
     command: Option<VoiceCommand>,
     start: Instant,
     end: Instant,
+    timing: Option<ReportTiming>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -95,7 +99,12 @@ impl VoiceCommandRecognizer {
                 Vec::new()
             }
             SpottingEvent::SpeechEnded(at) => self.close_segment(at).into_iter().collect(),
-            SpottingEvent::PhraseSpotted { phrase, start, end } => {
+            SpottingEvent::PhraseSpotted {
+                phrase,
+                start,
+                end,
+                timing,
+            } => {
                 if self.carried_out_until.is_some_and(|until| start <= until) {
                     return Vec::new();
                 }
@@ -103,6 +112,7 @@ impl VoiceCommandRecognizer {
                     command: VoiceCommand::from_phrase(&phrase),
                     start,
                     end,
+                    timing,
                 };
                 self.spot(spotted).into_iter().collect()
             }
@@ -111,6 +121,7 @@ impl VoiceCommandRecognizer {
                 start,
                 end,
                 placement,
+                timing,
             } => {
                 self.carried_out_until = Some(end);
                 self.spotted_in_open_segment.retain(|s| s.start > end);
@@ -121,6 +132,7 @@ impl VoiceCommandRecognizer {
                         started_at: start,
                         ends_at: end,
                         placement,
+                        timing,
                     })
                     .collect()
             }
@@ -174,6 +186,7 @@ fn fills(segment: ClosedSegment, spotted: Spotted) -> Option<SpokenCommand> {
         started_at: spotted.start,
         ends_at: spotted.end,
         placement: CommandPlacement::Alone,
+        timing: spotted.timing,
     })
 }
 
@@ -190,6 +203,7 @@ mod tests {
             phrase: text.into(),
             start: at(base, start),
             end: at(base, end),
+            timing: None,
         }
     }
 
@@ -220,6 +234,7 @@ mod tests {
                 started_at: at(base, 1.1),
                 ends_at: at(base, 1.8),
                 placement: CommandPlacement::Alone,
+                timing: None,
             }]
         );
     }
@@ -438,6 +453,7 @@ mod tests {
             start: at(base, start),
             end: at(base, end),
             placement: CommandPlacement::Anywhere,
+            timing: None,
         }
     }
 

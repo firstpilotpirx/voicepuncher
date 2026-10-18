@@ -49,6 +49,11 @@ impl PhraseMatcher {
 }
 
 impl PhraseMatcher {
+    /// Whether `phrase` is one of the selected command phrases.
+    pub fn selects(&self, phrase: &str) -> bool {
+        self.phrases.iter().any(|p| p == phrase)
+    }
+
     pub fn new(phrases: &[String]) -> Self {
         Self {
             phrases: phrases.to_vec(),

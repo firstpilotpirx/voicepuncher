@@ -360,3 +360,23 @@ Feature: voice-control
       When the service is back and reports "stop dictation", said while it was away
       Then the sentence is pasted into the focused app
       And the pasted text does not contain the stop phrase
+
+  Rule: Every voice start logs how long its start cue took
+
+    Scenario: A voice start logs its timing
+      Given listening is on
+      And no dictation runs
+      When the user says "start start" and a sentence without a pause
+      Then the log shows one timing line for that start, with its total and the time of each stage
+
+    Scenario: The timing stays right after microphone audio was lost
+      Given listening is on
+      And some seconds of microphone audio never reached the command spotting service earlier
+      When the user says "start" and stays silent
+      Then the logged total matches the time from the end of "start" to the start cue within 0.1 s
+
+    Scenario: A hotkey start logs no voice start timing
+      Given listening is on
+      And no dictation runs
+      When the user presses the hotkey once
+      Then the log shows no voice start timing line

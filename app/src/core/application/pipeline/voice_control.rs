@@ -3,7 +3,7 @@ use std::time::Instant;
 use crate::core::application::{CommandSpotter, KeyPresser, PipelineInput};
 use crate::core::domain::{
     AudioBuffer16k, CommandPlacement, SpokenCommand, SpottingEvent, VoiceCommand,
-    VoiceCommandRecognizer,
+    VoiceCommandRecognizer, VoiceStartTiming,
 };
 
 use super::{Pipeline, StartCue};
@@ -153,7 +153,11 @@ impl Pipeline {
         }
         log::info!("voice control: \"{phrase}\"");
         match spoken.command {
-            VoiceCommand::StartDictation => self.start_dictation_after(spoken, StartCue::Start),
+            VoiceCommand::StartDictation => {
+                self.start_dictation_after(spoken, StartCue::Start)?;
+                log_voice_start(&spoken);
+                Ok(())
+            }
             VoiceCommand::StopDictation => {
                 self.command_words.closing = spoken.placement != CommandPlacement::Alone;
                 self.recorder.truncate_at(spoken.started_at);
@@ -168,10 +172,13 @@ impl Pipeline {
             }
             VoiceCommand::CancelDictation => self.cancel_recording(),
             VoiceCommand::RestartDictation => {
-                // One restart cue instead of the cancel and start cues, so it is heard apart.
-                self.discard_recording()?;
+                // One restart cue instead of the cancel and start cues, so it is heard apart;
+                // it never waits for the dropped dictation's last request.
+                self.drop_recording()?;
                 self.start_dictation_after(spoken, StartCue::Restart)?;
-                self.confirm(VoiceCommand::RestartDictation);
+                self.visual_indicator
+                    .show_command_sign(VoiceCommand::RestartDictation);
+                log_voice_start(&spoken);
                 Ok(())
             }
             VoiceCommand::PressEnter | VoiceCommand::ClearAllText => {
@@ -213,7 +220,6 @@ impl Pipeline {
         match command {
             VoiceCommand::PressEnter => self.sound_player.play_enter(),
             VoiceCommand::ClearAllText => self.sound_player.play_clear(),
-            VoiceCommand::RestartDictation => self.sound_player.play_restart(),
             _ => return,
         }
         self.visual_indicator.show_command_sign(command);
@@ -267,13 +273,21 @@ impl Pipeline {
     }
 }
 
+/// How long the start cue `spoken` just gave took, stage by stage.
+fn log_voice_start(spoken: &SpokenCommand) {
+    log::info!(
+        "voice start: {}",
+        VoiceStartTiming::measure(spoken, Instant::now())
+    );
+}
+
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::{mpsc, Arc, Mutex};
     use std::time::{Duration, Instant};
 
     use super::*;
-    use crate::core::application::audio_recorder::MockAudioRecorder;
+    use crate::core::application::audio_recorder::{LiveChunk, MockAudioRecorder};
     use crate::core::application::command_spotter::MockCommandSpotter;
     use crate::core::application::key_presser::MockKeyPresser;
     use crate::core::application::live_transcript_view::HiddenLiveTranscript;
@@ -385,6 +399,7 @@ mod tests {
             start,
             end: start + PHRASE_LENGTH,
             placement,
+            timing: None,
         })
     }
 
@@ -490,6 +505,7 @@ mod tests {
                 phrase: phrase.to_owned(),
                 start,
                 end,
+                timing: None,
             },
             SpottingEvent::SpeechEnded(end + PHRASE_LEAD),
         ];
@@ -744,6 +760,7 @@ mod tests {
                 phrase: "start dictation".into(),
                 start,
                 end,
+                timing: None,
             },
             SpottingEvent::SpeechEnded(end + PHRASE_LEAD),
         ]
@@ -1036,6 +1053,90 @@ mod tests {
         // Then
         assert!(pipeline.is_recording());
         assert_eq!(*played.lock().unwrap(), ["start", "restart"]);
+    }
+
+    /// How long the transcriber of the dropped dictation holds its last chunk at most.
+    const SLOW_REQUEST: Duration = Duration::from_secs(2);
+
+    /// A transcriber that notes "transcribed" once `released` lets its request end.
+    fn slow_transcriber(
+        released: mpsc::Receiver<()>,
+        order: Arc<Mutex<Vec<&'static str>>>,
+    ) -> MockTranscriber {
+        let released = Mutex::new(released);
+        let mut transcriber = MockTranscriber::new();
+        transcriber.expect_transcribe().returning(move |_| {
+            let _ = released.lock().unwrap().recv_timeout(SLOW_REQUEST);
+            order.lock().unwrap().push("transcribed");
+            Ok(None)
+        });
+        transcriber
+    }
+
+    /// A recorder whose first recording holds one chunk and whose second holds none.
+    fn recorder_with_one_live_chunk() -> MockAudioRecorder {
+        let (first_tx, first) = mpsc::channel();
+        first_tx
+            .send(LiveChunk {
+                audio: AudioBuffer16k::new(vec![0i16; 16_000]),
+                enqueued_at: Instant::now(),
+            })
+            .unwrap();
+        let (_, second) = mpsc::channel();
+        let recordings = Mutex::new(vec![second, first]);
+        let mut recorder = MockAudioRecorder::new();
+        recorder.expect_start().returning(|| Ok(()));
+        recorder.expect_begin_with().return_const(());
+        recorder.expect_flush_live_chunks().return_const(());
+        recorder
+            .expect_stop()
+            .returning(|| Ok(AudioBuffer16k::new(Vec::new())));
+        recorder
+            .expect_start_live_chunks()
+            .returning(move |_| Ok(recordings.lock().unwrap().pop()));
+        recorder
+    }
+
+    #[test]
+    fn should_give_the_restart_cue_before_the_dropped_dictation_is_transcribed() {
+        // Given a dictation whose last chunk is still being transcribed
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let (release, released) = mpsc::channel();
+        let mut sounds = MockSoundPlayer::new();
+        sounds.expect_play_start().return_const(());
+        sounds.expect_play_listening_on().return_const(());
+        let seen = Arc::clone(&order);
+        sounds
+            .expect_play_restart()
+            .returning(move || seen.lock().unwrap().push("restart"));
+        let mut paster = MockTextPaster::new();
+        paster.expect_paste().never();
+        let mut pipeline = Pipeline::new(
+            Box::new(recorder_with_one_live_chunk()),
+            Box::new(slow_transcriber(released, Arc::clone(&order))),
+            Box::new(passthrough_refiner()),
+            Box::new(paster),
+            Box::new(sounds),
+            Box::new(overlay()),
+            PipelineConfig {
+                min_press_ms: 0,
+                recording_mode: RecordingMode::Toggle,
+                chunking: ChunkingCfg {
+                    chunk_threshold_secs: 1,
+                    ..ChunkingCfg::default()
+                },
+            },
+        )
+        .with_voice_control(Box::new(lenient_spotter()), Box::new(MockKeyPresser::new()));
+        listen(&mut pipeline);
+        say(&mut pipeline, "start dictation");
+        // When
+        say(&mut pipeline, "restart dictation");
+        let heard = order.lock().unwrap().clone();
+        drop(release);
+        // Then
+        assert!(pipeline.is_recording());
+        assert_eq!(heard, ["restart"]);
     }
 
     #[test]

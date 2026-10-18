@@ -70,6 +70,8 @@ fn main() {
     let Some(command_line) = voicepuncher_e2e_test::harness_args::cucumber_command_line() else {
         return;
     };
+    // The app's log lines, such as its `voice start:` timing, only for the modules RUST_LOG names
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("off")).init();
     // The user's recorded commands stay on the machine; scenarios that need them run only
     // where they exist.
     let gates = vec![

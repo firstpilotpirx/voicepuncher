@@ -256,7 +256,9 @@ fn phrases_in_segments(events: &[ServerEvent]) -> Vec<PhraseInSegment> {
             ServerEvent::SpeechStart { t } => segment_start = Some(*t),
             // A phrase reported after its segment ended still belongs to it: the spotter
             // may decode it after the short pause that closed the segment.
-            ServerEvent::Phrase { phrase, start, end } => match (segment_start, last_segment) {
+            ServerEvent::Phrase {
+                phrase, start, end, ..
+            } => match (segment_start, last_segment) {
                 (None, Some(segment)) if *start <= segment.1 => {
                     found.push((phrase.clone(), segment, (*start, *end)))
                 }
@@ -919,6 +921,22 @@ fn should_take_a_near_miss_of_restart_as_restart_when_its_second_hearing_says_re
 }
 
 #[test]
+fn should_hear_a_restart_the_spotter_heard_again_when_its_segment_is_heard_as_another_word() {
+    let Some(_shared) = engine() else { return };
+    // Given "restart" said alone, heard first as another word
+    let hear = HearsInTurn::new(&["Restocked.", "Restart."]);
+    // When
+    let events = heard_alone(hear.clone(), &DICTATING_PHRASES, "Restart");
+    // Then
+    assert_eq!(
+        reported_phrases(&events),
+        ["restart dictation"],
+        "{events:?}"
+    );
+    assert_eq!(hear.clips(), 2);
+}
+
+#[test]
 fn should_place_the_restart_of_a_second_hearing_at_the_start_of_its_speech() {
     let Some(_shared) = engine() else { return };
     // Given
@@ -979,15 +997,22 @@ const MARK_LEN: usize = 64;
 impl HearsTheWordsInTheClip {
     /// `words` said one after another, `gap_secs` of silence between them, after a pause.
     fn said(words: &[&'static str], gap_secs: f32) -> Arc<Self> {
+        let pairs: Vec<_> = words.iter().map(|w| (*w, *w)).collect();
+        Self::said_as(&pairs, gap_secs)
+    }
+
+    /// Each word heard as its first part while the stream says its second, as `said` lays
+    /// them out: a word the keyword spotter does not know, heard as a command.
+    fn said_as(words: &[(&'static str, &'static str)], gap_secs: f32) -> Arc<Self> {
         let gap = vec![0.0f32; (gap_secs * SAMPLE_RATE as f32) as usize];
         let mut stream = vec![0.0f32; (PAUSE_SECS * SAMPLE_RATE as f32) as usize];
         let mut spans = Vec::new();
-        for (n, word) in words.iter().enumerate() {
+        for (n, (word, spoken)) in words.iter().enumerate() {
             if n > 0 {
                 stream.extend(&gap);
             }
             let start = stream.len();
-            stream.extend(without_silence(&common::spoken_by(None, word)));
+            stream.extend(without_silence(&common::spoken_by(None, spoken)));
             spans.push((*word, start..stream.len()));
         }
         stream.extend(vec![0.0f32; (PAUSE_SECS * SAMPLE_RATE as f32) as usize]);
@@ -1082,5 +1107,242 @@ fn should_carry_out_the_rest_of_a_chain_a_check_heard_only_in_part() {
         reported_phrases(&events),
         ["cancel dictation", "press enter", "start dictation"],
         "{events:?}"
+    );
+}
+
+/// How long after the end of its words a start followed at once by speech may be reported.
+const START_REPORTED_WITHIN_SECS: f32 = 0.6;
+/// Before the search of the utterance's start 1.0 s in could report it: only the spotted check.
+const SPOTTED_CHECK_WITHIN_SECS: f32 = 0.5;
+const STANDBY_PHRASES: [&str; 3] = ["start dictation", "press enter", "clear all text"];
+
+/// Each command reported in `audio` fed frame by frame, every confirmation answered before
+/// the next frame, with the stream position at which it was reported.
+fn reported_at(session: &mut Session<'_>, audio: &[f32]) -> Vec<(Vec<String>, usize)> {
+    let mut reported = Vec::new();
+    let mut fed_so_far = 0;
+    for frame in audio.chunks(FRAME_SAMPLES) {
+        let mut events = session.accept(frame);
+        events.extend(session.settle());
+        fed_so_far += frame.len();
+        for event in events {
+            if let ServerEvent::Command { commands, .. } = event {
+                reported.push((commands, fed_so_far));
+            }
+        }
+    }
+    reported
+}
+
+#[test]
+fn should_report_start_start_followed_at_once_by_speech_soon_after_its_end() {
+    let Some(_shared) = engine() else { return };
+    // Given "start start" and the dictation right after it, in one utterance
+    let hear = HearsTheWordsInTheClip::said(&["start", "start", "we meet on Friday at ten"], 0.12);
+    let engine = own_engine(None).unwrap().hearing(hear.clone());
+    let mut session = engine.session().unwrap();
+    let phrases: Vec<String> = STANDBY_PHRASES.iter().map(|p| (*p).to_owned()).collect();
+    session.listen_for(&phrases).unwrap();
+    // When
+    let reported = reported_at(&mut session, &hear.stream);
+    // Then
+    let command_end = hear.words[1].1.end;
+    let [(commands, at)] = reported.as_slice() else {
+        panic!("one report of start expected: {reported:?}");
+    };
+    assert_eq!(commands, &["start dictation"]);
+    let late = (*at as f32 - command_end as f32) / SAMPLE_RATE as f32;
+    assert!(
+        late <= START_REPORTED_WITHIN_SECS,
+        "start start reported {late:.2} s after its end"
+    );
+}
+
+/// What a trigger-only keyword would be named if it ever went out as a phrase.
+fn trigger_phrases(events: &[ServerEvent]) -> Vec<String> {
+    spotted(events)
+        .into_iter()
+        .filter(|phrase| !ALL_PHRASES.contains(&phrase.as_str()))
+        .collect()
+}
+
+/// How late after the end of the words at `command_end` the first command of `phrases` was
+/// reported for `hear`'s stream, every confirmation answered at once; every event too.
+fn report_delay(
+    hear: Arc<HearsTheWordsInTheClip>,
+    phrases: &[&str],
+    command_end: usize,
+) -> (Option<f32>, Vec<ServerEvent>) {
+    let engine = own_engine(None).unwrap().hearing(hear.clone());
+    let mut session = engine.session().unwrap();
+    let phrases: Vec<String> = phrases.iter().map(|p| (*p).to_owned()).collect();
+    session.listen_for(&phrases).unwrap();
+    let mut events = Vec::new();
+    let mut delay = None;
+    let mut fed_so_far = 0;
+    for frame in hear.stream.chunks(FRAME_SAMPLES) {
+        let mut new = session.accept(frame);
+        new.extend(session.settle());
+        fed_so_far += frame.len();
+        if delay.is_none() && new.iter().any(|e| matches!(e, ServerEvent::Command { .. })) {
+            delay = Some((fed_so_far as f32 - command_end as f32) / SAMPLE_RATE as f32);
+        }
+        events.extend(new);
+    }
+    (delay, events)
+}
+
+#[test]
+fn should_check_a_running_utterance_soon_after_a_short_start_and_never_report_its_trigger() {
+    let Some(_shared) = engine() else { return };
+    // Given "start" and the dictation right after it, in one utterance
+    let hear = HearsTheWordsInTheClip::said(&["start", "we meet on Friday at ten"], 0.05);
+    let command_end = hear.words[0].1.end;
+    // When
+    let (delay, events) = report_delay(hear, &STANDBY_PHRASES, command_end);
+    // Then
+    assert!(
+        delay.is_some_and(|d| d <= SPOTTED_CHECK_WITHIN_SECS),
+        "start reported {delay:?} s after its end: {events:?}"
+    );
+    assert_eq!(trigger_phrases(&events), Vec::<String>::new());
+}
+
+#[test]
+fn should_not_start_on_start_stop_said_in_standby() {
+    let Some(_shared) = engine() else { return };
+    // Given "start stop" said in one breath while no dictation runs
+    let hear = HearsTheWordsInTheClip::said(&["start", "stop"], 0.05);
+    let command_end = hear.words[0].1.end;
+    // When
+    let (delay, events) = report_delay(hear, &STANDBY_PHRASES, command_end);
+    // Then
+    assert_eq!(delay, None, "a command reported: {events:?}");
+}
+
+#[test]
+fn should_not_start_on_start_inside_a_sentence_said_in_standby() {
+    let Some(_shared) = engine() else { return };
+    // Given a sentence with "start" inside it while no dictation runs
+    let hear = HearsTheWordsInTheClip::said(&["we", "start", "at nine tomorrow"], 0.05);
+    let command_end = hear.words[1].1.end;
+    // When
+    let (delay, events) = report_delay(hear, &STANDBY_PHRASES, command_end);
+    // Then
+    assert_eq!(delay, None, "a command reported: {events:?}");
+}
+
+#[test]
+fn should_check_a_running_utterance_soon_after_a_short_restart_and_never_report_its_trigger() {
+    let Some(_shared) = engine() else { return };
+    // Given a dictated sentence, "restart restart" and more speech, in one utterance
+    let hear = HearsTheWordsInTheClip::said(
+        &[
+            "we meet on Friday",
+            "restart",
+            "restart",
+            "and then more words",
+        ],
+        0.05,
+    );
+    let command_end = hear.words[2].1.end;
+    // When
+    let (delay, events) = report_delay(hear, &DICTATING_PHRASES, command_end);
+    // Then
+    assert!(
+        delay.is_some_and(|d| d <= START_REPORTED_WITHIN_SECS),
+        "restart restart reported {delay:?} s after its end: {events:?}"
+    );
+    assert_eq!(trigger_phrases(&events), Vec::<String>::new());
+}
+
+/// Answers as `words` does, the first clip only after `SLOW_FIRST_ANSWER`: a check of the
+/// running utterance answered after the utterance's own segment.
+struct SlowFirstClip {
+    words: Arc<HearsTheWordsInTheClip>,
+    clips: Mutex<usize>,
+}
+
+const SLOW_FIRST_ANSWER: Duration = Duration::from_millis(1_500);
+
+impl Hear for SlowFirstClip {
+    fn hear(&self, clip: &[f32], deadline: Duration) -> anyhow::Result<Heard> {
+        let first = {
+            let mut clips = self.clips.lock().unwrap();
+            *clips += 1;
+            *clips == 1
+        };
+        if first {
+            std::thread::sleep(SLOW_FIRST_ANSWER);
+        }
+        self.words.hear(clip, deadline)
+    }
+}
+
+/// Every event for `audio` fed in real time, frame by frame, its confirmations included.
+fn fed_in_real_time(session: &mut Session<'_>, audio: &[f32]) -> Vec<ServerEvent> {
+    let frame_time = Duration::from_secs_f32(FRAME_SAMPLES as f32 / SAMPLE_RATE as f32);
+    let mut events = Vec::new();
+    for frame in audio.chunks(FRAME_SAMPLES) {
+        events.extend(session.accept(frame));
+        std::thread::sleep(frame_time);
+        events.extend(session.poll());
+    }
+    events.extend(session.settle());
+    events
+}
+
+#[test]
+fn should_report_nothing_of_a_check_answered_after_its_utterances_segment() {
+    let Some(_shared) = engine() else { return };
+    // Given "start dictation please" said alone, its head check answered late
+    let words = HearsTheWordsInTheClip::said(&["start", "dictation", "please"], 0.15);
+    let stream = words.stream.clone();
+    let hear = Arc::new(SlowFirstClip {
+        words,
+        clips: Mutex::new(0),
+    });
+    let engine = own_engine(None).unwrap().hearing(hear.clone());
+    let mut session = engine.session().unwrap();
+    let phrases: Vec<String> = STANDBY_PHRASES.iter().map(|p| (*p).to_owned()).collect();
+    session.listen_for(&phrases).unwrap();
+    // When
+    let events = fed_in_real_time(&mut session, &stream);
+    // Then
+    assert!(
+        *hear.clips.lock().unwrap() > 1,
+        "no check was asked: {events:?}"
+    );
+    let segment_end = events
+        .iter()
+        .position(|e| matches!(e, ServerEvent::SpeechEnd { .. }))
+        .expect("the utterance ended");
+    assert!(
+        !events[segment_end..]
+            .iter()
+            .any(|e| matches!(e, ServerEvent::Command { .. })),
+        "{events:?}"
+    );
+}
+
+#[test]
+fn should_check_the_start_of_a_running_utterance_soon_though_no_trigger_was_spotted() {
+    let Some(_shared) = engine() else { return };
+    // Given "start" the keyword spotter does not know, as it misses most of the user's,
+    // and the dictation right after it, in one utterance
+    let hear = HearsTheWordsInTheClip::said_as(
+        &[
+            ("start", "mark"),
+            ("we meet on Friday at ten", "we meet on Friday at ten"),
+        ],
+        0.05,
+    );
+    let command_end = hear.words[0].1.end;
+    // When
+    let (delay, events) = report_delay(hear, &STANDBY_PHRASES, command_end);
+    // Then
+    assert!(
+        delay.is_some_and(|d| d <= START_REPORTED_WITHIN_SECS),
+        "start reported {delay:?} s after its end: {events:?}"
     );
 }

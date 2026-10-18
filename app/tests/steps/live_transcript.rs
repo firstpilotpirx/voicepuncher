@@ -139,6 +139,7 @@ impl LiveRun {
             phrase: command.phrase().to_owned(),
             start,
             end,
+            timing: None,
         }))?;
         self.send(PipelineInput::Spotting(SpottingEvent::SpeechEnded(
             end + Duration::from_millis(100),

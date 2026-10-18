@@ -35,6 +35,9 @@ pub enum ServerEvent {
         phrase: String,
         start: f32,
         end: f32,
+        /// Present when a confirmation heard the phrase.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        timing: Option<Timing>,
     },
     /// Commands said without a pause around them, to carry out in order without the
     /// app's pause rule: `start..end` spans their words.
@@ -43,11 +46,21 @@ pub enum ServerEvent {
         start: f32,
         end: f32,
         placement: Placement,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        timing: Option<Timing>,
     },
     /// Every event for the audio sent before the sync with this id is out.
     Synced {
         id: u64,
     },
+}
+
+/// The confirmation that heard a phrase or command: how far the stream had come when it was
+/// asked, in seconds, and how long the speech recognition service took to answer it.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Timing {
+    pub asked_at: f32,
+    pub took_ms: u64,
 }
 
 const SAMPLE_BYTES: usize = 4;
@@ -96,6 +109,7 @@ mod tests {
             phrase: "press enter".into(),
             start: 1.5,
             end: 2.25,
+            timing: None,
         };
         // When
         let json = serde_json::to_string(&phrase).unwrap();
@@ -118,6 +132,7 @@ mod tests {
             start: 4.5,
             end: 5.25,
             placement: Placement::Anywhere,
+            timing: None,
         };
         // When
         let json = serde_json::to_string(&command).unwrap();
@@ -125,6 +140,49 @@ mod tests {
         assert_eq!(
             json,
             r#"{"event":"command","commands":["stop dictation","press enter"],"start":4.5,"end":5.25,"placement":"anywhere"}"#
+        );
+    }
+
+    #[test]
+    fn should_write_a_confirmed_command_with_its_timing() {
+        // Given
+        let command = ServerEvent::Command {
+            commands: vec!["start dictation".into()],
+            start: 4.5,
+            end: 5.25,
+            placement: Placement::Anywhere,
+            timing: Some(Timing {
+                asked_at: 5.5,
+                took_ms: 210,
+            }),
+        };
+        // When
+        let json = serde_json::to_string(&command).unwrap();
+        // Then
+        assert_eq!(
+            json,
+            r#"{"event":"command","commands":["start dictation"],"start":4.5,"end":5.25,"placement":"anywhere","timing":{"asked_at":5.5,"took_ms":210}}"#
+        );
+    }
+
+    #[test]
+    fn should_write_a_confirmed_phrase_with_its_timing() {
+        // Given
+        let phrase = ServerEvent::Phrase {
+            phrase: "start dictation".into(),
+            start: 1.5,
+            end: 2.25,
+            timing: Some(Timing {
+                asked_at: 2.75,
+                took_ms: 180,
+            }),
+        };
+        // When
+        let json = serde_json::to_string(&phrase).unwrap();
+        // Then
+        assert_eq!(
+            json,
+            r#"{"event":"phrase","phrase":"start dictation","start":1.5,"end":2.25,"timing":{"asked_at":2.75,"took_ms":180}}"#
         );
     }
 

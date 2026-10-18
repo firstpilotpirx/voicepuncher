@@ -233,7 +233,7 @@ impl Stream {
             return;
         }
         if let Ok(mut heard) = self.heard.lock() {
-            heard.push(&samples);
+            heard.push(&samples, Instant::now());
         }
         if let Link::Up(client) = &mut self.link {
             if let Err(e) = client.send_audio(&samples) {
@@ -250,12 +250,37 @@ impl Stream {
         let events = client.keep_alive().and_then(|()| client.read_events());
         match events {
             Ok(events) => {
-                for event in events {
+                for mut event in events {
                     self.note_command_end(&event);
+                    self.to_capture_times(&mut event);
                     let _ = self.inputs.send(PipelineInput::Spotting(event));
                 }
             }
             Err(e) => self.lose(e),
+        }
+    }
+
+    /// The report times of `event`, dated by stream position, as the moments that audio was
+    /// captured: they fall behind the clock once audio was lost. Its own times stay, as the
+    /// lead-in is taken by them.
+    fn to_capture_times(&self, event: &mut SpottingEvent) {
+        let (SpottingEvent::PhraseSpotted {
+            timing: Some(report),
+            ..
+        }
+        | SpottingEvent::CommandsSaid {
+            timing: Some(report),
+            ..
+        }) = event
+        else {
+            return;
+        };
+        let Ok(heard) = self.heard.lock() else {
+            return;
+        };
+        report.words_ended = heard.captured_at(report.words_ended);
+        if let Some(confirmation) = report.confirmation.as_mut() {
+            confirmation.asked_at = heard.captured_at(confirmation.asked_at);
         }
     }
 

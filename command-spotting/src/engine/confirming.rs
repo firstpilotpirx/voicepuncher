@@ -1,14 +1,18 @@
 //! The confirmations of a session: what each asks the speech recognition service, and what
 //! its answer makes of the utterance once it arrives.
 
+use std::time::Instant;
+
 use crate::confirm::{Heard, TimedWord};
+use crate::keywords;
 use crate::matcher::{Found, PhraseMatcher, Placement};
 use crate::orderer::{Segment, Spotted};
-use crate::protocol::ServerEvent;
+use crate::protocol::{ServerEvent, Timing};
 use crate::worker::{Answer, Job, JobId, JobKind};
 
 use super::clip::steady_clip;
 use super::pause::first_sound;
+use super::spotted::{Round, CHECKED_WHEN_SPOTTED};
 use super::{
     samples_in, seconds, Session, FIRST_WINDOW_SECS, POST_ROLL_SECS, PRE_ROLL_SECS,
     TAIL_SLACK_SECS, WINDOW_SECS,
@@ -24,13 +28,25 @@ const SETTLE_DEADLINES: u32 = 3;
 
 /// What a confirmation asked for, kept until its answer is applied.
 pub(super) enum JobContext {
+    /// A check of the utterance's start; `early`: asked before the start could be heard
+    /// alone, so only a command opening speech counts.
     Head {
         utterance: u64,
         from: usize,
+        early: bool,
     },
     Window {
         utterance: u64,
         from: usize,
+    },
+    /// A check asked because the keyword spotter heard "start" or "restart" ending at sample
+    /// `said_end`; `at_head`: its audio starts where the utterance did.
+    Spotted {
+        utterance: u64,
+        from: usize,
+        at_head: bool,
+        round: Round,
+        said_end: usize,
     },
     Segment {
         utterance: u64,
@@ -52,6 +68,22 @@ pub(super) enum JobContext {
         origin: usize,
         phrase: String,
     },
+}
+
+/// A confirmation asked for: what for, how far the stream had come, and when.
+pub(super) struct AskedJob {
+    context: JobContext,
+    asked_at: usize,
+    asked: Instant,
+}
+
+impl AskedJob {
+    fn timing(&self) -> Timing {
+        Timing {
+            asked_at: seconds(self.asked_at),
+            took_ms: self.asked.elapsed().as_millis() as u64,
+        }
+    }
 }
 
 /// A closed speech segment by sample position, and the audio sent to confirm it.
@@ -150,7 +182,14 @@ impl Session<'_> {
                 audio,
             });
         }
-        self.jobs.insert(n, context);
+        self.jobs.insert(
+            n,
+            AskedJob {
+                context,
+                asked_at: self.samples_seen,
+                asked: Instant::now(),
+            },
+        );
         Some(n)
     }
 
@@ -233,27 +272,51 @@ impl Session<'_> {
 
     fn apply(&mut self, answer: Answer) -> Vec<ServerEvent> {
         let n = answer.id.n;
-        let Some(context) = self.jobs.remove(&n) else {
+        let Some(asked) = self.jobs.remove(&n) else {
             return Vec::new();
         };
+        let timing = asked.timing();
+        let asked_at = asked.asked_at;
+        let context = asked.context;
         let utterance = context.utterance();
         let is_check = context.is_check();
         let tail = context.tail_check();
         let near_miss = match (&context, &answer.heard) {
-            (JobContext::Segment { segment, .. }, Some(heard)) if segment.short => {
-                self.matcher.near_miss(&heard.text)
-            }
+            (JobContext::Segment { segment, .. }, Some(heard)) if segment.short => self
+                .matcher
+                .near_miss(&heard.text)
+                .or_else(|| self.trigger_heard_in(segment.bounds)),
+            _ => None,
+        };
+        let short_segment = match &context {
+            JobContext::Segment { segment, .. } if segment.short => context.rehear(String::new()),
             _ => None,
         };
         let rehear = near_miss.and_then(|phrase| context.rehear(phrase));
-        let events = match answer.heard {
-            Some(heard) => self.apply_heard(heard, context),
+        let stale = is_check && utterance.is_some_and(|u| self.segment_answered(u));
+        if let JobContext::Segment { utterance, .. } = &context {
+            self.mark(*utterance, |r| r.segment_answered = true);
+        }
+        let heard = answer.heard.filter(|_| !stale);
+        if stale {
+            log::debug!("job={} answered after its segment: dropped", answer.id);
+        }
+        let events: Vec<ServerEvent> = match heard {
+            Some(heard) => self.apply_heard(heard, context, asked_at),
             None => Vec::new(),
-        };
+        }
+        .into_iter()
+        .map(|event| timed(event, timing))
+        .collect();
         let heard_again = match rehear {
             Some(rehear) if events.is_empty() => self.hear_again(n, rehear),
             _ => false,
         };
+        if short_segment.is_some() {
+            self.misheard = short_segment
+                .filter(|_| events.is_empty() && !heard_again)
+                .map(|segment| (n, segment));
+        }
         if let (true, false, Some((utterance, from, to))) = (events.is_empty(), heard_again, tail) {
             // The segment's events wait for the answer about its tail.
             if let Some(job) = self.ask(
@@ -269,7 +332,7 @@ impl Session<'_> {
         // spotter's phrases of other commands in it are mishearings, and would make the
         // utterance no command.
         if let Some(ServerEvent::Phrase { phrase, .. }) = events.first() {
-            self.outbox.keep_only_phrase(n, phrase);
+            self.outbox.keep_only_phrase(n, phrase, Some(timing));
         }
         if !events.is_empty() {
             log::info!("job={} → {events:?}", answer.id);
@@ -281,12 +344,53 @@ impl Session<'_> {
         self.outbox.resolve(n, is_check, events)
     }
 
-    fn apply_heard(&mut self, heard: Heard, context: JobContext) -> Vec<ServerEvent> {
+    /// The segment of `utterance` was heard: it decides what the utterance said.
+    fn segment_answered(&self, utterance: u64) -> bool {
+        self.utterances
+            .get(&utterance)
+            .is_some_and(|r| r.segment_answered)
+    }
+
+    /// The events `heard` makes of the confirmation asked with `context` when the stream
+    /// had come to `asked_at`.
+    fn apply_heard(
+        &mut self,
+        heard: Heard,
+        context: JobContext,
+        asked_at: usize,
+    ) -> Vec<ServerEvent> {
         let event = match context {
-            JobContext::Head { utterance, from } => self.place(&heard, from, utterance, |m, w| {
-                // The utterance goes on: a "start" heard alone so far has speech after it.
-                m.start_at_head(w).or_else(|| m.start_so_far(w))
+            JobContext::Head {
+                utterance,
+                from,
+                early: false,
+            } => self.place(&heard, from, utterance, head_command),
+            // "start" heard alone may be cut off before the word after it, as the first
+            // spotted check may hear it: "start stop" starts nothing.
+            JobContext::Head {
+                utterance,
+                from,
+                early: true,
+            } => self.place(&heard, from, utterance, |m, w| {
+                spotted_command(m, w, true, Round::First)
             }),
+            JobContext::Spotted {
+                utterance,
+                from,
+                at_head,
+                round,
+                said_end,
+            } => {
+                let found = self.place(&heard, from, utterance, |m, w| {
+                    spotted_command(m, w, at_head, round)
+                });
+                // The first check may come before the command ends: "start" alone at the
+                // head, or the second "restart" of "restart restart" cut off by the clip.
+                if found.is_none() && round == Round::First {
+                    self.spotted_checks.found_nothing(said_end, asked_at);
+                }
+                found
+            }
             JobContext::Window { utterance, from } => {
                 let found = self.place(&heard, from, utterance, |m, w| m.anywhere(w));
                 self.mark(utterance, |r| r.last_window = Some((heard, from)));
@@ -307,6 +411,34 @@ impl Session<'_> {
             } => self.apply_rehear(&heard, bounds, origin, phrase),
         };
         event.into_iter().collect()
+    }
+
+    /// The selected phrase a trigger spotted within `bounds` serves: the keyword spotter heard
+    /// it where the speech recognition service heard another word ("restart" as "Restocked.").
+    fn trigger_heard_in(&self, bounds: Segment) -> Option<String> {
+        self.heard_triggers
+            .iter()
+            .filter(|t| t.start < bounds.end && t.end > bounds.start)
+            .filter_map(|t| keywords::served_by(&t.phrase))
+            .find(|phrase| self.matcher.selects(phrase))
+            .map(str::to_owned)
+    }
+
+    /// Hears the last short segment heard as no command again when `trigger`, reported
+    /// after that answer, lies in it.
+    pub(super) fn hear_misheard_again(&mut self, trigger: &Spotted) {
+        let Some(phrase) =
+            keywords::served_by(&trigger.phrase).filter(|phrase| self.matcher.selects(phrase))
+        else {
+            return;
+        };
+        let Some((job, segment)) = self.misheard.take_if(|(_, segment)| {
+            trigger.start < segment.bounds.end && trigger.end > segment.bounds.start
+        }) else {
+            return;
+        };
+        let phrase = phrase.to_owned();
+        self.hear_again(job, Rehear { phrase, ..segment });
     }
 
     /// Hears a short segment heard as a near miss again, through its steady clip; the
@@ -365,6 +497,7 @@ impl Session<'_> {
             phrase,
             start: start.min(bounds.start),
             end: bounds.end,
+            timing: None,
         })
     }
 
@@ -397,6 +530,7 @@ impl Session<'_> {
                     phrase,
                     start: start.min(bounds.start),
                     end: bounds.end,
+                    timing: None,
                 });
             }
         }
@@ -429,6 +563,7 @@ impl Session<'_> {
             start,
             end,
             placement: Placement::Tail,
+            timing: None,
         })
     }
 
@@ -451,9 +586,10 @@ impl Session<'_> {
             .get(&utterance)
             .map_or(0, |r| r.reported_until);
         // Word times differ by about 0.1 s between two clips of the same speech: a command
-        // lies after the report when the middle of its words does.
-        let after_report = |&(first, last): &(usize, usize)| {
-            (at(first, |w| w.start) + at(last, |w| w.end)) / 2 > reported_until
+        // lies after the report when the middle of its first word does; a doubled command
+        // whose first word was reported alone ("start" heard before "start start") is not.
+        let after_report = |&(first, _): &(usize, usize)| {
+            (at(first, |w| w.start) + at(first, |w| w.end)) / 2 > reported_until
         };
         let kept = if at(found.first, |w| w.start) < reported_until {
             found.spans.iter().position(after_report)?
@@ -472,6 +608,7 @@ impl Session<'_> {
             start: seconds(start),
             end: seconds(end),
             placement: found.placement,
+            timing: None,
         })
     }
 
@@ -498,7 +635,7 @@ impl Session<'_> {
 }
 
 /// What the second hearing of a near miss needs from its segment.
-struct Rehear {
+pub(super) struct Rehear {
     utterance: u64,
     bounds: Segment,
     from: usize,
@@ -512,6 +649,7 @@ impl JobContext {
         match self {
             JobContext::Head { utterance, .. }
             | JobContext::Window { utterance, .. }
+            | JobContext::Spotted { utterance, .. }
             | JobContext::Segment { utterance, .. }
             | JobContext::Tail { utterance, .. }
             | JobContext::Rehear { utterance, .. } => Some(*utterance),
@@ -520,7 +658,10 @@ impl JobContext {
     }
 
     fn is_check(&self) -> bool {
-        matches!(self, JobContext::Head { .. } | JobContext::Window { .. })
+        matches!(
+            self,
+            JobContext::Head { .. } | JobContext::Window { .. } | JobContext::Spotted { .. }
+        )
     }
 
     /// What a second hearing of this segment as a near miss of `phrase` needs.
@@ -549,5 +690,158 @@ impl JobContext {
             )),
             _ => None,
         }
+    }
+}
+
+/// The command the start of a running utterance says: a doubled start or a chain ending in
+/// one, "start" opening it, or "start" heard alone so far, since the utterance goes on and
+/// has speech after it.
+fn head_command(matcher: &PhraseMatcher, words: &[&str]) -> Option<Found> {
+    starting_anywhere(matcher, words)
+        .or_else(|| matcher.start_at_head(words))
+        .or_else(|| matcher.start_so_far(words))
+}
+
+/// The command a check asked by a spotted "start" or "restart" hears: a doubled command or
+/// a chain anywhere, and in audio from the utterance's start also what the head check takes.
+fn spotted_command(
+    matcher: &PhraseMatcher,
+    words: &[&str],
+    at_head: bool,
+    round: Round,
+) -> Option<Found> {
+    let found = starting_anywhere(matcher, words);
+    if !at_head {
+        return found;
+    }
+    // "start" heard alone may be cut off before the word after it: "start stop" starts nothing.
+    found
+        .or_else(|| matcher.start_at_head(words))
+        .or_else(|| (round == Round::Second).then(|| matcher.start_so_far(words))?)
+}
+
+/// A doubled command or a chain in `words` that starts a dictation: other ones are left to
+/// the checks of the utterance's last seconds and its segment, which the keyword spotter's
+/// phrase of the segment does not repeat.
+fn starting_anywhere(matcher: &PhraseMatcher, words: &[&str]) -> Option<Found> {
+    matcher.anywhere(words).filter(|found| {
+        found
+            .commands
+            .last()
+            .is_some_and(|last| CHECKED_WHEN_SPOTTED.contains(&last.as_str()))
+    })
+}
+
+/// `event` with the timing of the confirmation that heard it, when it names a command.
+fn timed(event: ServerEvent, confirmation: Timing) -> ServerEvent {
+    match event {
+        ServerEvent::Phrase {
+            phrase, start, end, ..
+        } => ServerEvent::Phrase {
+            phrase,
+            start,
+            end,
+            timing: Some(confirmation),
+        },
+        ServerEvent::Command {
+            commands,
+            start,
+            end,
+            placement,
+            ..
+        } => ServerEvent::Command {
+            commands,
+            start,
+            end,
+            placement,
+            timing: Some(confirmation),
+        },
+        other => other,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::matcher::Placement;
+
+    fn standby() -> PhraseMatcher {
+        PhraseMatcher::new(&[
+            "start dictation".into(),
+            "press enter".into(),
+            "clear all text".into(),
+        ])
+    }
+
+    fn words(text: &str) -> Vec<&str> {
+        text.split_whitespace().collect()
+    }
+
+    #[test]
+    fn should_take_a_doubled_start_at_the_head_of_a_running_utterance() {
+        // Given the start of an utterance heard as "start start" and the dictation after it
+        let said = words("Start, start, we meet on Friday");
+        // When
+        let found = head_command(&standby(), &said);
+        // Then
+        let found = found.expect("start start is a command");
+        assert_eq!(found.commands, ["start dictation"]);
+        assert_eq!((found.first, found.last), (0, 1));
+    }
+
+    #[test]
+    fn should_take_a_chain_ending_in_start_at_the_head_of_a_running_utterance() {
+        // Given the start of an utterance heard as "enter start" and the dictation after it
+        let said = words("Enter, start, we meet on Friday");
+        // When
+        let found = head_command(&standby(), &said);
+        // Then
+        let found = found.expect("enter start is a chain");
+        assert_eq!(found.commands, ["press enter", "start dictation"]);
+        assert_eq!(found.placement, Placement::Anywhere);
+    }
+
+    #[test]
+    fn should_leave_doubled_commands_other_than_start_to_the_later_checks() {
+        // Given a short utterance heard as a doubled "clear": its segment reports it once
+        let said = words("Fine, clear clear");
+        // When
+        let at_head = head_command(&standby(), &said);
+        let spotted = spotted_command(&standby(), &said, false, Round::First);
+        // Then
+        assert_eq!((at_head, spotted), (None, None));
+    }
+
+    #[test]
+    fn should_not_take_start_heard_alone_by_the_first_spotted_check() {
+        // Given the first check of a spotted "start" heard nothing after it yet
+        let said = words("Start.");
+        // When
+        let found = spotted_command(&standby(), &said, true, Round::First);
+        // Then
+        assert_eq!(found, None);
+    }
+
+    #[test]
+    fn should_take_start_heard_alone_by_the_second_spotted_check() {
+        // Given the second check of a spotted "start" still heard "start" alone
+        let said = words("Start.");
+        // When
+        let found = spotted_command(&standby(), &said, true, Round::Second);
+        // Then
+        assert_eq!(
+            found.map(|f| f.commands),
+            Some(vec!["start dictation".to_owned()])
+        );
+    }
+
+    #[test]
+    fn should_take_start_opening_speech_by_the_first_spotted_check() {
+        // Given
+        let said = words("Start, we meet on Friday");
+        // When
+        let found = spotted_command(&standby(), &said, true, Round::First);
+        // Then
+        assert_eq!(found.map(|f| f.placement), Some(Placement::Head));
     }
 }

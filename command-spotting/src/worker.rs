@@ -23,12 +23,14 @@ pub enum JobKind {
     Tail,
     /// A short segment heard as a near miss of a command, heard again through its steady clip.
     Rehear,
+    /// A running utterance in which the keyword spotter heard "start" or "restart".
+    Spotted,
 }
 
 impl JobKind {
     /// A check of a running utterance: skipped, not queued, while another one waits.
     pub fn is_check(self) -> bool {
-        matches!(self, JobKind::Head | JobKind::Window)
+        matches!(self, JobKind::Head | JobKind::Window | JobKind::Spotted)
     }
 
     fn attempts(self) -> u32 {
@@ -47,6 +49,7 @@ impl JobKind {
             JobKind::Unheld => "unheld",
             JobKind::Tail => "tail",
             JobKind::Rehear => "rehear",
+            JobKind::Spotted => "spotted",
         }
     }
 }
@@ -76,28 +79,31 @@ pub struct Answer {
     pub heard: Option<Heard>,
 }
 
+/// A connection's two confirmation threads: one for the checks of a running utterance, one
+/// for everything else, so a segment's confirmation never waits behind a hung check.
 pub struct ConfirmationWorker {
     jobs: Sender<Job>,
+    checks: Sender<Job>,
     answers: Receiver<Answer>,
 }
 
 impl ConfirmationWorker {
-    /// Starts the worker thread of connection `conn`; it ends when the worker is dropped,
-    /// once the request it runs is answered or given up.
+    /// Starts the threads of connection `conn`; they end when the worker is dropped, once the
+    /// request each runs is answered or given up.
     pub fn start(conn: u64, hear: Arc<dyn Hear>, deadline: Duration) -> std::io::Result<Self> {
-        let (jobs, job_rx) = mpsc::channel::<Job>();
         let (answer_tx, answers) = mpsc::channel();
-        std::thread::Builder::new()
-            .name(format!("conn-{conn}-confirm"))
-            .spawn(move || {
-                for job in job_rx {
-                    let answer = run(hear.as_ref(), &job, deadline);
-                    if answer_tx.send(answer).is_err() {
-                        return;
-                    }
-                }
-            })?;
-        Ok(Self { jobs, answers })
+        let jobs = spawn(
+            format!("conn-{conn}-confirm"),
+            hear.clone(),
+            deadline,
+            answer_tx.clone(),
+        )?;
+        let checks = spawn(format!("conn-{conn}-check"), hear, deadline, answer_tx)?;
+        Ok(Self {
+            jobs,
+            checks,
+            answers,
+        })
     }
 
     pub fn submit(&self, job: Job) {
@@ -107,7 +113,12 @@ impl ConfirmationWorker {
             job.kind.name(),
             seconds(job.audio.len())
         );
-        let _ = self.jobs.send(job);
+        let queue = if job.kind.is_check() {
+            &self.checks
+        } else {
+            &self.jobs
+        };
+        let _ = queue.send(job);
     }
 
     /// The answers that arrived so far, without waiting.
@@ -119,6 +130,24 @@ impl ConfirmationWorker {
     pub fn next_answer(&self, wait: Duration) -> Option<Answer> {
         self.answers.recv_timeout(wait).ok()
     }
+}
+
+/// Starts thread `name`, answering the jobs sent to the returned queue one after another.
+fn spawn(
+    name: String,
+    hear: Arc<dyn Hear>,
+    deadline: Duration,
+    answers: Sender<Answer>,
+) -> std::io::Result<Sender<Job>> {
+    let (jobs, job_rx) = mpsc::channel::<Job>();
+    std::thread::Builder::new().name(name).spawn(move || {
+        for job in job_rx {
+            if answers.send(run(hear.as_ref(), &job, deadline)).is_err() {
+                return;
+            }
+        }
+    })?;
+    Ok(jobs)
 }
 
 fn run(hear: &dyn Hear, job: &Job, deadline: Duration) -> Answer {
@@ -237,12 +266,12 @@ mod tests {
     }
 
     #[test]
-    fn should_answer_jobs_in_the_order_they_were_submitted() {
+    fn should_answer_confirmations_other_than_checks_in_the_order_they_were_submitted() {
         // Given
         let (worker, _) = worker_with(0);
         // When
         for (n, kind) in [
-            (1, JobKind::Window),
+            (1, JobKind::Tail),
             (2, JobKind::Segment),
             (3, JobKind::Unheld),
         ] {
@@ -253,6 +282,48 @@ mod tests {
             .collect();
         // Then
         assert_eq!(order, [1, 2, 3]);
+    }
+
+    /// Hangs on a check's audio until the test ends, and hears every other clip at once.
+    struct HangingCheck {
+        released: std::sync::Mutex<Receiver<()>>,
+    }
+
+    const CHECK_SAMPLE: f32 = 1.0;
+    const HANG: Duration = Duration::from_secs(10);
+
+    impl Hear for HangingCheck {
+        fn hear(&self, audio: &[f32], _: Duration) -> Result<Heard> {
+            if audio.first() == Some(&CHECK_SAMPLE) {
+                let _ = self.released.lock().unwrap().recv_timeout(HANG);
+                return Err(anyhow!("timed out reading response"));
+            }
+            Ok(Heard {
+                text: " enter".to_owned(),
+                words: Vec::new(),
+            })
+        }
+    }
+
+    #[test]
+    fn should_answer_a_segment_while_a_check_hangs() {
+        // Given
+        let (release, released) = mpsc::channel();
+        let hear = Arc::new(HangingCheck {
+            released: std::sync::Mutex::new(released),
+        });
+        let worker = ConfirmationWorker::start(1, hear, DEADLINE).unwrap();
+        let check = Job {
+            audio: vec![CHECK_SAMPLE; 1_600],
+            ..job(1, JobKind::Head)
+        };
+        // When
+        worker.submit(check);
+        worker.submit(job(2, JobKind::Segment));
+        let first = worker.next_answer(WAIT);
+        drop(release);
+        // Then
+        assert_eq!(first.map(|a| a.id.n), Some(2));
     }
 
     /// Keeps every log line, for the tests that check what a line names.
@@ -332,6 +403,7 @@ mod tests {
     #[test]
     fn should_count_head_and_window_as_checks_of_a_running_utterance() {
         assert!(JobKind::Head.is_check() && JobKind::Window.is_check());
+        assert!(JobKind::Spotted.is_check());
         assert!(!JobKind::Segment.is_check() && !JobKind::Unheld.is_check());
     }
 }

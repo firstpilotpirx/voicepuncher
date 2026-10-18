@@ -9,7 +9,9 @@ use anyhow::{bail, Context, Result};
 use cucumber::{then, when};
 
 use voicepuncher::core::application::PipelineInput;
-use voicepuncher::core::domain::{CommandPlacement, SpottingEvent};
+use voicepuncher::core::domain::{
+    CommandPlacement, ConfirmationTiming, ReportTiming, SpottingEvent,
+};
 
 use super::{
     chain, doubled, run, Event, VoiceRun, COMMAND_LENGTH, OTHER_SENTENCE, PHRASE_LEAD, REACTION,
@@ -23,6 +25,10 @@ const NO_PAUSE: Duration = Duration::from_millis(50);
 const SHORT_PAUSE: Duration = Duration::from_millis(500);
 /// How long after the next words began the service reports the command.
 const REPORTED_AFTER: Duration = Duration::from_millis(300);
+/// How long after the next words began the service asks the check that hears the command.
+const CHECK_ASKED_AFTER: Duration = Duration::from_millis(100);
+/// How long the speech recognition service takes to confirm a command.
+pub(super) const CONFIRMATION_TIME: Duration = Duration::from_millis(150);
 
 /// The sentence a step names: "a sentence" or "another sentence".
 fn sentence_named(which: &str) -> Result<&'static str> {
@@ -33,11 +39,43 @@ fn sentence_named(which: &str) -> Result<&'static str> {
     }
 }
 
-fn sleep_until(moment: Instant) {
+pub(super) fn sleep_until(moment: Instant) {
     std::thread::sleep(moment.saturating_duration_since(Instant::now()));
 }
 
 impl VoiceRun {
+    /// Says the command `said` and, without a pause, the sentence named `which`; the
+    /// service reports the command, confirmed by a check, once the sentence has begun.
+    pub(super) fn say_command_then_sentence(&mut self, said: &str, which: &str) -> Result<()> {
+        let (commands, placement) = match (doubled(said), chain(said).context("no command")?) {
+            (Some(once), _) => (once, CommandPlacement::Anywhere),
+            (None, chained) if chained.len() > 1 => (chained, CommandPlacement::Anywhere),
+            (None, alone) => (alone, CommandPlacement::Head),
+        };
+        let start = Instant::now();
+        let end = start + COMMAND_LENGTH;
+        self.command_end = Some(end);
+        self.speak(said, start);
+        self.speak(sentence_named(which)?, end + NO_PAUSE);
+        self.send(PipelineInput::Spotting(SpottingEvent::SpeechStarted(start)))?;
+        let check_asked = end + NO_PAUSE + CHECK_ASKED_AFTER;
+        sleep_until(end + NO_PAUSE + REPORTED_AFTER);
+        self.send(PipelineInput::Spotting(SpottingEvent::CommandsSaid {
+            commands,
+            start,
+            end,
+            placement,
+            timing: Some(ReportTiming {
+                words_ended: end,
+                confirmation: Some(ConfirmationTiming {
+                    asked_at: check_asked,
+                    took: CONFIRMATION_TIME,
+                }),
+                arrived_at: Instant::now(),
+            }),
+        }))
+    }
+
     /// Ends the dictation the scenario's command started, as the user later does.
     fn end_started_dictation(&mut self) -> Result<()> {
         self.wait_since_mark(|e| *e == Event::RecordingStarted)?;
@@ -73,18 +111,7 @@ fn says_command_and_sentence(
 ) -> Result<()> {
     let run = run(world);
     run.start_when();
-    let (commands, placement) = match (doubled(&said), chain(&said).context("no command")?) {
-        (Some(once), _) => (once, CommandPlacement::Anywhere),
-        (None, chained) if chained.len() > 1 => (chained, CommandPlacement::Anywhere),
-        (None, alone) => (alone, CommandPlacement::Head),
-    };
-    let start = Instant::now();
-    let end = start + COMMAND_LENGTH;
-    run.speak(&said, start);
-    run.speak(sentence_named(&which)?, end + NO_PAUSE);
-    run.send(PipelineInput::Spotting(SpottingEvent::SpeechStarted(start)))?;
-    sleep_until(end + NO_PAUSE + REPORTED_AFTER);
-    run.say_commands(&commands, start, end, placement)?;
+    run.say_command_then_sentence(&said, &which)?;
     run.end_started_dictation()
 }
 

@@ -21,11 +21,11 @@ use super::{
 use crate::E2eWorld;
 
 /// The dictation said right after the command; its first words are what a late start loses.
-const SENTENCE: &str = "Coffee machine on the third floor is broken";
+pub(super) const SENTENCE: &str = "Coffee machine on the third floor is broken";
 /// Words of the commands that start a dictation: none may be pasted.
 const START_WORDS: [&str; 3] = ["start", "restart", "dictation"];
 /// Said before a restart: none of it may be pasted.
-const BEFORE_RESTART: &str = "Weather is sunny in Berlin today";
+pub(super) const BEFORE_RESTART: &str = "Weather is sunny in Berlin today";
 /// The silence `say` speech starts and ends with.
 const SAY_PAUSE_SECS: f32 = 1.0;
 /// 20 ms per message: a real microphone delivers audio about this often.
@@ -45,10 +45,14 @@ const LOUDNESS_FRAME_SAMPLES: usize = 160;
 const RECORDED_SESSIONS: [&str; 2] = ["session-2", "session-5"];
 
 #[derive(Deserialize)]
-struct Form {
-    start: f32,
+pub(super) struct Form {
+    pub(super) start: f32,
     end: f32,
-    said: String,
+    pub(super) said: String,
+    #[serde(default)]
+    pub(super) state: String,
+    #[serde(default)]
+    pub(super) commands: Vec<String>,
 }
 
 fn samples_in(secs: f32) -> usize {
@@ -75,7 +79,7 @@ pub(in crate::steps::voice_control) fn until_last_sound(mut audio: Vec<f32>) -> 
 const QUIET_RESTART: (&str, f32) = ("session-2", 27.23);
 
 /// The labelled forms of a recording session.
-fn forms_of(root: &Path, session: &str) -> Result<Vec<Form>> {
+pub(super) fn forms_of(root: &Path, session: &str) -> Result<Vec<Form>> {
     let labels = std::fs::read_to_string(root.join(session).join("forms.jsonl"))?;
     Ok(labels
         .lines()
@@ -84,7 +88,7 @@ fn forms_of(root: &Path, session: &str) -> Result<Vec<Form>> {
 }
 
 /// `form` cut from its recording session with the margins that keep its first and last sounds.
-fn cut(root: &Path, session: &str, form: &Form) -> Result<Vec<f32>> {
+pub(super) fn cut(root: &Path, session: &str, form: &Form) -> Result<Vec<f32>> {
     let audio = to_f32(read_wav(&root.join(format!("{session}.wav")))?);
     let from = samples_in(form.start - LEAD_MARGIN_SECS);
     let to = samples_in(form.end + TAIL_MARGIN_SECS).min(audio.len());

@@ -4,9 +4,11 @@
 
 mod doubles;
 mod speech_after_start;
+mod start_timing;
 
 use std::sync::mpsc::{self, Sender};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
+use std::thread::ThreadId;
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
@@ -20,8 +22,8 @@ use voicepuncher::core::domain::{
 };
 
 use doubles::{
-    Cut, ErrorLog, Event, Events, NotingRecorder, Phrases, RecordingKeyPresser, RecordingOverlay,
-    RecordingPaster, RecordingSounds, ScriptedSpotter, Speech, SpeechBeforeCut,
+    Cut, Event, Events, NotingRecorder, Phrases, PipelineLog, RecordingKeyPresser,
+    RecordingOverlay, RecordingPaster, RecordingSounds, ScriptedSpotter, Speech, SpeechBeforeCut,
 };
 
 use crate::IntegrationWorld;
@@ -48,15 +50,15 @@ const SEGMENT_TAIL: Duration = Duration::from_millis(100);
 /// How much speech surrounds a phrase said inside a sentence.
 const SENTENCE_AROUND_PHRASE: Duration = Duration::from_secs(1);
 
-static ERRORS: OnceLock<&'static ErrorLog> = OnceLock::new();
+static PIPELINE_LOG: OnceLock<&'static PipelineLog> = OnceLock::new();
 
-pub(crate) fn error_log() -> &'static ErrorLog {
-    ERRORS.get_or_init(|| {
-        let errors: &'static ErrorLog = Box::leak(Box::new(ErrorLog(Mutex::default())));
-        if log::set_logger(errors).is_ok() {
-            log::set_max_level(log::LevelFilter::Error);
+pub(crate) fn pipeline_log() -> &'static PipelineLog {
+    PIPELINE_LOG.get_or_init(|| {
+        let log: &'static PipelineLog = Box::leak(Box::default());
+        if log::set_logger(log).is_ok() {
+            log::set_max_level(log::LevelFilter::Info);
         }
-        errors
+        log
     })
 }
 
@@ -73,6 +75,12 @@ pub struct VoiceRun {
     mark: usize,
     /// When the command spotting service went away, if it did.
     away_since: Option<Instant>,
+    /// The thread the pipeline runs on: what it logs is the scenario's.
+    pipeline_thread: Option<ThreadId>,
+    /// How much microphone audio never reached the command spotting service.
+    audio_lost: Duration,
+    /// When the words of the scenario's command ended.
+    command_end: Option<Instant>,
 }
 
 impl std::fmt::Debug for VoiceRun {
@@ -136,8 +144,8 @@ impl VoiceRun {
         Ok(())
     }
 
-    fn start_pipeline(&self) -> Sender<PipelineInput> {
-        error_log();
+    fn start_pipeline(&mut self) -> Sender<PipelineInput> {
+        pipeline_log();
         let (tx, rx) = mpsc::channel();
         let mut pipeline = Pipeline::new(
             Box::new(NotingRecorder {
@@ -172,7 +180,8 @@ impl VoiceRun {
                 Box::new(RecordingKeyPresser(Arc::clone(&self.events))),
             );
         }
-        std::thread::spawn(move || pipeline.run(rx));
+        let pipeline_thread = std::thread::spawn(move || pipeline.run(rx));
+        self.pipeline_thread = Some(pipeline_thread.thread().id());
         tx
     }
 
@@ -214,6 +223,7 @@ impl VoiceRun {
             start,
             end,
             placement,
+            timing: None,
         }))
     }
 
@@ -238,6 +248,7 @@ impl VoiceRun {
                 phrase,
                 start,
                 end,
+                timing: None,
             }))?;
         }
         self.send(PipelineInput::Spotting(SpottingEvent::SpeechEnded(
@@ -1002,7 +1013,7 @@ fn return_after_paste(world: &mut IntegrationWorld) -> Result<()> {
 fn error_logged(_world: &mut IntegrationWorld) -> Result<()> {
     let deadline = Instant::now() + REACTION;
     loop {
-        let errors = error_log().0.lock().unwrap().clone();
+        let errors = pipeline_log().errors.lock().unwrap().clone();
         if errors
             .iter()
             .any(|e| e.contains("command spotting service"))

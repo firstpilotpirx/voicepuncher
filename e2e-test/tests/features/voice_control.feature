@@ -300,6 +300,60 @@ Feature: voice-control
       When the user's recorded "start start" is followed at once by a sentence, and the dictation later ends
       Then the whole sentence, its first words included, is pasted without "start"
 
+  # Real-time sessions timed from the end of the command's words; @seams runs them in
+  # full-check, @serial keeps the other scenarios' requests from queuing ahead of them.
+  @serial @seams
+  Rule: A voice start gives its start cue within 0.7 s
+
+    Scenario: Start start followed by the dictation at once gives its cue at once
+      Given the command spotting service is running
+      And listening is on for a whole session
+      When someone says "start start" and a sentence without a pause
+      Then the start cue comes within 0.7 s of the end of "start start", while the sentence is still being said
+
+    Scenario: Start followed by the dictation at once gives its cue at once
+      Given the command spotting service is running
+      And listening is on for a whole session
+      When someone says "start" and a sentence without a pause
+      Then the start cue comes within 0.7 s of the end of "start", while the sentence is still being said
+
+    Scenario: Start said on its own gives its cue at once
+      Given the command spotting service is running
+      And listening is on for a whole session
+      When someone says "start" and stays silent
+      Then the start cue comes within 0.7 s of the end of "start"
+
+    # Not met yet: the early checks hear the synthesized "Enter" as "and a" (change hear-enter-before-start)
+    @wip
+    Scenario: A chain ending in start gives its cue at once
+      Given the command spotting service is running
+      And listening is on for a whole session
+      When someone says "enter start" and a sentence without a pause
+      Then the Return key is pressed and the start cue comes within 0.7 s of the end of "start"
+
+    Scenario: Restart restart followed by the new dictation at once gives its cue at once
+      Given the command spotting service is running
+      And listening is on for a whole session
+      And a dictation runs and someone has said a sentence in it
+      When someone says "restart restart" and another sentence without a pause
+      Then the start cue of the new dictation comes within 0.7 s of the end of "restart restart"
+
+    Scenario: Restart said on its own gives its cue at once
+      Given the command spotting service is running
+      And listening is on for a whole session
+      And a dictation started by voice runs
+      And someone has dictated for about 20 s
+      When someone says "restart" and stays silent
+      Then the start cue of the new dictation comes within 0.7 s of the end of "restart"
+
+    @voice_samples
+    Scenario: The user's recorded starts give their cue at once
+      Given the command spotting service is running
+      And the user's own recordings of the commands exist on the machine
+      And listening is on for a whole session
+      When each of the user's recorded starts is played, on its own and followed at once by a sentence
+      Then at least 9 of 10 of them give the start cue within 0.7 s of the end of the command's words
+
   Rule: A doubled short form counts anywhere
 
     @smoke

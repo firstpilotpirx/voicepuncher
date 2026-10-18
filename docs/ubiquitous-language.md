@@ -296,6 +296,12 @@
 - **Definition:** Where a *voice command* sat in its utterance: `Alone` (the whole utterance), `Tail` (it ended the utterance), `Head` ("start" opened it and speech followed), `Anywhere` (a doubled short form or a *command chain*).
 - **Code:** `app/src/core/domain/voice_command.rs`
 
+### Start cue
+- **Type:** Concept
+- **Definition:** What tells the user a dictation started: the start sound (the restart sound for "restart dictation"), the overlay's recording sign and the recording running. A voice start gives it as soon as its *voice command* is confirmed and logs `voice start: total=… hear=… confirm=… deliver=… cue=…` (ms from the capture time of the command's end).
+- **Code:** `app/src/core/application/pipeline/voice_control.rs`
+- **Synonyms to AVOID:** "start signal", "beep"
+
 ### Command chain
 - **Type:** Concept
 - **Definition:** Two or three different *voice commands* said one right after the other ("stop enter", "stop enter start"), each accepted in the state the one before leads to; carried out in order.

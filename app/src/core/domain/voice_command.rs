@@ -1,5 +1,7 @@
 use std::time::Instant;
 
+use super::voice_start_timing::ReportTiming;
+
 /// A spoken command of voice control, recognized from its English phrase.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VoiceCommand {
@@ -31,6 +33,8 @@ pub struct SpokenCommand {
     pub started_at: Instant,
     pub ends_at: Instant,
     pub placement: CommandPlacement,
+    /// How the report of the command came about; none when the service did not tell.
+    pub timing: Option<ReportTiming>,
 }
 
 impl VoiceCommand {

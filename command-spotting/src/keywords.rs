@@ -11,6 +11,25 @@ const PHRASE_MARKER: &str = " @";
 const WORD_JOINER: char = '_';
 /// Separates keywords in a per-stream keyword list of sherpa-onnx.
 const STREAM_SEPARATOR: &str = "/";
+/// Trigger-only keywords, with the phrase each serves: a short "start" or "restart" said in a
+/// running utterance only asks a check of it; the check decides whether a command was said.
+const TRIGGERS: &[(&str, &str)] = &[
+    ("start trigger", "start dictation"),
+    ("restart trigger", "restart dictation"),
+];
+
+/// Whether `phrase` names a trigger-only keyword, which is never reported.
+pub fn is_trigger(phrase: &str) -> bool {
+    served_by(phrase).is_some()
+}
+
+/// The phrase the trigger-only keyword `trigger` serves.
+pub fn served_by(trigger: &str) -> Option<&'static str> {
+    TRIGGERS
+        .iter()
+        .find(|(t, _)| *t == trigger)
+        .map(|(_, phrase)| *phrase)
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Keyword {
@@ -49,10 +68,13 @@ pub fn phrase_of(spotted: &str) -> String {
     spotted.replace(WORD_JOINER, " ")
 }
 
-/// Every keyword line, one per line, for creating the keyword spotter.
+/// Every keyword line but the triggers, one per line, for creating the keyword spotter: the
+/// spotter adds these to the keywords of each stream, and a trigger must never reach the
+/// stream of the phrases.
 pub fn all_lines(keywords: &[Keyword]) -> String {
     keywords
         .iter()
+        .filter(|k| !is_trigger(&k.phrase))
         .map(|k| k.line.as_str())
         .collect::<Vec<_>>()
         .join("\n")
@@ -76,6 +98,22 @@ pub fn select(keywords: &[Keyword], phrases: &[String]) -> Result<String, Unknow
     Ok(lines.join(STREAM_SEPARATOR))
 }
 
+/// The per-stream keyword list of the trigger-only keywords that serve `phrases`; none when
+/// no selected phrase has one.
+pub fn select_triggers(keywords: &[Keyword], phrases: &[String]) -> Option<String> {
+    let served = |trigger: &str| {
+        TRIGGERS
+            .iter()
+            .any(|(t, phrase)| *t == trigger && phrases.iter().any(|p| p == phrase))
+    };
+    let lines: Vec<&str> = keywords
+        .iter()
+        .filter(|k| served(&k.phrase))
+        .map(|k| k.line.as_str())
+        .collect();
+    (!lines.is_empty()).then(|| lines.join(STREAM_SEPARATOR))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,7 +127,11 @@ mod tests {
         // When
         let keywords = parse(KEYWORDS);
         // Then
-        let mut names: Vec<&str> = keywords.iter().map(|k| k.phrase.as_str()).collect();
+        let mut names: Vec<&str> = keywords
+            .iter()
+            .map(|k| k.phrase.as_str())
+            .filter(|phrase| !is_trigger(phrase))
+            .collect();
         names.dedup();
         assert_eq!(
             names,
@@ -114,6 +156,33 @@ mod tests {
         assert!(selected.contains("@stop_dictation"));
         assert!(selected.contains("@press_enter"));
         assert!(!selected.contains("@start_dictation"));
+    }
+
+    #[test]
+    fn should_select_the_triggers_of_the_selected_phrases_only() {
+        // Given
+        let keywords = parse(KEYWORDS);
+        // When
+        let standby = select_triggers(&keywords, &phrases(&["start dictation", "press enter"]));
+        let dictating = select_triggers(&keywords, &phrases(&["restart dictation"]));
+        let none = select_triggers(&keywords, &phrases(&["press enter"]));
+        // Then
+        let standby = standby.expect("start has a trigger");
+        assert!(standby.contains("@start_trigger") && !standby.contains("@restart_trigger"));
+        assert!(!standby.contains("@start_dictation"));
+        assert!(dictating.is_some_and(|d| d.contains("@restart_trigger")));
+        assert_eq!(none, None);
+    }
+
+    #[test]
+    fn should_never_select_a_trigger_as_a_phrase() {
+        // Given
+        let keywords = parse(KEYWORDS);
+        // When
+        let selected = select(&keywords, &phrases(&["start dictation"])).unwrap();
+        // Then
+        assert!(!selected.contains("_trigger"));
+        assert!(is_trigger("start trigger") && !is_trigger("start dictation"));
     }
 
     #[test]

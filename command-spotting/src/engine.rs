@@ -22,9 +22,11 @@ use crate::worker::{ConfirmationWorker, JobKind};
 mod clip;
 mod confirming;
 mod pause;
+mod spotted;
 
-use confirming::JobContext;
+use confirming::{AskedJob, JobContext, Rehear};
 use pause::PauseWatch;
+use spotted::{SpottedChecks, CHECKED_WHEN_SPOTTED};
 
 pub const SAMPLE_RATE: u32 = 16_000;
 const SILERO_WINDOW: usize = 512;
@@ -67,6 +69,12 @@ const FIRST_WINDOW_SECS: f32 = 2.0;
 /// How long an utterance runs before its start is searched for "start": long enough for
 /// "start" and the first word after it.
 const HEAD_CHECK_SECS: f32 = 1.5;
+/// How long after an utterance starts its start is first searched for a command opening
+/// speech, while "start" is listened for: the keyword spotter misses most of the user's
+/// "start", so no spotted check comes.
+const EARLY_HEAD_CHECK_SECS: f32 = 1.0;
+/// The phrase the early check of an utterance's start is for.
+const STARTED_EARLY: &str = "start dictation";
 /// How far before the end of its utterance a command heard while it ran may end and still
 /// end the utterance: the detector holds speech this much past the last word.
 const TAIL_SLACK_SECS: f32 = 0.6;
@@ -155,12 +163,16 @@ impl Engine {
             outbox: Outbox::default(),
             next_job: 0,
             jobs: HashMap::new(),
+            spotted_checks: SpottedChecks::default(),
+            heard_triggers: Vec::new(),
+            misheard: None,
             utterances: HashMap::new(),
             current: None,
             next_utterance: 0,
             vad,
             pause: PauseWatch::new(self.min_silence_samples),
             stream: None,
+            triggers: None,
             samples_seen: 0,
             vad_pending: Vec::new(),
             orderer: EventOrderer::default(),
@@ -182,7 +194,15 @@ pub struct Session<'a> {
     outbox: Outbox,
     next_job: u64,
     /// What each confirmation asked for, by job number, until its answer is applied.
-    jobs: HashMap<u64, JobContext>,
+    jobs: HashMap<u64, AskedJob>,
+    /// The check a spotted "start" or "restart" asks of the running utterance.
+    spotted_checks: SpottedChecks,
+    /// The triggers spotted in the last seconds: a short segment holding one is heard again
+    /// when its first hearing holds no command.
+    heard_triggers: Vec<Spotted>,
+    /// The last short segment whose first hearing held no command, with its job: a trigger
+    /// the spotter reports in it only after that answer has it heard again.
+    misheard: Option<(u64, Rehear)>,
     /// The utterances with confirmations still to apply, and the one heard now.
     utterances: HashMap<u64, Running>,
     current: Option<u64>,
@@ -191,6 +211,9 @@ pub struct Session<'a> {
     /// Ends an utterance at a quiet pause the detector still holds as speech.
     pause: PauseWatch,
     stream: Option<OnlineStream>,
+    /// Spots the trigger-only keywords of the selected phrases, apart from `stream`: one firing
+    /// there never resets the spotting of the phrases.
+    triggers: Option<OnlineStream>,
     samples_seen: usize,
     vad_pending: Vec<f32>,
     orderer: EventOrderer,
@@ -210,6 +233,8 @@ struct Running {
     start: usize,
     /// Its start was searched for "start".
     head_checked: bool,
+    /// Its start was searched early for a command opening speech.
+    early_head_checked: bool,
     /// When to search its last seconds again.
     next_window: usize,
     /// Commands found up to this sample position are not reported again.
@@ -220,6 +245,8 @@ struct Running {
     jobs: usize,
     /// It ended: its state goes once its last confirmation is applied.
     closed: bool,
+    /// Its segment's confirmation was applied: a check of it answered later is stale.
+    segment_answered: bool,
 }
 
 impl Session<'_> {
@@ -227,6 +254,9 @@ impl Session<'_> {
     pub fn listen_for(&mut self, phrases: &[String]) -> Result<(), UnknownPhrases> {
         let selected = keywords::select(&self.engine.keywords, phrases)?;
         self.stream = Some(self.engine.spotter.create_stream_with_keywords(&selected));
+        self.triggers = keywords::select_triggers(&self.engine.keywords, phrases)
+            .filter(|_| self.engine.hear.is_some())
+            .map(|lines| self.engine.spotter.create_stream_with_keywords(&lines));
         self.matcher = PhraseMatcher::new(phrases);
         Ok(())
     }
@@ -243,31 +273,54 @@ impl Session<'_> {
             events.extend(self.outbox.send_in_last_segment(spotted));
             events.extend(self.detect_speech(frame));
             self.samples_seen += frame.len();
+            self.ask_spotted_check();
             self.watch_running();
             self.confirm_unheld();
             events.extend(self.take_answers());
+            self.ask_spotted_check();
         }
         events
     }
 
     fn spot(&mut self, samples: &[f32]) -> Vec<ServerEvent> {
+        let position = seconds(self.samples_seen + samples.len());
+        let spotter = &self.engine.spotter;
+        if let Some(triggers) = self.triggers.as_ref() {
+            // The spotter adds its own keywords, the phrases, to every stream: only a trigger
+            // spotted here asks the check.
+            let spotted = decoded(spotter, triggers, samples, position);
+            for trigger in spotted
+                .into_iter()
+                .filter(|t| keywords::is_trigger(&t.phrase))
+            {
+                log::info!(
+                    "trigger \"{}\" at {:.2}–{:.2}s",
+                    trigger.phrase,
+                    trigger.start,
+                    trigger.end
+                );
+                self.spotted_checks.spotted(samples_in(trigger.end));
+                self.hear_misheard_again(&trigger);
+                self.heard_triggers.push(trigger);
+            }
+        }
+        self.heard_triggers
+            .retain(|t| t.end + TRIGGERS_KEPT_SECS > position);
         let Some(stream) = self.stream.as_ref() else {
             return Vec::new();
         };
-        let spotter = &self.engine.spotter;
-        stream.accept_waveform(SAMPLE_RATE as i32, samples);
-        let position = seconds(self.samples_seen + samples.len());
         let mut events = Vec::new();
-        while spotter.is_ready(stream) {
-            spotter.decode(stream);
-            let Some(result) = spotter.get_result(stream).filter(|r| !r.keyword.is_empty()) else {
-                continue;
-            };
-            spotter.reset(stream);
-            let phrase = keywords::phrase_of(&result.keyword);
-            let (start, end) = phrase_span(position, &result.timestamps);
-            log::info!("spotted \"{phrase}\" at {start:.2}–{end:.2}s");
-            events.extend(self.orderer.phrase(Spotted { phrase, start, end }));
+        for spotted in decoded(spotter, stream, samples, position) {
+            log::info!(
+                "spotted \"{}\" at {:.2}–{:.2}s",
+                spotted.phrase,
+                spotted.start,
+                spotted.end
+            );
+            if self.worker.is_some() && CHECKED_WHEN_SPOTTED.contains(&spotted.phrase.as_str()) {
+                self.spotted_checks.spotted(samples_in(spotted.end));
+            }
+            events.extend(self.orderer.phrase(spotted));
         }
         events
     }
@@ -342,12 +395,34 @@ impl Session<'_> {
         let Some(&Running {
             start,
             head_checked,
+            early_head_checked,
             next_window,
             ..
         }) = self.utterances.get(&id)
         else {
             return;
         };
+        // WHY: only "start": a check this early may hear the words of a doubled "restart" at
+        // the clip's end, and its segment would then carry out the last one again.
+        if !early_head_checked
+            && !head_checked
+            && self.matcher.selects(STARTED_EARLY)
+            && now - start >= samples_in(EARLY_HEAD_CHECK_SECS)
+            && !self.outbox.check_busy()
+        {
+            self.mark(id, |r| r.early_head_checked = true);
+            let from = self.pre_rolled(start);
+            self.ask(
+                JobKind::Head,
+                from,
+                now,
+                JobContext::Head {
+                    utterance: id,
+                    from,
+                    early: true,
+                },
+            );
+        }
         if !head_checked && now - start >= samples_in(HEAD_CHECK_SECS) && !self.outbox.check_busy()
         {
             self.mark(id, |r| r.head_checked = true);
@@ -359,6 +434,7 @@ impl Session<'_> {
                 JobContext::Head {
                     utterance: id,
                     from,
+                    early: false,
                 },
             );
         }
@@ -386,6 +462,40 @@ impl Session<'_> {
         }
     }
 
+    /// Asks the check a spotted "start" or "restart" fell due for, when the utterance it was
+    /// said in still runs: of its start, or of its last seconds once it ran longer. The timed
+    /// checks stay: this one may hear too little of the speech after the command.
+    fn ask_spotted_check(&mut self) {
+        let now = self.samples_seen;
+        let Some(check) = self.spotted_checks.take_due(now, self.outbox.check_busy()) else {
+            return;
+        };
+        let Some((id, start)) = self
+            .current
+            .and_then(|id| self.utterances.get(&id).map(|r| (id, r.start)))
+        else {
+            return;
+        };
+        let head = self.pre_rolled(start);
+        if head > check.said_end {
+            return;
+        }
+        let from = now.saturating_sub(samples_in(WINDOW_SECS)).max(head);
+        let at_head = from == head;
+        self.ask(
+            JobKind::Spotted,
+            from,
+            now,
+            JobContext::Spotted {
+                utterance: id,
+                from,
+                at_head,
+                round: check.round,
+                said_end: check.said_end,
+            },
+        );
+    }
+
     /// The utterance heard now, started at `start` when there is none yet.
     fn current_or_new(&mut self, start: usize) -> u64 {
         if let Some(id) = self.current {
@@ -410,11 +520,13 @@ impl Session<'_> {
             Running {
                 start,
                 head_checked,
+                early_head_checked: head_checked,
                 next_window,
                 reported_until: 0,
                 last_window: None,
                 jobs: 0,
                 closed: false,
+                segment_answered: false,
             },
         );
         id
@@ -450,6 +562,35 @@ impl Session<'_> {
             .max(self.last_segment_end.min(start))
     }
 }
+
+/// The keywords `stream` spots in `samples`, which bring the audio fed to `position`
+/// seconds; the stream starts afresh after each.
+fn decoded(
+    spotter: &KeywordSpotter,
+    stream: &OnlineStream,
+    samples: &[f32],
+    position: f32,
+) -> Vec<Spotted> {
+    stream.accept_waveform(SAMPLE_RATE as i32, samples);
+    let mut found = Vec::new();
+    while spotter.is_ready(stream) {
+        spotter.decode(stream);
+        let Some(result) = spotter.get_result(stream).filter(|r| !r.keyword.is_empty()) else {
+            continue;
+        };
+        spotter.reset(stream);
+        let (start, end) = phrase_span(position, &result.timestamps);
+        found.push(Spotted {
+            phrase: keywords::phrase_of(&result.keyword),
+            start,
+            end,
+        });
+    }
+    found
+}
+
+/// How long a spotted trigger is kept for the segment it lies in.
+const TRIGGERS_KEPT_SECS: f32 = 10.0;
 
 fn samples_in(secs: f32) -> usize {
     (secs * SAMPLE_RATE as f32) as usize

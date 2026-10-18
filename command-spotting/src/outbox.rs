@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeSet, VecDeque};
 
-use crate::protocol::ServerEvent;
+use crate::protocol::{ServerEvent, Timing};
 
 #[derive(Default)]
 pub struct Outbox {
@@ -80,8 +80,8 @@ impl Outbox {
     }
 
     /// Drops from the segment `job` holds every spotted phrase but `phrase`: its
-    /// confirmation heard that command.
-    pub fn keep_only_phrase(&mut self, job: u64, phrase: &str) {
+    /// confirmation heard that command, with `timing`, which the phrases kept take on.
+    pub fn keep_only_phrase(&mut self, job: u64, phrase: &str, timing: Option<Timing>) {
         if let Some(held) = self.held.iter_mut().find(|h| h.job == job) {
             held.events.retain(|e| match e {
                 ServerEvent::Phrase {
@@ -89,6 +89,11 @@ impl Outbox {
                 } => spotted == phrase,
                 _ => true,
             });
+            for event in &mut held.events {
+                if let ServerEvent::Phrase { timing: kept, .. } = event {
+                    *kept = timing;
+                }
+            }
         }
     }
 
@@ -166,6 +171,16 @@ mod tests {
             phrase: name.to_owned(),
             start: 0.0,
             end: 0.0,
+            timing: None,
+        }
+    }
+
+    fn timed_phrase(name: &str, timing: Timing) -> ServerEvent {
+        ServerEvent::Phrase {
+            phrase: name.to_owned(),
+            start: 0.0,
+            end: 0.0,
+            timing: Some(timing),
         }
     }
 
@@ -260,10 +275,35 @@ mod tests {
             ],
         );
         // When
-        outbox.keep_only_phrase(1, "restart dictation");
+        outbox.keep_only_phrase(1, "restart dictation", None);
         let out = outbox.resolve(1, false, Vec::new());
         // Then
         assert_eq!(out, [start(1.0), phrase("restart dictation"), end(2.0)]);
+    }
+
+    #[test]
+    fn should_give_the_spotted_phrase_kept_the_timing_of_the_confirmation_that_heard_it() {
+        // Given
+        let timing = Timing {
+            asked_at: 2.5,
+            took_ms: 200,
+        };
+        let mut outbox = Outbox::default();
+        outbox.asked(1, false);
+        outbox.hold(1, vec![start(1.0), phrase("start dictation"), end(2.0)]);
+        // When
+        outbox.keep_only_phrase(1, "start dictation", Some(timing));
+        let out = outbox.resolve(1, false, vec![timed_phrase("start dictation", timing)]);
+        // Then
+        assert_eq!(
+            out,
+            [
+                start(1.0),
+                timed_phrase("start dictation", timing),
+                end(2.0),
+                timed_phrase("start dictation", timing),
+            ]
+        );
     }
 
     #[test]

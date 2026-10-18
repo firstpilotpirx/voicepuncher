@@ -10,7 +10,9 @@ use serde::Deserialize;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Message, WebSocket};
 
-use crate::core::domain::{CommandPlacement, SpottingEvent, VoiceCommand};
+use crate::core::domain::{
+    CommandPlacement, ConfirmationTiming, ReportTiming, SpottingEvent, VoiceCommand,
+};
 
 /// How long a read waits for an event before the caller gets control back.
 const READ_WAIT: Duration = Duration::from_millis(10);
@@ -39,16 +41,26 @@ enum ServiceEvent {
         phrase: String,
         start: f32,
         end: f32,
+        timing: Option<Confirmation>,
     },
     Command {
         commands: Vec<String>,
         start: f32,
         end: f32,
         placement: Placement,
+        timing: Option<Confirmation>,
     },
     Synced {
         id: u64,
     },
+}
+
+/// The confirmation that heard a phrase or command: the service time it was asked at, and
+/// how long it took.
+#[derive(Debug, Deserialize)]
+struct Confirmation {
+    asked_at: f32,
+    took_ms: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -185,7 +197,9 @@ impl SpottingClient {
     fn parse(&self, text: &str) -> Option<Answer> {
         match serde_json::from_str::<ServiceEvent>(text) {
             Ok(ServiceEvent::Synced { id }) => Some(Answer::Synced(id)),
-            Ok(event) => to_spotting_event(event, self.audio_start).map(Answer::Event),
+            Ok(event) => {
+                to_spotting_event(event, self.audio_start, Instant::now()).map(Answer::Event)
+            }
             Err(e) => {
                 log::warn!("command spotting service sent an unknown event {text}: {e}");
                 None
@@ -210,22 +224,44 @@ impl Answer {
 }
 
 /// A service event with its times, seconds since the first sample, as instants from
-/// `audio_start`, the moment that sample was captured.
-fn to_spotting_event(event: ServiceEvent, audio_start: Instant) -> Option<SpottingEvent> {
+/// `audio_start`, the moment that sample was captured; a phrase or command tells how its
+/// report came about, which reached the app at `arrived_at`.
+fn to_spotting_event(
+    event: ServiceEvent,
+    audio_start: Instant,
+    arrived_at: Instant,
+) -> Option<SpottingEvent> {
     let at = |secs: f32| audio_start + Duration::from_secs_f32(secs.max(0.0));
+    let report = |end: f32, confirmation: Option<Confirmation>| {
+        Some(ReportTiming {
+            words_ended: at(end),
+            confirmation: confirmation.map(|c| ConfirmationTiming {
+                asked_at: at(c.asked_at),
+                took: Duration::from_millis(c.took_ms),
+            }),
+            arrived_at,
+        })
+    };
     Some(match event {
         ServiceEvent::SpeechStart { t } => SpottingEvent::SpeechStarted(at(t)),
         ServiceEvent::SpeechEnd { t } => SpottingEvent::SpeechEnded(at(t)),
-        ServiceEvent::Phrase { phrase, start, end } => SpottingEvent::PhraseSpotted {
+        ServiceEvent::Phrase {
+            phrase,
+            start,
+            end,
+            timing,
+        } => SpottingEvent::PhraseSpotted {
             phrase,
             start: at(start),
             end: at(end),
+            timing: report(end, timing),
         },
         ServiceEvent::Command {
             commands,
             start,
             end,
             placement,
+            timing,
         } => SpottingEvent::CommandsSaid {
             commands: commands
                 .iter()
@@ -238,6 +274,7 @@ fn to_spotting_event(event: ServiceEvent, audio_start: Instant) -> Option<Spotti
                 Placement::Head => CommandPlacement::Head,
                 Placement::Anywhere => CommandPlacement::Anywhere,
             },
+            timing: report(end, timing),
         },
         ServiceEvent::Synced { .. } => return None,
     })
@@ -289,7 +326,7 @@ mod tests {
         let event: ServiceEvent = serde_json::from_str(json).unwrap();
         let audio_start = Instant::now();
         // When
-        let converted = to_spotting_event(event, audio_start);
+        let converted = to_spotting_event(event, audio_start, audio_start);
         // Then
         assert_eq!(
             converted.unwrap(),
@@ -297,6 +334,11 @@ mod tests {
                 phrase: "press enter".into(),
                 start: audio_start + Duration::from_millis(1500),
                 end: audio_start + Duration::from_millis(2250),
+                timing: Some(ReportTiming {
+                    words_ended: audio_start + Duration::from_millis(2250),
+                    confirmation: None,
+                    arrived_at: audio_start,
+                }),
             }
         );
     }
@@ -308,7 +350,7 @@ mod tests {
         let event: ServiceEvent = serde_json::from_str(json).unwrap();
         let audio_start = Instant::now();
         // When
-        let converted = to_spotting_event(event, audio_start);
+        let converted = to_spotting_event(event, audio_start, audio_start);
         // Then
         assert_eq!(
             converted.unwrap(),
@@ -317,6 +359,40 @@ mod tests {
                 start: audio_start + Duration::from_secs(4),
                 end: audio_start + Duration::from_millis(4750),
                 placement: CommandPlacement::Anywhere,
+                timing: Some(ReportTiming {
+                    words_ended: audio_start + Duration::from_millis(4750),
+                    confirmation: None,
+                    arrived_at: audio_start,
+                }),
+            }
+        );
+    }
+
+    #[test]
+    fn should_read_the_timing_of_a_confirmed_command() {
+        // Given
+        let json = r#"{"event":"command","commands":["start dictation"],"start":4.0,"end":4.75,"placement":"head","timing":{"asked_at":5.0,"took_ms":250}}"#;
+        let event: ServiceEvent = serde_json::from_str(json).unwrap();
+        let audio_start = Instant::now();
+        let arrived_at = audio_start + Duration::from_secs(6);
+        // When
+        let converted = to_spotting_event(event, audio_start, arrived_at);
+        // Then
+        assert_eq!(
+            converted.unwrap(),
+            SpottingEvent::CommandsSaid {
+                commands: vec![VoiceCommand::StartDictation],
+                start: audio_start + Duration::from_secs(4),
+                end: audio_start + Duration::from_millis(4750),
+                placement: CommandPlacement::Head,
+                timing: Some(ReportTiming {
+                    words_ended: audio_start + Duration::from_millis(4750),
+                    confirmation: Some(ConfirmationTiming {
+                        asked_at: audio_start + Duration::from_secs(5),
+                        took: Duration::from_millis(250),
+                    }),
+                    arrived_at,
+                }),
             }
         );
     }
@@ -328,7 +404,7 @@ mod tests {
             serde_json::from_str(r#"{"event":"speech_start","t":-0.1}"#).unwrap();
         let audio_start = Instant::now();
         // When
-        let converted = to_spotting_event(event, audio_start);
+        let converted = to_spotting_event(event, audio_start, audio_start);
         // Then
         assert_eq!(converted, Some(SpottingEvent::SpeechStarted(audio_start)));
     }

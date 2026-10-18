@@ -650,7 +650,7 @@ e2e-resilience:
 _e2e-resilience: _require-nextest _require-models _build
     cargo nextest run --profile e2e-resilience {{cucumber_e2e_tests}} --no-capture
 
-# Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words (~4 min)
+# Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words; and the start cue of each voice start, timed from the end of the command's words (~4 min)
 e2e-seams:
     @VOICEPUNCHER_STAGES_RECIPE=e2e-seams {{just_executable()}} _stages e2e-seams
 
@@ -659,7 +659,9 @@ _e2e-seams: _require-nextest _require-models _build
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
-    export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}"
+    # The command spotting services for the voice start timing scenarios (@seams)
+    export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
+    export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
     cargo nextest run --profile e2e-seams {{e2e_seams_tests}}
     cargo nextest run --profile e2e-seams {{cucumber_e2e_tests}} --no-capture
 
