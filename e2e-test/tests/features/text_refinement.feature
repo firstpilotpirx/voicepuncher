@@ -147,8 +147,8 @@ Feature: text-refinement
     @refinement
     Scenario: English word spelled in Cyrillic comes out in Latin script
       Given the local text refinement service runs the default model with the default instruction
-      When the user dictates in Russian a request for feedback that speech recognition writes in Cyrillic
-      Then the pasted text has the English word feedback in Latin script and keeps the rest in Russian
+      When the user dictates in Russian a request to add a retry that speech recognition writes in Cyrillic
+      Then the pasted text has the English word retry in Latin script and keeps the rest in Russian
 
     @refinement
     Scenario: Two English words in one sentence both come out in Latin script
@@ -159,8 +159,8 @@ Feature: text-refinement
     @refinement
     Scenario: Misheard English word is restored from context
       Given the local text refinement service runs the default model with the default instruction
-      When the user dictates in Russian a comparison of microphone modes in which speech recognition misheard the word dynamic
-      Then the pasted text has the English word dynamic in Latin script instead of the misheard word
+      When the user dictates in Russian that a service needs the debug log level and speech recognition misheard the word debug
+      Then the pasted text has the English word debug in Latin script instead of the misheard word
 
     @refinement
     Scenario: Russian loanwords stay in Cyrillic
@@ -179,8 +179,8 @@ Feature: text-refinement
     @refinement
     Scenario: Shell framework and theme spelled as syllables are restored
       Given the local text refinement service runs the default model with the default instruction
-      When the user dictates in Russian that they installed oh-my-zsh and the Powerlevel10k theme, and speech recognition writes both as Cyrillic syllables
-      Then the pasted text has oh-my-zsh and Powerlevel10k in Latin script, ignoring letter case, and keeps the rest in Russian
+      When the user dictates in Russian that Bash has the framework Bash-it with the Powerline theme, and speech recognition writes both as Cyrillic syllables
+      Then the pasted text has Bash-it and Powerline in Latin script, ignoring letter case, and keeps the rest in Russian
 
     @refinement
     Scenario: Product names spelled as syllables are restored

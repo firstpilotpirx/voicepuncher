@@ -32,4 +32,4 @@ Out of scope: the prompt, its examples, the default model, other scenarios and t
 ## Release
 
 SemVer: no release — tests only.
-Target version: 0.17.0.
+Target version: unchanged (0.18.0 on `main`).

@@ -22,21 +22,22 @@ const TERM_IN_LATIN: &str = "Docker";
 const TERM_SENTENCE_RU_WORDS: [&str; 2] = ["деплоим", "пятницу"];
 const MIXED_RU_EN: &str = "Сделай code review этого pull request до вечера";
 const MIXED_KEPT: [&str; 4] = ["сделай", "code review", "pull request", "вечера"];
-const FEEDBACK_RU: &str = "дай мне фидбек по этому пулл реквесту";
-const FEEDBACK_EN: [&str; 1] = ["feedback"];
-const FEEDBACK_RU_WORDS: [&str; 2] = ["дай", "этому"];
+const RETRY_RU: &str = "добавь ретрай для этого запроса";
+const RETRY_EN: [&str; 1] = ["retry"];
+const RETRY_RU_WORDS: [&str; 2] = ["добавь", "запроса"];
 const TWO_VALUES_RU: &str = "у этого флага всего два значения энейблд и дизейблд";
 const TWO_VALUES_EN: [&str; 2] = ["enabled", "disabled"];
-const MISHEARD_DYNAMIC_RU: &str = "Ну, лучше тогда автоматик, потому что у меня люди в помещении этой же квартиры, тут может ребенок закричать. В этом плане, наверное, автоматик лучше, чем даймэк.";
-const MISHEARD_DYNAMIC_EN: [&str; 1] = ["dynamic"];
-const MISHEARD_DYNAMIC_HEARD: &str = "даймэк";
+const MISHEARD_DEBUG_RU: &str =
+    "сервис пишет слишком мало логов нужен уровень дибаг чтобы найти ошибку";
+const MISHEARD_DEBUG_EN: [&str; 1] = ["debug"];
+const MISHEARD_DEBUG_HEARD: &str = "дибаг";
 const LOANWORDS_RU: &str = "менеджер попросил перезагрузить компьютер и проверить интернет";
 const LOANWORDS_KEPT: [&str; 3] = ["менеджер", "компьютер", "интернет"];
 const RUSSIFIED_VERBS_RU: &str = "мы деплоим релиз завтра а потом закомитим фикс";
 const RUSSIFIED_VERBS_KEPT: [&str; 2] = ["деплои", "закомит"];
-const SHELL_SYLLABLES_RU: &str = "поставь о май зш и тему пауэрлевел десять к";
-const SHELL_TERMS: [&str; 2] = ["oh-my-zsh", "powerlevel10k"];
-const SHELL_SENTENCE_RU_WORDS: [&str; 2] = ["поставь", "тему"];
+const SHELL_SYLLABLES_RU: &str = "для баша есть фреймворк баш ит с темой пауэр лайн";
+const SHELL_TERMS: [&str; 2] = ["bash-it", "powerline"];
+const SHELL_SENTENCE_RU_WORDS: [&str; 2] = ["фреймворк", "темой"];
 const LANGUAGE_SYLLABLES_RU: &str = "он переписал весь проект с джава скрипт на тайп скрипт";
 const LANGUAGE_TERMS: [&str; 2] = ["JavaScript", "TypeScript"];
 const DISAGREEING_VERBS_RU: &str = "мама сказал что она купил новый телефон";
@@ -112,10 +113,10 @@ async fn dictate_disagreeing_verbs(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[when("the user dictates in Russian a request for feedback that speech recognition writes in Cyrillic")]
-async fn dictate_feedback(world: &mut E2eWorld) -> Result<()> {
+#[when("the user dictates in Russian a request to add a retry that speech recognition writes in Cyrillic")]
+async fn dictate_retry(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, move |world| {
-        refine_with_live_service(world, FEEDBACK_RU)
+        refine_with_live_service(world, RETRY_RU)
     })
     .await
 }
@@ -128,10 +129,10 @@ async fn dictate_two_values(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[when("the user dictates in Russian a comparison of microphone modes in which speech recognition misheard the word dynamic")]
-async fn dictate_misheard_dynamic(world: &mut E2eWorld) -> Result<()> {
+#[when("the user dictates in Russian that a service needs the debug log level and speech recognition misheard the word debug")]
+async fn dictate_misheard_debug(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, move |world| {
-        refine_with_live_service(world, MISHEARD_DYNAMIC_RU)
+        refine_with_live_service(world, MISHEARD_DEBUG_RU)
     })
     .await
 }
@@ -156,7 +157,7 @@ async fn dictate_russified_verbs(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[when("the user dictates in Russian that they installed oh-my-zsh and the Powerlevel10k theme, and speech recognition writes both as Cyrillic syllables")]
+#[when("the user dictates in Russian that Bash has the framework Bash-it with the Powerline theme, and speech recognition writes both as Cyrillic syllables")]
 async fn dictate_shell_syllables(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, move |world| {
         refine_with_live_service(world, SHELL_SYLLABLES_RU)
@@ -172,12 +173,10 @@ async fn dictate_language_syllables(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[then(
-    "the pasted text has the English word feedback in Latin script and keeps the rest in Russian"
-)]
-fn feedback_in_latin(world: &mut E2eWorld) -> Result<()> {
-    expect_contains_all(&world.stdout, &FEEDBACK_EN)?;
-    expect_contains_all(&world.stdout, &FEEDBACK_RU_WORDS)
+#[then("the pasted text has the English word retry in Latin script and keeps the rest in Russian")]
+fn retry_in_latin(world: &mut E2eWorld) -> Result<()> {
+    expect_contains_all(&world.stdout, &RETRY_EN)?;
+    expect_contains_all(&world.stdout, &RETRY_RU_WORDS)
 }
 
 #[then("the pasted text has the English words enabled and disabled in Latin script")]
@@ -185,12 +184,12 @@ fn two_values_in_latin(world: &mut E2eWorld) -> Result<()> {
     expect_contains_all(&world.stdout, &TWO_VALUES_EN)
 }
 
-#[then("the pasted text has the English word dynamic in Latin script instead of the misheard word")]
-fn dynamic_restored(world: &mut E2eWorld) -> Result<()> {
-    expect_contains_all(&world.stdout, &MISHEARD_DYNAMIC_EN)?;
-    if world.stdout.to_lowercase().contains(MISHEARD_DYNAMIC_HEARD) {
+#[then("the pasted text has the English word debug in Latin script instead of the misheard word")]
+fn debug_restored(world: &mut E2eWorld) -> Result<()> {
+    expect_contains_all(&world.stdout, &MISHEARD_DEBUG_EN)?;
+    if world.stdout.to_lowercase().contains(MISHEARD_DEBUG_HEARD) {
         bail!(
-            "the misheard '{MISHEARD_DYNAMIC_HEARD}' was pasted: {:?}",
+            "the misheard '{MISHEARD_DEBUG_HEARD}' was pasted: {:?}",
             world.stdout
         );
     }
@@ -207,7 +206,7 @@ fn russified_verbs_kept(world: &mut E2eWorld) -> Result<()> {
     expect_contains_all(&world.stdout, &RUSSIFIED_VERBS_KEPT)
 }
 
-#[then("the pasted text has oh-my-zsh and Powerlevel10k in Latin script, ignoring letter case, and keeps the rest in Russian")]
+#[then("the pasted text has Bash-it and Powerline in Latin script, ignoring letter case, and keeps the rest in Russian")]
 fn shell_terms_restored(world: &mut E2eWorld) -> Result<()> {
     expect_contains_all(&world.stdout, &SHELL_TERMS)?;
     expect_contains_all(&world.stdout, &SHELL_SENTENCE_RU_WORDS)
