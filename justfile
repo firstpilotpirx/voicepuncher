@@ -67,7 +67,15 @@ services_log_dir := home_directory() / ".voicepuncher/logs"
 # private `_<name>` body under it, except `test` and `release`, which use no shared service, port or GPU (see
 # their comments). `check` and `full-check` take it only for their model stages (see _stages)
 machine_lock := env_var_or_default("MACHINE_LOCK", home_directory() / ".claude/bin/with-machine-lock")
-locked := quote(machine_lock) + " " + quote(just_executable()) + " --justfile " + quote(justfile())
+# The service ports of every run under the lock: apart from the defaults above, which the user's own services
+# hold, and from their copies 10000 above (18082–18088); these copies listen on 38082–38088, below the free
+# ports (49152+) the @local_services and @resilience steps take. A locked run starts every service it tests
+# here and never reuses one it did not start (_start-model-servers-for-e2e)
+test_stt_port := env_var_or_default("VOICEPUNCHER_TEST_STT_PORT", "28081")
+test_command_stt_port := env_var_or_default("VOICEPUNCHER_TEST_COMMAND_STT_PORT", "28085")
+test_llm_port := env_var_or_default("VOICEPUNCHER_TEST_LLM_PORT", "28080")
+test_kws_port := env_var_or_default("VOICEPUNCHER_TEST_KWS_PORT", "28082")
+locked := "env VOICEPUNCHER_STT_PORT=" + test_stt_port + " VOICEPUNCHER_COMMAND_STT_PORT=" + test_command_stt_port + " VOICEPUNCHER_LLM_PORT=" + test_llm_port + " VOICEPUNCHER_KWS_PORT=" + test_kws_port + " VOICEPUNCHER_TEST_PORTS=1 " + quote(machine_lock) + " " + quote(just_executable()) + " --justfile " + quote(justfile())
 
 # List all recipes
 default:
@@ -303,9 +311,9 @@ _stages +stages:
     [[ $status -eq 0 ]] || exit "$status"
     [[ -z "$interrupted" ]] || exit 130
 
-# The model stages of _stages, run under the machine lock: starts the services it does not find running, runs
-# the stages with VOICEPUNCHER_E2E_SERVICES_HELD=1, so no E2E recipe starts or stops one, and stops what it
-# started on exit, also when the start or a stage is interrupted; appends its rows to VOICEPUNCHER_STAGES_REPORT
+# The model stages of _stages, run under the machine lock: starts the services on the test ports, runs
+# the stages with VOICEPUNCHER_E2E_SERVICES_HELD=1, so no E2E recipe starts or stops one, and stops them
+# on exit, also when the start or a stage is interrupted; appends its rows to VOICEPUNCHER_STAGES_REPORT
 _model-stages +stages:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -423,7 +431,7 @@ _e2e: _e2e-smoke _e2e-seams _e2e-bench _refine-eval
 e2e-smoke:
     @{{locked}} _e2e-smoke
 
-# One nextest run per test binary, one after another as cargo test ran them, so the shared services see the
+# One nextest run per test binary, one after another as cargo test ran them, so the services see the
 # load of one binary's tests at a time; the first failing binary ends the suite. The scenario selection and
 # the limits are the e2e-smoke profile's (.config/nextest.toml); the Gherkin run streams (--no-capture)
 _e2e-smoke: _require-nextest _require-models _build
@@ -557,34 +565,66 @@ _release-package:
 
 # ── Services ── local processes the app talks to over loopback ────────────────
 
-# Start the services for an E2E recipe; a service that already runs (yours) is reused and left running.
-# Inside check and full-check, which hold the services for all their stages, it does nothing
+# Start every service an E2E recipe tests, on the test ports the machine lock gives it (see `locked`), and never
+# reuse one it did not start: a service someone else runs may hold another model or other code. A service a
+# killed locked run left there (its PID file names it) is stopped and started again; any other process on a
+# test port fails the run before it starts anything. Inside check and full-check, which hold the services for
+# all their stages, it does nothing
 _start-model-servers-for-e2e:
     #!/usr/bin/env bash
     set -euo pipefail
     [[ -z "${VOICEPUNCHER_E2E_SERVICES_HELD:-}" ]] || exit 0
-    mkdir -p "{{services_run_dir}}"
-    for service in whisper-server:{{stt_port}} whisper-server-commands:{{command_stt_port}} llama-server:{{llm_port}} voicepuncher-command-spotting:{{kws_port}}; do
-        if nc -z 127.0.0.1 "${service#*:}" >/dev/null 2>&1; then
-            echo "✓ reusing ${service%%:*} already running on port ${service#*:}; it stays running"
-        else
-            touch "{{services_run_dir}}/${service%%:*}-${service#*:}.e2e"
-        fi
+    if [[ -z "${VOICEPUNCHER_TEST_PORTS:-}" ]]; then
+        echo "✗ _start-model-servers-for-e2e runs only under the machine lock, on the test ports — run an E2E recipe or check" >&2
+        exit 1
+    fi
+    # Left by a killed locked run: stop-model-servers stops only what a PID file on these ports names
+    {{just_executable()}} stop-model-servers | grep -v '^·' || true
+    # copy_ports <port> <copies>: the ports of a speech recognition service's copies, as start-model-servers picks them
+    copy_ports() {
+        (( $2 > 1 )) || return 0
+        local base=$(( $1 + 10000 + $2 <= 65535 ? $1 + 10000 : $1 - 10000 )) i
+        for i in $(seq 1 "$2"); do echo "$(( base + i ))"; done
+    }
+    held=""
+    check_port() {
+        local port=$1 service=$2 variable=$3 pid
+        pid=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)
+        [[ -n "$pid" ]] || return 0
+        echo "✗ port $port ($service) is held by pid $pid: $(ps -p "$pid" -o command= 2>/dev/null) — stop it or set $variable" >&2
+        held=1
+    }
+    check_port {{stt_port}} whisper-server VOICEPUNCHER_TEST_STT_PORT
+    for port in $(copy_ports {{stt_port}} {{stt_instances}}); do
+        check_port "$port" "whisper-server copy" VOICEPUNCHER_TEST_STT_PORT
     done
+    check_port {{command_stt_port}} whisper-server-commands VOICEPUNCHER_TEST_COMMAND_STT_PORT
+    for port in $(copy_ports {{command_stt_port}} {{command_stt_instances}}); do
+        check_port "$port" "whisper-server-commands copy" VOICEPUNCHER_TEST_COMMAND_STT_PORT
+    done
+    check_port {{llm_port}} llama-server VOICEPUNCHER_TEST_LLM_PORT
+    check_port {{kws_port}} voicepuncher-command-spotting VOICEPUNCHER_TEST_KWS_PORT
+    [[ -z "$held" ]] || exit 1
     {{just_executable()}} start-model-servers
+    # What this run tests: one line per service, its port, model and the PID of what it started
+    started() {
+        local port=$1 label=$2 model=$3 binary=$4
+        echo "● testing $label on port $port: $(basename "$model"), pid $(cat "{{services_run_dir}}/$binary-$port.pid" 2>/dev/null || echo '?')"
+    }
+    whisper_binary() { (( $1 > 1 )) && echo haproxy || echo whisper-server; }
+    started {{stt_port}} whisper-server "$VOICEPUNCHER_WHISPER_MODEL" "$(whisper_binary {{stt_instances}})"
+    started {{command_stt_port}} whisper-server-commands "$VOICEPUNCHER_COMMAND_WHISPER_MODEL" "$(whisper_binary {{command_stt_instances}})"
+    started {{llm_port}} llama-server "$VOICEPUNCHER_LLM_MODEL" llama-server
+    started {{kws_port}} voicepuncher-command-spotting "$VOICEPUNCHER_KWS_MODEL_DIR" voicepuncher-command-spotting
 
-# Stop the services that _start-model-servers-for-e2e started in this run (nothing while check or full-check holds them)
+# Stop the services that _start-model-servers-for-e2e started: every one on the test ports (nothing while check or
+# full-check holds them)
 _stop-model-servers-for-e2e:
     #!/usr/bin/env bash
     set -euo pipefail
     [[ -z "${VOICEPUNCHER_E2E_SERVICES_HELD:-}" ]] || exit 0
-    for service in whisper-server:{{stt_port}} whisper-server-commands:{{command_stt_port}} llama-server:{{llm_port}} voicepuncher-command-spotting:{{kws_port}}; do
-        marker="{{services_run_dir}}/${service%%:*}-${service#*:}.e2e"
-        if [[ -f "$marker" ]]; then
-            rm -f "$marker"
-            {{just_executable()}} stop-model-servers "${service%%:*}"
-        fi
-    done
+    [[ -n "${VOICEPUNCHER_TEST_PORTS:-}" ]] || exit 0
+    {{just_executable()}} stop-model-servers
 
 # Start the speech recognition services for dictation (whisper-server) and for commands (whisper-server-commands), text refinement (llama-server) and command spotting (voicepuncher-command-spotting), or only the named ones; one that already answers on its port is skipped
 start-model-servers *services:
