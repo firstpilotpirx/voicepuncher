@@ -61,6 +61,9 @@ test_selection := "--workspace -E 'not binary_id(voicepuncher-e2e-test::cucumber
 # <file:line:col>:` lines start at column 0, where `kit run` finds the failed tests and their locations
 export NEXTEST_NO_OUTPUT_INDENT := "1"
 services_log_dir := home_directory() / ".voicepuncher/logs"
+# The stage journal: one JSON line per run of _stages (check, full-check, test, the E2E recipes), shared by
+# every checkout and kept when a worktree goes; `just stage-times` summarizes it
+export VOICEPUNCHER_STAGE_JOURNAL := env_var_or_default("VOICEPUNCHER_STAGE_JOURNAL", home_directory() / ".cache/voicepuncher/stage-times.jsonl")
 
 # The machine-wide test lock (agent-kit `with-machine-lock`): one run at a time on this machine, a hung run is
 # killed after its time limit. Every check, build, E2E, benchmark and real-keyboard recipe run on its own runs its
@@ -87,7 +90,7 @@ default:
 # build-e2e ran without it (see _stages). Incremental, no `cargo clean`
 # FAST (~8.5 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples + refinement evaluation
 check:
-    @{{just_executable()}} _stages fmt lint test build build-e2e e2e-smoke e2e-quick refine-eval
+    @VOICEPUNCHER_STAGES_RECIPE=check {{just_executable()}} _stages fmt lint test build build-e2e e2e-smoke e2e-quick refine-eval
 
 # Only the model stages take the machine lock, held ≈ 16.3 min with 100 recordings and ≈ 14.5 min with 10 (measured)
 # (see _stages). Incremental like `check`, no `cargo clean`: the clean build is `release`'s. Accuracy runs on 100
@@ -107,8 +110,97 @@ full-check: _require-models _require-corpus
     esac
     accuracy="accuracy: $count recordings ($stage) — $reason"
     echo "● $accuracy"
-    {{just_executable()}} _stages fmt lint test build build-e2e e2e-smoke e2e-seams e2e-resilience "$stage" refine-eval
+    VOICEPUNCHER_STAGES_RECIPE=full-check VOICEPUNCHER_STAGES_ACCURACY="$accuracy" \
+        {{just_executable()}} _stages fmt lint test build build-e2e e2e-smoke e2e-seams e2e-resilience "$stage" refine-eval
     echo "✓ full-check passed — $accuracy; before a release also walk through README.md § Release checklist (manual run)"
+
+# Summary of the stage journal for the runs since a date (2026-10-01) or a span (7d): per recipe and stage the
+# runs, median, total and failures; the lock wait; the failed tests, most first; runs and time per branch
+# (a change's branch is <type>/<change>, so per change)
+stage-times $since="30d":
+    #!/usr/bin/env perl
+    use strict;
+    use warnings;
+    use JSON::PP;
+    use POSIX qw(strftime);
+    use Time::Local qw(timegm timelocal);
+    my $path = $ENV{VOICEPUNCHER_STAGE_JOURNAL};
+    my $since = $ENV{since};
+    my $from;
+    if ($since =~ /^(\d+)d$/) { $from = time - $1 * 86400 }
+    elsif ($since =~ /^(\d{4})-(\d\d)-(\d\d)$/) { $from = timelocal(0, 0, 0, $3, $2 - 1, $1) }
+    else { die "✗ since '$since': give a span like 7d or a date like 2026-10-01\n" }
+    my $period = strftime("%Y-%m-%d %H:%M", localtime $from) . ($since =~ /d$/ ? " ($since)" : "");
+    my $epoch = sub {
+        my ($y, $mo, $d, $h, $mi, $s, $sign, $oh, $om) = $_[0] =~ /^(\d+)-(\d+)-(\d+)T(\d+):(\d+):(\d+)([+-])(\d\d):(\d\d)$/
+            or return;
+        timegm($s, $mi, $h, $d, $mo - 1, $y) - ($sign eq "-" ? -1 : 1) * ($oh * 3600 + $om * 60);
+    };
+    my $span = sub {
+        my $s = shift;
+        return sprintf("%.1fs", $s) if $s < 60;
+        return sprintf("%dm %02ds", $s / 60, $s % 60) if $s < 3600;
+        sprintf("%dh %02dm", $s / 3600, ($s % 3600) / 60);
+    };
+    my $median = sub {
+        my @sorted = sort { $a <=> $b } @_;
+        my $mid = int(@sorted / 2);
+        @sorted % 2 ? $sorted[$mid] : ($sorted[$mid - 1] + $sorted[$mid]) / 2;
+    };
+    my (@runs, %results);
+    if (open my $journal, "<", $path) {
+        while (my $line = <$journal>) {
+            my $run = eval { decode_json($line) } or next;
+            my $at = $epoch->($run->{started} // "");
+            push @runs, $run if defined $at && $at >= $from;
+        }
+    }
+    unless (@runs) { print "no runs since $period in $path\n"; exit 0 }
+    $results{$_->{result}}++ for @runs;
+    my (@keys, %stages, @waits, %tests, @branches, %branches);
+    for my $run (@runs) {
+        for my $stage (@{ $run->{stages} }) {
+            next if $stage->{result} eq "skipped";
+            my $key = "$run->{recipe}\t$stage->{name}";
+            push @keys, $key unless $stages{$key};
+            my $row = $stages{$key} ||= { seconds => [], failed => 0 };
+            push @{ $row->{seconds} }, $stage->{seconds};
+            $row->{failed}++ if $stage->{result} eq "failed";
+        }
+        push @waits, $run->{lock_wait} if defined $run->{lock_wait} && $run->{lock_wait} =~ /^[\d.]+$/;
+        $tests{$_}++ for @{ $run->{failed_tests} };
+        my $branch = $run->{branch} // "(none)";
+        push @branches, $branch unless $branches{$branch};
+        my $row = $branches{$branch} ||= { runs => 0, failed => 0, seconds => 0 };
+        $row->{runs}++;
+        $row->{failed}++ if $run->{result} eq "failed";
+        $row->{seconds} += $run->{seconds};
+    }
+    printf "stage times since %s: %d runs — %s\n", $period, scalar @runs,
+        join(", ", map { "$results{$_} $_" } grep { $results{$_} } qw(passed failed interrupted));
+    printf "\n%-16s %-16s %5s %9s %10s %7s\n", qw(recipe stage runs median total failed);
+    for my $key (@keys) {
+        my ($recipe, $stage) = split /\t/, $key;
+        my $row = $stages{$key};
+        my @seconds = @{ $row->{seconds} };
+        my $total = 0;
+        $total += $_ for @seconds;
+        printf "%-16s %-16s %5d %9s %10s %7d\n", $recipe, $stage, scalar @seconds, $span->($median->(@seconds)), $span->($total), $row->{failed};
+    }
+    if (@waits) {
+        my $total = 0;
+        $total += $_ for @waits;
+        printf "\nlock wait: %d runs, median %s, total %s\n", scalar @waits, $span->($median->(@waits)), $span->($total);
+    }
+    if (%tests) {
+        print "\nfailed tests:\n";
+        printf "%6d  %s\n", $tests{$_}, $_ for sort { $tests{$b} <=> $tests{$a} || $a cmp $b } keys %tests;
+    }
+    print "\nruns per branch:\n";
+    for my $branch (sort { $branches{$b}{runs} <=> $branches{$a}{runs} } @branches) {
+        my $row = $branches{$branch};
+        printf "  %-40s %4d runs %4d failed %10s\n", $branch, $row->{runs}, $row->{failed}, $span->($row->{seconds});
+    }
 
 # The paths whose change makes full-check run the accuracy stage on 100 recordings: what the two @accuracy
 # scenarios run — file mode, transcription and chunking; text refinement; command spotting (keywords.txt is
@@ -218,8 +310,10 @@ _accuracy-stage base="origin/main":
 # run killed with KILL leaves that directory, holding an empty tests.lock, in $TMPDIR, which macOS clears); fmt,
 # lint, build and build-e2e run at the utility QoS clamp. The rest runs in _model-stages under the machine
 # lock (at once when the caller already holds it). A failing stage ends the run before the lock is requested.
-# Ends with one table: each stage's time, the lock wait and the lock hold. Two checks of one worktree must not
-# overlap: the lock no longer keeps their builds apart
+# Ends with one table: each stage's time, the lock wait and the lock hold, and adds the run to the stage journal
+# (_stage-journal-append; the caller names itself in VOICEPUNCHER_STAGES_RECIPE, full-check its accuracy choice in
+# VOICEPUNCHER_STAGES_ACCURACY); every stage's output is also copied to a log of the run, where the journal finds
+# the failed tests. Two checks of one worktree must not overlap: the lock no longer keeps their builds apart
 _stages +stages:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -228,8 +322,12 @@ _stages +stages:
     row() { printf '  %s %-14s %s\n' "$1" "$2" "$3"; }
     started=$(now)
     report=$(mktemp)
+    run_log=$(mktemp)
     stage_lock_dir=$(mktemp -d)
     export VOICEPUNCHER_STAGES_REPORT="$report"
+    # The stages' output also goes to run_log, for the failed tests of the journal: behind that copy cargo and
+    # nextest see no terminal, so they keep their colors only when this run's output is one
+    [[ ! -t 1 || -n "${CARGO_TERM_COLOR:-}" ]] || export CARGO_TERM_COLOR=always
     caller=""
     if [[ "${MACHINE_LOCK_HELD:-}" == "${MACHINE_LOCK_DIR:-$HOME/.cache/machine-lock}/tests.lock" ]]; then
         caller=1
@@ -269,15 +367,21 @@ _stages +stages:
         elif [[ -n "$locked" ]]; then
             row "●" "lock held" "$(printf '%7ss' "$(since "$locked" "$returned")")"
         fi
-        printf '  %-16s %7ss\n' total "$(since "$started")"
-        rm -rf "$report" "$stage_lock_dir"
+        ended=$(now)
+        printf '  %-16s %7ss\n' total "$(since "$started" "$ended")"
+        VOICEPUNCHER_STAGES_REPORT="$report" STAGES_LOG="$run_log" STAGES_LIST="{{stages}}" STAGES_STARTED="$started" \
+            STAGES_RETURNED="$returned" STAGES_ENDED="$ended" STAGES_EXIT="$code" STAGES_INTERRUPTED="$interrupted" \
+            STAGES_CALLER="$caller" STAGES_WORKTREE={{quote(justfile_directory())}} \
+            {{just_executable()}} --justfile {{quote(justfile())}} _stage-journal-append \
+            || echo "✗ the run was not added to the stage journal" >&2
+        rm -rf "$report" "$run_log" "$stage_lock_dir"
         exit "$code"
     }
     trap finish EXIT
     # Each phase runs in the background, so a signal to this script reaches its wrapper and stops it
     trap 'interrupted=1; [[ -z "$run" ]] || kill -TERM "$run" 2>/dev/null || true' TERM INT HUP
     run_phase() {
-        "$@" &
+        "$@" > >(tee -a "$run_log") 2> >(tee -a "$run_log" >&2) &
         run=$!
         while true; do
             wait "$run" && status=0 || status=$?
@@ -340,10 +444,13 @@ _model-stages +stages:
     trap 'exit 143' TERM
     trap 'exit 130' INT
     trap 'exit 129' HUP
-    # Set before the start: the markers of the services it starts exist before they do
-    services=up
-    {{just_executable()}} _start-model-servers-for-e2e
-    export VOICEPUNCHER_E2E_SERVICES_HELD=1
+    # e2e-resilience starts services of its own on ports of its own: alone, it needs none of these
+    if [[ " {{stages}} " != " e2e-resilience " ]]; then
+        # Set before the start: the markers of the services it starts exist before they do
+        services=up
+        {{just_executable()}} _start-model-servers-for-e2e
+        export VOICEPUNCHER_E2E_SERVICES_HELD=1
+    fi
     for stage in {{stages}}; do
         current=$stage
         t0=$(now)
@@ -355,6 +462,84 @@ _model-stages +stages:
         current=""
         [[ $status -eq 0 ]] || exit "$status"
     done
+
+# Appends the record of one _stages run to the stage journal, from what _stages hands over in STAGES_* and the
+# report: when, where, which recipe, each requested stage (passed, failed, or skipped when the run ended before
+# it), the lock wait and hold, the accuracy choice, and the failed tests found in the stages' output — nextest's
+# FAIL, TIMEOUT and SIG* result lines and each Gherkin scenario with a failed step. Under flock, so the lines of
+# parallel runs never mix
+_stage-journal-append:
+    #!/usr/bin/env perl
+    use strict;
+    use warnings;
+    use Fcntl qw(:flock);
+    use File::Basename qw(dirname);
+    use File::Path qw(make_path);
+    use JSON::PP;
+    use POSIX qw(strftime);
+    my $json = JSON::PP->new->allow_nonref->canonical;
+    my %env = map { $_ => $ENV{"STAGES_$_"} // "" } qw(LOG LIST STARTED RETURNED ENDED EXIT INTERRUPTED CALLER WORKTREE);
+    my ($requested, $locked, %rows);
+    open my $report, "<", $ENV{VOICEPUNCHER_STAGES_REPORT} or die "report: $!";
+    while (<$report>) {
+        my ($kind, @fields) = split;
+        next unless defined $kind;
+        if ($kind eq "stage") { $rows{$fields[1]} = [$fields[0] eq "✓" ? "passed" : "failed", $fields[2] + 0] }
+        elsif ($kind eq "requested") { $requested = $fields[0] }
+        elsif ($kind eq "locked") { $locked = $fields[0] }
+    }
+    my @stages = map { my $row = $rows{$_}; $row ? [$_, @$row] : [$_, "skipped", undef] } split " ", $env{LIST};
+    my $round = sub { defined $_[0] ? sprintf("%.1f", $_[0]) + 0 : undef };
+    my $end = length $env{RETURNED} ? $env{RETURNED} : $env{ENDED};
+    my ($wait, $held);
+    if ($env{CALLER} && defined $locked) { ($wait, $held) = ("caller", "caller") }
+    elsif (defined $requested) {
+        $wait = $round->((defined $locked ? $locked : $end) - $requested);
+        $held = defined $locked ? $round->($end - $locked) : undef;
+    }
+    my (@failed, %seen, $scenario);
+    if (open my $log, "<", $env{LOG}) {
+        while (my $line = <$log>) {
+            $line =~ s/\e\[[0-9;]*[A-Za-z]//g;
+            $line =~ s/\s+$//;
+            my $name;
+            if ($line =~ /^\s*(FAIL|TIMEOUT|SIG\w+|ABORT)\s+\[\s*[\d.]+s\]\s+(?:\(\s*\d+\/\d+\)\s+)?(.+)$/) {
+                my ($outcome, $test) = ($1, $2);
+                # The tests an interrupt stopped are not failures of their own
+                $name = $test unless $env{INTERRUPTED} && $outcome =~ /^SIG(?:INT|TERM|HUP|KILL)$/;
+            }
+            elsif ($line =~ /^\s*(?:Scenario|Scenario Outline|Example):\s*(.+)$/) { $scenario = $1 }
+            elsif ($line =~ /^\s*✘/ && defined $scenario) { $name = "scenario: $scenario" }
+            push @failed, $name if defined $name && !$seen{$name}++;
+        }
+    }
+    my $git = sub { my $out = `git -C "$env{WORKTREE}" @_ 2>/dev/null`; chomp $out; length $out ? $out : undef };
+    my $started = strftime("%Y-%m-%dT%H:%M:%S%z", localtime $env{STARTED});
+    $started =~ s/(\d\d)(\d\d)$/$1:$2/;
+    my $result = $env{EXIT} eq "0" ? "passed" : $env{INTERRUPTED} ? "interrupted" : "failed";
+    my @record = (
+        started => $started,
+        seconds => $round->($env{ENDED} - $env{STARTED}),
+        worktree => $env{WORKTREE},
+        branch => $git->("rev-parse --abbrev-ref HEAD"),
+        commit => $git->("rev-parse --short HEAD"),
+        recipe => $ENV{VOICEPUNCHER_STAGES_RECIPE} || "stages",
+        result => $result,
+        exit => $env{EXIT} + 0,
+        stages => [map { +{ name => $_->[0], result => $_->[1], seconds => $_->[2] } } @stages],
+        lock_wait => $wait,
+        lock_held => $held,
+        accuracy => $ENV{VOICEPUNCHER_STAGES_ACCURACY} || undef,
+        failed_tests => \@failed,
+    );
+    my @pairs;
+    while (my ($key, $value) = splice @record, 0, 2) { push @pairs, $json->encode($key) . ":" . $json->encode($value) }
+    my $path = $ENV{VOICEPUNCHER_STAGE_JOURNAL};
+    make_path(dirname($path));
+    open my $journal, ">>", $path or die "$path: $!";
+    flock $journal, LOCK_EX or die "flock $path: $!";
+    print $journal "{" . join(",", @pairs) . "}\n";
+    close $journal or die "$path: $!";
 
 # Builds what the model stages run — the command spotting service and their test binaries — so nothing
 # compiles under the machine lock; warm, five no-op cargo calls. The test binaries are built as the E2E
@@ -380,23 +565,12 @@ lint:
 _lint:
     cargo clippy --workspace --all-targets -- -D warnings
 
-# Runs without the machine-wide lock: it uses no shared service, port, GPU or exclusive device. A lock directory
-# of the run's own only gives it the wrapper's time limit (MACHINE_LOCK_TIMEOUT, exit 124; the timeout message
+# Runs without the machine-wide lock, as an unlocked stage of _stages (which records it in the stage journal): it
+# uses no shared service, port, GPU or exclusive device. A lock directory of the run's own only gives it the wrapper's time limit (MACHINE_LOCK_TIMEOUT, exit 124; the timeout message
 # says `[machine-lock]`). Departs from agent-kit `machine-lock.md` on purpose until the kit's exception lands.
 # Every test of the app, the command spotting service and the E2E harness under cargo-nextest, each within its time limit, unlocked (~1 min)
 test:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    lock_dir=$(mktemp -d)
-    trap 'rm -rf "$lock_dir"' EXIT
-    # The wrapper runs in the background, so a signal to this script reaches it and stops the whole run
-    MACHINE_LOCK_DIR="$lock_dir" {{locked}} _test &
-    run=$!
-    trap 'kill -TERM "$run" 2>/dev/null || true' TERM INT HUP
-    while true; do
-        wait "$run" && code=0 || code=$?
-        kill -0 "$run" 2>/dev/null || exit "$code"
-    done
+    @VOICEPUNCHER_STAGES_RECIPE=test {{just_executable()}} _stages test
 
 # One nextest run over the workspace's test targets (libs, bins, integration tests and the slice/component
 # harness; no doctests, as before) except the E2E harness, whose suites are the E2E recipes'. nextest runs up
@@ -423,13 +597,11 @@ _build:
 
 # E2E on real models: smoke + chunk seams + WER accuracy on 100 samples + refinement evaluation (~13 min)
 e2e:
-    @{{locked}} _e2e
-
-_e2e: _e2e-smoke _e2e-seams _e2e-bench _refine-eval
+    @VOICEPUNCHER_STAGES_RECIPE=e2e {{just_executable()}} _stages e2e-smoke e2e-seams e2e-bench refine-eval
 
 # Smoke test — services and models load, file mode runs and voice commands are spotted (@smoke scenarios), the adapters talk to the real services
 e2e-smoke:
-    @{{locked}} _e2e-smoke
+    @VOICEPUNCHER_STAGES_RECIPE=e2e-smoke {{just_executable()}} _stages e2e-smoke
 
 # One nextest run per test binary, one after another as cargo test ran them, so the services see the
 # load of one binary's tests at a time; the first failing binary ends the suite. The scenario selection and
@@ -449,7 +621,7 @@ _e2e-smoke: _require-nextest _require-models _build
 
 # WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 %, and no command in 10 recordings of ordinary speech (~1 min)
 e2e-quick:
-    @{{locked}} _e2e-quick
+    @VOICEPUNCHER_STAGES_RECIPE=e2e-quick {{just_executable()}} _stages e2e-quick
 
 _e2e-quick: _require-nextest _require-models _require-corpus _build
     #!/usr/bin/env bash
@@ -461,7 +633,7 @@ _e2e-quick: _require-nextest _require-models _require-corpus _build
 
 # Text refinement on the live services: dictated commands, normalization, evaluation per category (@refinement) (~30 s)
 refine-eval:
-    @{{locked}} _refine-eval
+    @VOICEPUNCHER_STAGES_RECIPE=refine-eval {{just_executable()}} _stages refine-eval
 
 _refine-eval: _require-nextest _require-models _build
     #!/usr/bin/env bash
@@ -473,14 +645,14 @@ _refine-eval: _require-nextest _require-models _build
 
 # Outages: services that hang, die and come back while voice control runs (@resilience), each scenario on service ports of its own, so the shared services are never touched (~4 min)
 e2e-resilience:
-    @{{locked}} _e2e-resilience
+    @VOICEPUNCHER_STAGES_RECIPE=e2e-resilience {{just_executable()}} _stages e2e-resilience
 
 _e2e-resilience: _require-nextest _require-models _build
     cargo nextest run --profile e2e-resilience {{cucumber_e2e_tests}} --no-capture
 
 # Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words (~4 min)
 e2e-seams:
-    @{{locked}} _e2e-seams
+    @VOICEPUNCHER_STAGES_RECIPE=e2e-seams {{just_executable()}} _stages e2e-seams
 
 _e2e-seams: _require-nextest _require-models _build
     #!/usr/bin/env bash
@@ -493,7 +665,7 @@ _e2e-seams: _require-nextest _require-models _build
 
 # WER accuracy on a fixed sample of 100 recordings (50 per language), two at a time — fails if mean WER > 30 %, and no command in 20 recordings of ordinary speech (~3 min)
 e2e-bench:
-    @{{locked}} _e2e-bench
+    @VOICEPUNCHER_STAGES_RECIPE=e2e-bench {{just_executable()}} _stages e2e-bench
 
 _e2e-bench: _require-nextest _require-models _require-corpus _build
     #!/usr/bin/env bash

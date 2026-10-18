@@ -10,13 +10,13 @@
 
 ### 2. Every check-like recipe goes through `_stages`
 
-`test` and the standalone E2E recipes (`e2e`, `e2e-smoke`, `e2e-quick`, `e2e-seams`, `e2e-bench`, `e2e-resilience`, `refine-eval`) become `_stages <their stages>`: one place records every run, and they gain the stage table. `_stages` already runs an unlocked stage through the wrapper with a lock directory of the run's own (what `test` does today) and model stages under the machine lock with the services started once (what each E2E recipe does on its own). The caller names itself in `VOICEPUNCHER_STAGES_RECIPE` (default `stages`, for `just _stages …` by hand); `full-check` passes its accuracy line in `VOICEPUNCHER_STAGES_ACCURACY`.
+`test` and the standalone E2E recipes (`e2e`, `e2e-smoke`, `e2e-quick`, `e2e-seams`, `e2e-bench`, `e2e-resilience`, `refine-eval`) become `_stages <their stages>`: one place records every run, and they gain the stage table. `_stages` already runs an unlocked stage through the wrapper with a lock directory of the run's own (what `test` does today) and model stages under the machine lock with the services started once (what each E2E recipe does on its own). The caller names itself in `VOICEPUNCHER_STAGES_RECIPE` (default `stages`, for `just _stages …` by hand); `full-check` passes its accuracy line in `VOICEPUNCHER_STAGES_ACCURACY`. `_model-stages` starts the shared services unless `e2e-resilience` is its only stage, which starts services of its own, as the standalone recipe did.
 
 *Alternatives:* a record call in each recipe (eight copies of the timing logic).
 
 ### 3. Failed test names come from the stage's output
 
-Each stage's stdout and stderr are also copied to a log of the run (`tee`); when the run ends, the trap collects nextest's `FAIL`, `TIMEOUT` and `SIG*` result lines and, for the Gherkin harness, each cucumber scenario with a failed step, deduplicated, as `failed_tests`. The stage's exit code stays its own. Behind `tee` cargo and nextest no longer see a terminal, so when the run's stdout is one, `_stages` exports `CARGO_TERM_COLOR=always` and the parser strips ANSI codes.
+Each stage's stdout and stderr are also copied to a log of the run (`tee`); when the run ends, the trap collects nextest's `FAIL`, `TIMEOUT` and `SIG*` result lines and, for the Gherkin harness, each cucumber scenario with a failed step, deduplicated, as `failed_tests`. In an interrupted run the tests the interrupt itself stopped (`SIGINT`, `SIGTERM`, `SIGHUP`, `SIGKILL`) are left out. The stage's exit code stays its own. Behind `tee` cargo and nextest no longer see a terminal, so when the run's stdout is one, `_stages` exports `CARGO_TERM_COLOR=always` and the parser strips ANSI codes.
 
 *Alternatives:* nextest JUnit reports (one file per nextest call, overwritten within a stage, and no scenario names for the harness).
 
