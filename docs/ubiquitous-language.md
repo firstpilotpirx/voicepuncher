@@ -62,7 +62,7 @@
 
 ### SoundPlayer
 - **Type:** Driven Port (trait in `core/application/`)
-- **Definition:** Plays an auditory cue at the start and stop of a recording cycle. Abstracts macOS `afplay` so `Pipeline` stays platform-agnostic. Implementations may be no-ops (e.g. in tests or file mode).
+- **Definition:** Plays an auditory cue at the start, stop and cancel of a recording cycle, when voice control listening turns on or off, and a sound of its own for each voice command with no visible effect of its own ("press enter", "clear all text", "restart dictation" — the last instead of the cancel and start cues). Abstracts macOS `afplay` so `Pipeline` stays platform-agnostic. Implementations may be no-ops (e.g. in tests or file mode).
 - **Code:** `app/src/core/application/sound_player.rs`
 - **Synonyms to AVOID:** "AudioPlayer", "BeepService"
 
@@ -82,9 +82,9 @@
 ### VisualIndicator
 - **Type:** Driven Port (trait in `core/application/`)
 - **Definition:** Surfaces the current `Pipeline` state to the user as
-  an on-screen widget — five discrete signals: recording in progress,
+  an on-screen widget — six discrete signals: recording in progress,
   each `Processing stage` (speech recognition, text refinement), waiting
-  for `Text input focus`, hidden. Abstracts the platform-specific
+  for `Text input focus`, hidden, and the `Command sign`. Abstracts the platform-specific
   always-on-top overlay so `Pipeline` stays platform-agnostic.
 - **Code:** `app/src/core/application/visual_indicator.rs`
 - **Synonyms to AVOID:** "Overlay", "HUD", "StatusBadge", "Toast", "Indicator" (alone — too generic)
@@ -94,6 +94,12 @@
 - **Definition:** The raw transcript of the chunks transcribed so far, stitched at their seams as the pasted transcript is, shown next to the recording sign while the user dictates and updated after every chunk with text. It is gone once the recording ends; the pasted text may still differ after text refinement. A dictation shorter than the chunk threshold has none.
 - **Code:** `LiveTranscriptView` (driven port in `app/src/core/application/live_transcript_view.rs`), handed out by `VisualIndicator::live_transcript_view`; `app/src/core/application/pipeline/live_transcript.rs`
 - **Synonyms to AVOID:** "partial transcript", "preview", "text so far" (in code)
+
+### Command sign
+- **Type:** Domain concept (overlay signal)
+- **Definition:** The overlay naming a voice command with no visible effect of its own — "⏎ ENTER", "⌫ CLEAR", "↻ RESTART" — for about a second after it was carried out, then showing again what it showed before: hidden in standby, the recording during a dictation. Any later signal (the recording a chain starts, the next command's sign) replaces it at once. "start", "stop" and "cancel dictation" have none: the overlay already shows them.
+- **Code:** `VisualIndicator::show_command_sign`
+- **Synonyms to AVOID:** "toast", "notification", "badge", "confirmation" (alone — also names the second hearing of a command)
 
 ### Processing stage
 - **Type:** Domain concept (overlay state)

@@ -56,7 +56,9 @@ stop_sound = "Pop"      # macOS system sound name, or "" to disable
 cancel_sound = "Basso"  # played when recording is cancelled with Escape
 listening_on_sound = "Tink"     # voice control: the hotkey turned listening on
 listening_off_sound = "Bottle"  # voice control: the hotkey turned listening off
-command_sound = "Morse"         # voice control: "press enter" or "clear all text" was carried out
+enter_sound = "Morse"           # voice control: "press enter" was carried out
+clear_sound = "Purr"            # voice control: "clear all text" was carried out
+restart_sound = "Hero"          # voice control: "restart dictation" started the dictation over
 
 [voice_control]
 # Hands-free mode (also `--voice-control`): listening starts with the app, the hotkey turns it off

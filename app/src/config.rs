@@ -134,8 +134,15 @@ pub struct SoundsCfg {
     pub listening_on_sound: String,
     #[serde(default = "SoundsCfg::default_listening_off_sound")]
     pub listening_off_sound: String,
-    #[serde(default = "SoundsCfg::default_command_sound")]
-    pub command_sound: String,
+    /// Voice control: "press enter" was carried out. `command_sound` is its former name.
+    #[serde(default = "SoundsCfg::default_enter_sound", alias = "command_sound")]
+    pub enter_sound: String,
+    /// Voice control: "clear all text" was carried out.
+    #[serde(default = "SoundsCfg::default_clear_sound")]
+    pub clear_sound: String,
+    /// Voice control: "restart dictation" started the dictation over.
+    #[serde(default = "SoundsCfg::default_restart_sound")]
+    pub restart_sound: String,
 }
 
 impl SoundsCfg {
@@ -159,8 +166,16 @@ impl SoundsCfg {
         "Bottle".into()
     }
 
-    fn default_command_sound() -> String {
+    fn default_enter_sound() -> String {
         "Morse".into()
+    }
+
+    fn default_clear_sound() -> String {
+        "Purr".into()
+    }
+
+    fn default_restart_sound() -> String {
+        "Hero".into()
     }
 }
 
@@ -172,7 +187,9 @@ impl Default for SoundsCfg {
             cancel_sound: Self::default_cancel_sound(),
             listening_on_sound: Self::default_listening_on_sound(),
             listening_off_sound: Self::default_listening_off_sound(),
-            command_sound: Self::default_command_sound(),
+            enter_sound: Self::default_enter_sound(),
+            clear_sound: Self::default_clear_sound(),
+            restart_sound: Self::default_restart_sound(),
         }
     }
 }
@@ -333,7 +350,45 @@ mod tests {
         // Then
         assert_eq!(sounds.listening_on_sound, "Tink");
         assert_eq!(sounds.listening_off_sound, "Bottle");
-        assert_eq!(sounds.command_sound, "Morse");
+        assert_eq!(sounds.enter_sound, "Morse");
+        assert_eq!(sounds.clear_sound, "Purr");
+        assert_eq!(sounds.restart_sound, "Hero");
+    }
+
+    #[test]
+    fn should_give_every_confirmed_command_a_sound_no_other_cue_uses() {
+        // Given
+        let sounds = SoundsCfg::default();
+        let all = [
+            &sounds.start_sound,
+            &sounds.stop_sound,
+            &sounds.cancel_sound,
+            &sounds.listening_on_sound,
+            &sounds.listening_off_sound,
+            &sounds.enter_sound,
+            &sounds.clear_sound,
+            &sounds.restart_sound,
+        ];
+        // When
+        let distinct: std::collections::HashSet<_> = all.iter().collect();
+        // Then
+        assert_eq!(distinct.len(), all.len(), "{all:?}");
+    }
+
+    #[test]
+    fn should_take_the_former_command_sound_as_the_enter_sound() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            f,
+            "[sounds]\ncommand_sound = \"Ping\"\nclear_sound = \"Funk\""
+        )
+        .unwrap();
+        // When
+        let config = load(f.path()).unwrap();
+        // Then
+        assert_eq!(config.sounds.enter_sound, "Ping");
+        assert_eq!(config.sounds.clear_sound, "Funk");
     }
 
     #[test]

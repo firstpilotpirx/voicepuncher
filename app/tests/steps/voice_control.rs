@@ -635,16 +635,23 @@ fn overlay_processing_then_hidden(world: &mut IntegrationWorld) -> Result<()> {
 
 #[then(expr = "the {word} sound plays")]
 fn sound_plays(world: &mut IntegrationWorld, sound: String) -> Result<()> {
-    let name = match sound.as_str() {
+    let name = sound_of(&sound)?;
+    run(world).wait_since_mark(|e| *e == Event::Sound(name))
+}
+
+/// The event name of a sound as a scenario names it.
+fn sound_of(sound: &str) -> Result<&'static str> {
+    Ok(match sound {
         "listening-on" => "listening on",
         "listening-off" => "listening off",
         "start" => "start",
         "stop" => "stop",
         "cancel" => "cancel",
-        "command" => "command",
+        "enter" => "enter",
+        "clear" => "clear",
+        "restart" => "restart",
         other => bail!("unknown sound {other}"),
-    };
-    run(world).wait_since_mark(|e| *e == Event::Sound(name))
+    })
 }
 
 #[then("no sound plays")]
@@ -739,15 +746,179 @@ fn only_other_sentence(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("the cancel sound plays, then the start sound")]
-fn cancel_then_start_sound(world: &mut IntegrationWorld) -> Result<()> {
+#[then("the restart sound plays, and neither the cancel sound nor the start sound")]
+fn restart_sound_alone(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
-    run.wait_since_mark(|e| *e == Event::Sound("start"))?;
+    run.wait_since_mark(|e| *e == Event::Sound("restart"))?;
+    run.never_since_mark(
+        |e| matches!(e, Event::Sound("cancel") | Event::Sound("start")),
+        "a cancel or start sound played",
+    )
+}
+
+/// The overlay events since the step's action.
+fn overlay_since_mark(run: &VoiceRun) -> Vec<&'static str> {
+    run.since_mark()
+        .into_iter()
+        .filter_map(|e| match e {
+            Event::Overlay(shown) => Some(shown),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Waits for `sign` and checks nothing replaced it: the overlay takes it down on its own after
+/// about a second, back to what it showed before.
+fn ends_on_sign(run: &VoiceRun, sign: &'static str) -> Result<Vec<&'static str>> {
+    run.wait_since_mark(|e| *e == Event::Overlay(sign))?;
+    std::thread::sleep(SETTLE);
+    let shown = overlay_since_mark(run);
+    if shown.last() != Some(&sign) {
+        bail!("expected the overlay to end on the {sign}: {shown:?}");
+    }
+    Ok(shown)
+}
+
+#[then(expr = "the overlay shows the {word} sign for about a second, then hides")]
+fn sign_then_hides(world: &mut IntegrationWorld, command: String) -> Result<()> {
+    ends_on_sign(run(world), sign_of(&command)?)?;
+    Ok(())
+}
+
+#[then("the overlay shows the restart sign, then the recording")]
+fn restart_sign_then_recording(world: &mut IntegrationWorld) -> Result<()> {
+    // The new recording is shown first; the sign covers it and gives it back after a second.
+    let shown = ends_on_sign(run(world), "restart sign")?;
+    if !shown.contains(&"recording") {
+        bail!("expected the recording under the restart sign: {shown:?}");
+    }
+    Ok(())
+}
+
+#[then(expr = "the {word} sound plays and the overlay shows the {word} sign after the paste")]
+fn sound_and_sign_after_paste(
+    world: &mut IntegrationWorld,
+    sound: String,
+    command: String,
+) -> Result<()> {
+    let run = run(world);
+    let sign = sign_of(&command)?;
+    let sound = sound_of(&sound)?;
+    let pasted = run.wait_for(|e| matches!(e, Event::Pasted(_)))?;
+    let sounded = run.wait_for(|e| *e == Event::Sound(sound))?;
+    let signed = run.wait_for(|e| *e == Event::Overlay(sign))?;
+    if !(pasted < sounded && pasted < signed) {
+        bail!(
+            "expected the {sound} sound and {sign} after the paste: {:?}",
+            run.events()
+        );
+    }
+    Ok(())
+}
+
+#[then(expr = "the {word} sound plays and the overlay shows the {word} sign")]
+fn sound_and_sign(world: &mut IntegrationWorld, sound: String, command: String) -> Result<()> {
+    let run = run(world);
+    let (sound, sign) = (sound_of(&sound)?, sign_of(&command)?);
+    run.wait_since_mark(|e| *e == Event::Sound(sound))?;
+    run.wait_since_mark(|e| *e == Event::Overlay(sign))
+}
+
+#[then("the overlay shows the recording as soon as the new dictation starts")]
+fn recording_after_sign(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.wait_since_mark(|e| *e == Event::Overlay("recording"))?;
+    let shown = overlay_since_mark(run);
+    let at = |wanted| shown.iter().position(|s| *s == wanted);
+    match (at("enter sign"), at("recording")) {
+        (Some(sign), Some(recording)) if sign < recording => Ok(()),
+        _ => bail!("expected the enter sign, then the recording: {shown:?}"),
+    }
+}
+
+#[then("the stop sound, the clear sound and the enter sound play in this order")]
+fn stop_clear_enter_sounds(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.wait_since_mark(|e| *e == Event::Sound("enter"))?;
     let since = run.since_mark();
     let at = |name| since.iter().position(|e| *e == Event::Sound(name));
-    match (at("cancel"), at("start")) {
-        (Some(cancel), Some(start)) if cancel < start => Ok(()),
-        _ => bail!("expected the cancel sound, then the start sound: {since:?}"),
+    match (at("stop"), at("clear"), at("enter")) {
+        (Some(stop), Some(clear), Some(enter)) if stop < clear && clear < enter => Ok(()),
+        _ => bail!("expected the stop, clear and enter sounds in order: {since:?}"),
+    }
+}
+
+#[then("the overlay shows the clear sign, then the enter sign, then hides")]
+fn clear_then_enter_sign(world: &mut IntegrationWorld) -> Result<()> {
+    let shown = ends_on_sign(run(world), "enter sign")?;
+    match shown.iter().position(|s| *s == "clear sign") {
+        Some(_) => Ok(()),
+        None => bail!("expected the clear sign before the enter sign: {shown:?}"),
+    }
+}
+
+#[when(expr = "the user says {string}, and later {string}")]
+fn says_and_later(world: &mut IntegrationWorld, first: String, second: String) -> Result<()> {
+    let run = run(world);
+    run.start_when();
+    run.say_alone(chain(&first).map_or(first.as_str(), |c| c[0].phrase()))?;
+    std::thread::sleep(SETTLE);
+    run.say_alone(chain(&second).map_or(second.as_str(), |c| c[0].phrase()))
+}
+
+#[then("the two commands play different sounds")]
+fn two_different_sounds(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    let deadline = Instant::now() + REACTION;
+    loop {
+        let sounds: Vec<_> = run
+            .since_mark()
+            .into_iter()
+            .filter(|e| matches!(e, Event::Sound(_)))
+            .collect();
+        if let [first, second] = sounds.as_slice() {
+            if first == second {
+                bail!("both commands played {first:?}");
+            }
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            bail!("expected two command sounds: {sounds:?}");
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[then("the start and stop sounds play")]
+fn start_and_stop_sounds(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.wait_since_mark(|e| *e == Event::Sound("start"))?;
+    run.wait_since_mark(|e| *e == Event::Sound("stop"))
+}
+
+#[then("the overlay shows the recording, then processing, then hides, with no command sign")]
+fn hotkey_overlay_without_sign(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.wait_since_mark(|e| *e == Event::Overlay("hidden"))?;
+    std::thread::sleep(SETTLE);
+    let shown = overlay_since_mark(run);
+    if shown.iter().any(|s| s.ends_with(" sign")) {
+        bail!("a command sign was shown: {shown:?}");
+    }
+    let at = |wanted| shown.iter().position(|s| *s == wanted);
+    match (at("recording"), at("recognizing speech"), at("hidden")) {
+        (Some(r), Some(p), Some(h)) if r < p && p < h => Ok(()),
+        _ => bail!("expected recording, processing, hidden in order: {shown:?}"),
+    }
+}
+
+/// The overlay event of a command's sign.
+fn sign_of(command: &str) -> Result<&'static str> {
+    match command {
+        "enter" => Ok("enter sign"),
+        "clear" => Ok("clear sign"),
+        "restart" => Ok("restart sign"),
+        other => bail!("no sign for {other}"),
     }
 }
 

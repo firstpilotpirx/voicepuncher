@@ -11,7 +11,7 @@ use objc2::MainThreadMarker;
 use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSScreen};
 
 use crate::core::application::{AudioLevelSource, LiveTranscriptView, VisualIndicator};
-use crate::core::domain::{level_to_pills, AudioLevel};
+use crate::core::domain::{level_to_pills, AudioLevel, VoiceCommand};
 
 use live_text::LiveTranscriptText;
 use screen_watcher::ScreenWatcher;
@@ -33,6 +33,34 @@ enum OverlayState {
 
 const RECORDING_SIGN: &str = "◉ REC";
 const WAITING_FOR_FOCUS_SIGN: &str = "⌨ FOCUS";
+
+/// How long a command sign stays before the overlay shows again what it showed before.
+const COMMAND_SIGN_MS: i64 = 1_000;
+
+/// A command sign: its icon in the pill's sign place, its name where the level shows.
+type CommandSign = (&'static str, &'static str);
+
+/// The command sign of a voice command with no visible effect of its own; `None` for a
+/// command the overlay already shows (start, stop, cancel).
+fn command_sign(command: VoiceCommand) -> Option<CommandSign> {
+    match command {
+        VoiceCommand::PressEnter => Some(("⏎", "ENTER")),
+        VoiceCommand::ClearAllText => Some(("⌫", "CLEAR")),
+        VoiceCommand::RestartDictation => Some(("↻", "RESTART")),
+        VoiceCommand::StartDictation
+        | VoiceCommand::StopDictation
+        | VoiceCommand::CancelDictation => None,
+    }
+}
+
+/// What the overlay shows once a command sign shown in `state` is over: the recording goes
+/// on, anything else was already over when the command ran.
+fn state_after_sign(state: OverlayState) -> OverlayState {
+    match state {
+        OverlayState::Recording => OverlayState::Recording,
+        _ => OverlayState::Hidden,
+    }
+}
 
 /// The icon of a processing stage; `None` for a state that is not one.
 fn stage_icon(state: OverlayState) -> Option<&'static str> {
@@ -72,6 +100,15 @@ fn dispatch_to_main<F: FnOnce() + Send + 'static>(f: F) {
     let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;
     unsafe {
         dispatch_async_f(main_queue(), ptr, trampoline);
+    }
+}
+
+fn dispatch_to_main_after<F: FnOnce() + Send + 'static>(delay_ms: i64, f: F) {
+    let boxed: Box<Box<dyn FnOnce() + Send>> = Box::new(Box::new(f));
+    let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;
+    unsafe {
+        let when = dispatch_time(DISPATCH_TIME_NOW, delay_ms * NSEC_PER_SEC / 1000);
+        dispatch_after_f(when, main_queue(), ptr, trampoline);
     }
 }
 
@@ -358,6 +395,41 @@ impl VisualIndicator for MacosVisualIndicator {
         self.hide_overlay();
     }
 
+    fn show_command_sign(&self, command: VoiceCommand) {
+        let Some(sign) = command_sign(command) else {
+            return;
+        };
+        let generation = self.pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let pulse_gen = Arc::clone(&self.pulse_generation);
+        let windows = Arc::clone(&self.windows);
+        let last_topology = Arc::clone(&self.last_topology);
+        let level_register = Arc::clone(&self.level_register);
+        // The state stays what the command left, so a screen change redraws that state.
+        let after = state_after_sign(*self.state.lock().unwrap());
+        log::debug!("overlay: command sign {} requested", sign.1);
+
+        dispatch_to_main(move || {
+            let Some(mtm) = MainThreadMarker::new() else {
+                return;
+            };
+            do_rebuild(mtm, &windows, &last_topology);
+            apply_command_sign(&windows.lock().unwrap(), sign);
+            dispatch_to_main_after(COMMAND_SIGN_MS, move || {
+                // WHY: a later signal took over the overlay; its own drawing stands
+                if pulse_gen.load(Ordering::SeqCst) != generation {
+                    return;
+                }
+                let ws_vec = windows.lock().unwrap().clone();
+                match after {
+                    OverlayState::Recording => {
+                        apply_recording_state(ws_vec, generation, pulse_gen, level_register)
+                    }
+                    _ => apply_hidden_state(ws_vec),
+                }
+            });
+        });
+    }
+
     fn live_transcript_view(&self) -> Box<dyn LiveTranscriptView> {
         Box::new(MacosLiveTranscriptView {
             state: Arc::clone(&self.state),
@@ -614,6 +686,32 @@ unsafe extern "C" fn heartbeat_trampoline(ptr: *mut std::ffi::c_void) {
     schedule_heartbeat(windows, generation, pulse_gen);
 }
 
+/// The command sign in place of the state's sign and level, steady, with no spinner; a live
+/// transcript under the pill stays as it is.
+fn apply_command_sign(windows: &[Arc<WindowSet>], (icon, name): CommandSign) {
+    use objc2_app_kit::{NSColor, NSWindowCollectionBehavior};
+    use objc2_foundation::NSString;
+
+    let (icon, name) = (NSString::from_str(icon), NSString::from_str(name));
+    for ws in windows {
+        ws.label.setStringValue(&icon);
+        ws.label.setTextColor(Some(&NSColor::labelColor()));
+        ws.label.setAlphaValue(1.0);
+        ws.label.setHidden(false);
+        ws.eq_label.setStringValue(&name);
+        ws.eq_label.setHidden(false);
+        ws.spinner.setHidden(true);
+        unsafe { ws.spinner.stopAnimation(None) };
+        ws.window.orderFrontRegardless();
+        ws.window.setCollectionBehavior(
+            NSWindowCollectionBehavior::CanJoinAllSpaces
+                | NSWindowCollectionBehavior::Stationary
+                | NSWindowCollectionBehavior::IgnoresCycle
+                | NSWindowCollectionBehavior::FullScreenAuxiliary,
+        );
+    }
+}
+
 fn apply_hidden_state(windows: Vec<Arc<WindowSet>>) {
     for ws in &windows {
         ws.eq_label.setHidden(true);
@@ -667,6 +765,64 @@ unsafe extern "C" fn equalizer_trampoline(ptr: *mut std::ffi::c_void) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn should_name_each_command_without_a_visible_effect_in_its_sign() {
+        // Given
+        let signed = [
+            VoiceCommand::PressEnter,
+            VoiceCommand::ClearAllText,
+            VoiceCommand::RestartDictation,
+        ];
+        // When
+        let signs: Vec<_> = signed.into_iter().map(command_sign).collect();
+        // Then
+        assert_eq!(
+            signs,
+            [
+                Some(("⏎", "ENTER")),
+                Some(("⌫", "CLEAR")),
+                Some(("↻", "RESTART"))
+            ]
+        );
+    }
+
+    #[test]
+    fn should_give_no_sign_to_commands_the_overlay_already_shows() {
+        // Given
+        let shown = [
+            VoiceCommand::StartDictation,
+            VoiceCommand::StopDictation,
+            VoiceCommand::CancelDictation,
+        ];
+        // When / Then
+        for command in shown {
+            assert_eq!(command_sign(command), None, "{command:?}");
+        }
+    }
+
+    #[test]
+    fn should_return_to_the_recording_after_a_sign_shown_during_it() {
+        assert_eq!(
+            state_after_sign(OverlayState::Recording),
+            OverlayState::Recording
+        );
+    }
+
+    #[test]
+    fn should_hide_after_a_sign_shown_outside_a_recording() {
+        // Given
+        let others = [
+            OverlayState::Hidden,
+            OverlayState::RecognizingSpeech,
+            OverlayState::RefiningText,
+            OverlayState::WaitingForFocus,
+        ];
+        // When / Then
+        for state in others {
+            assert_eq!(state_after_sign(state), OverlayState::Hidden, "{state:?}");
+        }
+    }
 
     #[test]
     fn should_give_each_processing_stage_an_icon_of_its_own() {

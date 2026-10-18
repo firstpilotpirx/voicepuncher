@@ -8,7 +8,9 @@ pub struct MacosSoundPlayer {
     cancel_path: Option<PathBuf>,
     listening_on_path: Option<PathBuf>,
     listening_off_path: Option<PathBuf>,
-    command_path: Option<PathBuf>,
+    enter_path: Option<PathBuf>,
+    clear_path: Option<PathBuf>,
+    restart_path: Option<PathBuf>,
 }
 
 impl MacosSoundPlayer {
@@ -19,20 +21,33 @@ impl MacosSoundPlayer {
             cancel_path: Self::resolve(cancel_sound),
             listening_on_path: None,
             listening_off_path: None,
-            command_path: None,
+            enter_path: None,
+            clear_path: None,
+            restart_path: None,
         }
     }
 
-    /// Adds the sounds of voice control: listening on, listening off, command carried out.
+    /// Adds the sounds of voice control listening: on, off.
     pub fn with_voice_control_sounds(
         mut self,
         listening_on_sound: &str,
         listening_off_sound: &str,
-        command_sound: &str,
     ) -> Self {
         self.listening_on_path = Self::resolve(listening_on_sound);
         self.listening_off_path = Self::resolve(listening_off_sound);
-        self.command_path = Self::resolve(command_sound);
+        self
+    }
+
+    /// Adds the sounds of the confirmed voice commands: enter, clear, restart.
+    pub fn with_command_sounds(
+        mut self,
+        enter_sound: &str,
+        clear_sound: &str,
+        restart_sound: &str,
+    ) -> Self {
+        self.enter_path = Self::resolve(enter_sound);
+        self.clear_path = Self::resolve(clear_sound);
+        self.restart_path = Self::resolve(restart_sound);
         self
     }
 
@@ -103,8 +118,16 @@ impl SoundPlayer for MacosSoundPlayer {
         Self::play_if_set(&self.listening_off_path);
     }
 
-    fn play_command(&self) {
-        Self::play_if_set(&self.command_path);
+    fn play_enter(&self) {
+        Self::play_if_set(&self.enter_path);
+    }
+
+    fn play_clear(&self) {
+        Self::play_if_set(&self.clear_path);
+    }
+
+    fn play_restart(&self) {
+        Self::play_if_set(&self.restart_path);
     }
 }
 

@@ -460,5 +460,4 @@ impl SoundPlayer for Silent {
     fn play_cancel(&self) {}
     fn play_listening_on(&self) {}
     fn play_listening_off(&self) {}
-    fn play_command(&self) {}
 }

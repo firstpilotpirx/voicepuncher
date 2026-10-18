@@ -152,7 +152,11 @@ fn main() {
     .with_voice_control_sounds(
         &config.sounds.listening_on_sound,
         &config.sounds.listening_off_sound,
-        &config.sounds.command_sound,
+    )
+    .with_command_sounds(
+        &config.sounds.enter_sound,
+        &config.sounds.clear_sound,
+        &config.sounds.restart_sound,
     );
 
     let mtm = MainThreadMarker::new().expect("main must run on the main thread");

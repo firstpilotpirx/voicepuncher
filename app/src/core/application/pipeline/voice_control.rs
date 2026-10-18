@@ -6,7 +6,7 @@ use crate::core::domain::{
     VoiceCommandRecognizer,
 };
 
-use super::Pipeline;
+use super::{Pipeline, StartCue};
 
 pub(super) struct VoiceControl {
     spotter: Box<dyn CommandSpotter>,
@@ -153,7 +153,7 @@ impl Pipeline {
         }
         log::info!("voice control: \"{phrase}\"");
         match spoken.command {
-            VoiceCommand::StartDictation => self.start_dictation_after(spoken),
+            VoiceCommand::StartDictation => self.start_dictation_after(spoken, StartCue::Start),
             VoiceCommand::StopDictation => {
                 self.command_words.closing = spoken.placement != CommandPlacement::Alone;
                 self.recorder.truncate_at(spoken.started_at);
@@ -164,37 +164,59 @@ impl Pipeline {
                 self.command_words.closing = spoken.placement != CommandPlacement::Alone;
                 self.recorder.truncate_at(spoken.started_at);
                 self.stop_recording()?;
-                self.press_keys(|keys| keys.press_enter())
+                self.press_keys(VoiceCommand::PressEnter)
             }
             VoiceCommand::CancelDictation => self.cancel_recording(),
             VoiceCommand::RestartDictation => {
-                self.cancel_recording()?;
-                self.start_dictation_after(spoken)
+                // One restart cue instead of the cancel and start cues, so it is heard apart.
+                self.discard_recording()?;
+                self.start_dictation_after(spoken, StartCue::Restart)?;
+                self.confirm(VoiceCommand::RestartDictation);
+                Ok(())
             }
-            VoiceCommand::PressEnter => self.press_keys(|keys| keys.press_enter()),
-            VoiceCommand::ClearAllText => self.press_keys(|keys| keys.clear_all_text()),
+            VoiceCommand::PressEnter | VoiceCommand::ClearAllText => {
+                self.press_keys(spoken.command)
+            }
         }
     }
 
     /// Starts a dictation that begins where `spoken` ended, so the speech said right after
     /// the command, before it was recognized, is part of it.
-    fn start_dictation_after(&mut self, spoken: SpokenCommand) -> anyhow::Result<()> {
-        self.start_recording_from(Some(spoken.ends_at))?;
+    fn start_dictation_after(
+        &mut self,
+        spoken: SpokenCommand,
+        cue: StartCue,
+    ) -> anyhow::Result<()> {
+        self.start_recording_from(Some(spoken.ends_at), cue)?;
         // Only an end the voice activity detector placed lies safely past the last word.
         self.command_words.opening =
             (spoken.placement != CommandPlacement::Alone).then_some(spoken.command);
         Ok(())
     }
 
-    fn press_keys(
-        &mut self,
-        press: impl FnOnce(&mut dyn KeyPresser) -> anyhow::Result<()>,
-    ) -> anyhow::Result<()> {
-        match press(self.voice().key_presser.as_mut()) {
-            Ok(()) => self.sound_player.play_command(),
+    /// Presses the keys of "press enter" or "clear all text", then confirms the command.
+    fn press_keys(&mut self, command: VoiceCommand) -> anyhow::Result<()> {
+        let keys = self.voice().key_presser.as_mut();
+        let pressed = match command {
+            VoiceCommand::ClearAllText => keys.clear_all_text(),
+            _ => keys.press_enter(),
+        };
+        match pressed {
+            Ok(()) => self.confirm(command),
             Err(e) => log::error!("voice control: key press failed: {e:#}"),
         }
         Ok(())
+    }
+
+    /// The sound and the command sign of a command with no visible effect of its own.
+    fn confirm(&self, command: VoiceCommand) {
+        match command {
+            VoiceCommand::PressEnter => self.sound_player.play_enter(),
+            VoiceCommand::ClearAllText => self.sound_player.play_clear(),
+            VoiceCommand::RestartDictation => self.sound_player.play_restart(),
+            _ => return,
+        }
+        self.visual_indicator.show_command_sign(command);
     }
 
     /// The service went away: listening stays on, a running dictation keeps recording, and
@@ -279,7 +301,9 @@ mod tests {
         sounds.expect_play_cancel().return_const(());
         sounds.expect_play_listening_on().return_const(());
         sounds.expect_play_listening_off().return_const(());
-        sounds.expect_play_command().return_const(());
+        sounds.expect_play_enter().return_const(());
+        sounds.expect_play_clear().return_const(());
+        sounds.expect_play_restart().return_const(());
         sounds
     }
 
@@ -289,6 +313,7 @@ mod tests {
         overlay.expect_show_recognizing_speech().return_const(());
         overlay.expect_show_refining_text().return_const(());
         overlay.expect_hide().return_const(());
+        overlay.expect_show_command_sign().return_const(());
         overlay
             .expect_live_transcript_view()
             .returning(|| Box::new(HiddenLiveTranscript));
@@ -977,7 +1002,7 @@ mod tests {
     }
 
     #[test]
-    fn should_play_the_cancel_sound_then_the_start_sound_on_restart() {
+    fn should_play_only_the_restart_sound_on_restart() {
         // Given
         let played = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut sounds = MockSoundPlayer::new();
@@ -989,6 +1014,10 @@ mod tests {
         sounds
             .expect_play_cancel()
             .returning(move || seen.lock().unwrap().push("cancel"));
+        let seen = std::sync::Arc::clone(&played);
+        sounds
+            .expect_play_restart()
+            .returning(move || seen.lock().unwrap().push("restart"));
         sounds.expect_play_listening_on().return_const(());
         let mut paster = MockTextPaster::new();
         paster.expect_paste().never();
@@ -1006,7 +1035,7 @@ mod tests {
         say(&mut pipeline, "restart dictation");
         // Then
         assert!(pipeline.is_recording());
-        assert_eq!(*played.lock().unwrap(), ["start", "cancel", "start"]);
+        assert_eq!(*played.lock().unwrap(), ["start", "restart"]);
     }
 
     #[test]

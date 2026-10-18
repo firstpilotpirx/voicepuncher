@@ -95,7 +95,8 @@ Feature: voice-control
       And no dictation runs
       When the user says "press enter"
       Then the Return key is pressed in the focused app
-      And the command sound plays
+      And the enter sound plays
+      And the overlay shows the enter sign for about a second, then hides
 
   Rule: "clear all text" erases the focused text
 
@@ -104,7 +105,8 @@ Feature: voice-control
       And no dictation runs
       When the user says "clear all text"
       Then select all and delete are pressed in the focused app
-      And the command sound plays
+      And the clear sound plays
+      And the overlay shows the clear sign for about a second, then hides
 
   Rule: A command counts on its own or in its set places
 
@@ -122,6 +124,7 @@ Feature: voice-control
       Then the sentence is pasted into the focused app
       And the pasted text does not contain "enter"
       And the Return key is pressed after it
+      And the enter sound plays and the overlay shows the enter sign after the paste
 
   Rule: Each state accepts its own commands
 
@@ -179,7 +182,8 @@ Feature: voice-control
       And the user has said a sentence in it
       When the user says "restart"
       Then no text is pasted
-      And the cancel sound plays, then the start sound
+      And the restart sound plays, and neither the cancel sound nor the start sound
+      And the overlay shows the restart sign, then the recording
       And a new dictation starts
 
     Scenario: Only the speech after a restart is pasted
@@ -277,6 +281,39 @@ Feature: voice-control
       And the user has said a sentence in it
       When the user says "stop clear enter"
       Then the sentence is pasted, then select all and delete are pressed, then the Return key is pressed
+
+  Rule: Every confirmed command sounds different
+
+    Scenario: Enter and clear sound different by default
+      Given listening is on
+      And no dictation runs
+      When the user says "enter", and later "clear"
+      Then the two commands play different sounds
+
+  Rule: A confirmation sign gives way to what comes next
+
+    Scenario: Enter start shows the recording right after the enter sign
+      Given listening is on
+      And no dictation runs
+      When the user says "enter start"
+      Then the enter sound plays and the overlay shows the enter sign
+      And the overlay shows the recording as soon as the new dictation starts
+
+    Scenario: Stop clear enter ends on the enter sign
+      Given a dictation runs
+      And the user has said a sentence in it
+      When the user says "stop clear enter"
+      Then the stop sound, the clear sound and the enter sound play in this order
+      And the overlay shows the clear sign, then the enter sign, then hides
+
+  Rule: Push-to-talk keeps its sounds and overlay
+
+    Scenario: A hotkey dictation shows no command sign
+      Given listening is on
+      And no dictation runs
+      When the user records a dictation with the hotkey
+      Then the start and stop sounds play
+      And the overlay shows the recording, then processing, then hides, with no command sign
 
   Rule: The app keeps reaching for the command spotting service while it is away
 

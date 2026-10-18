@@ -26,6 +26,14 @@ pub struct PipelineConfig {
     pub chunking: ChunkingCfg,
 }
 
+/// The cue a recording starts with: the start sound, or none when "restart dictation" plays
+/// its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StartCue {
+    Start,
+    Restart,
+}
+
 #[derive(Debug, Clone, Copy)]
 enum PipelineState {
     Idle,
@@ -170,17 +178,23 @@ impl Pipeline {
     }
 
     fn start_recording(&mut self) -> anyhow::Result<()> {
-        self.start_recording_from(None)
+        self.start_recording_from(None, StartCue::Start)
     }
 
     /// Starts a recording; one started by voice begins at `begins_at`, the end of the
     /// command, with the speech heard since then.
-    fn start_recording_from(&mut self, begins_at: Option<Instant>) -> anyhow::Result<()> {
+    fn start_recording_from(
+        &mut self,
+        begins_at: Option<Instant>,
+        cue: StartCue,
+    ) -> anyhow::Result<()> {
         // With voice control the dictation phrases are listened for before the recording
         // starts, so a "stop dictation" said right away is heard.
         self.follow_dictation(true);
         self.command_words = CommandWords::default();
-        self.sound_player.play_start();
+        if cue == StartCue::Start {
+            self.sound_player.play_start();
+        }
         if let Err(e) = self.recorder.start() {
             self.follow_dictation(false);
             return Err(e);
@@ -283,6 +297,15 @@ impl Pipeline {
     }
 
     fn cancel_recording(&mut self) -> anyhow::Result<()> {
+        self.discard_recording()?;
+        self.sound_player.play_cancel();
+        self.visual_indicator.hide();
+        log::info!("recording cancelled");
+        Ok(())
+    }
+
+    /// Stops the recording and drops it, with no cue: the caller gives its own.
+    fn discard_recording(&mut self) -> anyhow::Result<()> {
         self.follow_dictation(false);
         self.command_words = CommandWords::default();
         if let Some(session) = self.live_session.take() {
@@ -297,10 +320,7 @@ impl Pipeline {
         } else {
             let _ = self.recorder.stop()?;
         }
-        self.sound_player.play_cancel();
-        self.visual_indicator.hide();
         self.state = PipelineState::Idle;
-        log::info!("recording cancelled");
         Ok(())
     }
 

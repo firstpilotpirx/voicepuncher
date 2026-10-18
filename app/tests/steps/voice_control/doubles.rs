@@ -174,14 +174,32 @@ impl SoundPlayer for RecordingSounds {
         record(&self.0, Event::Sound("listening off"));
     }
 
-    fn play_command(&self) {
-        record(&self.0, Event::Sound("command"));
+    fn play_enter(&self) {
+        record(&self.0, Event::Sound("enter"));
+    }
+
+    fn play_clear(&self) {
+        record(&self.0, Event::Sound("clear"));
+    }
+
+    fn play_restart(&self) {
+        record(&self.0, Event::Sound("restart"));
     }
 }
 
 pub struct RecordingOverlay(pub Events);
 
 impl VisualIndicator for RecordingOverlay {
+    fn show_command_sign(&self, command: VoiceCommand) {
+        let sign = match command {
+            VoiceCommand::PressEnter => "enter sign",
+            VoiceCommand::ClearAllText => "clear sign",
+            VoiceCommand::RestartDictation => "restart sign",
+            _ => "other sign",
+        };
+        record(&self.0, Event::Overlay(sign));
+    }
+
     fn show_recording(&self) {
         record(&self.0, Event::Overlay("recording"));
     }
