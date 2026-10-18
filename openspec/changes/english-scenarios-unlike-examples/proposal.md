@@ -22,7 +22,7 @@ None.
 
 ### Modified Capabilities
 
-None: the spec scenarios of `text-refinement` stay as they are; only the test dictations change.
+- `text-refinement`: the requirements "English words spelled in Cyrillic are written in Latin script" and "IT terms split into Cyrillic syllables are restored" state that they hold for dictation unlike the instruction's examples; their scenarios "Two English words in one sentence both come out in Latin script" and "Product names spelled as syllables are restored" name the new dictations. Behavior of the app is unchanged.
 
 ## Scope
 
