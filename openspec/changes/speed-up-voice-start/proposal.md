@@ -55,7 +55,7 @@ None.
 - **Lifecycle stage:** PoC, stays PoC.
 - **In scope:** the time from the end of a voice start's words to its start cue, for every voice start from standby and for "restart"; its measurement and its log.
 - **Acceptance bar:**
-  - On the developer machine, with the services otherwise idle, measured by the new timing log over the user's recorded commands and synthesized speech for each placement: every voice start in scope gives its start cue within **700 ms** of the end of the command's words in at least 9 of 10 starts. The design aims lower and states the floor of each path: a start followed by a pause cannot beat the 0.3 s of silence that ends its utterance plus one confirmation (≈0.17 s) unless the confirmation overlaps that silence.
+  - On the developer machine, with the services otherwise idle, measured by the new timing log over the user's recorded commands and synthesized speech for each placement: every voice start in scope gives its start cue within **700 ms** of the end of the command's words in at least 9 of 10 starts. The user asked for the fastest start possible, so the design still aims at the floor of each path and states it: a start followed by a pause cannot beat the 0.3 s of silence that ends its utterance plus one confirmation (≈0.17 s) unless the confirmation overlaps that silence; a start followed by speech needs the next word heard (≈0.3 s) plus one confirmation.
   - The user's manual run shows the timing line within the bar for "start start" followed at once by speech and for a start said on its own.
   - Nothing gets worse: every voice-control scenario and every test on the user's recordings passes (each command recognized exactly once; no command in ordinary speech, in a command phrase inside a sentence, in short Russian phrases or in "start stop"); the dictation still begins where the command's words end; no accuracy bar is loosened; the design states the extra load its checks put on the speech recognition service; `just full-check` passes.
 - **Out of scope:**
@@ -68,4 +68,4 @@ None.
 
 ## Release
 
-PATCH: a bug fix. Target version **0.14.2** (from 0.14.1), or the next patch above `main` if another change releases first.
+PATCH: a bug fix. Target version **0.15.4** (from 0.15.3), or the next patch above `main` if another change releases first.
