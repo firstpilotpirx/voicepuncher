@@ -25,8 +25,8 @@ const MIXED_KEPT: [&str; 4] = ["сделай", "code review", "pull request", "�
 const FEEDBACK_RU: &str = "дай мне фидбек по этому пулл реквесту";
 const FEEDBACK_EN: [&str; 1] = ["feedback"];
 const FEEDBACK_RU_WORDS: [&str; 2] = ["дай", "этому"];
-const MANUAL_AUTOMATIC_RU: &str = "поставь режим мануал а не автоматик";
-const MANUAL_AUTOMATIC_EN: [&str; 2] = ["manual", "automatic"];
+const TWO_VALUES_RU: &str = "у этого флага всего два значения энейблд и дизейблд";
+const TWO_VALUES_EN: [&str; 2] = ["enabled", "disabled"];
 const MISHEARD_DYNAMIC_RU: &str = "Ну, лучше тогда автоматик, потому что у меня люди в помещении этой же квартиры, тут может ребенок закричать. В этом плане, наверное, автоматик лучше, чем даймэк.";
 const MISHEARD_DYNAMIC_EN: [&str; 1] = ["dynamic"];
 const MISHEARD_DYNAMIC_HEARD: &str = "даймэк";
@@ -37,8 +37,8 @@ const RUSSIFIED_VERBS_KEPT: [&str; 2] = ["деплои", "закомит"];
 const SHELL_SYLLABLES_RU: &str = "поставь о май зш и тему пауэрлевел десять к";
 const SHELL_TERMS: [&str; 2] = ["oh-my-zsh", "powerlevel10k"];
 const SHELL_SENTENCE_RU_WORDS: [&str; 2] = ["поставь", "тему"];
-const PRODUCT_SYLLABLES_RU: &str = "нужно обновить гит хаб экшнс и вс код";
-const PRODUCT_TERMS: [&str; 2] = ["GitHub Actions", "VS Code"];
+const LANGUAGE_SYLLABLES_RU: &str = "он переписал весь проект с джава скрипт на тайп скрипт";
+const LANGUAGE_TERMS: [&str; 2] = ["JavaScript", "TypeScript"];
 const DISAGREEING_VERBS_RU: &str = "мама сказал что она купил новый телефон";
 const AGREEING_WORDS_RU: [&str; 7] = [
     "мама",
@@ -120,10 +120,10 @@ async fn dictate_feedback(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[when("the user dictates in Russian a choice between the manual and the automatic mode that speech recognition writes in Cyrillic")]
-async fn dictate_manual_automatic(world: &mut E2eWorld) -> Result<()> {
+#[when("the user dictates in Russian that a flag has only two values, enabled and disabled, and speech recognition writes both in Cyrillic")]
+async fn dictate_two_values(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, move |world| {
-        refine_with_live_service(world, MANUAL_AUTOMATIC_RU)
+        refine_with_live_service(world, TWO_VALUES_RU)
     })
     .await
 }
@@ -164,10 +164,10 @@ async fn dictate_shell_syllables(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[when("the user dictates in Russian that GitHub Actions and VS Code need updating, and speech recognition writes both as Cyrillic syllables")]
-async fn dictate_product_syllables(world: &mut E2eWorld) -> Result<()> {
+#[when("the user dictates in Russian that someone rewrote a project from JavaScript to TypeScript, and speech recognition writes both as Cyrillic syllables")]
+async fn dictate_language_syllables(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, move |world| {
-        refine_with_live_service(world, PRODUCT_SYLLABLES_RU)
+        refine_with_live_service(world, LANGUAGE_SYLLABLES_RU)
     })
     .await
 }
@@ -180,9 +180,9 @@ fn feedback_in_latin(world: &mut E2eWorld) -> Result<()> {
     expect_contains_all(&world.stdout, &FEEDBACK_RU_WORDS)
 }
 
-#[then("the pasted text has the English words manual and automatic in Latin script")]
-fn manual_automatic_in_latin(world: &mut E2eWorld) -> Result<()> {
-    expect_contains_all(&world.stdout, &MANUAL_AUTOMATIC_EN)
+#[then("the pasted text has the English words enabled and disabled in Latin script")]
+fn two_values_in_latin(world: &mut E2eWorld) -> Result<()> {
+    expect_contains_all(&world.stdout, &TWO_VALUES_EN)
 }
 
 #[then("the pasted text has the English word dynamic in Latin script instead of the misheard word")]
@@ -213,9 +213,9 @@ fn shell_terms_restored(world: &mut E2eWorld) -> Result<()> {
     expect_contains_all(&world.stdout, &SHELL_SENTENCE_RU_WORDS)
 }
 
-#[then("the pasted text has GitHub Actions and VS Code in Latin script")]
-fn product_terms_restored(world: &mut E2eWorld) -> Result<()> {
-    match PRODUCT_TERMS
+#[then("the pasted text has JavaScript and TypeScript in Latin script")]
+fn language_terms_restored(world: &mut E2eWorld) -> Result<()> {
+    match LANGUAGE_TERMS
         .iter()
         .find(|term| !world.stdout.contains(*term))
     {

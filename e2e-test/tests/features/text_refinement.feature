@@ -153,8 +153,8 @@ Feature: text-refinement
     @refinement
     Scenario: Two English words in one sentence both come out in Latin script
       Given the local text refinement service runs the default model with the default instruction
-      When the user dictates in Russian a choice between the manual and the automatic mode that speech recognition writes in Cyrillic
-      Then the pasted text has the English words manual and automatic in Latin script
+      When the user dictates in Russian that a flag has only two values, enabled and disabled, and speech recognition writes both in Cyrillic
+      Then the pasted text has the English words enabled and disabled in Latin script
 
     @refinement
     Scenario: Misheard English word is restored from context
@@ -185,8 +185,8 @@ Feature: text-refinement
     @refinement
     Scenario: Product names spelled as syllables are restored
       Given the local text refinement service runs the default model with the default instruction
-      When the user dictates in Russian that GitHub Actions and VS Code need updating, and speech recognition writes both as Cyrillic syllables
-      Then the pasted text has GitHub Actions and VS Code in Latin script
+      When the user dictates in Russian that someone rewrote a project from JavaScript to TypeScript, and speech recognition writes both as Cyrillic syllables
+      Then the pasted text has JavaScript and TypeScript in Latin script
 
   Rule: Refinement quality can be measured
 
