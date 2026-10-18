@@ -47,3 +47,7 @@ PATCH (bug fix): 0.15.3 → 0.15.4.
 
 - Default `[transcription] prompt` (`app/src/config/transcription.rs`), README and the setting's doc comment.
 - `speech_recognition.feature` E2E scenarios, `e2e-test/refinement/eval_set.jsonl`.
+
+## Absorbed by
+
+`english-words-in-latin`. The default speech recognition prompt fixed the reported sentence but `just check` showed it pushes English dictation toward Russian (the user's recorded "Coffee machine on the third floor is broken" came out as "Кофе машине на 3rd floor", a long English recording got invented Russian text), and no prompt served both languages; the user chose to drop it (2026-10-18). Misheard terms are now fixed by refinement in `english-words-in-latin` (an explicit IT-terms rule; Qwen3-4B restored every phonetic variant measured), which also takes the evaluation case for this sentence; README explains how to set a prompt for mostly Russian dictation.
