@@ -2,7 +2,7 @@
 
 ## Context
 
-Every failure in scope ends today in a log line and `VisualIndicator::hide()`. A refinement fallback (inside `refine_or_raw`) and a lost live chunk (in the live worker) never even reach the pipeline. The overlay is one 174 × 55 pt non-activating window per screen with one text label; it fits about ten characters (`◉ REC`).
+Every failure in scope ends today in a log line and `VisualIndicator::hide()`. A refinement fallback (inside `refine_or_raw`) and a lost live chunk (in the live worker) never even reach the pipeline. Per screen the overlay is a small pill (sign and level, or a command sign for about a second) and a text window under it for the live transcript.
 
 ## Goals / Non-Goals
 
@@ -12,7 +12,7 @@ Every failure in scope ends today in a log line and `VisualIndicator::hide()`. A
 
 ## Decisions
 
-**D1 — The overlay shows the notice.** `VisualIndicator` gains `show_failure_notice(&FailureNotice)`. The macOS overlay shows a warning sign and the notice's message in a wider window (sized to the text, centred where the overlay sits), then returns to its normal size. It stays non-activating, so focus never moves. Rejected: a macOS notification (own permission, often muted, far from where the user looks).
+**D1 — The overlay shows the notice.** `VisualIndicator` gains `show_failure_notice(&FailureNotice)`. The macOS overlay puts a warning sign and the failing part's short name in the pill, where command signs go, and the message in the text window under the pill that the live transcript uses (480 pt, two lines). Both windows stay non-activating, so focus never moves. Rejected: a macOS notification (own permission, often muted, far from where the user looks); widening the pill (the text window already fits a sentence).
 
 **D2 — `FailureNotice` is a domain type.** `core/domain/failure_notice.rs` holds what was lost (`DictationLost`, `PartOfDictationLost`, `PastedUnrefined`, `NotPasted`, `RecordingNotStarted`, `CommandFailed(VoiceCommand)`, `VoiceCommandsUnavailable`) and the failing part (`SpeechRecognition`, `TextRefinement`, `CommandSpotting`, `Microphone`, `Accessibility`). `message()` renders the short English text, in the overlay's style, with the remedy when one is known: "start local services" for a service, "check Accessibility permission" for accessibility. The text is a pure function, so unit tests pin every message.
 
@@ -22,7 +22,7 @@ Every failure in scope ends today in a log line and `VisualIndicator::hide()`. A
 
 **D5 — The notice replaces the cycle's closing `hide()`.** A cycle keeps at most one pending notice; when several apply, the gravest wins (lost > not pasted > part lost > unrefined), and the log keeps them all. Where the cycle hides the overlay today it shows the pending notice instead. Failures outside a cycle (a voice command, listening that cannot start) show their notice at once.
 
-**D6 — The overlay times the notice.** The adapter hides the notice 4 s after it is shown, with the same generation counter the pulse and heartbeat use: any later show (recording, a stage, another notice) bumps the generation, so a stale timer never hides it. Showing the same notice again restarts the 4 s, so a repeated failure keeps one notice on screen.
+**D6 — The overlay times the notice.** The adapter hides the notice 4 s after it is shown, the way it ends a command sign: the timer checks the pulse generation, so any later show (recording, a stage, a command sign, another notice) bumps it and a stale timer never hides what replaced the notice. Showing the same notice again restarts the 4 s, so a repeated failure keeps one notice on screen.
 
 ## Test levels
 

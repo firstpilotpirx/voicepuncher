@@ -24,12 +24,12 @@
 
 ## 4. The overlay shows the notice
 
-- [ ] 4.1 Red: `app/tests/visualfeedback_macos_it.rs` tests that a notice shows its message in a wider non-activating window, hides after its time, restarts its time when shown again, and is not hidden by a stale timer after a recording starts; run, see them fail
-- [ ] 4.2 Green: notice state, window sizing and the generation-keyed hide timer in `app/src/adapters/secondary/visualfeedback/macos/`
+- [ ] 4.1 Red: `app/tests/visualfeedback_macos_it.rs` tests that a notice shows its sign in the pill and its message in the text window under it, without activating, hides after its time, restarts its time when shown again, and is not hidden by a stale timer after a recording starts; run, see them fail
+- [ ] 4.2 Green: notice sign, message in the text window under the pill, and the generation-keyed hide timer in `app/src/adapters/secondary/visualfeedback/macos/`
 - [ ] 4.3 `just test` and commit
 
 ## 5. Version and manual checks
 
-- [ ] 5.1 Bump `version` in `app/Cargo.toml` to 0.16.0
+- [ ] 5.1 Bump `version` in `app/Cargo.toml` to 0.19.0
 - [ ] 5.2 `just check` once and commit
 - [ ] 5.3 Manual run by the user: with each local service stopped in turn, a hotkey and a voice dictation show a readable notice naming it; the focused app keeps focus; the next dictation starts while a notice is shown

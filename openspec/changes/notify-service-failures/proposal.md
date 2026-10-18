@@ -43,7 +43,7 @@ None: the existing requirements that drop a dictation, log a failed command or f
 
 ## Release
 
-MINOR (new capability): 0.15.3 → 0.16.0.
+MINOR (new capability): 0.18.2 → 0.19.0.
 
 ## Impact
 
