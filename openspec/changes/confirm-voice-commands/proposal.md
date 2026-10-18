@@ -6,11 +6,11 @@ With voice control the user runs a whole set of commands hands-free, and for som
 
 ## What Changes
 
-- After a voice command is carried out, the overlay briefly shows which command ran, so the user can see it without looking away from the app they dictate into.
-- Every command plays its own sound, so commands can be told apart by ear; "press enter" and "clear all text" no longer share one sound.
-- A restarted dictation is shown and sounds different from a fresh start, so the user knows the earlier speech was dropped.
-- Decide which commands need the confirmation most. Commands with no visible effect of their own ("press enter", "clear all text", a restart) need it first; "start dictation", "stop dictation" and "cancel dictation" already change the overlay and play their sound, and keep doing so.
-- Open question for explore: there is no "restart" command today. Settle whether to add one (discard the running dictation and start a new one in one phrase) or which existing command sequence the user meant.
+- After "press enter", "clear all text" or "restart dictation" is carried out, the overlay shows a sign naming that command for about a second ("⏎ ENTER", "⌫ CLEAR", "↻ RESTART"), so the user can see it without looking away from the app they dictate into. The sign gives way at once to what comes next in a chain.
+- Each of the three commands plays its own sound, so commands can be told apart by ear; "press enter" and "clear all text" no longer share one sound.
+- A restarted dictation plays one restart sound instead of the cancel sound followed by the start sound, and shows its sign before the recording, so the user knows the earlier speech was dropped.
+- The three command sounds can be changed in the config file, like the other sounds; the setup wizard does not ask for them.
+- "start dictation", "stop dictation" and "cancel dictation" already change the overlay and play their sound, and keep doing so unchanged. ("restart dictation" exists since 0.10.0, so the open question about it is settled.)
 
 ## Capabilities
 
@@ -20,13 +20,13 @@ None.
 
 ### Modified Capabilities
 
-- `voice-control`: every carried-out command is confirmed on screen and by its own sound; possibly a new restart command.
+- `voice-control`: "press enter", "clear all text" and "restart dictation" are confirmed on screen and by a sound of their own.
 
 ## Scope
 
 - Current stage: PoC. Target stage: PoC.
-- In scope: on-screen and sound confirmation of the voice commands, a restart of a dictation, and the choice of which commands get which confirmation.
-- Acceptance bar: within a moment of each voice command the overlay names the command that ran and its own sound plays; a restart is visibly and audibly different from a start; a dictation that is not restarted looks and sounds as today.
+- In scope: on-screen and sound confirmation of "press enter", "clear all text" and "restart dictation".
+- Acceptance bar: within a moment of "press enter", "clear all text" or "restart dictation" the overlay names the command that ran and its own sound plays; a restart is visibly and audibly different from a start; a dictation that is not restarted looks and sounds as today.
 
 ## Out of scope
 
@@ -36,12 +36,12 @@ None.
 
 ## Release
 
-MINOR (new behavior), next minor version after the current one in `app/Cargo.toml` (0.9.0 → 0.10.0 at the time of writing).
+MINOR (new behavior): 0.16.0, the next minor version after 0.15.3.
 
 ## Impact
 
 - The visual indicator gains a command confirmation signal; the overlay adapter draws it.
 - The sound player gains a sound per command.
-- The voice control step that carries out commands, and possibly the command spotting phrases for a restart command.
+- The voice control step that carries out commands; the config gains three command sounds.
 - `docs/ubiquitous-language.md`: `VisualIndicator` lists more than three signals.
 - Manual run by the user (overlay, sounds).
