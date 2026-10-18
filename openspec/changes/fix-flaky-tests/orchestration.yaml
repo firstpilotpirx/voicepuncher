@@ -1,0 +1,5 @@
+depends_on:
+  - change: show-spotting-away
+    why: modifies capability voice-control
+  - change: speed-up-voice-start
+    why: modifies capability voice-control
