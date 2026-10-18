@@ -10,9 +10,9 @@
 
 ## 2. Default instruction: English words in Latin script
 
-- [ ] 2.1 Red: unit test in `app/src/config/refinement.rs` that the default instruction carries the English-words rule, limits "exactly as dictated" to English words in Latin script, and the examples include the manual/automatic example
-- [ ] 2.2 Green: rule, reworded clause and fifth example in `app/src/config/refinement.rs`
-- [ ] 2.3 Red: `@refinement` scenarios for the new requirement (feedback, manual and automatic, даймэк → dynamic, loanwords, Russified verbs) and "English word fixes improve on the raw transcript" in `e2e-test/tests/features/text_refinement.feature`, steps in `e2e-test/tests/steps/text_refinement/normalization.rs` and `evaluation.rs`
+- [ ] 2.1 Red: unit test in `app/src/config/refinement.rs` that the default instruction carries the misheard IT terms rule and the English-words rule, limits "exactly as dictated" to English words in Latin script, and the examples include the manual/automatic and the two IT-term examples
+- [ ] 2.2 Green: both rules, reworded clause and three examples in `app/src/config/refinement.rs`; the misheard-term inputs of `research/misheard-terms.md` as `terms` cases in `e2e-test/refinement/eval_set.jsonl`
+- [ ] 2.3 Red: `@refinement` scenarios for the new requirement (feedback, manual and automatic, даймэк → dynamic, loanwords, Russified verbs, oh-my-zsh and Powerlevel10k, GitHub Actions and VS Code) and "English word fixes improve on the raw transcript" in `e2e-test/tests/features/text_refinement.feature`, steps in `e2e-test/tests/steps/text_refinement/normalization.rs` and `evaluation.rs`
 - [ ] 2.4 `just test`; commit
 
 ## 3. Default model: Qwen3-4B-Instruct-2507

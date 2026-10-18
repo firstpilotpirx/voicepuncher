@@ -9,6 +9,7 @@ Refinement already writes technical terms and product names in Latin script (д�
 ## What Changes
 
 - Refinement writes an English word that speech recognition spelled in Cyrillic in its English Latin spelling (автоматик → automatic, фидбек → feedback, мануал → manual), and restores one that was misheard into a sound-alike non-word when the context makes it clear (даймэк → dynamic).
+- Refinement restores an English IT term that speech recognition split into Cyrillic syllables or sound-alike Russian words (о май зэ эс эйч → oh-my-zsh, пауэрлевел десять к → Powerlevel10k, вс код → VS Code). The instruction says outright that the input is Russian dictation by a software developer with recognition errors, that English terms in it come out as misspelled Russian, and that they almost always come from IT (programming, DevOps). The user moved this rule here from `recognize-english-terms` on 2026-10-18; measurements are in `research/misheard-terms.md`.
 - Refinement keeps in Cyrillic every common Russian loanword (компьютер, менеджер, интернет, релиз, файл) and every Russified word with a Russian ending or suffix (деплоим, закомитить, пушнул).
 - The default refinement model changes from Qwen2.5-1.5B-Instruct (1.0 GB) to Qwen3-4B-Instruct-2507 Q4_K_M (2.5 GB, about 0.8 s on a 180-character phrase). The user chose it over gemma-3-12b-it on 2026-10-18: gemma fixes the user's whole phrase but takes 1.7–2.6 s; Qwen3-4B restores «даймэк» → «dynamic» but leaves «автоматик» in that phrase.
 - The refinement evaluation gains a category for English words in Cyrillic, with loanword controls, built from the research cases.
@@ -21,20 +22,20 @@ None.
 
 ### Modified Capabilities
 
-- `text-refinement`: a requirement that English words written in Cyrillic come out in Latin script while Russian loanwords stay Cyrillic; the evaluation reports the new category; the default model changes.
+- `text-refinement`: a requirement that English words written in Cyrillic come out in Latin script while Russian loanwords stay Cyrillic; a requirement that IT terms split into Cyrillic syllables are restored; the evaluation reports the new category; the default model changes.
 
 ## Scope
 
 - Current stage: PoC. Target stage: PoC.
 - In scope: Russian dictation with English words that speech recognition spelled in Cyrillic or misheard into sound-alikes; the default refinement model and instruction; the refinement evaluation set.
-- Acceptance bar: at least 8 of the 10 research cases pass, with all three loanword controls; in the user's dictation above, «даймэк» comes out as «dynamic» («автоматик» may stay, a known limit of the chosen model); no category of the refinement evaluation scores lower than with the current model; the refinement of a 180-character phrase takes at most 1.5 s.
+- Acceptance bar: «о май зэ эс эйч», «пауэрлевел десять к» and «вс код» come out as oh-my-zsh, Powerlevel10k and VS Code; at least 8 of the 10 research cases pass, with all three loanword controls; in the user's dictation above, «даймэк» comes out as «dynamic» («автоматик» may stay, a known limit of the chosen model); no category of the refinement evaluation scores lower than with the current model; the refinement of a 180-character phrase takes at most 1.5 s.
 
 ## Out of scope
 
 - Changing speech recognition (model, prompt, decoding): the research showed a recognition prompt does not change how accented English words are spelled.
 - A user-editable vocabulary or term list.
 - Languages other than Russian and English.
-- Technical terms misheard into several Russian words (oh-my-zsh, Powerlevel10k): that is the filed change `recognize-english-terms`; the two changes share the refinement instruction and evaluation set, so whichever lands second merges its rule into the other's.
+- Speech recognition changes for misheard terms: `recognize-english-terms` adds a default recognition prompt. A transcript garbled beyond its sound ("Ох, мой, за ТСАж") is not restored by refinement.
 
 ## Release
 

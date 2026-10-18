@@ -30,6 +30,19 @@ The system SHALL, with the default model and instruction, have the text refineme
 - **WHEN** the user dictates in Russian a sentence with the verbs «деплоим» and «закомитим», English stems with Russian endings
 - **THEN** the pasted text has those verbs in Cyrillic
 
+### Requirement: IT terms split into Cyrillic syllables are restored
+The system SHALL, with the default model and instruction, have the text refinement service replace a run of Cyrillic syllables or sound-alike Russian words that sounds like a known English IT term and fits the topic of the sentence with that term in its usual Latin spelling, and keep ordinary Russian words that make sense as they are.
+
+#### Scenario: Shell framework and theme spelled as syllables are restored
+- **GIVEN** the local text refinement service runs the default model with the default instruction
+- **WHEN** the user dictates in Russian that they installed oh-my-zsh and the Powerlevel10k theme, and speech recognition writes «о май зш» and «пауэрлевел десять к»
+- **THEN** the pasted text has «oh-my-zsh» and «Powerlevel10k» in Latin script, ignoring letter case, and keeps the rest in Russian
+
+#### Scenario: Product names spelled as syllables are restored
+- **GIVEN** the local text refinement service runs the default model with the default instruction
+- **WHEN** the user dictates in Russian that GitHub Actions and VS Code need updating, and speech recognition writes «гит хаб экшнс» and «вс код»
+- **THEN** the pasted text has «GitHub Actions» and «VS Code» in Latin script
+
 ## MODIFIED Requirements
 
 ### Requirement: Refinement quality can be measured
