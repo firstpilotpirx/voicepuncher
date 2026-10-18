@@ -8,8 +8,9 @@ When something the user relies on fails, the app stays silent. A voice command i
 
 - When an action the user started cannot be completed because of a failure, the app tells the user, right away and on screen, that it failed and what failed: which local service is unreachable or not answering (speech recognition, text refinement, command spotting), or which permission or device is missing (microphone, accessibility, input monitoring).
 - The notice names the failing part in plain words and, when there is a known remedy, says it (for example, start the local services).
-- The notice appears for a dictation started by the hotkey and one started by voice, for a voice command that cannot be carried out, and when voice control stops listening.
+- The notice appears for a dictation started by the hotkey and one started by voice, for a voice command that cannot be carried out, and when voice control cannot start listening.
 - A dictation whose transcript cannot be produced is no longer dropped silently: the user is told the dictation was lost and why.
+- A long dictation that loses one of its chunks is pasted without it (as today), and the user is told part of the dictation was lost.
 - When text refinement fails and the raw transcript is pasted instead (as today), the user is told the text was pasted without refinement.
 - The notice goes away on its own, does not steal focus and does not block the next dictation.
 - The same failure repeated in a row does not flood the screen with notices.
@@ -23,13 +24,13 @@ When something the user relies on fails, the app stays silent. A voice command i
 
 ### Modified Capabilities
 
-- `push-to-talk`, `voice-control`, `speech-recognition`, `text-refinement`: the requirements that today drop a dictation, ignore a command or fall back silently now also notify the user.
+None: the existing requirements that drop a dictation, log a failed command or fall back to the raw transcript keep their behavior; `failure-notices` adds the notice on top of them.
 
 ## Scope
 
 - Current stage: PoC. Target stage: PoC.
 - In scope: failures of the speech recognition, text refinement and command spotting services, a missing microphone or TCC permission, and a failed paste, during push-to-talk and voice control.
-- Acceptance bar: with the speech recognition service stopped, a dictation started by the hotkey or by voice ends with an on-screen notice that names speech recognition as the cause within 2 s of the stop, instead of nothing; with the command spotting service stopped, starting voice control shows a notice naming command spotting; with the text refinement service stopped, the raw transcript is pasted and a notice says refinement was skipped; no failure in scope leaves the user with no on-screen sign.
+- Acceptance bar: with the speech recognition service stopped, a dictation started by the hotkey or by voice ends with an on-screen notice that names speech recognition as the cause within 2 s of the stop, instead of nothing; with the command spotting service stopped, starting the app with voice control shows a notice naming command spotting; with the text refinement service stopped, the raw transcript is pasted and a notice says refinement was skipped; no failure in scope leaves the user with no on-screen sign.
 
 ## Out of scope
 
@@ -38,10 +39,11 @@ When something the user relies on fails, the app stays silent. A voice command i
 - macOS Notification Center integration beyond what design picks as the notice surface.
 - Failures in file transcription mode (it already reports errors in the terminal).
 - Changing the startup checks; they already fail fast in the terminal.
+- The command spotting service going away while voice control runs: `show-spotting-away` shows that outage.
 
 ## Release
 
-MINOR (new capability), next minor version after the current one in `app/Cargo.toml` (0.10.1 → 0.11.0 at the time of writing).
+MINOR (new capability): 0.15.3 → 0.16.0.
 
 ## Impact
 
