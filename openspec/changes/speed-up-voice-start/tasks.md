@@ -51,6 +51,6 @@
 
 ## 7. Release
 
-- [ ] 7.1 Bump `version` in `app/Cargo.toml` to 0.15.4
+- [ ] 7.1 Bump `version` in `app/Cargo.toml` to 0.18.1
 - [ ] 7.2 `just check`, commit
 - [ ] 7.3 Manual checks by the user: "start start" followed at once by speech, and "start" said alone, each shows the timing line within 0.7 s and the start sound and overlay at once; "restart" after a long dictation

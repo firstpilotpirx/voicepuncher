@@ -68,4 +68,4 @@ None.
 
 ## Release
 
-PATCH: a bug fix. Target version **0.15.4** (from 0.15.3), or the next patch above `main` if another change releases first.
+PATCH: a bug fix. Target version **0.18.1** (from 0.18.0), or the next patch above `main` if another change releases first.
