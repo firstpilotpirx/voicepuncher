@@ -18,7 +18,8 @@ use voicepuncher::core::application::{
     Transcriber, VisualIndicator,
 };
 use voicepuncher::core::domain::{
-    AudioBuffer16k, CleanedText, FocusedElement, PttSignal, RawTranscript, RecordingMode,
+    AudioBuffer16k, CleanedText, FailureNotice, FocusedElement, PttSignal, RawTranscript,
+    RecordingMode,
 };
 
 use crate::IntegrationWorld;
@@ -40,6 +41,7 @@ enum Event {
     RecordingStarted,
     WaitingShown,
     Hidden,
+    FailureNotice(FailureNotice),
     Pasted(String),
     LeftInClipboard(String),
 }
@@ -488,6 +490,9 @@ impl VisualIndicator for RecordingIndicator {
     fn hide(&self) {
         std::thread::sleep(PIPELINE_LAG);
         self.0.lock().unwrap().push(Event::Hidden);
+    }
+    fn show_failure_notice(&self, notice: &FailureNotice) {
+        self.0.lock().unwrap().push(Event::FailureNotice(*notice));
     }
 }
 

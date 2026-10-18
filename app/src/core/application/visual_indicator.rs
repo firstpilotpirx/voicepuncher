@@ -1,5 +1,5 @@
 use crate::core::application::live_transcript_view::{HiddenLiveTranscript, LiveTranscriptView};
-use crate::core::domain::VoiceCommand;
+use crate::core::domain::{FailureNotice, VoiceCommand};
 
 /// The overlay: what the app is doing with a dictation, from the recording to the paste.
 #[cfg_attr(test, mockall::automock)]
@@ -11,6 +11,8 @@ pub trait VisualIndicator: Send {
     fn show_refining_text(&self);
     fn show_waiting_for_focus(&self);
     fn hide(&self);
+    /// Failure notice: an action the user started failed; shown in place of hiding the overlay.
+    fn show_failure_notice(&self, notice: &FailureNotice);
     /// Command sign: names a voice command with no visible effect of its own ("press enter",
     /// "clear all text", "restart dictation") for about a second, then the overlay shows again
     /// what it showed before. Any later signal replaces it at once.

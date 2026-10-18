@@ -1,6 +1,6 @@
 [package]
 name = "voicepuncher"
-version = "0.18.2"
+version = "0.19.0"
 edition = "2021"
 rust-version = "1.88"
 
@@ -68,4 +68,8 @@ voicepuncher-e2e-test = { path = "../e2e-test" }
 
 [[test]]
 name = "cucumber_integration"
+harness = false
+
+[[test]]
+name = "visualfeedback_macos_it"
 harness = false

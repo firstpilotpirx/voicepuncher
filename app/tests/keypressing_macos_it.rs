@@ -42,7 +42,7 @@ fn should_press_return_then_select_all_and_delete() {
     }
     // Given
     let keys = watch_keys();
-    let mut presser = MacOsKeyPresser;
+    let mut presser = MacOsKeyPresser::new();
     // When
     presser.press_enter().unwrap();
     presser.clear_all_text().unwrap();

@@ -59,7 +59,7 @@ pub fn refine_with_live_service(world: &mut E2eWorld, transcript: &str) -> Resul
     let mut refiner = live_refiner(world)?;
     let raw = RawTranscript::new(transcript.to_owned())?;
     let pasted = refine_or_raw(&mut refiner, &raw).context("nothing would be pasted")?;
-    world.stdout = pasted.as_str().to_owned();
+    world.stdout = pasted.text.as_str().to_owned();
     Ok(())
 }
 

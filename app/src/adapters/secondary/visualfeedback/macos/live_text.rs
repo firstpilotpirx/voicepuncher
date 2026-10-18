@@ -59,6 +59,12 @@ impl LiveTranscriptText {
         }
     }
 
+    /// Whether the live transcript decides what the text window shows in `state`; a failure
+    /// notice keeps its message there.
+    pub(super) fn draws_text_window(state: OverlayState) -> bool {
+        !matches!(state, OverlayState::FailureNotice(_))
+    }
+
     /// What the text window shows in `state`; `None` hides it.
     pub(super) fn shown(&self, state: OverlayState) -> Option<String> {
         let text = self.0.lock().unwrap();
@@ -70,6 +76,7 @@ impl LiveTranscriptText {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::domain::{FailingPart, FailureNotice};
 
     #[test]
     fn should_keep_a_text_that_fits() {
@@ -111,6 +118,27 @@ mod tests {
             OverlayState::Hidden,
         ] {
             assert_eq!(live.shown(state), None, "{state:?}");
+        }
+    }
+
+    #[test]
+    fn should_leave_the_text_window_to_a_failure_notice() {
+        let notice = FailureNotice::DictationLost(FailingPart::SpeechRecognition);
+        assert!(!LiveTranscriptText::draws_text_window(
+            OverlayState::FailureNotice(notice)
+        ));
+    }
+
+    #[test]
+    fn should_draw_the_text_window_in_every_other_state() {
+        for state in [
+            OverlayState::Recording,
+            OverlayState::RecognizingSpeech,
+            OverlayState::RefiningText,
+            OverlayState::WaitingForFocus,
+            OverlayState::Hidden,
+        ] {
+            assert!(LiveTranscriptText::draws_text_window(state), "{state:?}");
         }
     }
 

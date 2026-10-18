@@ -82,9 +82,9 @@
 ### VisualIndicator
 - **Type:** Driven Port (trait in `core/application/`)
 - **Definition:** Surfaces the current `Pipeline` state to the user as
-  an on-screen widget — six discrete signals: recording in progress,
+  an on-screen widget — seven discrete signals: recording in progress,
   each `Processing stage` (speech recognition, text refinement), waiting
-  for `Text input focus`, hidden, and the `Command sign`. Abstracts the platform-specific
+  for `Text input focus`, hidden, the `Command sign`, and the `Failure notice`. Abstracts the platform-specific
   always-on-top overlay so `Pipeline` stays platform-agnostic.
 - **Code:** `app/src/core/application/visual_indicator.rs`
 - **Synonyms to AVOID:** "Overlay", "HUD", "StatusBadge", "Toast", "Indicator" (alone — too generic)
@@ -100,6 +100,12 @@
 - **Definition:** The overlay naming a voice command with no visible effect of its own — "⏎ ENTER", "⌫ CLEAR", "↻ RESTART" — for about a second after it was carried out, then showing again what it showed before: hidden in standby, the recording during a dictation. Any later signal (the recording a chain starts, the next command's sign) replaces it at once. "start", "stop" and "cancel dictation" have none: the overlay already shows them.
 - **Code:** `VisualIndicator::show_command_sign`
 - **Synonyms to AVOID:** "toast", "notification", "badge", "confirmation" (alone — also names the second hearing of a command)
+
+### Failure notice
+- **Type:** Value Object (enum `FailureNotice`, with the failing part `FailingPart`)
+- **Definition:** The overlay telling the user that an action they started failed: what was lost (the dictation, part of it, the refinement, the paste, the recording, a voice command, voice commands at all) and the failing part — speech recognition, text refinement, command spotting, the microphone or the Accessibility permission — with the remedy when one is known ("start the local services", "check the Accessibility permission"). The pill shows a warning sign and the part's short name, the text window under it a sentence of at most two lines; it hides by itself after a few seconds, and any later signal replaces it. The log keeps the technical detail. `AccessibilityMissing` is the domain error a paste or key press fails with when the process is not trusted for accessibility.
+- **Code:** `app/src/core/domain/failure_notice.rs`
+- **Synonyms to AVOID:** "error popup", "alert", "toast", "notification" (macOS notifications are not used)
 
 ### Processing stage
 - **Type:** Domain concept (overlay state)

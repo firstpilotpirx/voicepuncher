@@ -29,6 +29,12 @@ extern "C" {
     fn CFRelease(cf: *const std::ffi::c_void);
 }
 
+/// Whether macOS trusts this process for accessibility, so the events it posts arrive.
+pub fn process_is_trusted_for_accessibility() -> bool {
+    // SAFETY: a null options dictionary asks without prompting the user.
+    unsafe { AXIsProcessTrustedWithOptions(std::ptr::null()) }
+}
+
 pub struct MacOsPermissionProbe;
 
 impl MacOsPermissionProbe {
@@ -63,8 +69,7 @@ impl PermissionProbe for MacOsPermissionProbe {
     }
 
     fn check_accessibility(&self) -> Result<()> {
-        let trusted = unsafe { AXIsProcessTrustedWithOptions(std::ptr::null()) };
-        if !trusted {
+        if !process_is_trusted_for_accessibility() {
             return Err(anyhow!("Accessibility permission not granted"));
         }
         Ok(())

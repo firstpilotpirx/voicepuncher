@@ -18,7 +18,7 @@ use voicepuncher::core::application::{
     VisualIndicator,
 };
 use voicepuncher::core::domain::{
-    AudioBuffer16k, CleanedText, PttSignal, RawTranscript, RecordingMode,
+    AudioBuffer16k, CleanedText, FailureNotice, PttSignal, RawTranscript, RecordingMode,
 };
 use voicepuncher_e2e_test::speech::repeated_phrases;
 
@@ -335,4 +335,5 @@ impl VisualIndicator for Silent {
     fn show_refining_text(&self) {}
     fn show_waiting_for_focus(&self) {}
     fn hide(&self) {}
+    fn show_failure_notice(&self, _notice: &FailureNotice) {}
 }

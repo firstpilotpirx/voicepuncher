@@ -16,8 +16,8 @@ use voicepuncher::core::application::{
     PipelineInput, SoundPlayer, TextPaster, TextRefiner, Transcriber, VisualIndicator,
 };
 use voicepuncher::core::domain::{
-    AudioBuffer16k, CleanedText, FocusedElement, PttSignal, RawTranscript, RecordingMode,
-    SpottingEvent, VoiceCommand,
+    AudioBuffer16k, CleanedText, FailureNotice, FocusedElement, PttSignal, RawTranscript,
+    RecordingMode, SpottingEvent, VoiceCommand,
 };
 
 use crate::IntegrationWorld;
@@ -54,6 +54,7 @@ enum Overlay {
     RefiningText,
     WaitingForFocus,
     Hidden,
+    FailureNotice(FailureNotice),
 }
 
 type Events = Arc<Mutex<Vec<Event>>>;
@@ -524,6 +525,10 @@ impl VisualIndicator for NotingOverlay {
 
     fn hide(&self) {
         record(&self.0, Event::Overlay(Overlay::Hidden));
+    }
+
+    fn show_failure_notice(&self, notice: &FailureNotice) {
+        record(&self.0, Event::Overlay(Overlay::FailureNotice(*notice)));
     }
 }
 

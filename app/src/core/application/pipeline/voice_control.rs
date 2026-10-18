@@ -2,10 +2,11 @@ use std::time::Instant;
 
 use crate::core::application::{CommandSpotter, KeyPresser, PipelineInput};
 use crate::core::domain::{
-    AudioBuffer16k, CommandPlacement, SpokenCommand, SpottingEvent, VoiceCommand,
+    AudioBuffer16k, CommandPlacement, FailureNotice, SpokenCommand, SpottingEvent, VoiceCommand,
     VoiceCommandRecognizer, VoiceStartTiming,
 };
 
+use super::failure_notices::{command_failed, RecordingNotStarted};
 use super::{Pipeline, StartCue};
 
 pub(super) struct VoiceControl {
@@ -98,6 +99,7 @@ impl Pipeline {
         voice.recognizer = VoiceCommandRecognizer::new();
         if let Err(e) = voice.spotter.start_listening(&VoiceCommand::STANDBY) {
             log::error!("voice control: cannot listen, command spotting service: {e:#}");
+            self.show_failure_at_once(FailureNotice::VoiceCommandsUnavailable);
             return;
         }
         voice.listening = true;
@@ -112,8 +114,8 @@ impl Pipeline {
         self.voice().recognizer.feed(event)
     }
 
-    /// A command that fails (the microphone is busy, a key press is refused) is logged;
-    /// the app keeps listening for the next one.
+    /// A command that fails (the microphone is busy, a key press is refused) is logged and
+    /// announced; the app keeps listening for the next one.
     fn carry_out_or_log(&mut self, spoken: SpokenCommand) {
         let voice = self.voice();
         if voice
@@ -136,7 +138,10 @@ impl Pipeline {
                 "voice control: \"{}\" failed: {e:#}",
                 spoken.command.phrase()
             );
-            self.visual_indicator.hide();
+            // a recording that did not start shows its own notice already
+            if !e.is::<RecordingNotStarted>() {
+                self.show_failure_at_once(command_failed(spoken.command, &e));
+            }
         }
     }
 
@@ -210,7 +215,10 @@ impl Pipeline {
         };
         match pressed {
             Ok(()) => self.confirm(command),
-            Err(e) => log::error!("voice control: key press failed: {e:#}"),
+            Err(e) => {
+                log::error!("voice control: key press failed: {e:#}");
+                self.show_failure_at_once(command_failed(command, &e));
+            }
         }
         Ok(())
     }
@@ -328,6 +336,7 @@ mod tests {
         overlay.expect_show_refining_text().return_const(());
         overlay.expect_hide().return_const(());
         overlay.expect_show_command_sign().return_const(());
+        overlay.expect_show_failure_notice().return_const(());
         overlay
             .expect_live_transcript_view()
             .returning(|| Box::new(HiddenLiveTranscript));

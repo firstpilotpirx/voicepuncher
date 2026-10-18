@@ -95,7 +95,7 @@ pub fn run(refiner: &mut dyn TextRefiner, items: &[EvalItem]) -> Result<Report> 
         let raw = RawTranscript::new(item.transcript.clone())
             .with_context(|| format!("{}: empty transcript", item.id))?;
         let pasted = refine_or_raw(refiner, &raw)
-            .map(|cleaned| cleaned.as_str().to_owned())
+            .map(|refined| refined.text.as_str().to_owned())
             .unwrap_or_default();
         results.push(judge(item, &pasted));
     }

@@ -18,8 +18,8 @@ use voicepuncher::core::application::{
     SoundPlayer, TextPaster, Transcriber, VisualIndicator,
 };
 use voicepuncher::core::domain::{
-    AudioBuffer16k, CleanedText, PttSignal, RawTranscript, RecordingMode, SpottingEvent,
-    VoiceCommand,
+    AudioBuffer16k, CleanedText, FailureNotice, PttSignal, RawTranscript, RecordingMode,
+    SpottingEvent, VoiceCommand,
 };
 
 use crate::IntegrationWorld;
@@ -407,6 +407,10 @@ impl VisualIndicator for NotingOverlay {
 
     fn hide(&self) {
         self.0.lock().unwrap().push(Shown::Hidden);
+    }
+
+    fn show_failure_notice(&self, _notice: &FailureNotice) {
+        self.0.lock().unwrap().push(Shown::Other);
     }
 
     fn live_transcript_view(&self) -> Box<dyn LiveTranscriptView> {

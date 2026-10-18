@@ -21,7 +21,9 @@ use voicepuncher::core::application::{
     AudioRecorder, ChunkingCfg, CommandSpotter, KeyPresser, PipelineInput, SoundPlayer, TextPaster,
     VisualIndicator,
 };
-use voicepuncher::core::domain::{AudioBuffer16k, CleanedText, RecordingMode, VoiceCommand};
+use voicepuncher::core::domain::{
+    AudioBuffer16k, CleanedText, FailureNotice, RecordingMode, VoiceCommand,
+};
 use voicepuncher_e2e_test::speech::read_wav;
 use voicepuncher_e2e_test::voice_commands::spoken_by;
 
@@ -592,4 +594,5 @@ impl VisualIndicator for NoOverlay {
     fn show_refining_text(&self) {}
     fn show_waiting_for_focus(&self) {}
     fn hide(&self) {}
+    fn show_failure_notice(&self, _notice: &FailureNotice) {}
 }

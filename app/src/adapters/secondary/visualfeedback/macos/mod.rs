@@ -1,3 +1,4 @@
+mod failure_notice;
 mod live_text;
 mod screen_watcher;
 mod topology;
@@ -6,13 +7,15 @@ mod window_set;
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use objc2::MainThreadMarker;
 use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSScreen};
 
 use crate::core::application::{AudioLevelSource, LiveTranscriptView, VisualIndicator};
-use crate::core::domain::{level_to_pills, AudioLevel, VoiceCommand};
+use crate::core::domain::{level_to_pills, AudioLevel, FailureNotice, VoiceCommand};
 
+use failure_notice::{show_notice, NoticeTimer};
 use live_text::LiveTranscriptText;
 use screen_watcher::ScreenWatcher;
 use topology::{diff_screens, ScreenChange, ScreenTopology};
@@ -29,6 +32,7 @@ enum OverlayState {
     RecognizingSpeech,
     RefiningText,
     WaitingForFocus,
+    FailureNotice(FailureNotice),
 }
 
 const RECORDING_SIGN: &str = "◉ REC";
@@ -36,6 +40,9 @@ const WAITING_FOR_FOCUS_SIGN: &str = "⌨ FOCUS";
 
 /// How long a command sign stays before the overlay shows again what it showed before.
 const COMMAND_SIGN_MS: i64 = 1_000;
+
+/// How long a failure notice stays before the overlay hides.
+const NOTICE_DURATION: Duration = Duration::from_secs(4);
 
 /// A command sign: its icon in the pill's sign place, its name where the level shows.
 type CommandSign = (&'static str, &'static str);
@@ -125,11 +132,22 @@ pub struct MacosVisualIndicator {
     live_transcript: LiveTranscriptText,
     #[allow(dead_code)]
     last_topology: Arc<Mutex<ScreenTopology>>,
+    notice_duration_ms: i64,
     _watcher: ScreenWatcher,
 }
 
 impl MacosVisualIndicator {
     pub fn initialize(mtm: MainThreadMarker, level_register: Arc<AtomicU32>) -> Self {
+        Self::initialize_with_notice_duration(mtm, level_register, NOTICE_DURATION)
+    }
+
+    /// The overlay whose failure notice hides `notice_duration` after it is shown.
+    pub fn initialize_with_notice_duration(
+        mtm: MainThreadMarker,
+        level_register: Arc<AtomicU32>,
+        notice_duration: Duration,
+    ) -> Self {
+        let notice_duration_ms = i64::try_from(notice_duration.as_millis()).unwrap_or(i64::MAX);
         let fallback_rect = objc2_foundation::NSRect {
             origin: objc2_foundation::NSPoint { x: 0.0, y: 0.0 },
             size: objc2_foundation::NSSize {
@@ -167,6 +185,11 @@ impl MacosVisualIndicator {
         let last_topology_for_watcher = Arc::clone(&last_topology);
         let level_register_for_watcher = Arc::clone(&level_register);
         let live_transcript_for_watcher = live_transcript.clone();
+        let notice_timer_for_watcher = NoticeTimer {
+            duration_ms: notice_duration_ms,
+            pulse_generation: Arc::clone(&pulse_generation),
+            state: Arc::clone(&state),
+        };
 
         let handler: Arc<dyn Fn() + Send + Sync + 'static> = Arc::new(move || {
             let state = Arc::clone(&state_for_watcher);
@@ -175,6 +198,7 @@ impl MacosVisualIndicator {
             let last_topology = Arc::clone(&last_topology_for_watcher);
             let level_register = Arc::clone(&level_register_for_watcher);
             let live_transcript = live_transcript_for_watcher.clone();
+            let notice_timer = notice_timer_for_watcher.clone();
 
             dispatch_to_main(move || {
                 let Some(mtm) = MainThreadMarker::new() else {
@@ -214,6 +238,9 @@ impl MacosVisualIndicator {
                             Arc::clone(&pulse_generation),
                         );
                     }
+                    OverlayState::FailureNotice(notice) => {
+                        show_notice(&windows, &notice, generation, notice_timer);
+                    }
                     OverlayState::Hidden => {}
                 }
             });
@@ -228,6 +255,7 @@ impl MacosVisualIndicator {
             level_register,
             live_transcript,
             last_topology,
+            notice_duration_ms,
             _watcher: watcher,
         }
     }
@@ -236,13 +264,20 @@ impl MacosVisualIndicator {
     pub fn rebuild_window_set(&self, mtm: MainThreadMarker) {
         rebuild_window_set_inner(
             mtm,
-            &self.state,
             &self.windows,
-            &self.pulse_generation,
             &self.last_topology,
             &self.level_register,
             &self.live_transcript,
+            self.notice_timer(),
         );
+    }
+
+    fn notice_timer(&self) -> NoticeTimer {
+        NoticeTimer {
+            duration_ms: self.notice_duration_ms,
+            pulse_generation: Arc::clone(&self.pulse_generation),
+            state: Arc::clone(&self.state),
+        }
     }
 
     pub fn generation_count(&self) -> u64 {
@@ -257,6 +292,44 @@ impl MacosVisualIndicator {
             .first()
             .map(|ws| ws.eq_label.stringValue().to_string())
             .unwrap_or_default()
+    }
+
+    /// The sign the pill of the first screen shows.
+    pub fn first_sign_value(&self) -> String {
+        self.windows
+            .lock()
+            .unwrap()
+            .first()
+            .map(|ws| ws.label.stringValue().to_string())
+            .unwrap_or_default()
+    }
+
+    /// The text the window under the pill of the first screen shows; `None` while it is hidden.
+    pub fn first_text_window_value(&self) -> Option<String> {
+        let windows = self.windows.lock().unwrap();
+        let transcript = &windows.first()?.transcript;
+        transcript
+            .window
+            .isVisible()
+            .then(|| transcript.label.stringValue().to_string())
+    }
+
+    /// Whether the pill of the first screen is on screen.
+    pub fn is_pill_visible(&self) -> bool {
+        self.windows
+            .lock()
+            .unwrap()
+            .first()
+            .is_some_and(|ws| ws.window.isVisible())
+    }
+
+    /// Whether any overlay window took the keyboard focus.
+    pub fn has_key_window(&self) -> bool {
+        self.windows
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|ws| ws.window.isKeyWindow() || ws.transcript.window.isKeyWindow())
     }
 }
 
@@ -311,15 +384,17 @@ fn collect_topology(mtm: MainThreadMarker) -> ScreenTopology {
     ScreenTopology { frames }
 }
 
+/// Rebuilds the windows when the screens changed and redraws the state the timer's state holds.
 fn rebuild_window_set_inner(
     mtm: MainThreadMarker,
-    state: &Arc<Mutex<OverlayState>>,
     windows: &Arc<Mutex<Vec<Arc<WindowSet>>>>,
-    pulse_generation: &Arc<AtomicU64>,
     last_topology: &Arc<Mutex<ScreenTopology>>,
     level_register: &Arc<AtomicU32>,
     live_transcript: &LiveTranscriptText,
+    notice_timer: NoticeTimer,
 ) {
+    let state = &notice_timer.state;
+    let pulse_generation = &notice_timer.pulse_generation;
     let new_topology = collect_topology(mtm);
 
     {
@@ -351,6 +426,9 @@ fn rebuild_window_set_inner(
             let ws_vec = windows.lock().unwrap().clone();
             let pg = Arc::clone(pulse_generation);
             apply_waiting_for_focus_state(ws_vec, generation, pg);
+        }
+        OverlayState::FailureNotice(notice) => {
+            show_notice(windows, &notice, generation, notice_timer);
         }
         OverlayState::Hidden => {}
     }
@@ -393,6 +471,24 @@ impl VisualIndicator for MacosVisualIndicator {
 
     fn hide(&self) {
         self.hide_overlay();
+    }
+
+    fn show_failure_notice(&self, notice: &FailureNotice) {
+        let generation = self.pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let windows = Arc::clone(&self.windows);
+        let last_topology = Arc::clone(&self.last_topology);
+        let timer = self.notice_timer();
+        let notice = *notice;
+
+        *self.state.lock().unwrap() = OverlayState::FailureNotice(notice);
+        log::warn!("overlay: failure notice: {}", notice.message());
+
+        dispatch_to_main(move || {
+            if let Some(mtm) = MainThreadMarker::new() {
+                do_rebuild(mtm, &windows, &last_topology);
+                show_notice(&windows, &notice, generation, timer);
+            }
+        });
     }
 
     fn show_command_sign(&self, command: VoiceCommand) {
@@ -455,8 +551,10 @@ impl LiveTranscriptView for MacosLiveTranscriptView {
         let live_transcript = self.live_transcript.clone();
         dispatch_to_main(move || {
             // WHY: read on the main queue, so a stage shown after this update was queued wins
-            let shown = live_transcript.shown(*state.lock().unwrap());
-            apply_live_transcript(&windows.lock().unwrap(), shown);
+            let state = *state.lock().unwrap();
+            if LiveTranscriptText::draws_text_window(state) {
+                apply_live_transcript(&windows.lock().unwrap(), live_transcript.shown(state));
+            }
         });
     }
 }

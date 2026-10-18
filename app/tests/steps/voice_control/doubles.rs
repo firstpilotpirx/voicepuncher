@@ -13,7 +13,9 @@ use voicepuncher::core::application::{
     AudioRecorder, ChunkingCfg, CommandSpotter, KeyPresser, SoundPlayer, TextPaster, Transcriber,
     VisualIndicator,
 };
-use voicepuncher::core::domain::{AudioBuffer16k, CleanedText, RawTranscript, VoiceCommand};
+use voicepuncher::core::domain::{
+    AudioBuffer16k, CleanedText, FailureNotice, RawTranscript, VoiceCommand,
+};
 
 /// The stand-ins' audio rate: one sample per millisecond is enough to measure a lead-in.
 const SAMPLES_PER_SEC: f32 = AudioBuffer16k::SAMPLE_RATE_HZ as f32;
@@ -219,6 +221,10 @@ impl VisualIndicator for RecordingOverlay {
 
     fn hide(&self) {
         record(&self.0, Event::Overlay("hidden"));
+    }
+
+    fn show_failure_notice(&self, _notice: &FailureNotice) {
+        record(&self.0, Event::Overlay("failure notice"));
     }
 }
 

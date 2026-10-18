@@ -18,7 +18,7 @@ use voicepuncher::core::application::{
     Transcriber, VisualIndicator,
 };
 use voicepuncher::core::domain::{
-    AudioBuffer16k, CleanedText, RawTranscript, RecordingMode, VoiceCommand,
+    AudioBuffer16k, CleanedText, FailureNotice, RawTranscript, RecordingMode, VoiceCommand,
 };
 use voicepuncher_e2e_test::voice_commands::spoken_with_pauses;
 
@@ -324,4 +324,5 @@ impl VisualIndicator for NoOverlay {
     fn show_refining_text(&self) {}
     fn show_waiting_for_focus(&self) {}
     fn hide(&self) {}
+    fn show_failure_notice(&self, _notice: &FailureNotice) {}
 }

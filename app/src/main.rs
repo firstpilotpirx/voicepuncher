@@ -25,7 +25,7 @@ use voicepuncher::core::application::preflight::Preflight;
 use voicepuncher::core::application::visual_indicator::VisualIndicator;
 use voicepuncher::core::application::CommandSpotter;
 use voicepuncher::core::application::{ChunkingCfg, FocusWaitCfg, PipelineInput, TextRefiner};
-use voicepuncher::core::domain::PttSignal;
+use voicepuncher::core::domain::{FailureNotice, PttSignal};
 
 struct NoopVisualIndicator;
 
@@ -35,6 +35,7 @@ impl VisualIndicator for NoopVisualIndicator {
     fn show_refining_text(&self) {}
     fn show_waiting_for_focus(&self) {}
     fn hide(&self) {}
+    fn show_failure_notice(&self, _notice: &FailureNotice) {}
 }
 
 fn main() {
@@ -187,7 +188,7 @@ fn main() {
     }
     if let Some(spotter) = spotter {
         log::info!("voice control on: listening starts now; the hotkey records as push-to-talk");
-        pipeline = pipeline.with_voice_control(Box::new(spotter), Box::new(MacOsKeyPresser));
+        pipeline = pipeline.with_voice_control(Box::new(spotter), Box::new(MacOsKeyPresser::new()));
     }
 
     let pipeline_handle = std::thread::Builder::new()

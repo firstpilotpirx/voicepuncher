@@ -1,3 +1,4 @@
+mod failure_notices;
 mod live_transcript;
 mod voice_control;
 
@@ -7,6 +8,7 @@ use std::time::Instant;
 
 use crate::core::application::audio_recorder::LiveChunk;
 use crate::core::application::chunking::{merge_chunk_texts, split_into_chunks, ChunkingCfg};
+use crate::core::application::pipeline::failure_notices::{not_pasted, past_recording_not_started};
 use crate::core::application::pipeline::live_transcript::{LiveTranscript, RecordingEnd};
 use crate::core::application::text_refiner::refine_or_raw;
 use crate::core::application::{
@@ -15,8 +17,8 @@ use crate::core::application::{
 };
 
 use crate::core::domain::{
-    without_leading_command, without_trailing_command, AudioBuffer16k, CleanedText, PttSignal,
-    RawTranscript, RecordingMode, VoiceCommand,
+    without_leading_command, without_trailing_command, AudioBuffer16k, CleanedText, FailingPart,
+    FailureNotice, PttSignal, RawTranscript, RecordingMode, VoiceCommand,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -49,6 +51,8 @@ struct LiveTranscriptionSession {
 
 struct LiveSessionResult {
     texts: Vec<String>,
+    /// Chunks speech recognition failed on.
+    lost_chunks: usize,
     transcriber: Box<dyn Transcriber>,
 }
 
@@ -92,6 +96,8 @@ pub struct Pipeline {
     command_words: CommandWords,
     /// Whether the overlay shows the text refinement stage: off when refinement is off.
     shows_refinement: bool,
+    /// The failure notice the running cycle ends with instead of hiding the overlay.
+    pending_notice: Option<FailureNotice>,
 }
 
 /// Command words said in one breath with a dictation, so they may reach its transcript.
@@ -131,6 +137,7 @@ impl Pipeline {
             voice: None,
             command_words: CommandWords::default(),
             shows_refinement: true,
+            pending_notice: None,
         }
     }
 
@@ -189,7 +196,7 @@ impl Pipeline {
                 | (Recording, PttSignal::Pressed, RecordingMode::Toggle)
         );
         match (self.state, signal) {
-            (Idle, PttSignal::Pressed) => self.start_recording()?,
+            (Idle, PttSignal::Pressed) => past_recording_not_started(self.start_recording())?,
             (Recording, _) if stops => self.stop_recording()?,
             (Recording, PttSignal::Cancel) => self.cancel_recording()?,
             (s, sig) => log::warn!("ignoring {sig:?} in state {s:?}"),
@@ -212,13 +219,14 @@ impl Pipeline {
         // starts, so a "stop dictation" said right away is heard.
         self.follow_dictation(true);
         self.command_words = CommandWords::default();
+        self.pending_notice = None;
         match cue {
             StartCue::Start => self.sound_player.play_start(),
             StartCue::Restart => self.sound_player.play_restart(),
         }
         if let Err(e) = self.recorder.start() {
             self.follow_dictation(false);
-            return Err(e);
+            return Err(self.recording_not_started(e));
         }
         if let Some(since) = begins_at {
             // Taken once the recorder runs, so the heard speech reaches its first sample,
@@ -290,9 +298,10 @@ impl Pipeline {
                     let _ = self.recorder.stop();
                     let stop_ms = t_stop_start.elapsed().as_millis() as u64;
                     self.transcriber = Some(result.transcriber);
+                    self.note_lost_chunks(result.lost_chunks, result.texts.is_empty());
                     if result.texts.is_empty() {
                         log::info!("live session: no text (drain {drain_ms}ms stop {stop_ms}ms)");
-                        self.visual_indicator.hide();
+                        self.end_cycle_on_overlay();
                     } else {
                         let t_merge_start = std::time::Instant::now();
                         let merged = merge_chunk_texts(result.texts);
@@ -307,7 +316,7 @@ impl Pipeline {
                             }
                             Err(e) => {
                                 log::warn!("live session: bad transcript: {e}");
-                                self.visual_indicator.hide();
+                                self.end_cycle_on_overlay();
                             }
                         }
                     }
@@ -315,7 +324,7 @@ impl Pipeline {
                 Err(_) => {
                     log::error!("live transcription worker channel closed unexpectedly");
                     let _ = self.recorder.stop();
-                    self.visual_indicator.hide();
+                    self.end_cycle_on_overlay();
                 }
             }
         } else {
@@ -325,7 +334,7 @@ impl Pipeline {
             self.state = PipelineState::Idle;
             if audio.is_empty() || audio.duration_ms() < self.cfg.min_press_ms {
                 log::info!("dropped: too short ({} ms)", audio.duration_ms());
-                self.visual_indicator.hide();
+                self.end_cycle_on_overlay();
                 return Ok(());
             }
             self.run_transcribe_refine_paste(audio, t_user_stop, stop_ms);
@@ -404,9 +413,10 @@ impl Pipeline {
             return Ok(());
         }
         let raw = RawTranscript::new(merge_chunk_texts(texts))?;
-        let Some(cleaned) = refine_or_raw(self.refiner.as_mut(), &raw) else {
+        let Some(refined) = refine_or_raw(self.refiner.as_mut(), &raw) else {
             return Ok(());
         };
+        let cleaned = refined.text;
         self.paster.paste(&cleaned)?;
         eprintln!("{} {}", console::style("▸").dim(), cleaned.as_str());
         Ok(())
@@ -429,7 +439,10 @@ impl Pipeline {
                 eprintln!("{} {}", console::style("▸").dim(), cleaned.as_str())
             }
             Ok(Insertion::LeftInClipboard(_)) => {}
-            Err(e) => log::error!("paste failed, dropping cycle: {e:#}"),
+            Err(e) => {
+                log::error!("paste failed, dropping cycle: {e:#}");
+                self.note_failure(not_pasted(&e));
+            }
         }
     }
 
@@ -453,12 +466,13 @@ impl Pipeline {
             Err(e) => {
                 log::warn!("transcription failed, dropping cycle: {e:#}");
                 self.state = PipelineState::Idle;
-                self.visual_indicator.hide();
+                self.note_failure(FailureNotice::DictationLost(FailingPart::SpeechRecognition));
+                self.end_cycle_on_overlay();
                 return;
             }
             Ok(None) => {
                 self.state = PipelineState::Idle;
-                self.visual_indicator.hide();
+                self.end_cycle_on_overlay();
                 return;
             }
             Ok(Some(r)) => r,
@@ -466,7 +480,7 @@ impl Pipeline {
         let Ok(raw) = RawTranscript::new(self.without_command_words(raw.as_str())) else {
             log::info!("dropped: only command words were transcribed");
             self.state = PipelineState::Idle;
-            self.visual_indicator.hide();
+            self.end_cycle_on_overlay();
             return;
         };
         let transcribe_ms = t_transcribe.elapsed().as_millis() as u64;
@@ -477,9 +491,9 @@ impl Pipeline {
             self.visual_indicator.show_refining_text();
         }
         let t_refine = std::time::Instant::now();
-        let Some(cleaned) = refine_or_raw(self.refiner.as_mut(), &raw) else {
+        let Some(cleaned) = self.refine(&raw) else {
             self.state = PipelineState::Idle;
-            self.visual_indicator.hide();
+            self.end_cycle_on_overlay();
             return;
         };
         let refine_ms = t_refine.elapsed().as_millis() as u64;
@@ -491,10 +505,32 @@ impl Pipeline {
         let paste_ms = t_paste.elapsed().as_millis() as u64;
         let total_ms = t_user_stop.elapsed().as_millis() as u64;
         self.state = PipelineState::Idle;
-        self.visual_indicator.hide();
+        self.end_cycle_on_overlay();
         log::info!(
             "stop→paste: stop={stop_ms}ms transcribe={transcribe_ms}ms refine={refine_ms}ms paste={paste_ms}ms total={total_ms}ms"
         );
+    }
+
+    /// The text to paste; a fallback to the raw transcript is noted for the notice.
+    fn refine(&mut self, raw: &RawTranscript) -> Option<CleanedText> {
+        let refined = refine_or_raw(self.refiner.as_mut(), raw)?;
+        if refined.fell_back {
+            self.note_failure(FailureNotice::PastedUnrefined(FailingPart::TextRefinement));
+        }
+        Some(refined.text)
+    }
+
+    /// Notes the chunks speech recognition lost: the whole dictation when none had text.
+    fn note_lost_chunks(&mut self, lost_chunks: usize, no_text: bool) {
+        if lost_chunks == 0 {
+            return;
+        }
+        let part = FailingPart::SpeechRecognition;
+        self.note_failure(if no_text {
+            FailureNotice::DictationLost(part)
+        } else {
+            FailureNotice::PartOfDictationLost(part)
+        });
     }
 
     /// `text` without the command words said in one breath with the dictation.
@@ -525,9 +561,9 @@ impl Pipeline {
             self.visual_indicator.show_refining_text();
         }
         let t_refine = std::time::Instant::now();
-        let Some(cleaned) = refine_or_raw(self.refiner.as_mut(), &raw) else {
+        let Some(cleaned) = self.refine(&raw) else {
             self.state = PipelineState::Idle;
-            self.visual_indicator.hide();
+            self.end_cycle_on_overlay();
             return;
         };
         let refine_ms = t_refine.elapsed().as_millis() as u64;
@@ -538,7 +574,7 @@ impl Pipeline {
         let paste_ms = t_paste.elapsed().as_millis() as u64;
         let total_ms = t_user_stop.elapsed().as_millis() as u64;
         self.state = PipelineState::Idle;
-        self.visual_indicator.hide();
+        self.end_cycle_on_overlay();
         log::info!(
             "stop→paste: drain={drain_ms}ms stop={stop_ms}ms merge={merge_ms}ms refine={refine_ms}ms paste={paste_ms}ms total={total_ms}ms"
         );
@@ -556,6 +592,7 @@ fn run_live_worker(
         return;
     };
     let mut texts = Vec::new();
+    let mut lost_chunks = 0usize;
     let mut chunk_num = 0usize;
     while let Ok(chunk) = chunk_rx.recv() {
         let t_recv = std::time::Instant::now();
@@ -584,13 +621,20 @@ fn run_live_worker(
                     t0.elapsed().as_secs_f32(),
                 );
             }
-            Err(e) => log::error!(
-                "chunk {chunk_num} lost | {duration_secs:.1}s audio not transcribed, the rest of the dictation is kept: {e:#}"
-            ),
+            Err(e) => {
+                lost_chunks += 1;
+                log::error!(
+                    "chunk {chunk_num} lost | {duration_secs:.1}s audio not transcribed, the rest of the dictation is kept: {e:#}"
+                );
+            }
         }
     }
     log::info!("live worker: {chunk_num} chunks done, returning transcriber");
-    let _ = results_tx.send(LiveSessionResult { texts, transcriber });
+    let _ = results_tx.send(LiveSessionResult {
+        texts,
+        lost_chunks,
+        transcriber,
+    });
 }
 
 #[cfg(test)]
@@ -691,6 +735,7 @@ mod tests {
             .return_const(());
         v.expect_show_refining_text().times(..).return_const(());
         v.expect_hide().times(..).return_const(());
+        v.expect_show_failure_notice().times(..).return_const(());
         v.expect_live_transcript_view()
             .times(..)
             .returning(|| Box::new(HiddenLiveTranscript));

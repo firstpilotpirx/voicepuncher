@@ -20,6 +20,7 @@ pub struct IntegrationWorld {
     pub voice: Option<steps::voice_control::VoiceRun>,
     pub stages: Option<steps::processing_stages::StagesRun>,
     pub live: Option<steps::live_transcript::LiveRun>,
+    pub notices: Option<steps::failure_notices::NoticesRun>,
 }
 
 /// Runs the scenarios the command line selects that the gates admit: `@wip` never,
