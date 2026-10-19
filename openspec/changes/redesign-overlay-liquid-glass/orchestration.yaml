@@ -1,0 +1,3 @@
+depends_on:
+  - change: bring-dictation-cursor-mic-closer
+    why: both change the pointer sign window (its position and distance there, its look and states here)
