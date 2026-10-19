@@ -305,8 +305,9 @@ pub fn normalized_words(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Word pairs that occur more often in the transcript than in the spoken text — the trace
-/// a chunk seam leaves when it keeps the overlap twice.
+/// Spoken word pairs that occur more often in the transcript than in the spoken text — the
+/// trace a chunk seam leaves when it keeps the overlap twice. A pair never spoken is a
+/// recognition error, measured by WER, however often it is heard.
 pub fn repeated_phrases(spoken: &str, transcript: &str) -> Vec<String> {
     use std::collections::HashMap;
     fn pairs(words: &[String]) -> HashMap<String, usize> {
@@ -319,7 +320,7 @@ pub fn repeated_phrases(spoken: &str, transcript: &str) -> Vec<String> {
     let spoken = pairs(&normalized_words(spoken));
     let mut repeated: Vec<String> = pairs(&normalized_words(transcript))
         .into_iter()
-        .filter(|(pair, n)| *n > 1 && *n > spoken.get(pair).copied().unwrap_or(0))
+        .filter(|(pair, n)| spoken.get(pair).is_some_and(|said| n > said))
         .map(|(pair, _)| pair)
         .collect();
     repeated.sort();
@@ -400,6 +401,13 @@ mod tests {
     fn should_ignore_a_phrase_the_speech_itself_repeats() {
         let spoken = "да да конечно да да";
         assert!(repeated_phrases(spoken, "Да, да, конечно. Да, да.").is_empty());
+    }
+
+    #[test]
+    fn should_not_count_a_pair_heard_twice_that_was_never_spoken() {
+        let spoken = "we decided how to split the work for the team";
+        let transcript = "we decided our test with the work with the team";
+        assert!(repeated_phrases(spoken, transcript).is_empty());
     }
 
     #[test]

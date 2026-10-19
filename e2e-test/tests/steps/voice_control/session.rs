@@ -276,6 +276,7 @@ impl HandsFreeSession {
     /// microphone keeps capturing the room, as a real one does.
     fn reacted(&self, seen: usize, wanted: &Expected, room: &[f32]) -> Result<bool> {
         let deadline = Instant::now() + REACTION;
+        let mut frame_due = Instant::now();
         for frame in room.chunks(FRAME_SAMPLES).cycle() {
             if self.events()[seen..]
                 .iter()
@@ -287,7 +288,9 @@ impl HandsFreeSession {
                 return Ok(false);
             }
             self.hear(frame)?;
-            std::thread::sleep(FRAME_TIME);
+            // WHY: on a fixed schedule, so a slow send does not stretch the room's sound.
+            frame_due += FRAME_TIME;
+            std::thread::sleep(frame_due.saturating_duration_since(Instant::now()));
         }
         Ok(false)
     }

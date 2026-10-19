@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use objc2::MainThreadMarker;
 use objc2_app_kit::NSApplication;
+use objc2_foundation::NSPoint;
 use voicepuncher::adapters::secondary::visualfeedback::macos::{
     MacosPointerSign, MacosVisualIndicator,
 };
@@ -549,12 +550,35 @@ fn should_hide_the_pill_when_voice_commands_work_again() {
     assert!(!overlay.is_pill_visible(), "the pill hid with the sign");
 }
 
+/// How many times the sign is read again while the real pointer moves (someone uses the mouse).
+const STILL_POINTER_TRIES: usize = 50;
+
+/// The pointer and the sign's top-left corner, read while the pointer stood still: the sign
+/// follows the real pointer on a timer, so a pointer that moved between the two reads would
+/// sit anywhere beside a sign placed for its previous spot.
+fn sign_beside_a_still_pointer(sign: &MacosPointerSign) -> (NSPoint, NSPoint) {
+    let read = || {
+        let before = objc2_app_kit::NSEvent::mouseLocation();
+        pump_run_loop(0.05);
+        let top_left = sign.top_left();
+        let after = objc2_app_kit::NSEvent::mouseLocation();
+        (before, after, top_left)
+    };
+    for _ in 1..STILL_POINTER_TRIES {
+        let (before, after, top_left) = read();
+        if before.x == after.x && before.y == after.y {
+            return (after, top_left);
+        }
+    }
+    let (_, after, top_left) = read();
+    (after, top_left)
+}
+
 fn should_show_the_dictation_sign_next_to_the_pointer_without_taking_input() {
     let sign = MacosPointerSign::initialize(main_thread());
     sign.show(DictationSignState::Recording);
     pump_run_loop(0.1);
-    let pointer = objc2_app_kit::NSEvent::mouseLocation();
-    let top_left = sign.top_left();
+    let (pointer, top_left) = sign_beside_a_still_pointer(&sign);
     assert!(sign.is_visible(), "the dictation sign is not shown");
     assert!(
         sign.ignores_mouse_events(),

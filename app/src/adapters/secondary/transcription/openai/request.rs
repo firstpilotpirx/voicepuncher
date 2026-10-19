@@ -13,6 +13,10 @@ const BITS_PER_SAMPLE: u16 = 16;
 const MONO: u16 = 1;
 /// The largest text context whisper-server gives a request, in tokens (half the model's).
 const MAX_TEXT_CONTEXT_TOKENS: &str = "224";
+/// The temperature step of whisper-server's retry when it is unsure of a window: 0 turns the
+/// retries off, so the service never falls back to random sampling and the same audio always
+/// yields the same text.
+const NO_TEMPERATURE_RETRIES: &str = "0";
 
 pub fn content_type() -> String {
     format!("multipart/form-data; boundary={MULTIPART_BOUNDARY}")
@@ -53,6 +57,7 @@ pub fn multipart_body(cfg: &TranscriptionCfg, wav: &[u8]) -> Vec<u8> {
         push_field(&mut body, "max_context", MAX_TEXT_CONTEXT_TOKENS);
     }
     push_field(&mut body, "temperature", &cfg.temperature.to_string());
+    push_field(&mut body, "temperature_inc", NO_TEMPERATURE_RETRIES);
     push_field(&mut body, "response_format", RESPONSE_FORMAT);
     body.extend_from_slice(
         format!(
@@ -122,6 +127,14 @@ mod tests {
             "name=\"file\"; filename=\"audio.wav\"\r\nContent-Type: audio/wav\r\n\r\nRIFF\r\n"
         ));
         assert!(body.ends_with(&format!("--{MULTIPART_BOUNDARY}--\r\n")));
+    }
+
+    #[test]
+    fn should_ask_for_one_deterministic_decoding_without_random_sampling_retries() {
+        // When
+        let body = body_text(&TranscriptionCfg::default());
+        // Then
+        assert!(body.contains("name=\"temperature_inc\"\r\n\r\n0\r\n"));
     }
 
     #[test]

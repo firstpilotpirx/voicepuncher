@@ -135,12 +135,13 @@ impl HandsFree {
     pub(super) fn keep_saying(&self, words: &str, duration: Duration) -> Result<()> {
         let speech = spoken_with_pauses(words)?;
         let started = Instant::now();
+        let mut frame_due = started;
         for frame in speech.chunks(FRAME_SAMPLES).cycle() {
             if started.elapsed() >= duration {
                 return Ok(());
             }
             self.microphone.send(frame.to_vec())?;
-            std::thread::sleep(FRAME);
+            frame_due = next_frame(frame_due);
         }
         Ok(())
     }
@@ -148,12 +149,21 @@ impl HandsFree {
     /// Silence in real time for `duration`, as a microphone hears between two utterances.
     pub(super) fn keep_quiet(&self, duration: Duration) -> Result<()> {
         let started = Instant::now();
+        let mut frame_due = started;
         while started.elapsed() < duration {
             self.microphone.send(vec![0.0; FRAME_SAMPLES])?;
-            std::thread::sleep(FRAME);
+            frame_due = next_frame(frame_due);
         }
         Ok(())
     }
+}
+
+/// Waits until one frame after `frame_due` and returns that time: frames sent on a fixed
+/// schedule, so a slow send does not stretch the speech.
+fn next_frame(frame_due: Instant) -> Instant {
+    let next = frame_due + FRAME;
+    std::thread::sleep(next.saturating_duration_since(Instant::now()));
+    next
 }
 
 #[given("listening is on")]

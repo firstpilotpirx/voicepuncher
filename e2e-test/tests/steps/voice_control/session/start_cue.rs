@@ -15,8 +15,8 @@ use voicepuncher_e2e_test::voice_commands::{
 
 use super::speech_after_start::{cut, forms_of, BEFORE_RESTART, SENTENCE};
 use super::{
-    command_audio, env, room_noise, session_of, until_last_sound, CommandVoice, Event, Expected,
-    HandsFreeSession, ENGLISH_VOICE, SAMPLE_RATE_HZ,
+    env, room_noise, session_of, until_last_sound, Event, Expected, HandsFreeSession,
+    ENGLISH_VOICE, SAMPLE_RATE_HZ,
 };
 use crate::E2eWorld;
 
@@ -24,8 +24,10 @@ use crate::E2eWorld;
 const REAL_TIME_FRAME_SAMPLES: usize = 320;
 /// Longest a start cue is waited for: one this late fails the scenario anyway.
 const CUE_WAIT: Duration = Duration::from_secs(5);
-/// How often a dictation is cancelled before the scenario gives up.
-const CANCEL_TRIES: usize = 2;
+/// The voices "cancel dictation" is said in, one per try, before the scenario gives up.
+/// WHY: decoding is deterministic, so the same audio misheard once ("Capsule dictation")
+/// is misheard the same way again; another voice is a new chance.
+const CANCEL_VOICES: [&str; 2] = [ENGLISH_VOICE, "Samantha"];
 /// Room noise before each of the user's recorded starts, as in a real stream.
 const ROOM_BEFORE_SECS: f32 = 1.0;
 /// How long a dictation runs before the "restart" said on its own.
@@ -154,15 +156,13 @@ impl HandsFreeSession {
     }
 
     /// Ends a dictation the scenario started, without transcribing it: after a pause, so
-    /// "cancel dictation" is an utterance of its own, and once more when it was not heard.
+    /// "cancel dictation" is an utterance of its own, and once more in another voice when
+    /// it was not heard.
     fn cancel_dictation(&self, room: &[f32]) -> Result<()> {
-        for _ in 0..CANCEL_TRIES {
+        for voice in CANCEL_VOICES {
             let seen = self.events().len();
             self.hear_timed(room, room.len())?;
-            self.hear(&command_audio(
-                CommandVoice::Synthesized,
-                "cancel dictation",
-            )?)?;
+            self.hear(&spoken_by(voice, "cancel dictation")?)?;
             if self.reacted(seen, &Expected::Cancelled, &silence(0.1))? {
                 return Ok(());
             }

@@ -302,3 +302,11 @@ The service scripts SHALL start the speech recognition service for dictation —
 - **WHEN** the user starts the services with the service scripts and names another speech recognition model for dictation
 - **THEN** the speech recognition service for dictation recognizes speech with the named model
 - **AND** the speech recognition service for commands keeps the small model
+
+### Requirement: The same dictation audio gives the same text
+The system SHALL ask the speech recognition service for one deterministic transcription of dictation audio, without falling back to random sampling when the service is unsure, so the same audio always yields the same text.
+
+#### Scenario: Hard audio transcribed twice gives the same text
+- **GIVEN** a recording of speech under high noise
+- **WHEN** it is transcribed twice in a row
+- **THEN** both transcripts are the same text

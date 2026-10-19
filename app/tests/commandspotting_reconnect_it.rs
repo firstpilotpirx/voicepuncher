@@ -71,10 +71,10 @@ fn stub_service(listener: TcpListener, away_for: Duration) -> Arc<Mutex<Vec<Rece
 }
 
 fn serve(stream: TcpStream, n: usize, connections: &Mutex<Vec<Received>>) {
-    stream.set_read_timeout(Some(READ_WAIT)).unwrap();
     let Ok(mut socket) = tungstenite::accept(stream) else {
         return;
     };
+    socket.get_ref().set_read_timeout(Some(READ_WAIT)).unwrap();
     let index = {
         let mut all = connections.lock().unwrap();
         all.push(Received::default());

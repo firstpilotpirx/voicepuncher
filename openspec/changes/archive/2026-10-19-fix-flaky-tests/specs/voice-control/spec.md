@@ -6,7 +6,7 @@ The command spotting service SHALL carry out every command said exactly once, wh
 #### Scenario: A command is carried out once while confirmations come back slowly
 - **GIVEN** listening is on and a dictation runs
 - **AND** the speech recognition service for commands takes 2 seconds to answer each confirmation
-- **WHEN** the user says "restart dictation"
+- **WHEN** the user says the doubled short form "restart restart" in the middle of dictated speech
 - **THEN** the dictation is restarted exactly once
 
 #### Scenario: A chain is carried out the same at any confirmation speed

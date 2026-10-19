@@ -23,8 +23,9 @@ export VOICEPUNCHER_KWS_MODEL_DIR := env_var_or_default("VOICEPUNCHER_KWS_MODEL_
 export VOICEPUNCHER_VOICE_SAMPLES := env_var_or_default("VOICEPUNCHER_VOICE_SAMPLES", `test -d ~/.voicepuncher/voice-samples && echo ~/.voicepuncher/voice-samples || true`)
 export VOICEPUNCHER_KWS_VAD_MODEL := env_var_or_default("VOICEPUNCHER_KWS_VAD_MODEL", `find ~/.voicepuncher -maxdepth 2 -name 'silero_vad.onnx' 2>/dev/null | head -1 || true`)
 
-# Corpus directory containing manifest.jsonl — absolute, because cargo runs tests from e2e-test/
-export VOICEPUNCHER_BENCH_CORPUS := env_var_or_default("VOICEPUNCHER_BENCH_CORPUS", justfile_directory() / "e2e-test/corpus")
+# Corpus directory containing manifest.jsonl — absolute, because cargo runs tests from e2e-test/.
+# The corpus is gitignored, so a worktree without one uses the main checkout's (first of `git worktree list`)
+export VOICEPUNCHER_BENCH_CORPUS := env_var_or_default("VOICEPUNCHER_BENCH_CORPUS", `main=$(git worktree list 2>/dev/null | head -1 | cut -d' ' -f1); if [ ! -f e2e-test/corpus/manifest.jsonl ] && [ -f "$main/e2e-test/corpus/manifest.jsonl" ]; then echo "$main/e2e-test/corpus"; else echo "$PWD/e2e-test/corpus"; fi`)
 
 # Local services started by `start-model-servers`; their URLs are the app's default [transcription].base_url and [refinement].base_url
 stt_port := env_var_or_default("VOICEPUNCHER_STT_PORT", "8081")

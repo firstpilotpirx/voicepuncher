@@ -22,10 +22,12 @@ use crate::worker::{ConfirmationWorker, JobKind};
 mod clip;
 mod confirming;
 mod pause;
+mod queued;
 mod spotted;
 
 use confirming::{AskedJob, JobContext, Rehear};
 use pause::PauseWatch;
+use queued::CheckQueue;
 use spotted::{SpottedChecks, CHECKED_WHEN_SPOTTED};
 
 pub const SAMPLE_RATE: u32 = 16_000;
@@ -50,8 +52,9 @@ const DETECTION_LAG_SECS: f32 = 0.25;
 /// Longest gap between two tokens of one spoken phrase: a quiet "start" is decoded 0.32 s
 /// before "dictation".
 const MAX_TOKEN_GAP_SECS: f32 = 0.4;
-/// Audio kept for the speech recognition of an utterance after its segment closed.
-const RECENT_AUDIO_SECS: f32 = 12.0;
+/// Audio kept for the speech recognition of an utterance after its segment closed, and for
+/// the checks waiting their turn behind slow confirmations: several deadlines of them.
+const RECENT_AUDIO_SECS: f32 = 30.0;
 /// Speech before a segment's start that the voice activity detector cut off: it notices
 /// an utterance up to 0.7 s late, most on a soft start like the "st" of "stop".
 const PRE_ROLL_SECS: f32 = 0.8;
@@ -164,6 +167,7 @@ impl Engine {
             next_job: 0,
             jobs: HashMap::new(),
             spotted_checks: SpottedChecks::default(),
+            checks: CheckQueue::default(),
             heard_triggers: Vec::new(),
             misheard: None,
             utterances: HashMap::new(),
@@ -197,6 +201,8 @@ pub struct Session<'a> {
     jobs: HashMap<u64, AskedJob>,
     /// The check a spotted "start" or "restart" asks of the running utterance.
     spotted_checks: SpottedChecks,
+    /// The checks of running utterances waiting their turn behind the one asked.
+    checks: CheckQueue,
     /// The triggers spotted in the last seconds: a short segment holding one is heard again
     /// when its first hearing holds no command.
     heard_triggers: Vec<Spotted>,
@@ -382,8 +388,8 @@ impl Session<'_> {
     }
 
     /// Searches the utterance being spoken: its start for "start", and every second its
-    /// last seconds for a doubled or chained command; a check is skipped while another one
-    /// waits for its answer.
+    /// last seconds for a doubled or chained command; a check due while another one waits
+    /// for its answer waits its turn with the audio it was due for.
     fn watch_running(&mut self) {
         if self.worker.is_none() || !self.vad.detected() {
             self.close_current();
@@ -408,11 +414,10 @@ impl Session<'_> {
             && !head_checked
             && self.matcher.selects(STARTED_EARLY)
             && now - start >= samples_in(EARLY_HEAD_CHECK_SECS)
-            && !self.outbox.check_busy()
         {
             self.mark(id, |r| r.early_head_checked = true);
             let from = self.pre_rolled(start);
-            self.ask(
+            self.ask_check(
                 JobKind::Head,
                 from,
                 now,
@@ -423,11 +428,10 @@ impl Session<'_> {
                 },
             );
         }
-        if !head_checked && now - start >= samples_in(HEAD_CHECK_SECS) && !self.outbox.check_busy()
-        {
+        if !head_checked && now - start >= samples_in(HEAD_CHECK_SECS) {
             self.mark(id, |r| r.head_checked = true);
             let from = self.pre_rolled(start);
-            self.ask(
+            self.ask_check(
                 JobKind::Head,
                 from,
                 now,
@@ -440,17 +444,10 @@ impl Session<'_> {
         }
         if now >= next_window {
             self.mark(id, |r| r.next_window = now + samples_in(WINDOW_EVERY_SECS));
-            if self.outbox.check_busy() {
-                log::debug!(
-                    "conn={} utterance={id} window skipped: a check still waits",
-                    self.conn
-                );
-                return;
-            }
             let from = now
                 .saturating_sub(samples_in(WINDOW_SECS))
                 .max(self.pre_rolled(start));
-            self.ask(
+            self.ask_check(
                 JobKind::Window,
                 from,
                 now,
@@ -463,15 +460,17 @@ impl Session<'_> {
     }
 
     /// Asks the check a spotted "start" or "restart" fell due for, when the utterance it was
-    /// said in still runs: of its start, or of its last seconds once it ran longer. The timed
-    /// checks stay: this one may hear too little of the speech after the command.
+    /// said in still runs, or is still to be answered for the second check: of its start, or
+    /// of its last seconds once it ran longer. The timed checks stay: this one may hear too
+    /// little of the speech after the command.
     fn ask_spotted_check(&mut self) {
         let now = self.samples_seen;
-        let Some(check) = self.spotted_checks.take_due(now, self.outbox.check_busy()) else {
+        let Some(check) = self.spotted_checks.take_due(now) else {
             return;
         };
-        let Some((id, start)) = self
-            .current
+        let Some((id, start)) = check
+            .utterance
+            .or(self.current)
             .and_then(|id| self.utterances.get(&id).map(|r| (id, r.start)))
         else {
             return;
@@ -480,12 +479,15 @@ impl Session<'_> {
         if head > check.said_end {
             return;
         }
-        let from = now.saturating_sub(samples_in(WINDOW_SECS)).max(head);
+        // WHY: a second check falls due once the first is answered, late when answers are
+        // slow; it hears the audio it would have heard had the first been answered at once.
+        let to = now.min(check.due + DECODE_FRAME_SAMPLES);
+        let from = to.saturating_sub(samples_in(WINDOW_SECS)).max(head);
         let at_head = from == head;
-        self.ask(
+        self.ask_check(
             JobKind::Spotted,
             from,
-            now,
+            to,
             JobContext::Spotted {
                 utterance: id,
                 from,

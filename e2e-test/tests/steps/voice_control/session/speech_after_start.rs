@@ -3,7 +3,7 @@
 //! command while the next words are already being said.
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
@@ -124,9 +124,12 @@ impl HandsFreeSession {
     /// Streams `samples` as a microphone captures them: a few milliseconds at a time.
     fn hear_in_real_time(&self, samples: &[f32]) -> Result<()> {
         let frame_time = Duration::from_secs_f32(REAL_TIME_FRAME_SAMPLES as f32 / SAMPLE_RATE_HZ);
+        // WHY: on a fixed schedule, so a slow send does not stretch the speech.
+        let mut frame_due = Instant::now();
         for frame in samples.chunks(REAL_TIME_FRAME_SAMPLES) {
             self.hear(frame)?;
-            std::thread::sleep(frame_time);
+            frame_due += frame_time;
+            std::thread::sleep(frame_due.saturating_duration_since(Instant::now()));
         }
         Ok(())
     }

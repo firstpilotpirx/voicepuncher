@@ -42,8 +42,8 @@ fn service_answering_late(delay: Duration) -> String {
     let url = format!("ws://{}", listener.local_addr().unwrap());
     std::thread::spawn(move || {
         let (stream, _) = listener.accept().unwrap();
-        stream.set_read_timeout(Some(READ_WAIT)).unwrap();
         let socket = tungstenite::accept(stream).unwrap();
+        socket.get_ref().set_read_timeout(Some(READ_WAIT)).unwrap();
         answer_late(socket, delay);
     });
     url
@@ -87,8 +87,8 @@ fn service_never_answering_the_sync() -> String {
     let url = format!("ws://{}", listener.local_addr().unwrap());
     std::thread::spawn(move || {
         let (stream, _) = listener.accept().unwrap();
-        stream.set_read_timeout(Some(READ_WAIT)).unwrap();
         let mut socket = tungstenite::accept(stream).unwrap();
+        socket.get_ref().set_read_timeout(Some(READ_WAIT)).unwrap();
         loop {
             match socket.read() {
                 Ok(_) => {}

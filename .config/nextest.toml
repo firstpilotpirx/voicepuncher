@@ -25,6 +25,12 @@ command-spotting-models = { max-threads = 1 }
 filter = 'binary(engine_it) | binary(placed_commands_it)'
 test-group = "command-spotting-models"
 
+# The tests that drive the real command spotting service run one at a time too, so one confirmation
+# service never gets the utterances of several test processes at once
+[[profile.default.overrides]]
+filter = 'binary(commandspotting_websocket_it) | binary(voice_forms_it) | binary(voice_samples_it)'
+test-group = "command-spotting-models"
+
 # A 60 s outage by design (61–65 s measured): stopped at 3 min
 [[profile.default.overrides]]
 filter = 'binary(commandspotting_reconnect_it) & test(=should_be_back_within_seconds_once_the_service_answers_after_a_long_outage)'

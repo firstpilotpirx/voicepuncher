@@ -48,7 +48,7 @@ const SHORT_UTTERANCE: &str = "press enter";
 pub struct PoolRun {
     long: Vec<JoinHandle<Result<Instant>>>,
     short_answered: Option<Instant>,
-    answered: Option<usize>,
+    unanswered: Option<Vec<String>>,
     copy_killed: Option<Instant>,
     taken: Option<TakenPort>,
 }
@@ -106,8 +106,9 @@ pub(super) fn transcribe(url: &str, samples: Vec<i16>) -> Result<String> {
         .unwrap_or_default())
 }
 
-/// How many of `count` short requests sent at once to `url` got a transcript.
-fn answered_at_once(url: &str, count: usize) -> Result<usize> {
+/// Each of `count` short requests sent at once to `url` that got no transcript, numbered from 1,
+/// with its error chain or "empty transcript".
+fn unanswered_at_once(url: &str, count: usize) -> Result<Vec<String>> {
     let speech = short_speech()?;
     let requests: Vec<_> = (0..count)
         .map(|_| {
@@ -117,9 +118,28 @@ fn answered_at_once(url: &str, count: usize) -> Result<usize> {
         .collect();
     Ok(requests
         .into_iter()
-        .filter_map(|request| request.join().ok()?.ok())
-        .filter(|text| !text.is_empty())
-        .count())
+        .enumerate()
+        .filter_map(|(index, request)| {
+            let failure = match request.join() {
+                Ok(Ok(text)) if !text.is_empty() => return None,
+                Ok(Ok(_)) => "empty transcript".to_owned(),
+                Ok(Err(error)) => format!("{error:#}"),
+                Err(_) => "its thread panicked".to_owned(),
+            };
+            Some(format!("request {}: {failure}", index + 1))
+        })
+        .collect())
+}
+
+/// Fails naming every request in `unanswered` when any of `sent` got no transcript.
+fn ensure_all_answered(unanswered: &[String], sent: usize, when: &str) -> Result<()> {
+    ensure!(
+        unanswered.is_empty(),
+        "{} of {sent} requests got no transcript{when}:\n{}",
+        unanswered.len(),
+        unanswered.join("\n")
+    );
+    Ok(())
 }
 
 pub(super) fn short_speech() -> Result<Vec<i16>> {
@@ -184,7 +204,7 @@ async fn copies_busy(world: &mut E2eWorld) -> Result<()> {
 async fn requests_at_once(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let services = services(world)?;
-        services.pool.answered = Some(answered_at_once(
+        services.pool.unanswered = Some(unanswered_at_once(
             &services.transcription_url(),
             REQUESTS_AT_ONCE,
         )?);
@@ -227,11 +247,12 @@ async fn short_utterance(world: &mut E2eWorld) -> Result<()> {
 #[then("every request gets its transcript, and each of the three copies transcribed some of them")]
 fn shared_by_copies(world: &mut E2eWorld) -> Result<()> {
     let services = services(world)?;
-    let answered = services.pool.answered.context("no requests were sent")?;
-    ensure!(
-        answered == REQUESTS_AT_ONCE,
-        "{answered} of {REQUESTS_AT_ONCE} requests got a transcript"
-    );
+    let unanswered = services
+        .pool
+        .unanswered
+        .as_deref()
+        .context("no requests were sent")?;
+    ensure_all_answered(unanswered, REQUESTS_AT_ONCE, "")?;
     ensure!(
         services.copy_ports.len() == DEFAULT_COPIES,
         "{} copies run, not {DEFAULT_COPIES}: {:?}",
@@ -257,12 +278,13 @@ async fn copy_came_back(world: &mut E2eWorld) -> Result<()> {
         let port = *services.copy_ports.first().context("no copies")?;
         let killed = services.pool.copy_killed.context("no copy was killed")?;
         let down = !answers(port);
-        let answered = answered_at_once(&services.transcription_url(), REQUESTS_WHILE_DOWN)?;
-        ensure!(
-            answered == REQUESTS_WHILE_DOWN,
-            "{answered} of {REQUESTS_WHILE_DOWN} requests got a transcript while a copy was down (it was {})",
-            if down { "down when they were sent" } else { "already back" }
-        );
+        let unanswered = unanswered_at_once(&services.transcription_url(), REQUESTS_WHILE_DOWN)?;
+        let when = if down {
+            " while a copy was down (it was down when they were sent)"
+        } else {
+            " while a copy was down (it was already back)"
+        };
+        ensure_all_answered(&unanswered, REQUESTS_WHILE_DOWN, when)?;
         let back_within = COPY_BACK_WITHIN.saturating_sub(killed.elapsed());
         ensure!(
             wait_until(back_within, || answers(port)),

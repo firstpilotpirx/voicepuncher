@@ -28,7 +28,7 @@ pub enum JobKind {
 }
 
 impl JobKind {
-    /// A check of a running utterance: skipped, not queued, while another one waits.
+    /// A check of a running utterance: it waits its turn while another one waits for its answer.
     pub fn is_check(self) -> bool {
         matches!(self, JobKind::Head | JobKind::Window | JobKind::Spotted)
     }

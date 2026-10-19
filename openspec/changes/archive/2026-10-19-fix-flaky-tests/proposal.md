@@ -33,4 +33,4 @@ Tests, steps, `justfile`, nextest config, the command spotting service, the dict
 ## Release
 
 SemVer: PATCH — fixes; no new behavior.
-Target version: 0.18.1.
+Target version: 0.22.2.

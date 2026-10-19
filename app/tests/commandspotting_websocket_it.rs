@@ -13,15 +13,14 @@ use voicepuncher::adapters::secondary::commandspotting::websocket::client::probe
 use voicepuncher::adapters::secondary::commandspotting::websocket::AudioStream;
 use voicepuncher::core::application::PipelineInput;
 use voicepuncher::core::domain::{SpottingEvent, VoiceCommand, VoiceCommandRecognizer};
-use voicepuncher_e2e_test::voice_commands::{
-    recognized_commands, spoken_with_pauses, spotting_events,
-};
+use voicepuncher_e2e_test::voice_commands::{spoken_with_pauses, spotting_events};
 
 /// A typical microphone: 48 kHz, delivered in CoreAudio-sized buffers.
 const MIC_RATE_HZ: u32 = 48_000;
 const MIC_BUFFER: usize = 512;
 const SPEECH_RATE_HZ: u32 = 16_000;
-/// How long the service may stay quiet before every event is taken to have arrived.
+/// How long the service may stay quiet after the first command before every event is taken to
+/// have arrived.
 const QUIET: Duration = Duration::from_secs(2);
 /// How long connecting and the WebSocket handshake with the service may take.
 const HANDSHAKE_LIMIT: Duration = Duration::from_secs(5);
@@ -186,20 +185,33 @@ fn recognized_from_microphone(
     for buffer in at_microphone_rate(&spoken_with_pauses(words).unwrap()).chunks(MIC_BUFFER) {
         audio_tx.send(buffer.to_vec()).unwrap();
     }
-    let mut events = Vec::new();
+    let mut recognizer = VoiceCommandRecognizer::new();
+    let mut recognized = Vec::new();
     let deadline = Instant::now() + UTTERANCE_EVENTS_LIMIT;
-    while let Ok(input) = inputs_rx.recv_timeout(QUIET) {
+    let wait = |recognized: &[VoiceCommand]| {
+        if recognized.is_empty() {
+            COMMAND_TIMEOUT
+        } else {
+            QUIET
+        }
+    };
+    while let Ok(input) = inputs_rx.recv_timeout(wait(&recognized)) {
         assert!(
             Instant::now() < deadline,
             "the command spotting service still sent events 30 s after the speech"
         );
         match input {
-            PipelineInput::Spotting(event) => events.push(event),
+            PipelineInput::Spotting(event) => recognized.extend(
+                recognizer
+                    .feed(event)
+                    .into_iter()
+                    .map(|spoken| spoken.command),
+            ),
             other => panic!("unexpected input {other:?}"),
         }
     }
     stream.stop();
-    recognized_commands(events)
+    recognized
 }
 
 #[test]
@@ -215,7 +227,7 @@ fn should_recognize_each_command_streamed_from_a_48_khz_microphone() {
 
 const LONG_LISTENING_SECS: f32 = 30.0;
 const BETWEEN_COMMANDS_SECS: f32 = 5.0;
-/// Longest the service may take to report a command after its audio was sent.
+/// Longest the service may take to report a command after its audio reached it.
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 
 fn microphone_silence(secs: f32) -> Vec<f32> {
@@ -229,6 +241,8 @@ struct Listening {
     inputs: mpsc::Receiver<PipelineInput>,
     recognizer: VoiceCommandRecognizer,
     stream: AudioStream,
+    /// Audio handed to the stream since the last wait for a command.
+    unheard: Duration,
 }
 
 impl Listening {
@@ -249,23 +263,27 @@ impl Listening {
             inputs,
             recognizer: VoiceCommandRecognizer::new(),
             stream,
+            unheard: Duration::ZERO,
         }
     }
 
-    fn hear(&self, samples: Vec<f32>) {
+    fn hear(&mut self, samples: Vec<f32>) {
+        self.unheard += Duration::from_secs_f32(samples.len() as f32 / MIC_RATE_HZ as f32);
         for buffer in samples.chunks(MIC_BUFFER) {
             self.audio.send(buffer.to_vec()).unwrap();
         }
     }
 
-    fn say_after(&self, pause_secs: f32, words: &str) {
+    fn say_after(&mut self, pause_secs: f32, words: &str) {
         self.hear(microphone_silence(pause_secs));
         self.hear(at_microphone_rate(&spoken_with_pauses(words).unwrap()));
     }
 
     /// The next command the app recognizes, as the pipeline would get it.
+    /// WHY: the stream hands the audio to the service at its own pace, so under load 30 s of
+    /// listening can take 10 s to arrive; the wait covers that audio too.
     fn next_command(&mut self) -> Option<VoiceCommand> {
-        let deadline = Instant::now() + COMMAND_TIMEOUT;
+        let deadline = Instant::now() + std::mem::take(&mut self.unheard) + COMMAND_TIMEOUT;
         while let Some(left) = deadline.checked_duration_since(Instant::now()) {
             match self.inputs.recv_timeout(left) {
                 Ok(PipelineInput::Spotting(event)) => {

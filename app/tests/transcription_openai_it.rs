@@ -1,6 +1,7 @@
 // Integration tests for OpenAiTranscriber against an in-test HTTP stub.
-// One test is gated on VOICEPUNCHER_TRANSCRIPTION_URL (+ VOICEPUNCHER_BENCH_CORPUS)
-// and transcribes a corpus WAV through a real speech recognition service.
+// Two tests are gated on VOICEPUNCHER_TRANSCRIPTION_URL (+ VOICEPUNCHER_BENCH_CORPUS)
+// and transcribe a corpus WAV, clean and under high noise, through a real speech
+// recognition service.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -612,39 +613,95 @@ fn should_transcribe_on_first_attempt_after_service_reset_idle_connection() {
     );
 }
 
-#[test]
-fn should_transcribe_corpus_sample_through_real_service() {
-    // Given — gated on a running service and the corpus
+/// The real service's URL and the corpus's first recording with its manifest entry, or `None`
+/// (with a GATED message) when the service URL, the corpus or its manifest is missing.
+fn real_service_and_first_corpus_sample() -> Option<(String, serde_json::Value, AudioBuffer16k)> {
     let Ok(base_url) = std::env::var("VOICEPUNCHER_TRANSCRIPTION_URL") else {
         eprintln!("GATED: VOICEPUNCHER_TRANSCRIPTION_URL not set, skipping");
-        return;
+        return None;
     };
     let Ok(corpus) = std::env::var("VOICEPUNCHER_BENCH_CORPUS") else {
         eprintln!("GATED: VOICEPUNCHER_BENCH_CORPUS not set, skipping");
-        return;
+        return None;
     };
-    let manifest = std::fs::read_to_string(PathBuf::from(&corpus).join("manifest.jsonl")).unwrap();
+    let Ok(manifest) = std::fs::read_to_string(PathBuf::from(&corpus).join("manifest.jsonl"))
+    else {
+        eprintln!("GATED: no manifest.jsonl in VOICEPUNCHER_BENCH_CORPUS, skipping");
+        return None;
+    };
     let first: serde_json::Value = serde_json::from_str(manifest.lines().next().unwrap()).unwrap();
     let wav = PathBuf::from(&corpus).join(first["path"].as_str().unwrap());
     let audio = FileSystemAudioRecorder::load(&wav).unwrap();
+    Some((base_url, first, audio))
+}
+
+fn transcribe_through_real_service(base_url: &str, audio: &AudioBuffer16k) -> String {
     let cfg = TranscriptionCfg {
-        base_url,
+        base_url: base_url.to_owned(),
         ..TranscriptionCfg::default()
     };
-    // When
     let transcript = OpenAiTranscriber::connect(cfg)
         .unwrap()
-        .transcribe(&audio)
+        .transcribe(audio)
         .unwrap();
-    // Then
-    let text = transcript
+    transcript
         .expect("speech should not be discarded")
         .as_str()
-        .to_lowercase();
+        .to_owned()
+}
+
+/// The peak of the white noise laid over speech: loud enough that the service is unsure of
+/// windows, which made it fall back to random sampling, yet quiet enough that the speech is
+/// still kept (a peak of 6000 buried it: the transcript was discarded as no speech).
+const HIGH_NOISE_PEAK: i32 = 1_500;
+const NOISE_SEED: u32 = 0x5eed_1234;
+
+/// Lays reproducible white noise (a fixed-seed linear congruential generator) over the speech.
+fn under_high_noise(speech: &AudioBuffer16k) -> AudioBuffer16k {
+    const LCG_MULTIPLIER: u32 = 1_664_525;
+    const LCG_INCREMENT: u32 = 1_013_904_223;
+    let mut state = NOISE_SEED;
+    let noisy = speech
+        .samples()
+        .iter()
+        .map(|&sample| {
+            state = state
+                .wrapping_mul(LCG_MULTIPLIER)
+                .wrapping_add(LCG_INCREMENT);
+            let noise = (state >> 16) as i32 % (2 * HIGH_NOISE_PEAK + 1) - HIGH_NOISE_PEAK;
+            (i32::from(sample) + noise).clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16
+        })
+        .collect();
+    AudioBuffer16k::new(noisy)
+}
+
+#[test]
+fn should_transcribe_corpus_sample_through_real_service() {
+    // Given — gated on a running service and the corpus
+    let Some((base_url, first, audio)) = real_service_and_first_corpus_sample() else {
+        return;
+    };
+    // When
+    let text = transcribe_through_real_service(&base_url, &audio).to_lowercase();
+    // Then
     let reference = first["reference"].as_str().unwrap();
     let last_word = reference.split_whitespace().last().unwrap();
     assert!(
         text.contains(last_word),
         "expected '{last_word}' in '{text}'"
     );
+}
+
+#[test]
+fn should_transcribe_the_same_noisy_recording_to_the_same_text_twice() {
+    // Given — gated on a running service and the corpus
+    let Some((base_url, _, speech)) = real_service_and_first_corpus_sample() else {
+        return;
+    };
+    let noisy = under_high_noise(&speech);
+    // When
+    let first = transcribe_through_real_service(&base_url, &noisy);
+    let second = transcribe_through_real_service(&base_url, &noisy);
+    // Then
+    assert_eq!(first, second);
 }

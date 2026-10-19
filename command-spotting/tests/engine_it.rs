@@ -562,8 +562,9 @@ const SLOW_HEARING: Duration = Duration::from_secs(4);
 const PATIENT_DEADLINE: Duration = Duration::from_secs(5);
 /// About ten seconds of speech in one breath.
 const LONG_UTTERANCE: &str = "so I was saying that the weather today is really nice and we could go for a long walk along the river later this afternoon";
-/// The head check, at most one window after it, and the segment: a slow service gets no more.
-const MOST_CLIPS_WHILE_SLOW: u32 = 4;
+/// The early and the full head check, one window (each later one takes the place of the one
+/// still waiting), the segment and its tail: a slow service gets no more.
+const MOST_CLIPS_WHILE_SLOW: u32 = 5;
 
 impl Hear for SlowHear {
     fn hear(&self, _: &[f32], _: Duration) -> anyhow::Result<Heard> {
@@ -577,7 +578,7 @@ impl Hear for SlowHear {
 }
 
 #[test]
-fn should_skip_the_checks_of_a_long_utterance_while_one_waits_for_a_slow_service() {
+fn should_keep_the_checks_of_a_long_utterance_few_while_one_waits_for_a_slow_service() {
     let Some(_shared) = engine() else { return };
     // Given
     let hear = Arc::new(SlowHear(std::sync::atomic::AtomicU32::new(0)));

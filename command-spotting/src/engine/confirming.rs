@@ -12,6 +12,7 @@ use crate::worker::{Answer, Job, JobId, JobKind};
 
 use super::clip::steady_clip;
 use super::pause::first_sound;
+use super::queued::QueuedCheck;
 use super::spotted::{Round, CHECKED_WHEN_SPOTTED};
 use super::{
     samples_in, seconds, Session, FIRST_WINDOW_SECS, POST_ROLL_SECS, PRE_ROLL_SECS,
@@ -107,7 +108,9 @@ impl Session<'_> {
             .as_ref()
             .map(|w| w.answers())
             .unwrap_or_default();
-        answers.into_iter().flat_map(|a| self.apply(a)).collect()
+        let events = answers.into_iter().flat_map(|a| self.apply(a)).collect();
+        self.ask_queued_check();
+        events
     }
 
     /// The events of the confirmations answered since the last call, without new audio.
@@ -124,6 +127,7 @@ impl Session<'_> {
                 break;
             };
             events.extend(self.apply(answer));
+            self.ask_queued_check();
         }
         events
     }
@@ -162,6 +166,14 @@ impl Session<'_> {
         to: usize,
         context: JobContext,
     ) -> Option<u64> {
+        let n = self.reserve(kind, context)?;
+        self.submit(n, kind, audio, from, to);
+        Some(n)
+    }
+
+    /// A job number for a confirmation with `context`, counted as asked from now; none
+    /// without a worker.
+    fn reserve(&mut self, kind: JobKind, context: JobContext) -> Option<u64> {
         self.worker.as_ref()?;
         let n = self.next_job;
         self.next_job += 1;
@@ -169,19 +181,6 @@ impl Session<'_> {
             self.mark(utterance, |r| r.jobs += 1);
         }
         self.outbox.asked(n, kind.is_check());
-        log::debug!(
-            "job={} {kind:?} asks for {:.2}–{:.2}s",
-            JobId { conn: self.conn, n },
-            seconds(from),
-            seconds(to)
-        );
-        if let Some(worker) = self.worker.as_ref() {
-            worker.submit(Job {
-                id: JobId { conn: self.conn, n },
-                kind,
-                audio,
-            });
-        }
         self.jobs.insert(
             n,
             AskedJob {
@@ -191,6 +190,80 @@ impl Session<'_> {
             },
         );
         Some(n)
+    }
+
+    /// Sends job `n` to the worker: what was said in `audio`, the stream from `from` to `to`.
+    fn submit(&mut self, n: u64, kind: JobKind, audio: Vec<f32>, from: usize, to: usize) {
+        log::debug!(
+            "job={} {kind:?} asks for {:.2}–{:.2}s",
+            JobId { conn: self.conn, n },
+            seconds(from),
+            seconds(to)
+        );
+        if let Some(asked) = self.jobs.get_mut(&n) {
+            asked.asked = Instant::now();
+        }
+        if let Some(worker) = self.worker.as_ref() {
+            worker.submit(Job {
+                id: JobId { conn: self.conn, n },
+                kind,
+                audio,
+            });
+        }
+    }
+
+    /// Asks a check of a running utterance about the stream from `from` to `to`, or queues it
+    /// with that audio while another check waits; a window takes the place of a queued window
+    /// of the same utterance.
+    pub(super) fn ask_check(&mut self, kind: JobKind, from: usize, to: usize, context: JobContext) {
+        if !self.outbox.check_busy() {
+            if let Some(n) = self.ask(kind, from, to, context) {
+                self.checks.asked(n);
+            }
+            return;
+        }
+        let window_of = match context {
+            JobContext::Window { utterance, .. } => Some(utterance),
+            _ => None,
+        };
+        let taken_over = window_of.and_then(|u| self.checks.replace_window(u, from, to));
+        log::debug!(
+            "conn={} {kind:?} for {:.2}–{:.2}s waits its turn: a check still waits",
+            self.conn,
+            seconds(from),
+            seconds(to)
+        );
+        if let Some(asked) = taken_over.and_then(|n| self.jobs.get_mut(&n)) {
+            asked.context = context;
+            asked.asked_at = self.samples_seen;
+            return;
+        }
+        if let Some(job) = self.reserve(kind, context) {
+            self.checks.push(QueuedCheck {
+                job,
+                kind,
+                from,
+                to,
+                window_of,
+            });
+        }
+    }
+
+    /// Asks the check whose turn it is, once no other one waits for its answer.
+    pub(super) fn ask_queued_check(&mut self) {
+        let Some(QueuedCheck {
+            job,
+            kind,
+            from,
+            to,
+            ..
+        }) = self.checks.next()
+        else {
+            return;
+        };
+        let audio = self.recent.between(from, to);
+        self.submit(job, kind, audio, from, to);
+        self.checks.asked(job);
     }
 
     /// The events of a closed segment: held until its confirmation is answered, or out at
@@ -272,6 +345,7 @@ impl Session<'_> {
 
     fn apply(&mut self, answer: Answer) -> Vec<ServerEvent> {
         let n = answer.id.n;
+        self.checks.answered(n);
         let Some(asked) = self.jobs.remove(&n) else {
             return Vec::new();
         };
@@ -387,7 +461,8 @@ impl Session<'_> {
                 // The first check may come before the command ends: "start" alone at the
                 // head, or the second "restart" of "restart restart" cut off by the clip.
                 if found.is_none() && round == Round::First {
-                    self.spotted_checks.found_nothing(said_end, asked_at);
+                    self.spotted_checks
+                        .found_nothing(said_end, asked_at, utterance);
                 }
                 found
             }
