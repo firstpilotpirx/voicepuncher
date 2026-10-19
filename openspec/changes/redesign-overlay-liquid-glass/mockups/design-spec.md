@@ -35,7 +35,7 @@ All pictures are rendered at 3× (1 pt = 3 px). Sizes below are in points.
   indeterminate macOS spoke spinner (`NSProgressIndicator`, `.spinning`, indeterminate), never a ring that fills.
 - **All user-facing labels in English.**
 - **Reduce Motion** (`NSWorkspace.shared.accessibilityDisplayShouldReduceMotion`): no breathing, no dot pulse, no
-  rise-in; spinners and the equalizer still move. **Reduce Transparency**: the material turns opaque by itself;
+  rise-in; spinners still move and the waveform still scrolls. **Reduce Transparency**: the material turns opaque by itself;
   keep the rim and the tints.
 
 ## 2. Geometry
@@ -73,7 +73,7 @@ message.
 | Item | Size |
 |---|---|
 | Record sign | ring 26 diameter, 2 pt stroke `systemRed`; dot 18 diameter inside, `systemRed` |
-| Equalizer | 12 bars (9 when the commands-unavailable sign shares the pill), each 2.5 wide with fully round ends, 4 apart, 28 tall area, vertically centred; a bar is never shorter than 2 |
+| Waveform | a scrolling strip of level columns (§ 6): 30 columns (22 when the commands-unavailable sign shares the pill), each 2.5 wide with fully round ends, 3.5 apart (pitch 6), so 176.5 wide (128.5 with 22); 28 tall area, vertically centred; a column is never shorter than 2; the left 30 pt fade out (alpha mask 0 → 1) |
 | State icon | SF Symbol, point size 20–22, weight medium (it fills a 24 pt box) |
 | Label | system font 13, weight medium, tracking +0.5 (≈ 0.04 em) |
 | Spoke spinner | 20 × 20, `NSProgressIndicator` `.spinning`, `controlSize = .small`, indeterminate |
@@ -131,11 +131,11 @@ Each state lists its picture, its parts left to right, its text window and its m
 of § 3.
 
 ### 5.1 Recording — `states/01-recording--*.png`
-- Pill: record sign, equalizer. No label.
+- Pill: record sign, waveform. No label.
 - Text window: hidden until the first chunk has text (then § 5.2).
 - Motion: the dot pulses all the time — scale 1 → 0.8 → 1 and opacity 1 → 0.75 → 1, 1.6 s, ease-in-out,
-  forever; the ring stays still. The equalizer follows the microphone (§ 6).
-- Replaces: `◉ REC` and the current equalizer.
+  forever; the ring stays still. The waveform scrolls right to left and shows the microphone level of the last 3 s (§ 6).
+- Replaces: `◉ REC` and the current equalizer (its bars jump in place; the waveform scrolls instead).
 
 ### 5.2 Recording with the live transcript — `states/02-recording-live-transcript--*.png`
 - Pill: as § 5.1.
@@ -194,7 +194,7 @@ of § 3.
 - Replaces: grey `⊘ CMD`.
 
 ### 5.12 Recording while commands are unavailable — `states/12-recording-commands-unavailable--*.png`
-- Pill: record sign, equalizer (9 bars), separator, `mic.slash` at 80 % (no label).
+- Pill: record sign, waveform (22 columns), separator, `mic.slash` at 80 % (no label).
 - Beside the processing and waiting states the same separator + `mic.slash` follow their spinner or label.
 
 ### 5.13 Pointer badge — `states/13-pointer-badge-recording--*.png`, `states/14-pointer-badges-all-states--*.png`
@@ -212,24 +212,39 @@ The badge mirrors the overlay at every stage:
 
 Replaces: the 🎙️ emoji that follows the pointer only while recording.
 
-## 6. Equalizer behaviour
+## 6. Waveform behaviour
+
+The waveform is a strip of level history, like the voice input of chat apps: every new column enters at the right
+edge and the whole strip slides slowly to the left, so the user sees how the dictation went over the last seconds.
+Reference: `waveform-reference.png`, the scrolling waveform of the ChatGPT voice input (grey rounded columns, dots
+in pauses).
 
 - Input: the microphone level of the running recording, about 30–60 updates per second, as RMS of the latest
   capture buffer converted to dBFS and mapped linearly from −50 dB (0) to −10 dB (1), clamped.
-- Smoothing: rise fast, fall slower — each frame `level += (target − level) × 0.35` when rising and `× 0.12` when
+- Smoothing: rise fast, fall slower — each update `level += (target − level) × 0.35` when rising and `× 0.12` when
   falling (at 60 fps ≈ 50 ms attack, 130 ms release).
-- Bar height: `max(2, 28 × level × shape_i)`, where `shape_i` in 0.5…1 differs per bar and drifts slowly (e.g.
-  `0.55 + 0.45 × sin(i × 1.3 + t × 8)`) so the bars do not move as one block; a light per-frame jitter (±20 %) keeps
-  them alive while speaking.
-- Silence: the level falls to 0, every bar settles at 2 pt — a flat dotted line, still visible.
-- Draw it in one custom `NSView`/`CALayer` per pill (rounded rects), redrawn on a display link; no allocation per
-  frame.
+- Columns: one column per 100 ms (10 per second). Its value is the peak of the smoothed level inside that 100 ms
+  window; its height is `max(2, 28 × value)`, centred vertically. Columns are never recomputed once added.
+- Scrolling: the strip moves left continuously at pitch / 100 ms = 60 pt/s, sub-pixel, on the display link —
+  not in 6 pt jumps. When the offset reaches one pitch, the leftmost column is dropped and the new one appended on
+  the right. With 30 columns the strip shows the last 3 s (2.2 s with 22).
+- Silence: a column whose height is 2 is a dot drawn at 45 % of the content alpha; a pause reads as a dotted line
+  that slides away, like the reference. When recording starts the strip is all dots.
+- Left edge: an alpha mask fades the leftmost 30 pt from 0 to 1, so old columns dissolve instead of being cut.
+- Colour: content colour of § 3 (white over saturated and dark content, `#1D1D1F` over light content).
+- Reduce Motion: the strip still updates (it carries information) but steps one column per 100 ms instead of
+  sliding.
+- Draw it in one custom `NSView`/`CALayer` per pill (a ring buffer of column values, rounded rects), redrawn on a
+  display link; no allocation per frame.
+- Pictures: `states/01-*`, `02-*`, `12-*` show a still frame — a pause on the left (dots fading in), speech, a short
+  pause, speech; `overlay-states.html` without `still=1` shows the motion.
 
 ## 7. Timing summary
 
 | What | Duration | Curve |
 |---|---|---|
 | Record dot pulse | 1.6 s, forever | ease-in-out |
+| Waveform column / scroll | 100 ms per column, 60 pt/s | linear |
 | Icon breathing | 1.4 s, forever | ease-in-out |
 | Spoke spinner | system | — |
 | Pointer activity ring | 0.9 s per turn | linear |
@@ -243,7 +258,7 @@ Replaces: the 🎙️ emoji that follows the pointer only while recording.
 - [ ] Every state of § 5 appears and matches its `--blue` picture over a saturated window and its `--light` picture
       over a light window.
 - [ ] The labels read Recognizing, Refining text, Click a text field, Pasted, Enter, Clear, Restart.
-- [ ] The equalizer jumps with speech and lies flat in silence; the dot keeps pulsing either way.
+- [ ] The waveform slides right to left without jerks; speech leaves tall columns, silence a dotted line; the dot keeps pulsing either way.
 - [ ] No spinner fills up; both processing states use the spoke spinner.
 - [ ] The failure notice is legible over a white window.
 - [ ] The pointer badge follows the pointer in every state of § 5.13 and the system arrow is unchanged.
