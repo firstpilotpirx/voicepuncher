@@ -1,0 +1,3 @@
+depends_on:
+  - change: fix-flaky-tests
+    why: its queued checks change when the head and segment checks of a start are asked
