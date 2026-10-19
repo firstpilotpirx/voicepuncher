@@ -6,6 +6,6 @@
 
 ## 2. Release
 
-- [x] 2.1 Bump `version` in `app/Cargo.toml` to 0.21.1
-- [ ] 2.2 `just test`, `just check` once, and commit
-- [ ] 2.3 Manual checks by the user: start a recording, see the 🎙️ sign sit right at the pointer's tip, moving with it
+- [x] 2.1 Bump `version` in `app/Cargo.toml` to 0.22.1
+- [x] 2.2 `just test`, `just check` once, and commit
+- [x] 2.3 Manual checks by the user: start a recording, see the 🎙️ sign sit right at the pointer's tip, moving with it

@@ -26,9 +26,9 @@ Out of scope: the sign's size, look, and when it is shown or hidden.
 
 - New offsets: 8 points right and 6 points down from the pointer's tip (today 16 and 16) — half on the right, a little more than half down, where the complaint is.
 - Capability: `dictation-pointer` (the spec on `main` for the sign next to the pointer).
-- Target version: 0.21.1 (PATCH on 0.21.0).
+- Target version: 0.22.1 (PATCH on 0.22.0).
 
 ## Release
 
 SemVer: PATCH — a visual adjustment of existing behavior.
-Target version: 0.21.1.
+Target version: 0.22.1.

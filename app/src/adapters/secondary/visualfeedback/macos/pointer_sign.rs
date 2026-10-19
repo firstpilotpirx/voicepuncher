@@ -15,19 +15,22 @@ use crate::adapters::secondary::visualfeedback::pointer_sign::PointerSignView;
 const SIGN: &str = "🎙️";
 /// The sign's window, square.
 const SIGN_SIZE: f64 = 28.0;
-/// How far right of and below the pointer's hot spot the sign's top-left corner sits.
-const POINTER_GAP: f64 = 16.0;
+/// How far right of the pointer's hot spot the sign's top-left corner sits.
+const POINTER_GAP_RIGHT: f64 = 8.0;
+/// How far below the pointer's hot spot the sign's top-left corner sits.
+const POINTER_GAP_DOWN: f64 = 6.0;
 /// How often the sign looks where the pointer went: about once per frame.
 const FOLLOW_MS: i64 = 16;
 /// Above app windows and the overlay, below the pointer.
 const SIGN_LEVEL: isize = 101;
 
 /// The origin, in global screen coordinates (bottom-left origin), of a sign `size` points
-/// square whose top-left corner sits `POINTER_GAP` right of and below `pointer`.
+/// square whose top-left corner sits `POINTER_GAP_RIGHT` right of and `POINTER_GAP_DOWN` below
+/// `pointer`.
 pub(super) fn sign_origin(pointer: NSPoint, size: f64) -> NSPoint {
     NSPoint {
-        x: pointer.x + POINTER_GAP,
-        y: pointer.y - POINTER_GAP - size,
+        x: pointer.x + POINTER_GAP_RIGHT,
+        y: pointer.y - POINTER_GAP_DOWN - size,
     }
 }
 
@@ -162,7 +165,7 @@ mod tests {
     #[test]
     fn should_place_the_sign_right_of_and_below_the_pointer() {
         let origin = sign_origin(NSPoint { x: 500.0, y: 300.0 }, 28.0);
-        assert_eq!(origin, NSPoint { x: 516.0, y: 256.0 });
+        assert_eq!(origin, NSPoint { x: 508.0, y: 266.0 });
     }
 
     #[test]
@@ -177,8 +180,8 @@ mod tests {
         assert_eq!(
             origin,
             NSPoint {
-                x: -1184.0,
-                y: -84.0
+                x: -1192.0,
+                y: -74.0
             }
         );
     }
