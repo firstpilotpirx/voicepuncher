@@ -71,6 +71,18 @@ const TESTS: &[Test] = &[
         should_keep_a_recording_started_after_a_notice,
     ),
     (
+        "should_keep_the_commands_unavailable_sign_when_the_overlay_hides",
+        should_keep_the_commands_unavailable_sign_when_the_overlay_hides,
+    ),
+    (
+        "should_show_the_commands_unavailable_sign_again_after_a_notice",
+        should_show_the_commands_unavailable_sign_again_after_a_notice,
+    ),
+    (
+        "should_hide_the_pill_when_voice_commands_work_again",
+        should_hide_the_pill_when_voice_commands_work_again,
+    ),
+    (
         "should_show_the_dictation_sign_next_to_the_pointer_without_taking_input",
         should_show_the_dictation_sign_next_to_the_pointer_without_taking_input,
     ),
@@ -326,6 +338,56 @@ fn should_keep_a_recording_started_after_a_notice() {
     );
     assert_eq!(overlay.first_sign_value(), "◉ REC");
     assert_eq!(overlay.first_text_window_value(), None);
+}
+
+fn should_keep_the_commands_unavailable_sign_when_the_overlay_hides() {
+    // Given
+    let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
+    overlay.show_recording();
+    overlay.show_commands_unavailable();
+    pump_run_loop(DRAWN_SECS);
+    assert_eq!(overlay.first_sign_value(), "◉ REC ⊘ CMD");
+    // When
+    overlay.hide();
+    pump_run_loop(DRAWN_SECS);
+    // Then
+    assert!(overlay.is_pill_visible(), "the sign stays after the hide");
+    assert_eq!(overlay.first_sign_value(), "⊘ CMD");
+    assert!(
+        !overlay.has_key_window(),
+        "no overlay window takes the focus"
+    );
+}
+
+fn should_show_the_commands_unavailable_sign_again_after_a_notice() {
+    // Given
+    let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
+    overlay.show_commands_unavailable();
+    overlay.show_failure_notice(&NOTICE);
+    pump_run_loop(DRAWN_SECS);
+    assert_eq!(overlay.first_sign_value(), "⚠", "the notice shows alone");
+    // When
+    pump_run_loop(SHORT_NOTICE.as_secs_f64());
+    // Then
+    assert!(
+        overlay.is_pill_visible(),
+        "the sign is back after the notice"
+    );
+    assert_eq!(overlay.first_sign_value(), "⊘ CMD");
+    assert_eq!(overlay.first_text_window_value(), None);
+}
+
+fn should_hide_the_pill_when_voice_commands_work_again() {
+    // Given
+    let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
+    overlay.show_commands_unavailable();
+    pump_run_loop(DRAWN_SECS);
+    assert!(overlay.is_pill_visible(), "the sign shows alone");
+    // When
+    overlay.hide_commands_unavailable();
+    pump_run_loop(DRAWN_SECS);
+    // Then
+    assert!(!overlay.is_pill_visible(), "the pill hid with the sign");
 }
 
 fn should_show_the_dictation_sign_next_to_the_pointer_without_taking_input() {

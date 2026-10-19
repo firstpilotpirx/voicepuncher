@@ -15,6 +15,9 @@ const RECONNECT_PAUSES: [Duration; 5] = [
 /// How far before the loss the replay reaches back: the service had not answered for up to
 /// this long when the client gave up on it, so it may not have spotted that audio.
 const REPLAY_BEFORE_LOSS: Duration = Duration::from_secs(5);
+/// An outage is long from when the replay no longer reaches back to the loss: from then on
+/// the return no longer hides it.
+const LONG_OUTAGE: Duration = REPLAY_BEFORE_LOSS;
 /// Failed attempts are logged at the first, then at every this many.
 const ATTEMPTS_LOGGED_EVERY: u32 = 10;
 
@@ -41,6 +44,8 @@ pub struct Outage {
     pub lost_at: Instant,
     pub failed_attempts: u32,
     pub next_try: Instant,
+    /// Whether the outage was already reported long.
+    long: bool,
 }
 
 impl Outage {
@@ -49,11 +54,19 @@ impl Outage {
             lost_at,
             failed_attempts: 0,
             next_try: lost_at + reconnect_pause(0),
+            long: false,
         }
     }
 
     pub fn due(&self, now: Instant) -> bool {
         now >= self.next_try
+    }
+
+    /// True once per outage: at the first `now` at which it has lasted `LONG_OUTAGE`.
+    pub fn became_long(&mut self, now: Instant) -> bool {
+        let became = !self.long && now >= self.lost_at + LONG_OUTAGE;
+        self.long |= became;
+        became
     }
 
     /// Counts a failed attempt at `now` and returns the pause before the next one.
@@ -115,5 +128,18 @@ mod tests {
         assert_eq!(pause, Duration::from_millis(500));
         assert!(!outage.due(lost_at + Duration::from_millis(1_400)));
         assert!(outage.due(lost_at + Duration::from_millis(1_500)));
+    }
+
+    #[test]
+    fn should_become_long_once_when_the_replay_no_longer_reaches_back_to_the_loss() {
+        // Given
+        let lost_at = Instant::now();
+        let mut outage = Outage::since(lost_at);
+        // When
+        let before = outage.became_long(lost_at + Duration::from_millis(4_990));
+        let at = outage.became_long(lost_at + Duration::from_secs(5));
+        let later = outage.became_long(lost_at + Duration::from_secs(9));
+        // Then
+        assert_eq!((before, at, later), (false, true, false));
     }
 }

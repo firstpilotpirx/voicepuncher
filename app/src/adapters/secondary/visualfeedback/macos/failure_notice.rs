@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use objc2_app_kit::{NSColor, NSWindowCollectionBehavior};
@@ -24,6 +24,7 @@ pub(super) struct NoticeTimer {
     pub(super) duration_ms: i64,
     pub(super) pulse_generation: Arc<AtomicU64>,
     pub(super) state: Arc<Mutex<OverlayState>>,
+    pub(super) commands_unavailable: Arc<AtomicBool>,
 }
 
 /// Draws `notice` on every screen, on the main queue, and hides it once its time is over.
@@ -43,7 +44,8 @@ pub(super) fn show_notice(
         }
         *state = OverlayState::Hidden;
         drop(state);
-        apply_hidden_state(windows.lock().unwrap().clone());
+        let commands_unavailable = timer.commands_unavailable.load(Ordering::SeqCst);
+        apply_hidden_state(windows.lock().unwrap().clone(), commands_unavailable);
     });
 }
 

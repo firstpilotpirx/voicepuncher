@@ -16,6 +16,8 @@ pub(super) struct VoiceControl {
     listening: bool,
     /// The command spotting service is away: listening resumes once it is back.
     away: bool,
+    /// The overlay shows that voice commands do not work: the service stayed away.
+    unavailable_shown: bool,
     /// Where the last command carried out ended.
     last_carried_end: Option<Instant>,
     /// Commands ending by then were carried out before the service went away: the audio
@@ -37,6 +39,7 @@ impl Pipeline {
             recognizer: VoiceCommandRecognizer::new(),
             listening: false,
             away: false,
+            unavailable_shown: false,
             last_carried_end: None,
             carried_before_outage: None,
         });
@@ -60,6 +63,10 @@ impl Pipeline {
                 Ok(())
             }
             PipelineInput::SpottingLost => self.lose_spotting(),
+            PipelineInput::SpottingStillAway => {
+                self.show_commands_unavailable();
+                Ok(())
+            }
             PipelineInput::SpottingBack => self.regain_spotting(),
         }
     }
@@ -246,7 +253,6 @@ impl Pipeline {
         let voice = self.voice();
         voice.away = true;
         voice.carried_before_outage = voice.last_carried_end;
-        self.sound_player.play_listening_off();
         log::info!(
             "voice control: listening → away{}",
             if recording {
@@ -256,6 +262,16 @@ impl Pipeline {
             }
         );
         Ok(())
+    }
+
+    /// The service stayed away: the overlay shows that voice commands do not work, once.
+    fn show_commands_unavailable(&mut self) {
+        if !self.listening() || !self.voice().away || self.voice().unavailable_shown {
+            return;
+        }
+        self.voice().unavailable_shown = true;
+        self.visual_indicator.show_commands_unavailable();
+        log::info!("voice control: away → voice commands shown as unavailable");
     }
 
     /// The service is back: the commands of the current state are spotted again.
@@ -268,7 +284,9 @@ impl Pipeline {
         voice.away = false;
         voice.recognizer = VoiceCommandRecognizer::new();
         self.follow_dictation(recording);
-        self.sound_player.play_listening_on();
+        if std::mem::take(&mut self.voice().unavailable_shown) {
+            self.visual_indicator.hide_commands_unavailable();
+        }
         log::info!(
             "voice control: away → listening again{}",
             if recording {
@@ -322,7 +340,6 @@ mod tests {
         sounds.expect_play_stop().return_const(());
         sounds.expect_play_cancel().return_const(());
         sounds.expect_play_listening_on().return_const(());
-        sounds.expect_play_listening_off().return_const(());
         sounds.expect_play_enter().return_const(());
         sounds.expect_play_clear().return_const(());
         sounds.expect_play_restart().return_const(());
@@ -462,6 +479,20 @@ mod tests {
             cfg,
         )
         .with_voice_control(Box::new(spotter), Box::new(keys))
+    }
+
+    /// A pipeline in standby whose overlay is `overlay` and whose sounds are `sounds`.
+    fn standby_pipeline(overlay: MockVisualIndicator, sounds: MockSoundPlayer) -> Pipeline {
+        Pipeline::new(
+            Box::new(idle_recorder()),
+            Box::new(answering_transcriber()),
+            Box::new(passthrough_refiner()),
+            Box::new(MockTextPaster::new()),
+            Box::new(sounds),
+            Box::new(overlay),
+            toggle_cfg(),
+        )
+        .with_voice_control(Box::new(lenient_spotter()), Box::new(MockKeyPresser::new()))
     }
 
     /// A pipeline that transcribes a dictation in live chunks while it runs.
@@ -1168,6 +1199,71 @@ mod tests {
         pipeline.handle(PipelineInput::SpottingBack).unwrap();
         // When the audio sent again reports the same command
         say_at(&mut pipeline, "press enter", said_at);
+        // Then the mock expectations hold
+    }
+
+    #[test]
+    fn should_play_no_sound_when_the_service_goes_away_and_comes_back() {
+        // Given
+        let mut sounds = MockSoundPlayer::new();
+        sounds.expect_play_listening_on().once().return_const(());
+        sounds.expect_play_listening_off().never();
+        let mut pipeline = standby_pipeline(overlay(), sounds);
+        listen(&mut pipeline);
+        // When
+        pipeline.handle(PipelineInput::SpottingLost).unwrap();
+        pipeline.handle(PipelineInput::SpottingBack).unwrap();
+        // Then the mock expectations hold
+    }
+
+    #[test]
+    fn should_show_commands_unavailable_once_while_the_service_stays_away() {
+        // Given
+        let mut overlay = overlay();
+        let mut order = mockall::Sequence::new();
+        overlay
+            .expect_show_commands_unavailable()
+            .once()
+            .in_sequence(&mut order)
+            .return_const(());
+        overlay
+            .expect_hide_commands_unavailable()
+            .once()
+            .in_sequence(&mut order)
+            .return_const(());
+        let mut pipeline = standby_pipeline(overlay, sounds());
+        listen(&mut pipeline);
+        pipeline.handle(PipelineInput::SpottingLost).unwrap();
+        // When
+        pipeline.handle(PipelineInput::SpottingStillAway).unwrap();
+        pipeline.handle(PipelineInput::SpottingStillAway).unwrap();
+        pipeline.handle(PipelineInput::SpottingBack).unwrap();
+        // Then the mock expectations hold
+    }
+
+    #[test]
+    fn should_not_touch_the_sign_after_a_short_outage() {
+        // Given
+        let mut overlay = overlay();
+        overlay.expect_show_commands_unavailable().never();
+        overlay.expect_hide_commands_unavailable().never();
+        let mut pipeline = standby_pipeline(overlay, sounds());
+        listen(&mut pipeline);
+        // When
+        pipeline.handle(PipelineInput::SpottingLost).unwrap();
+        pipeline.handle(PipelineInput::SpottingBack).unwrap();
+        // Then the mock expectations hold
+    }
+
+    #[test]
+    fn should_not_show_the_sign_when_the_service_is_not_away() {
+        // Given
+        let mut overlay = overlay();
+        overlay.expect_show_commands_unavailable().never();
+        let mut pipeline = standby_pipeline(overlay, sounds());
+        listen(&mut pipeline);
+        // When
+        pipeline.handle(PipelineInput::SpottingStillAway).unwrap();
         // Then the mock expectations hold
     }
 }

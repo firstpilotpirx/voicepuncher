@@ -195,7 +195,8 @@ struct Stream {
     heard: Arc<Mutex<HeardAudio>>,
 }
 
-/// Runs until told to stop; a lost service is reported once, and its return once.
+/// Runs until told to stop; a lost service is reported once, a long outage once, and its
+/// return once.
 fn stream_to_service(mut stream: Stream) {
     loop {
         match stream.control.try_recv() {
@@ -305,12 +306,16 @@ impl Stream {
         let _ = self.inputs.send(PipelineInput::SpottingLost);
     }
 
-    /// Tries the service again when the pause after the last attempt is over.
+    /// Tries the service again when the pause after the last attempt is over; tells the
+    /// pipeline once when the outage has lasted too long for the replay to hide it.
     fn reach_for_service(&mut self) {
         let Link::Away(outage) = &mut self.link else {
             return;
         };
         let now = Instant::now();
+        if outage.became_long(now) {
+            let _ = self.inputs.send(PipelineInput::SpottingStillAway);
+        }
         if !outage.due(now) {
             std::thread::sleep(AWAY_WAIT);
             return;

@@ -509,7 +509,18 @@ Feature: voice-control
       And the command spotting service went away and was started again
       When the user says "press enter" 5 seconds after the service answers again
       Then the Return key is pressed in the focused app
-      And the listening-on sound played when the service came back
+      And no listening sound played after the app started
+
+  @serial @resilience
+  Rule: The overlay shows that voice commands do not work while the service stays away
+
+    Scenario: A long outage in standby shows the sign until the service is back
+      Given the speech recognition service for commands and the command spotting service run on ports of their own
+      And listening is on with them
+      And the overlay is hidden
+      When the command spotting service stays away for longer than 5 seconds
+      Then the overlay shows that voice commands do not work
+      And the sign goes away once the service is back
 
   @serial @resilience
   Rule: A dictation keeps recording while the command spotting service is away

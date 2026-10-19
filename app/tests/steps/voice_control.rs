@@ -528,7 +528,7 @@ fn service_went_away(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     run.away_since = Some(Instant::now());
     run.send(PipelineInput::SpottingLost)?;
-    run.wait_for(|e| *e == Event::Sound("listening off"))?;
+    std::thread::sleep(SETTLE);
     Ok(())
 }
 
@@ -538,9 +538,6 @@ fn service_went_away_and_is_back(world: &mut IntegrationWorld) -> Result<()> {
     service_went_away(world)?;
     let run = run(world);
     run.send(PipelineInput::SpottingBack)?;
-    run.wait_for(|e| {
-        *e == Event::Sound("listening on") && run.events().contains(&Event::Sound("listening off"))
-    })?;
     std::thread::sleep(SETTLE);
     Ok(())
 }
@@ -551,7 +548,6 @@ fn back_with_command_said_away(world: &mut IntegrationWorld, phrase: String) -> 
     let away_since = run.away_since.context("the service did not go away")?;
     run.start_when();
     run.send(PipelineInput::SpottingBack)?;
-    run.wait_since_mark(|e| *e == Event::Sound("listening on"))?;
     let segment_start = away_since + PHRASE_LEAD;
     let phrase_start = segment_start + PHRASE_LEAD;
     let phrase_end = phrase_start + PHRASE_LENGTH;
@@ -575,21 +571,19 @@ fn nothing_pasted_before_end(world: &mut IntegrationWorld) -> Result<()> {
     run.wait_since_mark(|e| matches!(e, Event::Pasted(_)))
 }
 
-#[then("the listening-on sound played when the service came back")]
-fn listening_on_after_return(world: &mut IntegrationWorld) -> Result<()> {
-    let events = run(world).events();
-    let off = events
+#[then("no listening sound played after the app started")]
+fn no_listening_sound_after_start(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    std::thread::sleep(SETTLE);
+    let events = run.events();
+    let listening_sounds = events
         .iter()
-        .position(|e| *e == Event::Sound("listening off"));
-    let on_after = off.and_then(|off| {
-        events[off..]
-            .iter()
-            .position(|e| *e == Event::Sound("listening on"))
-    });
-    match on_after {
-        Some(_) => Ok(()),
-        None => bail!("no listening-on sound after the listening-off sound; events: {events:?}"),
+        .filter(|e| matches!(e, Event::Sound("listening on" | "listening off")))
+        .count();
+    if listening_sounds != 1 {
+        bail!("expected only the listening-on sound at start; events: {events:?}");
     }
+    Ok(())
 }
 
 #[then("a dictation starts")]
@@ -1024,5 +1018,149 @@ fn error_logged(_world: &mut IntegrationWorld) -> Result<()> {
             bail!("no error naming the command spotting service; errors: {errors:?}");
         }
         std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// The overlay events of the sign that voice commands do not work.
+const SIGN_SHOWN: Event = Event::Overlay("commands unavailable shown");
+const SIGN_HIDDEN: Event = Event::Overlay("commands unavailable hidden");
+
+/// Reports the service away for longer than the outage grace period: the adapter's timer
+/// itself is proven by its integration test.
+fn stay_away(run: &mut VoiceRun) -> Result<()> {
+    run.send(PipelineInput::SpottingLost)?;
+    run.send(PipelineInput::SpottingStillAway)
+}
+
+#[given("the overlay is hidden")]
+fn overlay_hidden_given(_world: &mut IntegrationWorld) {}
+
+#[given("the overlay shows the recording sign")]
+fn overlay_recording_given(world: &mut IntegrationWorld) -> Result<()> {
+    run(world).wait_for(|e| *e == Event::Overlay("recording"))?;
+    Ok(())
+}
+
+#[given("the overlay shows that voice commands do not work")]
+fn sign_shown_given(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    stay_away(run)?;
+    run.wait_for(|e| *e == SIGN_SHOWN)?;
+    Ok(())
+}
+
+#[when("the command spotting service goes away and is back within 5 seconds")]
+fn short_outage(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.start_when();
+    run.send(PipelineInput::SpottingLost)?;
+    run.send(PipelineInput::SpottingBack)
+}
+
+#[when("the command spotting service stays away for longer than 5 seconds, then is back")]
+fn long_outage(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.start_when();
+    stay_away(run)?;
+    run.send(PipelineInput::SpottingBack)
+}
+
+#[when(
+    "the user ends the dictation with the hotkey and its text is pasted, and later the service is back"
+)]
+fn hotkey_end_then_back(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.start_when();
+    run.press_hotkey()?;
+    run.wait_for(|e| matches!(e, Event::Pasted(_)))?;
+    std::thread::sleep(SETTLE);
+    run.send(PipelineInput::SpottingBack)
+}
+
+#[then("the overlay never shows that voice commands do not work")]
+fn sign_never_shown(world: &mut IntegrationWorld) -> Result<()> {
+    run(world).never_since_mark(|e| *e == SIGN_SHOWN, "the sign was shown")
+}
+
+#[then("the overlay shows that voice commands do not work while the service is away")]
+fn sign_shown_while_away(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.wait_since_mark(|e| *e == SIGN_SHOWN)?;
+    let shown = overlay_since_mark(run);
+    if shown.first() != Some(&"commands unavailable shown") {
+        bail!("expected the sign before the service was back: {shown:?}");
+    }
+    Ok(())
+}
+
+#[then("the overlay shows that voice commands do not work beside the recording sign")]
+fn sign_beside_recording(world: &mut IntegrationWorld) -> Result<()> {
+    sign_shown_while_away(world)?;
+    still_recording(run(world))
+}
+
+/// Nothing ended the dictation since the step's action.
+fn still_recording(run: &VoiceRun) -> Result<()> {
+    if let Some(end) = run
+        .since_mark()
+        .into_iter()
+        .find(|e| matches!(e, Event::Pasted(_) | Event::RecordingCancelled))
+    {
+        bail!("the dictation ended: {end:?}; events: {:?}", run.events());
+    }
+    Ok(())
+}
+
+/// Waits for the sign to go and checks the overlay changed nothing else since the action.
+fn only_sign_came_and_went(run: &VoiceRun) -> Result<()> {
+    run.wait_since_mark(|e| *e == SIGN_HIDDEN)?;
+    std::thread::sleep(SETTLE);
+    let shown = overlay_since_mark(run);
+    if shown != ["commands unavailable shown", "commands unavailable hidden"] {
+        bail!("expected only the sign to come and go: {shown:?}");
+    }
+    Ok(())
+}
+
+#[then("once the service is back, the overlay shows the recording sign alone")]
+fn recording_alone_once_back(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    only_sign_came_and_went(run)?;
+    still_recording(run)
+}
+
+#[then("once the service is back, the overlay hides")]
+fn hidden_once_back(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.wait_since_mark(|e| *e == SIGN_HIDDEN)?;
+    std::thread::sleep(SETTLE);
+    let shown = overlay_since_mark(run);
+    let states: Vec<_> = shown
+        .iter()
+        .filter(|s| !s.starts_with("commands unavailable"))
+        .collect();
+    let sign_hidden_last = shown.last() == Some(&"commands unavailable hidden");
+    let hidden_once = shown
+        .iter()
+        .filter(|s| **s == "commands unavailable hidden")
+        .count()
+        == 1;
+    if !sign_hidden_last || !hidden_once || states.last().is_some_and(|s| **s != "hidden") {
+        bail!("expected the overlay to end hidden once the service was back: {shown:?}");
+    }
+    Ok(())
+}
+
+#[then("the overlay still shows that voice commands do not work after the paste")]
+fn sign_kept_after_paste(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.wait_since_mark(|e| *e == SIGN_HIDDEN)?;
+    let since = run.since_mark();
+    let at = |wanted: &Event| since.iter().position(|e| e == wanted);
+    let pasted = since.iter().position(|e| matches!(e, Event::Pasted(_)));
+    let overlay_hidden = since.iter().rposition(|e| *e == Event::Overlay("hidden"));
+    match (pasted, overlay_hidden, at(&SIGN_HIDDEN)) {
+        (Some(p), Some(h), Some(s)) if p < s && h < s => Ok(()),
+        _ => bail!("expected the sign to stay until the service was back; events: {since:?}"),
     }
 }

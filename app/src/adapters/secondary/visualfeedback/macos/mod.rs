@@ -6,7 +6,7 @@ mod topology;
 mod transcript_window;
 mod window_set;
 
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -20,7 +20,7 @@ use failure_notice::{show_notice, NoticeTimer};
 use live_text::LiveTranscriptText;
 use screen_watcher::ScreenWatcher;
 use topology::{diff_screens, ScreenChange, ScreenTopology};
-use window_set::WindowSet;
+use window_set::{PillWidth, WindowSet};
 
 pub use pointer_sign::MacosPointerSign;
 
@@ -40,6 +40,7 @@ enum OverlayState {
 
 const RECORDING_SIGN: &str = "◉ REC";
 const WAITING_FOR_FOCUS_SIGN: &str = "⌨ FOCUS";
+const COMMANDS_UNAVAILABLE_SIGN: &str = "⊘ CMD";
 
 /// How long a command sign stays before the overlay shows again what it showed before.
 const COMMAND_SIGN_MS: i64 = 1_000;
@@ -78,6 +79,33 @@ fn stage_icon(state: OverlayState) -> Option<&'static str> {
         OverlayState::RecognizingSpeech => Some("🎧"),
         OverlayState::RefiningText => Some("✨"),
         _ => None,
+    }
+}
+
+/// The sign the pill shows in `state`, followed by the commands-unavailable sign while
+/// `commands_unavailable`; `None` when the pill is hidden. A failure notice draws its own sign.
+fn pill_sign(state: OverlayState, commands_unavailable: bool) -> Option<String> {
+    let state_sign = match state {
+        OverlayState::Recording => Some(RECORDING_SIGN),
+        OverlayState::RecognizingSpeech | OverlayState::RefiningText => stage_icon(state),
+        OverlayState::WaitingForFocus => Some(WAITING_FOR_FOCUS_SIGN),
+        OverlayState::Hidden => None,
+        OverlayState::FailureNotice(_) => return None,
+    };
+    match (state_sign, commands_unavailable) {
+        (Some(sign), true) => Some(format!("{sign} {COMMANDS_UNAVAILABLE_SIGN}")),
+        (Some(sign), false) => Some(sign.to_owned()),
+        (None, true) => Some(COMMANDS_UNAVAILABLE_SIGN.to_owned()),
+        (None, false) => None,
+    }
+}
+
+/// How wide the pill is for a state drawn with or without the commands-unavailable sign.
+fn pill_width(commands_unavailable: bool) -> PillWidth {
+    if commands_unavailable {
+        PillWidth::FitSign
+    } else {
+        PillWidth::Base
     }
 }
 
@@ -129,6 +157,8 @@ unsafe extern "C" fn trampoline(ptr: *mut std::ffi::c_void) {
 
 pub struct MacosVisualIndicator {
     state: Arc<Mutex<OverlayState>>,
+    /// Whether the commands-unavailable sign shows beside the state.
+    commands_unavailable: Arc<AtomicBool>,
     windows: Arc<Mutex<Vec<Arc<WindowSet>>>>,
     pulse_generation: Arc<AtomicU64>,
     level_register: Arc<AtomicU32>,
@@ -182,70 +212,35 @@ impl MacosVisualIndicator {
         let last_topology = Arc::new(Mutex::new(initial_topology));
         let live_transcript = LiveTranscriptText::default();
 
-        let state_for_watcher = Arc::clone(&state);
-        let windows_for_watcher = Arc::clone(&windows);
-        let pulse_generation_for_watcher = Arc::clone(&pulse_generation);
-        let last_topology_for_watcher = Arc::clone(&last_topology);
-        let level_register_for_watcher = Arc::clone(&level_register);
-        let live_transcript_for_watcher = live_transcript.clone();
-        let notice_timer_for_watcher = NoticeTimer {
-            duration_ms: notice_duration_ms,
-            pulse_generation: Arc::clone(&pulse_generation),
-            state: Arc::clone(&state),
+        let commands_unavailable = Arc::new(AtomicBool::new(false));
+        let redraw = Redraw {
+            windows: Arc::clone(&windows),
+            level_register: Arc::clone(&level_register),
+            live_transcript: live_transcript.clone(),
+            timer: NoticeTimer {
+                duration_ms: notice_duration_ms,
+                pulse_generation: Arc::clone(&pulse_generation),
+                state: Arc::clone(&state),
+                commands_unavailable: Arc::clone(&commands_unavailable),
+            },
         };
+        let last_topology_for_watcher = Arc::clone(&last_topology);
 
         let handler: Arc<dyn Fn() + Send + Sync + 'static> = Arc::new(move || {
-            let state = Arc::clone(&state_for_watcher);
-            let windows = Arc::clone(&windows_for_watcher);
-            let pulse_generation = Arc::clone(&pulse_generation_for_watcher);
+            let redraw = redraw.clone();
             let last_topology = Arc::clone(&last_topology_for_watcher);
-            let level_register = Arc::clone(&level_register_for_watcher);
-            let live_transcript = live_transcript_for_watcher.clone();
-            let notice_timer = notice_timer_for_watcher.clone();
 
             dispatch_to_main(move || {
                 let Some(mtm) = MainThreadMarker::new() else {
                     return;
                 };
 
-                let generation = pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
+                let generation = redraw.timer.pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
 
-                do_rebuild(mtm, &windows, &last_topology);
+                do_rebuild(mtm, &redraw.windows, &last_topology);
 
-                let current_state = *state.lock().unwrap();
-                match current_state {
-                    OverlayState::Recording => {
-                        let ws_vec = windows.lock().unwrap().clone();
-                        apply_recording_state(
-                            ws_vec.clone(),
-                            generation,
-                            Arc::clone(&pulse_generation),
-                            Arc::clone(&level_register),
-                        );
-                        apply_live_transcript(&ws_vec, live_transcript.shown(current_state));
-                    }
-                    OverlayState::RecognizingSpeech | OverlayState::RefiningText => {
-                        let ws_vec = windows.lock().unwrap().clone();
-                        apply_processing_state(
-                            ws_vec,
-                            current_state,
-                            generation,
-                            Arc::clone(&pulse_generation),
-                        );
-                    }
-                    OverlayState::WaitingForFocus => {
-                        let ws_vec = windows.lock().unwrap().clone();
-                        apply_waiting_for_focus_state(
-                            ws_vec,
-                            generation,
-                            Arc::clone(&pulse_generation),
-                        );
-                    }
-                    OverlayState::FailureNotice(notice) => {
-                        show_notice(&windows, &notice, generation, notice_timer);
-                    }
-                    OverlayState::Hidden => {}
-                }
+                let current_state = *redraw.timer.state.lock().unwrap();
+                redraw.draw(current_state, generation);
             });
         });
 
@@ -253,6 +248,7 @@ impl MacosVisualIndicator {
 
         Self {
             state,
+            commands_unavailable,
             windows,
             pulse_generation,
             level_register,
@@ -265,14 +261,7 @@ impl MacosVisualIndicator {
 
     #[allow(dead_code)]
     pub fn rebuild_window_set(&self, mtm: MainThreadMarker) {
-        rebuild_window_set_inner(
-            mtm,
-            &self.windows,
-            &self.last_topology,
-            &self.level_register,
-            &self.live_transcript,
-            self.notice_timer(),
-        );
+        rebuild_window_set_inner(mtm, &self.last_topology, &self.redraw());
     }
 
     fn notice_timer(&self) -> NoticeTimer {
@@ -280,6 +269,16 @@ impl MacosVisualIndicator {
             duration_ms: self.notice_duration_ms,
             pulse_generation: Arc::clone(&self.pulse_generation),
             state: Arc::clone(&self.state),
+            commands_unavailable: Arc::clone(&self.commands_unavailable),
+        }
+    }
+
+    fn redraw(&self) -> Redraw {
+        Redraw {
+            windows: Arc::clone(&self.windows),
+            level_register: Arc::clone(&self.level_register),
+            live_transcript: self.live_transcript.clone(),
+            timer: self.notice_timer(),
         }
     }
 
@@ -390,14 +389,9 @@ fn collect_topology(mtm: MainThreadMarker) -> ScreenTopology {
 /// Rebuilds the windows when the screens changed and redraws the state the timer's state holds.
 fn rebuild_window_set_inner(
     mtm: MainThreadMarker,
-    windows: &Arc<Mutex<Vec<Arc<WindowSet>>>>,
     last_topology: &Arc<Mutex<ScreenTopology>>,
-    level_register: &Arc<AtomicU32>,
-    live_transcript: &LiveTranscriptText,
-    notice_timer: NoticeTimer,
+    redraw: &Redraw,
 ) {
-    let state = &notice_timer.state;
-    let pulse_generation = &notice_timer.pulse_generation;
     let new_topology = collect_topology(mtm);
 
     {
@@ -407,33 +401,53 @@ fn rebuild_window_set_inner(
         }
     }
 
-    let generation = pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
+    let generation = redraw.timer.pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
 
-    do_rebuild(mtm, windows, last_topology);
+    do_rebuild(mtm, &redraw.windows, last_topology);
 
-    let current_state = *state.lock().unwrap();
-    match current_state {
-        OverlayState::Recording => {
-            let ws_vec = windows.lock().unwrap().clone();
-            let pg = Arc::clone(pulse_generation);
-            let lr = Arc::clone(level_register);
-            apply_recording_state(ws_vec.clone(), generation, pg, lr);
-            apply_live_transcript(&ws_vec, live_transcript.shown(current_state));
+    let current_state = *redraw.timer.state.lock().unwrap();
+    redraw.draw(current_state, generation);
+}
+
+/// What draws a state of the overlay on the windows of the moment, with the
+/// commands-unavailable sign while it is on.
+#[derive(Clone)]
+struct Redraw {
+    windows: Arc<Mutex<Vec<Arc<WindowSet>>>>,
+    level_register: Arc<AtomicU32>,
+    live_transcript: LiveTranscriptText,
+    timer: NoticeTimer,
+}
+
+impl Redraw {
+    fn draw(&self, state: OverlayState, generation: u64) {
+        let commands_unavailable = self.timer.commands_unavailable.load(Ordering::SeqCst);
+        let pulse_gen = Arc::clone(&self.timer.pulse_generation);
+        let ws_vec = self.windows.lock().unwrap().clone();
+        match state {
+            OverlayState::Recording => {
+                let level_register = Arc::clone(&self.level_register);
+                let shown = self.live_transcript.shown(state);
+                apply_recording_state(
+                    ws_vec.clone(),
+                    generation,
+                    pulse_gen,
+                    level_register,
+                    commands_unavailable,
+                );
+                apply_live_transcript(&ws_vec, shown);
+            }
+            OverlayState::RecognizingSpeech | OverlayState::RefiningText => {
+                apply_processing_state(ws_vec, state, generation, pulse_gen, commands_unavailable);
+            }
+            OverlayState::WaitingForFocus => {
+                apply_waiting_for_focus_state(ws_vec, generation, pulse_gen, commands_unavailable);
+            }
+            OverlayState::FailureNotice(notice) => {
+                show_notice(&self.windows, &notice, generation, self.timer.clone());
+            }
+            OverlayState::Hidden => apply_hidden_state(ws_vec, commands_unavailable),
         }
-        OverlayState::RecognizingSpeech | OverlayState::RefiningText => {
-            let ws_vec = windows.lock().unwrap().clone();
-            let pg = Arc::clone(pulse_generation);
-            apply_processing_state(ws_vec, current_state, generation, pg);
-        }
-        OverlayState::WaitingForFocus => {
-            let ws_vec = windows.lock().unwrap().clone();
-            let pg = Arc::clone(pulse_generation);
-            apply_waiting_for_focus_state(ws_vec, generation, pg);
-        }
-        OverlayState::FailureNotice(notice) => {
-            show_notice(windows, &notice, generation, notice_timer);
-        }
-        OverlayState::Hidden => {}
     }
 }
 
@@ -444,6 +458,7 @@ impl VisualIndicator for MacosVisualIndicator {
         let windows = Arc::clone(&self.windows);
         let last_topology = Arc::clone(&self.last_topology);
         let level_register = Arc::clone(&self.level_register);
+        let commands_unavailable = Arc::clone(&self.commands_unavailable);
 
         *self.state.lock().unwrap() = OverlayState::Recording;
         self.live_transcript.clear();
@@ -455,7 +470,14 @@ impl VisualIndicator for MacosVisualIndicator {
 
                 let ws_vec = windows.lock().unwrap().clone();
                 log::debug!("overlay: recording shown on {} screen(s)", ws_vec.len());
-                apply_recording_state(ws_vec, generation, pulse_gen, level_register);
+                let commands_unavailable = commands_unavailable.load(Ordering::SeqCst);
+                apply_recording_state(
+                    ws_vec,
+                    generation,
+                    pulse_gen,
+                    level_register,
+                    commands_unavailable,
+                );
             }
         });
     }
@@ -503,6 +525,7 @@ impl VisualIndicator for MacosVisualIndicator {
         let windows = Arc::clone(&self.windows);
         let last_topology = Arc::clone(&self.last_topology);
         let level_register = Arc::clone(&self.level_register);
+        let commands_unavailable = Arc::clone(&self.commands_unavailable);
         // The state stays what the command left, so a screen change redraws that state.
         let after = state_after_sign(*self.state.lock().unwrap());
         log::debug!("overlay: command sign {} requested", sign.1);
@@ -519,14 +542,27 @@ impl VisualIndicator for MacosVisualIndicator {
                     return;
                 }
                 let ws_vec = windows.lock().unwrap().clone();
+                let commands_unavailable = commands_unavailable.load(Ordering::SeqCst);
                 match after {
-                    OverlayState::Recording => {
-                        apply_recording_state(ws_vec, generation, pulse_gen, level_register)
-                    }
-                    _ => apply_hidden_state(ws_vec),
+                    OverlayState::Recording => apply_recording_state(
+                        ws_vec,
+                        generation,
+                        pulse_gen,
+                        level_register,
+                        commands_unavailable,
+                    ),
+                    _ => apply_hidden_state(ws_vec, commands_unavailable),
                 }
             });
         });
+    }
+
+    fn show_commands_unavailable(&self) {
+        self.set_commands_unavailable(true);
+    }
+
+    fn hide_commands_unavailable(&self) {
+        self.set_commands_unavailable(false);
     }
 
     fn live_transcript_view(&self) -> Box<dyn LiveTranscriptView> {
@@ -574,6 +610,7 @@ impl MacosVisualIndicator {
         let pulse_gen = Arc::clone(&self.pulse_generation);
         let windows = Arc::clone(&self.windows);
         let last_topology = Arc::clone(&self.last_topology);
+        let commands_unavailable = Arc::clone(&self.commands_unavailable);
 
         *self.state.lock().unwrap() = stage;
         log::debug!("overlay: {stage:?} requested");
@@ -584,7 +621,8 @@ impl MacosVisualIndicator {
 
                 let ws_vec = windows.lock().unwrap().clone();
                 log::debug!("overlay: {stage:?} shown on {} screen(s)", ws_vec.len());
-                apply_processing_state(ws_vec, stage, generation, pulse_gen);
+                let commands_unavailable = commands_unavailable.load(Ordering::SeqCst);
+                apply_processing_state(ws_vec, stage, generation, pulse_gen, commands_unavailable);
             }
         });
     }
@@ -594,6 +632,7 @@ impl MacosVisualIndicator {
         let pulse_gen = Arc::clone(&self.pulse_generation);
         let windows = Arc::clone(&self.windows);
         let last_topology = Arc::clone(&self.last_topology);
+        let commands_unavailable = Arc::clone(&self.commands_unavailable);
 
         *self.state.lock().unwrap() = OverlayState::WaitingForFocus;
 
@@ -602,7 +641,8 @@ impl MacosVisualIndicator {
                 do_rebuild(mtm, &windows, &last_topology);
 
                 let ws_vec = windows.lock().unwrap().clone();
-                apply_waiting_for_focus_state(ws_vec, generation, pulse_gen);
+                let commands_unavailable = commands_unavailable.load(Ordering::SeqCst);
+                apply_waiting_for_focus_state(ws_vec, generation, pulse_gen, commands_unavailable);
             }
         });
     }
@@ -610,13 +650,33 @@ impl MacosVisualIndicator {
     fn hide_overlay(&self) {
         self.pulse_generation.fetch_add(1, Ordering::SeqCst);
         let windows = self.windows.lock().unwrap().clone();
+        let commands_unavailable = Arc::clone(&self.commands_unavailable);
 
         *self.state.lock().unwrap() = OverlayState::Hidden;
         log::debug!("overlay: hide requested");
 
         dispatch_to_main(move || {
             log::debug!("overlay: hidden");
-            apply_hidden_state(windows);
+            apply_hidden_state(windows, commands_unavailable.load(Ordering::SeqCst));
+        });
+    }
+
+    /// Redraws the state shown with or without the commands-unavailable sign; a failure notice
+    /// keeps showing alone, and its end draws the state with the sign.
+    fn set_commands_unavailable(&self, unavailable: bool) {
+        self.commands_unavailable
+            .store(unavailable, Ordering::SeqCst);
+        let redraw = self.redraw();
+        log::debug!("overlay: commands unavailable {unavailable} requested");
+
+        dispatch_to_main(move || {
+            // WHY: read on the main queue, so a state shown after this signal was queued wins
+            let state = *redraw.timer.state.lock().unwrap();
+            if matches!(state, OverlayState::FailureNotice(_)) {
+                return;
+            }
+            let generation = redraw.timer.pulse_generation.fetch_add(1, Ordering::SeqCst) + 1;
+            redraw.draw(state, generation);
         });
     }
 }
@@ -634,13 +694,16 @@ fn apply_recording_state(
     generation: u64,
     pulse_gen: Arc<AtomicU64>,
     level_register: Arc<AtomicU32>,
+    commands_unavailable: bool,
 ) {
     use objc2_app_kit::{NSColor, NSWindowCollectionBehavior};
     use objc2_foundation::NSString;
 
-    let text = NSString::from_str(RECORDING_SIGN);
+    let sign = pill_sign(OverlayState::Recording, commands_unavailable).unwrap_or_default();
+    let text = NSString::from_str(&sign);
     for ws in &windows {
         ws.label.setStringValue(&text);
+        ws.set_width(pill_width(commands_unavailable));
         ws.label.setTextColor(Some(&NSColor::redColor()));
         ws.label.setHidden(false);
         ws.transcript.show(None);
@@ -698,13 +761,15 @@ fn apply_processing_state(
     stage: OverlayState,
     generation: u64,
     pulse_gen: Arc<AtomicU64>,
+    commands_unavailable: bool,
 ) {
     use objc2_app_kit::{NSColor, NSWindowCollectionBehavior};
     use objc2_foundation::NSString;
 
-    let icon = NSString::from_str(stage_icon(stage).unwrap_or_default());
+    let icon = NSString::from_str(&pill_sign(stage, commands_unavailable).unwrap_or_default());
     for ws in &windows {
         ws.label.setStringValue(&icon);
+        ws.set_width(pill_width(commands_unavailable));
         ws.label.setTextColor(Some(&NSColor::labelColor()));
         ws.label.setAlphaValue(1.0);
         ws.label.setHidden(false);
@@ -729,13 +794,16 @@ fn apply_waiting_for_focus_state(
     windows: Vec<Arc<WindowSet>>,
     generation: u64,
     pulse_gen: Arc<AtomicU64>,
+    commands_unavailable: bool,
 ) {
     use objc2_app_kit::{NSColor, NSWindowCollectionBehavior};
     use objc2_foundation::NSString;
 
-    let text = NSString::from_str(WAITING_FOR_FOCUS_SIGN);
+    let sign = pill_sign(OverlayState::WaitingForFocus, commands_unavailable).unwrap_or_default();
+    let text = NSString::from_str(&sign);
     for ws in &windows {
         ws.label.setStringValue(&text);
+        ws.set_width(pill_width(commands_unavailable));
         ws.label.setTextColor(Some(&NSColor::orangeColor()));
         ws.label.setHidden(false);
         ws.transcript.show(None);
@@ -813,12 +881,44 @@ fn apply_command_sign(windows: &[Arc<WindowSet>], (icon, name): CommandSign) {
     }
 }
 
-fn apply_hidden_state(windows: Vec<Arc<WindowSet>>) {
+/// Hides the pill, or leaves the commands-unavailable sign alone in it while it is on.
+fn apply_hidden_state(windows: Vec<Arc<WindowSet>>, commands_unavailable: bool) {
+    if commands_unavailable {
+        apply_commands_unavailable_alone(&windows);
+        return;
+    }
     for ws in &windows {
         ws.eq_label.setHidden(true);
         unsafe { ws.spinner.stopAnimation(None) };
         ws.window.orderOut(None);
         ws.transcript.show(None);
+    }
+}
+
+/// The commands-unavailable sign alone in a pill just wide enough for it, steady and grey.
+fn apply_commands_unavailable_alone(windows: &[Arc<WindowSet>]) {
+    use objc2_app_kit::{NSColor, NSWindowCollectionBehavior};
+    use objc2_foundation::NSString;
+
+    let sign = pill_sign(OverlayState::Hidden, true).unwrap_or_default();
+    let text = NSString::from_str(&sign);
+    for ws in windows {
+        ws.label.setStringValue(&text);
+        ws.set_width(PillWidth::SignAlone);
+        ws.label.setTextColor(Some(&NSColor::secondaryLabelColor()));
+        ws.label.setAlphaValue(1.0);
+        ws.label.setHidden(false);
+        ws.eq_label.setHidden(true);
+        ws.spinner.setHidden(true);
+        unsafe { ws.spinner.stopAnimation(None) };
+        ws.transcript.show(None);
+        ws.window.orderFrontRegardless();
+        ws.window.setCollectionBehavior(
+            NSWindowCollectionBehavior::CanJoinAllSpaces
+                | NSWindowCollectionBehavior::Stationary
+                | NSWindowCollectionBehavior::IgnoresCycle
+                | NSWindowCollectionBehavior::FullScreenAuxiliary,
+        );
     }
 }
 
@@ -948,6 +1048,49 @@ mod tests {
     #[test]
     fn should_show_sparkles_for_the_text_refinement_stage() {
         assert_eq!(stage_icon(OverlayState::RefiningText), Some("\u{2728}"));
+    }
+
+    #[test]
+    fn should_show_the_commands_unavailable_sign_after_the_recording_sign() {
+        assert_eq!(
+            pill_sign(OverlayState::Recording, true).as_deref(),
+            Some("◉ REC ⊘ CMD")
+        );
+    }
+
+    #[test]
+    fn should_show_the_commands_unavailable_sign_after_a_stage_icon() {
+        // Given
+        let stages = [OverlayState::RecognizingSpeech, OverlayState::RefiningText];
+        // When / Then
+        for stage in stages {
+            let expected = format!("{} ⊘ CMD", stage_icon(stage).unwrap());
+            assert_eq!(pill_sign(stage, true), Some(expected), "{stage:?}");
+        }
+    }
+
+    #[test]
+    fn should_show_the_commands_unavailable_sign_alone_while_hidden() {
+        assert_eq!(
+            pill_sign(OverlayState::Hidden, true).as_deref(),
+            Some("⊘ CMD")
+        );
+    }
+
+    #[test]
+    fn should_show_each_state_as_before_while_commands_are_available() {
+        // Given
+        let expected = [
+            (OverlayState::Hidden, None),
+            (OverlayState::Recording, Some(RECORDING_SIGN)),
+            (OverlayState::RecognizingSpeech, Some("\u{1F3A7}")),
+            (OverlayState::RefiningText, Some("\u{2728}")),
+            (OverlayState::WaitingForFocus, Some(WAITING_FOR_FOCUS_SIGN)),
+        ];
+        // When / Then
+        for (state, sign) in expected {
+            assert_eq!(pill_sign(state, false).as_deref(), sign, "{state:?}");
+        }
     }
 
     #[test]

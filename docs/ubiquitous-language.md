@@ -82,9 +82,10 @@
 ### VisualIndicator
 - **Type:** Driven Port (trait in `core/application/`)
 - **Definition:** Surfaces the current `Pipeline` state to the user as
-  an on-screen widget — seven discrete signals: recording in progress,
+  an on-screen widget — eight discrete signals: recording in progress,
   each `Processing stage` (speech recognition, text refinement), waiting
-  for `Text input focus`, hidden, the `Command sign`, and the `Failure notice`. Abstracts the platform-specific
+  for `Text input focus`, hidden, the `Command sign`, the `Failure notice`, and the
+  `Commands-unavailable sign` (shown and hidden on its own, beside whatever else shows). Abstracts the platform-specific
   always-on-top overlay so `Pipeline` stays platform-agnostic.
 - **Code:** `app/src/core/application/visual_indicator.rs`
 - **Synonyms to AVOID:** "Overlay", "HUD", "StatusBadge", "Toast", "Indicator" (alone — too generic)
@@ -100,6 +101,12 @@
 - **Definition:** The overlay naming a voice command with no visible effect of its own — "⏎ ENTER", "⌫ CLEAR", "↻ RESTART" — for about a second after it was carried out, then showing again what it showed before: hidden in standby, the recording during a dictation. Any later signal (the recording a chain starts, the next command's sign) replaces it at once. "start", "stop" and "cancel dictation" have none: the overlay already shows them.
 - **Code:** `VisualIndicator::show_command_sign`
 - **Synonyms to AVOID:** "toast", "notification", "badge", "confirmation" (alone — also names the second hearing of a command)
+
+### Commands-unavailable sign
+- **Type:** Domain concept (overlay signal)
+- **Definition:** The overlay showing that voice commands do not work now, because the *command spotting service* has been *away* for 5 s while listening. It shows alone in standby and beside the recording or processing sign during a dictation, takes no focus, outlasts a dictation that ends meanwhile, and goes once the service is back; the overlay then shows only what the current state shows. A shorter outage shows nothing, and no outage plays a sound.
+- **Code:** `PipelineInput::SpottingStillAway`; `VisualIndicator::show_commands_unavailable`, `VisualIndicator::hide_commands_unavailable`
+- **Synonyms to AVOID:** "failure notice" (that one goes on its own), "offline badge", "warning"
 
 ### Dictation sign
 - **Type:** Adapter concept (visual feedback next to the mouse pointer)
@@ -244,7 +251,7 @@
 
 ### Away (command spotting service)
 - **Type:** State of *listening*
-- **Definition:** The *command spotting service* dropped the connection or answered nothing, not even a ping, for 5 s. Listening stays on, a running dictation keeps recording, the listening-off sound plays, and the app *reconnects*. Slow spotting results alone never make the service away.
+- **Definition:** The *command spotting service* dropped the connection or answered nothing, not even a ping, for 5 s. Listening stays on, a running dictation keeps recording, no sound plays, and the app *reconnects*; once the service has been away for 5 s, the overlay shows the *Commands-unavailable sign* until it is back. Slow spotting results alone never make the service away.
 - **Code:** `PipelineInput::SpottingLost`; `lose_spotting` in `app/src/core/application/pipeline/voice_control.rs`
 - **Synonyms to AVOID:** "dead", "offline", "disconnected" (alone: the connection may be up while the service is slow)
 

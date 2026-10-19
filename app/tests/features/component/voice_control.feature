@@ -321,7 +321,7 @@ Feature: voice-control
       Given listening is on
       When the command spotting service stops answering
       Then an error naming the command spotting service is logged
-      And the listening-off sound plays
+      And no sound plays
       And listening stays on
 
   Rule: Listening comes back when the command spotting service is back
@@ -331,7 +331,39 @@ Feature: voice-control
       And the command spotting service went away and is back
       When the user says "press enter"
       Then the Return key is pressed in the focused app
-      And the listening-on sound played when the service came back
+      And no listening sound played after the app started
+
+  Rule: The overlay shows that voice commands do not work while the service stays away
+
+    Scenario: A short outage shows nothing
+      Given listening is on
+      And no dictation runs
+      When the command spotting service goes away and is back within 5 seconds
+      Then the overlay never shows that voice commands do not work
+      And no sound plays
+
+    Scenario: A long outage in standby shows the sign until the service is back
+      Given listening is on
+      And no dictation runs
+      And the overlay is hidden
+      When the command spotting service stays away for longer than 5 seconds, then is back
+      Then the overlay shows that voice commands do not work while the service is away
+      And once the service is back, the overlay hides
+
+    Scenario: A long outage during a dictation shows the sign beside the recording sign
+      Given a dictation runs
+      And the overlay shows the recording sign
+      When the command spotting service stays away for longer than 5 seconds, then is back
+      Then the overlay shows that voice commands do not work beside the recording sign
+      And once the service is back, the overlay shows the recording sign alone
+
+    Scenario: A dictation that ends during a long outage keeps the sign
+      Given a dictation runs
+      And the user has said a sentence in it
+      And the overlay shows that voice commands do not work
+      When the user ends the dictation with the hotkey and its text is pasted, and later the service is back
+      Then the overlay still shows that voice commands do not work after the paste
+      And once the service is back, the overlay hides
 
   Rule: A dictation keeps recording while the command spotting service is away
 

@@ -57,6 +57,14 @@ impl<V: VisualIndicator, S: PointerSignView> VisualIndicator for PointerSignIndi
         self.overlay.show_command_sign(command);
     }
 
+    fn show_commands_unavailable(&self) {
+        self.overlay.show_commands_unavailable();
+    }
+
+    fn hide_commands_unavailable(&self) {
+        self.overlay.hide_commands_unavailable();
+    }
+
     fn live_transcript_view(&self) -> Box<dyn LiveTranscriptView> {
         self.overlay.live_transcript_view()
     }
@@ -95,6 +103,27 @@ mod tests {
         let indicator = PointerSignIndicator::new(quiet_overlay(), sign.clone());
         indicator.show_command_sign(VoiceCommand::PressEnter);
         indicator.show_failure_notice(&FailureNotice::VoiceCommandsUnavailable);
+        assert!(sign.0.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn should_pass_the_commands_unavailable_sign_to_the_overlay_and_leave_the_sign_alone() {
+        // Given
+        let mut overlay = MockVisualIndicator::new();
+        overlay
+            .expect_show_commands_unavailable()
+            .times(1)
+            .return_const(());
+        overlay
+            .expect_hide_commands_unavailable()
+            .times(1)
+            .return_const(());
+        let sign = Sign::default();
+        let indicator = PointerSignIndicator::new(overlay, sign.clone());
+        // When
+        indicator.show_commands_unavailable();
+        indicator.hide_commands_unavailable();
+        // Then
         assert!(sign.0.lock().unwrap().is_empty());
     }
 }

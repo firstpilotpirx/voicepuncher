@@ -21,6 +21,9 @@ const DICTATE_PAST_STALL: Duration = Duration::from_secs(2);
 const BACK_WITHIN: Duration = Duration::from_secs(30);
 /// How long after the service answers again the user speaks.
 const SPEAKS_AFTER_RETURN: Duration = Duration::from_secs(5);
+/// How long the command spotting service stays away in a long outage: past the 5 s after
+/// which the app shows that voice commands do not work.
+const STAYS_AWAY: Duration = Duration::from_secs(8);
 const POLL: Duration = Duration::from_millis(250);
 
 fn hands_free(world: &E2eWorld) -> Result<&HandsFree> {
@@ -124,14 +127,58 @@ async fn command_spotting_restarted(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-/// Where in `events` listening came back after the service was lost: the listening-on sound
-/// that follows the listening-off sound, not the one at the start.
+/// Where in `events` the pipeline was told the service is back after it was told the
+/// service went away.
 fn back_after_loss(events: &[Event]) -> Option<usize> {
-    let off = events.iter().position(|e| *e == Event::ListeningOffSound)?;
-    events[off..]
+    let lost = events.iter().position(|e| *e == Event::SpottingLost)?;
+    events[lost..]
         .iter()
-        .position(|e| *e == Event::ListeningOnSound)
-        .map(|on| off + on)
+        .position(|e| *e == Event::SpottingBack)
+        .map(|back| lost + back)
+}
+
+#[given("the overlay is hidden")]
+fn overlay_hidden(world: &mut E2eWorld) -> Result<()> {
+    let events = hands_free(world)?.events();
+    if events.contains(&Event::CommandsUnavailableShown) {
+        bail!("the overlay already shows a sign: {events:?}");
+    }
+    Ok(())
+}
+
+/// Holds what restarts the command spotting service, kills the service and lets it start
+/// again only after `STAYS_AWAY`; waits until the app has it back.
+#[when("the command spotting service stays away for longer than 5 seconds")]
+async fn command_spotting_stays_away(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, |world| {
+        let services = scenario_services(world)?;
+        let supervisor = services
+            .command_spotting_supervisor()
+            .context("no supervisor of the command spotting service was found")?;
+        let pid = services
+            .command_spotting_process()
+            .context("no command spotting service process was found")?;
+        services.pause(supervisor)?;
+        Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .status()?;
+        hands_free(world)?.keep_quiet(STAYS_AWAY)?;
+        let services = scenario_services(world)?;
+        services.resume(supervisor)?;
+        let port = services.kws_port();
+        ensure!(
+            wait_for(BACK_WITHIN, || healthy(port)),
+            "the scripts did not start the command spotting service again within {BACK_WITHIN:?}"
+        );
+        let hands_free = hands_free(world)?;
+        wait_for(BACK_WITHIN, || {
+            hands_free
+                .events()
+                .contains(&Event::CommandsUnavailableHidden)
+        });
+        Ok(())
+    })
+    .await
 }
 
 fn wait_for(limit: Duration, condition: impl Fn() -> bool) -> bool {
@@ -184,7 +231,7 @@ async fn stop_after_return(world: &mut E2eWorld) -> Result<()> {
 fn listening_kept(world: &mut E2eWorld) -> Result<()> {
     let events = hands_free(world)?.events();
     ensure!(
-        !events.contains(&Event::ListeningOffSound),
+        !events.contains(&Event::SpottingLost),
         "the app took the command spotting service for gone: {events:?}"
     );
     Ok(())
@@ -219,11 +266,48 @@ fn return_pressed(world: &mut E2eWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("the listening-on sound played when the service came back")]
-fn listening_on_after_return(world: &mut E2eWorld) -> Result<()> {
+/// The one listening-on sound is the app's start; the outage played none.
+#[then("no listening sound played after the app started")]
+fn no_listening_sound_after_start(world: &mut E2eWorld) -> Result<()> {
     let events = hands_free(world)?.events();
-    let off = events.iter().position(|e| *e == Event::ListeningOffSound);
-    let on_after = off.is_some_and(|off| events[off..].contains(&Event::ListeningOnSound));
-    ensure!(on_after, "no listening-on sound after the loss: {events:?}");
+    let on_sounds = events
+        .iter()
+        .filter(|e| **e == Event::ListeningOnSound)
+        .count();
+    ensure!(
+        on_sounds <= 1 && !events.contains(&Event::ListeningOffSound),
+        "a listening sound played through the outage: {events:?}"
+    );
+    Ok(())
+}
+
+#[then("the overlay shows that voice commands do not work")]
+fn sign_shown(world: &mut E2eWorld) -> Result<()> {
+    let events = hands_free(world)?.events();
+    let lost = events.iter().position(|e| *e == Event::SpottingLost);
+    let shown = events
+        .iter()
+        .position(|e| *e == Event::CommandsUnavailableShown);
+    ensure!(
+        matches!((lost, shown), (Some(lost), Some(shown)) if shown > lost),
+        "the overlay did not show that voice commands do not work: {events:?}"
+    );
+    Ok(())
+}
+
+#[then("the sign goes away once the service is back")]
+fn sign_gone_after_return(world: &mut E2eWorld) -> Result<()> {
+    let events = hands_free(world)?.events();
+    let back = back_after_loss(&events);
+    let hidden = events
+        .iter()
+        .rposition(|e| *e == Event::CommandsUnavailableHidden);
+    let shown_last = events
+        .iter()
+        .rposition(|e| *e == Event::CommandsUnavailableShown);
+    ensure!(
+        matches!((back, hidden, shown_last), (Some(back), Some(hidden), Some(shown)) if hidden > back && hidden > shown),
+        "the sign did not go away once the service was back: {events:?}"
+    );
     Ok(())
 }

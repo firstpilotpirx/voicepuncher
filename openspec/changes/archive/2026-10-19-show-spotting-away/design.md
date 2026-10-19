@@ -37,7 +37,7 @@ The command spotting adapter (`commandspotting/websocket`) already tracks an out
 | Commands work again after the command spotting service restarts | component and E2E `.feature` |
 | Listening is not given up after many failed attempts | adapter integration (`commandspotting_reconnect_it`, unchanged) |
 | A short outage shows nothing | adapter integration (no `SpottingStillAway` when back within 5 s) + component `.feature` |
-| A long outage in standby shows the sign until the service is back | adapter integration (`SpottingStillAway` once after 5 s) + component + E2E `.feature` |
+| A long outage in standby shows the sign until the service is back | adapter integration (`SpottingStillAway` once after 5 s; `visualfeedback_macos_it`: the sign alone shows and hides with the flag) + component + E2E `.feature` |
 | A long outage during a dictation shows the sign beside the recording sign | component `.feature`; label composition in unit tests of the overlay adapter |
-| A dictation that ends during a long outage keeps the sign | component `.feature`; `hide()` keeping the sign in overlay unit tests |
+| A dictation that ends during a long outage keeps the sign | component `.feature`; `visualfeedback_macos_it`: `hide()` and the end of a failure notice keep the sign |
 | Overlay readable, takes no focus | manual run |

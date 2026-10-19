@@ -71,14 +71,14 @@ filter = 'binary(cucumber_e2e)'
 run-extra-args = ["--tags", "@accuracy and not @wip"]
 slow-timeout = { period = "60s", terminate-after = 6 }
 
-# @resilience, 159 s measured: 6 min
+# @resilience, 200 s measured: 7 min
 [profile.e2e-resilience]
 success-output = "immediate"
 
 [[profile.e2e-resilience.overrides]]
 filter = 'binary(cucumber_e2e)'
 run-extra-args = ["--tags", "@resilience and not @wip"]
-slow-timeout = { period = "60s", terminate-after = 6 }
+slow-timeout = { period = "60s", terminate-after = 7 }
 
 # chunked_transcription_it, 112 s measured: 4 min; @seams with the voice start timing, 252 s measured: 9 min
 [profile.e2e-seams]

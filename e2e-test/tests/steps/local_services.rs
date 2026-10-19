@@ -164,6 +164,18 @@ impl ScenarioServices {
         ))
     }
 
+    /// What keeps the command spotting service running: the supervisor in its PID file.
+    pub fn command_spotting_supervisor(&self) -> Option<u32> {
+        std::fs::read_to_string(
+            self.dir("run")
+                .join(format!("{COMMAND_SPOTTING}-{}.pid", self.kws_port)),
+        )
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+    }
+
     /// The speech recognition service for commands, run as one copy: its process itself.
     pub fn command_speech_recognition_process(&self) -> Option<u32> {
         service_process(self.command_stt_port)

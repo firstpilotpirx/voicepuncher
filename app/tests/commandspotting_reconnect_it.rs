@@ -1,6 +1,7 @@
 //! The command spotting adapter against stub services on a loopback port that close the
-//! connection, go away and come back: the adapter reports the loss once, reaches for the
-//! service until it answers, reports its return and sends it the audio it missed.
+//! connection, go away and come back: the adapter reports the loss once, an outage past the
+//! replay once, reaches for the service until it answers, reports its return and sends it the
+//! audio it missed.
 //! A service that accepts but never completes the handshake fails an attempt in seconds.
 
 use std::net::{TcpListener, TcpStream};
@@ -26,6 +27,8 @@ const BACK_WITHIN: Duration = Duration::from_secs(5);
 const LONG_OUTAGE: Duration = Duration::from_secs(60);
 /// A short outage: the stub refuses every connection for this long after it closed the first.
 const SHORT_OUTAGE: Duration = Duration::from_secs(3);
+/// An outage the replay on the return no longer hides: well past its 5 s.
+const OUTAGE_PAST_REPLAY: Duration = Duration::from_secs(7);
 /// How far the time of an event on the new connection may be from the capture of the first
 /// sample sent again: the resampler's delay and a frame.
 const EVENT_TIME_TOLERANCE: Duration = Duration::from_millis(300);
@@ -260,12 +263,12 @@ fn should_be_back_within_seconds_once_the_service_answers_after_a_long_outage() 
         BACK_WITHIN,
     );
     let outage_end = Instant::now() + LONG_OUTAGE;
+    let mut while_away = Vec::new();
     while Instant::now() < outage_end {
         audio.send(microphone(0.0)).unwrap();
-        assert!(
-            inputs.recv_timeout(Duration::from_millis(100)).is_err(),
-            "nothing comes while away"
-        );
+        if let Ok(input) = inputs.recv_timeout(Duration::from_millis(100)) {
+            while_away.push(input);
+        }
     }
     // When the service answers on its port again
     let _connections = stub_service(TcpListener::bind(port_addr).unwrap(), Duration::ZERO);
@@ -279,6 +282,11 @@ fn should_be_back_within_seconds_once_the_service_answers_after_a_long_outage() 
     );
     // Then
     assert!(lost, "the loss was not reported");
+    assert_eq!(
+        while_away,
+        [PipelineInput::SpottingStillAway],
+        "only the long outage comes while away"
+    );
     assert!(
         back,
         "not back within {BACK_WITHIN:?}, waited {:?}",
@@ -298,6 +306,61 @@ fn should_be_back_within_seconds_once_the_service_answers_after_a_long_outage() 
         "{attempts:?}"
     );
     stream.stop();
+}
+
+#[test]
+fn should_report_once_that_the_service_is_still_away_past_the_replay() {
+    // Given the service is away for longer than the replay reaches back
+    let (listener, url) = free_listener();
+    let _connections = stub_service(listener, OUTAGE_PAST_REPLAY);
+    let (stream, audio, inputs) = start_stream(&url);
+    // When
+    let outage = outage_inputs(&audio, &inputs, OUTAGE_PAST_REPLAY + BACK_WITHIN);
+    // Then
+    assert_eq!(
+        outage,
+        [
+            PipelineInput::SpottingLost,
+            PipelineInput::SpottingStillAway,
+            PipelineInput::SpottingBack
+        ]
+    );
+    stream.stop();
+}
+
+#[test]
+fn should_not_report_a_service_back_within_the_replay_as_still_away() {
+    // Given the service is away for less than the replay reaches back
+    let (listener, url) = free_listener();
+    let _connections = stub_service(listener, SHORT_OUTAGE);
+    let (stream, audio, inputs) = start_stream(&url);
+    // When
+    let outage = outage_inputs(&audio, &inputs, SHORT_OUTAGE + BACK_WITHIN);
+    // Then
+    assert_eq!(
+        outage,
+        [PipelineInput::SpottingLost, PipelineInput::SpottingBack]
+    );
+    stream.stop();
+}
+
+/// The inputs other than spotting events, feeding silence until the service is back, at
+/// most for `within`.
+fn outage_inputs(
+    audio: &Sender<Vec<f32>>,
+    inputs: &Receiver<PipelineInput>,
+    within: Duration,
+) -> Vec<PipelineInput> {
+    let deadline = Instant::now() + within;
+    let mut got = Vec::new();
+    while Instant::now() < deadline && got.last() != Some(&PipelineInput::SpottingBack) {
+        audio.send(microphone(0.0)).unwrap();
+        match inputs.recv_timeout(Duration::from_millis(100)) {
+            Ok(PipelineInput::Spotting(_)) | Err(_) => {}
+            Ok(input) => got.push(input),
+        }
+    }
+    got
 }
 
 #[test]

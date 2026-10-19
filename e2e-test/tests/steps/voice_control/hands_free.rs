@@ -39,6 +39,14 @@ pub(super) enum Event {
     ReturnPressed,
     ListeningOffSound,
     ListeningOnSound,
+    /// The pipeline was told the command spotting service went away.
+    SpottingLost,
+    /// The pipeline was told the command spotting service answers again.
+    SpottingBack,
+    /// The overlay showed that voice commands do not work.
+    CommandsUnavailableShown,
+    /// The overlay took that sign away.
+    CommandsUnavailableHidden,
 }
 
 /// One frame of audio, as long as it lasts in real time.
@@ -67,7 +75,7 @@ impl HandsFree {
         let (inputs_tx, inputs_rx) = mpsc::channel();
         let spotter = SpeakerSpotter {
             url,
-            inputs: inputs_tx,
+            inputs: tee_inputs(inputs_tx, Arc::clone(&events)),
             heard: Some(heard),
             stream: None,
             events: Arc::clone(&events),
@@ -78,7 +86,7 @@ impl HandsFree {
             Box::new(PassthroughTextRefiner),
             Box::new(RecordingPaster(Arc::clone(&events))),
             Box::new(ListeningSounds(Arc::clone(&events))),
-            Box::new(NoOverlay),
+            Box::new(SignOverlay(Arc::clone(&events))),
             PipelineConfig {
                 min_press_ms: 0,
                 recording_mode: RecordingMode::Toggle,
@@ -316,13 +324,45 @@ impl SoundPlayer for ListeningSounds {
     }
 }
 
-struct NoOverlay;
+/// Passes every input on to `pipeline`, noting the losses and returns of the command
+/// spotting service on the way.
+fn tee_inputs(pipeline: Sender<PipelineInput>, events: Events) -> Sender<PipelineInput> {
+    let (tee, inputs) = mpsc::channel();
+    std::thread::spawn(move || {
+        for input in inputs {
+            let noted = match input {
+                PipelineInput::SpottingLost => Some(Event::SpottingLost),
+                PipelineInput::SpottingBack => Some(Event::SpottingBack),
+                _ => None,
+            };
+            if let Some(event) = noted {
+                events.lock().unwrap().push(event);
+            }
+            if pipeline.send(input).is_err() {
+                return;
+            }
+        }
+    });
+    tee
+}
 
-impl VisualIndicator for NoOverlay {
+/// Shows nothing; notes when the sign that voice commands do not work comes and goes.
+struct SignOverlay(Events);
+
+impl VisualIndicator for SignOverlay {
     fn show_recording(&self) {}
     fn show_recognizing_speech(&self) {}
     fn show_refining_text(&self) {}
     fn show_waiting_for_focus(&self) {}
     fn hide(&self) {}
     fn show_failure_notice(&self, _notice: &FailureNotice) {}
+    fn show_commands_unavailable(&self) {
+        self.0.lock().unwrap().push(Event::CommandsUnavailableShown);
+    }
+    fn hide_commands_unavailable(&self) {
+        self.0
+            .lock()
+            .unwrap()
+            .push(Event::CommandsUnavailableHidden);
+    }
 }

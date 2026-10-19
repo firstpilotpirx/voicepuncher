@@ -4,7 +4,7 @@ use objc2::rc::Retained;
 use objc2::MainThreadMarker;
 use objc2_app_kit::{
     NSBackingStoreType, NSColor, NSControlSize, NSFont, NSFontWeightRegular, NSProgressIndicator,
-    NSProgressIndicatorStyle, NSTextAlignment, NSTextField, NSVisualEffectBlendingMode,
+    NSProgressIndicatorStyle, NSTextAlignment, NSTextField, NSView, NSVisualEffectBlendingMode,
     NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView, NSWindow,
     NSWindowCollectionBehavior, NSWindowStyleMask,
 };
@@ -14,6 +14,22 @@ use objc2_quartz_core::kCACornerCurveContinuous;
 use super::transcript_window::TranscriptWindow;
 
 const PILL_CORNER_RADIUS: f64 = 20.0;
+const PILL_WIDTH: f64 = 174.0;
+const LABEL_X: f64 = 6.0;
+const LABEL_WIDTH: f64 = 64.0;
+const EQ_LABEL_X: f64 = 56.0;
+const SPINNER_SIZE: f64 = 32.0;
+
+/// How wide the pill is drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PillWidth {
+    /// The width it is built with.
+    Base,
+    /// Wider by as much as the sign outgrows its place; the level and the spinner move right.
+    FitSign,
+    /// Just the sign, with nothing beside it.
+    SignAlone,
+}
 
 pub(super) struct WindowSet {
     pub(super) window: Retained<NSWindow>,
@@ -26,7 +42,7 @@ pub(super) struct WindowSet {
 
 impl WindowSet {
     pub(super) fn build(mtm: MainThreadMarker, visible_frame: NSRect) -> Arc<Self> {
-        let window_width: f64 = 174.0;
+        let window_width = PILL_WIDTH;
         let window_height: f64 = 55.0;
 
         let x = visible_frame.origin.x + (visible_frame.size.width - window_width) / 2.0;
@@ -48,9 +64,12 @@ impl WindowSet {
             (window_height / 2.0 - font.capHeight() / 2.0 - (label_height - font.ascender()))
                 .floor();
         let label_frame = NSRect {
-            origin: NSPoint { x: 6.0, y: label_y },
+            origin: NSPoint {
+                x: LABEL_X,
+                y: label_y,
+            },
             size: NSSize {
-                width: 64.0,
+                width: LABEL_WIDTH,
                 height: label_height,
             },
         };
@@ -68,7 +87,7 @@ impl WindowSet {
 
         let eq_font =
             unsafe { NSFont::monospacedSystemFontOfSize_weight(16.0, NSFontWeightRegular) };
-        let eq_label_x = 56.0;
+        let eq_label_x = EQ_LABEL_X;
         let eq_baseline_drop = 7.0;
         let eq_frame = NSRect {
             origin: NSPoint {
@@ -93,7 +112,7 @@ impl WindowSet {
 
         effect_view.addSubview(&eq_label);
 
-        let spinner_size: f64 = 32.0;
+        let spinner_size = SPINNER_SIZE;
         let spinner_frame = NSRect {
             origin: NSPoint {
                 x: (window_width - spinner_size) / 2.0,
@@ -124,6 +143,53 @@ impl WindowSet {
             transcript,
         })
     }
+}
+
+impl WindowSet {
+    /// Draws the pill `width` wide around the same centre, the sign's place widened to fit it
+    /// unless `width` is the base one.
+    pub(super) fn set_width(&self, width: PillWidth) {
+        let label = self.label.frame();
+        self.label.sizeToFit();
+        let fitted = self.label.frame().size.width.max(LABEL_WIDTH);
+        let label_width = if width == PillWidth::Base {
+            LABEL_WIDTH
+        } else {
+            fitted
+        };
+        let growth = label_width - LABEL_WIDTH;
+        self.label.setFrame(NSRect {
+            origin: label.origin,
+            size: NSSize {
+                width: label_width,
+                height: label.size.height,
+            },
+        });
+        move_to_x(&self.eq_label, EQ_LABEL_X + growth);
+        move_to_x(&self.spinner, (PILL_WIDTH - SPINNER_SIZE) / 2.0 + growth);
+        let pill_width = match width {
+            PillWidth::SignAlone => label_width + 2.0 * LABEL_X,
+            PillWidth::Base | PillWidth::FitSign => PILL_WIDTH + growth,
+        };
+        let pill = self.window.frame();
+        let origin = NSPoint {
+            x: pill.origin.x + (pill.size.width - pill_width) / 2.0,
+            y: pill.origin.y,
+        };
+        let size = NSSize {
+            width: pill_width,
+            height: pill.size.height,
+        };
+        self.window.setFrame_display(NSRect { origin, size }, true);
+    }
+}
+
+fn move_to_x(view: &NSView, x: f64) {
+    let frame = view.frame();
+    view.setFrameOrigin(NSPoint {
+        x,
+        y: frame.origin.y,
+    });
 }
 
 /// A borderless, click-through window on every space with a rounded menu-material

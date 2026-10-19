@@ -17,6 +17,11 @@ pub trait VisualIndicator: Send {
     /// "clear all text", "restart dictation") for about a second, then the overlay shows again
     /// what it showed before. Any later signal replaces it at once.
     fn show_command_sign(&self, _command: VoiceCommand) {}
+    /// Commands-unavailable sign: voice commands cannot be heard for now. It shows beside
+    /// whatever the overlay shows, and alone while the overlay is hidden, until hidden again.
+    fn show_commands_unavailable(&self) {}
+    /// Takes the commands-unavailable sign away; the overlay shows its state without it.
+    fn hide_commands_unavailable(&self) {}
     /// A view of the live transcript that shows it while the recording runs.
     fn live_transcript_view(&self) -> Box<dyn LiveTranscriptView> {
         Box::new(HiddenLiveTranscript)

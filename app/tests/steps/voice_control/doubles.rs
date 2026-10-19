@@ -226,6 +226,14 @@ impl VisualIndicator for RecordingOverlay {
     fn show_failure_notice(&self, _notice: &FailureNotice) {
         record(&self.0, Event::Overlay("failure notice"));
     }
+
+    fn show_commands_unavailable(&self) {
+        record(&self.0, Event::Overlay("commands unavailable shown"));
+    }
+
+    fn hide_commands_unavailable(&self) {
+        record(&self.0, Event::Overlay("commands unavailable hidden"));
+    }
 }
 
 /// The command spotting service as the pipeline sees it; the scenario feeds its events
