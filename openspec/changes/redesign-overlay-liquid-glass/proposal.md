@@ -25,9 +25,16 @@ Out of scope: when each state shows and for how long (except the new Pasted stat
 
 ## Capabilities
 
+### New Capabilities
+
+- `visual-feedback`: the overlay's look in every state — frosted glass, icons and English labels, the scrolling level waveform, the wait-for-focus, Pasted, command, failure and commands-unavailable signs, Reduce Motion.
+
 ### Modified Capabilities
 
-- `visual-feedback`: the overlay's look, its icons and English labels, the scrolling level waveform, the indeterminate spinners, the new Pasted state and the pointer sign's state-mirroring badge.
+- `processing-stages`: ear and sparkles icons with English labels, an indeterminate spoke spinner, the dimmed raw transcript during refinement, the Pasted sign after the paste.
+- `dictation-pointer`: the 🎙️ sign becomes a dark-glass badge that mirrors the overlay at every stage until the overlay hides.
+- `text-insertion`: text pasted after a wait for focus shows the Pasted sign before the overlay hides.
+- `voice-control`: a hotkey dictation's overlay ends on the Pasted sign.
 
 ## Impact
 
@@ -38,7 +45,7 @@ Out of scope: when each state shows and for how long (except the new Pasted stat
 
 ## Open points
 
-- The capability id: proposed `visual-feedback`; the spec stage picks the existing overlay capability if it is named differently.
+- The capability id: no single overlay capability exists, so the look goes into the new `visual-feedback` and the existing `processing-stages`, `dictation-pointer`, `text-insertion` and `voice-control` change where they describe it.
 - Glass implementation: proposed the system material (`NSGlassEffectView` on macOS 26, falling back to `NSVisualEffectView` on older macOS) rather than hand-drawn blur.
 - Icons: proposed SF Symbols (`ear`, `sparkles`, `keyboard`, `checkmark`, `return`, `delete.left`, `arrow.clockwise`, `exclamationmark.triangle`, `mic.slash`, `mic.fill`) instead of the mockup's web icons.
 - Pasted state duration: proposed 0.5 s; the user said "about half a second is fine".
