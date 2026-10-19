@@ -1,0 +1,169 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Overlay mockups</title><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css"><style>:root{--surface-1:#f5f4ef;--border:#ddd;--text-primary:#111;--text-secondary:#555;--font-mono:ui-monospace,Menlo,monospace;--font-sans:-apple-system,sans-serif}body{margin:0 auto;padding:16px;max-width:720px;background:#fff;font-family:-apple-system,sans-serif}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden}.lt .cursor{color:#000;filter:drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff)}
+.lt .cap2{color:#1d1d1f}
+.dk{background:#1c1c1e!important}.dk .txt{color:rgba(235,235,245,.75)}
+body.one{padding:0;max-width:none;margin:0}body.one .grid{display:block}body.one .card{border:0;border-radius:0}body.one .meta{display:none}
+body.still *{animation:none!important;transition:none!important}
+</style></head><body><h2 class="sr-only">Макеты всех состояний оверлея voicepuncher в стиле обычного стекла: запись, живой текст, распознавание, обработка LLM, ожидание поля ввода, команды, ошибки, команды недоступны, микрофон у курсора</h2>
+<style>
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.card{border-radius:14px;overflow:hidden;border:0.5px solid var(--border)}
+.scene{position:relative;height:200px;background:linear-gradient(160deg,#1f5fc4,#3a7be0 50%,#7b4fd6);overflow:hidden;display:flex;flex-direction:column;align-items:center;padding-top:26px;font-family:-apple-system,BlinkMacSystemFont,var(--font-sans)}
+.scene.lt{background:linear-gradient(160deg,#f6f3ec,#e9eef6 60%,#f3e6ef)}
+.scene .txt{position:absolute;left:12px;right:12px;top:8px;color:rgba(255,255,255,.9);font-size:13px;line-height:22px;white-space:pre-wrap;word-break:break-all}
+.scene.lt .txt{color:#3a3a3c}
+.scene .blob{position:absolute;border-radius:50%}
+.pill{position:relative;z-index:2;height:56px;min-width:200px;border-radius:28px;display:flex;align-items:center;justify-content:center;gap:14px;padding:0 22px;background:rgba(255,255,255,.26);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,.6);box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 8px 24px rgba(0,0,0,.2);color:#fff}
+.lt .pill{background:rgba(255,255,255,.5);color:#1d1d1f;border-color:rgba(255,255,255,.9);box-shadow:inset 0 1px 0 #fff,0 8px 24px rgba(0,0,0,.12)}
+.sub{position:relative;z-index:2;margin-top:8px;width:84%;border-radius:16px;padding:9px 14px;font-size:13px;line-height:1.4;background:rgba(255,255,255,.22);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,.5);box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 6px 18px rgba(0,0,0,.15);color:#fff;animation:rise .5s ease-out both}
+.lt .sub{background:rgba(255,255,255,.55);color:#1d1d1f;border-color:rgba(255,255,255,.9)}
+@keyframes rise{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.rec{width:26px;height:26px;border-radius:50%;border:2px solid #ff3b30;display:flex;align-items:center;justify-content:center;flex:none}
+.rec i{display:block;width:18px;height:18px;border-radius:50%;background:#ff3b30;animation:rp 1.6s ease-in-out infinite}
+@keyframes rp{50%{transform:scale(.82)}}
+.bars{display:flex;align-items:center;gap:4px;height:28px}
+.bars span{width:2.5px;border-radius:2px;background:currentColor;height:30%;animation:lv 1.1s ease-in-out infinite}
+@keyframes lv{0%,100%{height:22%}50%{height:var(--h)}}
+.ic{font-size:24px;line-height:1}
+.lbl{font-size:13px;font-weight:500;letter-spacing:.06em}
+.spin{width:20px;height:20px;border-radius:50%;border:2.5px solid currentColor;border-right-color:transparent;opacity:.85;animation:sp .9s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.shim{background:linear-gradient(90deg,currentColor 0 30%,rgba(255,255,255,.35) 50%,currentColor 70% 100%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:sh 1.6s linear infinite}
+@keyframes sh{from{background-position:100% 0}to{background-position:-100% 0}}
+.pulse{animation:pu 1.2s ease-in-out infinite}
+@keyframes pu{50%{opacity:.45}}
+.sep{width:1px;height:26px;background:currentColor;opacity:.3}
+.meta{padding:10px 12px 12px;background:var(--surface-1)}
+.meta b{font-weight:500;font-size:14px;color:var(--text-primary)}
+.meta p{margin:2px 0 0;font-size:12px;line-height:1.5;color:var(--text-secondary)}
+.cursor{position:absolute;z-index:3;font-size:24px;color:#fff;filter:drop-shadow(0 1px 1px rgba(0,0,0,.5))}
+.mic{position:absolute;z-index:3;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(20,20,30,.45);backdrop-filter:blur(14px) saturate(180%);-webkit-backdrop-filter:blur(14px) saturate(180%);border:1px solid rgba(255,255,255,.55);color:#ff453a;font-size:21px;box-shadow:0 4px 10px rgba(0,0,0,.2)}
+.cs{position:relative;width:90px;height:110px}
+.cs .cursor{left:22px;top:22px}
+.mic.m{left:38px;top:36px}
+.ring{position:absolute;inset:2px;border-radius:50%;border:2px solid rgba(255,255,255,.9);border-right-color:transparent;border-bottom-color:transparent;animation:sp .9s linear infinite}
+.cap2{position:absolute;left:0;right:0;bottom:4px;text-align:center;color:#fff;font-size:12px}
+.dots{display:flex;gap:4px}.dots span{width:5px;height:5px;border-radius:50%;background:currentColor;animation:dt 1.2s ease-in-out infinite}.dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}
+@keyframes dt{0%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+.tw{animation:tw 1.4s ease-in-out infinite}@keyframes tw{50%{opacity:.5;transform:scale(.88) rotate(-8deg)}}
+.breathe{animation:br 1.4s ease-in-out infinite}@keyframes br{50%{opacity:.4}}
+.spokes{position:relative;width:20px;height:20px}
+.spokes b{position:absolute;left:9px;top:0;width:2px;height:6px;border-radius:1px;background:currentColor;transform-origin:1px 10px;animation:fd 1s linear infinite}
+@keyframes fd{0%{opacity:1}100%{opacity:.15}}
+.eqb span{transition:height 70ms linear;animation:none!important}
+</style>
+<div class="grid">
+
+<div data-id="01-recording" class="card"><div class="scene"><div class="txt">def lengthOfLongestSubstring(s: str) -> int:
+    seen = {}
+    left = best = 0</div>
+<div class="pill"><div class="rec"><i></i></div><div class="bars" data-n="12"></div></div></div>
+<div class="meta"><b>1. Запись</b><p>Точка пульсирует всегда. Эквалайзер идёт за громкостью микрофона, в тишине опадает в ровную линию.</p></div></div>
+
+<div data-id="02-recording-live-transcript" class="card"><div class="scene"><div class="txt">def lengthOfLongestSubstring(s: str) -> int:
+    seen = {}
+    left = best = 0</div>
+<div class="pill"><div class="rec"><i></i></div><div class="bars" data-n="12"></div></div>
+<div class="sub">…sliding window, remember the last index of each character and move the left edge</div></div>
+<div class="meta"><b>2. Запись с живым текстом</b><p>Под пилюлей стеклянная плашка, текст до двух строк, новые слова дописываются после каждого куска.</p></div></div>
+
+<div data-id="03-recognizing-speech" class="card"><div class="scene"><div class="txt">def lengthOfLongestSubstring(s: str) -> int:
+    seen = {}
+    left = best = 0</div>
+<div class="pill"><i class="ti ti-ear ic breathe" aria-hidden="true"></i><span class="lbl">Recognizing</span><div class="spokes"></div></div></div>
+<div class="meta"><b>3. Распознавание речи</b><p>После стопа: ухо «дышит», спиннер из лучиков без прогресса — время распознавания неизвестно.</p></div></div>
+
+<div data-id="04-refining-text" class="card"><div class="scene"><div class="txt">def lengthOfLongestSubstring(s: str) -> int:
+    seen = {}
+    left = best = 0</div>
+<div class="pill"><i class="ti ti-sparkles ic breathe" aria-hidden="true"></i><span class="lbl">Refining text</span><div class="spokes"></div></div>
+<div class="sub" style="opacity:.75">sliding window remember the last index of each character…</div></div>
+<div class="meta"><b>4. Улучшение текста (LLM)</b><p>Искорки «дышат», тот же спиннер без прогресса. Сырой текст под пилюлей слегка приглушён: его сейчас правят.</p></div></div>
+
+<div data-id="05-waiting-for-focus" class="card"><div class="scene"><div class="txt">def lengthOfLongestSubstring(s: str) -> int:
+    seen = {}
+    left = best = 0</div>
+<div class="pill" style="background:rgba(255,149,0,.42);border-color:rgba(255,214,150,.8)"><i class="ti ti-keyboard ic breathe" aria-hidden="true"></i><span class="lbl">Click a text field</span></div>
+<div class="sub">Text is ready and pastes once a text field has focus</div></div>
+<div class="meta"><b>5. Ожидание поля ввода</b><p>Оранжевое стекло, клавиатура «дышит». Заменяет «⌨ FOCUS».</p></div></div>
+
+<div data-id="06-pasted" class="card"><div class="scene"><div class="txt">def lengthOfLongestSubstring(s: str) -> int:
+    seen = {}
+    left = best = 0</div>
+<div class="pill"><i class="ti ti-check ic" aria-hidden="true" style="color:#30d158"></i><span class="lbl">Pasted</span></div>
+<div class="sub">Sliding window: remember the last index of each character and move the left edge.</div></div>
+<div class="meta"><b>6. Вставлено (новое)</b><p>Сейчас оверлей просто исчезает. Предложение: на полсекунды показать галочку и итоговый текст, потом скрыть.</p></div></div>
+
+<div data-id="07-command-enter" class="card"><div class="scene"><div class="txt">def lengthOfLongestSubstring(s: str) -> int:
+    seen = {}
+    left = best = 0</div>
+<div class="pill"><i class="ti ti-arrow-back ic" aria-hidden="true"></i><span class="lbl">Enter</span></div></div>
+<div class="meta"><b>7. Команда «нажми Enter»</b><p>Значок и имя команды на секунду, затем оверлей возвращается к прежнему виду.</p></div></div>
+
+<div data-id="08-command-clear-restart" class="card"><div class="scene"><div class="txt">def lengthOfLongestSubstring(s: str) -> int:
+    seen = {}
+    left = best = 0</div>
+<div class="pill" style="gap:10px"><i class="ti ti-backspace ic" aria-hidden="true"></i><span class="lbl">Clear</span><div class="sep"></div><i class="ti ti-refresh ic" aria-hidden="true"></i><span class="lbl">Restart</span></div></div>
+<div class="meta"><b>8. Команды «очисти» и «заново»</b><p>Тот же вид, что Enter. Здесь две рядом только для показа, в жизни по одной.</p></div></div>
+
+<div data-id="09-failure-notice-stt" class="card"><div class="scene"><div class="txt">def lengthOfLongestSubstring(s: str) -> int:
+    seen = {}
+    left = best = 0</div>
+<div class="pill" style="background:rgba(255,159,10,.28);border-color:rgba(255,214,150,.7)"><i class="ti ti-alert-triangle ic" aria-hidden="true" style="color:#ffd60a"></i><span class="lbl">STT</span></div>
+<div class="sub">Dictation lost: speech recognition failed — start the local services</div></div>
+<div class="meta"><b>9. Ошибка сервиса</b><p>Пилюля с жёлтым оттенком, имя упавшей части. Сообщение в две строки ниже, всё исчезает через 4 секунды.</p></div></div>
+
+<div data-id="10-failure-notice-access-light-window" class="card"><div class="scene lt"><div class="txt">Inbox  ·  Re: weekly sync
+Hi team, quick update on the release —</div>
+<div class="pill" style="background:rgba(255,159,10,.25);border-color:rgba(255,190,90,.8)"><i class="ti ti-alert-triangle ic" aria-hidden="true" style="color:#c27a00"></i><span class="lbl">ACCESS</span></div>
+<div class="sub">Text not pasted: Accessibility permission missing — check the Accessibility permission</div></div>
+<div class="meta"><b>10. Ошибка на светлом окне</b><p>Та же ошибка поверх светлого приложения: стекло светлеет, текст тёмный.</p></div></div>
+
+<div data-id="11-commands-unavailable-standby" class="card"><div class="scene"><div class="txt">def lengthOfLongestSubstring(s: str) -> int:
+    seen = {}
+    left = best = 0</div>
+<div class="pill" style="min-width:0;padding:0 16px;color:rgba(255,255,255,.75)"><i class="ti ti-microphone-off ic" aria-hidden="true"></i><span class="lbl">CMD</span></div></div>
+<div class="meta"><b>11. Голосовые команды недоступны</b><p>Маленькая серая пилюля в покое: сервис команд пропал больше чем на 5 секунд. Уходит сама, когда он вернётся.</p></div></div>
+
+<div data-id="12-recording-commands-unavailable" class="card"><div class="scene"><div class="txt">def lengthOfLongestSubstring(s: str) -> int:
+    seen = {}
+    left = best = 0</div>
+<div class="pill"><div class="rec"><i></i></div><div class="bars" data-n="9"></div><div class="sep" style="background:#fff"></div><i class="ti ti-microphone-off" aria-hidden="true" style="font-size:20px;opacity:.75"></i></div></div>
+<div class="meta"><b>12. Запись, команды недоступны</b><p>Тот же знак справа от полосок. Диктовка работает, просто голосом её не остановить.</p></div></div>
+
+<div data-id="13-pointer-badge-recording" class="card" style="grid-column:1/-1"><div class="scene" style="height:170px"><div class="txt">def lengthOfLongestSubstring(s: str) -> int:
+    seen = {}
+    left = best = 0
+    for right, ch in enumerate(s):</div>
+<div class="pill"><div class="rec"><i></i></div><div class="bars" data-n="12"></div></div>
+<i class="ti ti-pointer cursor" aria-hidden="true" style="left:62%;top:108px"></i><div class="mic" style="left:calc(62% + 16px);top:120px"><i class="ti ti-microphone" aria-hidden="true"></i></div></div>
+<div class="meta"><b>13. Микрофон у курсора</b><p>Пока идёт запись, рядом с указателем мыши едет стеклянный кружок с микрофоном вместо нынешнего эмодзи 🎙️.</p></div></div>
+
+<div data-id="14-pointer-badges-all-states" class="card" style="grid-column:1/-1"><div class="scene" style="height:150px;flex-direction:row;justify-content:space-around;align-items:center;padding:0 10px">
+<div class="cs"><i class="ti ti-pointer cursor" aria-hidden="true"></i><div class="mic m"><i class="ti ti-microphone" aria-hidden="true"></i></div><span class="cap2">Recording</span></div>
+<div class="cs"><i class="ti ti-pointer cursor" aria-hidden="true"></i><div class="mic m" style="color:#fff"><i class="ti ti-ear breathe" aria-hidden="true"></i><div class="ring"></div></div><span class="cap2">Recognizing</span></div>
+<div class="cs"><i class="ti ti-pointer cursor" aria-hidden="true"></i><div class="mic m" style="color:#fff"><i class="ti ti-sparkles breathe" aria-hidden="true"></i><div class="ring"></div></div><span class="cap2">Refining</span></div>
+<div class="cs"><i class="ti ti-pointer cursor" aria-hidden="true"></i><div class="mic m breathe" style="color:#ff9f0a"><i class="ti ti-keyboard" aria-hidden="true"></i></div><span class="cap2">Waiting for focus</span></div>
+<div class="cs"><i class="ti ti-pointer cursor" aria-hidden="true"></i><div class="mic m" style="color:#30d158"><i class="ti ti-check" aria-hidden="true"></i></div><span class="cap2">Pasted</span></div>
+<div class="cs"><i class="ti ti-pointer cursor" aria-hidden="true"></i><div class="mic m" style="color:#ffd60a"><i class="ti ti-alert-triangle" aria-hidden="true"></i></div><span class="cap2">Failure</span></div>
+</div>
+<div class="meta"><b>14. Знак у курсора на всех этапах</b><p>Кружок у указателя повторяет оверлей: микрофон при записи, ухо и искорки с бегущим кольцом при обработке, оранжевая клавиатура при ожидании поля, галочка после вставки, треугольник при ошибке. Взгляд не надо уводить к верху экрана.</p></div></div>
+
+</div>
+<script>
+document.querySelectorAll('.spokes').forEach(s=>{for(let i=0;i<8;i++){const b=document.createElement('b');b.style.transform='rotate('+(i*45)+'deg)';b.style.animationDelay=(-(8-i)/8).toFixed(3)+'s';s.appendChild(b)}});
+document.querySelectorAll('.bars').forEach(b=>{const n=+b.dataset.n||12;for(let i=0;i<n;i++){const e=document.createElement('span');e.style.setProperty('--h',(35+Math.round(Math.random()*65))+'%');e.style.animationDelay=(-Math.random()*1.1).toFixed(2)+'s';b.appendChild(e)}});
+const all=[...document.querySelectorAll('.bars')];all.forEach(b=>b.classList.add('eqb'));let lvl=0,t0=performance.now();
+function tick(now){const t=((now-t0)/1000)%5.5,sp=t<3.2;const tg=sp?(0.45+0.55*Math.abs(Math.sin(now/180))*Math.random()):0;lvl+=(tg-lvl)*(sp?0.35:0.12);
+all.forEach(b=>[...b.children].forEach((e,i)=>{const sh=0.55+0.45*Math.sin(i*1.3+now/120);e.style.height=Math.max(2,Math.round(28*lvl*sh*(0.6+0.4*Math.random())))+'px'}));requestAnimationFrame(tick)}
+requestAnimationFrame(tick);
+</script>
+<script>
+const q=new URLSearchParams(location.search);
+if(q.get('bg')==='light')document.querySelectorAll('.scene').forEach(e=>e.classList.add('lt'));
+if(q.get('bg')==='dark')document.querySelectorAll('.scene').forEach(e=>e.classList.add('dk'));
+if(q.get('only')){document.body.classList.add('one');document.querySelectorAll('.card').forEach(c=>{if(c.dataset.id!==q.get('only'))c.remove()})}
+if(q.get('still')){document.body.classList.add('still');
+ document.querySelectorAll('.spokes').forEach(s=>[...s.children].forEach((b,i)=>b.style.opacity=(0.15+0.85*(i+1)/8).toFixed(2)));
+ setTimeout(()=>document.querySelectorAll('.bars').forEach(b=>[...b.children].forEach((e,i)=>{const n=b.children.length;const env=Math.sin(Math.PI*(i+0.5)/n);const h=[0.55,0.9,0.4,1,0.7,0.5,0.85,0.35,0.95,0.6,0.75,0.45,0.8,0.5][i%14];e.style.height=Math.max(2,Math.round(28*h*(0.5+0.5*env)))+'px'})),300);
+ window.requestAnimationFrame=()=>0;}
+</script></body></html>
