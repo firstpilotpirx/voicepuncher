@@ -8,7 +8,10 @@ use std::time::Duration;
 
 use objc2::MainThreadMarker;
 use objc2_app_kit::NSApplication;
-use voicepuncher::adapters::secondary::visualfeedback::macos::MacosVisualIndicator;
+use voicepuncher::adapters::secondary::visualfeedback::macos::{
+    MacosPointerSign, MacosVisualIndicator,
+};
+use voicepuncher::adapters::secondary::visualfeedback::pointer_sign::PointerSignView;
 use voicepuncher::core::application::VisualIndicator;
 use voicepuncher::core::domain::{FailingPart, FailureNotice};
 
@@ -66,6 +69,14 @@ const TESTS: &[Test] = &[
     (
         "should_keep_a_recording_started_after_a_notice",
         should_keep_a_recording_started_after_a_notice,
+    ),
+    (
+        "should_show_the_dictation_sign_next_to_the_pointer_without_taking_input",
+        should_show_the_dictation_sign_next_to_the_pointer_without_taking_input,
+    ),
+    (
+        "should_hide_the_dictation_sign",
+        should_hide_the_dictation_sign,
     ),
 ];
 
@@ -315,4 +326,36 @@ fn should_keep_a_recording_started_after_a_notice() {
     );
     assert_eq!(overlay.first_sign_value(), "◉ REC");
     assert_eq!(overlay.first_text_window_value(), None);
+}
+
+fn should_show_the_dictation_sign_next_to_the_pointer_without_taking_input() {
+    let sign = MacosPointerSign::initialize(main_thread());
+    sign.show();
+    pump_run_loop(0.1);
+    let pointer = objc2_app_kit::NSEvent::mouseLocation();
+    let top_left = sign.top_left();
+    assert!(sign.is_visible(), "the dictation sign is not shown");
+    assert!(
+        sign.ignores_mouse_events(),
+        "the dictation sign takes clicks"
+    );
+    assert!(
+        !sign.can_become_key(),
+        "the dictation sign can take the keyboard focus"
+    );
+    assert!(
+        top_left.x > pointer.x && top_left.y < pointer.y,
+        "the dictation sign is not right of and below the pointer: sign {top_left:?}, pointer {pointer:?}"
+    );
+    sign.hide();
+    pump_run_loop(0.05);
+}
+
+fn should_hide_the_dictation_sign() {
+    let sign = MacosPointerSign::initialize(main_thread());
+    sign.show();
+    pump_run_loop(0.1);
+    sign.hide();
+    pump_run_loop(0.1);
+    assert!(!sign.is_visible(), "the dictation sign still shows");
 }

@@ -101,6 +101,12 @@
 - **Code:** `VisualIndicator::show_command_sign`
 - **Synonyms to AVOID:** "toast", "notification", "badge", "confirmation" (alone — also names the second hearing of a command)
 
+### Dictation sign
+- **Type:** Adapter concept (visual feedback next to the mouse pointer)
+- **Definition:** A small 🎙️ shown just below and to the right of the mouse pointer while a recording runs, over any app and on every screen, so the user sees the recording where they already look. It follows the pointer, takes no clicks or focus, and goes away with the signals that end a recording (a processing stage, the wait for focus, hidden); a command sign or a failure notice leaves it as it is. The pointer itself never changes: macOS lets an app set the pointer only over its own windows.
+- **Code:** `app/src/adapters/secondary/visualfeedback/pointer_sign.rs` (`PointerSignIndicator`, `PointerSignView`), `visualfeedback/macos/pointer_sign.rs` (`MacosPointerSign`)
+- **Synonyms to AVOID:** "cursor" (the text caret), "custom pointer", "pointer badge"
+
 ### Failure notice
 - **Type:** Value Object (enum `FailureNotice`, with the failing part `FailingPart`)
 - **Definition:** The overlay telling the user that an action they started failed: what was lost (the dictation, part of it, the refinement, the paste, the recording, a voice command, voice commands at all) and the failing part — speech recognition, text refinement, command spotting, the microphone or the Accessibility permission — with the remedy when one is known ("start the local services", "check the Accessibility permission"). The pill shows a warning sign and the part's short name, the text window under it a sentence of at most two lines; it hides by itself after a few seconds, and any later signal replaces it. The log keeps the technical detail. `AccessibilityMissing` is the domain error a paste or key press fails with when the process is not trusted for accessibility.

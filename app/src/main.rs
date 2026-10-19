@@ -17,7 +17,10 @@ use voicepuncher::adapters::secondary::textpasting::stdio::StdioTextPaster;
 use voicepuncher::adapters::secondary::textrefinement::openai::OpenAiTextRefiner;
 use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::adapters::secondary::transcription::openai::OpenAiTranscriber;
-use voicepuncher::adapters::secondary::visualfeedback::macos::MacosVisualIndicator;
+use voicepuncher::adapters::secondary::visualfeedback::macos::{
+    MacosPointerSign, MacosVisualIndicator,
+};
+use voicepuncher::adapters::secondary::visualfeedback::pointer_sign::PointerSignIndicator;
 use voicepuncher::config::{Config, TranscriptionCfg};
 use voicepuncher::core::application::hotkey_listener::HotkeyListener;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
@@ -161,7 +164,10 @@ fn main() {
     );
 
     let mtm = MainThreadMarker::new().expect("main must run on the main thread");
-    let indicator = MacosVisualIndicator::initialize(mtm, level_register);
+    let indicator = PointerSignIndicator::new(
+        MacosVisualIndicator::initialize(mtm, level_register),
+        MacosPointerSign::initialize(mtm),
+    );
 
     let mut pipeline = Pipeline::new(
         Box::new(recorder),

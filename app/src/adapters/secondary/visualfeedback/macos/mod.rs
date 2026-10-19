@@ -1,5 +1,6 @@
 mod failure_notice;
 mod live_text;
+mod pointer_sign;
 mod screen_watcher;
 mod topology;
 mod transcript_window;
@@ -20,6 +21,8 @@ use live_text::LiveTranscriptText;
 use screen_watcher::ScreenWatcher;
 use topology::{diff_screens, ScreenChange, ScreenTopology};
 use window_set::WindowSet;
+
+pub use pointer_sign::MacosPointerSign;
 
 type PulseData = (Vec<Arc<WindowSet>>, u64, Arc<AtomicU64>, bool);
 type HeartbeatData = (Vec<Arc<WindowSet>>, u64, Arc<AtomicU64>);

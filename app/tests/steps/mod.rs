@@ -1,3 +1,4 @@
+pub mod dictation_pointer;
 pub mod failure_notices;
 pub mod live_transcript;
 pub mod processing_stages;
