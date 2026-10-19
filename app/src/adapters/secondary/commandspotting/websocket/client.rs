@@ -23,7 +23,7 @@ const WRITE_WAIT: Duration = Duration::from_secs(2);
 const CONNECT_WAIT: Duration = Duration::from_secs(2);
 /// How often the client checks that the service still answers.
 const PING_EVERY: Duration = Duration::from_secs(1);
-/// How long the service may stay silent, pings included, before it counts as gone: the
+/// How long a ping may stay without any answer before the service counts as gone: the
 /// service answers pings at once, however long its spotting takes.
 const SILENCE_LIMIT: Duration = Duration::from_secs(5);
 const SAMPLE_BYTES: usize = 4;
@@ -74,8 +74,10 @@ enum Placement {
 pub struct SpottingClient {
     socket: WebSocket<MaybeTlsStream<TcpStream>>,
     audio_start: Instant,
-    last_answer: Instant,
-    last_ping: Instant,
+    /// When the oldest ping still without any answer was sent: silence counts from the
+    /// moment the client asked, never from a pause of its own.
+    unanswered_since: Option<Instant>,
+    last_ping: Option<Instant>,
     /// Waits for the service's answer so far, numbering the sync of each.
     answer_waits: u64,
 }
@@ -92,12 +94,11 @@ impl SpottingClient {
             stream.set_read_timeout(Some(READ_WAIT))?;
             stream.set_write_timeout(Some(WRITE_WAIT))?;
         }
-        let now = Instant::now();
         Ok(Self {
             socket,
             audio_start,
-            last_answer: now,
-            last_ping: now,
+            unanswered_since: None,
+            last_ping: None,
             answer_waits: 0,
         })
     }
@@ -120,22 +121,20 @@ impl SpottingClient {
         Ok(())
     }
 
-    /// Pings the service now and then; fails when it has not answered anything, pings
-    /// included, for longer than the silence limit — a service that hangs.
+    /// Pings the service at once and then now and then; whether it answers is judged after
+    /// the reads, so what it sent during a pause of the client's own counts.
     pub fn keep_alive(&mut self) -> Result<()> {
-        let silent = self.last_answer.elapsed();
-        if silent > SILENCE_LIMIT {
-            return Err(stopped_answering(silent));
-        }
-        if self.last_ping.elapsed() >= PING_EVERY {
+        if self.last_ping.is_none_or(|at| at.elapsed() >= PING_EVERY) {
             self.socket.send(Message::Ping(Default::default()))?;
-            self.last_ping = Instant::now();
+            let now = Instant::now();
+            self.last_ping = Some(now);
+            self.unanswered_since.get_or_insert(now);
         }
         Ok(())
     }
 
     /// Every event that arrived, waiting briefly for the first; an error means the
-    /// service is gone.
+    /// service is gone, or answered no ping for longer than the silence limit.
     pub fn read_events(&mut self) -> Result<Vec<SpottingEvent>> {
         let mut events = Vec::new();
         while let Some(message) = self.next_message()? {
@@ -143,7 +142,17 @@ impl SpottingClient {
                 events.extend(self.parse(text.as_str()).and_then(Answer::event));
             }
         }
+        self.check_answering()?;
         Ok(events)
+    }
+
+    /// Fails when a ping has gone without any answer for longer than the silence limit — a
+    /// service that hangs; called only after reading what arrived.
+    fn check_answering(&self) -> Result<()> {
+        match self.unanswered_since.map(|since| since.elapsed()) {
+            Some(silent) if silent > SILENCE_LIMIT => Err(stopped_answering(silent)),
+            _ => Ok(()),
+        }
     }
 
     /// Every event for the audio sent so far, once the service has answered all of it: the
@@ -172,6 +181,7 @@ impl SpottingClient {
                     None => {}
                 }
             }
+            self.check_answering()?;
         }
     }
 
@@ -186,7 +196,7 @@ impl SpottingClient {
         match self.socket.read() {
             Ok(Message::Close(frame)) => bail!("the service closed the connection: {frame:?}"),
             Ok(message) => {
-                self.last_answer = Instant::now();
+                self.unanswered_since = None;
                 Ok(Some(message))
             }
             Err(tungstenite::Error::Io(e)) if is_timeout(&e) => Ok(None),

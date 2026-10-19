@@ -1,6 +1,7 @@
 //! The command spotting client's wait for the service against stub services on loopback:
 //! one that answers pings at once but its events late, one that answers pings but never
-//! the sync, and one that stops answering.
+//! the sync, and one that stops answering; and a pause of the client's own against a service
+//! that answers pings.
 
 use std::net::{TcpListener, TcpStream};
 use std::time::{Duration, Instant};
@@ -21,6 +22,11 @@ const READ_WAIT: Duration = Duration::from_millis(10);
 const PATIENT_FOR_AT_LEAST: Duration = Duration::from_millis(4_500);
 /// The silence limit plus a margin: a silent service is noticed within it.
 const HANG_NOTICED_WITHIN: Duration = Duration::from_secs(7);
+/// A pause of the client's own, as when it is busy or the computer sleeps: longer than its
+/// silence limit.
+const CLIENT_PAUSE: Duration = Duration::from_secs(6);
+/// Longer than the client's ping interval (1 s): a ping is out once it checks again.
+const PING_DUE: Duration = Duration::from_millis(1_100);
 /// How long the client waits for the answer to a sync from a service that sends it, at
 /// most 12 s late: the bound the E2E tests give the real service.
 const SYNC_ANSWER_LIMIT: Duration = Duration::from_secs(20);
@@ -178,4 +184,36 @@ fn should_fail_the_wait_within_its_bound_when_the_service_answers_pings_but_neve
     assert!(waited < SYNC_GIVEN_UP_WITHIN, "{error}");
     assert!(error.contains("command spotting service"), "{error}");
     assert!(error.contains("sync 1"), "{error}");
+}
+
+/// The client's round as the streaming worker runs it: check that the service answers, then
+/// take its events.
+fn exchange(client: &mut SpottingClient) -> anyhow::Result<()> {
+    client.keep_alive()?;
+    client.read_events()?;
+    Ok(())
+}
+
+#[test]
+fn should_not_count_a_pause_of_its_own_with_a_ping_out_as_the_service_going_away() {
+    // Given a service that answers pings, and a ping out
+    let mut client =
+        SpottingClient::connect(&service_never_answering_the_sync(), Instant::now()).unwrap();
+    std::thread::sleep(PING_DUE);
+    exchange(&mut client).unwrap();
+    // When the client reads nothing for longer than its silence limit
+    std::thread::sleep(CLIENT_PAUSE);
+    // Then
+    exchange(&mut client).unwrap();
+}
+
+#[test]
+fn should_not_count_a_pause_of_its_own_right_after_connecting_as_the_service_going_away() {
+    // Given a service that answers pings, and no ping out yet
+    let mut client =
+        SpottingClient::connect(&service_never_answering_the_sync(), Instant::now()).unwrap();
+    // When the client reads nothing for longer than its silence limit
+    std::thread::sleep(CLIENT_PAUSE);
+    // Then
+    exchange(&mut client).unwrap();
 }

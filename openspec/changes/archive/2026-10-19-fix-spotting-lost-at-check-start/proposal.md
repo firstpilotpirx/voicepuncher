@@ -35,10 +35,10 @@ Found in explore and reproduced: under CPU load the two tests fail with `Spottin
 - The fix: the app reads what the service already sent before it judges silence, and counts silence from the oldest ping still unanswered, not from the last answer it happened to read. A pause of the app's own never counts as the service's silence.
 - The red test: a client test against a small server that answers pings, with the app paused for 6 s; today the connection is reported lost.
 - Capability `voice-control`, requirement "A slow command spotting service does not stop listening", modified.
-- Target version 0.17.1, a PATCH above 0.17.0.
+- Target version 0.21.1, a PATCH above 0.21.0.
 - Out of scope: making the resampling of a large burst of audio cheaper; it shortens the pause but does not remove the false loss.
 
 ## Release
 
 SemVer: PATCH — bug fix.
-Target version: 0.17.1.
+Target version: 0.21.1.
