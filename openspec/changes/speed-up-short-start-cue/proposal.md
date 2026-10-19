@@ -5,15 +5,17 @@ The E2E scenario "The user's recorded starts give their cue at once" (`e2e-test/
 - recorded "start please" at 31.35 s, followed by speech: 765–803 ms (always over);
 - recorded "start" at 7.22 s, alone: 676–733 ms (over about half the time).
 
+The scenario "Restart said on its own gives its cue at once" has the same bar and sits near it too: synthesized "restart" alone took 580–637 ms, then 701 ms on 2026-10-19 (failed).
+
 With 12 recordings (11 needed) the scenario fails roughly every other `just full-check`. The other starts give their cue in 180–610 ms. The user waits noticeably longer for these two ways of saying "start" than for the others.
 
 ## What Changes
 
-- The start cue for a short "start" said alone and for "start please" followed by speech comes within 0.7 s of the end of the words, like the other recorded starts.
+- The start cue for a short "start" said alone, for "start please" followed by speech and for "restart" said alone comes within 0.7 s of the end of the words, with room to spare, like the other starts.
 
 Current stage: PoC. Target stage: PoC.
 Scope: why these two recorded starts confirm late (for example waiting for the utterance end or a pause before confirming a single short word, or the segment check after the head check), and making them confirm sooner.
-Acceptance bar: the scenario passes 5 `just full-check` runs in a row; the 0.7 s bar and the 9-of-10 share stay as they are.
+Acceptance bar: both scenarios pass 5 `just full-check` runs in a row; the 0.7 s bar and the 9-of-10 share stay as they are.
 Out of scope: loosening the bar; other voice commands; the dictation path.
 
 ## Capabilities
