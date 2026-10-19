@@ -108,6 +108,24 @@ Feature: voice-control
       And the clear sound plays
       And the overlay shows the clear sign for about a second, then hides
 
+  Rule: "paste text" pastes the clipboard
+
+    Scenario: Saying paste text pastes the clipboard at the cursor
+      Given listening is on
+      And no dictation runs
+      And the clipboard holds a sentence
+      When the user says "paste text"
+      Then Cmd+V is pressed in the focused app
+      And the paste sound plays
+      And the overlay shows the paste sign for about a second, then hides
+
+    Scenario: Paste leaves the clipboard as it was
+      Given listening is on
+      And no dictation runs
+      And the clipboard holds a sentence
+      When the user says "paste"
+      Then the clipboard still holds the same sentence
+
   Rule: A command counts on its own or in its set places
 
     Scenario: A stop phrase inside a dictated sentence does not end the dictation
@@ -131,6 +149,12 @@ Feature: voice-control
     Scenario: Clear during a dictation is ignored
       Given a dictation runs
       When the user says "clear all text"
+      Then no key is pressed
+      And the dictation keeps running
+
+    Scenario: Paste during a dictation is ignored
+      Given a dictation runs
+      When the user says "paste text"
       Then no key is pressed
       And the dictation keeps running
 
@@ -282,6 +306,12 @@ Feature: voice-control
       When the user says "stop clear enter"
       Then the sentence is pasted, then select all and delete are pressed, then the Return key is pressed
 
+    Scenario: Paste enter pastes the clipboard and sends
+      Given listening is on
+      And no dictation runs
+      When the user says "paste enter"
+      Then Cmd+V is pressed, then the Return key is pressed
+
   Rule: Every confirmed command sounds different
 
     Scenario: Enter and clear sound different by default
@@ -289,6 +319,17 @@ Feature: voice-control
       And no dictation runs
       When the user says "enter", and later "clear"
       Then the two commands play different sounds
+
+    Scenario Outline: Paste sounds different from enter and clear by default
+      Given listening is on
+      And no dictation runs
+      When the user says "paste", and later "<other>"
+      Then the two commands play different sounds
+
+      Examples:
+        | other |
+        | enter |
+        | clear |
 
   Rule: A confirmation sign gives way to what comes next
 

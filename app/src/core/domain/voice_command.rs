@@ -11,6 +11,7 @@ pub enum VoiceCommand {
     RestartDictation,
     PressEnter,
     ClearAllText,
+    PasteText,
 }
 
 /// Where a command sat in its utterance.
@@ -39,10 +40,11 @@ pub struct SpokenCommand {
 
 impl VoiceCommand {
     /// Commands accepted while listening with no dictation running.
-    pub const STANDBY: [VoiceCommand; 3] = [
+    pub const STANDBY: [VoiceCommand; 4] = [
         VoiceCommand::StartDictation,
         VoiceCommand::PressEnter,
         VoiceCommand::ClearAllText,
+        VoiceCommand::PasteText,
     ];
 
     /// Commands accepted during a dictation; "press enter" there also ends it.
@@ -54,13 +56,14 @@ impl VoiceCommand {
     ];
 
     /// Every command, in the order of the spec.
-    pub const ALL: [VoiceCommand; 6] = [
+    pub const ALL: [VoiceCommand; 7] = [
         VoiceCommand::StartDictation,
         VoiceCommand::StopDictation,
         VoiceCommand::CancelDictation,
         VoiceCommand::RestartDictation,
         VoiceCommand::PressEnter,
         VoiceCommand::ClearAllText,
+        VoiceCommand::PasteText,
     ];
 
     pub fn phrase(self) -> &'static str {
@@ -71,6 +74,7 @@ impl VoiceCommand {
             VoiceCommand::RestartDictation => "restart dictation",
             VoiceCommand::PressEnter => "press enter",
             VoiceCommand::ClearAllText => "clear all text",
+            VoiceCommand::PasteText => "paste text",
         }
     }
 
@@ -93,6 +97,7 @@ mod tests {
             "restart dictation",
             "press enter",
             "clear all text",
+            "paste text",
         ];
         // When
         let phrases: Vec<&str> = VoiceCommand::ALL.iter().map(|c| c.phrase()).collect();
@@ -113,10 +118,15 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_start_press_enter_and_clear_in_standby() {
+    fn should_accept_start_press_enter_clear_and_paste_in_standby() {
         assert_eq!(
             VoiceCommand::STANDBY.map(VoiceCommand::phrase),
-            ["start dictation", "press enter", "clear all text"]
+            [
+                "start dictation",
+                "press enter",
+                "clear all text",
+                "paste text"
+            ]
         );
     }
 

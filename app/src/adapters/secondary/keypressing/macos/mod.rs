@@ -16,6 +16,7 @@ type Press = (CGKeyCode, CGEventFlags);
 const ENTER: Press = (KeyCode::RETURN, CGEventFlags::CGEventFlagNull);
 const SELECT_ALL: Press = (KeyCode::ANSI_A, CGEventFlags::CGEventFlagCommand);
 const DELETE: Press = (KeyCode::DELETE, CGEventFlags::CGEventFlagNull);
+const PASTE: Press = (KeyCode::ANSI_V, CGEventFlags::CGEventFlagCommand);
 
 /// Posts key presses with `CGEvent`, as the paster posts Cmd+V.
 pub struct MacOsKeyPresser {
@@ -68,6 +69,11 @@ impl KeyPresser for MacOsKeyPresser {
         std::thread::sleep(SELECT_ALL_SETTLE);
         Self::press(DELETE)
     }
+
+    fn paste(&mut self) -> Result<()> {
+        self.ensure_trusted()?;
+        Self::press(PASTE)
+    }
 }
 
 #[cfg(test)]
@@ -102,5 +108,16 @@ mod tests {
             (KeyCode::ANSI_A, CGEventFlags::CGEventFlagCommand)
         );
         assert_eq!(DELETE, (KeyCode::DELETE, CGEventFlags::CGEventFlagNull));
+    }
+
+    #[test]
+    fn should_paste_with_command_v() {
+        assert_eq!(PASTE, (KeyCode::ANSI_V, CGEventFlags::CGEventFlagCommand));
+    }
+
+    #[test]
+    fn should_fail_to_paste_with_accessibility_missing_when_not_trusted() {
+        let error = untrusted_presser().paste().unwrap_err();
+        assert!(error.is::<AccessibilityMissing>(), "{error:#}");
     }
 }

@@ -62,7 +62,7 @@
 
 ### SoundPlayer
 - **Type:** Driven Port (trait in `core/application/`)
-- **Definition:** Plays an auditory cue at the start, stop and cancel of a recording cycle, when voice control listening turns on or off, and a sound of its own for each voice command with no visible effect of its own ("press enter", "clear all text", "restart dictation" — the last instead of the cancel and start cues). Abstracts macOS `afplay` so `Pipeline` stays platform-agnostic. Implementations may be no-ops (e.g. in tests or file mode).
+- **Definition:** Plays an auditory cue at the start, stop and cancel of a recording cycle, when voice control listening turns on or off, and a sound of its own for each voice command with no visible effect of its own ("press enter", "clear all text", "paste text", "restart dictation" — the last instead of the cancel and start cues). Abstracts macOS `afplay` so `Pipeline` stays platform-agnostic. Implementations may be no-ops (e.g. in tests or file mode).
 - **Code:** `app/src/core/application/sound_player.rs`
 - **Synonyms to AVOID:** "AudioPlayer", "BeepService"
 
@@ -252,7 +252,7 @@
 
 ### Voice control
 - **Type:** Mode of the app (opt-in, `[voice_control]` config section or `--voice-control`)
-- **Definition:** Hands-free operation alongside push-to-talk: *listening* stays on while the app runs, and spoken *voice commands* start, stop and cancel a dictation, press Enter and clear the focused text; the hotkey still records as push-to-talk.
+- **Definition:** Hands-free operation alongside push-to-talk: *listening* stays on while the app runs, and spoken *voice commands* start, stop and cancel a dictation, press Enter, clear the focused text and paste the clipboard; the hotkey still records as push-to-talk.
 - **Code:** `app/src/core/application/pipeline/voice_control.rs` (`VoiceControl`: off or listening)
 - **Synonyms to AVOID:** "voice mode", "hands-free mode", "RecordingMode" (that is Toggle/Hold)
 
@@ -313,7 +313,7 @@
 - **Type:** Value Object (enum)
 - **Definition:** A spoken English command. `SpokenCommand` pairs it with when its words were said and its *command placement*: the whole utterance (the pause rule), the end of an utterance, "start" at its head, or a doubled form or *command chain* anywhere.
 - **Code:** `app/src/core/domain/voice_command.rs`, recognition (pause rule) in `app/src/core/domain/voice_command_recognizer.rs`
-- **Variants:** `StartDictation` ("start dictation"), `StopDictation` ("stop dictation"), `CancelDictation` ("cancel dictation"), `RestartDictation` ("restart dictation"), `PressEnter` ("press enter"), `ClearAllText` ("clear all text")
+- **Variants:** `StartDictation` ("start dictation"), `StopDictation` ("stop dictation"), `CancelDictation` ("cancel dictation"), `RestartDictation` ("restart dictation"), `PressEnter` ("press enter"), `ClearAllText` ("clear all text"), `PasteText` ("paste text")
 - **Synonyms to AVOID:** "keyword", "hotword", "wake word", "voice shortcut"
 
 ### SpottingEvent
@@ -345,7 +345,7 @@
 
 ### Key press
 - **Type:** Effect of a *voice command*
-- **Definition:** A synthetic keyboard event posted into the focused app: Return for `press enter`; Cmd+A then Delete for `clear all text`.
+- **Definition:** A synthetic keyboard event posted into the focused app: Return for `press enter`; Cmd+A then Delete for `clear all text`; Cmd+V for `paste text`, so the focused app pastes what the clipboard holds.
 - **Code:** port `app/src/core/application/key_presser.rs`
 - **Synonyms to AVOID:** "keystroke" (too generic), "shortcut"
 

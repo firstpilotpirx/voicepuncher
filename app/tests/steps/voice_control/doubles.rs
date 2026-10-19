@@ -34,6 +34,7 @@ pub enum Event {
     Pasted(String),
     ReturnPressed,
     AllTextCleared,
+    PasteKeyPressed,
     Sound(&'static str),
     ListeningStarted,
     ListeningStopped,
@@ -150,6 +151,11 @@ impl KeyPresser for RecordingKeyPresser {
         record(&self.0, Event::AllTextCleared);
         Ok(())
     }
+
+    fn paste(&mut self) -> Result<()> {
+        record(&self.0, Event::PasteKeyPressed);
+        Ok(())
+    }
 }
 
 pub struct RecordingSounds(pub Events);
@@ -185,6 +191,10 @@ impl SoundPlayer for RecordingSounds {
         record(&self.0, Event::Sound("clear"));
     }
 
+    fn play_paste(&self) {
+        record(&self.0, Event::Sound("paste"));
+    }
+
     fn play_restart(&self) {
         record(&self.0, Event::Sound("restart"));
     }
@@ -197,6 +207,7 @@ impl VisualIndicator for RecordingOverlay {
         let sign = match command {
             VoiceCommand::PressEnter => "enter sign",
             VoiceCommand::ClearAllText => "clear sign",
+            VoiceCommand::PasteText => "paste sign",
             VoiceCommand::RestartDictation => "restart sign",
             _ => "other sign",
         };

@@ -134,6 +134,7 @@ Default hotkey is `RightOption`.
 | `restart` / `restart dictation` | dictating | drops it and starts again |
 | `enter` / `press enter` | any time | presses Return; while dictating: stops, pastes, then Return |
 | `clear` / `clear text` / `clear all text` | no dictation | Cmd+A, Delete |
+| `paste` / `paste text` | no dictation | Cmd+V: pastes what the clipboard holds |
 
 A command works when it is:
 
@@ -141,7 +142,7 @@ A command works when it is:
 - the last words of a phrase: "…and that is all, stop";
 - `start` at the beginning: "start, the meeting moved to Friday";
 - doubled anywhere, no pause needed: "stop stop", "enter enter";
-- a chain of 2–3 commands: "stop enter", "stop clear enter", "stop enter start".
+- a chain of 2–3 commands: "stop enter", "stop clear enter", "stop enter start", "paste enter".
 
 Any command may end with "please". The same words inside a sentence ("we should stop the server") do nothing. Details: [Voice control](#voice-control).
 
@@ -154,7 +155,7 @@ Hands-free dictation, off by default. Turn it on with `--voice-control` or in th
 enabled = true
 ```
 
-Push-to-talk keeps working as without voice control: the hotkey starts and stops a dictation, Escape cancels it, the overlay and sounds are the same. **Listening** starts with the app (sound `Tink`) and stays on until the app quits; the microphone stays open and six English commands take effect:
+Push-to-talk keeps working as without voice control: the hotkey starts and stops a dictation, Escape cancels it, the overlay and sounds are the same. **Listening** starts with the app (sound `Tink`) and stays on until the app quits; the microphone stays open and seven English commands take effect:
 
 | Say | While | Effect |
 |---|---|---|
@@ -164,20 +165,21 @@ Push-to-talk keeps working as without voice control: the hotkey starts and stops
 | `restart dictation` or `restart` | dictating | discards it and starts a new dictation at once |
 | `press enter` or `enter` | listening | presses Return in the focused app; during a dictation it first ends it and pastes the text, like "stop enter" |
 | `clear all text`, `clear text` or `clear` | listening, no dictation | presses Cmd+A, then Delete, in the focused app |
+| `paste text` or `paste` | listening, no dictation | presses Cmd+V in the focused app, which pastes what the clipboard holds; the clipboard stays as it is |
 
 Every command may end with "please" ("press enter please"). A pause of 0.3 s ends an utterance, also after a quiet word and when more speech follows the pause at once ("restart", a short breath, the next sentence). A command counts:
 
 - **on its own**, with a pause before and after it;
 - **at the end of an utterance**, right after other speech: "…and that is all, stop" ends the dictation and pastes the speech before it; the same words inside a sentence ("we should stop the server") are ignored;
 - **"start" at the start of an utterance**: "start, the meeting moved to Friday" starts a dictation that begins with "the meeting…";
-- **doubled anywhere**, with no pause around it: "start start", "stop stop", "cancel cancel", "restart restart", "enter enter", "clear clear"; after "stop stop" the words said after it are dropped;
-- **as a chain** of two or three commands in a row, anywhere: "stop enter" pastes and sends, "stop clear", "cancel clear", "stop enter start" pastes, sends and starts the next dictation; "start" can only come last.
+- **doubled anywhere**, with no pause around it: "start start", "stop stop", "cancel cancel", "restart restart", "enter enter", "clear clear", "paste paste"; after "stop stop" the words said after it are dropped;
+- **as a chain** of two or three commands in a row, anywhere: "stop enter" pastes and sends, "stop clear", "cancel clear", "paste enter" pastes the clipboard and sends, "stop enter start" pastes, sends and starts the next dictation; "start" can only come last.
 
 A command repeated within one utterance ("press enter, press enter") counts once.
 
 A dictation started by voice begins where the command's words end, not when the command is recognized a moment later. What you say right after "start", "start start", a chain ending in "start" or "restart" is kept from its first word: the app takes it from the sound it hears all the time while listening.
 
-A command said in the other state is ignored. `press enter` said right after `stop dictation` waits until the text is pasted. The hotkey and the voice commands drive the same dictation: "stop dictation" ends one the hotkey started, and the hotkey ends one "start dictation" started. `press enter`, `clear all text` and `restart dictation` each play a sound of their own (`Morse`, `Purr`, `Hero`) and show their sign on the overlay for about a second (`⏎ ENTER`, `⌫ CLEAR`, `↻ RESTART`); a restart plays only its own sound, not the cancel and start sounds. The sounds are `[sounds]` settings (`enter_sound`, `clear_sound`, `restart_sound`; `command_sound` still sets the enter sound).
+A command said in the other state is ignored. `press enter` said right after `stop dictation` waits until the text is pasted. The hotkey and the voice commands drive the same dictation: "stop dictation" ends one the hotkey started, and the hotkey ends one "start dictation" started. `press enter`, `clear all text`, `paste text` and `restart dictation` each play a sound of their own (`Morse`, `Purr`, `Frog`, `Hero`) and show their sign on the overlay for about a second (`⏎ ENTER`, `⌫ CLEAR`, `⎘ PASTE`, `↻ RESTART`); a restart plays only its own sound, not the cancel and start sounds. The sounds are `[sounds]` settings (`enter_sound`, `clear_sound`, `paste_sound`, `restart_sound`; `command_sound` still sets the enter sound).
 
 **Careful with `clear all text`:** it selects everything in the focused app before deleting — meant for a chat input, it erases a whole document in an editor.
 
@@ -335,7 +337,7 @@ Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-qui
    - [ ] Overlay shows while recording and while processing, also on a second display if present.
    - [ ] A tap shorter than the minimum press time is ignored.
    - [ ] `just test-real-keyboard` passes (hotkey still registered after a paste).
-   - [ ] Voice control (`cargo run --release -p voicepuncher -- --voice-control`): the app plays the listening-on sound at start; in a chat input "start dictation", a sentence, "stop dictation" → the sentence is pasted without the stop phrase; "press enter" → the message is sent; "start dictation", speech, "cancel dictation" → nothing is pasted; type text, "clear all text" → it is erased with the clear sound and the `⌫ CLEAR` sign; "enter" → the `⏎ ENTER` sign and the enter sound, different from the clear sound; "start", a sentence, "restart" → only the restart sound, the `↻ RESTART` sign, then the recording again; with `clear_sound = "Funk"` in `[sounds]`, "clear all text" plays Funk; "I will press enter later" said without pausing → nothing happens; "start", a sentence, "stop" → the sentence is pasted; "start start" and a sentence at once, then "stop" → the whole sentence is pasted from its first word; "start", a short pause, a sentence, "stop" → the same; the hotkey starts a dictation with the overlay and start sound, and "stop dictation" ends it; "start dictation", then the hotkey → pasted, listening stays on. The log shows each `voice control: "…"` line, and every voice start a `voice start: total=…ms` line with `total` under 700.
+   - [ ] Voice control (`cargo run --release -p voicepuncher -- --voice-control`): the app plays the listening-on sound at start; in a chat input "start dictation", a sentence, "stop dictation" → the sentence is pasted without the stop phrase; "press enter" → the message is sent; "start dictation", speech, "cancel dictation" → nothing is pasted; type text, "clear all text" → it is erased with the clear sound and the `⌫ CLEAR` sign; "enter" → the `⏎ ENTER` sign and the enter sound, different from the clear sound; "start", a sentence, "restart" → only the restart sound, the `↻ RESTART` sign, then the recording again; with `clear_sound = "Funk"` in `[sounds]`, "clear all text" plays Funk; copy a sentence, "paste" → it is pasted with the `⎘ PASTE` sign and the Frog sound, and the clipboard still holds it; "paste enter" → pasted and sent; "I will press enter later" said without pausing → nothing happens; "start", a sentence, "stop" → the sentence is pasted; "start start" and a sentence at once, then "stop" → the whole sentence is pasted from its first word; "start", a short pause, a sentence, "stop" → the same; the hotkey starts a dictation with the overlay and start sound, and "stop dictation" ends it; "start dictation", then the hotkey → pasted, listening stays on. The log shows each `voice control: "…"` line, and every voice start a `voice start: total=…ms` line with `total` under 700.
    - [ ] `just stop-model-servers voicepuncher-command-spotting`, then start with `--voice-control` → it exits naming the command spotting service and `just start-model-servers`.
 3. After the merge, on a clean checkout of `origin/main` with a bumped `version` in `app/Cargo.toml`: `just release` — cleans `target/`, runs the tests and builds from scratch without the machine-wide lock, then tags `vX.Y.Z` and publishes a GitHub Release with the binary tarball and its SHA-256. In the main checkout, `target/release/voicepuncher` is gone until it finishes.
 

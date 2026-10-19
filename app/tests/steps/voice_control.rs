@@ -322,7 +322,10 @@ fn run(world: &mut IntegrationWorld) -> &mut VoiceRun {
 }
 
 fn is_key_press(e: &Event) -> bool {
-    matches!(e, Event::ReturnPressed | Event::AllTextCleared)
+    matches!(
+        e,
+        Event::ReturnPressed | Event::AllTextCleared | Event::PasteKeyPressed
+    )
 }
 
 #[given("voice control is not turned on")]
@@ -492,6 +495,7 @@ fn short_form(word: &str) -> Option<VoiceCommand> {
         "restart" => Some(VoiceCommand::RestartDictation),
         "enter" => Some(VoiceCommand::PressEnter),
         "clear" => Some(VoiceCommand::ClearAllText),
+        "paste" => Some(VoiceCommand::PasteText),
         _ => None,
     }
 }
@@ -654,6 +658,7 @@ fn sound_of(sound: &str) -> Result<&'static str> {
         "cancel" => "cancel",
         "enter" => "enter",
         "clear" => "clear",
+        "paste" => "paste",
         "restart" => "restart",
         other => bail!("unknown sound {other}"),
     })
@@ -922,6 +927,7 @@ fn sign_of(command: &str) -> Result<&'static str> {
     match command {
         "enter" => Ok("enter sign"),
         "clear" => Ok("clear sign"),
+        "paste" => Ok("paste sign"),
         "restart" => Ok("restart sign"),
         other => bail!("no sign for {other}"),
     }
@@ -961,6 +967,38 @@ fn no_text_pasted(world: &mut IntegrationWorld) -> Result<()> {
 #[then("the Return key is pressed in the focused app")]
 fn return_pressed(world: &mut IntegrationWorld) -> Result<()> {
     run(world).wait_for(|e| *e == Event::ReturnPressed)?;
+    Ok(())
+}
+
+#[given("the clipboard holds a sentence")]
+fn clipboard_holds_sentence(_world: &mut IntegrationWorld) {
+    // The app never reads the clipboard: what it holds is the focused app's to paste.
+}
+
+#[then("Cmd+V is pressed in the focused app")]
+fn paste_key_pressed(world: &mut IntegrationWorld) -> Result<()> {
+    run(world).wait_for(|e| *e == Event::PasteKeyPressed)?;
+    Ok(())
+}
+
+#[then("the clipboard still holds the same sentence")]
+fn clipboard_untouched(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.wait_for(|e| *e == Event::PasteKeyPressed)?;
+    run.never_since_mark(
+        |e| matches!(e, Event::Pasted(_)),
+        "the clipboard was written",
+    )
+}
+
+#[then("Cmd+V is pressed, then the Return key is pressed")]
+fn pasted_clipboard_then_sent(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    let pasted = run.wait_for(|e| *e == Event::PasteKeyPressed)?;
+    let sent = run.wait_for(|e| *e == Event::ReturnPressed)?;
+    if pasted >= sent {
+        bail!("expected Cmd+V, then Return: {:?}", run.events());
+    }
     Ok(())
 }
 

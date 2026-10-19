@@ -57,6 +57,7 @@ fn command_sign(command: VoiceCommand) -> Option<CommandSign> {
     match command {
         VoiceCommand::PressEnter => Some(("⏎", "ENTER")),
         VoiceCommand::ClearAllText => Some(("⌫", "CLEAR")),
+        VoiceCommand::PasteText => Some(("⎘", "PASTE")),
         VoiceCommand::RestartDictation => Some(("↻", "RESTART")),
         VoiceCommand::StartDictation
         | VoiceCommand::StopDictation
@@ -973,6 +974,7 @@ mod tests {
         let signed = [
             VoiceCommand::PressEnter,
             VoiceCommand::ClearAllText,
+            VoiceCommand::PasteText,
             VoiceCommand::RestartDictation,
         ];
         // When
@@ -983,6 +985,7 @@ mod tests {
             [
                 Some(("⏎", "ENTER")),
                 Some(("⌫", "CLEAR")),
+                Some(("⎘", "PASTE")),
                 Some(("↻", "RESTART"))
             ]
         );

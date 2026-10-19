@@ -82,11 +82,13 @@ fn command(phrase: &str) -> Result<VoiceCommand> {
 }
 
 /// The command a spoken phrase stands for: "… please" is the phrase, "clear text" and
-/// "clear" are "clear all text", and each other short form names its phrase.
+/// "clear" are "clear all text", "paste" is "paste text", and each other short form names
+/// its phrase.
 fn command_said(said: &str) -> Result<VoiceCommand> {
     let phrase = said.strip_suffix(" please").unwrap_or(said);
     command(match phrase {
         "clear text" | "clear" => "clear all text",
+        "paste" => "paste text",
         "enter" => "press enter",
         "start" => "start dictation",
         "stop" => "stop dictation",

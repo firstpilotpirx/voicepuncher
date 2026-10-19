@@ -19,6 +19,7 @@ const ALIASES: &[(&str, &str)] = &[
     // The short forms: one word for each command.
     ("enter", "press enter"),
     ("clear", "clear all text"),
+    ("paste", "paste text"),
     ("start", "start dictation"),
     ("stop", "stop dictation"),
     ("restart", "restart dictation"),
@@ -180,6 +181,7 @@ mod tests {
             "start dictation".into(),
             "press enter".into(),
             "clear all text".into(),
+            "paste text".into(),
         ])
     }
 
@@ -297,6 +299,9 @@ mod tests {
             ("Enter, please.", "press enter"),
             ("Clear.", "clear all text"),
             ("Clear please.", "clear all text"),
+            ("Paste text.", "paste text"),
+            ("Paste.", "paste text"),
+            ("Paste please.", "paste text"),
             ("Start.", "start dictation"),
             ("Start please.", "start dictation"),
         ] {

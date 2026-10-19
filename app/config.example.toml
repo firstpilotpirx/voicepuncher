@@ -57,6 +57,7 @@ listening_on_sound = "Tink"     # voice control: the hotkey turned listening on
 listening_off_sound = "Bottle"  # voice control: the hotkey turned listening off
 enter_sound = "Morse"           # voice control: "press enter" was carried out
 clear_sound = "Purr"            # voice control: "clear all text" was carried out
+paste_sound = "Frog"            # voice control: "paste text" was carried out
 restart_sound = "Hero"          # voice control: "restart dictation" started the dictation over
 
 [voice_control]

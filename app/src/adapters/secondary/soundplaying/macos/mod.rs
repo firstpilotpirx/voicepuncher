@@ -10,6 +10,7 @@ pub struct MacosSoundPlayer {
     listening_off_path: Option<PathBuf>,
     enter_path: Option<PathBuf>,
     clear_path: Option<PathBuf>,
+    paste_path: Option<PathBuf>,
     restart_path: Option<PathBuf>,
 }
 
@@ -23,6 +24,7 @@ impl MacosSoundPlayer {
             listening_off_path: None,
             enter_path: None,
             clear_path: None,
+            paste_path: None,
             restart_path: None,
         }
     }
@@ -38,15 +40,17 @@ impl MacosSoundPlayer {
         self
     }
 
-    /// Adds the sounds of the confirmed voice commands: enter, clear, restart.
+    /// Adds the sounds of the confirmed voice commands: enter, clear, paste, restart.
     pub fn with_command_sounds(
         mut self,
         enter_sound: &str,
         clear_sound: &str,
+        paste_sound: &str,
         restart_sound: &str,
     ) -> Self {
         self.enter_path = Self::resolve(enter_sound);
         self.clear_path = Self::resolve(clear_sound);
+        self.paste_path = Self::resolve(paste_sound);
         self.restart_path = Self::resolve(restart_sound);
         self
     }
@@ -124,6 +128,10 @@ impl SoundPlayer for MacosSoundPlayer {
 
     fn play_clear(&self) {
         Self::play_if_set(&self.clear_path);
+    }
+
+    fn play_paste(&self) {
+        Self::play_if_set(&self.paste_path);
     }
 
     fn play_restart(&self) {

@@ -193,7 +193,7 @@ impl Pipeline {
                 log_voice_start(&spoken);
                 Ok(())
             }
-            VoiceCommand::PressEnter | VoiceCommand::ClearAllText => {
+            VoiceCommand::PressEnter | VoiceCommand::ClearAllText | VoiceCommand::PasteText => {
                 self.press_keys(spoken.command)
             }
         }
@@ -213,11 +213,13 @@ impl Pipeline {
         Ok(())
     }
 
-    /// Presses the keys of "press enter" or "clear all text", then confirms the command.
+    /// Presses the keys of "press enter", "clear all text" or "paste text", then confirms the
+    /// command.
     fn press_keys(&mut self, command: VoiceCommand) -> anyhow::Result<()> {
         let keys = self.voice().key_presser.as_mut();
         let pressed = match command {
             VoiceCommand::ClearAllText => keys.clear_all_text(),
+            VoiceCommand::PasteText => keys.paste(),
             _ => keys.press_enter(),
         };
         match pressed {
@@ -235,6 +237,7 @@ impl Pipeline {
         match command {
             VoiceCommand::PressEnter => self.sound_player.play_enter(),
             VoiceCommand::ClearAllText => self.sound_player.play_clear(),
+            VoiceCommand::PasteText => self.sound_player.play_paste(),
             _ => return,
         }
         self.visual_indicator.show_command_sign(command);

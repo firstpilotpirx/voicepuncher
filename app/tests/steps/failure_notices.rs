@@ -816,6 +816,10 @@ impl KeyPresser for ScriptedKeys {
     fn clear_all_text(&mut self) -> Result<()> {
         self.press()
     }
+
+    fn paste(&mut self) -> Result<()> {
+        self.press()
+    }
 }
 
 struct Silent;

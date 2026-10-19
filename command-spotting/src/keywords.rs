@@ -123,7 +123,7 @@ mod tests {
     }
 
     #[test]
-    fn should_parse_the_six_phrases_of_voice_control() {
+    fn should_parse_the_seven_phrases_of_voice_control() {
         // When
         let keywords = parse(KEYWORDS);
         // Then
@@ -141,7 +141,8 @@ mod tests {
                 "cancel dictation",
                 "restart dictation",
                 "press enter",
-                "clear all text"
+                "clear all text",
+                "paste text"
             ]
         );
     }

@@ -143,6 +143,9 @@ pub struct SoundsCfg {
     /// Voice control: "clear all text" was carried out.
     #[serde(default = "SoundsCfg::default_clear_sound")]
     pub clear_sound: String,
+    /// Voice control: "paste text" was carried out.
+    #[serde(default = "SoundsCfg::default_paste_sound")]
+    pub paste_sound: String,
     /// Voice control: "restart dictation" started the dictation over.
     #[serde(default = "SoundsCfg::default_restart_sound")]
     pub restart_sound: String,
@@ -177,6 +180,10 @@ impl SoundsCfg {
         "Purr".into()
     }
 
+    fn default_paste_sound() -> String {
+        "Frog".into()
+    }
+
     fn default_restart_sound() -> String {
         "Hero".into()
     }
@@ -192,6 +199,7 @@ impl Default for SoundsCfg {
             listening_off_sound: Self::default_listening_off_sound(),
             enter_sound: Self::default_enter_sound(),
             clear_sound: Self::default_clear_sound(),
+            paste_sound: Self::default_paste_sound(),
             restart_sound: Self::default_restart_sound(),
         }
     }
@@ -410,6 +418,7 @@ mod tests {
         assert_eq!(sounds.enter_sound, "Morse");
         assert_eq!(sounds.clear_sound, "Purr");
         assert_eq!(sounds.restart_sound, "Hero");
+        assert_eq!(sounds.paste_sound, "Frog");
     }
 
     #[test]
@@ -425,6 +434,7 @@ mod tests {
             &sounds.enter_sound,
             &sounds.clear_sound,
             &sounds.restart_sound,
+            &sounds.paste_sound,
         ];
         // When
         let distinct: std::collections::HashSet<_> = all.iter().collect();
@@ -438,7 +448,7 @@ mod tests {
         let mut f = tempfile::NamedTempFile::new().unwrap();
         writeln!(
             f,
-            "[sounds]\ncommand_sound = \"Ping\"\nclear_sound = \"Funk\""
+            "[sounds]\ncommand_sound = \"Ping\"\nclear_sound = \"Funk\"\npaste_sound = \"Blow\""
         )
         .unwrap();
         // When
@@ -446,6 +456,7 @@ mod tests {
         // Then
         assert_eq!(config.sounds.enter_sound, "Ping");
         assert_eq!(config.sounds.clear_sound, "Funk");
+        assert_eq!(config.sounds.paste_sound, "Blow");
     }
 
     #[test]

@@ -307,6 +307,10 @@ impl KeyPresser for RecordingKeys {
     fn clear_all_text(&mut self) -> Result<()> {
         Ok(())
     }
+
+    fn paste(&mut self) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Plays nothing; notes the listening-on and listening-off sounds.

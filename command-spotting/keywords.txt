@@ -4,8 +4,8 @@
 #     print(' '.join(s.SentencePieceProcessor(model_file='bpe.model').encode('PRESS ENTER', out_type=str)))"
 # A phrase may have several lines: "press enter" runs together into "presenter", "start"
 # may sound like "star", any phrase may end with "please", and "clear text" is "clear all text".
-# A lower threshold or a higher boost makes a phrase easier to spot. press enter and clear
-# all text are spotted less reliably than the dictation phrases, so they need the looser
+# A lower threshold or a higher boost makes a phrase easier to spot. press enter, clear
+# all text and paste text are spotted less reliably than the dictation phrases, so they need the looser
 # values; the app's pause rule (the phrase must be the whole utterance) guards them.
 # The *_trigger lines are no phrases: spotted in a stream of their own, a short "start" or
 # "restart" only asks the speech recognition service to check the running utterance at once.
@@ -27,6 +27,8 @@
 ▁C LE AR ▁ALL ▁T E X T ▁P LE AS E :1.5 #0.20 @clear_all_text
 ▁C LE AR ▁T E X T :1.5 #0.20 @clear_all_text
 ▁C LE AR ▁T E X T ▁P LE AS E :1.5 #0.20 @clear_all_text
+▁PA S TE ▁T E X T :1.5 #0.20 @paste_text
+▁PA S TE ▁T E X T ▁P LE AS E :1.5 #0.20 @paste_text
 ▁START :1.5 #0.15 @start_trigger
 ▁ST AR :1.5 #0.15 @start_trigger
 ▁RE S T AR T :1.0 #0.25 @restart_trigger

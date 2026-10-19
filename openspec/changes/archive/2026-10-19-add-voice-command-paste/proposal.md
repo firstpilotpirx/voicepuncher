@@ -28,4 +28,4 @@ Out of scope: changing what is in the clipboard, clipboard history, pasting non-
 ## Release
 
 SemVer: MINOR — a new voice command is a new capability.
-Target version: 0.22.0.
+Target version: 0.23.0.

@@ -75,6 +75,7 @@ enum Event {
     Cancelled,
     ReturnPressed,
     Cleared,
+    PasteKeyPressed,
 }
 
 /// What the scenario expects, in order; a paste names the sentence it must hold.
@@ -567,6 +568,11 @@ impl KeyPresser for RecordingKeys {
 
     fn clear_all_text(&mut self) -> Result<()> {
         self.0.lock().unwrap().push(Event::Cleared);
+        Ok(())
+    }
+
+    fn paste(&mut self) -> Result<()> {
+        self.0.lock().unwrap().push(Event::PasteKeyPressed);
         Ok(())
     }
 }

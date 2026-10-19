@@ -488,6 +488,10 @@ impl KeyPresser for NoKeys {
     fn clear_all_text(&mut self) -> Result<()> {
         Ok(())
     }
+
+    fn paste(&mut self) -> Result<()> {
+        Ok(())
+    }
 }
 
 struct Silent;

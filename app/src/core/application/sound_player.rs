@@ -11,6 +11,8 @@ pub trait SoundPlayer: Send {
     fn play_enter(&self) {}
     /// Voice control: "clear all text" was carried out.
     fn play_clear(&self) {}
+    /// Voice control: "paste text" was carried out.
+    fn play_paste(&self) {}
     /// Voice control: "restart dictation" started the dictation over.
     fn play_restart(&self) {}
 }

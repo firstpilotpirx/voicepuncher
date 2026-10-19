@@ -45,6 +45,7 @@ const CANCEL: &str = "cancel dictation";
 const RESTART: &str = "restart dictation";
 const ENTER: &str = "press enter";
 const CLEAR: &str = "clear all text";
+const PASTE: &str = "paste text";
 
 /// Longer forms first, so "stop dictation" wins over "stop".
 const FORMS: &[Form] = &[
@@ -57,17 +58,19 @@ const FORMS: &[Form] = &[
     form(RESTART, &["restart", "dictation"]),
     form(ENTER, &["press", "enter"]),
     form(CLEAR, &["clear", "text"]),
+    form(PASTE, &["paste", "text"]),
     form(ENTER, &["presenter"]),
     form(START, &["start"]),
     form(STOP, &["stop"]),
     form(RESTART, &["restart"]),
     form(ENTER, &["enter"]),
     form(CLEAR, &["clear"]),
+    form(PASTE, &["paste"]),
     form(CANCEL, &["cancel"]),
 ];
 
 /// The phrases each state accepts; a dictation runs or it does not.
-const STANDBY: &[&str] = &[START, ENTER, CLEAR];
+const STANDBY: &[&str] = &[START, ENTER, CLEAR, PASTE];
 /// "enter" during a dictation ends it and presses Return.
 const DICTATING: &[&str] = &[STOP, CANCEL, RESTART, ENTER];
 
@@ -294,6 +297,7 @@ mod tests {
             "start dictation".into(),
             "press enter".into(),
             "clear all text".into(),
+            "paste text".into(),
         ])
     }
 
@@ -503,6 +507,41 @@ mod tests {
             assert_eq!(dictating().anywhere(&words(text)), None, "{text}");
             assert_eq!(standby().anywhere(&words(text)), None, "{text}");
         }
+    }
+
+    #[test]
+    fn should_find_paste_like_the_other_standby_commands() {
+        assert_eq!(
+            standby().at_end(&words("okay, paste.")),
+            found(&[("paste text", 1, 1)], Placement::Tail)
+        );
+        assert_eq!(
+            standby().anywhere(&words("fine paste paste")),
+            found(&[("paste text", 1, 2)], Placement::Anywhere)
+        );
+        assert_eq!(
+            standby().anywhere(&words("paste enter")),
+            found(
+                &[("paste text", 0, 0), ("press enter", 1, 1)],
+                Placement::Anywhere
+            )
+        );
+        assert_eq!(
+            dictating().anywhere(&words("stop paste text enter")),
+            found(
+                &[
+                    ("stop dictation", 0, 0),
+                    ("paste text", 1, 2),
+                    ("press enter", 3, 3)
+                ],
+                Placement::Anywhere
+            )
+        );
+        assert_eq!(dictating().at_end(&words("we should paste")), None);
+        assert_eq!(
+            standby().at_end(&words("I will paste the link later")),
+            None
+        );
     }
 
     #[test]

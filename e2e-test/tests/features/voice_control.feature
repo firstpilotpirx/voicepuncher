@@ -22,6 +22,7 @@ Feature: voice-control
         | restart dictation |
         | press enter      |
         | clear all text   |
+        | paste text       |
 
     @smoke
     Scenario Outline: A command said after a long time of listening is recognized
@@ -38,6 +39,7 @@ Feature: voice-control
         | restart dictation |
         | press enter      |
         | clear all text   |
+        | paste text       |
 
     @smoke
     Scenario: A command phrase inside a sentence is ignored while listening
@@ -119,6 +121,8 @@ Feature: voice-control
         | enter please   | press enter       |
         | clear          | clear all text    |
         | clear please   | clear all text    |
+        | paste          | paste text        |
+        | paste please   | paste text        |
 
   Rule: A command may end with "please"
 
@@ -136,6 +140,7 @@ Feature: voice-control
         | restart dictation please | restart dictation |
         | press enter please      | press enter      |
         | clear all text please   | clear all text   |
+        | paste text please       | paste text       |
 
   Rule: "clear text" erases the focused text too
 
@@ -149,6 +154,20 @@ Feature: voice-control
         | said              |
         | clear text        |
         | clear text please |
+
+  Rule: "paste text" pastes the clipboard
+
+    @smoke
+    Scenario: Saying paste text pastes the clipboard at the cursor
+      Given the command spotting service is running
+      When the user says "paste text" with a pause before and after it
+      Then the "paste text" command takes effect
+
+    @smoke
+    Scenario: A paste phrase inside a sentence is ignored
+      Given the command spotting service is running
+      When someone says "I will paste the link later" without pausing
+      Then no command takes effect
 
   Rule: Commands are carried out in the order spoken
 
@@ -228,6 +247,7 @@ Feature: voice-control
         | Okay, enter                              | no dictation runs | press enter       |
         | Okay, clear                              | no dictation runs | clear all text    |
         | Okay, clear all text                     | no dictation runs | clear all text    |
+        | Okay, paste                              | no dictation runs | paste text        |
         | Okay, start                              | no dictation runs | start dictation   |
         | Okay, start dictation                    | no dictation runs | start dictation   |
 
@@ -370,6 +390,7 @@ Feature: voice-control
         | Wait, restart restart                                           | dictating         | restart dictation |
         | Okay, start start                                               | no dictation runs | start dictation   |
         | Fine, clear clear                                               | no dictation runs | clear all text    |
+        | Fine, paste paste                                               | no dictation runs | paste text        |
 
   Rule: A chain of commands is carried out in order
 
@@ -392,6 +413,8 @@ Feature: voice-control
         | Okay, clear, enter              | no dictation runs | clear all text, press enter                  |
         | Okay, enter, start              | no dictation runs | press enter, start dictation                 |
         | Okay, clear, start              | no dictation runs | clear all text, start dictation              |
+        | Okay, paste, enter              | no dictation runs | paste text, press enter                      |
+        | That is all, stop, paste, enter | dictating         | stop dictation, paste text, press enter      |
 
   Rule: An utterance ends after 0.3 s of silence
 

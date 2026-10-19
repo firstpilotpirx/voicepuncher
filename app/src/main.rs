@@ -142,6 +142,7 @@ fn main() {
     .with_command_sounds(
         &config.sounds.enter_sound,
         &config.sounds.clear_sound,
+        &config.sounds.paste_sound,
         &config.sounds.restart_sound,
     );
 
