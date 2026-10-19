@@ -31,8 +31,15 @@ pub struct Cli {
     )]
     pub refinement_url: Option<String>,
 
-    #[arg(long)]
-    pub debug_save_wav: Option<PathBuf>,
+    #[arg(
+        long,
+        value_name = "DIR",
+        help = "Keep each dictation in this folder (turns the dictation archive on, also in file mode)"
+    )]
+    pub archive_dir: Option<PathBuf>,
+
+    #[arg(long, help = "Keep no dictation archive (wins over --archive-dir)")]
+    pub no_archive: bool,
 
     #[arg(
         long,
@@ -58,6 +65,12 @@ pub struct Cli {
 }
 
 impl Cli {
+    /// File mode keeps an archive only when a folder was named, so test runs never fill
+    /// the user's archive.
+    pub fn archives_file_mode(&self) -> bool {
+        self.archive_dir.is_some() && !self.no_archive
+    }
+
     pub fn overlay(self, cfg: &mut crate::config::Config) {
         if let Some(key) = self.hotkey {
             cfg.hotkey.key = key;
@@ -68,8 +81,12 @@ impl Cli {
         if let Some(url) = self.refinement_url {
             cfg.refinement.base_url = url;
         }
-        if self.debug_save_wav.is_some() {
-            cfg.audio.debug_save_wav = true;
+        if let Some(dir) = self.archive_dir {
+            cfg.archive.dir = dir;
+            cfg.archive.enabled = true;
+        }
+        if self.no_archive {
+            cfg.archive.enabled = false;
         }
         if self.voice_control {
             cfg.voice_control.enabled = true;
@@ -94,7 +111,8 @@ mod tests {
         assert!(cli.hotkey.is_none());
         assert!(cli.transcription_url.is_none());
         assert!(cli.refinement_url.is_none());
-        assert!(cli.debug_save_wav.is_none());
+        assert!(cli.archive_dir.is_none());
+        assert!(!cli.no_archive);
     }
 
     #[test]
@@ -105,7 +123,8 @@ mod tests {
             hotkey: Some(HotKey::F18),
             transcription_url: Some("http://localhost:9000/v1".into()),
             refinement_url: Some("http://localhost:9090/v1".into()),
-            debug_save_wav: Some(PathBuf::from("/tmp/debug.wav")),
+            archive_dir: Some(PathBuf::from("/tmp/dictations")),
+            no_archive: false,
             input_file: None,
             setup: false,
             no_llm: false,
@@ -118,7 +137,7 @@ mod tests {
         assert_eq!(cfg.hotkey.key, HotKey::F18);
         assert_eq!(cfg.transcription.base_url, "http://localhost:9000/v1");
         assert_eq!(cfg.refinement.base_url, "http://localhost:9090/v1");
-        assert!(cfg.audio.debug_save_wav);
+        assert_eq!(cfg.archive.dir, PathBuf::from("/tmp/dictations"));
     }
 
     #[test]
@@ -135,5 +154,60 @@ mod tests {
         let cli = Cli::parse_from(["voicepuncher", "--no-llm"]);
         // Then
         assert!(cli.no_llm);
+    }
+
+    #[test]
+    fn should_turn_the_archive_on_in_the_named_folder_with_archive_dir() {
+        // Given
+        let cli = Cli::parse_from(["voicepuncher", "--archive-dir", "/tmp/dictations"]);
+        let mut cfg = Config::default();
+        cfg.archive.enabled = false;
+        // When
+        cli.overlay(&mut cfg);
+        // Then
+        assert!(cfg.archive.enabled);
+        assert_eq!(cfg.archive.dir, PathBuf::from("/tmp/dictations"));
+    }
+
+    #[test]
+    fn should_turn_the_archive_off_with_no_archive_even_with_archive_dir() {
+        // Given
+        let cli = Cli::parse_from([
+            "voicepuncher",
+            "--archive-dir",
+            "/tmp/dictations",
+            "--no-archive",
+        ]);
+        // When
+        let archives_file_mode = cli.archives_file_mode();
+        let mut cfg = Config::default();
+        cli.overlay(&mut cfg);
+        // Then
+        assert!(!cfg.archive.enabled);
+        assert!(!archives_file_mode);
+    }
+
+    #[test]
+    fn should_archive_file_mode_only_with_archive_dir() {
+        // Given
+        let plain = Cli::parse_from(["voicepuncher", "--input-file", "/tmp/a.wav"]);
+        let named = Cli::parse_from([
+            "voicepuncher",
+            "--input-file",
+            "/tmp/a.wav",
+            "--archive-dir",
+            "/tmp/dictations",
+        ]);
+        // When / Then
+        assert!(!plain.archives_file_mode());
+        assert!(named.archives_file_mode());
+    }
+
+    #[test]
+    fn should_reject_the_retired_debug_save_wav_flag() {
+        // Given / When
+        let result = Cli::try_parse_from(["voicepuncher", "--debug-save-wav", "/tmp/debug.wav"]);
+        // Then
+        assert!(result.is_err());
     }
 }

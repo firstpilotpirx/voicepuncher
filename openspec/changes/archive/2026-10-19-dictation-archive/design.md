@@ -12,7 +12,7 @@
 
 **D6 — Configuration.** New `[archive]` section: `enabled` (default true), `dir` (default `~/.voicepuncher/history`), `max_size_mb` (default 2048). CLI: `--archive-dir <DIR>` (names the folder and turns the archive on) and `--no-archive`. File mode archives only with `--archive-dir`, so E2E and benchmark runs never fill or prune the user's archive. The setup wizard writes the section's defaults.
 
-**D7 — `debug_save_wav` is retired.** The archive replaces it: the `--debug-save-wav` flag and the recorder's WAV writer go; the `[audio] debug_save_wav` key is still accepted (configs use `deny_unknown_fields`) and, when true, logs once that the archive replaced it.
+**D7 — `debug_save_wav` is retired.** The archive replaces it: the `--debug-save-wav` flag and the recorder's WAV writer go; the `[audio] debug_save_wav` key is still accepted (configs use `deny_unknown_fields`) and, when true, logs once that the archive replaced it (a startup line in `main.rs`, wiring only, not tested).
 
 ## Risks
 
@@ -31,6 +31,8 @@
 | Speech recognition fails | component |
 | Only command words were transcribed | component |
 | A cancelled dictation leaves no entry | component |
+| A dictation dropped by restarting leaves no entry | component |
+| A press shorter than the minimum press time leaves no entry | component |
 | A voice-started dictation is marked as such | component |
 | Archive turned off | E2E (recording file with an archive folder named and the archive turned off) |
 | A recording file is archived into a named folder | E2E `dictation_archive.feature` |

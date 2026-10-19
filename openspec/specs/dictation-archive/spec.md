@@ -1,4 +1,9 @@
-## ADDED Requirements
+# dictation-archive Specification
+
+## Purpose
+TBD - created by archiving change dictation-archive. Update Purpose after archive.
+
+## Requirements
 
 ### Requirement: Every dictation is kept in an archive entry of its own
 The system SHALL keep every dictation that reached speech recognition in an archive entry of its own: one folder per dictation inside one archive folder, named by the recording's start so entries sort by time, holding the dictation's 16 kHz audio, the text of each chunk, the stitched raw transcript and the pasted text, and nothing of another dictation. Its text and metadata SHALL be one versioned machine-readable file. Entries SHALL never leave the machine.
@@ -47,6 +52,16 @@ The system SHALL archive a dictation that reached speech recognition but pasted 
 #### Scenario: A cancelled dictation leaves no entry
 - **GIVEN** the archive is on
 - **WHEN** the user cancels a dictation
+- **THEN** the archive holds no entry for it
+
+#### Scenario: A dictation dropped by restarting leaves no entry
+- **GIVEN** the archive is on and voice control is on
+- **WHEN** the user starts a dictation by voice, says "restart dictation", dictates a phrase and stops it by voice
+- **THEN** the archive holds one entry, with the audio of the restarted dictation only
+
+#### Scenario: A press shorter than the minimum press time leaves no entry
+- **GIVEN** the archive is on
+- **WHEN** the user records for less than the minimum press time
 - **THEN** the archive holds no entry for it
 
 ### Requirement: An entry carries what is needed to compare runs

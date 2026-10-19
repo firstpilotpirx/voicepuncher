@@ -197,7 +197,8 @@ Result pasted at cursor: `Hello world, I think the API is fine.`
 --refinement-url <URL>    Override [refinement].base_url (text refinement service, loopback only)
 --no-llm                  Skip text refinement; paste the raw transcript without contacting the service
 --voice-control           Voice control: spoken commands drive dictation alongside the hotkey
---debug-save-wav          Save recorded WAV for debugging
+--archive-dir <DIR>       Keep each dictation in this folder (also archives a file run with --input-file)
+--no-archive              Keep no dictation archive (wins over --archive-dir)
 -v                        Verbose logging
 -vv                       Trace logging
 ```
@@ -256,6 +257,43 @@ just start-model-servers
 ```
 
 WAV must be 16 kHz, mono, 16-bit PCM.
+
+A file run is not archived unless you add `--archive-dir <DIR>`: then that folder gets one entry for the run, marked `recording_file`.
+
+## Dictation archive
+
+Every dictation that reached speech recognition is kept in `~/.voicepuncher/history/`, one folder per dictation, named after its start time in UTC (`2026-10-19T08-15-02.431Z/`). Each folder holds:
+
+- `audio.wav` — the whole recording, 16 kHz mono 16-bit, so you can replay it or transcribe it again.
+- `entry.json` — what happened to it:
+
+| Field | Meaning |
+|---|---|
+| `format` | Layout version of `entry.json` (now `1`) |
+| `started_at` | Start of the recording, UTC |
+| `start` | How it started: `hotkey_held`, `hotkey_toggled`, `voice` or `recording_file` |
+| `audio` | The audio file and its length in ms |
+| `chunks` | Text of each chunk as speech recognition returned it |
+| `raw_transcript` | The joined transcript before refinement |
+| `pasted_text` | The text that was pasted (or printed, in file mode) |
+| `refinement` | `refined`, `off` or `fell_back` (service failed, raw text pasted) |
+| `outcome` | `pasted`, `left_in_clipboard`, `paste_failed`, `speech_recognition_failed`, `no_text` or `only_command_words` |
+| `lost_chunks` | Chunks speech recognition could not transcribe |
+| `timings_ms` | Time of each stage after the recording stopped |
+| `dictation_model`, `refinement_model`, `app_version` | What produced the text |
+
+Settings (`~/.voicepuncher/config.toml`):
+
+```toml
+[archive]
+enabled = true                     # false: keep nothing
+dir = "~/.voicepuncher/history"    # where the entries go
+max_size_mb = 2048                 # beyond this, the oldest entries are removed first
+```
+
+`--archive-dir <DIR>` and `--no-archive` override them for one run. File mode (`--input-file`) archives only with `--archive-dir`, so tests and benchmarks never write into your archive.
+
+**Privacy:** the archive holds the audio and text of everything you dictated. It stays on this machine: it is never sent anywhere and never committed. Delete the folder, or set `enabled = false`, to get rid of it.
 
 ## Testing
 

@@ -5,7 +5,6 @@ min_press_ms = 200
 
 [audio]
 input_device = "default"
-debug_save_wav = false
 
 [transcription]
 # Local speech recognition service (OpenAI Audio Transcriptions API). Start it with
@@ -68,6 +67,14 @@ restart_sound = "Hero"          # voice control: "restart dictation" started the
 # Needs the command spotting service: `just models`, then `just start-model-servers`.
 enabled = false
 url = "ws://127.0.0.1:8082"   # must be on this machine: localhost, 127.0.0.0/8 or [::1]
+
+[archive]
+# The dictation archive: every dictation that reached speech recognition is kept in its own
+# folder (audio.wav + entry.json); the oldest are deleted once the folder outgrows the limit.
+# `--no-archive` turns it off for one run, `--archive-dir <DIR>` names another folder.
+enabled = true
+dir = "~/.voicepuncher/history"
+max_size_mb = 2048
 
 [logging]
 level = "info"

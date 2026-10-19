@@ -115,6 +115,17 @@ pub fn transcribe(
     config: Option<&Path>,
     with_refinement: bool,
 ) -> Result<Output> {
+    let mut cmd = transcribe_command(recording, config, with_refinement)?;
+    cmd.output()
+        .with_context(|| format!("failed to spawn {:?}", cmd.get_program()))
+}
+
+/// The app's command line that transcribes `recording` through the local services.
+pub fn transcribe_command(
+    recording: &Path,
+    config: Option<&Path>,
+    with_refinement: bool,
+) -> Result<Command> {
     let mut cmd = Command::new(sut_bin());
     cmd.arg("--config")
         .arg(config.unwrap_or(Path::new(NO_CONFIG)))
@@ -128,8 +139,7 @@ pub fn transcribe(
     } else {
         cmd.arg("--no-llm");
     }
-    cmd.output()
-        .with_context(|| format!("failed to spawn {:?}", cmd.get_program()))
+    Ok(cmd)
 }
 
 pub fn sut_bin() -> PathBuf {

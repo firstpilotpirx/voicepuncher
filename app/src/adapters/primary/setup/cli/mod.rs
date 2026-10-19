@@ -174,7 +174,6 @@ impl SetupWizard {
              recording_mode = \"{mode}\"\n\
              \n\
              [audio]\n\
-             debug_save_wav = false\n\
              max_recording_seconds = 600\n\
              \n\
              [transcription]\n\
@@ -193,6 +192,11 @@ impl SetupWizard {
              [sounds]\n\
              start_sound = \"{start_sound}\"\n\
              stop_sound = \"{stop_sound}\"\n\
+             \n\
+             [archive]\n\
+             enabled = true\n\
+             dir = \"~/.voicepuncher/history\"\n\
+             max_size_mb = 2048\n\
              \n\
              [logging]\n\
              level = \"info\"\n",

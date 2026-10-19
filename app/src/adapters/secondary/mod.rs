@@ -1,3 +1,4 @@
+pub mod archiving;
 pub mod commandspotting;
 pub mod focus;
 pub mod http;

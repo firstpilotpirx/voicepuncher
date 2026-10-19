@@ -11,7 +11,6 @@ min_press_ms = 200
 
 [audio]
 input_device = "default"
-debug_save_wav = false
 
 [transcription]
 base_url = "http://127.0.0.1:8081/v1"
@@ -29,6 +28,11 @@ timeout_secs = 20
 [paste]
 clipboard_restore_delay_ms = 120
 
+[archive]
+enabled = true
+dir = "~/.voicepuncher/history"
+max_size_mb = 512
+
 [logging]
 level = "info"
 "#;
@@ -42,7 +46,6 @@ level = "info"
     assert_eq!(cfg.hotkey.key, HotKey::RightOption);
     assert_eq!(cfg.hotkey.min_press_ms, 200);
     assert_eq!(cfg.audio.input_device, "default");
-    assert!(!cfg.audio.debug_save_wav);
     assert_eq!(cfg.transcription.base_url, "http://127.0.0.1:8081/v1");
     assert_eq!(cfg.transcription.language, "auto");
     assert_eq!(cfg.transcription.timeout_secs, 30);
@@ -52,6 +55,12 @@ level = "info"
     assert_eq!(cfg.refinement.temperature, 0.0_f32);
     assert_eq!(cfg.refinement.timeout_secs, 20);
     assert_eq!(cfg.paste.clipboard_restore_delay_ms, 120);
+    assert!(cfg.archive.enabled);
+    assert_eq!(
+        cfg.archive.dir,
+        std::path::Path::new("~/.voicepuncher/history")
+    );
+    assert_eq!(cfg.archive.max_size_mb, 512);
     assert_eq!(cfg.logging.level, "info");
 }
 
@@ -83,6 +92,8 @@ fn should_load_shipped_example_config() {
     assert_eq!(cfg.transcription.base_url, "http://127.0.0.1:8081/v1");
     assert_eq!(cfg.transcription.chunk_threshold_secs, 15);
     assert_eq!(cfg.refinement.base_url, "http://127.0.0.1:8080/v1");
+    assert!(cfg.archive.enabled);
+    assert_eq!(cfg.archive.max_size_mb, 2048);
 }
 
 #[test]
@@ -134,4 +145,18 @@ fn should_load_with_only_hotkey_section() {
     assert_eq!(cfg.hotkey.key, HotKey::F13);
     assert_eq!(cfg.audio.input_device, "default");
     assert_eq!(cfg.refinement.max_tokens, 512);
+}
+
+#[test]
+fn should_load_a_config_with_the_retired_debug_save_wav_key() {
+    // Given
+    let toml_str = "[audio]\ndebug_save_wav = true\n";
+    let temp = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(temp.path(), toml_str).unwrap();
+
+    // When
+    let cfg = load(temp.path()).unwrap();
+
+    // Then
+    assert!(cfg.audio.debug_save_wav);
 }

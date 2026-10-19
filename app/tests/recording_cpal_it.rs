@@ -7,7 +7,7 @@ use voicepuncher::core::application::AudioRecorder;
 #[test]
 fn should_return_err_when_stop_called_without_start() {
     // Given
-    let mut recorder = CpalAudioRecorder::new(None, 600, Arc::new(AtomicU32::new(0)));
+    let mut recorder = CpalAudioRecorder::new(600, Arc::new(AtomicU32::new(0)));
     // When
     let result = recorder.stop();
     // Then
@@ -29,7 +29,7 @@ fn should_record_and_resample_when_real_mic_available() {
         return;
     }
     // When
-    let mut recorder = CpalAudioRecorder::new(None, 600, Arc::new(AtomicU32::new(0)));
+    let mut recorder = CpalAudioRecorder::new(600, Arc::new(AtomicU32::new(0)));
     recorder.start().expect("start should succeed");
     std::thread::sleep(std::time::Duration::from_millis(500));
     let audio = recorder.stop().expect("stop should succeed");

@@ -3,6 +3,7 @@ pub mod audio_level_source;
 pub mod audio_recorder;
 pub mod chunking;
 pub mod command_spotter;
+pub mod dictation_archive;
 pub mod focus_probe;
 pub mod hotkey_listener;
 pub mod key_presser;
@@ -24,6 +25,10 @@ pub use audio_level_source::AudioLevelSource;
 pub use audio_recorder::AudioRecorder;
 pub use chunking::ChunkingCfg;
 pub use command_spotter::CommandSpotter;
+pub use dictation_archive::{
+    ArchiveEntry, DictationArchive, DictationOutcome, DictationStart, RefinementOutcome,
+    StageTiming,
+};
 pub use focus_probe::FocusProbe;
 pub use hotkey_listener::HotkeyListener;
 pub use key_presser::KeyPresser;

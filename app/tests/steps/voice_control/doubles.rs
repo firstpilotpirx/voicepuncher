@@ -275,11 +275,12 @@ impl CommandSpotter for ScriptedSpotter {
 /// The start of the line the pipeline logs at every voice start.
 pub const VOICE_START_LINE: &str = "voice start:";
 
-/// Keeps every error the pipeline logs, and every voice start timing line with the thread
-/// that logged it, so a scenario can check what its own pipeline logged.
+/// Keeps every error the pipeline logs, and every warning and voice start timing line with
+/// the thread that logged it, so a scenario can check what its own pipeline logged.
 #[derive(Default)]
 pub struct PipelineLog {
     pub errors: Mutex<Vec<String>>,
+    pub warnings: Mutex<Vec<(ThreadId, String)>>,
     pub voice_starts: Mutex<Vec<(ThreadId, String)>>,
 }
 
@@ -291,6 +292,11 @@ impl log::Log for PipelineLog {
     fn log(&self, record: &log::Record) {
         match record.level() {
             log::Level::Error => self.errors.lock().unwrap().push(record.args().to_string()),
+            log::Level::Warn => {
+                let thread = std::thread::current().id();
+                let line = record.args().to_string();
+                self.warnings.lock().unwrap().push((thread, line));
+            }
             log::Level::Info => {
                 let line = record.args().to_string();
                 if line.starts_with(VOICE_START_LINE) {

@@ -43,6 +43,7 @@ pub struct E2eWorld {
     pub hands_free: Option<steps::voice_control::HandsFree>,
     pub session: Option<steps::voice_control::HandsFreeSession>,
     pub local_services: Option<steps::local_services::ScenarioServices>,
+    pub archive: steps::dictation_archive::ArchiveRun,
 }
 
 impl E2eWorld {

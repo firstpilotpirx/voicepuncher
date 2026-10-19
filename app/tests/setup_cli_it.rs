@@ -52,7 +52,11 @@ fn should_write_service_sections_that_load_back() {
         .contains("[refinement]\nbase_url = \"http://localhost:9090/v1\"\nmodel = \"qwen2.5\"\n"));
     assert!(!written.contains("[whisper]"));
     assert!(!written.contains("[llm]"));
+    assert!(written.contains("[archive]\nenabled = true\n"));
+    assert!(!written.contains("debug_save_wav"));
     let cfg = voicepuncher::config::load(&path).unwrap();
+    assert!(cfg.archive.enabled);
+    assert_eq!(cfg.archive.max_size_mb, 2048);
     assert_eq!(cfg.transcription.base_url, "http://localhost:9000/v1");
     assert_eq!(cfg.transcription.language, "ru");
     assert_eq!(cfg.refinement.base_url, "http://localhost:9090/v1");

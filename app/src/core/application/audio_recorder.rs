@@ -25,4 +25,9 @@ pub trait AudioRecorder: Send {
     /// Puts `lead_in`, sound heard right up to the moment the recording started, at its
     /// beginning: the recording then begins where the lead-in does.
     fn begin_with(&mut self, _lead_in: AudioBuffer16k) {}
+    /// The whole last recording at 16 kHz, lead-in included and nothing after a cut; none
+    /// when the recorder keeps none.
+    fn recording(&mut self) -> Option<AudioBuffer16k> {
+        None
+    }
 }

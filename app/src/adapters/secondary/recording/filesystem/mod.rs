@@ -59,6 +59,10 @@ impl AudioRecorder for FileSystemAudioRecorder {
     }
 
     fn flush_live_chunks(&mut self) {}
+
+    fn recording(&mut self) -> Option<AudioBuffer16k> {
+        Self::load(&self.path).ok()
+    }
 }
 
 #[cfg(test)]

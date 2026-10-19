@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -30,6 +30,8 @@ pub struct Config {
     pub sounds: SoundsCfg,
     #[serde(default)]
     pub voice_control: VoiceControlCfg,
+    #[serde(default)]
+    pub archive: ArchiveCfg,
     #[serde(default)]
     pub logging: LoggingCfg,
 }
@@ -69,6 +71,7 @@ impl Default for HotkeyCfg {
 pub struct AudioCfg {
     #[serde(default = "AudioCfg::default_input_device")]
     pub input_device: String,
+    /// Retired: the dictation archive replaced it. Still accepted so old configs load.
     #[serde(default)]
     pub debug_save_wav: bool,
     #[serde(default = "AudioCfg::default_max_recording_seconds")]
@@ -214,6 +217,60 @@ impl Default for VoiceControlCfg {
         Self {
             enabled: false,
             url: Self::default_url(),
+        }
+    }
+}
+
+/// The dictation archive: where each dictation's audio and texts are kept, and how much.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ArchiveCfg {
+    #[serde(default = "ArchiveCfg::default_enabled")]
+    pub enabled: bool,
+    #[serde(default = "ArchiveCfg::default_dir")]
+    pub dir: PathBuf,
+    #[serde(default = "ArchiveCfg::default_max_size_mb")]
+    pub max_size_mb: u64,
+}
+
+const DEFAULT_ARCHIVE_DIR: &str = "~/.voicepuncher/history";
+const DEFAULT_ARCHIVE_MAX_SIZE_MB: u64 = 2048;
+const BYTES_PER_MEGABYTE: u64 = 1024 * 1024;
+const HOME_DIR_PREFIX: &str = "~";
+
+impl ArchiveCfg {
+    fn default_enabled() -> bool {
+        true
+    }
+
+    fn default_dir() -> PathBuf {
+        PathBuf::from(DEFAULT_ARCHIVE_DIR)
+    }
+
+    fn default_max_size_mb() -> u64 {
+        DEFAULT_ARCHIVE_MAX_SIZE_MB
+    }
+
+    /// The size limit of the archive in bytes.
+    pub fn max_size_bytes(&self) -> u64 {
+        self.max_size_mb.saturating_mul(BYTES_PER_MEGABYTE)
+    }
+
+    /// The archive folder with a leading `~` replaced by `home`.
+    pub fn resolved_dir(&self, home: &Path) -> PathBuf {
+        match self.dir.strip_prefix(HOME_DIR_PREFIX) {
+            Ok(rest) => home.join(rest),
+            Err(_) => self.dir.clone(),
+        }
+    }
+}
+
+impl Default for ArchiveCfg {
+    fn default() -> Self {
+        Self {
+            enabled: Self::default_enabled(),
+            dir: Self::default_dir(),
+            max_size_mb: Self::default_max_size_mb(),
         }
     }
 }
@@ -389,6 +446,71 @@ mod tests {
         // Then
         assert_eq!(config.sounds.enter_sound, "Ping");
         assert_eq!(config.sounds.clear_sound, "Funk");
+    }
+
+    #[test]
+    fn should_archive_into_the_history_folder_up_to_two_gigabytes_by_default() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(f, "[hotkey]\nkey = \"F13\"").unwrap();
+        // When
+        let cfg = load(f.path()).unwrap();
+        // Then
+        assert!(cfg.archive.enabled);
+        assert_eq!(cfg.archive.dir, Path::new("~/.voicepuncher/history"));
+        assert_eq!(cfg.archive.max_size_mb, 2048);
+        assert_eq!(cfg.archive.max_size_bytes(), 2048 * 1024 * 1024);
+    }
+
+    #[test]
+    fn should_keep_the_configured_archive_settings() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            f,
+            "[archive]\nenabled = false\ndir = \"/tmp/dictations\"\nmax_size_mb = 10"
+        )
+        .unwrap();
+        // When
+        let cfg = load(f.path()).unwrap();
+        // Then
+        assert!(!cfg.archive.enabled);
+        assert_eq!(cfg.archive.dir, Path::new("/tmp/dictations"));
+        assert_eq!(cfg.archive.max_size_bytes(), 10 * 1024 * 1024);
+    }
+
+    #[test]
+    fn should_resolve_the_archive_folder_under_the_home_folder() {
+        // Given
+        let archive = ArchiveCfg::default();
+        // When
+        let dir = archive.resolved_dir(Path::new("/Users/someone"));
+        // Then
+        assert_eq!(dir, Path::new("/Users/someone/.voicepuncher/history"));
+    }
+
+    #[test]
+    fn should_keep_an_absolute_archive_folder_as_it_is() {
+        // Given
+        let archive = ArchiveCfg {
+            dir: "/tmp/dictations".into(),
+            ..ArchiveCfg::default()
+        };
+        // When
+        let dir = archive.resolved_dir(Path::new("/Users/someone"));
+        // Then
+        assert_eq!(dir, Path::new("/tmp/dictations"));
+    }
+
+    #[test]
+    fn should_still_accept_the_retired_debug_save_wav_key() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(f, "[audio]\ndebug_save_wav = true").unwrap();
+        // When
+        let cfg = load(f.path()).unwrap();
+        // Then
+        assert!(cfg.audio.debug_save_wav);
     }
 
     #[test]

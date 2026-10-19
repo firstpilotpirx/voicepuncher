@@ -22,6 +22,7 @@ pub struct IntegrationWorld {
     pub live: Option<steps::live_transcript::LiveRun>,
     pub notices: Option<steps::failure_notices::NoticesRun>,
     pub pointer: Option<steps::dictation_pointer::PointerRun>,
+    pub archive: Option<steps::dictation_archive::ArchiveRun>,
 }
 
 /// Runs the scenarios the command line selects that the gates admit: `@wip` never,

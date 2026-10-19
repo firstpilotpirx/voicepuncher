@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -24,12 +23,29 @@ const RESAMPLER_F_CUTOFF: f32 = 0.95;
 const RESAMPLER_OVERSAMPLING: usize = 128;
 
 pub struct CpalAudioRecorder {
-    debug_save_wav: Option<PathBuf>,
     max_recording_seconds: u64,
     active: Option<ActiveRecording>,
     shared_buffer: Option<Arc<Mutex<Vec<i16>>>>,
     native_rate_out: Option<Arc<AtomicU32>>,
     level_register: Arc<AtomicU32>,
+    last_recording: Option<NativeRecording>,
+}
+
+/// What a stopped recording captured, at the device's own sample rate.
+struct NativeRecording {
+    samples: Vec<i16>,
+    rate: u32,
+}
+
+impl NativeRecording {
+    /// The recording resampled to 16 kHz, the audio speech recognition hears.
+    fn at_16k(&self) -> Result<AudioBuffer16k> {
+        if self.rate == AudioBuffer16k::SAMPLE_RATE_HZ {
+            return Ok(AudioBuffer16k::new(self.samples.clone()));
+        }
+        let mut resampler = Resampler16k::new(self.rate)?;
+        Ok(AudioBuffer16k::new(resampler.resample(&self.samples)?))
+    }
 }
 
 struct ActiveRecording {
@@ -47,41 +63,37 @@ struct ActiveRecording {
 }
 
 impl CpalAudioRecorder {
-    pub fn new(
-        debug_save_wav: Option<PathBuf>,
-        max_recording_seconds: u64,
-        level_register: Arc<AtomicU32>,
-    ) -> Self {
+    pub fn new(max_recording_seconds: u64, level_register: Arc<AtomicU32>) -> Self {
         Self {
-            debug_save_wav,
             max_recording_seconds,
             active: None,
             shared_buffer: None,
             native_rate_out: None,
             level_register,
+            last_recording: None,
         }
     }
 
     pub fn new_with_live_buffer(
-        debug_save_wav: Option<PathBuf>,
         max_recording_seconds: u64,
         shared_buffer: Arc<Mutex<Vec<i16>>>,
         native_rate_out: Arc<AtomicU32>,
         level_register: Arc<AtomicU32>,
     ) -> Self {
         Self {
-            debug_save_wav,
             max_recording_seconds,
             active: None,
             shared_buffer: Some(shared_buffer),
             native_rate_out: Some(native_rate_out),
             level_register,
+            last_recording: None,
         }
     }
 }
 
 impl AudioRecorder for CpalAudioRecorder {
     fn start(&mut self) -> Result<()> {
+        self.last_recording = None;
         let host = cpal::default_host();
         let device = host
             .default_input_device()
@@ -180,15 +192,16 @@ impl AudioRecorder for CpalAudioRecorder {
 
         drop(recording.stream);
 
+        let native = NativeRecording {
+            samples: take_samples(recording.buffer),
+            rate: recording.native_sample_rate,
+        };
         if recording.used_live {
+            self.last_recording = Some(native);
             return Ok(AudioBuffer16k::new(Vec::new()));
         }
 
-        let raw_samples = Arc::try_unwrap(recording.buffer)
-            .map(|m| m.into_inner().unwrap())
-            .unwrap_or_else(|arc| arc.lock().unwrap().clone());
-
-        if raw_samples.len() >= recording.max_samples {
+        if native.samples.len() >= recording.max_samples {
             log::warn!(
                 "Recording reached the {}-second limit and was cut off at that point. \
                  To allow longer recordings, increase [audio] max_recording_seconds in your config.",
@@ -196,18 +209,9 @@ impl AudioRecorder for CpalAudioRecorder {
             );
         }
 
-        let resampled = if recording.native_sample_rate == AudioBuffer16k::SAMPLE_RATE_HZ {
-            raw_samples
-        } else {
-            let mut resampler = Resampler16k::new(recording.native_sample_rate)?;
-            resampler.resample(&raw_samples)?
-        };
-
-        if let Some(ref path) = self.debug_save_wav {
-            save_wav(path, &resampled)?;
-        }
-
-        Ok(AudioBuffer16k::new(resampled))
+        let resampled = native.at_16k()?;
+        self.last_recording = Some(native);
+        Ok(resampled)
     }
 
     fn start_live_chunks(
@@ -263,6 +267,14 @@ impl AudioRecorder for CpalAudioRecorder {
         }
     }
 
+    fn recording(&mut self) -> Option<AudioBuffer16k> {
+        self.last_recording
+            .as_ref()?
+            .at_16k()
+            .inspect_err(|e| log::warn!("last recording could not be resampled: {e:#}"))
+            .ok()
+    }
+
     fn truncate_at(&mut self, cut: Instant) {
         if let Some(active) = self.active.as_ref() {
             active.capturing.store(false, Ordering::Relaxed);
@@ -270,6 +282,13 @@ impl AudioRecorder for CpalAudioRecorder {
             truncate_buffer(&active.buffer, kept);
         }
     }
+}
+
+/// The samples `buffer` holds, without copying them when nothing else shares it.
+fn take_samples(buffer: Arc<Mutex<Vec<i16>>>) -> Vec<i16> {
+    Arc::try_unwrap(buffer)
+        .map(|m| m.into_inner().unwrap())
+        .unwrap_or_else(|arc| arc.lock().unwrap().clone())
 }
 
 /// Puts `lead_in` before the samples `buffer` holds at `rate`; how long the lead-in lasts.
@@ -494,21 +513,6 @@ fn float_to_i16(sample: f32) -> i16 {
     (sample.clamp(-1.0, 1.0) * I16_MAX_F32) as i16
 }
 
-fn save_wav(path: &PathBuf, samples: &[i16]) -> Result<()> {
-    let spec = hound::WavSpec {
-        channels: 1,
-        sample_rate: AudioBuffer16k::SAMPLE_RATE_HZ,
-        bits_per_sample: 16,
-        sample_format: hound::SampleFormat::Int,
-    };
-    let mut writer = hound::WavWriter::create(path, spec)?;
-    for &s in samples {
-        writer.write_sample(s)?;
-    }
-    writer.finalize()?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod lead_in_tests {
     use super::*;
@@ -546,6 +550,48 @@ mod lead_in_tests {
 }
 
 #[cfg(test)]
+mod last_recording_tests {
+    use super::*;
+
+    const DEVICE_RATE_HZ: u32 = 48_000;
+    const RESAMPLED_LENGTH_TOLERANCE: usize = 20;
+
+    #[test]
+    fn should_give_the_last_recording_at_16_khz_with_its_lead_in() {
+        // Given half a second heard before the start and a second recorded at 48 kHz
+        let lead_in = AudioBuffer16k::new(vec![0; 8_000]);
+        let mut samples = vec![0i16; DEVICE_RATE_HZ as usize];
+        put_first(&mut samples, &lead_in, DEVICE_RATE_HZ);
+        let recording = NativeRecording {
+            samples,
+            rate: DEVICE_RATE_HZ,
+        };
+        // When
+        let audio = recording.at_16k().unwrap();
+        // Then a second and a half at 16 kHz
+        let expected = 24_000usize;
+        assert!(
+            audio.samples().len().abs_diff(expected) <= expected / RESAMPLED_LENGTH_TOLERANCE,
+            "expected ~{expected} samples, got {}",
+            audio.samples().len()
+        );
+    }
+
+    #[test]
+    fn should_give_a_16_khz_recording_as_it_is() {
+        // Given
+        let recording = NativeRecording {
+            samples: vec![1, 2, 3],
+            rate: AudioBuffer16k::SAMPLE_RATE_HZ,
+        };
+        // When
+        let audio = recording.at_16k().unwrap();
+        // Then
+        assert_eq!(audio.samples(), [1, 2, 3]);
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -577,7 +623,7 @@ mod tests {
     #[test]
     fn should_return_err_when_stop_called_without_start() {
         // Given
-        let mut recorder = CpalAudioRecorder::new(None, 600, Arc::new(AtomicU32::new(0)));
+        let mut recorder = CpalAudioRecorder::new(600, Arc::new(AtomicU32::new(0)));
         // When
         let result = recorder.stop();
         // Then
@@ -687,7 +733,7 @@ mod tests {
     fn should_store_level_bits_via_audio_level_sink() {
         // Given
         let reg = Arc::new(AtomicU32::new(0));
-        let recorder = CpalAudioRecorder::new(None, 600, Arc::clone(&reg));
+        let recorder = CpalAudioRecorder::new(600, Arc::clone(&reg));
         // When
         recorder.write_level(AudioLevel::from_rms(0.5));
         // Then

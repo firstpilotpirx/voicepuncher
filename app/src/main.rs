@@ -5,6 +5,9 @@ use objc2_app_kit::NSApplication;
 use voicepuncher::adapters::primary::cli::Cli;
 use voicepuncher::adapters::primary::ptt::rdev::RdevHotkeyListener;
 use voicepuncher::adapters::primary::setup::cli::SetupWizard;
+use voicepuncher::adapters::secondary::archiving::filesystem::{
+    ArchiveSetup, FileSystemDictationArchive,
+};
 use voicepuncher::adapters::secondary::commandspotting::websocket::WebSocketCommandSpotter;
 use voicepuncher::adapters::secondary::focus::macos::MacOsFocusProbe;
 use voicepuncher::adapters::secondary::keypressing::macos::MacOsKeyPresser;
@@ -62,6 +65,7 @@ fn main() {
 
     let input_file = cli.input_file.clone();
     let no_llm = cli.no_llm;
+    let archives_file_mode = cli.archives_file_mode();
     cli.overlay(&mut config);
     voicepuncher::config::validate(&config).unwrap_or_else(|e| {
         eprintln!("config error: {e:#}");
@@ -78,33 +82,15 @@ fn main() {
         )
         .format(log_line)
         .init();
+    if config.audio.debug_save_wav {
+        log::warn!(
+            "[audio] debug_save_wav is retired: the dictation archive ([archive]) now keeps \
+             every recording; remove the key from the config"
+        );
+    }
 
     if let Some(ref input_path) = input_file {
-        let transcriber = connect_transcriber(&config);
-        let refiner = connect_refiner(&config, no_llm);
-        let audio = FileSystemAudioRecorder::load(input_path).unwrap_or_else(|e| {
-            log::error!("file mode: {e:#}");
-            std::process::exit(1);
-        });
-        let paster = StdioTextPaster::new();
-        let sound_player = MacosSoundPlayer::new("", "", "");
-        let mut pipeline = Pipeline::new(
-            Box::new(FileSystemAudioRecorder::new(input_path.clone())),
-            Box::new(transcriber),
-            refiner,
-            Box::new(paster),
-            Box::new(sound_player),
-            Box::new(NoopVisualIndicator),
-            PipelineConfig {
-                min_press_ms: config.hotkey.min_press_ms,
-                recording_mode: config.hotkey.recording_mode,
-                chunking: chunking_cfg(&config.transcription),
-            },
-        );
-        pipeline.run_once(audio).unwrap_or_else(|e| {
-            log::error!("file mode failed: {e:#}");
-            std::process::exit(1);
-        });
+        run_file_mode(input_path, &config, no_llm, archives_file_mode);
         return;
     }
 
@@ -129,10 +115,6 @@ fn main() {
     let level_register = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
 
     let recorder = CpalAudioRecorder::new(
-        config
-            .audio
-            .debug_save_wav
-            .then(|| std::path::PathBuf::from("debug.wav")),
         config.audio.max_recording_seconds,
         std::sync::Arc::clone(&level_register),
     );
@@ -192,6 +174,11 @@ fn main() {
     if no_llm {
         pipeline = pipeline.without_text_refinement_stage();
     }
+    if config.archive.enabled {
+        pipeline = pipeline.with_archive(Box::new(connect_archive(&config, no_llm)));
+    } else {
+        log::info!("dictation archive: off");
+    }
     if let Some(spotter) = spotter {
         log::info!("voice control on: listening starts now; the hotkey records as push-to-talk");
         pipeline = pipeline.with_voice_control(Box::new(spotter), Box::new(MacOsKeyPresser::new()));
@@ -211,6 +198,56 @@ fn main() {
     app.run();
 
     pipeline_handle.join().ok();
+}
+
+/// Transcribes one WAV file and prints the text; archives it only when a folder was named.
+fn run_file_mode(input_path: &std::path::Path, config: &Config, no_llm: bool, archives: bool) {
+    let transcriber = connect_transcriber(config);
+    let refiner = connect_refiner(config, no_llm);
+    let audio = FileSystemAudioRecorder::load(input_path).unwrap_or_else(|e| {
+        log::error!("file mode: {e:#}");
+        std::process::exit(1);
+    });
+    let mut pipeline = Pipeline::new(
+        Box::new(FileSystemAudioRecorder::new(input_path.to_path_buf())),
+        Box::new(transcriber),
+        refiner,
+        Box::new(StdioTextPaster::new()),
+        Box::new(MacosSoundPlayer::new("", "", "")),
+        Box::new(NoopVisualIndicator),
+        PipelineConfig {
+            min_press_ms: config.hotkey.min_press_ms,
+            recording_mode: config.hotkey.recording_mode,
+            chunking: chunking_cfg(&config.transcription),
+        },
+    );
+    if no_llm {
+        pipeline = pipeline.without_text_refinement_stage();
+    }
+    if archives {
+        pipeline = pipeline.with_archive(Box::new(connect_archive(config, no_llm)));
+    }
+    pipeline.run_once(audio).unwrap_or_else(|e| {
+        log::error!("file mode failed: {e:#}");
+        std::process::exit(1);
+    });
+}
+
+/// The dictation archive in the configured folder, with the models every entry records.
+fn connect_archive(config: &Config, no_llm: bool) -> FileSystemDictationArchive {
+    let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    let dir = config.archive.resolved_dir(&home);
+    log::info!(
+        "dictation archive: {} (limit {} MB)",
+        dir.display(),
+        config.archive.max_size_mb
+    );
+    let setup = ArchiveSetup {
+        dictation_model: config.transcription.model.clone(),
+        refinement_model: (!no_llm).then(|| config.refinement.model.clone()),
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
+    };
+    FileSystemDictationArchive::new(dir, config.archive.max_size_bytes(), setup)
 }
 
 /// Feeds hotkey signals into the pipeline's ordered input stream.

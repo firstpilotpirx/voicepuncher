@@ -214,6 +214,18 @@
 - **Code:** `app/src/core/application/text_insertion.rs` — `insert_text`, `FocusWaitCfg`
 - **Synonyms to AVOID:** "retry", "paste delay"
 
+### Dictation archive
+- **Type:** Driven Port (trait `DictationArchive` in `core/application/`) and the folder it writes
+- **Definition:** The local folder (`~/.voicepuncher/history/` by default, `[archive]`) where every dictation that reached speech recognition is kept as an *archive entry*, so its recognition and refinement can be evaluated later. On by default for dictations, opt-in (`--archive-dir`) for recording files; kept within a size limit by removing the oldest entries; never sent anywhere.
+- **Code:** `app/src/core/application/dictation_archive.rs`; `app/src/adapters/secondary/archiving/filesystem/`
+- **Synonyms to AVOID:** "history" (alone — names the folder only), "log", "recordings", "dump"
+
+### Archive entry
+- **Type:** Value Object (`ArchiveEntry`)
+- **Definition:** What the *dictation archive* keeps of one dictation, in a folder of its own named by the recording's start: the 16 kHz audio speech recognition heard, the text of each chunk, the stitched `RawTranscript`, the pasted text, how text refinement went (refined, off, fell back), how the dictation ended (pasted, left in the clipboard, paste failed, speech recognition failed, no text, only command words), how it started, stage timings, the models and the app version.
+- **Code:** `app/src/core/application/dictation_archive.rs`
+- **Synonyms to AVOID:** "record", "history item", "log entry"
+
 ### HotkeyListener / AudioRecorder / Transcriber / TextRefiner / TextPaster / FocusProbe
 - **Type:** Driving / Driven Ports (traits in `core/application/`)
 - **Code:** `app/src/core/application/{hotkey_listener,audio_recorder,transcriber,text_refiner,text_paster,focus_probe}.rs`
