@@ -9,6 +9,7 @@ Manual testing of the liquid glass overlay redesign (v0.24.0) on macOS 26 found 
 5. **The pill changes size between states.** The pill shown at the start of a recording and the pills that follow (recording with the waveform, processing stages, Pasted and others) have different widths: the pill grows or shrinks around its centre as it needs (`WindowSet::set_pill_width`, starting from `INITIAL_PILL_WIDTH`). The user wants every state of the pill to be the same size, so the overlay looks calmer and neater.
 6. **The glass is almost opaque.** Over a dark window and over a bright blue desktop alike, the pill and the text window look nearly solid: what lies under them barely shows through. The user wants the glass more transparent — clearly translucent, with the picture under the panel visible through it, blurred.
 7. **The clipboard is lost after a dictation.** While a recording runs, the user copies something to the clipboard, for example a screenshot (an image, not text); then the user ends the recording by voice ("закончи запись"); the app recognizes and pastes the text; afterwards the clipboard is empty and the screenshot is gone. The user expects the clipboard to hold what they put there, as it does without the app. (Filed first as the separate change `fix-clipboard-lost-after-paste`; the user asked to fix everything found in this testing session in one change.)
+9. **The waveform runs too fast.** While recording, the waveform scrolls very quickly; the user wants it at least twice as slow.
 8. **Dictation recognized as Korean.** During a recording the live transcript under the pill showed Korean text ("딱 오케이. 오케이 오케이.") although the user spoke Russian and does not speak Korean at all. The recognition picked the wrong language.
 
 ## What Changes
@@ -20,6 +21,7 @@ Manual testing of the liquid glass overlay redesign (v0.24.0) on macOS 26 found 
 - The pill has one fixed size in every state, from the start of the recording to Pasted.
 - The glass of the pill and the text window is clearly translucent: the window under it shows through, blurred.
 - After the app pastes a dictation, the clipboard again holds what the user last put there, including non-text content such as an image, also when the user copied it while the recording was running.
+- The recording's waveform moves at half its former pace (a column every 200 ms instead of 100 ms).
 - Dictation is never recognized in a language the user does not speak, such as Korean for Russian speech.
 
 Current stage: PoC. Target stage: PoC.
@@ -31,9 +33,10 @@ Out of scope: clipboard history, the pointer badge (dictation sign), the wavefor
 
 ### Modified Capabilities
 
-- `visual-feedback`: the text window under the pill shows only the live transcript during recording; the refinement preview, waiting explanation, pasted text and failure message no longer show in it; the text window never overlaps the pill; the pill keeps one size in every state.
-- `text-insertion` (or the existing capability that owns the paste): the paste restores the user's clipboard, every content type, including content copied while the recording ran.
-- `speech-recognition` (or the existing capability that owns the recognition language): dictation is transcribed only in the user's languages.
+- `visual-feedback`: the text window under the pill shows only the live transcript during recording; the refinement preview, waiting explanation, pasted text and failure message no longer show in it; the text window never overlaps the pill; the pill keeps one size in every state; the glass is clear and has no bright top line; a failure message goes to the log.
+- `processing-stages`: text refinement no longer shows the dimmed raw transcript.
+- `text-insertion`: the paste restores the user's clipboard, every content type, including content copied while the recording ran.
+- `speech-recognition`: with automatic language detection, dictation is transcribed only in the user's languages (Russian and English by default); a request detected as another language is sent again in Russian.
 
 ## Impact
 
