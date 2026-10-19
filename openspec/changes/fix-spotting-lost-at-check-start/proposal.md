@@ -10,7 +10,7 @@ So the app's command spotting adapter reports the service lost while the service
 - The two long-listening tests pass on freshly started services, every run.
 
 Current stage: PoC. Target stage: PoC.
-Scope: find why the command spotting adapter reports `SpottingLost` against a live, freshly started service, and fix that cause.
+Scope: stop the command spotting adapter from counting a pause of its own as the service's silence (§ Cause).
 Acceptance bar: the cause is named, a test reproduces it red, and after the fix the two tests pass in `e2e-smoke` on freshly started services across repeated runs.
 Out of scope: loosening the test bar, raising time limits to hide the loss, and the outage handling for a service that is really down (show-spotting-away).
 
@@ -26,11 +26,17 @@ Out of scope: loosening the test bar, raising time limits to hide the loss, and 
 - `app/tests/commandspotting_websocket_it.rs`
 - `just check`, `just full-check` (`e2e-smoke`)
 
-## Open points
+## Cause
 
-- The cause is not known yet. The candidates are the adapter's loss timeout under the load of parallel tests, and the speech recognition service for commands still warming up. Proposed: measure both in design before choosing a fix.
-- Capability `voice-control`: proposed as the capability that holds the loss behavior. If another spec owns it, use that one.
-- Target version 0.17.1: proposed as a PATCH above 0.17.0.
+Found in explore and reproduced: under CPU load the two tests fail with `SpottingLost` about 5.2 s in, in 4 of 6 runs; without load in none of 3. The service answers every ping on its own I/O thread, on time. The app's streaming worker is the one that goes quiet: the test hands it 30 s of audio at once, and resampling that in a debug build takes about 1.2 s on an idle machine and several times longer under load. While it resamples it reads nothing, so the pongs wait unread in the socket. Then it checks "has the service been silent for more than 5 s?" before reading them, and declares the service lost. Any pause of the app's own longer than 5 s (a stalled worker, a sleeping laptop) does the same in daily use.
+
+## Decisions taken in explore
+
+- The fix: the app reads what the service already sent before it judges silence, and counts silence from the oldest ping still unanswered, not from the last answer it happened to read. A pause of the app's own never counts as the service's silence.
+- The red test: a client test against a small server that answers pings, with the app paused for 6 s; today the connection is reported lost.
+- Capability `voice-control`, requirement "A slow command spotting service does not stop listening", modified.
+- Target version 0.17.1, a PATCH above 0.17.0.
+- Out of scope: making the resampling of a large burst of audio cheaper; it shortens the pause but does not remove the false loss.
 
 ## Release
 
