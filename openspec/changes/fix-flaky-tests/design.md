@@ -18,7 +18,7 @@ The stub WebSocket servers in `commandspotting_client_it.rs` and `commandspottin
 
 ### 4. A busy client is not a silent service
 
-The client checks the 5 s silence limit before it reads, and sends all audio collected since its last loop in one message. With 30 s of held audio (an outage replay, or a test) the loop is busy long enough to see its own delay as the service's silence. The client now reads answers before it checks silence, and sends held audio in pieces of at most 1 s with a read between pieces, so pings and answers flow while it catches up.
+Fixed by fix-spotting-lost-at-check-start, which started earlier and owns the client's silence rule; not repeated here.
 
 ### 5. Checks keep their audio when they wait
 
@@ -43,7 +43,6 @@ Dictation requests send `temperature_inc=0`, as command confirmations already do
 
 | Scenario | Level |
 |---|---|
-| Sending a long stretch of held speech keeps listening on | adapter integration, `commandspotting_client_it.rs` (stub service) |
 | A command is carried out once while confirmations come back slowly | adapter integration, `command-spotting/tests/placed_commands_it.rs` (engine with a delayed hearing) |
 | A chain is carried out the same at any confirmation speed | adapter integration, `command-spotting/tests/placed_commands_it.rs` |
 | Hard audio transcribed twice gives the same text | unit (request carries no fallback) and adapter integration, `transcription_openai_it.rs` |
