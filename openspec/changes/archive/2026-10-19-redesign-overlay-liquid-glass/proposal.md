@@ -14,7 +14,7 @@ The overlay (the pill at the top of the screen, the text window under it and the
 - Command signs (Enter, Clear, Restart): an icon and the English name in the glass pill for about 1 s, as today, restyled.
 - Failure notice: amber-tinted glass with a warning triangle and the failing part's short name (STT, REFINE, VOICE, MIC, ACCESS, FAILED), the message (two lines at most) in the glass window under it. It hides after 4 s as today and stays legible over light app windows (darker icon and text there).
 - Commands-unavailable sign: a small grey glass pill with a microphone-off icon and "CMD" alone in standby. During a recording it shows to the right of the waveform, after a thin separator.
-- Pointer sign: the 🎙️ emoji next to the mouse pointer becomes a small round dark-glass badge (~38 pt) that mirrors the overlay at every stage: a red microphone while recording, the ear or the sparkles with a rotating indeterminate ring while processing, a pulsing orange keyboard while waiting for focus, a green check after the paste, an amber triangle on a failure. The system arrow cursor stays as it is: only the badge window next to it changes.
+- Pointer sign: the 🎙️ emoji next to the mouse pointer becomes a small round dark-glass badge (~38 pt) that mirrors the overlay at every stage: a red microphone while recording, the ear or the sparkles with a rotating indeterminate ring while processing, a pulsing orange keyboard while waiting for focus, a green check after the paste, a yellow warning triangle on a failure. The system arrow cursor stays as it is: only the badge window next to it changes.
 
 - Design reference: `mockups/design-spec.md` (geometry, colours, icons, motion and a manual-run checklist for every state), the validated pictures of each state at 3× over a blue, a light and a dark window in `mockups/states/`, the overview `mockups/overlay-states-overview.png`, the animated mockup source `mockups/overlay-states.html` and the icons in `mockups/icons/`. The implementation matches these pictures.
 
@@ -54,4 +54,4 @@ Out of scope: when each state shows and for how long (except the new Pasted stat
 ## Release
 
 SemVer: MINOR — a new visible state (Pasted) and a new pointer sign behaviour.
-Target version: 0.22.0.
+Target version: 0.24.0 (0.23.0 went to add-voice-command-paste).

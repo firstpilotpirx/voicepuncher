@@ -1,10 +1,9 @@
-# Spec Delta
+# visual-feedback Specification
 
 ## Purpose
-
 Defines how the overlay at the top of the screen and its text window look in every state — frosted glass, icons, English labels and motion — so the user reads the app's state at a glance over any window.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: The overlay is frosted glass that stays legible over any window
 
@@ -27,7 +26,7 @@ The overlay pill and the text window under it SHALL be drawn as the system's fro
 
 ### Requirement: Every overlay sign has an icon and an English label
 
-Every state of the overlay SHALL show an icon instead of a text glyph, and every label it shows SHALL be in English: "Recognizing", "Refining text", "Click a text field", "Pasted", "Enter", "Clear", "Restart", "CMD" and the failing part's short name. The recording shows no label.
+Every state of the overlay SHALL show an icon instead of a text glyph, and every label it shows SHALL be in English: "Recognizing", "Refining text", "Click a text field", "Pasted", "Enter", "Clear", "Paste", "Restart", "CMD" and the failing part's short name. The recording shows no label.
 
 #### Scenario: The processing stages read in English
 - **GIVEN** text refinement is enabled
@@ -80,7 +79,7 @@ While the app holds text back until a text input gets focus, the overlay pill SH
 
 ### Requirement: A pasted text shows the Pasted sign for half a second
 
-Right after the text of a dictation is pasted, the overlay SHALL show a green check, the label "Pasted" and the pasted text in the text window for about 0.5 s, then hide. Any sign that follows SHALL replace it at once. A dictation that pastes nothing — no speech, cancelled, failed, or left in the clipboard after a wait — SHALL NOT show it.
+Right after the text of a dictation is pasted, the overlay SHALL show a green check, the label "Pasted" and the pasted text in the text window for about 0.5 s, then hide. Any sign that follows SHALL replace it at once. A failure notice about the same dictation (part of it lost, pasted without refinement) SHALL show instead of it. A dictation that pastes nothing — no speech, cancelled, failed, or left in the clipboard after a wait — SHALL NOT show it.
 
 #### Scenario: A pasted dictation shows the Pasted sign
 - **GIVEN** a text field has keyboard focus
@@ -97,6 +96,11 @@ Right after the text of a dictation is pasted, the overlay SHALL show a green ch
 - **WHEN** the user presses the hotkey to end the wait
 - **THEN** the overlay hides without showing "Pasted"
 
+#### Scenario: Text pasted without refinement shows the failure notice instead
+- **GIVEN** text refinement is on and the text refinement service is not running
+- **WHEN** the user stops a dictation and its raw transcript is pasted
+- **THEN** the overlay shows the failure notice and not the Pasted sign
+
 #### Scenario: A command right after the paste replaces the Pasted sign
 - **GIVEN** voice control is turned on and the overlay shows the Pasted sign
 - **WHEN** the user says "press enter"
@@ -104,7 +108,7 @@ Right after the text of a dictation is pasted, the overlay SHALL show a green ch
 
 ### Requirement: A command sign shows its icon and name in the glass pill
 
-The enter, clear and restart signs SHALL each show the command's icon and its English name — "Enter", "Clear", "Restart" — in the glass pill, for as long as they show today. The text window SHALL keep what it showed.
+The enter, clear, paste and restart signs SHALL each show the command's icon and its English name — "Enter", "Clear", "Paste", "Restart" — in the glass pill, for as long as they show today. The text window SHALL keep what it showed.
 
 #### Scenario: The enter sign shows its icon and name
 - **GIVEN** voice control is turned on and no dictation runs

@@ -1,55 +1,157 @@
-//! The dictation sign next to the mouse pointer, driven by the overlay's signals.
+//! The dictation sign next to the mouse pointer: a badge that mirrors the overlay's signals.
+
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use crate::core::application::live_transcript_view::LiveTranscriptView;
 use crate::core::application::VisualIndicator;
-use crate::core::domain::{FailureNotice, VoiceCommand};
+use crate::core::domain::{CleanedText, FailureNotice, RawTranscript, VoiceCommand};
+
+/// What the dictation sign shows: the stage of the dictation the overlay shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DictationSignState {
+    Recording,
+    RecognizingSpeech,
+    RefiningText,
+    WaitingForFocus,
+    Pasted,
+    Failure,
+}
+
+impl DictationSignState {
+    /// Whether an activity ring turns around the icon: while a local service works on the text.
+    pub fn turns_activity_ring(self) -> bool {
+        matches!(self, Self::RecognizingSpeech | Self::RefiningText)
+    }
+
+    /// Whether the icon breathes: while the dictation waits for something to finish.
+    pub fn breathes(self) -> bool {
+        matches!(
+            self,
+            Self::RecognizingSpeech | Self::RefiningText | Self::WaitingForFocus
+        )
+    }
+}
 
 /// The window that shows the dictation sign next to the pointer.
-pub trait PointerSignView: Send {
-    fn show(&self);
+pub trait PointerSignView: Send + Sync + 'static {
+    fn show(&self, badge: DictationSignState);
     fn hide(&self);
 }
 
-/// The overlay, plus the dictation sign while a recording runs: shown with the recording,
-/// gone with the signals that end one; the others leave it as it is.
+/// How long the overlay shows the Pasted sign, and the Pasted badge with it.
+pub const PASTED_SIGN_LIFETIME: Duration = Duration::from_millis(500);
+/// How long the overlay shows a failure notice, and the failure badge with it.
+pub const FAILURE_NOTICE_LIFETIME: Duration = Duration::from_secs(4);
+
+/// How long the badges that end a dictation show before they hide themselves: as long as the
+/// overlay shows the Pasted sign and a failure notice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SignLifetimes {
+    pub pasted: Duration,
+    pub failure: Duration,
+}
+
+impl Default for SignLifetimes {
+    fn default() -> Self {
+        Self {
+            pasted: PASTED_SIGN_LIFETIME,
+            failure: FAILURE_NOTICE_LIFETIME,
+        }
+    }
+}
+
+/// The overlay, plus the dictation sign while a dictation runs: each overlay signal shows its
+/// badge, the Pasted and failure badges hide themselves after their lifetime, hiding the
+/// overlay hides the sign, and a command sign or the commands-unavailable sign leave it as it is.
 pub struct PointerSignIndicator<V, S> {
     overlay: V,
-    sign: S,
+    sign: Arc<S>,
+    lifetimes: SignLifetimes,
+    /// Bumped by every change of the sign; a self-hide of an older badge does nothing. Held
+    /// while the sign changes, so a self-hide never lands after a later badge.
+    generation: Arc<Mutex<u64>>,
 }
 
 impl<V: VisualIndicator, S: PointerSignView> PointerSignIndicator<V, S> {
     pub fn new(overlay: V, sign: S) -> Self {
-        Self { overlay, sign }
+        Self::with_lifetimes(overlay, sign, SignLifetimes::default())
+    }
+
+    pub fn with_lifetimes(overlay: V, sign: S, lifetimes: SignLifetimes) -> Self {
+        Self {
+            overlay,
+            sign: Arc::new(sign),
+            lifetimes,
+            generation: Arc::new(Mutex::new(0)),
+        }
+    }
+
+    fn show_badge(&self, badge: DictationSignState) {
+        let mut generation = self.generation.lock().unwrap();
+        *generation += 1;
+        self.sign.show(badge);
+    }
+
+    fn hide_badge(&self) {
+        let mut generation = self.generation.lock().unwrap();
+        *generation += 1;
+        self.sign.hide();
+    }
+
+    /// Shows `badge` and hides it after `lifetime`, unless the sign changed meanwhile.
+    fn show_badge_for(&self, badge: DictationSignState, lifetime: Duration) {
+        let shown = {
+            let mut generation = self.generation.lock().unwrap();
+            *generation += 1;
+            self.sign.show(badge);
+            *generation
+        };
+        let sign = Arc::clone(&self.sign);
+        let generation = Arc::clone(&self.generation);
+        std::thread::spawn(move || {
+            std::thread::sleep(lifetime);
+            let current = generation.lock().unwrap();
+            if *current == shown {
+                sign.hide();
+            }
+        });
     }
 }
 
 impl<V: VisualIndicator, S: PointerSignView> VisualIndicator for PointerSignIndicator<V, S> {
     fn show_recording(&self) {
-        self.sign.show();
+        self.show_badge(DictationSignState::Recording);
         self.overlay.show_recording();
     }
 
     fn show_recognizing_speech(&self) {
-        self.sign.hide();
+        self.show_badge(DictationSignState::RecognizingSpeech);
         self.overlay.show_recognizing_speech();
     }
 
-    fn show_refining_text(&self) {
-        self.sign.hide();
-        self.overlay.show_refining_text();
+    fn show_refining_text(&self, raw: &RawTranscript) {
+        self.show_badge(DictationSignState::RefiningText);
+        self.overlay.show_refining_text(raw);
     }
 
     fn show_waiting_for_focus(&self) {
-        self.sign.hide();
+        self.show_badge(DictationSignState::WaitingForFocus);
         self.overlay.show_waiting_for_focus();
     }
 
     fn hide(&self) {
-        self.sign.hide();
+        self.hide_badge();
         self.overlay.hide();
     }
 
+    fn show_pasted(&self, text: &CleanedText) {
+        self.show_badge_for(DictationSignState::Pasted, self.lifetimes.pasted);
+        self.overlay.show_pasted(text);
+    }
+
     fn show_failure_notice(&self, notice: &FailureNotice) {
+        self.show_badge_for(DictationSignState::Failure, self.lifetimes.failure);
         self.overlay.show_failure_notice(notice);
     }
 
@@ -72,42 +174,200 @@ impl<V: VisualIndicator, S: PointerSignView> VisualIndicator for PointerSignIndi
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
-
     use super::*;
     use crate::core::application::visual_indicator::MockVisualIndicator;
+    use crate::core::domain::FailingPart;
+
+    /// Short enough for a quick test, long enough to tell "not yet" from "gone".
+    const SHORT_LIFETIME: Duration = Duration::from_millis(30);
+    /// Long after every short lifetime ran out.
+    const AFTER_LIFETIME: Duration = Duration::from_millis(300);
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum SignCall {
+        Show(DictationSignState),
+        Hide,
+    }
 
     #[derive(Clone, Default)]
-    struct Sign(Arc<Mutex<Vec<&'static str>>>);
+    struct Sign(Arc<Mutex<Vec<SignCall>>>);
+
+    impl Sign {
+        fn calls(&self) -> Vec<SignCall> {
+            self.0.lock().unwrap().clone()
+        }
+    }
 
     impl PointerSignView for Sign {
-        fn show(&self) {
-            self.0.lock().unwrap().push("show");
+        fn show(&self, badge: DictationSignState) {
+            self.0.lock().unwrap().push(SignCall::Show(badge));
         }
 
         fn hide(&self) {
-            self.0.lock().unwrap().push("hide");
+            self.0.lock().unwrap().push(SignCall::Hide);
         }
     }
 
     fn quiet_overlay() -> MockVisualIndicator {
         let mut overlay = MockVisualIndicator::new();
+        overlay.expect_show_recording().return_const(());
+        overlay.expect_show_recognizing_speech().return_const(());
+        overlay.expect_show_refining_text().return_const(());
+        overlay.expect_show_waiting_for_focus().return_const(());
+        overlay.expect_show_pasted().return_const(());
+        overlay.expect_hide().return_const(());
         overlay.expect_show_command_sign().return_const(());
         overlay.expect_show_failure_notice().return_const(());
         overlay
     }
 
-    #[test]
-    fn should_leave_the_sign_alone_on_a_command_sign_or_a_failure_notice() {
-        let sign = Sign::default();
-        let indicator = PointerSignIndicator::new(quiet_overlay(), sign.clone());
-        indicator.show_command_sign(VoiceCommand::PressEnter);
-        indicator.show_failure_notice(&FailureNotice::VoiceCommandsUnavailable);
-        assert!(sign.0.lock().unwrap().is_empty());
+    fn indicator(sign: &Sign) -> PointerSignIndicator<MockVisualIndicator, Sign> {
+        let lifetimes = SignLifetimes {
+            pasted: SHORT_LIFETIME,
+            failure: SHORT_LIFETIME,
+        };
+        PointerSignIndicator::with_lifetimes(quiet_overlay(), sign.clone(), lifetimes)
+    }
+
+    fn text() -> CleanedText {
+        CleanedText::new("Meeting moved to Friday.".to_owned()).unwrap()
+    }
+
+    fn raw() -> RawTranscript {
+        RawTranscript::new("meeting moved to friday".to_owned()).unwrap()
     }
 
     #[test]
-    fn should_pass_the_commands_unavailable_sign_to_the_overlay_and_leave_the_sign_alone() {
+    fn should_show_the_badge_of_each_stage_of_a_dictation() {
+        // Given
+        let sign = Sign::default();
+        let indicator = indicator(&sign);
+        // When
+        indicator.show_recording();
+        indicator.show_recognizing_speech();
+        indicator.show_refining_text(&raw());
+        indicator.show_waiting_for_focus();
+        indicator.show_pasted(&text());
+        // Then
+        let expected = [
+            DictationSignState::Recording,
+            DictationSignState::RecognizingSpeech,
+            DictationSignState::RefiningText,
+            DictationSignState::WaitingForFocus,
+            DictationSignState::Pasted,
+        ]
+        .map(SignCall::Show);
+        assert_eq!(sign.calls(), expected);
+    }
+
+    #[test]
+    fn should_show_the_failure_badge_for_a_failure_notice() {
+        let sign = Sign::default();
+        let notice = FailureNotice::DictationLost(FailingPart::SpeechRecognition);
+        indicator(&sign).show_failure_notice(&notice);
+        assert_eq!(sign.calls(), [SignCall::Show(DictationSignState::Failure)]);
+    }
+
+    #[test]
+    fn should_hide_the_pasted_badge_after_its_lifetime() {
+        let sign = Sign::default();
+        let indicator = indicator(&sign);
+        indicator.show_pasted(&text());
+        std::thread::sleep(AFTER_LIFETIME);
+        let expected = [SignCall::Show(DictationSignState::Pasted), SignCall::Hide];
+        assert_eq!(sign.calls(), expected);
+    }
+
+    #[test]
+    fn should_hide_the_failure_badge_after_its_lifetime() {
+        let sign = Sign::default();
+        let indicator = indicator(&sign);
+        indicator.show_failure_notice(&FailureNotice::RecordingNotStarted);
+        std::thread::sleep(AFTER_LIFETIME);
+        let expected = [SignCall::Show(DictationSignState::Failure), SignCall::Hide];
+        assert_eq!(sign.calls(), expected);
+    }
+
+    #[test]
+    fn should_keep_a_later_badge_when_an_earlier_one_runs_out() {
+        // Given
+        let sign = Sign::default();
+        let indicator = indicator(&sign);
+        indicator.show_pasted(&text());
+        // When
+        indicator.show_recording();
+        std::thread::sleep(AFTER_LIFETIME);
+        // Then
+        let expected =
+            [DictationSignState::Pasted, DictationSignState::Recording].map(SignCall::Show);
+        assert_eq!(sign.calls(), expected);
+    }
+
+    #[test]
+    fn should_hide_the_badge_with_the_overlay() {
+        let sign = Sign::default();
+        let indicator = indicator(&sign);
+        indicator.show_recording();
+        indicator.hide();
+        let expected = [
+            SignCall::Show(DictationSignState::Recording),
+            SignCall::Hide,
+        ];
+        assert_eq!(sign.calls(), expected);
+    }
+
+    #[test]
+    fn should_leave_the_badge_as_it_was_on_a_command_sign() {
+        let sign = Sign::default();
+        let indicator = indicator(&sign);
+        indicator.show_recording();
+        indicator.show_command_sign(VoiceCommand::PressEnter);
+        assert_eq!(
+            sign.calls(),
+            [SignCall::Show(DictationSignState::Recording)]
+        );
+    }
+
+    #[test]
+    fn should_turn_the_activity_ring_only_while_a_service_works_on_the_text() {
+        let turning = [
+            DictationSignState::RecognizingSpeech,
+            DictationSignState::RefiningText,
+        ];
+        for badge in all_badges() {
+            assert_eq!(
+                badge.turns_activity_ring(),
+                turning.contains(&badge),
+                "{badge:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn should_breathe_only_while_the_dictation_waits() {
+        let breathing = [
+            DictationSignState::RecognizingSpeech,
+            DictationSignState::RefiningText,
+            DictationSignState::WaitingForFocus,
+        ];
+        for badge in all_badges() {
+            assert_eq!(badge.breathes(), breathing.contains(&badge), "{badge:?}");
+        }
+    }
+
+    fn all_badges() -> [DictationSignState; 6] {
+        [
+            DictationSignState::Recording,
+            DictationSignState::RecognizingSpeech,
+            DictationSignState::RefiningText,
+            DictationSignState::WaitingForFocus,
+            DictationSignState::Pasted,
+            DictationSignState::Failure,
+        ]
+    }
+
+    #[test]
+    fn should_pass_the_commands_unavailable_sign_to_the_overlay_and_leave_the_badge_alone() {
         // Given
         let mut overlay = MockVisualIndicator::new();
         overlay
@@ -124,6 +384,6 @@ mod tests {
         indicator.show_commands_unavailable();
         indicator.hide_commands_unavailable();
         // Then
-        assert!(sign.0.lock().unwrap().is_empty());
+        assert!(sign.calls().is_empty());
     }
 }

@@ -1,20 +1,21 @@
-//! The dictation sign's window: a 🎙️ that follows the mouse pointer while a recording runs.
+//! The dictation sign's window: a round badge that follows the mouse pointer while a
+//! dictation runs and shows its stage.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use objc2::rc::Retained;
 use objc2::MainThreadMarker;
-use objc2_app_kit::{NSBackingStoreType, NSColor, NSFont, NSTextAlignment, NSTextField, NSWindow};
+use objc2_app_kit::{NSBackingStoreType, NSColor, NSWindow};
 use objc2_app_kit::{NSWindowCollectionBehavior, NSWindowStyleMask};
-use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
+use objc2_foundation::{NSPoint, NSRect, NSSize};
 
+use super::sign_badge::{BadgeView, BADGE_SIZE};
 use super::{dispatch_to_main, dispatch_to_main_after};
-use crate::adapters::secondary::visualfeedback::pointer_sign::PointerSignView;
+use crate::adapters::secondary::visualfeedback::pointer_sign::{
+    DictationSignState, PointerSignView,
+};
 
-const SIGN: &str = "🎙️";
-/// The sign's window, square.
-const SIGN_SIZE: f64 = 28.0;
 /// How far right of the pointer's hot spot the sign's top-left corner sits.
 const POINTER_GAP_RIGHT: f64 = 8.0;
 /// How far below the pointer's hot spot the sign's top-left corner sits.
@@ -34,9 +35,12 @@ pub(super) fn sign_origin(pointer: NSPoint, size: f64) -> NSPoint {
     }
 }
 
-struct SignWindow(Retained<NSWindow>);
+struct SignWindow {
+    window: Retained<NSWindow>,
+    badge: BadgeView,
+}
 
-// The window is only touched on the main thread: every use goes through the main queue.
+// The window and its badge are only touched on the main thread: every use goes through the main queue.
 unsafe impl Send for SignWindow {}
 unsafe impl Sync for SignWindow {}
 
@@ -50,26 +54,34 @@ pub struct MacosPointerSign {
 impl MacosPointerSign {
     pub fn initialize(mtm: MainThreadMarker) -> Self {
         Self {
-            window: Arc::new(SignWindow(build_window(mtm))),
+            window: Arc::new(build_window(mtm)),
             generation: Arc::new(AtomicU64::new(0)),
         }
     }
 
     pub fn is_visible(&self) -> bool {
-        self.window.0.isVisible()
+        self.window.window.isVisible()
     }
 
     pub fn ignores_mouse_events(&self) -> bool {
-        self.window.0.ignoresMouseEvents()
+        self.window.window.ignoresMouseEvents()
     }
 
     pub fn can_become_key(&self) -> bool {
-        self.window.0.canBecomeKeyWindow()
+        self.window.window.canBecomeKeyWindow()
+    }
+
+    pub fn shows_icon(&self) -> bool {
+        self.window.badge.shows_icon()
+    }
+
+    pub fn activity_ring_turns(&self) -> bool {
+        self.window.badge.activity_ring_turns()
     }
 
     /// Where the sign's top-left corner is, in global screen coordinates.
     pub fn top_left(&self) -> NSPoint {
-        let frame = self.window.0.frame();
+        let frame = self.window.window.frame();
         NSPoint {
             x: frame.origin.x,
             y: frame.origin.y + frame.size.height,
@@ -78,48 +90,53 @@ impl MacosPointerSign {
 }
 
 impl PointerSignView for MacosPointerSign {
-    fn show(&self) {
+    fn show(&self, badge: DictationSignState) {
         let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        let window = Arc::clone(&self.window);
+        let sign = Arc::clone(&self.window);
         let current = Arc::clone(&self.generation);
         dispatch_to_main(move || {
-            move_to_pointer(&window.0);
-            window.0.orderFrontRegardless();
-            follow(window, generation, current);
+            sign.badge.apply(badge);
+            move_to_pointer(&sign.window);
+            sign.window.orderFrontRegardless();
+            sign.window.invalidateShadow();
+            follow(sign, generation, current);
         });
     }
 
     fn hide(&self) {
         self.generation.fetch_add(1, Ordering::SeqCst);
-        let window = Arc::clone(&self.window);
-        dispatch_to_main(move || window.0.orderOut(None));
+        let sign = Arc::clone(&self.window);
+        dispatch_to_main(move || {
+            sign.window.orderOut(None);
+            sign.badge.stop();
+        });
     }
 }
 
 /// Moves the sign to the pointer once per frame until a later show or hide.
-fn follow(window: Arc<SignWindow>, generation: u64, current: Arc<AtomicU64>) {
+fn follow(sign: Arc<SignWindow>, generation: u64, current: Arc<AtomicU64>) {
     dispatch_to_main_after(FOLLOW_MS, move || {
         if current.load(Ordering::SeqCst) != generation {
             return;
         }
-        move_to_pointer(&window.0);
-        follow(window, generation, current);
+        move_to_pointer(&sign.window);
+        follow(sign, generation, current);
     });
 }
 
 fn move_to_pointer(window: &NSWindow) {
-    let origin = sign_origin(objc2_app_kit::NSEvent::mouseLocation(), SIGN_SIZE);
+    let origin = sign_origin(objc2_app_kit::NSEvent::mouseLocation(), BADGE_SIZE);
     if window.frame().origin != origin {
         window.setFrameOrigin(origin);
     }
 }
 
-fn build_window(mtm: MainThreadMarker) -> Retained<NSWindow> {
+fn build_window(mtm: MainThreadMarker) -> SignWindow {
     let frame = NSRect {
         origin: NSPoint { x: 0.0, y: 0.0 },
         size: NSSize {
-            width: SIGN_SIZE,
-            height: SIGN_SIZE,
+            width: BADGE_SIZE,
+            height: BADGE_SIZE,
         },
     };
     let window = unsafe {
@@ -134,7 +151,7 @@ fn build_window(mtm: MainThreadMarker) -> Retained<NSWindow> {
     unsafe { window.setReleasedWhenClosed(false) };
     window.setLevel(SIGN_LEVEL);
     window.setOpaque(false);
-    window.setHasShadow(false);
+    window.setHasShadow(true);
     window.setBackgroundColor(Some(&NSColor::clearColor()));
     window.setIgnoresMouseEvents(true);
     window.setCollectionBehavior(
@@ -143,19 +160,9 @@ fn build_window(mtm: MainThreadMarker) -> Retained<NSWindow> {
             | NSWindowCollectionBehavior::IgnoresCycle
             | NSWindowCollectionBehavior::FullScreenAuxiliary,
     );
-
-    let label = NSTextField::initWithFrame(mtm.alloc::<NSTextField>(), frame);
-    label.setBezeled(false);
-    label.setEditable(false);
-    label.setSelectable(false);
-    label.setDrawsBackground(false);
-    label.setAlignment(NSTextAlignment::Center);
-    label.setFont(Some(&NSFont::systemFontOfSize(20.0)));
-    label.setStringValue(&NSString::from_str(SIGN));
-    if let Some(content) = window.contentView() {
-        content.addSubview(&label);
-    }
-    window
+    let badge = BadgeView::build(mtm);
+    window.setContentView(Some(badge.view()));
+    SignWindow { window, badge }
 }
 
 #[cfg(test)]
@@ -164,8 +171,8 @@ mod tests {
 
     #[test]
     fn should_place_the_sign_right_of_and_below_the_pointer() {
-        let origin = sign_origin(NSPoint { x: 500.0, y: 300.0 }, 28.0);
-        assert_eq!(origin, NSPoint { x: 508.0, y: 266.0 });
+        let origin = sign_origin(NSPoint { x: 500.0, y: 300.0 }, 38.0);
+        assert_eq!(origin, NSPoint { x: 508.0, y: 256.0 });
     }
 
     #[test]
@@ -175,13 +182,13 @@ mod tests {
                 x: -1200.0,
                 y: -40.0,
             },
-            28.0,
+            38.0,
         );
         assert_eq!(
             origin,
             NSPoint {
                 x: -1192.0,
-                y: -74.0
+                y: -84.0
             }
         );
     }

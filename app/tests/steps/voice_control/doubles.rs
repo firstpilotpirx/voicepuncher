@@ -222,8 +222,12 @@ impl VisualIndicator for RecordingOverlay {
         record(&self.0, Event::Overlay("recognizing speech"));
     }
 
-    fn show_refining_text(&self) {
+    fn show_refining_text(&self, _raw: &RawTranscript) {
         record(&self.0, Event::Overlay("refining text"));
+    }
+
+    fn show_pasted(&self, _text: &CleanedText) {
+        record(&self.0, Event::Overlay("pasted sign"));
     }
 
     fn show_waiting_for_focus(&self) {

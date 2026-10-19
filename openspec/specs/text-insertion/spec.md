@@ -57,19 +57,19 @@ The system SHALL paste the final text at once whenever a text input may have key
 - **AND** the overlay shows that the app waits for focus
 
 ### Requirement: Held-back text is pasted when a text input gets focus
-The system SHALL keep checking the focus while it holds the text back, about every 100 ms, and SHALL paste the text as soon as the rule above allows a paste. The overlay SHALL show the waiting state for the whole wait and hide once the text is pasted.
+The system SHALL keep checking the focus while it holds the text back, about every 100 ms, and SHALL paste the text as soon as the rule above allows a paste. The overlay SHALL show the waiting state for the whole wait, then the Pasted sign once the text is pasted, and then hide.
 
 #### Scenario: Paste once the user clicks into a text field
 - **GIVEN** the app holds the text back because a button has focus
 - **WHEN** the user clicks into a text field
 - **THEN** the text is pasted into it
-- **AND** the overlay hides
+- **AND** the overlay shows the Pasted sign, then hides
 
 #### Scenario: Paste once the user clicks into a text input on the web page
 - **GIVEN** the app holds the text back because a web page has focus without a text input
 - **WHEN** the user clicks into a text input on that page
 - **THEN** the text is pasted into it
-- **AND** the overlay hides
+- **AND** the overlay shows the Pasted sign, then hides
 
 ### Requirement: A wait that ends without a text input leaves the text in the clipboard
 The system SHALL end the wait when the configured wait time passes or the user presses the hotkey. It SHALL then put the text in the clipboard without pasting it, keep it there, hide the overlay and log that the text is in the clipboard. The hotkey press that ends a wait SHALL NOT start a recording; the next press SHALL.

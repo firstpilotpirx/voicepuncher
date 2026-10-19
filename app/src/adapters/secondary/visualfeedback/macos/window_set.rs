@@ -1,247 +1,113 @@
 use std::sync::Arc;
 
-use objc2::rc::Retained;
 use objc2::MainThreadMarker;
-use objc2_app_kit::{
-    NSBackingStoreType, NSColor, NSControlSize, NSFont, NSFontWeightRegular, NSProgressIndicator,
-    NSProgressIndicatorStyle, NSTextAlignment, NSTextField, NSView, NSVisualEffectBlendingMode,
-    NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView, NSWindow,
-    NSWindowCollectionBehavior, NSWindowStyleMask,
-};
-use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
-use objc2_quartz_core::kCACornerCurveContinuous;
+use objc2_app_kit::NSWindow;
+use objc2_foundation::{NSPoint, NSRect, NSSize};
 
+use super::glass::{GlassPanel, ShadowStyle};
+use super::motion::reduce_motion;
+use super::pill_content::{GlassTint, PillKind};
+use super::pill_view::{PillLook, PillView, PILL_HEIGHT};
 use super::transcript_window::TranscriptWindow;
 
-const PILL_CORNER_RADIUS: f64 = 20.0;
-const PILL_WIDTH: f64 = 174.0;
-const LABEL_X: f64 = 6.0;
-const LABEL_WIDTH: f64 = 64.0;
-const EQ_LABEL_X: f64 = 56.0;
-const SPINNER_SIZE: f64 = 32.0;
+const PILL_CORNER_RADIUS: f64 = PILL_HEIGHT / 2.0;
+/// The pill's width before its first state is drawn.
+const INITIAL_PILL_WIDTH: f64 = 200.0;
+/// Space between the top of the screen's visible area and the pill.
+const GAP_BELOW_SCREEN_TOP: f64 = 4.0;
+const PILL_SHADOW: ShadowStyle = ShadowStyle {
+    drop: 8.0,
+    blur: 24.0,
+    opacity: 0.2,
+};
 
-/// How wide the pill is drawn.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum PillWidth {
-    /// The width it is built with.
-    Base,
-    /// Wider by as much as the sign outgrows its place; the level and the spinner move right.
-    FitSign,
-    /// Just the sign, with nothing beside it.
-    SignAlone,
-}
-
+/// The overlay of one screen: the glass pill and the text window under it.
 pub(super) struct WindowSet {
-    pub(super) window: Retained<NSWindow>,
-    pub(super) label: Retained<NSTextField>,
-    #[allow(dead_code)]
-    pub(super) eq_label: Retained<NSTextField>,
-    pub(super) spinner: Retained<NSProgressIndicator>,
+    panel: GlassPanel,
+    pub(super) pill: PillView,
     pub(super) transcript: TranscriptWindow,
 }
 
 impl WindowSet {
     pub(super) fn build(mtm: MainThreadMarker, visible_frame: NSRect) -> Arc<Self> {
-        let window_width = PILL_WIDTH;
-        let window_height: f64 = 55.0;
-
-        let x = visible_frame.origin.x + (visible_frame.size.width - window_width) / 2.0;
-        let y = visible_frame.origin.y + visible_frame.size.height - window_height - 4.0;
-
-        let frame = NSRect {
-            origin: NSPoint { x, y },
-            size: NSSize {
-                width: window_width,
-                height: window_height,
-            },
-        };
-
-        let (window, effect_view) = floating_panel(mtm, frame, PILL_CORNER_RADIUS);
-
-        let font = NSFont::boldSystemFontOfSize(28.0);
-        let label_height = (font.ascender() - font.descender()).ceil() + 4.0;
-        let label_y =
-            (window_height / 2.0 - font.capHeight() / 2.0 - (label_height - font.ascender()))
-                .floor();
-        let label_frame = NSRect {
+        let pill_rect = NSRect {
             origin: NSPoint {
-                x: LABEL_X,
-                y: label_y,
+                x: visible_frame.origin.x + (visible_frame.size.width - INITIAL_PILL_WIDTH) / 2.0,
+                y: visible_frame.origin.y + visible_frame.size.height
+                    - PILL_HEIGHT
+                    - GAP_BELOW_SCREEN_TOP,
             },
             size: NSSize {
-                width: LABEL_WIDTH,
-                height: label_height,
+                width: INITIAL_PILL_WIDTH,
+                height: PILL_HEIGHT,
             },
         };
-
-        let label = NSTextField::initWithFrame(mtm.alloc::<NSTextField>(), label_frame);
-        label.setBezeled(false);
-        label.setEditable(false);
-        label.setDrawsBackground(false);
-        label.setAlignment(NSTextAlignment::Center);
-        label.setFont(Some(&font));
-        label.setTextColor(Some(&NSColor::labelColor()));
-        label.setStringValue(&NSString::from_str(""));
-
-        effect_view.addSubview(&label);
-
-        let eq_font =
-            unsafe { NSFont::monospacedSystemFontOfSize_weight(16.0, NSFontWeightRegular) };
-        let eq_label_x = EQ_LABEL_X;
-        let eq_baseline_drop = 7.0;
-        let eq_frame = NSRect {
-            origin: NSPoint {
-                x: eq_label_x,
-                y: label_y - eq_baseline_drop,
-            },
-            size: NSSize {
-                width: window_width - eq_label_x - 18.0,
-                height: label_height,
-            },
-        };
-
-        let eq_label = NSTextField::initWithFrame(mtm.alloc::<NSTextField>(), eq_frame);
-        eq_label.setBezeled(false);
-        eq_label.setEditable(false);
-        eq_label.setDrawsBackground(false);
-        eq_label.setAlignment(NSTextAlignment::Left);
-        eq_label.setFont(Some(&eq_font));
-        eq_label.setTextColor(Some(&NSColor::labelColor()));
-        eq_label.setStringValue(&NSString::from_str(""));
-        eq_label.setHidden(true);
-
-        effect_view.addSubview(&eq_label);
-
-        let spinner_size = SPINNER_SIZE;
-        let spinner_frame = NSRect {
-            origin: NSPoint {
-                x: (window_width - spinner_size) / 2.0,
-                y: (window_height - spinner_size) / 2.0,
-            },
-            size: NSSize {
-                width: spinner_size,
-                height: spinner_size,
-            },
-        };
-
-        let spinner =
-            NSProgressIndicator::initWithFrame(mtm.alloc::<NSProgressIndicator>(), spinner_frame);
-        spinner.setStyle(NSProgressIndicatorStyle::Spinning);
-        spinner.setIndeterminate(true);
-        spinner.setControlSize(NSControlSize::Regular);
-        spinner.setHidden(true);
-
-        effect_view.addSubview(&spinner);
-
-        let transcript = TranscriptWindow::build(mtm, frame);
-
+        let panel = GlassPanel::build(mtm, pill_rect, PILL_CORNER_RADIUS, PILL_SHADOW);
+        let pill = PillView::build(mtm, &panel.content);
+        let transcript = TranscriptWindow::build(mtm, pill_rect);
         Arc::new(Self {
-            window,
-            label,
-            eq_label,
-            spinner,
+            panel,
+            pill,
             transcript,
         })
     }
-}
 
-impl WindowSet {
-    /// Draws the pill `width` wide around the same centre, the sign's place widened to fit it
-    /// unless `width` is the base one.
-    pub(super) fn set_width(&self, width: PillWidth) {
-        let label = self.label.frame();
-        self.label.sizeToFit();
-        let fitted = self.label.frame().size.width.max(LABEL_WIDTH);
-        let label_width = if width == PillWidth::Base {
-            LABEL_WIDTH
-        } else {
-            fitted
-        };
-        let growth = label_width - LABEL_WIDTH;
-        self.label.setFrame(NSRect {
-            origin: label.origin,
+    pub(super) fn window(&self) -> &NSWindow {
+        &self.panel.window
+    }
+
+    /// Draws `look` on glass tinted `tint`, the pill as wide as it needs around the same
+    /// centre, and brings it to the front; the text window stays as it is.
+    pub(super) fn draw(
+        &self,
+        look: PillLook,
+        tint: GlassTint,
+        commands_unavailable: bool,
+        visible_columns: usize,
+    ) {
+        self.panel.set_tint(tint);
+        let width = self.pill.draw(
+            look,
+            commands_unavailable && look.kind != PillKind::UnavailableAlone,
+            visible_columns,
+            self.panel.has_light_content(),
+            reduce_motion(),
+        );
+        self.set_pill_width(width);
+        self.panel.show();
+    }
+
+    /// Hides the pill and the text window and stops their motion.
+    pub(super) fn hide(&self) {
+        self.pill.stop();
+        self.panel.hide();
+        self.transcript.hide();
+    }
+
+    /// Sets the opacity of the pill and the text window, for a fade-out.
+    pub(super) fn set_opacity(&self, alpha: f64) {
+        self.panel.window.setAlphaValue(alpha);
+        self.transcript.set_opacity(alpha);
+    }
+
+    /// Keeps the overlay above other windows on the current space.
+    pub(super) fn keep_in_front(&self) {
+        self.panel.show_again();
+    }
+
+    fn set_pill_width(&self, width: f64) {
+        let pill = self.panel.glass_rect();
+        self.panel.set_glass_rect(NSRect {
+            origin: NSPoint {
+                x: pill.origin.x + (pill.size.width - width) / 2.0,
+                y: pill.origin.y,
+            },
             size: NSSize {
-                width: label_width,
-                height: label.size.height,
+                width,
+                height: pill.size.height,
             },
         });
-        move_to_x(&self.eq_label, EQ_LABEL_X + growth);
-        move_to_x(&self.spinner, (PILL_WIDTH - SPINNER_SIZE) / 2.0 + growth);
-        let pill_width = match width {
-            PillWidth::SignAlone => label_width + 2.0 * LABEL_X,
-            PillWidth::Base | PillWidth::FitSign => PILL_WIDTH + growth,
-        };
-        let pill = self.window.frame();
-        let origin = NSPoint {
-            x: pill.origin.x + (pill.size.width - pill_width) / 2.0,
-            y: pill.origin.y,
-        };
-        let size = NSSize {
-            width: pill_width,
-            height: pill.size.height,
-        };
-        self.window.setFrame_display(NSRect { origin, size }, true);
     }
-}
-
-fn move_to_x(view: &NSView, x: f64) {
-    let frame = view.frame();
-    view.setFrameOrigin(NSPoint {
-        x,
-        y: frame.origin.y,
-    });
-}
-
-/// A borderless, click-through window on every space with a rounded menu-material
-/// background, and the view its content goes into.
-pub(super) fn floating_panel(
-    mtm: MainThreadMarker,
-    frame: NSRect,
-    corner_radius: f64,
-) -> (Retained<NSWindow>, Retained<NSVisualEffectView>) {
-    let window = unsafe {
-        NSWindow::initWithContentRect_styleMask_backing_defer(
-            mtm.alloc::<NSWindow>(),
-            frame,
-            NSWindowStyleMask::Borderless,
-            NSBackingStoreType::Buffered,
-            false,
-        )
-    };
-
-    window.setLevel(3);
-    window.setOpaque(false);
-    window.setBackgroundColor(Some(&NSColor::clearColor()));
-    window.setIgnoresMouseEvents(true);
-    window.setCollectionBehavior(
-        NSWindowCollectionBehavior::CanJoinAllSpaces
-            | NSWindowCollectionBehavior::Stationary
-            | NSWindowCollectionBehavior::IgnoresCycle
-            | NSWindowCollectionBehavior::FullScreenAuxiliary,
-    );
-
-    let content_frame = NSRect {
-        origin: NSPoint { x: 0.0, y: 0.0 },
-        size: frame.size,
-    };
-    let effect_view =
-        NSVisualEffectView::initWithFrame(mtm.alloc::<NSVisualEffectView>(), content_frame);
-    effect_view.setMaterial(NSVisualEffectMaterial::Menu);
-    effect_view.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
-    effect_view.setState(NSVisualEffectState::Active);
-    effect_view.setWantsLayer(true);
-    if let Some(layer) = effect_view.layer() {
-        let continuous_curve = unsafe { kCACornerCurveContinuous };
-        layer.setCornerCurve(continuous_curve);
-        layer.setCornerRadius(corner_radius);
-        layer.setMasksToBounds(true);
-        layer.setBackgroundColor(None);
-        let border = NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 1.0, 1.0, 0.18);
-        layer.setBorderColor(Some(&border.CGColor()));
-        layer.setBorderWidth(0.5);
-    }
-    window.setContentView(Some(&*effect_view));
-    (window, effect_view)
 }
 
 // Safety: WindowSet is accessed exclusively on the main thread. All reads and
@@ -258,7 +124,6 @@ impl Drop for WindowSet {
             MainThreadMarker::new().is_some(),
             "WindowSet must be dropped on the main thread"
         );
-        self.window.orderOut(None);
-        self.transcript.window.orderOut(None);
+        self.hide();
     }
 }

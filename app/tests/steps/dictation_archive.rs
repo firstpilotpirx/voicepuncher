@@ -739,11 +739,16 @@ struct NotingOverlay(Events);
 impl VisualIndicator for NotingOverlay {
     fn show_recording(&self) {}
     fn show_recognizing_speech(&self) {}
-    fn show_refining_text(&self) {}
+    fn show_refining_text(&self, _raw: &RawTranscript) {}
     fn show_waiting_for_focus(&self) {}
 
     fn hide(&self) {
         self.0.lock().unwrap().push(Event::Hidden);
+    }
+
+    /// The Pasted sign takes itself down: the dictation ends on the overlay with it.
+    fn show_pasted(&self, _text: &CleanedText) {
+        self.hide();
     }
 
     fn show_failure_notice(&self, _notice: &FailureNotice) {

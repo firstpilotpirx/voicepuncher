@@ -354,6 +354,7 @@ mod tests {
         overlay.expect_show_recording().return_const(());
         overlay.expect_show_recognizing_speech().return_const(());
         overlay.expect_show_refining_text().return_const(());
+        overlay.expect_show_pasted().return_const(());
         overlay.expect_hide().return_const(());
         overlay.expect_show_command_sign().return_const(());
         overlay.expect_show_failure_notice().return_const(());

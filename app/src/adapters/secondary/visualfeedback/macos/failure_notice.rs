@@ -1,21 +1,15 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use objc2_app_kit::{NSColor, NSWindowCollectionBehavior};
-use objc2_foundation::NSString;
-
 use crate::core::domain::FailureNotice;
 
+use super::main_queue::dispatch_to_main_after;
+use super::pill_content::{glass_tint, state_sign, PillKind};
+use super::pill_states::apply_hidden_state;
+use super::pill_view::PillLook;
+use super::transcript_window::TextEmphasis;
 use super::window_set::WindowSet;
-use super::{apply_hidden_state, dispatch_to_main_after, OverlayState};
-
-const NOTICE_SIGN: &str = "⚠";
-
-/// What the pill shows for `notice`: the warning sign, and the failing part's name where the
-/// level shows.
-fn notice_sign(notice: &FailureNotice) -> (&'static str, &'static str) {
-    (NOTICE_SIGN, notice.part_name())
-}
+use super::OverlayState;
 
 /// When a shown notice hides: `duration_ms` after it is drawn, unless a later signal moved the
 /// pulse generation first.
@@ -49,46 +43,18 @@ pub(super) fn show_notice(
     });
 }
 
-/// The notice sign in the pill, steady, with no spinner; the message in the window under it.
+/// Amber glass with the warning triangle and the failing part's short name, steady; the
+/// message in the window under it.
 fn apply_failure_notice(windows: &[Arc<WindowSet>], notice: &FailureNotice) {
-    let (icon, name) = notice_sign(notice);
-    let (icon, name) = (NSString::from_str(icon), NSString::from_str(name));
+    let state = OverlayState::FailureNotice(*notice);
+    let look = PillLook {
+        kind: PillKind::Sign,
+        sign: state_sign(state),
+        breathes: false,
+    };
     let message = notice.message();
     for ws in windows {
-        ws.label.setStringValue(&icon);
-        ws.label.setTextColor(Some(&NSColor::systemYellowColor()));
-        ws.label.setAlphaValue(1.0);
-        ws.label.setHidden(false);
-        ws.eq_label.setStringValue(&name);
-        ws.eq_label.setAlphaValue(1.0);
-        ws.eq_label.setHidden(false);
-        ws.spinner.setHidden(true);
-        unsafe { ws.spinner.stopAnimation(None) };
-        ws.transcript.show(Some(&message));
-        ws.window.orderFrontRegardless();
-        ws.window.setCollectionBehavior(
-            NSWindowCollectionBehavior::CanJoinAllSpaces
-                | NSWindowCollectionBehavior::Stationary
-                | NSWindowCollectionBehavior::IgnoresCycle
-                | NSWindowCollectionBehavior::FullScreenAuxiliary,
-        );
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::core::domain::FailingPart;
-
-    #[test]
-    fn should_sign_a_notice_with_the_warning_sign_and_the_failing_part() {
-        let notice = FailureNotice::DictationLost(FailingPart::SpeechRecognition);
-        assert_eq!(notice_sign(&notice), ("⚠", "STT"));
-    }
-
-    #[test]
-    fn should_sign_a_notice_without_a_part_as_failed() {
-        let notice = FailureNotice::NotPasted(None);
-        assert_eq!(notice_sign(&notice), ("⚠", "FAILED"));
+        ws.draw(look, glass_tint(state), false, 0);
+        ws.transcript.show_text(&message, TextEmphasis::Full);
     }
 }

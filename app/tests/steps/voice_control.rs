@@ -50,6 +50,11 @@ const SEGMENT_TAIL: Duration = Duration::from_millis(100);
 /// How much speech surrounds a phrase said inside a sentence.
 const SENTENCE_AROUND_PHRASE: Duration = Duration::from_secs(1);
 
+/// The overlay event of the Pasted sign.
+pub(crate) const PASTED_SIGN: &str = "pasted sign";
+/// The overlay events of the command signs.
+const COMMAND_SIGNS: [&str; 3] = ["enter sign", "clear sign", "restart sign"];
+
 static PIPELINE_LOG: OnceLock<&'static PipelineLog> = OnceLock::new();
 
 pub(crate) fn pipeline_log() -> &'static PipelineLog {
@@ -317,7 +322,7 @@ impl VoiceRun {
     }
 }
 
-fn run(world: &mut IntegrationWorld) -> &mut VoiceRun {
+pub(crate) fn run(world: &mut IntegrationWorld) -> &mut VoiceRun {
     world.voice.get_or_insert_with(VoiceRun::default)
 }
 
@@ -342,7 +347,7 @@ fn voice_control_on(world: &mut IntegrationWorld) {
 fn no_dictation_given(_world: &mut IntegrationWorld) {}
 
 #[given("listening is on")]
-fn listening_on_given(world: &mut IntegrationWorld) -> Result<()> {
+pub(crate) fn listening_on_given(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     run.voice_control = true;
     run.ensure_started();
@@ -457,7 +462,7 @@ fn press_escape(world: &mut IntegrationWorld) -> Result<()> {
 }
 
 #[when("the user records a dictation with the hotkey")]
-fn records_with_hotkey(world: &mut IntegrationWorld) -> Result<()> {
+pub(crate) fn records_with_hotkey(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     run.start_when();
     run.dictate_with_hotkey()?;
@@ -629,16 +634,17 @@ fn overlay_recording(world: &mut IntegrationWorld) -> Result<()> {
 #[then("the overlay shows processing until the sentence is pasted, then hides")]
 fn overlay_processing_then_hidden(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
-    run.wait_since_mark(|e| *e == Event::Overlay("hidden"))?;
+    // The Pasted sign takes itself down: the overlay ends the dictation on it.
+    run.wait_since_mark(|e| *e == Event::Overlay(PASTED_SIGN))?;
     let since = run.since_mark();
     let at = |wanted: &Event| since.iter().position(|e| e == wanted);
     // processing starts with its first stage, speech recognition
     let processing = at(&Event::Overlay("recognizing speech"));
     let pasted = since.iter().position(|e| matches!(e, Event::Pasted(_)));
-    let hidden = at(&Event::Overlay("hidden"));
-    match (processing, pasted, hidden) {
-        (Some(p), Some(t), Some(h)) if p < t && t < h => Ok(()),
-        _ => bail!("expected processing, paste, hidden in order; events: {since:?}"),
+    let signed = at(&Event::Overlay(PASTED_SIGN));
+    match (processing, pasted, signed) {
+        (Some(p), Some(t), Some(s)) if p < t && t < s => Ok(()),
+        _ => bail!("expected processing, paste, the Pasted sign in order; events: {since:?}"),
     }
 }
 
@@ -766,8 +772,19 @@ fn restart_sound_alone(world: &mut IntegrationWorld) -> Result<()> {
     )
 }
 
+/// The overlay events before the step's action.
+pub(crate) fn overlay_before_mark(run: &VoiceRun) -> Vec<&'static str> {
+    run.events()[..run.mark]
+        .iter()
+        .filter_map(|e| match e {
+            Event::Overlay(shown) => Some(*shown),
+            _ => None,
+        })
+        .collect()
+}
+
 /// The overlay events since the step's action.
-fn overlay_since_mark(run: &VoiceRun) -> Vec<&'static str> {
+pub(crate) fn overlay_since_mark(run: &VoiceRun) -> Vec<&'static str> {
     run.since_mark()
         .into_iter()
         .filter_map(|e| match e {
@@ -779,7 +796,7 @@ fn overlay_since_mark(run: &VoiceRun) -> Vec<&'static str> {
 
 /// Waits for `sign` and checks nothing replaced it: the overlay takes it down on its own after
 /// about a second, back to what it showed before.
-fn ends_on_sign(run: &VoiceRun, sign: &'static str) -> Result<Vec<&'static str>> {
+pub(crate) fn ends_on_sign(run: &VoiceRun, sign: &'static str) -> Result<Vec<&'static str>> {
     run.wait_since_mark(|e| *e == Event::Overlay(sign))?;
     std::thread::sleep(SETTLE);
     let shown = overlay_since_mark(run);
@@ -906,19 +923,19 @@ fn start_and_stop_sounds(world: &mut IntegrationWorld) -> Result<()> {
     run.wait_since_mark(|e| *e == Event::Sound("stop"))
 }
 
-#[then("the overlay shows the recording, then processing, then hides, with no command sign")]
+#[then(
+    "the overlay shows the recording, then processing, then the Pasted sign, then hides, with no command sign"
+)]
 fn hotkey_overlay_without_sign(world: &mut IntegrationWorld) -> Result<()> {
-    let run = run(world);
-    run.wait_since_mark(|e| *e == Event::Overlay("hidden"))?;
-    std::thread::sleep(SETTLE);
-    let shown = overlay_since_mark(run);
-    if shown.iter().any(|s| s.ends_with(" sign")) {
+    // The Pasted sign takes itself down: the overlay ends the dictation on it.
+    let shown = ends_on_sign(run(world), PASTED_SIGN)?;
+    if shown.iter().any(|s| COMMAND_SIGNS.contains(s)) {
         bail!("a command sign was shown: {shown:?}");
     }
     let at = |wanted| shown.iter().position(|s| *s == wanted);
-    match (at("recording"), at("recognizing speech"), at("hidden")) {
-        (Some(r), Some(p), Some(h)) if r < p && p < h => Ok(()),
-        _ => bail!("expected recording, processing, hidden in order: {shown:?}"),
+    match (at("recording"), at("recognizing speech"), at(PASTED_SIGN)) {
+        (Some(r), Some(p), Some(t)) if r < p && p < t => Ok(()),
+        _ => bail!("expected recording, processing, the Pasted sign in order: {shown:?}"),
     }
 }
 
@@ -1183,7 +1200,11 @@ fn hidden_once_back(world: &mut IntegrationWorld) -> Result<()> {
         .filter(|s| **s == "commands unavailable hidden")
         .count()
         == 1;
-    if !sign_hidden_last || !hidden_once || states.last().is_some_and(|s| **s != "hidden") {
+    // The Pasted sign takes itself down: a pasted dictation ends hidden on it.
+    let ends_hidden = states
+        .last()
+        .is_none_or(|s| **s == "hidden" || **s == PASTED_SIGN);
+    if !sign_hidden_last || !hidden_once || !ends_hidden {
         bail!("expected the overlay to end hidden once the service was back: {shown:?}");
     }
     Ok(())
@@ -1196,8 +1217,11 @@ fn sign_kept_after_paste(world: &mut IntegrationWorld) -> Result<()> {
     let since = run.since_mark();
     let at = |wanted: &Event| since.iter().position(|e| e == wanted);
     let pasted = since.iter().position(|e| matches!(e, Event::Pasted(_)));
-    let overlay_hidden = since.iter().rposition(|e| *e == Event::Overlay("hidden"));
-    match (pasted, overlay_hidden, at(&SIGN_HIDDEN)) {
+    // The Pasted sign takes itself down: the overlay ends the dictation on it.
+    let overlay_ended = since
+        .iter()
+        .rposition(|e| *e == Event::Overlay("hidden") || *e == Event::Overlay(PASTED_SIGN));
+    match (pasted, overlay_ended, at(&SIGN_HIDDEN)) {
         (Some(p), Some(h), Some(s)) if p < s && h < s => Ok(()),
         _ => bail!("expected the sign to stay until the service was back; events: {since:?}"),
     }

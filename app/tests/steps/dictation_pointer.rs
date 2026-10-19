@@ -2,6 +2,7 @@
 //! sign next to the pointer, and watches in one ordered log what the overlay and the
 //! dictation sign were asked to show.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -10,7 +11,7 @@ use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 
 use voicepuncher::adapters::secondary::visualfeedback::pointer_sign::{
-    PointerSignIndicator, PointerSignView,
+    DictationSignState, PointerSignIndicator, PointerSignView, SignLifetimes,
 };
 use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
@@ -31,9 +32,11 @@ const SERVICE_TIME: Duration = Duration::from_millis(100);
 /// Longest a pipeline reaction may take in these scenarios.
 const REACTION: Duration = Duration::from_secs(3);
 /// How long the pipeline holds the text back for a text input to get focus.
-const FOCUS_WAIT: Duration = Duration::from_millis(300);
+const FOCUS_WAIT: Duration = Duration::from_secs(2);
 /// Long enough for every signal of a reaction to arrive.
 const SETTLE: Duration = Duration::from_millis(200);
+/// How long the failure notice, and so the failure badge, lasts in these scenarios.
+const FAILURE_NOTICE_TIME: Duration = Duration::from_millis(400);
 /// Longer than the one second of audio the recorder hands over: every recording is too short.
 const TOO_SHORT_TO_KEEP_MS: u64 = 60_000;
 
@@ -50,13 +53,15 @@ enum Overlay {
     RecognizingSpeech,
     RefiningText,
     WaitingForFocus,
+    PastedSign,
     Hidden,
     FailureNotice,
+    CommandsUnavailable,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Sign {
-    Shown,
+    Shown(DictationSignState),
     Gone,
 }
 
@@ -72,6 +77,9 @@ pub struct PointerRun {
     events: Events,
     voice_control: bool,
     hold: bool,
+    recognition_down: bool,
+    /// A button has keyboard focus instead of a text field.
+    button_focused: Arc<AtomicBool>,
     inputs: Option<Sender<PipelineInput>>,
     /// Index in the event log where the scenario's action began.
     acted_at: usize,
@@ -99,9 +107,7 @@ impl PointerRun {
     }
 
     fn send(&mut self, input: PipelineInput) -> Result<()> {
-        if self.inputs.is_none() {
-            self.inputs = Some(self.start_pipeline());
-        }
+        self.ensure_started();
         self.inputs
             .as_ref()
             .context("pipeline not running")?
@@ -109,35 +115,27 @@ impl PointerRun {
         Ok(())
     }
 
+    fn ensure_started(&mut self) {
+        if self.inputs.is_none() {
+            self.inputs = Some(self.start_pipeline());
+        }
+    }
+
     fn start_pipeline(&self) -> Sender<PipelineInput> {
         let (tx, rx) = mpsc::channel();
-        let events = &self.events;
-        let indicator = PointerSignIndicator::new(
-            NotingOverlay(Arc::clone(events)),
-            NotingSign(Arc::clone(events)),
-        );
         let mut pipeline = Pipeline::new(
-            Box::new(OneSecondRecorder(Arc::clone(events))),
-            Box::new(SlowTranscriber),
+            Box::new(OneSecondRecorder(Arc::clone(&self.events))),
+            Box::new(SlowTranscriber {
+                down: self.recognition_down,
+            }),
             Box::new(SlowRefiner),
             Box::new(QuietPaster),
             Box::new(Silent),
-            Box::new(indicator),
-            PipelineConfig {
-                min_press_ms: if self.hold { TOO_SHORT_TO_KEEP_MS } else { 0 },
-                recording_mode: if self.hold {
-                    RecordingMode::Hold
-                } else {
-                    RecordingMode::Toggle
-                },
-                chunking: ChunkingCfg {
-                    chunk_threshold_secs: 0,
-                    ..ChunkingCfg::default()
-                },
-            },
+            Box::new(self.indicator()),
+            self.config(),
         )
         .with_focus_wait(
-            Box::new(FocusOnButton),
+            Box::new(SwitchableFocus(Arc::clone(&self.button_focused))),
             FocusWaitCfg {
                 timeout: FOCUS_WAIT,
                 poll_interval: Duration::from_millis(20),
@@ -148,6 +146,33 @@ impl PointerRun {
         }
         std::thread::spawn(move || pipeline.run(rx));
         tx
+    }
+
+    fn indicator(&self) -> PointerSignIndicator<NotingOverlay, NotingSign> {
+        let lifetimes = SignLifetimes {
+            failure: FAILURE_NOTICE_TIME,
+            ..SignLifetimes::default()
+        };
+        PointerSignIndicator::with_lifetimes(
+            NotingOverlay(Arc::clone(&self.events)),
+            NotingSign(Arc::clone(&self.events)),
+            lifetimes,
+        )
+    }
+
+    fn config(&self) -> PipelineConfig {
+        PipelineConfig {
+            min_press_ms: if self.hold { TOO_SHORT_TO_KEEP_MS } else { 0 },
+            recording_mode: if self.hold {
+                RecordingMode::Hold
+            } else {
+                RecordingMode::Toggle
+            },
+            chunking: ChunkingCfg {
+                chunk_threshold_secs: 0,
+                ..ChunkingCfg::default()
+            },
+        }
     }
 
     fn press_hotkey(&mut self) -> Result<()> {
@@ -176,10 +201,19 @@ impl PointerRun {
     /// Starts a recording with the hotkey and waits until the dictation sign shows.
     fn start_recording(&mut self) -> Result<()> {
         self.press_hotkey()?;
-        self.wait_for(|events| events.contains(&Event::Sign(Sign::Shown)))
+        self.wait_for(|events| events.contains(&RECORDING_STATE))
     }
 
+    /// Waits until `done` holds for the events since the action, then for the rest of the
+    /// reaction to arrive.
     fn wait_for(&self, done: impl Fn(&[Event]) -> bool) -> Result<()> {
+        self.wait_until(done)?;
+        std::thread::sleep(SETTLE);
+        Ok(())
+    }
+
+    /// Waits until `done` holds for the events since the action.
+    fn wait_until(&self, done: impl Fn(&[Event]) -> bool) -> Result<()> {
         let deadline = Instant::now() + REACTION;
         while !done(&self.after_action()) {
             if Instant::now() >= deadline {
@@ -187,10 +221,11 @@ impl PointerRun {
             }
             std::thread::sleep(Duration::from_millis(5));
         }
-        std::thread::sleep(SETTLE);
         Ok(())
     }
 }
+
+const RECORDING_STATE: Event = Event::Sign(Sign::Shown(DictationSignState::Recording));
 
 fn run(world: &mut IntegrationWorld) -> &mut PointerRun {
     world.pointer.get_or_insert_with(PointerRun::default)
@@ -220,10 +255,30 @@ fn voice_on_idle(world: &mut IntegrationWorld) {
     run(world).voice_control = true;
 }
 
+#[given("listening is on and no dictation runs for the dictation sign")]
+fn listening_on_idle(world: &mut IntegrationWorld) {
+    let run = run(world);
+    run.voice_control = true;
+    run.ensure_started();
+}
+
+#[given("text refinement is enabled and a button has keyboard focus for the dictation sign")]
+fn button_focused(world: &mut IntegrationWorld) {
+    run(world).button_focused.store(true, Ordering::SeqCst);
+}
+
 #[given("a recording runs and the dictation sign shows")]
-#[given("the user records a dictation with speech in it and the dictation sign shows")]
 fn recording_runs(world: &mut IntegrationWorld) -> Result<()> {
     run(world).start_recording()
+}
+
+#[given(
+    "the speech recognition service is not running while a recording runs with the dictation sign"
+)]
+fn recognition_down(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.recognition_down = true;
+    run.start_recording()
 }
 
 #[given("voice control is turned on, a recording runs and the dictation sign shows")]
@@ -255,7 +310,20 @@ fn says_to_start(world: &mut IntegrationWorld, phrase: String) -> Result<()> {
     run.say(command)
 }
 
+#[when("the user records a dictation with speech in it, ends it and then clicks into a text field")]
+fn records_ends_and_clicks(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.mark_action();
+    run.press_hotkey()?;
+    run.wait_until(|events| events.contains(&RECORDING_STATE))?;
+    run.press_hotkey()?;
+    run.wait_until(|events| events.contains(&Event::Overlay(Overlay::WaitingForFocus)))?;
+    run.button_focused.store(false, Ordering::SeqCst);
+    Ok(())
+}
+
 #[when("the user ends the recording with the hotkey while the dictation sign shows")]
+#[when("the user ends the recording and the text is pasted")]
 fn ends_with_hotkey(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     run.mark_action();
@@ -284,43 +352,101 @@ fn releases_too_soon(world: &mut IntegrationWorld) -> Result<()> {
     run.send(PipelineInput::Hotkey(PttSignal::Released))
 }
 
-#[then("the dictation sign shows while the recording runs")]
-fn shows_while_recording(world: &mut IntegrationWorld) -> Result<()> {
+#[when("the command spotting service stays away for longer than 5 seconds")]
+fn spotting_stays_away(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.mark_action();
+    run.send(PipelineInput::SpottingLost)?;
+    run.send(PipelineInput::SpottingStillAway)
+}
+
+#[then("the dictation sign shows a red microphone")]
+fn shows_microphone(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     run.wait_for(|events| events.contains(&Event::Overlay(Overlay::Recording)))?;
     let events = run.after_action();
-    if sign(&events) != [Sign::Shown] {
-        bail!("expected the dictation sign shown once, never gone: {events:?}");
+    if sign(&events) != [Sign::Shown(DictationSignState::Recording)] {
+        bail!("expected the red microphone shown once, never gone: {events:?}");
     }
     Ok(())
 }
 
 #[then(
-    "the dictation sign is gone while speech recognition, text refinement and the wait for focus run"
+    "the dictation sign shows a red microphone, then an ear with a turning ring, then sparkles with a turning ring, then an orange keyboard, then a green check"
 )]
-fn gone_while_processing(world: &mut IntegrationWorld) -> Result<()> {
+fn mirrors_every_stage(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
-    run.wait_for(|events| events.contains(&Event::Overlay(Overlay::Hidden)))?;
+    run.wait_until(|events| sign(events).contains(&Sign::Shown(DictationSignState::Pasted)))?;
     let events = run.after_action();
-    if sign(&events).contains(&Sign::Shown) {
-        bail!("the dictation sign showed again after the stop: {events:?}");
+    let stages = [
+        DictationSignState::Recording,
+        DictationSignState::RecognizingSpeech,
+        DictationSignState::RefiningText,
+        DictationSignState::WaitingForFocus,
+        DictationSignState::Pasted,
+    ]
+    .map(Sign::Shown);
+    if sign(&events) != stages {
+        bail!("the dictation sign did not mirror every stage: {events:?}");
     }
-    let gone = events
-        .iter()
-        .position(|e| *e == Event::Sign(Sign::Gone))
-        .unwrap_or(usize::MAX);
-    for stage in [
-        Overlay::RecognizingSpeech,
-        Overlay::RefiningText,
-        Overlay::WaitingForFocus,
+    for processing in [
+        DictationSignState::RecognizingSpeech,
+        DictationSignState::RefiningText,
     ] {
-        let shown = events
-            .iter()
-            .position(|e| *e == Event::Overlay(stage))
-            .with_context(|| format!("{stage:?} not shown: {events:?}"))?;
-        if shown < gone {
-            bail!("{stage:?} shown while the dictation sign still showed: {events:?}");
+        if !processing.turns_activity_ring() {
+            bail!("{processing:?} shows no turning ring");
         }
+    }
+    Ok(())
+}
+
+#[then("the dictation sign shows a yellow warning triangle until the failure notice hides")]
+fn shows_warning_triangle(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    let failure = Sign::Shown(DictationSignState::Failure);
+    run.wait_until(|events| sign(events).contains(&failure))?;
+    if sign(&run.after_action()).last() != Some(&failure) {
+        bail!("the warning triangle did not stay: {:?}", run.events());
+    }
+    let shown_at = Instant::now();
+    run.wait_until(|events| sign(events).last() == Some(&Sign::Gone))?;
+    if shown_at.elapsed() < FAILURE_NOTICE_TIME / 2 {
+        bail!("the warning triangle went before the failure notice hid");
+    }
+    let events = run.after_action();
+    if !events.contains(&Event::Overlay(Overlay::FailureNotice)) {
+        bail!("no failure notice shown: {events:?}");
+    }
+    Ok(())
+}
+
+#[then("the dictation sign keeps showing the red microphone")]
+fn keeps_microphone(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    std::thread::sleep(SETTLE);
+    let events = run.after_action();
+    if !sign(&events).is_empty() {
+        bail!("the command sign changed the dictation sign: {events:?}");
+    }
+    if sign(&run.events()).last() != Some(&Sign::Shown(DictationSignState::Recording)) {
+        bail!("the red microphone is not showing: {:?}", run.events());
+    }
+    Ok(())
+}
+
+#[then("the dictation sign is gone when the overlay hides after the Pasted sign")]
+fn gone_after_pasted(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.wait_for(|events| sign(events).last() == Some(&Sign::Gone))?;
+    let events = run.after_action();
+    let expected = [
+        Sign::Shown(DictationSignState::RecognizingSpeech),
+        Sign::Shown(DictationSignState::RefiningText),
+        Sign::Shown(DictationSignState::Pasted),
+        Sign::Gone,
+    ];
+    if sign(&events) != expected {
+        bail!("the dictation sign did not go after the Pasted sign: {events:?}");
     }
     Ok(())
 }
@@ -345,8 +471,19 @@ fn shows_for_new_recording(world: &mut IntegrationWorld) -> Result<()> {
         .iter()
         .position(|e| *e == Event::RecordingStarted)
         .context("no new recording")?;
-    if sign(&events[started..]).last() != Some(&Sign::Shown) {
+    if sign(&events[started..]).last() != Some(&Sign::Shown(DictationSignState::Recording)) {
         bail!("the dictation sign does not show for the new recording: {events:?}");
+    }
+    Ok(())
+}
+
+#[then("the overlay shows the commands-unavailable sign and no dictation sign shows")]
+fn commands_unavailable_without_sign(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.wait_for(|events| events.contains(&Event::Overlay(Overlay::CommandsUnavailable)))?;
+    let events = run.events();
+    if !sign(&events).is_empty() {
+        bail!("the dictation sign showed: {events:?}");
     }
     Ok(())
 }
@@ -355,8 +492,8 @@ fn shows_for_new_recording(world: &mut IntegrationWorld) -> Result<()> {
 struct NotingSign(Events);
 
 impl PointerSignView for NotingSign {
-    fn show(&self) {
-        record(&self.0, Event::Sign(Sign::Shown));
+    fn show(&self, badge: DictationSignState) {
+        record(&self.0, Event::Sign(Sign::Shown(badge)));
     }
 
     fn hide(&self) {
@@ -375,8 +512,12 @@ impl VisualIndicator for NotingOverlay {
         record(&self.0, Event::Overlay(Overlay::RecognizingSpeech));
     }
 
-    fn show_refining_text(&self) {
+    fn show_refining_text(&self, _raw: &RawTranscript) {
         record(&self.0, Event::Overlay(Overlay::RefiningText));
+    }
+
+    fn show_pasted(&self, _text: &CleanedText) {
+        record(&self.0, Event::Overlay(Overlay::PastedSign));
     }
 
     fn show_waiting_for_focus(&self) {
@@ -389,6 +530,10 @@ impl VisualIndicator for NotingOverlay {
 
     fn show_failure_notice(&self, _notice: &FailureNotice) {
         record(&self.0, Event::Overlay(Overlay::FailureNotice));
+    }
+
+    fn show_commands_unavailable(&self) {
+        record(&self.0, Event::Overlay(Overlay::CommandsUnavailable));
     }
 }
 
@@ -416,11 +561,18 @@ impl AudioRecorder for OneSecondRecorder {
     fn flush_live_chunks(&mut self) {}
 }
 
-struct SlowTranscriber;
+/// The speech recognition service: answers after a moment, or refuses the connection when
+/// it is down.
+struct SlowTranscriber {
+    down: bool,
+}
 
 impl Transcriber for SlowTranscriber {
     fn transcribe(&mut self, _audio: &AudioBuffer16k) -> Result<Option<RawTranscript>> {
         std::thread::sleep(SERVICE_TIME);
+        if self.down {
+            bail!("connection refused");
+        }
         Ok(Some(RawTranscript::new(SENTENCE.to_owned())?))
     }
 }
@@ -446,15 +598,16 @@ impl TextPaster for QuietPaster {
     }
 }
 
-/// A button has focus: the text is held back until the wait runs out.
-struct FocusOnButton;
+/// A text field has keyboard focus, or a button while the flag is set.
+struct SwitchableFocus(Arc<AtomicBool>);
 
-impl FocusProbe for FocusOnButton {
+impl FocusProbe for SwitchableFocus {
     fn focused_element(&self) -> Result<Option<FocusedElement>> {
+        let button = self.0.load(Ordering::SeqCst);
         Ok(Some(FocusedElement {
-            role: "AXButton".to_owned(),
-            has_text_selection: false,
-            value_settable: false,
+            role: if button { "AXButton" } else { "AXTextField" }.to_owned(),
+            has_text_selection: !button,
+            value_settable: !button,
             in_web_content: false,
         }))
     }

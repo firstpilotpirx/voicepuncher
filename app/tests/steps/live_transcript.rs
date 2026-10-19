@@ -40,6 +40,7 @@ enum Shown {
     LiveTranscript(String),
     RecognizingSpeech,
     Other,
+    PastedSign,
     Hidden,
 }
 
@@ -169,8 +170,11 @@ impl LiveRun {
         self.answers.lock().unwrap().push_back(Some(LAST_PART));
         self.stop_at = self.shown().len();
         self.send(PipelineInput::Hotkey(PttSignal::Pressed))?;
+        // The Pasted sign takes itself down: a pasted dictation ends on it.
         self.wait_until("the overlay hides after the stop", |shown| {
-            shown.contains(&Shown::Hidden)
+            shown
+                .iter()
+                .any(|s| matches!(s, Shown::Hidden | Shown::PastedSign))
         })
     }
 
@@ -397,8 +401,12 @@ impl VisualIndicator for NotingOverlay {
         self.0.lock().unwrap().push(Shown::RecognizingSpeech);
     }
 
-    fn show_refining_text(&self) {
+    fn show_refining_text(&self, _raw: &RawTranscript) {
         self.0.lock().unwrap().push(Shown::Other);
+    }
+
+    fn show_pasted(&self, _text: &CleanedText) {
+        self.0.lock().unwrap().push(Shown::PastedSign);
     }
 
     fn show_waiting_for_focus(&self) {

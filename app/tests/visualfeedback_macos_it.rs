@@ -11,9 +11,11 @@ use objc2_app_kit::NSApplication;
 use voicepuncher::adapters::secondary::visualfeedback::macos::{
     MacosPointerSign, MacosVisualIndicator,
 };
-use voicepuncher::adapters::secondary::visualfeedback::pointer_sign::PointerSignView;
+use voicepuncher::adapters::secondary::visualfeedback::pointer_sign::{
+    DictationSignState, PointerSignView,
+};
 use voicepuncher::core::application::VisualIndicator;
-use voicepuncher::core::domain::{FailingPart, FailureNotice};
+use voicepuncher::core::domain::{CleanedText, FailingPart, FailureNotice, RawTranscript};
 
 type Test = (&'static str, fn());
 
@@ -35,12 +37,36 @@ const TESTS: &[Test] = &[
         should_skip_rebuild_when_topology_identical,
     ),
     (
-        "equalizer_tick_cancels_on_hide",
-        equalizer_tick_cancels_on_hide,
+        "waveform_tick_cancels_on_hide",
+        waveform_tick_cancels_on_hide,
     ),
     (
-        "level_propagation_to_eq_label",
-        level_propagation_to_eq_label,
+        "should_raise_waveform_columns_for_a_loud_level",
+        should_raise_waveform_columns_for_a_loud_level,
+    ),
+    (
+        "should_show_the_record_sign_and_waveform_without_a_label",
+        should_show_the_record_sign_and_waveform_without_a_label,
+    ),
+    (
+        "should_show_each_processing_stage_with_its_icon_and_label",
+        should_show_each_processing_stage_with_its_icon_and_label,
+    ),
+    (
+        "should_show_the_dimmed_raw_transcript_while_refining",
+        should_show_the_dimmed_raw_transcript_while_refining,
+    ),
+    (
+        "should_explain_the_wait_for_focus_in_the_text_window",
+        should_explain_the_wait_for_focus_in_the_text_window,
+    ),
+    (
+        "should_show_the_pasted_sign_and_hide_after_half_a_second",
+        should_show_the_pasted_sign_and_hide_after_half_a_second,
+    ),
+    (
+        "should_replace_the_pasted_sign_with_a_later_signal",
+        should_replace_the_pasted_sign_with_a_later_signal,
     ),
     (
         "show_recording_survives_manual_rebuild",
@@ -89,6 +115,10 @@ const TESTS: &[Test] = &[
     (
         "should_hide_the_dictation_sign",
         should_hide_the_dictation_sign,
+    ),
+    (
+        "should_turn_the_activity_ring_of_the_dictation_sign_only_while_processing",
+        should_turn_the_activity_ring_of_the_dictation_sign_only_while_processing,
     ),
 ];
 
@@ -150,7 +180,7 @@ fn should_skip_rebuild_when_topology_identical() {
     indicator.rebuild_window_set(mtm);
 }
 
-fn equalizer_tick_cancels_on_hide() {
+fn waveform_tick_cancels_on_hide() {
     let mtm = main_thread();
 
     // Given
@@ -170,27 +200,140 @@ fn equalizer_tick_cancels_on_hide() {
     // Drain the GCD main queue so any already-enqueued callbacks can fire;
     // the generation guard ensures they are no-ops
     pump_run_loop(0.2);
+    assert!(!indicator.is_pill_visible(), "the hidden pill came back");
 }
 
-fn level_propagation_to_eq_label() {
-    let mtm = main_thread();
+/// Silence draws dots this tall; speech draws taller columns.
+const DOT_HEIGHT: f64 = 2.0;
 
-    // Given — RMS 0.5 is well above the 0.060 saturation threshold → all 10 pills active (┃)
+fn should_raise_waveform_columns_for_a_loud_level() {
+    // Given — RMS 0.5 is louder than the waveform's full scale
     let level_register = Arc::new(AtomicU32::new(0.5f32.to_bits()));
-    let indicator = MacosVisualIndicator::initialize(mtm, Arc::clone(&level_register));
+    let indicator = MacosVisualIndicator::initialize(main_thread(), Arc::clone(&level_register));
 
-    // When — show_recording() schedules the 80 ms equalizer tick
+    // When — a few column periods of 100 ms pass
     indicator.show_recording();
-
-    // Allow at least two tick intervals (80 ms each) plus scheduling overhead
-    pump_run_loop(0.2);
+    pump_run_loop(0.4);
 
     // Then
-    let label_value = indicator.first_eq_label_value();
+    let tallest = indicator.first_tallest_waveform_column();
     assert!(
-        label_value.contains('\u{2503}'),
-        "eq_label must contain ┃ (U+2503) for AudioLevel 0.5, got: {label_value:?}"
+        tallest > DOT_HEIGHT,
+        "a loud level leaves a column taller than a dot, got {tallest}"
     );
+    indicator.hide();
+    pump_run_loop(DRAWN_SECS);
+}
+
+fn should_show_the_record_sign_and_waveform_without_a_label() {
+    let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
+    overlay.show_recording();
+    pump_run_loop(DRAWN_SECS);
+    assert!(overlay.first_shows_recording(), "no record sign");
+    assert_eq!(
+        overlay.first_label_value(),
+        None,
+        "the recording shows a label"
+    );
+    assert_eq!(overlay.first_tallest_waveform_column(), DOT_HEIGHT);
+    assert!(!overlay.has_key_window(), "the glass takes the focus");
+    overlay.hide();
+    pump_run_loop(DRAWN_SECS);
+}
+
+fn should_show_each_processing_stage_with_its_icon_and_label() {
+    let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
+    overlay.show_recognizing_speech();
+    pump_run_loop(DRAWN_SECS);
+    assert_eq!(overlay.first_icon_symbol().as_deref(), Some("ear"));
+    assert_eq!(overlay.first_label_value().as_deref(), Some("Recognizing"));
+    assert_eq!(overlay.first_text_window_value(), None);
+    overlay.show_refining_text(&raw("we moved the meeting"));
+    pump_run_loop(DRAWN_SECS);
+    assert_eq!(overlay.first_icon_symbol().as_deref(), Some("sparkles"));
+    assert_eq!(
+        overlay.first_label_value().as_deref(),
+        Some("Refining text")
+    );
+    overlay.hide();
+    pump_run_loop(DRAWN_SECS);
+}
+
+fn should_show_the_dimmed_raw_transcript_while_refining() {
+    let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
+    overlay.show_refining_text(&raw("we moved the meeting"));
+    pump_run_loop(DRAWN_SECS);
+    assert_eq!(
+        overlay.first_text_window_value().as_deref(),
+        Some("we moved the meeting")
+    );
+    overlay.hide();
+    pump_run_loop(DRAWN_SECS);
+}
+
+fn should_explain_the_wait_for_focus_in_the_text_window() {
+    let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
+    overlay.show_waiting_for_focus();
+    pump_run_loop(DRAWN_SECS);
+    assert_eq!(overlay.first_icon_symbol().as_deref(), Some("keyboard"));
+    assert_eq!(
+        overlay.first_label_value().as_deref(),
+        Some("Click a text field")
+    );
+    assert_eq!(
+        overlay.first_text_window_value().as_deref(),
+        Some("Text is ready and pastes once a text field has focus")
+    );
+    overlay.hide();
+    pump_run_loop(DRAWN_SECS);
+}
+
+/// The Pasted sign shows 0.5 s and fades out in 0.2 s.
+const PASTED_GONE_SECS: f64 = 0.9;
+
+fn should_show_the_pasted_sign_and_hide_after_half_a_second() {
+    // Given
+    let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
+    // When
+    overlay.show_pasted(&cleaned("we moved the meeting"));
+    pump_run_loop(DRAWN_SECS);
+    // Then
+    assert!(overlay.is_pill_visible(), "the Pasted sign is not shown");
+    assert_eq!(overlay.first_icon_symbol().as_deref(), Some("checkmark"));
+    assert_eq!(overlay.first_label_value().as_deref(), Some("Pasted"));
+    assert_eq!(
+        overlay.first_text_window_value().as_deref(),
+        Some("we moved the meeting")
+    );
+    pump_run_loop(PASTED_GONE_SECS);
+    assert!(!overlay.is_pill_visible(), "the Pasted sign did not hide");
+    assert_eq!(overlay.first_text_window_value(), None);
+}
+
+fn should_replace_the_pasted_sign_with_a_later_signal() {
+    // Given
+    let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
+    overlay.show_pasted(&cleaned("we moved the meeting"));
+    pump_run_loop(DRAWN_SECS);
+    // When
+    overlay.show_recording();
+    pump_run_loop(PASTED_GONE_SECS);
+    // Then
+    assert!(
+        overlay.is_pill_visible(),
+        "the Pasted timer hid the recording"
+    );
+    assert!(overlay.first_shows_recording());
+    overlay.hide();
+    pump_run_loop(DRAWN_SECS);
+}
+
+fn raw(text: &str) -> RawTranscript {
+    RawTranscript::new(text.to_owned()).expect("a transcript with words")
+}
+
+fn cleaned(text: &str) -> CleanedText {
+    CleanedText::new(text.to_owned()).expect("a text with words")
 }
 
 fn show_recording_survives_manual_rebuild() {
@@ -274,8 +417,14 @@ fn should_show_the_notice_sign_and_message_without_activating() {
     pump_run_loop(DRAWN_SECS);
     // Then
     assert!(overlay.is_pill_visible(), "the pill shows the notice");
-    assert_eq!(overlay.first_sign_value(), "⚠");
-    assert_eq!(overlay.first_eq_label_value(), NOTICE.part_name());
+    assert_eq!(
+        overlay.first_icon_symbol().as_deref(),
+        Some("exclamationmark.triangle.fill")
+    );
+    assert_eq!(
+        overlay.first_label_value().as_deref(),
+        Some(NOTICE.part_name())
+    );
     assert_eq!(overlay.first_text_window_value(), Some(NOTICE.message()));
     assert!(
         !overlay.has_key_window(),
@@ -327,7 +476,11 @@ fn should_keep_a_recording_started_after_a_notice() {
     let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
     overlay.show_failure_notice(&NOTICE);
     pump_run_loop(DRAWN_SECS);
-    assert_eq!(overlay.first_sign_value(), "⚠", "the notice is shown");
+    assert_eq!(
+        overlay.first_label_value().as_deref(),
+        Some(NOTICE.part_name()),
+        "the notice is shown"
+    );
     // When
     overlay.show_recording();
     pump_run_loop(SHORT_NOTICE.as_secs_f64() + DRAWN_SECS);
@@ -336,7 +489,7 @@ fn should_keep_a_recording_started_after_a_notice() {
         overlay.is_pill_visible(),
         "the notice's timer left the recording shown"
     );
-    assert_eq!(overlay.first_sign_value(), "◉ REC");
+    assert!(overlay.first_shows_recording(), "the recording is shown");
     assert_eq!(overlay.first_text_window_value(), None);
 }
 
@@ -346,13 +499,15 @@ fn should_keep_the_commands_unavailable_sign_when_the_overlay_hides() {
     overlay.show_recording();
     overlay.show_commands_unavailable();
     pump_run_loop(DRAWN_SECS);
-    assert_eq!(overlay.first_sign_value(), "◉ REC ⊘ CMD");
+    assert!(overlay.first_shows_recording());
+    assert!(overlay.first_shows_commands_unavailable());
     // When
     overlay.hide();
     pump_run_loop(DRAWN_SECS);
     // Then
     assert!(overlay.is_pill_visible(), "the sign stays after the hide");
-    assert_eq!(overlay.first_sign_value(), "⊘ CMD");
+    assert!(overlay.first_shows_commands_unavailable());
+    assert_eq!(overlay.first_label_value().as_deref(), Some("CMD"));
     assert!(
         !overlay.has_key_window(),
         "no overlay window takes the focus"
@@ -365,7 +520,10 @@ fn should_show_the_commands_unavailable_sign_again_after_a_notice() {
     overlay.show_commands_unavailable();
     overlay.show_failure_notice(&NOTICE);
     pump_run_loop(DRAWN_SECS);
-    assert_eq!(overlay.first_sign_value(), "⚠", "the notice shows alone");
+    assert!(
+        !overlay.first_shows_commands_unavailable(),
+        "the notice shows alone"
+    );
     // When
     pump_run_loop(SHORT_NOTICE.as_secs_f64());
     // Then
@@ -373,7 +531,8 @@ fn should_show_the_commands_unavailable_sign_again_after_a_notice() {
         overlay.is_pill_visible(),
         "the sign is back after the notice"
     );
-    assert_eq!(overlay.first_sign_value(), "⊘ CMD");
+    assert!(overlay.first_shows_commands_unavailable());
+    assert_eq!(overlay.first_label_value().as_deref(), Some("CMD"));
     assert_eq!(overlay.first_text_window_value(), None);
 }
 
@@ -392,7 +551,7 @@ fn should_hide_the_pill_when_voice_commands_work_again() {
 
 fn should_show_the_dictation_sign_next_to_the_pointer_without_taking_input() {
     let sign = MacosPointerSign::initialize(main_thread());
-    sign.show();
+    sign.show(DictationSignState::Recording);
     pump_run_loop(0.1);
     let pointer = objc2_app_kit::NSEvent::mouseLocation();
     let top_left = sign.top_left();
@@ -415,9 +574,39 @@ fn should_show_the_dictation_sign_next_to_the_pointer_without_taking_input() {
 
 fn should_hide_the_dictation_sign() {
     let sign = MacosPointerSign::initialize(main_thread());
-    sign.show();
+    sign.show(DictationSignState::Recording);
     pump_run_loop(0.1);
     sign.hide();
     pump_run_loop(0.1);
     assert!(!sign.is_visible(), "the dictation sign still shows");
+}
+
+fn should_turn_the_activity_ring_of_the_dictation_sign_only_while_processing() {
+    // Given
+    let sign = MacosPointerSign::initialize(main_thread());
+    sign.show(DictationSignState::Recording);
+    pump_run_loop(0.1);
+    assert!(sign.shows_icon(), "the recording badge shows no icon");
+    assert!(
+        !sign.activity_ring_turns(),
+        "the ring turns while recording"
+    );
+    // When
+    sign.show(DictationSignState::RecognizingSpeech);
+    pump_run_loop(0.1);
+    // Then
+    assert!(
+        sign.shows_icon(),
+        "the speech recognition badge shows no icon"
+    );
+    assert!(
+        sign.activity_ring_turns(),
+        "the ring stands still while recognizing"
+    );
+    sign.hide();
+    pump_run_loop(0.05);
+    assert!(
+        !sign.activity_ring_turns(),
+        "the ring of a hidden sign turns"
+    );
 }

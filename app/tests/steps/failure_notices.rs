@@ -45,6 +45,7 @@ enum Event {
 enum Shown {
     Recording,
     Stage,
+    PastedSign,
     Hidden,
     Notice(FailureNotice),
 }
@@ -188,7 +189,8 @@ impl NoticesRun {
         Ok(())
     }
 
-    /// Waits until the dictation is over: the overlay hides or shows a notice after the stop.
+    /// Waits until the dictation is over: the overlay hides, or shows a notice or the Pasted
+    /// sign that takes itself down, after the stop.
     fn wait_until_over(&mut self) -> Result<Vec<Event>> {
         let deadline = Instant::now() + REACTION;
         loop {
@@ -197,7 +199,7 @@ impl NoticesRun {
                 self.notice_seen.get_or_insert_with(Instant::now);
                 break;
             }
-            if shown.last() == Some(&Shown::Hidden) {
+            if matches!(shown.last(), Some(Shown::Hidden | Shown::PastedSign)) {
                 break;
             }
             if Instant::now() >= deadline {
@@ -752,8 +754,12 @@ impl VisualIndicator for NotingOverlay {
         record(&self.0, Event::Overlay(Shown::Stage));
     }
 
-    fn show_refining_text(&self) {
+    fn show_refining_text(&self, _raw: &RawTranscript) {
         record(&self.0, Event::Overlay(Shown::Stage));
+    }
+
+    fn show_pasted(&self, _text: &CleanedText) {
+        record(&self.0, Event::Overlay(Shown::PastedSign));
     }
 
     fn show_waiting_for_focus(&self) {

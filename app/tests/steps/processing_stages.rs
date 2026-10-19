@@ -53,11 +53,15 @@ enum Overlay {
     RecognizingSpeech,
     RefiningText,
     WaitingForFocus,
+    PastedSign,
     Hidden,
     FailureNotice(FailureNotice),
 }
 
 type Events = Arc<Mutex<Vec<Event>>>;
+
+/// The transcripts the overlay was handed while it showed text refinement.
+type RefinedTranscripts = Arc<Mutex<Vec<String>>>;
 
 fn record(events: &Events, event: Event) {
     events.lock().unwrap().push(event);
@@ -67,6 +71,7 @@ fn record(events: &Events, event: Event) {
 #[derive(Default)]
 pub struct StagesRun {
     events: Events,
+    refined_transcripts: RefinedTranscripts,
     refinement_off: bool,
     no_speech: bool,
     in_parts: bool,
@@ -126,7 +131,10 @@ impl StagesRun {
             refiner,
             Box::new(NotingPaster(Arc::clone(events))),
             Box::new(Silent),
-            Box::new(NotingOverlay(Arc::clone(events))),
+            Box::new(NotingOverlay {
+                events: Arc::clone(events),
+                refined_transcripts: Arc::clone(&self.refined_transcripts),
+            }),
             PipelineConfig {
                 min_press_ms: 0,
                 recording_mode: RecordingMode::Toggle,
@@ -202,10 +210,17 @@ impl StagesRun {
         Ok(())
     }
 
-    /// Waits until the dictation is over: the overlay hides after the stop.
+    /// Waits until the dictation is over: the overlay hides, or shows the Pasted sign that
+    /// takes itself down, after the stop.
     fn wait_until_over(&self) -> Result<Vec<Event>> {
         let deadline = Instant::now() + REACTION;
-        while !self.after_stop().contains(&Event::Overlay(Overlay::Hidden)) {
+        let ends = |e: &Event| {
+            matches!(
+                e,
+                Event::Overlay(Overlay::Hidden) | Event::Overlay(Overlay::PastedSign)
+            )
+        };
+        while !self.after_stop().iter().any(ends) {
             if Instant::now() >= deadline {
                 bail!("the overlay never hid; events: {:?}", self.events());
             }
@@ -378,13 +393,29 @@ fn recognition_then_refinement(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("the overlay hides once the text is pasted")]
-fn hidden_after_paste(world: &mut IntegrationWorld) -> Result<()> {
+#[then("the overlay shows the Pasted sign once the text is pasted, then hides")]
+fn pasted_sign_after_paste(world: &mut IntegrationWorld) -> Result<()> {
     let events = run(world).wait_until_over()?;
     let pasted = position(&events, Event::Pasted)?;
-    let hidden = position(&events, Event::Overlay(Overlay::Hidden))?;
-    if hidden < pasted {
-        bail!("the overlay hid before the paste: {events:?}");
+    let signed = position(&events, Event::Overlay(Overlay::PastedSign))?;
+    if signed < pasted {
+        bail!("the overlay showed the Pasted sign before the paste: {events:?}");
+    }
+    // The Pasted sign takes itself down: the overlay ends the dictation on it.
+    if overlay(&events).last() != Some(&Overlay::PastedSign) {
+        bail!("expected the overlay to end on the Pasted sign: {events:?}");
+    }
+    Ok(())
+}
+
+#[then("the text window shows that dictation's raw transcript, dimmed")]
+fn raw_transcript_during_refinement(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    let events = run.wait_until_over()?;
+    position(&events, Event::Overlay(Overlay::RefiningText))?;
+    let handed = run.refined_transcripts.lock().unwrap().clone();
+    if handed != [SENTENCE] {
+        bail!("expected the raw transcript {SENTENCE:?} with text refinement: {handed:?}");
     }
     Ok(())
 }
@@ -503,32 +534,44 @@ impl TextPaster for NotingPaster {
     }
 }
 
-struct NotingOverlay(Events);
+struct NotingOverlay {
+    events: Events,
+    refined_transcripts: RefinedTranscripts,
+}
 
 impl VisualIndicator for NotingOverlay {
     fn show_recording(&self) {
         std::thread::sleep(PIPELINE_LAG);
-        record(&self.0, Event::Overlay(Overlay::Recording));
+        record(&self.events, Event::Overlay(Overlay::Recording));
     }
 
     fn show_recognizing_speech(&self) {
-        record(&self.0, Event::Overlay(Overlay::RecognizingSpeech));
+        record(&self.events, Event::Overlay(Overlay::RecognizingSpeech));
     }
 
-    fn show_refining_text(&self) {
-        record(&self.0, Event::Overlay(Overlay::RefiningText));
+    fn show_refining_text(&self, raw: &RawTranscript) {
+        let raw = raw.as_str().to_owned();
+        self.refined_transcripts.lock().unwrap().push(raw);
+        record(&self.events, Event::Overlay(Overlay::RefiningText));
+    }
+
+    fn show_pasted(&self, _text: &CleanedText) {
+        record(&self.events, Event::Overlay(Overlay::PastedSign));
     }
 
     fn show_waiting_for_focus(&self) {
-        record(&self.0, Event::Overlay(Overlay::WaitingForFocus));
+        record(&self.events, Event::Overlay(Overlay::WaitingForFocus));
     }
 
     fn hide(&self) {
-        record(&self.0, Event::Overlay(Overlay::Hidden));
+        record(&self.events, Event::Overlay(Overlay::Hidden));
     }
 
     fn show_failure_notice(&self, notice: &FailureNotice) {
-        record(&self.0, Event::Overlay(Overlay::FailureNotice(*notice)));
+        record(
+            &self.events,
+            Event::Overlay(Overlay::FailureNotice(*notice)),
+        );
     }
 }
 

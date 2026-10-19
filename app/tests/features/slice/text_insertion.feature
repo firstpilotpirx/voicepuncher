@@ -61,13 +61,13 @@ Feature: text-insertion
       Given the app holds the text back because a button has focus
       When the user clicks into a text field
       Then the text is pasted into it
-      And the overlay hides
+      And the overlay shows the Pasted sign with the pasted text, then hides
 
     Scenario: Paste once the user clicks into a text input on the web page
       Given the app holds the text back because a web page has focus without a text input
       When the user clicks into a text input on that page
       Then the text is pasted into it
-      And the overlay hides
+      And the overlay shows the Pasted sign with the pasted text, then hides
 
   Rule: A wait that ends without a text input leaves the text in the clipboard
 

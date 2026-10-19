@@ -59,10 +59,10 @@ impl LiveTranscriptText {
         }
     }
 
-    /// Whether the live transcript decides what the text window shows in `state`; a failure
-    /// notice keeps its message there.
+    /// Whether the live transcript decides what the text window shows in `state`: only while
+    /// recording; every other state puts its own text there.
     pub(super) fn draws_text_window(state: OverlayState) -> bool {
-        !matches!(state, OverlayState::FailureNotice(_))
+        state == OverlayState::Recording
     }
 
     /// What the text window shows in `state`; `None` hides it.
@@ -130,15 +130,21 @@ mod tests {
     }
 
     #[test]
-    fn should_draw_the_text_window_in_every_other_state() {
+    fn should_draw_the_text_window_while_recording() {
+        assert!(LiveTranscriptText::draws_text_window(
+            OverlayState::Recording
+        ));
+    }
+
+    #[test]
+    fn should_leave_the_text_window_to_the_refinement_preview_and_the_wait() {
         for state in [
-            OverlayState::Recording,
             OverlayState::RecognizingSpeech,
             OverlayState::RefiningText,
             OverlayState::WaitingForFocus,
             OverlayState::Hidden,
         ] {
-            assert!(LiveTranscriptText::draws_text_window(state), "{state:?}");
+            assert!(!LiveTranscriptText::draws_text_window(state), "{state:?}");
         }
     }
 

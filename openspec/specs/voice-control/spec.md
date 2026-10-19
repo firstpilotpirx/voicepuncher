@@ -671,13 +671,13 @@ The enter, clear, paste and restart signs SHALL each name the command that ran. 
 - **AND** the overlay shows the clear sign, then the enter sign, then hides
 
 ### Requirement: Push-to-talk keeps its sounds and overlay
-A recording started and ended by the hotkey SHALL play the sounds and show the overlay it shows today, with no command sign; Escape during it SHALL play the cancel sound and hide the overlay.
+A recording started and ended by the hotkey SHALL play the sounds and show the overlay it shows today — the recording, then processing, then the Pasted sign — with no command sign; Escape during it SHALL play the cancel sound and hide the overlay.
 
 #### Scenario: A hotkey dictation shows no command sign
 - **GIVEN** listening is on
 - **WHEN** the user records a sentence with the hotkey
 - **THEN** the start and stop sounds play
-- **AND** the overlay shows the recording, then processing, then hides, with no command sign
+- **AND** the overlay shows the recording, then processing, then the Pasted sign, then hides, with no command sign
 
 ### Requirement: A voice start gives its start cue within 0.7 s
 When a voice command starts a dictation from standby, or "restart" starts one over, the system SHALL play the sound that start plays (the restart sound for "restart") as soon as the command is confirmed, within 0.7 s of the end of the command's words in at least 9 of 10 starts, with the services otherwise idle; the overlay's recording sign and the recording follow once the microphone opens. In the scenarios below "the start cue" means that sound. This holds for "start" alone, opening or ending an utterance, or doubled, and every form of "restart".

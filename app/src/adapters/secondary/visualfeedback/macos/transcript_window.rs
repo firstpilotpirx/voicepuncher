@@ -1,67 +1,234 @@
+//! The glass text window under the pill: the live transcript, the refinement preview, the
+//! waiting explanation, the pasted text and the failure message.
+
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::Instant;
+
 use objc2::rc::Retained;
 use objc2::MainThreadMarker;
-use objc2_app_kit::{NSColor, NSFont, NSTextField, NSWindow};
+use objc2_app_kit::{NSColor, NSFont, NSLineBreakMode, NSTextField, NSWindow};
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 
-use super::window_set::floating_panel;
+use super::glass::{GlassPanel, ShadowStyle};
+use super::main_queue::dispatch_to_main_after;
+use super::motion::reduce_motion;
 
 const WIDTH: f64 = 480.0;
-const HEIGHT: f64 = 52.0;
 /// Space between the bottom of the pill and the top of the text window.
-const GAP_BELOW_PILL: f64 = 6.0;
-const PADDING: f64 = 10.0;
+const GAP_BELOW_PILL: f64 = 8.0;
+const PADDING_X: f64 = 14.0;
+const PADDING_Y: f64 = 9.0;
 const FONT_SIZE: f64 = 14.0;
 const MAX_LINES: isize = 2;
-const CORNER_RADIUS: f64 = 12.0;
+const CORNER_RADIUS: f64 = 16.0;
+const SHADOW: ShadowStyle = ShadowStyle {
+    drop: 6.0,
+    blur: 18.0,
+    opacity: 0.15,
+};
+/// The refinement preview shows at this opacity: it is being corrected.
+const DIMMED_ALPHA: f64 = 0.75;
+/// The window rises this far as it fades in.
+const RISE: f64 = 6.0;
+const RISE_SECS: f64 = 0.5;
+const FRAME_MS: i64 = 16;
 
-/// The window under the pill that shows the live transcript while the user dictates.
+/// How the text window shows its text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum TextEmphasis {
+    Full,
+    /// The raw transcript while text refinement corrects it.
+    Dimmed,
+}
+
+/// The window under the pill; touched on the main thread only.
 pub(super) struct TranscriptWindow {
-    pub(super) window: Retained<NSWindow>,
+    panel: GlassPanel,
     pub(super) label: Retained<NSTextField>,
+    /// The pill's bottom centre, in screen coordinates.
+    anchor: NSPoint,
+    /// Bumped by every rise-in and hide; a step of an older rise-in stops.
+    rise: Arc<AtomicU64>,
 }
 
 impl TranscriptWindow {
     /// Builds the window centred under `pill`, hidden until it gets a text.
     pub(super) fn build(mtm: MainThreadMarker, pill: NSRect) -> Self {
-        let frame = NSRect {
-            origin: NSPoint {
-                x: pill.origin.x + (pill.size.width - WIDTH) / 2.0,
-                y: pill.origin.y - GAP_BELOW_PILL - HEIGHT,
-            },
-            size: NSSize {
-                width: WIDTH,
-                height: HEIGHT,
-            },
+        let anchor = NSPoint {
+            x: pill.origin.x + pill.size.width / 2.0,
+            y: pill.origin.y,
         };
-        let (window, content) = floating_panel(mtm, frame, CORNER_RADIUS);
-
+        let panel = GlassPanel::build(
+            mtm,
+            glass_rect(anchor, line_height()),
+            CORNER_RADIUS,
+            SHADOW,
+        );
         let label = NSTextField::wrappingLabelWithString(&NSString::from_str(""), mtm);
-        label.setFrame(NSRect {
-            origin: NSPoint {
-                x: PADDING,
-                y: PADDING / 2.0,
-            },
-            size: NSSize {
-                width: WIDTH - 2.0 * PADDING,
-                height: HEIGHT - PADDING,
-            },
-        });
         label.setFont(Some(&NSFont::systemFontOfSize(FONT_SIZE)));
         label.setTextColor(Some(&NSColor::labelColor()));
         label.setMaximumNumberOfLines(MAX_LINES);
-        content.addSubview(&label);
-
-        Self { window, label }
+        label.setLineBreakMode(NSLineBreakMode::ByTruncatingTail);
+        label.setPreferredMaxLayoutWidth(WIDTH - 2.0 * PADDING_X);
+        panel.content.addSubview(&label);
+        Self {
+            panel,
+            label,
+            anchor,
+            rise: Arc::new(AtomicU64::new(0)),
+        }
     }
 
-    /// Shows `text`, or hides the window for `None`.
+    pub(super) fn window(&self) -> &NSWindow {
+        &self.panel.window
+    }
+
+    /// Shows `text` in full, or hides the window for `None`.
     pub(super) fn show(&self, text: Option<&str>) {
         match text {
-            Some(text) => {
-                self.label.setStringValue(&NSString::from_str(text));
-                self.window.orderFrontRegardless();
-            }
-            None => self.window.orderOut(None),
+            Some(text) => self.show_text(text, TextEmphasis::Full),
+            None => self.hide(),
         }
+    }
+
+    /// Shows `text` with `emphasis`, rising in when it was hidden.
+    pub(super) fn show_text(&self, text: &str, emphasis: TextEmphasis) {
+        self.label.setStringValue(&NSString::from_str(text));
+        self.label.setAlphaValue(match emphasis {
+            TextEmphasis::Full => 1.0,
+            TextEmphasis::Dimmed => DIMMED_ALPHA,
+        });
+        let text_height = self.text_height();
+        self.label.setFrame(NSRect {
+            origin: NSPoint {
+                x: PADDING_X,
+                y: PADDING_Y,
+            },
+            size: NSSize {
+                width: WIDTH - 2.0 * PADDING_X,
+                height: text_height,
+            },
+        });
+        self.panel
+            .set_glass_rect(glass_rect(self.anchor, text_height));
+        if self.panel.window.isVisible() {
+            return;
+        }
+        self.panel.show();
+        if !reduce_motion() {
+            self.rise_in();
+        }
+    }
+
+    pub(super) fn hide(&self) {
+        self.rise.fetch_add(1, Ordering::SeqCst);
+        self.panel.hide();
+    }
+
+    /// Sets the window's opacity, for a fade-out of the whole overlay.
+    pub(super) fn set_opacity(&self, alpha: f64) {
+        self.panel.window.setAlphaValue(alpha);
+    }
+
+    fn text_height(&self) -> f64 {
+        let fitted = self.label.intrinsicContentSize().height;
+        fitted.clamp(line_height(), line_height() * MAX_LINES as f64)
+    }
+
+    fn rise_in(&self) {
+        let generation = self.rise.fetch_add(1, Ordering::SeqCst) + 1;
+        let window = WindowOnMain(self.panel.window.clone());
+        let landing = self.panel.window.frame().origin;
+        window.place(0.0, landing);
+        step_rise(
+            window,
+            landing,
+            Instant::now(),
+            generation,
+            Arc::clone(&self.rise),
+        );
+    }
+}
+
+/// One frame of the rise-in: eases the window up and in until `RISE_SECS` have passed.
+fn step_rise(
+    window: WindowOnMain,
+    landing: NSPoint,
+    start: Instant,
+    generation: u64,
+    current: Arc<AtomicU64>,
+) {
+    dispatch_to_main_after(FRAME_MS, move || {
+        if current.load(Ordering::SeqCst) != generation {
+            return;
+        }
+        let progress = (start.elapsed().as_secs_f64() / RISE_SECS).min(1.0);
+        window.place(ease_out(progress), landing);
+        if progress < 1.0 {
+            step_rise(window, landing, start, generation, current);
+        }
+    });
+}
+
+/// Cubic ease-out: fast at first, settling at the end.
+fn ease_out(progress: f64) -> f64 {
+    1.0 - (1.0 - progress).powi(3)
+}
+
+/// A window moved by main-queue work.
+struct WindowOnMain(Retained<NSWindow>);
+
+// SAFETY: the window is only touched inside main-queue work, on the main thread.
+unsafe impl Send for WindowOnMain {}
+
+impl WindowOnMain {
+    /// Shows the window `eased` of the way in: as opaque, and as close to `landing`.
+    fn place(&self, eased: f64, landing: NSPoint) {
+        self.0.setAlphaValue(eased);
+        self.0.setFrameOrigin(NSPoint {
+            x: landing.x,
+            y: landing.y - RISE * (1.0 - eased),
+        });
+    }
+}
+
+fn line_height() -> f64 {
+    let font = NSFont::systemFontOfSize(FONT_SIZE);
+    (font.ascender() - font.descender() + font.leading()).ceil()
+}
+
+/// The glass of a text `text_height` tall, centred under the pill whose bottom centre is
+/// `anchor`.
+fn glass_rect(anchor: NSPoint, text_height: f64) -> NSRect {
+    let height = text_height + 2.0 * PADDING_Y;
+    NSRect {
+        origin: NSPoint {
+            x: anchor.x - WIDTH / 2.0,
+            y: anchor.y - GAP_BELOW_PILL - height,
+        },
+        size: NSSize {
+            width: WIDTH,
+            height,
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_ease_out_from_nothing_to_whole() {
+        assert_eq!(ease_out(0.0), 0.0);
+        assert_eq!(ease_out(1.0), 1.0);
+        assert!(ease_out(0.5) > 0.5, "the rise slows down towards its end");
+    }
+
+    #[test]
+    fn should_hang_the_window_eight_points_under_the_pill() {
+        let rect = glass_rect(NSPoint { x: 500.0, y: 800.0 }, 20.0);
+        assert_eq!(rect.origin, NSPoint { x: 260.0, y: 754.0 });
+        assert_eq!(rect.size.height, 38.0);
     }
 }

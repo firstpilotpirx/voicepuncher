@@ -1,5 +1,5 @@
 use crate::core::application::live_transcript_view::{HiddenLiveTranscript, LiveTranscriptView};
-use crate::core::domain::{FailureNotice, VoiceCommand};
+use crate::core::domain::{CleanedText, FailureNotice, RawTranscript, VoiceCommand};
 
 /// The overlay: what the app is doing with a dictation, from the recording to the paste.
 #[cfg_attr(test, mockall::automock)]
@@ -7,9 +7,13 @@ pub trait VisualIndicator: Send {
     fn show_recording(&self);
     /// Processing stage: speech recognition runs on the recording after it stopped.
     fn show_recognizing_speech(&self);
-    /// Processing stage: text refinement corrects the transcript.
-    fn show_refining_text(&self);
+    /// Processing stage: text refinement corrects `raw`, the raw transcript the overlay shows
+    /// dimmed meanwhile.
+    fn show_refining_text(&self, raw: &RawTranscript);
     fn show_waiting_for_focus(&self);
+    /// Pasted sign: `text` was just pasted. The overlay shows it for about half a second, then
+    /// hides; any later signal replaces it at once.
+    fn show_pasted(&self, text: &CleanedText);
     fn hide(&self);
     /// Failure notice: an action the user started failed; shown in place of hiding the overlay.
     fn show_failure_notice(&self, notice: &FailureNotice);

@@ -2,8 +2,9 @@
 # audio (and, for a dictation transcribed while the user speaks, a part during the recording
 # and the last part at the stop), the speech recognition and text refinement stand-ins take a
 # moment and note when they start and finish, and the overlay, paster and focus probe record
-# what they were asked to do. The steps block while they watch the pipeline, so @serial keeps
-# other scenarios from stalling them.
+# what they were asked to do. The Pasted sign takes itself down after half a second, so a
+# scenario checks that the overlay ends a pasted dictation on it. The steps block while they
+# watch the pipeline, so @serial keeps other scenarios from stalling them.
 @processing_stages @component @serial
 Feature: processing-stages
 
@@ -36,16 +37,23 @@ Feature: processing-stages
       Given text refinement is enabled
       When the user ends a dictation with speech in it
       Then the overlay shows the speech recognition stage, then the text refinement stage until the corrected text is ready
-      And the overlay hides once the text is pasted
+      And the overlay shows the Pasted sign once the text is pasted, then hides
 
     Scenario: With text refinement disabled only speech recognition is shown
       Given text refinement is disabled
       When the user ends a dictation with speech in it
       Then the overlay shows the speech recognition stage from the stop until the transcript is ready
       And the text refinement stage is not shown
-      And the overlay hides once the text is pasted
+      And the overlay shows the Pasted sign once the text is pasted, then hides
 
     Scenario: Text held back for focus shows the wait after text refinement
       Given no text input has focus
       When the user ends a dictation with speech in it
       Then the overlay shows the speech recognition stage, then the text refinement stage, then the wait for focus
+
+  Rule: Text refinement shows the raw transcript dimmed
+
+    Scenario: Refinement shows the dimmed raw transcript
+      Given text refinement is enabled
+      When the user ends a dictation with speech in it
+      Then the text window shows that dictation's raw transcript, dimmed

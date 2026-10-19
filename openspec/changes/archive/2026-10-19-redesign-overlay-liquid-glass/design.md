@@ -40,7 +40,7 @@ The overlay is drawn by `MacosVisualIndicator` (`adapters/secondary/visualfeedba
 | Cancelling a recording removes the dictation sign | component `dictation_pointer.feature` |
 | A recording too short to keep removes the dictation sign | component `dictation_pointer.feature` |
 | Restarting a dictation shows the sign for the new recording | component `dictation_pointer.feature` |
-| Quitting the app during a recording leaves the normal pointer | adapter integration (`visualfeedback_macos_it`) |
+| Quitting the app during a recording leaves the normal pointer | manual run |
 | Commands unavailable in standby show no dictation sign | component `dictation_pointer.feature` |
 | Text refinement follows speech recognition | component `processing_stages.feature` |
 | With text refinement disabled only speech recognition is shown | component `processing_stages.feature` |
@@ -67,6 +67,7 @@ The overlay is drawn by `MacosVisualIndicator` (`adapters/secondary/visualfeedba
 | A pasted dictation shows the Pasted sign | component `visual_feedback.feature`; 0.5 s hide in adapter integration |
 | Text pasted after a wait for focus shows the Pasted sign | component `visual_feedback.feature` |
 | Text left in the clipboard shows no Pasted sign | component `visual_feedback.feature` |
+| Text pasted without refinement shows the failure notice instead | unit (`pipeline.rs`, pending notice wins over the Pasted sign) |
 | A command right after the paste replaces the Pasted sign | component `visual_feedback.feature` |
 | The enter sign shows its icon and name | unit (state mapping); manual run |
 | A lost dictation shows the amber notice with its message | unit (state mapping); manual run |

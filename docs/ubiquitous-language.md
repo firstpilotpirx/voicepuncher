@@ -82,9 +82,9 @@
 ### VisualIndicator
 - **Type:** Driven Port (trait in `core/application/`)
 - **Definition:** Surfaces the current `Pipeline` state to the user as
-  an on-screen widget — eight discrete signals: recording in progress,
+  an on-screen widget — nine discrete signals: recording in progress,
   each `Processing stage` (speech recognition, text refinement), waiting
-  for `Text input focus`, hidden, the `Command sign`, the `Failure notice`, and the
+  for `Text input focus`, the `Pasted sign`, hidden, the `Command sign`, the `Failure notice`, and the
   `Commands-unavailable sign` (shown and hidden on its own, beside whatever else shows). Abstracts the platform-specific
   always-on-top overlay so `Pipeline` stays platform-agnostic.
 - **Code:** `app/src/core/application/visual_indicator.rs`
@@ -110,8 +110,8 @@
 
 ### Dictation sign
 - **Type:** Adapter concept (visual feedback next to the mouse pointer)
-- **Definition:** A small 🎙️ shown just below and to the right of the mouse pointer while a recording runs, over any app and on every screen, so the user sees the recording where they already look. It follows the pointer, takes no clicks or focus, and goes away with the signals that end a recording (a processing stage, the wait for focus, hidden); a command sign or a failure notice leaves it as it is. The pointer itself never changes: macOS lets an app set the pointer only over its own windows.
-- **Code:** `app/src/adapters/secondary/visualfeedback/pointer_sign.rs` (`PointerSignIndicator`, `PointerSignView`), `visualfeedback/macos/pointer_sign.rs` (`MacosPointerSign`)
+- **Definition:** A small round dark-glass badge shown just below and to the right of the mouse pointer while a dictation runs, over any app and on every screen, so the user sees the dictation where they already look. It mirrors the overlay's stage: a red microphone while recording, an ear and then sparkles with a turning activity ring during speech recognition and text refinement, an orange keyboard while the text waits for focus, a green check after the paste and a yellow warning triangle with a failure notice. The check and the triangle go away by themselves with the Pasted sign and the failure notice; hiding the overlay hides it; a command sign or the commands-unavailable sign leaves it as it is, so it never shows for them alone. It follows the pointer and takes no clicks or focus. The pointer itself never changes: macOS lets an app set the pointer only over its own windows.
+- **Code:** `app/src/adapters/secondary/visualfeedback/pointer_sign.rs` (`PointerSignIndicator`, `PointerSignView`, `DictationSignState`, `SignLifetimes`), `visualfeedback/macos/pointer_sign.rs` (`MacosPointerSign`), `visualfeedback/macos/sign_badge.rs` (the drawing)
 - **Synonyms to AVOID:** "cursor" (the text caret), "custom pointer", "pointer badge"
 
 ### Failure notice
@@ -120,10 +120,16 @@
 - **Code:** `app/src/core/domain/failure_notice.rs`
 - **Synonyms to AVOID:** "error popup", "alert", "toast", "notification" (macOS notifications are not used)
 
+### Pasted sign
+- **Type:** Domain concept (overlay signal)
+- **Definition:** The overlay confirming that a dictation's text was pasted: a green check, "Pasted" and the pasted text in the text window for about half a second, then hidden. It follows a paste at once or after the focus wait; any later signal (a command sign, the next recording) replaces it at once. A dictation that pastes nothing — no speech, cancelled, failed, or left in the clipboard — ends without it, and a pending `Failure notice` shows instead of it.
+- **Code:** `VisualIndicator::show_pasted`
+- **Synonyms to AVOID:** "success toast", "done sign", "confirmation" (alone — also names the second hearing of a command)
+
 ### Processing stage
 - **Type:** Domain concept (overlay state)
-- **Definition:** The step a dictation is in between the end of its recording and the paste, as the overlay shows it with an icon of its own: **speech recognition** from the stop until the transcript is ready (with live chunks, the transcription still running after the stop), then **text refinement** from its start until the corrected text is ready. With text refinement off only speech recognition is shown.
-- **Code:** `VisualIndicator::show_recognizing_speech`, `VisualIndicator::show_refining_text`; `Pipeline::without_text_refinement_stage`
+- **Definition:** The step a dictation is in between the end of its recording and the paste, as the overlay shows it with an icon and an English label of its own, and an indeterminate spinner beside the label: **speech recognition** — a breathing ear, "Recognizing", no text window — from the stop until the transcript is ready (with live chunks, the transcription still running after the stop), then **text refinement** — breathing sparkles, "Refining text", and the raw transcript being refined, dimmed, in the text window — from its start until the corrected text is ready. With text refinement off only speech recognition is shown.
+- **Code:** `VisualIndicator::show_recognizing_speech`, `VisualIndicator::show_refining_text` (handed the raw transcript); `Pipeline::without_text_refinement_stage`
 - **Synonyms to AVOID:** "phase", "step" (alone), "processing" (alone — names both stages)
 
 ### Speech recognition service
@@ -245,10 +251,16 @@
 
 ### AudioLevel
 - **Type:** Value Object
-- **Definition:** Normalised RMS audio level of a single audio frame, in range [0.0, 1.0]. Computed by the recorder adapter on every CPAL buffer callback and consumed by the visual feedback adapter to drive the equalizer display.
+- **Definition:** Normalised RMS audio level of a single audio frame, in range [0.0, 1.0]. Computed by the recorder adapter on every CPAL buffer callback and consumed by the visual feedback adapter to drive the *level waveform*.
 - **Code:** `app/src/core/domain/audio_level.rs`
 - **Invariants:** value ∈ [0.0, 1.0]; NaN and ±Inf are clamped to 0.0 (SILENT).
 - **Synonyms to AVOID:** "volume", "loudness", "amplitude" (alone — too generic), "rms_value"
+
+### Level waveform
+- **Type:** Value Object (model) drawn by the visual feedback adapter
+- **Definition:** The overlay's picture of recent microphone loudness: one rounded column per 100 ms, as tall as the loudest smoothed `AudioLevel` of its 100 ms (dBFS from −50 to −10 mapped to 2–28 pt; silence is a 2 pt dot), sliding left so the strip shows the last 3 s (30 columns, 22 beside the *Commands-unavailable sign*). A new waveform is all dots.
+- **Code:** `app/src/core/domain/level_history.rs` (`LevelHistory`)
+- **Synonyms to AVOID:** "equalizer", "pills", "level bar", "spectrum" (it shows loudness over time, not frequencies)
 
 ### Voice control
 - **Type:** Mode of the app (opt-in, `[voice_control]` config section or `--voice-control`)

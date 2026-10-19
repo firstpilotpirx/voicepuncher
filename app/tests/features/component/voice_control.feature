@@ -354,7 +354,7 @@ Feature: voice-control
       And no dictation runs
       When the user records a dictation with the hotkey
       Then the start and stop sounds play
-      And the overlay shows the recording, then processing, then hides, with no command sign
+      And the overlay shows the recording, then processing, then the Pasted sign, then hides, with no command sign
 
   Rule: The app keeps reaching for the command spotting service while it is away
 

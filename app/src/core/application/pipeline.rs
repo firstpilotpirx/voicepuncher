@@ -519,7 +519,7 @@ impl Pipeline {
         self.state = PipelineState::Refining;
         log::info!("refining…");
         if self.shows_refinement {
-            self.visual_indicator.show_refining_text();
+            self.visual_indicator.show_refining_text(&raw);
         }
         let t_refine = std::time::Instant::now();
         let Some(cleaned) = self.refine(&raw) else {
@@ -538,7 +538,7 @@ impl Pipeline {
         let paste_ms = t_paste.elapsed().as_millis() as u64;
         let total_ms = t_user_stop.elapsed().as_millis() as u64;
         self.state = PipelineState::Idle;
-        self.end_cycle_on_overlay();
+        self.end_delivery_on_overlay(outcome, &cleaned);
         log::info!(
             "stop→paste: stop={stop_ms}ms transcribe={transcribe_ms}ms refine={refine_ms}ms paste={paste_ms}ms total={total_ms}ms"
         );
@@ -637,7 +637,7 @@ impl Pipeline {
         self.state = PipelineState::Refining;
         log::info!("refining…");
         if self.shows_refinement {
-            self.visual_indicator.show_refining_text();
+            self.visual_indicator.show_refining_text(&raw);
         }
         let t_refine = std::time::Instant::now();
         let Some(cleaned) = self.refine(&raw) else {
@@ -655,7 +655,7 @@ impl Pipeline {
         let paste_ms = t_paste.elapsed().as_millis() as u64;
         let total_ms = t_user_stop.elapsed().as_millis() as u64;
         self.state = PipelineState::Idle;
-        self.end_cycle_on_overlay();
+        self.end_delivery_on_overlay(outcome, &cleaned);
         log::info!(
             "stop→paste: drain={drain_ms}ms stop={stop_ms}ms merge={merge_ms}ms refine={refine_ms}ms paste={paste_ms}ms total={total_ms}ms"
         );
@@ -729,7 +729,7 @@ fn run_live_worker(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::mpsc;
+    use std::sync::{mpsc, Arc, Mutex};
 
     use super::*;
     use crate::core::application::audio_recorder::MockAudioRecorder;
@@ -824,6 +824,7 @@ mod tests {
             .times(..)
             .return_const(());
         v.expect_show_refining_text().times(..).return_const(());
+        v.expect_show_pasted().times(..).return_const(());
         v.expect_hide().times(..).return_const(());
         v.expect_show_failure_notice().times(..).return_const(());
         v.expect_live_transcript_view()
@@ -1442,6 +1443,7 @@ mod tests {
             .expect_show_refining_text()
             .times(..)
             .return_const(());
+        visual.expect_show_pasted().times(..).return_const(());
         visual.expect_hide().times(..).return_const(());
 
         let mut pipeline = Pipeline::new(
@@ -1462,39 +1464,23 @@ mod tests {
         // Then — MockVisualIndicator verifies exactly once show_recording was called
     }
 
-    fn stages_shown(refinement_shown: bool) -> Vec<&'static str> {
+    /// What the overlay was asked to show for a dictation of "hello", whose refinement
+    /// answers `refined`.
+    fn overlay_signals(
+        refinement_shown: bool,
+        refined: fn() -> anyhow::Result<CleanedText>,
+    ) -> Vec<String> {
         let recorder = make_recorder_with_start_stop(one_second_audio());
-
         let mut transcriber = MockTranscriber::new();
         transcriber
             .expect_transcribe()
             .once()
             .returning(|_| Ok(Some(RawTranscript::new("hello".to_owned()).unwrap())));
-
         let mut refiner = MockTextRefiner::new();
-        refiner
-            .expect_refine()
-            .once()
-            .returning(|_| Ok(CleanedText::new("hello".to_owned()).unwrap()));
-
+        refiner.expect_refine().once().returning(move |_| refined());
         let mut paster = MockTextPaster::new();
         paster.expect_paste().once().returning(|_| Ok(()));
-
-        let shown = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let mut visual = MockVisualIndicator::new();
-        let note = |stage: &'static str| {
-            let shown = std::sync::Arc::clone(&shown);
-            move || shown.lock().unwrap().push(stage)
-        };
-        visual.expect_show_recording().returning(note("recording"));
-        visual
-            .expect_show_recognizing_speech()
-            .returning(note("recognizing speech"));
-        visual
-            .expect_show_refining_text()
-            .returning(note("refining text"));
-        visual.expect_hide().returning(note("hidden"));
-
+        let (visual, shown) = noting_visual_indicator();
         let mut pipeline = Pipeline::new(
             Box::new(recorder),
             Box::new(transcriber),
@@ -1517,19 +1503,81 @@ mod tests {
         shown
     }
 
+    /// An overlay that notes each signal, with the text it was handed.
+    fn noting_visual_indicator() -> (MockVisualIndicator, Arc<Mutex<Vec<String>>>) {
+        let shown = Arc::new(Mutex::new(Vec::new()));
+        let mut visual = MockVisualIndicator::new();
+        let note = |signal: &'static str| {
+            let shown = Arc::clone(&shown);
+            move || shown.lock().unwrap().push(signal.to_owned())
+        };
+        visual.expect_show_recording().returning(note("recording"));
+        visual
+            .expect_show_recognizing_speech()
+            .returning(note("recognizing speech"));
+        let noted = Arc::clone(&shown);
+        visual.expect_show_refining_text().returning(move |raw| {
+            noted
+                .lock()
+                .unwrap()
+                .push(format!("refining {}", raw.as_str()))
+        });
+        let noted = Arc::clone(&shown);
+        visual.expect_show_pasted().returning(move |text| {
+            noted
+                .lock()
+                .unwrap()
+                .push(format!("pasted {}", text.as_str()))
+        });
+        let noted = Arc::clone(&shown);
+        visual
+            .expect_show_failure_notice()
+            .returning(move |notice| noted.lock().unwrap().push(format!("{notice:?}")));
+        visual.expect_hide().returning(note("hidden"));
+        (visual, shown)
+    }
+
+    fn refined_hello() -> anyhow::Result<CleanedText> {
+        Ok(CleanedText::new("Hello.".to_owned())?)
+    }
+
+    fn refinement_down() -> anyhow::Result<CleanedText> {
+        Err(anyhow!("llm failure"))
+    }
+
     #[test]
-    fn should_show_speech_recognition_then_text_refinement_after_the_stop() {
+    fn should_show_speech_recognition_then_text_refinement_of_the_raw_transcript_then_the_pasted_sign(
+    ) {
         assert_eq!(
-            stages_shown(true),
-            ["recording", "recognizing speech", "refining text", "hidden"]
+            overlay_signals(true, refined_hello),
+            [
+                "recording",
+                "recognizing speech",
+                "refining hello",
+                "pasted Hello."
+            ]
         );
     }
 
     #[test]
     fn should_not_show_text_refinement_when_its_stage_is_off() {
         assert_eq!(
-            stages_shown(false),
-            ["recording", "recognizing speech", "hidden"]
+            overlay_signals(false, refined_hello),
+            ["recording", "recognizing speech", "pasted Hello."]
+        );
+    }
+
+    #[test]
+    fn should_end_on_the_pending_failure_notice_instead_of_the_pasted_sign() {
+        let notice = FailureNotice::PastedUnrefined(FailingPart::TextRefinement);
+        assert_eq!(
+            overlay_signals(true, refinement_down),
+            [
+                "recording".to_owned(),
+                "recognizing speech".to_owned(),
+                "refining hello".to_owned(),
+                format!("{notice:?}"),
+            ]
         );
     }
 
