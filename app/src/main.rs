@@ -31,16 +31,16 @@ use voicepuncher::core::application::preflight::Preflight;
 use voicepuncher::core::application::visual_indicator::VisualIndicator;
 use voicepuncher::core::application::CommandSpotter;
 use voicepuncher::core::application::{ChunkingCfg, FocusWaitCfg, PipelineInput, TextRefiner};
-use voicepuncher::core::domain::{CleanedText, FailureNotice, PttSignal, RawTranscript};
+use voicepuncher::core::domain::{FailureNotice, PttSignal};
 
 struct NoopVisualIndicator;
 
 impl VisualIndicator for NoopVisualIndicator {
     fn show_recording(&self) {}
     fn show_recognizing_speech(&self) {}
-    fn show_refining_text(&self, _raw: &RawTranscript) {}
+    fn show_refining_text(&self) {}
     fn show_waiting_for_focus(&self) {}
-    fn show_pasted(&self, _text: &CleanedText) {}
+    fn show_pasted(&self) {}
     fn hide(&self) {}
     fn show_failure_notice(&self, _notice: &FailureNotice) {}
 }

@@ -12,12 +12,12 @@ Feature: visual-feedback
     Scenario: A pasted dictation shows the Pasted sign
       Given a text field has keyboard focus
       When a dictation finishes
-      Then the overlay shows the Pasted sign with the pasted text, then hides
+      Then the overlay shows the Pasted sign with no text window, then hides
 
     Scenario: Text pasted after a wait for focus shows the Pasted sign
       Given the app holds the text back because a button has focus
       When the user clicks into a text field
-      Then the overlay shows the Pasted sign with the pasted text, then hides
+      Then the overlay shows the Pasted sign with no text window, then hides
 
     Scenario: Text left in the clipboard shows no Pasted sign
       Given the app holds the text back because a button has focus

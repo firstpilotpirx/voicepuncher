@@ -401,11 +401,11 @@ impl VisualIndicator for NotingOverlay {
         self.0.lock().unwrap().push(Shown::RecognizingSpeech);
     }
 
-    fn show_refining_text(&self, _raw: &RawTranscript) {
+    fn show_refining_text(&self) {
         self.0.lock().unwrap().push(Shown::Other);
     }
 
-    fn show_pasted(&self, _text: &CleanedText) {
+    fn show_pasted(&self) {
         self.0.lock().unwrap().push(Shown::PastedSign);
     }
 

@@ -51,9 +51,9 @@ Feature: processing-stages
       When the user ends a dictation with speech in it
       Then the overlay shows the speech recognition stage, then the text refinement stage, then the wait for focus
 
-  Rule: Text refinement shows the raw transcript dimmed
+  Rule: The processing stages show no text window
 
-    Scenario: Refinement shows the dimmed raw transcript
+    Scenario: Refinement shows no raw transcript
       Given text refinement is enabled
       When the user ends a dictation with speech in it
-      Then the text window shows that dictation's raw transcript, dimmed
+      Then the overlay shows the text refinement stage with no text window under it

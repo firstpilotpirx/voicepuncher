@@ -12,15 +12,11 @@ use super::main_queue::dispatch_to_main_after;
 use super::motion::reduce_motion;
 use super::pill_content::{state_sign, GlassTint, PillKind, SignLook, PASTED_SIGN};
 use super::pill_view::PillLook;
-use super::transcript_window::TextEmphasis;
 use super::waveform::LevelWave;
 use super::window_set::WindowSet;
 use super::OverlayState;
 
 pub(super) type Windows = Vec<Arc<WindowSet>>;
-
-/// What the text window says while the text waits for a text field.
-pub(super) const WAITING_EXPLANATION: &str = "Text is ready and pastes once a text field has focus";
 
 /// How often the overlay is brought back over other windows.
 const HEARTBEAT_MS: i64 = 200;
@@ -94,14 +90,12 @@ pub(super) fn apply_recording_state(
     schedule_waveform_tick(windows, turn, feed, columns, !reduce_motion());
 }
 
-/// The stage's breathing icon, its label and the spinner; the refinement preview, dimmed, in
-/// the text window, or no text window.
+/// The stage's breathing icon, its label and the spinner; no text window.
 pub(super) fn apply_processing_state(
     windows: Windows,
     stage: OverlayState,
     turn: Turn,
     commands_unavailable: bool,
-    preview: Option<String>,
 ) {
     let look = PillLook {
         kind: PillKind::Processing,
@@ -110,15 +104,12 @@ pub(super) fn apply_processing_state(
     };
     for ws in &windows {
         ws.draw(look, GlassTint::Clear, commands_unavailable, FULL_CAPACITY);
-        match &preview {
-            Some(text) => ws.transcript.show_text(text, TextEmphasis::Dimmed),
-            None => ws.transcript.hide(),
-        }
+        ws.transcript.hide();
     }
     schedule_heartbeat(windows, turn);
 }
 
-/// Orange glass with the breathing keyboard; the text window explains the wait.
+/// Orange glass with the breathing keyboard; no text window.
 pub(super) fn apply_waiting_for_focus_state(
     windows: Windows,
     turn: Turn,
@@ -136,14 +127,13 @@ pub(super) fn apply_waiting_for_focus_state(
             commands_unavailable,
             FULL_CAPACITY,
         );
-        ws.transcript
-            .show_text(WAITING_EXPLANATION, TextEmphasis::Full);
+        ws.transcript.hide();
     }
     schedule_heartbeat(windows, turn);
 }
 
-/// The green check and "Pasted"; the pasted text in the text window.
-pub(super) fn apply_pasted_sign(windows: &[Arc<WindowSet>], text: &str) {
+/// The green check and "Pasted"; no text window.
+pub(super) fn apply_pasted_sign(windows: &[Arc<WindowSet>]) {
     let look = PillLook {
         kind: PillKind::Sign,
         sign: Some(PASTED_SIGN),
@@ -151,7 +141,7 @@ pub(super) fn apply_pasted_sign(windows: &[Arc<WindowSet>], text: &str) {
     };
     for ws in windows {
         ws.draw(look, GlassTint::Clear, false, FULL_CAPACITY);
-        ws.transcript.show_text(text, TextEmphasis::Full);
+        ws.transcript.hide();
     }
 }
 

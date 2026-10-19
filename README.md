@@ -91,6 +91,8 @@ The default instruction comes with seven example turns (`[refinement].examples`,
 
 **Speech language:** keep `[transcription].language = "auto"` (the default) when you dictate in more than one language. A fixed language makes the speech recognition service write speech in another language as text in the fixed one: with `language = "ru"`, 29 of 40 English corpus samples came out as Russian, mostly garbled.
 
+**Your languages:** `[transcription].languages` (default `["ru", "en"]`) lists the languages you speak. With `language = "auto"` the app asks the service which language it heard; when that is none of yours — whisper sometimes takes a short Russian phrase for Korean — it sends the recording again with the first of your languages fixed, uses that transcript and logs `transcript detected as …, not one of … — requesting again in …`. Accepted codes: `ru`, `en`, `uk`, `be`, `kk`, `de`, `fr`, `es`, `it`, `pt`, `nl`, `pl`, `cs`, `tr`, `zh`, `ja`, `ko`; any other code stops the app at startup.
+
 ## Models
 
 `just models` downloads every model the services need into `~/.voicepuncher/models/` (≈ 2.1 GB the first time) and skips a file already there:

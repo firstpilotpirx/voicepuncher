@@ -13,6 +13,13 @@ pub struct TranscriptionCfg {
     /// Spoken language code (`ru`, `en`, …) or `auto` to let the service detect it.
     #[serde(default = "TranscriptionCfg::default_language")]
     pub language: String,
+    /// The user's spoken languages; with `auto`, a transcript in another language is requested
+    /// again with the first of them fixed.
+    #[serde(
+        default = "TranscriptionCfg::default_languages",
+        deserialize_with = "known_languages"
+    )]
+    pub languages: Vec<String>,
     /// Prompt that biases recognition toward domain terms and punctuation style, used in every
     /// 30 s window of every chunk.
     #[serde(default)]
@@ -42,6 +49,22 @@ impl TranscriptionCfg {
     fn default_language() -> String {
         Self::AUTO_LANGUAGE.into()
     }
+    fn default_languages() -> Vec<String> {
+        DEFAULT_LANGUAGES
+            .iter()
+            .map(|&code| code.to_owned())
+            .collect()
+    }
+
+    /// The name the speech recognition service gives the language of `code` ("ru" →
+    /// "russian"), for a code `languages` accepts.
+    pub fn language_name(code: &str) -> Option<&'static str> {
+        LANGUAGE_NAMES
+            .iter()
+            .find(|(known, _)| *known == code)
+            .map(|(_, name)| *name)
+    }
+
     fn default_timeout_secs() -> u64 {
         60
     }
@@ -62,6 +85,7 @@ impl Default for TranscriptionCfg {
             base_url: Self::default_base_url(),
             model: Self::default_model(),
             language: Self::default_language(),
+            languages: Self::default_languages(),
             prompt: String::new(),
             temperature: 0.0,
             timeout_secs: Self::default_timeout_secs(),
@@ -70,6 +94,51 @@ impl Default for TranscriptionCfg {
             vad_lookback_secs: Self::default_vad_lookback_secs(),
         }
     }
+}
+
+const DEFAULT_LANGUAGES: [&str; 2] = ["ru", "en"];
+
+/// The language codes `languages` accepts, with the name whisper gives each language.
+const LANGUAGE_NAMES: &[(&str, &str)] = &[
+    ("ru", "russian"),
+    ("en", "english"),
+    ("uk", "ukrainian"),
+    ("be", "belarusian"),
+    ("kk", "kazakh"),
+    ("de", "german"),
+    ("fr", "french"),
+    ("es", "spanish"),
+    ("it", "italian"),
+    ("pt", "portuguese"),
+    ("nl", "dutch"),
+    ("pl", "polish"),
+    ("cs", "czech"),
+    ("tr", "turkish"),
+    ("zh", "chinese"),
+    ("ja", "japanese"),
+    ("ko", "korean"),
+];
+
+fn known_languages<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Vec<String>, D::Error> {
+    let codes = Vec::<String>::deserialize(deserializer)?;
+    if codes.is_empty() {
+        return Err(serde::de::Error::custom(
+            "languages must list at least one language code",
+        ));
+    }
+    if let Some(unknown) = codes
+        .iter()
+        .find(|code| TranscriptionCfg::language_name(code).is_none())
+    {
+        let known: Vec<&str> = LANGUAGE_NAMES.iter().map(|(code, _)| *code).collect();
+        return Err(serde::de::Error::custom(format!(
+            "unknown language code \"{unknown}\" in languages; known codes: {}",
+            known.join(", ")
+        )));
+    }
+    Ok(codes)
 }
 
 const RENAMED_SECTION: &str = "whisper";
@@ -167,6 +236,33 @@ mod tests {
     #[test]
     fn should_default_language_to_auto() {
         assert_eq!(TranscriptionCfg::default().language, "auto");
+    }
+
+    #[test]
+    fn should_default_languages_to_russian_and_english() {
+        assert_eq!(TranscriptionCfg::default().languages, ["ru", "en"]);
+    }
+
+    #[test]
+    fn should_load_known_language_codes() {
+        let cfg: TranscriptionCfg = toml::from_str("languages = [\"en\", \"de\"]\n").unwrap();
+        assert_eq!(cfg.languages, ["en", "de"]);
+    }
+
+    #[test]
+    fn should_fail_loading_an_unknown_language_code() {
+        let result = toml::from_str::<TranscriptionCfg>("languages = [\"ru\", \"xx\"]\n");
+        let message = result.unwrap_err().to_string();
+        assert!(
+            message.contains("unknown language code \"xx\""),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn should_fail_loading_an_empty_language_list() {
+        let result = toml::from_str::<TranscriptionCfg>("languages = []\n");
+        assert!(result.is_err());
     }
 
     #[test]

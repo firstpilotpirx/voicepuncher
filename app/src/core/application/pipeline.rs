@@ -519,7 +519,7 @@ impl Pipeline {
         self.state = PipelineState::Refining;
         log::info!("refining…");
         if self.shows_refinement {
-            self.visual_indicator.show_refining_text(&raw);
+            self.visual_indicator.show_refining_text();
         }
         let t_refine = std::time::Instant::now();
         let Some(cleaned) = self.refine(&raw) else {
@@ -538,7 +538,7 @@ impl Pipeline {
         let paste_ms = t_paste.elapsed().as_millis() as u64;
         let total_ms = t_user_stop.elapsed().as_millis() as u64;
         self.state = PipelineState::Idle;
-        self.end_delivery_on_overlay(outcome, &cleaned);
+        self.end_delivery_on_overlay(outcome);
         log::info!(
             "stop→paste: stop={stop_ms}ms transcribe={transcribe_ms}ms refine={refine_ms}ms paste={paste_ms}ms total={total_ms}ms"
         );
@@ -637,7 +637,7 @@ impl Pipeline {
         self.state = PipelineState::Refining;
         log::info!("refining…");
         if self.shows_refinement {
-            self.visual_indicator.show_refining_text(&raw);
+            self.visual_indicator.show_refining_text();
         }
         let t_refine = std::time::Instant::now();
         let Some(cleaned) = self.refine(&raw) else {
@@ -655,7 +655,7 @@ impl Pipeline {
         let paste_ms = t_paste.elapsed().as_millis() as u64;
         let total_ms = t_user_stop.elapsed().as_millis() as u64;
         self.state = PipelineState::Idle;
-        self.end_delivery_on_overlay(outcome, &cleaned);
+        self.end_delivery_on_overlay(outcome);
         log::info!(
             "stop→paste: drain={drain_ms}ms stop={stop_ms}ms merge={merge_ms}ms refine={refine_ms}ms paste={paste_ms}ms total={total_ms}ms"
         );
@@ -1503,7 +1503,7 @@ mod tests {
         shown
     }
 
-    /// An overlay that notes each signal, with the text it was handed.
+    /// An overlay that notes each signal.
     fn noting_visual_indicator() -> (MockVisualIndicator, Arc<Mutex<Vec<String>>>) {
         let shown = Arc::new(Mutex::new(Vec::new()));
         let mut visual = MockVisualIndicator::new();
@@ -1515,20 +1515,10 @@ mod tests {
         visual
             .expect_show_recognizing_speech()
             .returning(note("recognizing speech"));
-        let noted = Arc::clone(&shown);
-        visual.expect_show_refining_text().returning(move |raw| {
-            noted
-                .lock()
-                .unwrap()
-                .push(format!("refining {}", raw.as_str()))
-        });
-        let noted = Arc::clone(&shown);
-        visual.expect_show_pasted().returning(move |text| {
-            noted
-                .lock()
-                .unwrap()
-                .push(format!("pasted {}", text.as_str()))
-        });
+        visual
+            .expect_show_refining_text()
+            .returning(note("refining text"));
+        visual.expect_show_pasted().returning(note("pasted"));
         let noted = Arc::clone(&shown);
         visual
             .expect_show_failure_notice()
@@ -1546,16 +1536,10 @@ mod tests {
     }
 
     #[test]
-    fn should_show_speech_recognition_then_text_refinement_of_the_raw_transcript_then_the_pasted_sign(
-    ) {
+    fn should_show_speech_recognition_then_text_refinement_then_the_pasted_sign() {
         assert_eq!(
             overlay_signals(true, refined_hello),
-            [
-                "recording",
-                "recognizing speech",
-                "refining hello",
-                "pasted Hello."
-            ]
+            ["recording", "recognizing speech", "refining text", "pasted"]
         );
     }
 
@@ -1563,7 +1547,7 @@ mod tests {
     fn should_not_show_text_refinement_when_its_stage_is_off() {
         assert_eq!(
             overlay_signals(false, refined_hello),
-            ["recording", "recognizing speech", "pasted Hello."]
+            ["recording", "recognizing speech", "pasted"]
         );
     }
 
@@ -1575,7 +1559,7 @@ mod tests {
             [
                 "recording".to_owned(),
                 "recognizing speech".to_owned(),
-                "refining hello".to_owned(),
+                "refining text".to_owned(),
                 format!("{notice:?}"),
             ]
         );

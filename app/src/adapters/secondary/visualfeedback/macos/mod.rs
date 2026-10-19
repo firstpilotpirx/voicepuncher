@@ -24,7 +24,7 @@ use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSScreen};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 
 use crate::core::application::{AudioLevelSource, LiveTranscriptView, VisualIndicator};
-use crate::core::domain::{AudioLevel, CleanedText, FailureNotice, RawTranscript, VoiceCommand};
+use crate::core::domain::{AudioLevel, FailureNotice, VoiceCommand};
 
 use failure_notice::{show_notice, NoticeTimer};
 use live_text::LiveTranscriptText;
@@ -40,6 +40,7 @@ use topology::{diff_screens, ScreenChange, ScreenTopology};
 use waveform::LevelWave;
 use window_set::WindowSet;
 
+pub use glass::GlassFinish;
 pub use pointer_sign::MacosPointerSign;
 
 use super::pointer_sign::{FAILURE_NOTICE_LIFETIME, PASTED_SIGN_LIFETIME};
@@ -81,8 +82,6 @@ pub struct MacosVisualIndicator {
     pulse_generation: Arc<AtomicU64>,
     feed: LevelFeed,
     live_transcript: LiveTranscriptText,
-    /// The raw transcript the text refinement stage shows, dimmed.
-    preview: Arc<Mutex<Option<String>>>,
     last_topology: Arc<Mutex<ScreenTopology>>,
     notice_duration_ms: i64,
     _watcher: ScreenWatcher,
@@ -116,7 +115,6 @@ impl MacosVisualIndicator {
                 wave: Arc::new(Mutex::new(LevelWave::starting_now())),
             },
             live_transcript: LiveTranscriptText::default(),
-            preview: Arc::new(Mutex::new(None)),
             timer: NoticeTimer {
                 duration_ms: notice_duration_ms,
                 pulse_generation: Arc::clone(&pulse_generation),
@@ -135,7 +133,6 @@ impl MacosVisualIndicator {
             pulse_generation,
             feed: redraw.feed,
             live_transcript: redraw.live_transcript,
-            preview: redraw.preview,
             last_topology,
             notice_duration_ms,
             _watcher: watcher,
@@ -204,6 +201,30 @@ impl MacosVisualIndicator {
             .then(|| transcript.label.stringValue().to_string())
     }
 
+    /// Where the glass of the pill of the first screen is, in screen coordinates, while it shows.
+    pub fn first_pill_glass_frame(&self) -> Option<NSRect> {
+        let ws = self.first_window()?;
+        ws.window().isVisible().then(|| ws.glass_rect())
+    }
+
+    /// Where the glass of the text window of the first screen is, in screen coordinates,
+    /// while it shows.
+    pub fn first_text_window_glass_frame(&self) -> Option<NSRect> {
+        let ws = self.first_window()?;
+        let transcript = &ws.transcript;
+        transcript
+            .window()
+            .isVisible()
+            .then(|| transcript.glass_rect())
+    }
+
+    /// How the glass of the pill and of the text window of the first screen is finished.
+    pub fn first_glass_finishes(&self) -> Vec<GlassFinish> {
+        self.first_window().map_or_else(Vec::new, |ws| {
+            vec![ws.glass_finish(), ws.transcript.glass_finish()]
+        })
+    }
+
     /// Whether the pill of the first screen is on screen.
     pub fn is_pill_visible(&self) -> bool {
         self.first_window()
@@ -237,7 +258,6 @@ impl MacosVisualIndicator {
             windows: Arc::clone(&self.windows),
             feed: self.feed.clone(),
             live_transcript: self.live_transcript.clone(),
-            preview: Arc::clone(&self.preview),
             timer: self.notice_timer(),
         }
     }
@@ -350,7 +370,6 @@ struct Redraw {
     windows: SharedWindows,
     feed: LevelFeed,
     live_transcript: LiveTranscriptText,
-    preview: Arc<Mutex<Option<String>>>,
     timer: NoticeTimer,
 }
 
@@ -362,15 +381,16 @@ impl Redraw {
         match state {
             OverlayState::Recording => {
                 let shown = self.live_transcript.shown(state);
+                apply_recording_state(
+                    ws_vec.clone(),
+                    turn,
+                    self.feed.clone(),
+                    commands_unavailable,
+                );
                 apply_live_transcript(&ws_vec, shown);
-                apply_recording_state(ws_vec, turn, self.feed.clone(), commands_unavailable);
             }
-            OverlayState::RecognizingSpeech => {
-                apply_processing_state(ws_vec, state, turn, commands_unavailable, None);
-            }
-            OverlayState::RefiningText => {
-                let preview = self.preview.lock().unwrap().clone();
-                apply_processing_state(ws_vec, state, turn, commands_unavailable, preview);
+            OverlayState::RecognizingSpeech | OverlayState::RefiningText => {
+                apply_processing_state(ws_vec, state, turn, commands_unavailable);
             }
             OverlayState::WaitingForFocus => {
                 apply_waiting_for_focus_state(ws_vec, turn, commands_unavailable);
@@ -394,8 +414,7 @@ impl VisualIndicator for MacosVisualIndicator {
         self.show_state(OverlayState::RecognizingSpeech);
     }
 
-    fn show_refining_text(&self, raw: &RawTranscript) {
-        *self.preview.lock().unwrap() = Some(raw.as_str().to_owned());
+    fn show_refining_text(&self) {
         self.show_state(OverlayState::RefiningText);
     }
 
@@ -407,11 +426,10 @@ impl VisualIndicator for MacosVisualIndicator {
         self.hide_overlay();
     }
 
-    fn show_pasted(&self, text: &CleanedText) {
+    fn show_pasted(&self) {
         let turn = Turn::next(&self.pulse_generation);
         let windows = Arc::clone(&self.windows);
         let commands_unavailable = Arc::clone(&self.commands_unavailable);
-        let text = text.as_str().to_owned();
         // The sign hides itself, so a screen change draws the overlay hidden.
         *self.state.lock().unwrap() = OverlayState::Hidden;
         log::debug!("overlay: Pasted sign requested");
@@ -421,7 +439,7 @@ impl VisualIndicator for MacosVisualIndicator {
                 return;
             }
             let ws_vec = windows.lock().unwrap().clone();
-            apply_pasted_sign(&ws_vec, &text);
+            apply_pasted_sign(&ws_vec);
             dispatch_to_main_after(PASTED_SIGN_MS, move || {
                 // WHY: a later signal took over the overlay; its own drawing stands
                 if turn.is_current() {
@@ -432,7 +450,6 @@ impl VisualIndicator for MacosVisualIndicator {
     }
 
     fn show_failure_notice(&self, notice: &FailureNotice) {
-        log::warn!("overlay: failure notice: {}", notice.message());
         self.show_state(OverlayState::FailureNotice(*notice));
     }
 
@@ -505,7 +522,7 @@ impl LiveTranscriptView for MacosLiveTranscriptView {
 
 fn apply_live_transcript(windows: &[Arc<WindowSet>], shown: Option<String>) {
     for ws in windows {
-        ws.transcript.show(shown.as_deref());
+        ws.show_live_transcript(shown.as_deref());
     }
 }
 

@@ -1,7 +1,5 @@
 use crate::core::application::DictationOutcome;
-use crate::core::domain::{
-    AccessibilityMissing, CleanedText, FailingPart, FailureNotice, VoiceCommand,
-};
+use crate::core::domain::{AccessibilityMissing, FailingPart, FailureNotice, VoiceCommand};
 
 use super::Pipeline;
 
@@ -78,13 +76,9 @@ impl Pipeline {
 
     /// Ends a dictation whose text was delivered on the overlay: the pending failure notice,
     /// the Pasted sign when the text was pasted, or hidden.
-    pub(super) fn end_delivery_on_overlay(
-        &mut self,
-        outcome: DictationOutcome,
-        text: &CleanedText,
-    ) {
+    pub(super) fn end_delivery_on_overlay(&mut self, outcome: DictationOutcome) {
         if outcome == DictationOutcome::Pasted && self.pending_notice.is_none() {
-            self.visual_indicator.show_pasted(text);
+            self.visual_indicator.show_pasted();
         } else {
             self.end_cycle_on_overlay();
         }

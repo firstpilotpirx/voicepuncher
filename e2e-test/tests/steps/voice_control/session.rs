@@ -22,7 +22,7 @@ use voicepuncher::core::application::{
     VisualIndicator,
 };
 use voicepuncher::core::domain::{
-    AudioBuffer16k, CleanedText, FailureNotice, RawTranscript, RecordingMode, VoiceCommand,
+    AudioBuffer16k, CleanedText, FailureNotice, RecordingMode, VoiceCommand,
 };
 use voicepuncher_e2e_test::speech::read_wav;
 use voicepuncher_e2e_test::voice_commands::spoken_by;
@@ -600,9 +600,9 @@ struct NoOverlay;
 impl VisualIndicator for NoOverlay {
     fn show_recording(&self) {}
     fn show_recognizing_speech(&self) {}
-    fn show_refining_text(&self, _raw: &RawTranscript) {}
+    fn show_refining_text(&self) {}
     fn show_waiting_for_focus(&self) {}
-    fn show_pasted(&self, _text: &CleanedText) {}
+    fn show_pasted(&self) {}
     fn hide(&self) {}
     fn show_failure_notice(&self, _notice: &FailureNotice) {}
 }

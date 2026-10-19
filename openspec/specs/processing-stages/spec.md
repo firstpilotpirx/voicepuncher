@@ -83,11 +83,11 @@ The speech recognition stage SHALL show a breathing ear and "Recognizing", the t
 - **WHEN** speech recognition runs for several seconds after the stop
 - **THEN** the spinner keeps turning without filling up
 
-### Requirement: Text refinement shows the raw transcript dimmed
+### Requirement: The processing stages show no text window
 
-While the text refinement stage shows, the text window under the overlay SHALL show the raw transcript being refined, dimmed, so the user sees what is being corrected. The speech recognition stage SHALL show no text window.
+While the speech recognition stage or the text refinement stage shows, the overlay SHALL show the stage in the pill alone, with no text window under it.
 
-#### Scenario: Refinement shows the dimmed raw transcript
+#### Scenario: Refinement shows no raw transcript
 - **GIVEN** text refinement is enabled
 - **WHEN** text refinement of a dictation with speech in it starts
-- **THEN** the text window shows that dictation's raw transcript, dimmed
+- **THEN** the overlay shows "Refining text" in the pill and no text window under it

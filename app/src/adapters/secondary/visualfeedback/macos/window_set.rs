@@ -4,7 +4,7 @@ use objc2::MainThreadMarker;
 use objc2_app_kit::NSWindow;
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 
-use super::glass::{GlassPanel, ShadowStyle};
+use super::glass::{GlassFinish, GlassPanel, ShadowStyle};
 use super::motion::reduce_motion;
 use super::pill_content::{GlassTint, PillKind};
 use super::pill_view::{PillLook, PillView, PILL_HEIGHT};
@@ -19,6 +19,9 @@ const PILL_SHADOW: ShadowStyle = ShadowStyle {
     drop: 8.0,
     blur: 24.0,
     opacity: 0.2,
+    // WHY: more room above would reach past the top of the visible frame, and macOS would push
+    // the pill down onto the text window
+    room_above: GAP_BELOW_SCREEN_TOP,
 };
 
 /// The overlay of one screen: the glass pill and the text window under it.
@@ -56,6 +59,15 @@ impl WindowSet {
         &self.panel.window
     }
 
+    pub(super) fn glass_finish(&self) -> GlassFinish {
+        self.panel.finish()
+    }
+
+    /// Where the pill's glass is, in screen coordinates, read from its window.
+    pub(super) fn glass_rect(&self) -> NSRect {
+        self.panel.glass_rect()
+    }
+
     /// Draws `look` on glass tinted `tint`, the pill as wide as it needs around the same
     /// centre, and brings it to the front; the text window stays as it is.
     pub(super) fn draw(
@@ -75,6 +87,12 @@ impl WindowSet {
         );
         self.set_pill_width(width);
         self.panel.show();
+    }
+
+    /// Shows `text` in the text window under the pill where it is now, or hides the window for
+    /// `None`.
+    pub(super) fn show_live_transcript(&self, text: Option<&str>) {
+        self.transcript.show(text, self.panel.glass_rect());
     }
 
     /// Hides the pill and the text window and stops their motion.

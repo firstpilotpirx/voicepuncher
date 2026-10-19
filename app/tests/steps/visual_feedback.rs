@@ -19,7 +19,7 @@ fn pasted_sign_shows(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("the overlay shows the Pasted sign with the pasted text, then hides")]
+#[then("the overlay shows the Pasted sign with no text window, then hides")]
 fn pasted_sign_then_hidden(world: &mut IntegrationWorld) -> Result<()> {
     text_insertion::ends_on_pasted_sign(world)
 }

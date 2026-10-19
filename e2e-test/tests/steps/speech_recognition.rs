@@ -18,6 +18,7 @@ use crate::steps::local_services::{Role, ScenarioServices};
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
+mod languages;
 mod prompt;
 
 const MAX_STARTUP_FAILURE: Duration = Duration::from_secs(3);

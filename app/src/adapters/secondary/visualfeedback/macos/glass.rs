@@ -1,15 +1,15 @@
-//! A borderless, click-through window of frosted glass: the system's `NSGlassEffectView` on
-//! macOS 26 and later, an `NSVisualEffectView` HUD material elsewhere, with a light rim, a top
-//! highlight and a soft shadow drawn around it.
+//! A borderless, click-through window of frosted glass with a soft shadow around it: the
+//! system's clear `NSGlassEffectView` on macOS 26 and later, which draws its own edge, and
+//! elsewhere an `NSVisualEffectView` HUD material with a light rim of ours.
 
 use objc2::rc::Retained;
 use objc2::runtime::AnyClass;
 use objc2::MainThreadMarker;
 use objc2_app_kit::{
     NSAppearance, NSAppearanceCustomization, NSAppearanceNameAqua, NSAppearanceNameDarkAqua,
-    NSBackingStoreType, NSColor, NSGlassEffectView, NSView, NSVisualEffectBlendingMode,
-    NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView, NSWindow,
-    NSWindowCollectionBehavior, NSWindowStyleMask,
+    NSBackingStoreType, NSColor, NSGlassEffectView, NSGlassEffectViewStyle, NSView,
+    NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView,
+    NSWindow, NSWindowCollectionBehavior, NSWindowStyleMask,
 };
 use objc2_core_foundation::CFRetained;
 use objc2_core_graphics::{CGMutablePath, CGPath};
@@ -20,12 +20,10 @@ use super::pill_content::GlassTint;
 
 /// Above app windows, below the pointer badge.
 pub(super) const OVERLAY_LEVEL: isize = 3;
-/// Room around the glass for its shadow: the shadow's drop plus its blur.
-const SHADOW_MARGIN: f64 = 32.0;
+/// Room beside and under the glass for its shadow: the shadow's drop plus its blur.
+pub(super) const SHADOW_MARGIN: f64 = 32.0;
 const RIM_WIDTH: f64 = 1.0;
 const RIM_WHITE_ALPHA: f64 = 0.6;
-const HIGHLIGHT_HEIGHT: f64 = 1.0;
-const HIGHLIGHT_WHITE_ALPHA: f64 = 0.85;
 /// The warm rim of tinted glass, `#FFD696`.
 const TINTED_RIM_RGB: (f64, f64, f64) = (1.0, 214.0 / 255.0, 150.0 / 255.0);
 const WAITING_RIM_ALPHA: f64 = 0.8;
@@ -40,6 +38,20 @@ pub(super) struct ShadowStyle {
     pub(super) drop: f64,
     pub(super) blur: f64,
     pub(super) opacity: f32,
+    /// Room the window leaves above the glass; the shadow falls downward, so it may be less
+    /// than the room beside and under it.
+    pub(super) room_above: f64,
+}
+
+/// How a glass panel is finished around its glass, as the tests see it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GlassFinish {
+    /// Whether a light line is drawn over the glass along its top edge.
+    pub top_highlight: bool,
+    /// Whether our own rim is drawn around the glass.
+    pub own_rim: bool,
+    /// Whether the system glass is in its clear style; `None` on the fallback material.
+    pub clear_system_glass: Option<bool>,
 }
 
 /// The glass the content sits on.
@@ -65,11 +77,12 @@ pub(super) struct GlassPanel {
     surface: Surface,
     /// Where the panel's items go, filling the glass.
     pub(super) content: Retained<NSView>,
-    rim: Retained<NSView>,
-    highlight: Retained<CALayer>,
+    /// Our rim around the fallback material; the system glass draws its own edge.
+    rim: Option<Retained<NSView>>,
     shadow: Retained<NSView>,
     shadow_mask: Retained<CAShapeLayer>,
     corner_radius: f64,
+    room_above: f64,
 }
 
 impl GlassPanel {
@@ -80,7 +93,7 @@ impl GlassPanel {
         corner_radius: f64,
         shadow: ShadowStyle,
     ) -> Self {
-        let window = click_through_window(mtm, around(glass_rect));
+        let window = click_through_window(mtm, around(glass_rect, shadow.room_above));
         let root = NSView::initWithFrame(mtm.alloc::<NSView>(), at_origin(window.frame().size));
         root.setWantsLayer(true);
         let shadow_view = layer_view(mtm);
@@ -93,24 +106,31 @@ impl GlassPanel {
         }
         let surface = build_surface(mtm, corner_radius);
         let content = layer_view(mtm);
-        match &surface {
-            Surface::System(glass) => glass.setContentView(Some(&content)),
-            Surface::Fallback(effect) => effect.addSubview(&content),
-        }
-        let (rim, highlight) = build_rim(mtm, corner_radius);
+        let rim = match &surface {
+            Surface::System(glass) => {
+                glass.setContentView(Some(&content));
+                None
+            }
+            Surface::Fallback(effect) => {
+                effect.addSubview(&content);
+                Some(build_rim(mtm, corner_radius))
+            }
+        };
         root.addSubview(&shadow_view);
         root.addSubview(surface.view());
-        root.addSubview(&rim);
+        if let Some(rim) = &rim {
+            root.addSubview(rim);
+        }
         window.setContentView(Some(&root));
         let panel = Self {
             window,
             surface,
             content,
             rim,
-            highlight,
             shadow: shadow_view,
             shadow_mask,
             corner_radius,
+            room_above: shadow.room_above,
         };
         panel.lay_out(glass_rect.size);
         panel
@@ -126,7 +146,7 @@ impl GlassPanel {
             },
             size: NSSize {
                 width: frame.size.width - 2.0 * SHADOW_MARGIN,
-                height: frame.size.height - 2.0 * SHADOW_MARGIN,
+                height: frame.size.height - SHADOW_MARGIN - self.room_above,
             },
         }
     }
@@ -136,7 +156,8 @@ impl GlassPanel {
         if self.glass_rect() == glass_rect {
             return;
         }
-        self.window.setFrame_display(around(glass_rect), true);
+        self.window
+            .setFrame_display(around(glass_rect, self.room_above), true);
         self.lay_out(glass_rect.size);
     }
 
@@ -151,7 +172,7 @@ impl GlassPanel {
                 }
             }
         }
-        if let Some(layer) = self.rim.layer() {
+        if let Some(layer) = self.rim.as_ref().and_then(|own_rim| own_rim.layer()) {
             layer.setBorderColor(Some(&rim.CGColor()));
         }
     }
@@ -185,6 +206,23 @@ impl GlassPanel {
         best.is_some_and(|name| &*name == unsafe { NSAppearanceNameAqua })
     }
 
+    /// How the glass is finished: its rim, a top line over it and the system glass style.
+    pub(super) fn finish(&self) -> GlassFinish {
+        let rim_layer = self.rim.as_ref().and_then(|rim| rim.layer());
+        GlassFinish {
+            top_highlight: rim_layer
+                .as_ref()
+                // SAFETY: the sublayers are only counted, on the main thread that owns them.
+                .and_then(|layer| unsafe { layer.sublayers() })
+                .is_some_and(|sublayers| !sublayers.is_empty()),
+            own_rim: rim_layer.is_some_and(|layer| layer.borderWidth() > 0.0),
+            clear_system_glass: match &self.surface {
+                Surface::System(glass) => Some(glass.style() == NSGlassEffectViewStyle::Clear),
+                Surface::Fallback(_) => None,
+            },
+        }
+    }
+
     fn lay_out(&self, glass_size: NSSize) {
         let glass = NSRect {
             origin: NSPoint {
@@ -193,21 +231,13 @@ impl GlassPanel {
             },
             size: glass_size,
         };
-        let whole = at_origin(around(glass).size);
+        let whole = at_origin(around(glass, self.room_above).size);
         self.shadow.setFrame(whole);
         self.surface.view().setFrame(glass);
         self.content.setFrame(at_origin(glass_size));
-        self.rim.setFrame(glass);
-        self.highlight.setFrame(NSRect {
-            origin: NSPoint {
-                x: self.corner_radius,
-                y: glass_size.height - RIM_WIDTH - HIGHLIGHT_HEIGHT,
-            },
-            size: NSSize {
-                width: (glass_size.width - 2.0 * self.corner_radius).max(0.0),
-                height: HIGHLIGHT_HEIGHT,
-            },
-        });
+        if let Some(rim) = &self.rim {
+            rim.setFrame(glass);
+        }
         // SAFETY: a null transform is documented as "no transform".
         let glass_path = unsafe {
             CGPath::with_rounded_rect(
@@ -262,6 +292,7 @@ fn build_surface(mtm: MainThreadMarker, corner_radius: f64) -> Surface {
     if AnyClass::get(GLASS_CLASS).is_some() {
         let glass = NSGlassEffectView::new(mtm);
         glass.setCornerRadius(corner_radius);
+        glass.setStyle(NSGlassEffectViewStyle::Clear);
         return Surface::System(glass);
     }
     let effect = NSVisualEffectView::new(mtm);
@@ -279,20 +310,15 @@ fn build_surface(mtm: MainThreadMarker, corner_radius: f64) -> Surface {
     Surface::Fallback(effect)
 }
 
-fn build_rim(mtm: MainThreadMarker, corner_radius: f64) -> (Retained<NSView>, Retained<CALayer>) {
+fn build_rim(mtm: MainThreadMarker, corner_radius: f64) -> Retained<NSView> {
     let rim = layer_view(mtm);
-    let highlight = CALayer::new();
-    let white = NSColor::colorWithWhite_alpha(1.0, HIGHLIGHT_WHITE_ALPHA);
-    highlight.setBackgroundColor(Some(&white.CGColor()));
-    highlight.setCornerRadius(HIGHLIGHT_HEIGHT / 2.0);
     if let Some(layer) = rim.layer() {
         round(&layer, corner_radius);
         layer.setBorderWidth(RIM_WIDTH);
         let rim_colour = NSColor::colorWithWhite_alpha(1.0, RIM_WHITE_ALPHA);
         layer.setBorderColor(Some(&rim_colour.CGColor()));
-        layer.addSublayer(&highlight);
     }
-    (rim, highlight)
+    rim
 }
 
 fn cast_shadow(layer: &CALayer, shadow: ShadowStyle) {
@@ -345,7 +371,8 @@ pub(super) fn every_space() -> NSWindowCollectionBehavior {
 }
 
 /// The window frame around `glass`, with room for the shadow.
-fn around(glass: NSRect) -> NSRect {
+/// The window around `glass`: the shadow's room beside and under it, `room_above` above it.
+fn around(glass: NSRect, room_above: f64) -> NSRect {
     NSRect {
         origin: NSPoint {
             x: glass.origin.x - SHADOW_MARGIN,
@@ -353,7 +380,7 @@ fn around(glass: NSRect) -> NSRect {
         },
         size: NSSize {
             width: glass.size.width + 2.0 * SHADOW_MARGIN,
-            height: glass.size.height + 2.0 * SHADOW_MARGIN,
+            height: glass.size.height + SHADOW_MARGIN + room_above,
         },
     }
 }

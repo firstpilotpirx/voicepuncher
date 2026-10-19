@@ -1,5 +1,4 @@
-//! The glass text window under the pill: the live transcript, the refinement preview, the
-//! waiting explanation, the pasted text and the failure message.
+//! The glass text window under the pill: the live transcript while the recording runs.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -10,7 +9,7 @@ use objc2::MainThreadMarker;
 use objc2_app_kit::{NSColor, NSFont, NSLineBreakMode, NSTextField, NSWindow};
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 
-use super::glass::{GlassPanel, ShadowStyle};
+use super::glass::{GlassFinish, GlassPanel, ShadowStyle, SHADOW_MARGIN};
 use super::main_queue::dispatch_to_main_after;
 use super::motion::reduce_motion;
 
@@ -26,28 +25,17 @@ const SHADOW: ShadowStyle = ShadowStyle {
     drop: 6.0,
     blur: 18.0,
     opacity: 0.15,
+    room_above: SHADOW_MARGIN,
 };
-/// The refinement preview shows at this opacity: it is being corrected.
-const DIMMED_ALPHA: f64 = 0.75;
 /// The window rises this far as it fades in.
 const RISE: f64 = 6.0;
 const RISE_SECS: f64 = 0.5;
 const FRAME_MS: i64 = 16;
 
-/// How the text window shows its text.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum TextEmphasis {
-    Full,
-    /// The raw transcript while text refinement corrects it.
-    Dimmed,
-}
-
 /// The window under the pill; touched on the main thread only.
 pub(super) struct TranscriptWindow {
     panel: GlassPanel,
     pub(super) label: Retained<NSTextField>,
-    /// The pill's bottom centre, in screen coordinates.
-    anchor: NSPoint,
     /// Bumped by every rise-in and hide; a step of an older rise-in stops.
     rise: Arc<AtomicU64>,
 }
@@ -55,16 +43,7 @@ pub(super) struct TranscriptWindow {
 impl TranscriptWindow {
     /// Builds the window centred under `pill`, hidden until it gets a text.
     pub(super) fn build(mtm: MainThreadMarker, pill: NSRect) -> Self {
-        let anchor = NSPoint {
-            x: pill.origin.x + pill.size.width / 2.0,
-            y: pill.origin.y,
-        };
-        let panel = GlassPanel::build(
-            mtm,
-            glass_rect(anchor, line_height()),
-            CORNER_RADIUS,
-            SHADOW,
-        );
+        let panel = GlassPanel::build(mtm, glass_rect(pill, line_height()), CORNER_RADIUS, SHADOW);
         let label = NSTextField::wrappingLabelWithString(&NSString::from_str(""), mtm);
         label.setFont(Some(&NSFont::systemFontOfSize(FONT_SIZE)));
         label.setTextColor(Some(&NSColor::labelColor()));
@@ -75,7 +54,6 @@ impl TranscriptWindow {
         Self {
             panel,
             label,
-            anchor,
             rise: Arc::new(AtomicU64::new(0)),
         }
     }
@@ -84,21 +62,26 @@ impl TranscriptWindow {
         &self.panel.window
     }
 
-    /// Shows `text` in full, or hides the window for `None`.
-    pub(super) fn show(&self, text: Option<&str>) {
+    pub(super) fn glass_finish(&self) -> GlassFinish {
+        self.panel.finish()
+    }
+
+    /// Where the glass is, in screen coordinates, read from the window.
+    pub(super) fn glass_rect(&self) -> NSRect {
+        self.panel.glass_rect()
+    }
+
+    /// Shows `text` under the pill whose glass is `pill`, or hides the window for `None`.
+    pub(super) fn show(&self, text: Option<&str>, pill: NSRect) {
         match text {
-            Some(text) => self.show_text(text, TextEmphasis::Full),
+            Some(text) => self.show_text(text, pill),
             None => self.hide(),
         }
     }
 
-    /// Shows `text` with `emphasis`, rising in when it was hidden.
-    pub(super) fn show_text(&self, text: &str, emphasis: TextEmphasis) {
+    /// Shows `text` under the pill whose glass is `pill`, rising in when it was hidden.
+    fn show_text(&self, text: &str, pill: NSRect) {
         self.label.setStringValue(&NSString::from_str(text));
-        self.label.setAlphaValue(match emphasis {
-            TextEmphasis::Full => 1.0,
-            TextEmphasis::Dimmed => DIMMED_ALPHA,
-        });
         let text_height = self.text_height();
         self.label.setFrame(NSRect {
             origin: NSPoint {
@@ -110,8 +93,7 @@ impl TranscriptWindow {
                 height: text_height,
             },
         });
-        self.panel
-            .set_glass_rect(glass_rect(self.anchor, text_height));
+        self.panel.set_glass_rect(glass_rect(pill, text_height));
         if self.panel.window.isVisible() {
             return;
         }
@@ -198,14 +180,13 @@ fn line_height() -> f64 {
     (font.ascender() - font.descender() + font.leading()).ceil()
 }
 
-/// The glass of a text `text_height` tall, centred under the pill whose bottom centre is
-/// `anchor`.
-fn glass_rect(anchor: NSPoint, text_height: f64) -> NSRect {
+/// The glass of a text `text_height` tall, centred under the pill whose glass is `pill`.
+fn glass_rect(pill: NSRect, text_height: f64) -> NSRect {
     let height = text_height + 2.0 * PADDING_Y;
     NSRect {
         origin: NSPoint {
-            x: anchor.x - WIDTH / 2.0,
-            y: anchor.y - GAP_BELOW_PILL - height,
+            x: pill.origin.x + pill.size.width / 2.0 - WIDTH / 2.0,
+            y: pill.origin.y - GAP_BELOW_PILL - height,
         },
         size: NSSize {
             width: WIDTH,
@@ -227,7 +208,14 @@ mod tests {
 
     #[test]
     fn should_hang_the_window_eight_points_under_the_pill() {
-        let rect = glass_rect(NSPoint { x: 500.0, y: 800.0 }, 20.0);
+        let pill = NSRect {
+            origin: NSPoint { x: 400.0, y: 800.0 },
+            size: NSSize {
+                width: 200.0,
+                height: 40.0,
+            },
+        };
+        let rect = glass_rect(pill, 20.0);
         assert_eq!(rect.origin, NSPoint { x: 260.0, y: 754.0 });
         assert_eq!(rect.size.height, 38.0);
     }

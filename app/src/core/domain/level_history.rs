@@ -3,14 +3,14 @@ use std::time::Duration;
 use super::AudioLevel;
 
 /// Time one column of the level waveform covers.
-pub const COLUMN_PERIOD: Duration = Duration::from_millis(100);
+pub const COLUMN_PERIOD: Duration = Duration::from_millis(200);
 /// Distance between neighbouring columns, in points.
 pub const COLUMN_PITCH_PT: f32 = 6.0;
 /// Height of a silent column (a dot), in points.
 pub const MIN_HEIGHT_PT: f32 = 2.0;
 /// Height of a column at full loudness, in points.
 pub const MAX_HEIGHT_PT: f32 = 28.0;
-/// Columns of a waveform that has the pill to itself: the last 3 s.
+/// Columns of a waveform that has the pill to itself: the last 6 s.
 pub const FULL_CAPACITY: usize = 30;
 /// Columns of a waveform that shares the pill with the commands-unavailable sign.
 pub const CAPACITY_BESIDE_SIGN: usize = 22;
@@ -184,26 +184,53 @@ mod tests {
     }
 
     #[test]
-    fn should_still_show_speech_from_less_than_three_seconds_ago() {
+    fn should_add_five_columns_for_one_second_of_speech() {
+        // Given
+        let mut history = LevelHistory::new(FULL_CAPACITY, Duration::ZERO);
+        // When
+        feed(&mut history, SPEECH_RMS, Duration::ZERO, secs(1.0));
+        // Then
+        let tall = heights(&history)
+            .into_iter()
+            .filter(|height| *height > MAX_HEIGHT_PT / 2.0)
+            .count();
+        assert_eq!(tall, 5);
+    }
+
+    #[test]
+    fn should_still_show_speech_from_less_than_six_seconds_ago() {
         // Given
         let mut history = LevelHistory::new(FULL_CAPACITY, Duration::ZERO);
         feed(&mut history, SPEECH_RMS, Duration::ZERO, secs(1.0));
         // When
-        feed(&mut history, SILENCE_RMS, secs(1.0), secs(3.5));
+        feed(&mut history, SILENCE_RMS, secs(1.0), secs(6.5));
         // Then
         let oldest = heights(&history)[0];
         assert!(oldest > 0.9 * MAX_HEIGHT_PT, "oldest column {oldest}");
     }
 
     #[test]
-    fn should_forget_speech_older_than_three_seconds() {
+    fn should_forget_speech_older_than_six_seconds() {
         // Given
         let mut history = LevelHistory::new(FULL_CAPACITY, Duration::ZERO);
-        feed(&mut history, SPEECH_RMS, Duration::ZERO, secs(1.0));
+        feed(&mut history, SPEECH_RMS, Duration::ZERO, secs(10.0));
         // When
-        feed(&mut history, SILENCE_RMS, secs(1.0), secs(4.5));
+        feed(&mut history, SILENCE_RMS, secs(10.0), secs(17.0));
         // Then
         assert_eq!(heights(&history), vec![MIN_HEIGHT_PT; FULL_CAPACITY]);
+    }
+
+    #[test]
+    fn should_slide_half_a_pitch_in_a_tenth_of_a_second() {
+        // Given
+        let history = LevelHistory::new(FULL_CAPACITY, Duration::ZERO);
+        // When
+        let offset = history.slide_offset(secs(0.1));
+        // Then
+        assert!(
+            (offset - COLUMN_PITCH_PT / 2.0).abs() < 1e-4,
+            "offset {offset}"
+        );
     }
 
     #[test]

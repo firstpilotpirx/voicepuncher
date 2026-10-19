@@ -3,7 +3,6 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
-use serde::Deserialize;
 use url::Url;
 
 use crate::adapters::secondary::http::failure::Failure;
@@ -12,8 +11,10 @@ use crate::core::application::transcriber::Transcriber;
 use crate::core::application::transcript_filter::strip_whisper_hallucinations;
 use crate::core::domain::{AudioBuffer16k, RawTranscript};
 
+mod language;
 mod request;
 
+use language::{retry_language, TranscriptionResponse};
 use request::{encode_wav, multipart_body, normalize_transcript};
 
 const TRANSCRIPTIONS_PATH: &str = "audio/transcriptions";
@@ -35,11 +36,6 @@ const SLOW_RETRY_PAUSE: Duration = Duration::from_millis(200);
 /// The wait for one request: this, plus half the length of its audio.
 const DEADLINE_BASE: Duration = Duration::from_secs(5);
 const DEADLINE_PER_AUDIO_SECOND: f32 = 0.5;
-
-#[derive(Deserialize)]
-struct TranscriptionResponse {
-    text: String,
-}
 
 /// Transcribes audio through a local speech recognition service that speaks the
 /// OpenAI Audio Transcriptions API (whisper.cpp `whisper-server`, Speaches, LocalAI).
@@ -77,9 +73,31 @@ impl OpenAiTranscriber {
         })
     }
 
+    /// Transcribes `audio`, again in the user's first language when the service heard a
+    /// language the user does not speak.
     fn request_text(&mut self, audio: &AudioBuffer16k) -> Result<String> {
         let wav = encode_wav(audio)?;
-        let body = multipart_body(&self.cfg, &wav);
+        let mut response = self.request_transcript(multipart_body(&self.cfg, &wav), audio)?;
+        if let Some(language) = retry_language(&response, &self.cfg).map(str::to_owned) {
+            log::info!(
+                "speech recognition: transcript detected as {}, not one of {} — requesting again in {language}",
+                response.language.as_deref().unwrap_or_default(),
+                self.cfg.languages.join(", ")
+            );
+            let fixed = TranscriptionCfg {
+                language,
+                ..self.cfg.clone()
+            };
+            response = self.request_transcript(multipart_body(&fixed, &wav), audio)?;
+        }
+        Ok(normalize_transcript(&response.text))
+    }
+
+    fn request_transcript(
+        &mut self,
+        body: Vec<u8>,
+        audio: &AudioBuffer16k,
+    ) -> Result<TranscriptionResponse> {
         self.requests += 1;
         let deadline = request_deadline(audio, Duration::from_secs(self.cfg.timeout_secs));
         log::debug!(
@@ -92,9 +110,8 @@ impl OpenAiTranscriber {
         let json = response
             .into_string()
             .context("read speech recognition response")?;
-        let parsed: TranscriptionResponse = serde_json::from_str(&json)
-            .with_context(|| format!("unexpected speech recognition response: {json}"))?;
-        Ok(normalize_transcript(&parsed.text))
+        serde_json::from_str(&json)
+            .with_context(|| format!("unexpected speech recognition response: {json}"))
     }
 
     /// Posts `body`, again after a dropped connection, a timeout or an error answer, as

@@ -18,22 +18,18 @@ use objc2_quartz_core::{CALayer, CAShapeLayer};
 use super::motion::{is_breathing, is_pulsing, set_breathing, set_pulsing};
 use super::pill_content::{
     item_gap, pill_items, pill_width, row_width, IconTint, PillItem, PillKind, SignLook,
-    COMMANDS_UNAVAILABLE_SIGN,
+    COMMANDS_UNAVAILABLE_SIGN, ICON_BOX, RECORD_RING_SIZE, SEPARATOR_WIDTH, SPINNER_SIZE,
 };
 use super::symbols::{palette_symbol_image, symbol_image, symbol_name};
 use super::waveform::{waveform_width, WaveformView};
 
 pub(super) const PILL_HEIGHT: f64 = 56.0;
-const RECORD_RING_SIZE: f64 = 26.0;
 const RECORD_RING_STROKE: f64 = 2.0;
 const RECORD_DOT_SIZE: f64 = 18.0;
 const WAVEFORM_HEIGHT: f64 = 28.0;
-const ICON_BOX: f64 = 24.0;
 const ICON_POINT_SIZE: f64 = 21.0;
 const LABEL_FONT_SIZE: f64 = 13.0;
 const LABEL_TRACKING: f64 = 0.5;
-const SPINNER_SIZE: f64 = 20.0;
-const SEPARATOR_WIDTH: f64 = 1.0;
 const SEPARATOR_HEIGHT: f64 = 26.0;
 const SEPARATOR_ALPHA: f64 = 0.3;
 /// Dark content over milky glass, `#1D1D1F`.

@@ -179,6 +179,7 @@ impl SetupWizard {
              [transcription]\n\
              base_url = \"{transcription_url}\"\n\
              language = \"{lang}\"\n\
+             languages = [\"ru\", \"en\"]\n\
              \n\
              [refinement]\n\
              base_url = \"{refinement_url}\"\n\

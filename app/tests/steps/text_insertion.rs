@@ -40,7 +40,7 @@ const PIPELINE_LAG: Duration = Duration::from_millis(50);
 enum Event {
     RecordingStarted,
     WaitingShown,
-    PastedSignShown(String),
+    PastedSignShown,
     Hidden,
     FailureNotice(FailureNotice),
     Pasted(String),
@@ -176,8 +176,8 @@ fn run(world: &mut IntegrationWorld) -> &mut InsertionRun {
     world.insertion.get_or_insert_with(InsertionRun::default)
 }
 
-/// Checks that the overlay ends the delivered dictation on the Pasted sign with the pasted
-/// text: nothing follows the sign, which takes itself down.
+/// Checks that the overlay ends the delivered dictation on the Pasted sign, which is handed no
+/// text to show under it: nothing follows the sign, which takes itself down.
 pub(crate) fn ends_on_pasted_sign(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     run.wait_for(is_pasted, REACTION)?;
@@ -186,8 +186,8 @@ pub(crate) fn ends_on_pasted_sign(world: &mut IntegrationWorld) -> Result<()> {
     let events = run.events();
     let pasted = events.iter().position(is_pasted).unwrap();
     let after_paste = &events[pasted + 1..];
-    if after_paste.last() != Some(&Event::PastedSignShown(DICTATED.to_owned())) {
-        bail!("expected the overlay to end on the Pasted sign with the text: {events:?}");
+    if after_paste.last() != Some(&Event::PastedSignShown) {
+        bail!("expected the overlay to end on the Pasted sign: {events:?}");
     }
     Ok(())
 }
@@ -205,7 +205,7 @@ pub(crate) fn hidden_without_pasted_sign(world: &mut IntegrationWorld) -> Result
 }
 
 fn is_pasted_sign(e: &Event) -> bool {
-    matches!(e, Event::PastedSignShown(_))
+    matches!(e, Event::PastedSignShown)
 }
 
 fn is_pasted(e: &Event) -> bool {
@@ -515,10 +515,9 @@ struct RecordingIndicator(Arc<Mutex<Vec<Event>>>, Arc<Mutex<Option<Instant>>>);
 impl VisualIndicator for RecordingIndicator {
     fn show_recording(&self) {}
     fn show_recognizing_speech(&self) {}
-    fn show_refining_text(&self, _raw: &RawTranscript) {}
-    fn show_pasted(&self, text: &CleanedText) {
-        let shown = Event::PastedSignShown(text.as_str().to_owned());
-        self.0.lock().unwrap().push(shown);
+    fn show_refining_text(&self) {}
+    fn show_pasted(&self) {
+        self.0.lock().unwrap().push(Event::PastedSignShown);
     }
     fn show_waiting_for_focus(&self) {
         *self.1.lock().unwrap() = Some(Instant::now());

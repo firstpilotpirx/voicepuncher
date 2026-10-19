@@ -40,6 +40,22 @@ Feature: speech-recognition
       When the user starts the app
       Then the app exits with a message saying pauses now follow the recording's background noise and the setting can be deleted
 
+  Rule: Spoken language follows the configuration
+
+    @smoke
+    Scenario: Short Russian speech is never transcribed as Korean
+      Given the service detects the spoken language automatically and the user's languages are Russian and English
+      And a recording file of a short Russian phrase
+      When the user transcribes the recording file without refinement
+      Then the printed text is the phrase in Russian, with no Korean characters
+
+    @smoke
+    Scenario: English speech stays English with automatic detection
+      Given the service detects the spoken language automatically and the user's languages are Russian and English
+      And a recording file of a short English phrase
+      When the user transcribes the recording file without refinement
+      Then the printed text holds the English words of the phrase, in Latin letters
+
   Rule: Known recognition hallucinations are discarded
 
     @smoke

@@ -692,6 +692,92 @@ fn should_transcribe_corpus_sample_through_real_service() {
     );
 }
 
+/// Answers the requests in turn with `answers` (the last one repeats) and passes each
+/// request on, so a test sees what every attempt asked for.
+fn spawn_answering_stub(
+    answers: Vec<&'static str>,
+) -> (TranscriptionCfg, mpsc::Receiver<CapturedRequest>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        let mut answered = 0usize;
+        for stream in listener.incoming() {
+            let answer = answers[answered.min(answers.len() - 1)];
+            let Some(request) = read_request(&mut stream.unwrap(), &StubReply::ok(answer)) else {
+                continue;
+            };
+            answered += 1;
+            let _ = tx.send(request);
+        }
+    });
+    let cfg = TranscriptionCfg {
+        base_url: format!("http://127.0.0.1:{port}/v1"),
+        ..TranscriptionCfg::default()
+    };
+    (cfg, rx)
+}
+
+const KOREAN_ANSWER: &str = r#"{"text": " 네, 좋아요.", "language": "korean"}"#;
+const RUSSIAN_ANSWER: &str = r#"{"text": " Да, хорошо.", "language": "russian"}"#;
+const ENGLISH_ANSWER: &str = r#"{"text": " Restart the server.", "language": "english"}"#;
+/// Long enough for a second request the transcriber would have sent.
+const NO_MORE_REQUESTS_WITHIN: Duration = Duration::from_millis(300);
+
+fn next_request(requests: &mpsc::Receiver<CapturedRequest>) -> CapturedRequest {
+    requests.recv_timeout(Duration::from_secs(5)).unwrap()
+}
+
+#[test]
+fn should_request_a_transcript_in_another_language_again_with_the_first_user_language() {
+    // Given
+    capturing_logger();
+    let (cfg, requests) = spawn_answering_stub(vec![KOREAN_ANSWER, RUSSIAN_ANSWER]);
+    // When
+    let transcript = transcribe(cfg).unwrap();
+    // Then
+    assert_eq!(transcript.as_deref(), Some("Да, хорошо."));
+    let first = next_request(&requests);
+    assert!(!first.body.contains("name=\"language\""));
+    assert!(first
+        .body
+        .contains("name=\"response_format\"\r\n\r\nverbose_json\r\n"));
+    let retry = next_request(&requests);
+    assert!(retry.body.contains("name=\"language\"\r\n\r\nru\r\n"));
+    assert_eq!(logged_by_this_thread("korean"), 1);
+}
+
+#[test]
+fn should_keep_a_transcript_detected_as_one_of_the_user_languages() {
+    // Given
+    let (cfg, requests) = spawn_answering_stub(vec![ENGLISH_ANSWER, RUSSIAN_ANSWER]);
+    // When
+    let transcript = transcribe(cfg).unwrap();
+    // Then
+    assert_eq!(transcript.as_deref(), Some("Restart the server."));
+    let first = next_request(&requests);
+    assert!(first
+        .body
+        .contains("name=\"response_format\"\r\n\r\nverbose_json\r\n"));
+    assert!(requests.recv_timeout(NO_MORE_REQUESTS_WITHIN).is_err());
+}
+
+#[test]
+fn should_keep_a_transcript_of_a_fixed_language_whatever_the_service_detects() {
+    // Given
+    let (cfg, requests) = spawn_answering_stub(vec![KOREAN_ANSWER, RUSSIAN_ANSWER]);
+    let cfg = TranscriptionCfg {
+        language: "en".into(),
+        ..cfg
+    };
+    // When
+    let transcript = transcribe(cfg).unwrap();
+    // Then
+    assert_eq!(transcript.as_deref(), Some("네, 좋아요."));
+    next_request(&requests);
+    assert!(requests.recv_timeout(NO_MORE_REQUESTS_WITHIN).is_err());
+}
+
 #[test]
 fn should_transcribe_the_same_noisy_recording_to_the_same_text_twice() {
     // Given — gated on a running service and the corpus

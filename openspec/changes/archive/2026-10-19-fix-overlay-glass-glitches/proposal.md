@@ -27,7 +27,7 @@ Manual testing of the liquid glass overlay redesign (v0.24.0) on macOS 26 found 
 Current stage: PoC. Target stage: PoC.
 Scope: the bugs found while testing the liquid glass overlay: the macOS overlay's glass panels (pill and text window: edge drawing, window placement, the pill's size, the glass's transparency, which states show the text window) how the paste step saves and restores the user's clipboard, and the language the speech recognition picks for dictation.
 Acceptance bar: on the user's manual run on macOS 26, no white line on any panel, the live transcript appears under the pill while speaking and does not overlap it, Pasted / refinement / waiting / failure show no text window, the pill keeps one size through every state, the blurred window under the glass shows through it, and a screenshot copied during a recording ended by voice is still in the clipboard after the paste, and Russian speech is never transcribed as Korean; `visualfeedback_macos_it` and the `visual-feedback` scenarios pass.
-Out of scope: clipboard history, the pointer badge (dictation sign), the waveform, colours and tints, the fallback look on macOS before 26 beyond removing the same line.
+Out of scope: clipboard history, the pointer badge (dictation sign), the waveform's look, colours and tints, the fallback look on macOS before 26 beyond removing the same line.
 
 ## Capabilities
 

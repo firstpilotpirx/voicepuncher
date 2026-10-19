@@ -47,6 +47,8 @@ objc2-app-kit = { version = "0.3", features = [
     "NSGraphics",
     "NSImage",
     "NSImageView",
+    "NSPasteboard",
+    "NSPasteboardItem",
     "NSProgressIndicator",
     "NSRunningApplication",
     "NSScreen",

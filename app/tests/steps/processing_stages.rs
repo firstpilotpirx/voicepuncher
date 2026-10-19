@@ -60,9 +60,7 @@ enum Overlay {
 
 type Events = Arc<Mutex<Vec<Event>>>;
 
-/// The transcripts the overlay was handed while it showed text refinement.
-type RefinedTranscripts = Arc<Mutex<Vec<String>>>;
-
+/// Appends an event to the scenario's event log.
 fn record(events: &Events, event: Event) {
     events.lock().unwrap().push(event);
 }
@@ -71,7 +69,6 @@ fn record(events: &Events, event: Event) {
 #[derive(Default)]
 pub struct StagesRun {
     events: Events,
-    refined_transcripts: RefinedTranscripts,
     refinement_off: bool,
     no_speech: bool,
     in_parts: bool,
@@ -133,7 +130,6 @@ impl StagesRun {
             Box::new(Silent),
             Box::new(NotingOverlay {
                 events: Arc::clone(events),
-                refined_transcripts: Arc::clone(&self.refined_transcripts),
             }),
             PipelineConfig {
                 min_press_ms: 0,
@@ -408,15 +404,12 @@ fn pasted_sign_after_paste(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("the text window shows that dictation's raw transcript, dimmed")]
-fn raw_transcript_during_refinement(world: &mut IntegrationWorld) -> Result<()> {
-    let run = run(world);
-    let events = run.wait_until_over()?;
+#[then("the overlay shows the text refinement stage with no text window under it")]
+fn refinement_without_text_window(world: &mut IntegrationWorld) -> Result<()> {
+    let events = run(world).wait_until_over()?;
+    // WHY: the overlay is handed no text with the refinement stage, so it has none to show
+    // under the pill
     position(&events, Event::Overlay(Overlay::RefiningText))?;
-    let handed = run.refined_transcripts.lock().unwrap().clone();
-    if handed != [SENTENCE] {
-        bail!("expected the raw transcript {SENTENCE:?} with text refinement: {handed:?}");
-    }
     Ok(())
 }
 
@@ -536,7 +529,6 @@ impl TextPaster for NotingPaster {
 
 struct NotingOverlay {
     events: Events,
-    refined_transcripts: RefinedTranscripts,
 }
 
 impl VisualIndicator for NotingOverlay {
@@ -549,13 +541,11 @@ impl VisualIndicator for NotingOverlay {
         record(&self.events, Event::Overlay(Overlay::RecognizingSpeech));
     }
 
-    fn show_refining_text(&self, raw: &RawTranscript) {
-        let raw = raw.as_str().to_owned();
-        self.refined_transcripts.lock().unwrap().push(raw);
+    fn show_refining_text(&self) {
         record(&self.events, Event::Overlay(Overlay::RefiningText));
     }
 
-    fn show_pasted(&self, _text: &CleanedText) {
+    fn show_pasted(&self) {
         record(&self.events, Event::Overlay(Overlay::PastedSign));
     }
 

@@ -18,13 +18,13 @@ The overlay's glass panels share one builder (`glass.rs`); the pill and the text
 
 3. **Text window only while recording.** `pill_states` stops showing the text window in every state but `Recording`; the refinement preview is dropped from the overlay (the `preview` field goes), the failure notice's message is logged at `warn` when it shows, and the wait-for-focus explanation goes. The live transcript path is unchanged.
 
-4. **One pill size.** `pill_width` returns one fixed width, that of the recording with its full waveform, for every kind but the standby commands-unavailable pill; content stays centred. A unit test checks that the widest content of every state (the longest label, a command, a failure part beside the commands-unavailable sign) fits that width.
+4. **One pill size.** `pill_width` returns one fixed width, that of the widest recording row (the full waveform, or the shorter waveform beside the commands-unavailable sign) plus padding, for every kind but the standby commands-unavailable pill; content stays centred. A unit test checks that the widest content of every state (the longest label, a command, a failure part beside the commands-unavailable sign) fits that width.
 
 5. **Slower waveform.** `COLUMN_PERIOD` becomes 200 ms; capacity stays 30 columns, so the strip holds 6 s. The rise and fall smoothing is per column and stays.
 
 6. **Clipboard snapshot.** The macOS paster snapshots every item of the general pasteboard with every type's data (`NSPasteboard` through `objc2-app-kit`) right before it writes the text, and after the paste writes the items back, or clears the pasteboard when it was empty. It restores only when the pasteboard's change count is still the one its own write set, so a copy the user makes after the paste is never overwritten. Rejected: arboard's image API — it covers text and images but drops files and other types.
 
-7. **Allowed languages.** `[transcription] languages` (default `["ru", "en"]`) lists the user's languages; requests ask for `verbose_json`. With `language = "auto"`, a transcript whose detected language is not one of them is requested again with the first language fixed, and that transcript is used; the retry is logged. Whisper names languages in full ("russian"), so a small code-to-name table covers the codes the setting accepts; an unknown code fails config loading. Rejected: a fixed `ru` — English terms in Russian speech come out in Cyrillic; a script check on the text — misses a wrong language in the same script.
+7. **Allowed languages.** `[transcription] languages` (default `["ru", "en"]`) lists the user's languages; requests ask for `verbose_json`. With `language = "auto"`, a transcript whose detected language is not one of them is requested again with the first language fixed, and that transcript is used; the retry is logged. Whisper names languages in full ("russian"), so a small code-to-name table covers the codes the setting accepts; an unknown code or an empty list fails config loading. Rejected: a fixed `ru` — English terms in Russian speech come out in Cyrillic; a script check on the text — misses a wrong language in the same script.
 
 ## Test levels
 
@@ -57,7 +57,7 @@ The overlay's glass panels share one builder (`glass.rs`); the pill and the text
 | text-insertion: Copied text survives the paste | adapter integration (`textpasting_macos_it`) |
 | text-insertion: An empty clipboard stays empty | adapter integration (`textpasting_macos_it`) |
 | speech-recognition: Automatic language detection | E2E (unchanged) |
-| speech-recognition: Fixed language | E2E (unchanged) |
+| speech-recognition: Fixed language | adapter integration (`transcription_openai_it`: `language=en` sent, no retry whatever the service detects) |
 | speech-recognition: Short Russian speech is never transcribed as Korean | adapter integration (`transcription_openai_it`, stub service) + E2E (`speech_recognition.feature`) |
 | speech-recognition: English speech stays English with automatic detection | adapter integration (`transcription_openai_it`, stub service) + E2E (`speech_recognition.feature`) |
 

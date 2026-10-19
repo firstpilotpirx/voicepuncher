@@ -3,20 +3,20 @@
 //! (`harness = false`) answers cargo-nextest's listing and runs each test on the main thread.
 
 use std::sync::atomic::AtomicU32;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use objc2::MainThreadMarker;
 use objc2_app_kit::NSApplication;
 use objc2_foundation::NSPoint;
 use voicepuncher::adapters::secondary::visualfeedback::macos::{
-    MacosPointerSign, MacosVisualIndicator,
+    GlassFinish, MacosPointerSign, MacosVisualIndicator,
 };
 use voicepuncher::adapters::secondary::visualfeedback::pointer_sign::{
     DictationSignState, PointerSignView,
 };
 use voicepuncher::core::application::VisualIndicator;
-use voicepuncher::core::domain::{CleanedText, FailingPart, FailureNotice, RawTranscript};
+use voicepuncher::core::domain::{FailingPart, FailureNotice};
 
 type Test = (&'static str, fn());
 
@@ -46,6 +46,22 @@ const TESTS: &[Test] = &[
         should_raise_waveform_columns_for_a_loud_level,
     ),
     (
+        "should_draw_clear_glass_without_a_top_line",
+        should_draw_clear_glass_without_a_top_line,
+    ),
+    (
+        "should_hang_the_live_transcript_below_the_pill",
+        should_hang_the_live_transcript_below_the_pill,
+    ),
+    (
+        "should_pulse_the_record_dot_in_silence",
+        should_pulse_the_record_dot_in_silence,
+    ),
+    (
+        "should_keep_the_pill_size_from_the_recording_to_pasted",
+        should_keep_the_pill_size_from_the_recording_to_pasted,
+    ),
+    (
         "should_show_the_record_sign_and_waveform_without_a_label",
         should_show_the_record_sign_and_waveform_without_a_label,
     ),
@@ -54,12 +70,16 @@ const TESTS: &[Test] = &[
         should_show_each_processing_stage_with_its_icon_and_label,
     ),
     (
-        "should_show_the_dimmed_raw_transcript_while_refining",
-        should_show_the_dimmed_raw_transcript_while_refining,
+        "should_show_no_text_window_while_refining",
+        should_show_no_text_window_while_refining,
     ),
     (
-        "should_explain_the_wait_for_focus_in_the_text_window",
-        should_explain_the_wait_for_focus_in_the_text_window,
+        "should_show_the_wait_for_focus_without_a_text_window",
+        should_show_the_wait_for_focus_without_a_text_window,
+    ),
+    (
+        "should_take_the_text_window_away_when_the_recording_ends",
+        should_take_the_text_window_away_when_the_recording_ends,
     ),
     (
         "should_show_the_pasted_sign_and_hide_after_half_a_second",
@@ -82,8 +102,12 @@ const TESTS: &[Test] = &[
         show_recognizing_speech_rebuilds_unconditionally,
     ),
     (
-        "should_show_the_notice_sign_and_message_without_activating",
-        should_show_the_notice_sign_and_message_without_activating,
+        "should_show_the_notice_sign_without_a_text_window_or_activating",
+        should_show_the_notice_sign_without_a_text_window_or_activating,
+    ),
+    (
+        "should_log_the_notice_message_as_a_warning",
+        should_log_the_notice_message_as_a_warning,
     ),
     (
         "should_hide_the_notice_after_its_time",
@@ -212,7 +236,7 @@ fn should_raise_waveform_columns_for_a_loud_level() {
     let level_register = Arc::new(AtomicU32::new(0.5f32.to_bits()));
     let indicator = MacosVisualIndicator::initialize(main_thread(), Arc::clone(&level_register));
 
-    // When — a few column periods of 100 ms pass
+    // When — a few column periods of 200 ms pass
     indicator.show_recording();
     pump_run_loop(0.4);
 
@@ -224,6 +248,122 @@ fn should_raise_waveform_columns_for_a_loud_level() {
     );
     indicator.hide();
     pump_run_loop(DRAWN_SECS);
+}
+
+fn should_draw_clear_glass_without_a_top_line() {
+    let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
+    overlay.show_recording();
+    pump_run_loop(DRAWN_SECS);
+    let finishes = overlay.first_glass_finishes();
+    assert_eq!(finishes.len(), 2, "no pill and text window glass");
+    finishes
+        .iter()
+        .for_each(assert_clear_glass_without_a_top_line);
+    overlay.hide();
+    pump_run_loop(DRAWN_SECS);
+}
+
+/// On macOS 26 and later the system glass is clear and carries no rim of ours; the fallback
+/// material keeps its rim.
+fn assert_clear_glass_without_a_top_line(finish: &GlassFinish) {
+    assert!(
+        !finish.top_highlight,
+        "a top line over the glass: {finish:?}"
+    );
+    match finish.clear_system_glass {
+        Some(clear) => {
+            assert!(clear, "the system glass is not clear: {finish:?}");
+            assert!(!finish.own_rim, "our rim over the system glass: {finish:?}");
+        }
+        None => assert!(
+            finish.own_rim,
+            "the fallback glass lost its rim: {finish:?}"
+        ),
+    }
+}
+
+/// The pill and the text window are both drawn, and the text window rose in.
+const RISEN_SECS: f64 = 0.8;
+
+const LIVE_TRANSCRIPT: &str = "we moved the meeting to Friday";
+
+fn should_hang_the_live_transcript_below_the_pill() {
+    // Given
+    let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
+    overlay.show_recording();
+    pump_run_loop(DRAWN_SECS);
+    // When
+    overlay
+        .live_transcript_view()
+        .show_live_transcript(LIVE_TRANSCRIPT);
+    pump_run_loop(RISEN_SECS);
+    // Then
+    assert_eq!(
+        overlay.first_text_window_value().as_deref(),
+        Some(LIVE_TRANSCRIPT),
+        "the text window does not hold the full live transcript"
+    );
+    let pill = overlay.first_pill_glass_frame().expect("no pill shows");
+    let text = overlay
+        .first_text_window_glass_frame()
+        .expect("no text window shows");
+    eprintln!("pill glass {pill:?}, text window glass {text:?}");
+    let text_top = text.origin.y + text.size.height;
+    assert!(
+        text_top < pill.origin.y,
+        "the text window (top {text_top}) reaches into the pill (bottom {})",
+        pill.origin.y
+    );
+    overlay.hide();
+    pump_run_loop(DRAWN_SECS);
+}
+
+fn should_pulse_the_record_dot_in_silence() {
+    // Given — the level register holds silence
+    let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
+    // When
+    overlay.show_recording();
+    pump_run_loop(DRAWN_SECS);
+    // Then
+    assert!(overlay.first_shows_motion(), "the record dot is still");
+    overlay.hide();
+    pump_run_loop(DRAWN_SECS);
+}
+
+fn should_keep_the_pill_size_from_the_recording_to_pasted() {
+    // Given
+    let level_register = Arc::new(AtomicU32::new(0));
+    let overlay = MacosVisualIndicator::initialize_with_notice_duration(
+        main_thread(),
+        Arc::clone(&level_register),
+        SHORT_NOTICE,
+    );
+    overlay.show_recording();
+    pump_run_loop(DRAWN_SECS);
+    let start = pill_size(&overlay, "at the start of the recording");
+    // When — the recording hears speech, then the processing stages and Pasted follow
+    level_register.store(0.5f32.to_bits(), std::sync::atomic::Ordering::Relaxed);
+    pump_run_loop(0.4);
+    let speaking = pill_size(&overlay, "while recording with levels");
+    overlay.show_recognizing_speech();
+    pump_run_loop(DRAWN_SECS);
+    let recognizing = pill_size(&overlay, "while recognizing");
+    overlay.show_pasted();
+    pump_run_loop(DRAWN_SECS);
+    let pasted = pill_size(&overlay, "with Pasted");
+    // Then
+    assert_eq!(speaking, start, "the pill resized while recording");
+    assert_eq!(recognizing, start, "the pill resized for recognizing");
+    assert_eq!(pasted, start, "the pill resized for Pasted");
+    pump_run_loop(PASTED_GONE_SECS);
+}
+
+/// The width and height of the pill's glass on the first screen.
+fn pill_size(overlay: &MacosVisualIndicator, moment: &str) -> (f64, f64) {
+    let frame = overlay
+        .first_pill_glass_frame()
+        .unwrap_or_else(|| panic!("no pill shows {moment}"));
+    (frame.size.width, frame.size.height)
 }
 
 fn should_show_the_record_sign_and_waveform_without_a_label() {
@@ -249,7 +389,7 @@ fn should_show_each_processing_stage_with_its_icon_and_label() {
     assert_eq!(overlay.first_icon_symbol().as_deref(), Some("ear"));
     assert_eq!(overlay.first_label_value().as_deref(), Some("Recognizing"));
     assert_eq!(overlay.first_text_window_value(), None);
-    overlay.show_refining_text(&raw("we moved the meeting"));
+    overlay.show_refining_text();
     pump_run_loop(DRAWN_SECS);
     assert_eq!(overlay.first_icon_symbol().as_deref(), Some("sparkles"));
     assert_eq!(
@@ -260,19 +400,20 @@ fn should_show_each_processing_stage_with_its_icon_and_label() {
     pump_run_loop(DRAWN_SECS);
 }
 
-fn should_show_the_dimmed_raw_transcript_while_refining() {
+fn should_show_no_text_window_while_refining() {
     let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
-    overlay.show_refining_text(&raw("we moved the meeting"));
+    overlay.show_refining_text();
     pump_run_loop(DRAWN_SECS);
     assert_eq!(
-        overlay.first_text_window_value().as_deref(),
-        Some("we moved the meeting")
+        overlay.first_label_value().as_deref(),
+        Some("Refining text")
     );
+    assert_eq!(overlay.first_text_window_value(), None);
     overlay.hide();
     pump_run_loop(DRAWN_SECS);
 }
 
-fn should_explain_the_wait_for_focus_in_the_text_window() {
+fn should_show_the_wait_for_focus_without_a_text_window() {
     let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
     overlay.show_waiting_for_focus();
     pump_run_loop(DRAWN_SECS);
@@ -281,10 +422,7 @@ fn should_explain_the_wait_for_focus_in_the_text_window() {
         overlay.first_label_value().as_deref(),
         Some("Click a text field")
     );
-    assert_eq!(
-        overlay.first_text_window_value().as_deref(),
-        Some("Text is ready and pastes once a text field has focus")
-    );
+    assert_eq!(overlay.first_text_window_value(), None);
     overlay.hide();
     pump_run_loop(DRAWN_SECS);
 }
@@ -296,16 +434,13 @@ fn should_show_the_pasted_sign_and_hide_after_half_a_second() {
     // Given
     let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
     // When
-    overlay.show_pasted(&cleaned("we moved the meeting"));
+    overlay.show_pasted();
     pump_run_loop(DRAWN_SECS);
     // Then
     assert!(overlay.is_pill_visible(), "the Pasted sign is not shown");
     assert_eq!(overlay.first_icon_symbol().as_deref(), Some("checkmark"));
     assert_eq!(overlay.first_label_value().as_deref(), Some("Pasted"));
-    assert_eq!(
-        overlay.first_text_window_value().as_deref(),
-        Some("we moved the meeting")
-    );
+    assert_eq!(overlay.first_text_window_value(), None);
     pump_run_loop(PASTED_GONE_SECS);
     assert!(!overlay.is_pill_visible(), "the Pasted sign did not hide");
     assert_eq!(overlay.first_text_window_value(), None);
@@ -314,7 +449,7 @@ fn should_show_the_pasted_sign_and_hide_after_half_a_second() {
 fn should_replace_the_pasted_sign_with_a_later_signal() {
     // Given
     let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
-    overlay.show_pasted(&cleaned("we moved the meeting"));
+    overlay.show_pasted();
     pump_run_loop(DRAWN_SECS);
     // When
     overlay.show_recording();
@@ -329,12 +464,31 @@ fn should_replace_the_pasted_sign_with_a_later_signal() {
     pump_run_loop(DRAWN_SECS);
 }
 
-fn raw(text: &str) -> RawTranscript {
-    RawTranscript::new(text.to_owned()).expect("a transcript with words")
-}
-
-fn cleaned(text: &str) -> CleanedText {
-    CleanedText::new(text.to_owned()).expect("a text with words")
+fn should_take_the_text_window_away_when_the_recording_ends() {
+    // Given
+    let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
+    overlay.show_recording();
+    pump_run_loop(DRAWN_SECS);
+    overlay
+        .live_transcript_view()
+        .show_live_transcript("we moved the meeting");
+    pump_run_loop(DRAWN_SECS);
+    assert!(
+        overlay.first_text_window_value().is_some(),
+        "no live transcript"
+    );
+    // When
+    overlay.show_recognizing_speech();
+    pump_run_loop(DRAWN_SECS);
+    // Then
+    assert_eq!(overlay.first_text_window_value(), None, "while recognizing");
+    overlay.show_refining_text();
+    pump_run_loop(DRAWN_SECS);
+    assert_eq!(overlay.first_text_window_value(), None, "while refining");
+    overlay.show_pasted();
+    pump_run_loop(DRAWN_SECS);
+    assert_eq!(overlay.first_text_window_value(), None, "with Pasted");
+    pump_run_loop(PASTED_GONE_SECS);
 }
 
 fn show_recording_survives_manual_rebuild() {
@@ -410,7 +564,7 @@ fn overlay_with_notice_lasting(duration: Duration) -> MacosVisualIndicator {
     )
 }
 
-fn should_show_the_notice_sign_and_message_without_activating() {
+fn should_show_the_notice_sign_without_a_text_window_or_activating() {
     // Given
     let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
     // When
@@ -426,12 +580,52 @@ fn should_show_the_notice_sign_and_message_without_activating() {
         overlay.first_label_value().as_deref(),
         Some(NOTICE.part_name())
     );
-    assert_eq!(overlay.first_text_window_value(), Some(NOTICE.message()));
+    assert_eq!(overlay.first_text_window_value(), None);
     assert!(
         !overlay.has_key_window(),
         "no overlay window takes the focus"
     );
     assert!(!NSApplication::sharedApplication(main_thread()).isActive());
+}
+
+/// Keeps every warning logged in this test process.
+struct WarningLog(Mutex<Vec<String>>);
+
+impl log::Log for WarningLog {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        metadata.level() <= log::Level::Warn
+    }
+
+    fn log(&self, record: &log::Record) {
+        if self.enabled(record.metadata()) {
+            self.0.lock().unwrap().push(record.args().to_string());
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+static WARNINGS: WarningLog = WarningLog(Mutex::new(Vec::new()));
+
+fn should_log_the_notice_message_as_a_warning() {
+    // Given
+    log::set_logger(&WARNINGS).expect("one logger per test process");
+    log::set_max_level(log::LevelFilter::Warn);
+    let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
+    // When
+    overlay.show_failure_notice(&NOTICE);
+    pump_run_loop(DRAWN_SECS);
+    // Then
+    let warnings = WARNINGS.0.lock().unwrap().clone();
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains(&NOTICE.message())),
+        "the notice message {:?} is not logged: {warnings:?}",
+        NOTICE.message()
+    );
+    overlay.hide();
+    pump_run_loop(DRAWN_SECS);
 }
 
 fn should_hide_the_notice_after_its_time() {
@@ -464,7 +658,10 @@ fn should_restart_the_time_of_a_notice_shown_again() {
         overlay.is_pill_visible(),
         "the first notice's time no longer counts"
     );
-    assert_eq!(overlay.first_text_window_value(), Some(NOTICE.message()));
+    assert_eq!(
+        overlay.first_label_value().as_deref(),
+        Some(NOTICE.part_name())
+    );
     pump_run_loop(most_of_the_time);
     assert!(
         !overlay.is_pill_visible(),

@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use crate::core::application::live_transcript_view::LiveTranscriptView;
 use crate::core::application::VisualIndicator;
-use crate::core::domain::{CleanedText, FailureNotice, RawTranscript, VoiceCommand};
+use crate::core::domain::{FailureNotice, VoiceCommand};
 
 /// What the dictation sign shows: the stage of the dictation the overlay shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -130,9 +130,9 @@ impl<V: VisualIndicator, S: PointerSignView> VisualIndicator for PointerSignIndi
         self.overlay.show_recognizing_speech();
     }
 
-    fn show_refining_text(&self, raw: &RawTranscript) {
+    fn show_refining_text(&self) {
         self.show_badge(DictationSignState::RefiningText);
-        self.overlay.show_refining_text(raw);
+        self.overlay.show_refining_text();
     }
 
     fn show_waiting_for_focus(&self) {
@@ -145,9 +145,9 @@ impl<V: VisualIndicator, S: PointerSignView> VisualIndicator for PointerSignIndi
         self.overlay.hide();
     }
 
-    fn show_pasted(&self, text: &CleanedText) {
+    fn show_pasted(&self) {
         self.show_badge_for(DictationSignState::Pasted, self.lifetimes.pasted);
-        self.overlay.show_pasted(text);
+        self.overlay.show_pasted();
     }
 
     fn show_failure_notice(&self, notice: &FailureNotice) {
@@ -229,14 +229,6 @@ mod tests {
         PointerSignIndicator::with_lifetimes(quiet_overlay(), sign.clone(), lifetimes)
     }
 
-    fn text() -> CleanedText {
-        CleanedText::new("Meeting moved to Friday.".to_owned()).unwrap()
-    }
-
-    fn raw() -> RawTranscript {
-        RawTranscript::new("meeting moved to friday".to_owned()).unwrap()
-    }
-
     #[test]
     fn should_show_the_badge_of_each_stage_of_a_dictation() {
         // Given
@@ -245,9 +237,9 @@ mod tests {
         // When
         indicator.show_recording();
         indicator.show_recognizing_speech();
-        indicator.show_refining_text(&raw());
+        indicator.show_refining_text();
         indicator.show_waiting_for_focus();
-        indicator.show_pasted(&text());
+        indicator.show_pasted();
         // Then
         let expected = [
             DictationSignState::Recording,
@@ -272,7 +264,7 @@ mod tests {
     fn should_hide_the_pasted_badge_after_its_lifetime() {
         let sign = Sign::default();
         let indicator = indicator(&sign);
-        indicator.show_pasted(&text());
+        indicator.show_pasted();
         std::thread::sleep(AFTER_LIFETIME);
         let expected = [SignCall::Show(DictationSignState::Pasted), SignCall::Hide];
         assert_eq!(sign.calls(), expected);
@@ -293,7 +285,7 @@ mod tests {
         // Given
         let sign = Sign::default();
         let indicator = indicator(&sign);
-        indicator.show_pasted(&text());
+        indicator.show_pasted();
         // When
         indicator.show_recording();
         std::thread::sleep(AFTER_LIFETIME);

@@ -7,7 +7,6 @@ use super::main_queue::dispatch_to_main_after;
 use super::pill_content::{glass_tint, state_sign, PillKind};
 use super::pill_states::apply_hidden_state;
 use super::pill_view::PillLook;
-use super::transcript_window::TextEmphasis;
 use super::window_set::WindowSet;
 use super::OverlayState;
 
@@ -43,8 +42,8 @@ pub(super) fn show_notice(
     });
 }
 
-/// Amber glass with the warning triangle and the failing part's short name, steady; the
-/// message in the window under it.
+/// Amber glass with the warning triangle and the failing part's short name, steady, with no
+/// text window; the message goes to the log.
 fn apply_failure_notice(windows: &[Arc<WindowSet>], notice: &FailureNotice) {
     let state = OverlayState::FailureNotice(*notice);
     let look = PillLook {
@@ -52,9 +51,9 @@ fn apply_failure_notice(windows: &[Arc<WindowSet>], notice: &FailureNotice) {
         sign: state_sign(state),
         breathes: false,
     };
-    let message = notice.message();
+    log::warn!("overlay: failure notice: {}", notice.message());
     for ws in windows {
         ws.draw(look, glass_tint(state), false, 0);
-        ws.transcript.show_text(&message, TextEmphasis::Full);
+        ws.transcript.hide();
     }
 }

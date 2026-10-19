@@ -20,10 +20,16 @@ final-status-level = "slow"
 # The tests that load the command spotting models run one at a time: ONNX Runtime aborts when models
 # load or run on several threads, and the shared services must not see more load than before
 command-spotting-models = { max-threads = 1 }
+# The tests that write the real general pasteboard run one at a time: they share that one pasteboard
+pasteboard = { max-threads = 1 }
 
 [[profile.default.overrides]]
 filter = 'binary(engine_it) | binary(placed_commands_it)'
 test-group = "command-spotting-models"
+
+[[profile.default.overrides]]
+filter = 'binary(textpasting_macos_it)'
+test-group = "pasteboard"
 
 # The tests that drive the real command spotting service run one at a time too, so one confirmation
 # service never gets the utterances of several test processes at once

@@ -8,7 +8,8 @@ use crate::core::domain::AudioBuffer16k;
 pub const MULTIPART_BOUNDARY: &str = "voicepuncher-7d1f3a9c5e2b";
 const WAV_FILENAME: &str = "audio.wav";
 const WAV_CONTENT_TYPE: &str = "audio/wav";
-const RESPONSE_FORMAT: &str = "json";
+/// Names the language the service detected next to the text.
+const RESPONSE_FORMAT: &str = "verbose_json";
 const BITS_PER_SAMPLE: u16 = 16;
 const MONO: u16 = 1;
 /// The largest text context whisper-server gives a request, in tokens (half the model's).
@@ -122,7 +123,7 @@ mod tests {
         // Then
         assert!(body.contains("name=\"model\"\r\n\r\nwhisper-1\r\n"));
         assert!(body.contains("name=\"temperature\"\r\n\r\n0\r\n"));
-        assert!(body.contains("name=\"response_format\"\r\n\r\njson\r\n"));
+        assert!(body.contains("name=\"response_format\"\r\n\r\nverbose_json\r\n"));
         assert!(body.contains(
             "name=\"file\"; filename=\"audio.wav\"\r\nContent-Type: audio/wav\r\n\r\nRIFF\r\n"
         ));

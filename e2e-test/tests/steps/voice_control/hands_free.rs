@@ -366,9 +366,9 @@ struct SignOverlay(Events);
 impl VisualIndicator for SignOverlay {
     fn show_recording(&self) {}
     fn show_recognizing_speech(&self) {}
-    fn show_refining_text(&self, _raw: &RawTranscript) {}
+    fn show_refining_text(&self) {}
     fn show_waiting_for_focus(&self) {}
-    fn show_pasted(&self, _text: &CleanedText) {}
+    fn show_pasted(&self) {}
     fn hide(&self) {}
     fn show_failure_notice(&self, _notice: &FailureNotice) {}
     fn show_commands_unavailable(&self) {

@@ -1,8 +1,10 @@
 //! What the overlay pill shows in each state, as plain data: the SF Symbol, the English label,
 //! the colours, and the items left to right. AppKit drawing lives elsewhere.
 
+use crate::core::domain::level_history::{CAPACITY_BESIDE_SIGN, FULL_CAPACITY};
 use crate::core::domain::VoiceCommand;
 
+use super::waveform::waveform_width;
 use super::OverlayState;
 
 /// The colour an icon of the pill is drawn in.
@@ -166,9 +168,12 @@ pub(super) fn pill_items(kind: PillKind, commands_unavailable: bool) -> Vec<Pill
     items
 }
 
+pub(super) const RECORD_RING_SIZE: f64 = 26.0;
+pub(super) const ICON_BOX: f64 = 24.0;
+pub(super) const SPINNER_SIZE: f64 = 20.0;
+pub(super) const SEPARATOR_WIDTH: f64 = 1.0;
 const PILL_PADDING: f64 = 22.0;
 const COMPACT_PILL_PADDING: f64 = 16.0;
-const PILL_MIN_WIDTH: f64 = 200.0;
 const ITEM_GAP: f64 = 14.0;
 const COMMAND_ITEM_GAP: f64 = 10.0;
 
@@ -188,14 +193,27 @@ pub(super) fn pill_padding(kind: PillKind) -> f64 {
     }
 }
 
-/// The width of a pill around `row_width` of items: the row and its padding, at least the
-/// minimum width unless the commands-unavailable sign stands alone.
+/// The width of a pill around `row_width` of items: one width for every kind, whatever its
+/// row, but the commands-unavailable sign standing alone, which hugs its row.
 pub(super) fn pill_width(kind: PillKind, row_width: f64) -> f64 {
-    let hugging = row_width + 2.0 * pill_padding(kind);
     match kind {
-        PillKind::UnavailableAlone => hugging,
-        _ => hugging.max(PILL_MIN_WIDTH),
+        PillKind::UnavailableAlone => row_width + 2.0 * pill_padding(kind),
+        _ => one_pill_width(),
     }
+}
+
+/// The width of the widest recording, the widest row there is: the record sign and the
+/// waveform, full or shortened beside the commands-unavailable sign.
+fn one_pill_width() -> f64 {
+    let full_waveform = [RECORD_RING_SIZE, waveform_width(FULL_CAPACITY)];
+    let beside_sign = [
+        RECORD_RING_SIZE,
+        waveform_width(CAPACITY_BESIDE_SIGN),
+        SEPARATOR_WIDTH,
+        ICON_BOX,
+    ];
+    let widest_row = row_width(&full_waveform, ITEM_GAP).max(row_width(&beside_sign, ITEM_GAP));
+    widest_row + 2.0 * PILL_PADDING
 }
 
 /// Width of a row of `item_widths` set `gap` apart.
@@ -208,6 +226,16 @@ pub(super) fn row_width(item_widths: &[f64], gap: f64) -> f64 {
 mod tests {
     use super::*;
     use crate::core::domain::{FailingPart, FailureNotice};
+
+    /// Widths of the longest labels, as a label sized to fit them at the pill's font measures
+    /// on macOS.
+    const RECOGNIZING_LABEL: f64 = 86.0;
+    const REFINING_TEXT_LABEL: f64 = 89.0;
+    const CLICK_A_TEXT_FIELD_LABEL: f64 = 112.5;
+    const ACCESS_LABEL: f64 = 59.0;
+    const RESTART_LABEL: f64 = 53.0;
+    /// Any row at all: the pill keeps one width whatever it holds.
+    const ANY_ROW: f64 = 0.0;
 
     fn look(symbol: &'static str, label: &'static str, tint: IconTint) -> SignLook {
         SignLook {
@@ -396,16 +424,6 @@ mod tests {
     }
 
     #[test]
-    fn should_hug_a_wide_row_with_padding() {
-        assert_eq!(pill_width(PillKind::Recording, 216.5), 260.5);
-    }
-
-    #[test]
-    fn should_keep_a_narrow_pill_at_its_minimum_width() {
-        assert_eq!(pill_width(PillKind::Sign, 100.0), 200.0);
-    }
-
-    #[test]
     fn should_keep_the_lone_commands_unavailable_pill_compact() {
         assert_eq!(pill_width(PillKind::UnavailableAlone, 60.0), 92.0);
     }
@@ -417,5 +435,85 @@ mod tests {
             216.5
         );
         assert_eq!(row_width(&[24.0, 40.0], item_gap(PillKind::Command)), 74.0);
+    }
+
+    fn row_of(kind: PillKind, item_widths: &[f64]) -> f64 {
+        row_width(item_widths, item_gap(kind))
+    }
+
+    fn row_beside_unavailable_sign(kind: PillKind, item_widths: &[f64]) -> f64 {
+        let mut widths = item_widths.to_vec();
+        widths.extend([SEPARATOR_WIDTH, ICON_BOX]);
+        row_of(kind, &widths)
+    }
+
+    /// The widest row of every state the pill shows, with the commands-unavailable sign beside
+    /// it when it has room for one.
+    fn widest_rows() -> Vec<(PillKind, f64)> {
+        let full_waveform = [RECORD_RING_SIZE, waveform_width(FULL_CAPACITY)];
+        let short_waveform = [RECORD_RING_SIZE, waveform_width(CAPACITY_BESIDE_SIGN)];
+        let recognizing = [ICON_BOX, RECOGNIZING_LABEL, SPINNER_SIZE];
+        let refining = [ICON_BOX, REFINING_TEXT_LABEL, SPINNER_SIZE];
+        let waiting = [ICON_BOX, CLICK_A_TEXT_FIELD_LABEL];
+        let failure = [ICON_BOX, ACCESS_LABEL];
+        let command = [ICON_BOX, RESTART_LABEL];
+        vec![
+            (
+                PillKind::Recording,
+                row_of(PillKind::Recording, &full_waveform),
+            ),
+            (
+                PillKind::Recording,
+                row_beside_unavailable_sign(PillKind::Recording, &short_waveform),
+            ),
+            (
+                PillKind::Processing,
+                row_beside_unavailable_sign(PillKind::Processing, &recognizing),
+            ),
+            (
+                PillKind::Processing,
+                row_beside_unavailable_sign(PillKind::Processing, &refining),
+            ),
+            (
+                PillKind::Sign,
+                row_beside_unavailable_sign(PillKind::Sign, &waiting),
+            ),
+            (
+                PillKind::Sign,
+                row_beside_unavailable_sign(PillKind::Sign, &failure),
+            ),
+            (
+                PillKind::Command,
+                row_beside_unavailable_sign(PillKind::Command, &command),
+            ),
+        ]
+    }
+
+    #[test]
+    fn should_give_every_pill_but_the_lone_commands_unavailable_sign_one_width() {
+        let one_width = pill_width(PillKind::Recording, ANY_ROW);
+        let kinds = [
+            PillKind::Recording,
+            PillKind::Processing,
+            PillKind::Sign,
+            PillKind::Command,
+        ];
+        for kind in kinds {
+            for (_, row) in widest_rows() {
+                assert_eq!(pill_width(kind, row), one_width, "{kind:?} around {row}");
+            }
+        }
+    }
+
+    #[test]
+    fn should_fit_the_widest_content_of_every_state_in_the_one_pill_width() {
+        for (kind, row) in widest_rows() {
+            let width = pill_width(kind, ANY_ROW);
+            let needed = row + 2.0 * pill_padding(kind);
+            assert!(
+                needed <= width,
+                "{kind:?} needs {needed}, the pill is {width}"
+            );
+        }
     }
 }

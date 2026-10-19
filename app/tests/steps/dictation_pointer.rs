@@ -512,11 +512,11 @@ impl VisualIndicator for NotingOverlay {
         record(&self.0, Event::Overlay(Overlay::RecognizingSpeech));
     }
 
-    fn show_refining_text(&self, _raw: &RawTranscript) {
+    fn show_refining_text(&self) {
         record(&self.0, Event::Overlay(Overlay::RefiningText));
     }
 
-    fn show_pasted(&self, _text: &CleanedText) {
+    fn show_pasted(&self) {
         record(&self.0, Event::Overlay(Overlay::PastedSign));
     }
 
