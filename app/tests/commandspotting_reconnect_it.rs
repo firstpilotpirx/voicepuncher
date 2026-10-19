@@ -18,6 +18,11 @@ use voicepuncher::core::domain::{SpottingEvent, VoiceCommand};
 const MIC_RATE_HZ: u32 = 48_000;
 const MIC_BUFFER_SECS: f32 = 0.1;
 const READ_WAIT: Duration = Duration::from_millis(10);
+/// How long the stub takes to record a phrase selection: it stays, so a test that reads the
+/// record right after an app event, without waiting for it, fails every run.
+const RECORD_LAG: Duration = Duration::from_millis(50);
+/// The stub has recorded what the app sent before an app event well within this.
+const RECORD_WITHIN: Duration = Duration::from_secs(2);
 /// How long the first connection lives before the stub closes it.
 const FIRST_CONNECTION: Duration = Duration::from_millis(500);
 /// The loss is noticed and the service reached again well within this.
@@ -135,9 +140,12 @@ fn record_next(
     connections: &Mutex<Vec<Received>>,
 ) -> bool {
     match socket.read() {
-        Ok(Message::Text(text)) => connections.lock().unwrap()[index]
-            .selections
-            .push(text.to_string()),
+        Ok(Message::Text(text)) => {
+            std::thread::sleep(RECORD_LAG);
+            connections.lock().unwrap()[index]
+                .selections
+                .push(text.to_string())
+        }
         Ok(Message::Binary(bytes)) => connections.lock().unwrap()[index].samples.extend(
             bytes
                 .chunks_exact(4)
@@ -239,6 +247,10 @@ fn should_reach_for_the_service_again_after_it_closes_the_connection() {
     );
     // Then
     assert!(lost && back, "lost: {lost}, back: {back}");
+    wait_for_record(&connections, |all| {
+        all.get(1)
+            .is_some_and(|c| c.selections.iter().any(|s| s.contains("press enter")))
+    });
     let selections = &connections.lock().unwrap()[1].selections;
     assert!(
         selections.iter().any(|s| s.contains("press enter")),
@@ -388,15 +400,11 @@ fn should_send_the_service_that_is_back_the_speech_heard_while_it_was_away() {
     let speech_start = next_speech_start(&audio, &inputs);
     // Then the speech reached the new connection, its events placed where it was said
     assert!(lost && back, "lost: {lost}, back: {back}");
-    let all = connections.lock().unwrap();
-    let marked = all
-        .last()
-        .unwrap()
-        .samples
-        .iter()
-        .filter(|s| (**s - MARK).abs() < 0.1)
-        .count();
     let outage_samples = ((SHORT_OUTAGE.as_secs_f32() - 1.0) * SAMPLE_RATE_HZ) as usize;
+    wait_for_record(&connections, |all| {
+        all.last().is_some_and(|c| marked(c) > outage_samples)
+    });
+    let marked = marked(connections.lock().unwrap().last().unwrap());
     assert!(
         marked > outage_samples,
         "the speech heard while away was not sent: {marked} samples"
@@ -408,6 +416,24 @@ fn should_send_the_service_that_is_back_the_speech_heard_while_it_was_away() {
         at.saturating_duration_since(audio_start)
     );
     stream.stop();
+}
+
+/// How many samples of the speech said during the outage `connection` received.
+fn marked(connection: &Received) -> usize {
+    connection
+        .samples
+        .iter()
+        .filter(|s| (**s - MARK).abs() < 0.1)
+        .count()
+}
+
+/// Waits, at most `RECORD_WITHIN`, until what the stub connections received holds `holds`:
+/// the stub records on its own thread, so it may lag behind the app event a test saw.
+fn wait_for_record(connections: &Mutex<Vec<Received>>, holds: impl Fn(&[Received]) -> bool) {
+    let deadline = Instant::now() + RECORD_WITHIN;
+    while Instant::now() < deadline && !holds(&connections.lock().unwrap()) {
+        std::thread::sleep(READ_WAIT);
+    }
 }
 
 /// The time of the next speech start the app is told of, feeding silence meanwhile.
