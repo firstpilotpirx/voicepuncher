@@ -1,0 +1,4 @@
+autonomy: review
+depends_on:
+  - change: fix-spotting-lost-at-check-start
+    why: the check's e2e-smoke fails on the false command spotting loss it fixes, so this change cannot pass its check before it lands
