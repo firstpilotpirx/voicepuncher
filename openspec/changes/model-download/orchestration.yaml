@@ -1,0 +1,7 @@
+depends_on:
+  - change: permissions-gate-window
+    why: the launch flow places the models check after the permissions gate; the window technique and runtime waiting states
+  - change: local-services-runtime
+    why: the services start when the last file is present; the models folder and copy counts live in its [services] section
+  - change: settings-window
+    why: the Services tab is added to its window and field model
