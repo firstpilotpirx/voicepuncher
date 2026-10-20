@@ -14,7 +14,13 @@
 
 **D4 — Header and panic hook in `main`.** They belong to the process, not to an adapter; the panic hook chains to the default hook so the terminal still shows the panic in development.
 
-**D5 — One folder function for everybody.** `logs_dir()` next to the config path resolution; the menu item and the service runtime use it, so there is one place to change if the folder ever moves to `~/Library/Logs`.
+**D5 — One folder function for everybody.** `logs_dir()` lives in the library crate beside the writer (`adapters/secondary/logging/file/`), not in `main.rs`, so `menu-bar-presence` and `local-services-runtime` import it; one place to change if the folder ever moves to `~/Library/Logs`.
+
+**D6 — macOS version from `NSProcessInfo`.** `objc2-foundation` is already a dependency; its `NSProcessInfo` feature is turned on (a `Cargo.toml` line). No process spawn at start.
+
+## Contract for other changes
+
+The rotating writer implements `std::io::Write`, is `Send`, and survives rotation while open: `local-services-runtime` may hand one to a thread that pumps a child's stdout and stderr into it (a `Write` is not a `Stdio`; that pump is its own work). `logs_dir()` creates nothing; the caller creates the folder.
 
 ## Risks / Trade-offs
 
@@ -26,9 +32,14 @@
 
 | Scenario | Level |
 |---|---|
-| Rotation at the limit, shifting `.1`…`.5`, oldest deleted, continuing, reopen keeps size | unit tests in `logging/file/mod.rs` |
-| The log file holds the session's lines in hotkey mode; file mode writes no file | adapter integration `logging_file_it.rs` (runs the binary with a temp HOME: `--input-file` leaves no log; a hotkey-mode start with a missing service exits 2 and leaves the header and the error in the file) |
-| A terminal gets the lines too; no stderr without a terminal | adapter integration `logging_file_it.rs` (child process with and without a pty: with `script -q` for the pty case) |
-| Header line content | adapter integration (same test) |
-| A panic is logged | unit test with a child thread panic and a test logger capturing the hook's line |
+| A session's lines are in the log file | adapter integration `logging_file_it.rs` (the binary in hotkey mode with a temp HOME and a dead service port exits 2; the file holds the header and the error) |
+| A later session appends to the same file | adapter integration `logging_file_it.rs` (two writer instances on one file; the second continues the count) |
+| Started from a terminal | adapter integration `logging_file_it.rs` (the binary under `/usr/bin/script -q`: the pty shows the header) |
+| Started without a terminal | adapter integration `logging_file_it.rs` (the binary with stderr piped: nothing arrives on it) |
+| Transcribing a file leaves no log file | adapter integration `logging_file_it.rs` (the binary in file mode with a temp HOME) |
+| The limit is reached | unit tests in `logging/file/mod.rs` |
+| Backups shift and the oldest goes | unit tests in `logging/file/mod.rs` |
+| A session continues on an existing file | unit tests in `logging/file/mod.rs` (reopen counts the existing length) |
+| The header line | adapter integration `logging_file_it.rs` (same hotkey run; the first line's fields) |
+| A worker thread panics | unit test in `logging/file/mod.rs` (a child thread panic and a capturing logger) |
 | A real session's log from a Finder-like launch | manual check by the user |
