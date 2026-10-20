@@ -21,6 +21,10 @@ See proposal.md for why. The E2E harness already runs up to 4 scenarios at once;
 7. **Refinement evaluation once.** The three evaluation scenarios share one report computed on first use in the harness process.
 8. **Duplicates.** The Gherkin scenario stays where a spec scenario traces to it; the plain Rust test stays where it checks an adapter detail. The PR lists each removed test and the test that keeps its behavior.
 
+9. **Model tests in parallel processes.** nextest runs each test in a process of its own, so ONNX Runtime's one-thread limit holds per process; `engine_it` and `placed_commands_it` move to a group of their own with several threads (measured), while the binaries that drive the shared services stay one at a time.
+10. **Slice/component harness, one test per feature file.** The harness lists `scenarios::<feature>` for each `.feature` file and runs only that file, so nextest spreads the features over its threads; the E2E harness keeps one test, its suites limited by the shared services.
+11. **Confirmation delays the spec does not name are short.** Tests that stream past a hung or slow confirmation start the service with a short confirmation wait instead of streaming the default lengths in real time.
+
 ## Test levels
 
 | Spec scenario | Level |
