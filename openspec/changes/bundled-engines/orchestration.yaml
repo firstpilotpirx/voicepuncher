@@ -1,0 +1,5 @@
+depends_on:
+  - change: app-bundle-and-dmg
+    why: the bundle, the signing identity and the bundle recipe the engines are added to
+  - change: local-services-runtime
+    why: the engine resolver and the service start the bundled engines plug into
