@@ -28,9 +28,9 @@ Out of scope: the start-cue latency (speed-up-short-start-cue), confirmation tim
 ## Open points
 
 - Whether a confirmation whose command no longer fits the current state (a start that arrives while already dictating) is dropped or carried out — proposed: carried out as said only when it still makes sense, else dropped; settle in design.
-- Target version — proposed 0.24.2, the PATCH above 0.24.1 on `main`.
+- Target version — proposed 0.24.3, the PATCH above 0.24.2 on `main`.
 
 ## Release
 
 SemVer: PATCH — bug fix in command matching.
-Target version: 0.24.2.
+Target version: 0.24.3.
