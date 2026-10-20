@@ -20,6 +20,10 @@
 
 **D7 — The responsible application is still named.** An unbundled binary's permissions belong to its parent; the probe reports it and the rows say "grant to iTerm2". In a bundle `responsible_app` is None and the rows name voicepuncher.
 
+**D8 — The open points of the proposal.** The window floats above other windows but takes focus only when it first shows (seen, never stealing focus on a poll); `Continue` stays as the explicit close and the window does not close by itself (predictable); the running poll is 5 s (no public TCC notification); the parent application stays named for an unbundled run (developers run `cargo run` daily).
+
+**D9 — The runtime state is Waiting for permissions with the missing list.** It sits beside Starting, Ready, Restarting, Stopped and Failed in the runtime's observable state; the menu bar and the window observe it like any other state, so neither polls the gate on its own: the runtime's permissions thread is the only poller, and the window's 2 s refresh asks the runtime for a fresh report.
+
 ## Risks / Trade-offs
 
 - [The AX prompt option adds the app to the list unticked and the user believes it is done] → the row keeps saying Not granted with Open System Settings until the status call says Granted.
@@ -30,11 +34,27 @@
 
 | Scenario | Level |
 |---|---|
-| Report, missing list, all granted, responsible app | unit tests in `permissions_gate.rs` (mock probe) |
-| Status → badge, permission → texts, request versus settings button | unit tests in `permissions/macos/mapping.rs` |
-| The pipeline starts only when every permission is granted; the last grant starts it | component `permissions_gate.feature` (mock probe driven by steps, runtime with mock adapters) |
-| A permission revoked while running stops dictation and reopens the window | component `permissions_gate.feature` |
-| Not asked yet differs from denied | component `permissions_gate.feature` |
-| File mode needs no permission | component `file_transcription.feature` (existing) + `permissions_gate.feature` |
-| Statuses are three-valued on macOS; deep links well formed; parent named when unbundled | adapter integration `permissions_macos_it.rs` |
-| The window's look, prompts, panes, revocation in real System Settings | manual run by the user |
+| Start with a permission missing (app-runtime) | component `app_runtime.feature` |
+| The gate opens while waiting | component `app_runtime.feature` |
+| A revocation while Ready | component `app_runtime.feature` |
+| A missing permission at launch | unit tests in the menu bar mapping |
+| Permissions while every permission is granted | unit tests in the menu bar mapping; manual run |
+| Launch with every permission granted | component `permissions_gate.feature` |
+| Launch with a permission missing | component `permissions_gate.feature` |
+| The last grant starts dictation | component `permissions_gate.feature` |
+| Open System Settings lands on the permission's page | adapter integration `permissions_macos_it.rs` (deep links); manual run (the pane) |
+| Request shows the system prompt | unit tests in `mapping.rs` (button, Checking…); manual run (the prompt) |
+| A granted row has no button | unit tests in `mapping.rs` |
+| A permission never requested | component `permissions_gate.feature`; unit tests in `mapping.rs`; manual run (indicator) |
+| A permission denied | component `permissions_gate.feature`; unit tests in `mapping.rs` |
+| Accessibility revoked while idle | component `permissions_gate.feature`; manual run |
+| Microphone revoked during a recording | component `permissions_gate.feature` |
+| Granting a revoked permission again resumes dictation | component `permissions_gate.feature` |
+| Run from a terminal | unit tests in `mapping.rs`; adapter integration `permissions_macos_it.rs` |
+| Run from the bundle | unit tests in `mapping.rs` |
+| A grant in System Settings shows up in the open window | manual run |
+| Continue waits for every permission | unit tests in `mapping.rs` |
+| Continue closes the window once all are granted | manual run |
+| A change is logged | unit tests in `permissions_gate.rs`; component `permissions_gate.feature` |
+| File transcription without permissions | component `permissions_gate.feature` and `file_transcription.feature` (existing) |
+| The window's look against the mockups in light and dark | manual run |
