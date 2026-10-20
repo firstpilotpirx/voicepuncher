@@ -15,13 +15,13 @@ Use Claude Design: call the `Artifact` tool with `action: "quickstart"` and `int
   3. A keyboard key cap with a microphone glyph on it, in the app's accent colour.
 - Each candidate also rendered at 16, 32 and 128 px (`candidate-N-{16,32,128}.png`) to prove legibility: at 16 px the silhouette must still read as a microphone.
 - Light, dark and tinted appearance: show the chosen icon over the macOS light and dark menu bar background in one overview picture (`mockups/icons/overview.png`).
-- The chosen candidate goes to `app/packaging/icons/icon-1024.png`; derive 512, 256, 128, 64, 32, 16 (and the 2x ones) from it with `sips -z` or from the design tool's export.
+- The chosen candidate goes to `app/packaging/icons/icon-1024.png`; derive 512, 256, 128, 32, 16 (and the 2x ones) into `app/packaging/icons/voicepuncher.iconset/` with `sips -z`; `iconutil` builds the `.icns`.
 
 ## 2. DMG background
 
 - Canvas 600×400 pt, exported at 2x (1200×800 px) as `mockups/dmg-background.png`, copied to `app/packaging/dmg-background.png` when approved.
 - Content: left area for the app icon (centred at 150, 200 pt), right area for the Applications folder (centred at 450, 200 pt), a curved arrow between them, the text "Drag voicepuncher to Applications" at the bottom in SF Pro 15 pt, a light neutral background that reads in light and dark Finder appearance (Finder does not switch DMG backgrounds), the app version is not drawn (it changes per release).
-- `cargo-packager` places the icons at the positions above (`app-position`, `application-folder-position` in `app/Cargo.toml`); keep the window size 600×400.
+- `create-dmg` places the icons at the positions above (`--icon voicepuncher.app 150 200 --app-drop-link 450 200` in the `dmg` recipe of the `justfile`); keep the window size 600×400.
 
 ## 3. Acceptance
 
