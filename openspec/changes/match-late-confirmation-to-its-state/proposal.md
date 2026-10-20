@@ -1,13 +1,13 @@
 ## Why
 
-While fixing the flaky tests (fix-flaky-tests, released as 0.24.1), `commandspotting_websocket_it` returned `[None, Some(RestartDictation), Some(StopDictation)]` for speech that said "start dictation … stop dictation". Under load the speech recognition service for commands answered the confirmation of "start dictation" late. By then the session had already moved from standby to dictating, and the command spotting engine matched the confirmed text against the phrase set of the current state (dictating), not the state in which the words were heard (standby). So "start dictation" was carried out as "restart dictation".
+While fixing the flaky tests (0.24.1), `commandspotting_websocket_it` returned `[None, Some(RestartDictation), Some(StopDictation)]` for "start dictation … stop dictation". The confirmation of "start dictation" came back late, after the session had moved from standby to dictating, and the engine matched it against the dictating phrases, not those it was said under: the start was carried out as a restart.
 
-The test was fixed to wait for its audio, but the product behavior stays: a slow confirmation can turn one command into another. The user's rule is that a command is carried out as it was said, however slowly its confirmation comes back.
+The test now waits for its audio, but a slow confirmation can still turn one command into another. A command must be carried out as it was said, however slowly its confirmation comes back.
 
 ## What Changes
 
-- A command confirmation is matched against the phrases of the state in which its words were heard, even when the state changed before the confirmation came back.
-- "start dictation" said in standby is carried out as a start, never as a restart, whatever the confirmation delay.
+- A command confirmation is matched against the phrases of the state in which its words were heard together with those of the current state, the closest phrase winning, so a state change before the confirmation comes back never turns one command into another.
+- "start dictation" said in standby is carried out as a start, never as a restart, whatever the confirmation delay; a "start" said right after a slowly confirmed "stop" stays a start.
 
 Current stage: PoC. Target stage: PoC.
 Scope: matching of late confirmations in the command spotting service (`command-spotting/`).
@@ -18,7 +18,7 @@ Out of scope: the start-cue latency (speed-up-short-start-cue), confirmation tim
 
 ### Modified Capabilities
 
-- `voice-control`: a late confirmation is matched against the phrases of the state in which the words were heard.
+- `voice-control`: a late confirmation is matched against the phrases of the state in which the words were heard and of the current state.
 
 ## Impact
 
@@ -27,7 +27,7 @@ Out of scope: the start-cue latency (speed-up-short-start-cue), confirmation tim
 
 ## Open points
 
-- Whether a confirmation whose command no longer fits the current state (a start that arrives while already dictating) is dropped or carried out — proposed: carried out as said only when it still makes sense, else dropped; settle in design.
+- Whether a confirmation whose command no longer fits the current state is dropped or carried out — settled: reported as said; the app ignores a command its state does not accept.
 - Target version — proposed 0.24.3, the PATCH above 0.24.2 on `main`.
 
 ## Release

@@ -1,20 +1,21 @@
 ## Context
 
-See proposal.md § Why. A session of the command spotting service holds one phrase matcher, replaced whenever the app selects the phrases of its new state. Each confirmation asked is kept as a job until its answer arrives, and the answer is read against the session's matcher of that moment, not the one the job was asked under. One utterance is confirmed more than once (an early check when "start" is spotted, the whole utterance when it ends, tails, re-hearings), so a late answer about words heard in standby can be read with the dictating phrases.
+See proposal.md § Why. A session holds one phrase matcher, replaced on every selection the app sends; each confirmation is a job whose answer is read with the matcher of the moment it arrives. When the state changes while an answer is on its way (a dictation the hotkey starts, a stop confirmed first), "start dictation" said in standby is read with the dictating phrases as "restart dictation".
 
 ## Goals / Non-Goals
 
-- Goal: every answer is read against the phrases listened for when its audio was heard.
+- Goal: an answer never turns the command said into another one because the state changed while it was on its way.
 - Non-goal: dropping or timing out late answers; judging in the service whether a command still fits the app's state.
 
 ## Decisions
 
 | Decision | Chosen | Why | Rejected |
 |---|---|---|---|
-| Where the phrases of a job live | Each job keeps a shared handle to the matcher it was asked under: the session's matcher becomes reference-counted, a new selection installs a new one, jobs in flight keep the old | No copy per job, no generations to track; the old matcher lives as long as a job needs it | Cloning the phrase list into every job (needless copies); a generation number per selection (more state for the same effect) |
-| Which decisions use the job's matcher | Everything done with an answer: finding the phrase in the heard text, placing a chain, near misses, the trigger heard inside a segment. A re-hearing inherits the matcher of the job it hears again | The words were said under those phrases | Reading answers with the current matcher (the bug) |
-| Which decisions keep the current matcher | Decisions made at spotting time, before a job is asked: whether "start dictation" is listened for before the early head check, and a trigger spotted now re-hearing a misheard segment | Those words are heard now, under the current phrases | Freezing the matcher per utterance ("stop enter start" switches state twice in one utterance) |
-| A late command the app's state no longer accepts | Delivered as said; the app ignores it as it ignores any command said in the wrong state, and the service's record of what each utterance already reported drops a repeat of a command it already sent | No new rule, no timing heuristic that could eat a real command | A time debounce in the service (would not catch a repeat read as another command, and would drop a real "restart" said soon after "start") |
+| Which phrases read an answer | The phrases selected when the job was asked together with those selected when it is answered; the closest phrase wins, the job's phrases first on a tie. Without a selection in between, the current matcher as today | A start matches "start dictation" exactly in either case: said in standby before a switch to dictating, or said while a stop's confirmation was on its way | The job's phrases alone (a "start" said right after a slowly confirmed "stop" would read as "restart", ignored in standby); the current phrases alone (the bug) |
+| Where a job's phrases live | Each job keeps a shared handle to the matcher it was asked under | No copy per job | Cloning the phrases into every job; a generation number per selection |
+| What reads with the combined phrases | Everything done with an answer, including the checks it asks (a re-hearing, a tail) | They hear the same words | Combining only for the whole-utterance phrase |
+| Decisions at spotting time | Keep the current matcher: whether "start dictation" is listened for before the early head check, a trigger spotted now re-hearing a misheard segment | Those words are heard now, under the current phrases | — |
+| A command the app's state no longer accepts | Reported as said; the app ignores it | No timing rule that could eat a real command | A time debounce (misses a repeat read as another command, drops a real "restart" said soon after "start") |
 
 ## Test levels
 
@@ -22,11 +23,11 @@ See proposal.md § Why. A session of the command spotting service holds one phra
 |---|---|
 | A command is carried out once while confirmations come back slowly | adapter integration (`command-spotting/tests/placed_commands_it.rs`, exists) |
 | A chain is carried out the same at any confirmation speed | adapter integration (same file, exists) |
-| A start confirmed after the dictation began stays a start | adapter integration (same file, new: the scripted hearing takes 2 s and the test switches the session to the dictating phrases on the first start it reports, as the app does) |
+| A start confirmed after the dictation began stays a start | adapter integration (same file, new: the session moves to the dictating phrases in the pause after "start dictation") |
+| A start said right after a slowly confirmed stop stays a start | adapter integration (same file, new: the session moves to standby when the stop is reported) |
 
-The app's rule that an unaccepted command is ignored keeps its existing unit tests.
+The combined matcher gets unit tests in `command-spotting/src/matcher.rs`. A scripted hearing completes a word a clip cuts off, as whisper does, so the early checks hear what the real service hears.
 
 ## Risks / Trade-offs
 
-- [A job asked just before a switch reads its answer with the old phrases, though the app already moved on] → intended: the words were said in the old state; the app ignores what its state does not accept.
-- [The test's switch on the first start needs the early check answered before the utterance ends] → the scripted sentence carries several seconds of dictated speech after "start dictation", so the 2 s answer arrives while it is still spoken.
+- [Two phrase sets read one answer, so a near phrase of the other state may win] → only for an answer asked before a switch and answered after it; the closest phrase wins, and the app ignores what its state does not accept.
