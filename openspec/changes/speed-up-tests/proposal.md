@@ -12,7 +12,7 @@ Checks take about 45 % of a change's time and the machine-lock wait another 35 %
 ## What Changes
 
 - **Smaller voice control set in `check`:** for each voice command, `check` runs 2–3 scenarios with synthesized speech (`say`) and the scenarios on the user's own recordings (`~/.voicepuncher/voice-samples/`); the full voice control set runs in `full-check`.
-- **Voice control scenarios run in parallel:** the voice control scenarios (mostly waiting on real-time audio, not on the GPU) run several at a time instead of one by one, as the speech recognition service already runs several copies in parallel; the gain is measured.
+- **Voice control concurrency measured:** the E2E harness already runs up to 4 scenarios at once (PR #64); only the `@serial` rules (hands-free sessions, short-breath, `@seams`, `@resilience`) stream audio in real time one at a time and stay so. The non-serial set is measured at 4, 6 and 8 concurrent scenarios against the shared services (three copies of the command speech recognition service, one command spotting service) and the fastest setting that stays green is kept.
 - **No real waiting for timeouts in tests:** tests that check a timeout, a give-up or an outage get short timings for the test (injected deadlines, retry pauses, outage lengths) instead of waiting the production length in real time; what they prove stays the same (e.g. the client keeps trying through an outage of a minute and is back within seconds; it gives up after 3 attempts). Covers at least the 60 s outage test, the 23 s give-up test and the 15 s stall and minute-long streaming of `@resilience`.
 - **Duplicates removed**, keeping one test per behavior at the right level:
   - `commandspotting_websocket_it` (long listening, command phrase inside a sentence) vs `voice_control.feature` long listening and phrase inside a sentence;
@@ -32,10 +32,11 @@ Out of scope: fixing flaky tests (`fix-flaky-tests`); smaller accuracy samples; 
 
 ### Modified Capabilities
 
-- `voice-control`: which scenarios run in `check` and `full-check`; scenarios run in parallel; duplicate tests removed.
-- `speech-recognition`: duplicate seam tests removed; timeouts tested with short timings.
-- `text-refinement`: evaluation set run once; duplicate live check removed.
-- `local-services`: outage and stall scenarios use short timings.
+- `voice-control`: the long outage and the slow confirmation are stated by what they outlast (the replayed speech, the tenth attempt, the confirmation's wait), not by a wall-clock length, so a test proves them with short timings; which scenarios run in `check` and `full-check`, and the duplicate tests removed, change no spec.
+- `speech-recognition`: the give-up on a hung short recording is stated by attempts and per-attempt waits; duplicate seam and silence tests removed without a spec change.
+- `local-services`: the scripts' check cadence and the command spotting service's confirmation wait become settable at start, so the outage, busy and hung-confirmation scenarios run with short timings.
+
+`text-refinement` changes no spec: the evaluation set runs once per suite and its report is shared by the three evaluation scenarios; the duplicate live check is removed.
 
 ## Impact
 
@@ -46,7 +47,8 @@ Out of scope: fixing flaky tests (`fix-flaky-tests`); smaller accuracy samples; 
 
 - How the smaller voice control set is chosen: proposed — a tag (e.g. `@smoke` for the per-command set, a new tag for the rest) that `check` and `full-check` select.
 - Whether `full-check` runs the full voice control set always or only when voice control paths change: proposed — always for now.
-- How many scenarios run at once and how shared services hold the load (three copies of the command speech recognition service, one command spotting service): proposed — measure 2, 3 and 4 and pick the fastest that stays green.
+- How many non-serial scenarios run at once and how the shared services hold the load: proposed — measure 4 (current), 6 and 8 and pick the fastest that stays green; `@serial` scenarios stay one at a time.
+- Baseline: the stage journal of 17–20 Oct shows `e2e-smoke` at a median of 6 min and `just test` at 1 min 40 s, with 14 of 33 `check` runs failed; the before/after tables use green runs only.
 - The 60 s outage test (user's idea, 2026-10-18): nextest already runs it beside the other tests, but `just test` cannot end before its longest test, so it alone sets the 65 s. Two ways out: (a) move it out of `just test` into a stage that runs anyway beside long work (e.g. started at once with `e2e-smoke`, whose Gherkin scenarios take 250–270 s), so its 60 s hides behind them; (b) give it a short outage for the test. Proposed — (b) when the client's retry timings can be injected without changing what the spec promises (a minute-long outage survived); else (a). Either way only this one test needs the long outage, no other test waits for it.
 - Which side of each duplicate stays: proposed — the Gherkin scenario where a spec scenario traces to it, the plain Rust test where it checks an adapter detail.
 - Target version: proposed no release — only tests and recipes change; PATCH if a timing becomes configurable in app code.
@@ -54,4 +56,4 @@ Out of scope: fixing flaky tests (`fix-flaky-tests`); smaller accuracy samples; 
 ## Release
 
 SemVer: no release — tests, harness and recipes only; no behavior change.
-Target version: 0.18.0.
+Target version: none — the version stays.
