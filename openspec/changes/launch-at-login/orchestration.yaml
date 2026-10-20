@@ -1,0 +1,5 @@
+depends_on:
+  - change: app-bundle-and-dmg
+    why: only a signed installed bundle can register as a login item; the bundle detection and the DMG manual run
+  - change: settings-window
+    why: the switch lives in its General tab and uses its field model and config document
