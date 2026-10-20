@@ -1,0 +1,78 @@
+## Why
+
+voicepuncher is released as a tarball with a bare binary and a README. A user installs whisper.cpp, llama.cpp and HAProxy with Homebrew, runs the binary from a terminal, and the three macOS permissions (Microphone, Accessibility, Input Monitoring) attach to that terminal, because the binary is not an application macOS can identify. The user wants a production-ready macOS application: one file to download, the familiar "drag to Applications" installer, an icon, and an app that the permission panes list by its own name.
+
+Constraints the user set in chat: no Apple Developer account (and none will be bought), so no notarization and no Developer ID signature; no Homebrew, cask or install script for users; a single file on the GitHub release. These constraints shape every decision below: a self-signed code-signing certificate makes the app's identity stable across updates, so the permissions survive them (an ad-hoc signature changes identity every build and macOS would ask for every permission again after each update); Gatekeeper then needs one "Open Anyway" from the user on the first launch, which the README explains.
+
+This change makes the bundle, its signature and the DMG. It does not yet put the engines into the bundle (`bundled-engines`), nor a menu bar icon (`menu-bar-presence`): a bundle built from this version runs the current binary, which still needs the services started by `just start-model-servers` and has no window. The DMG of this version is for validating the signing, the permission identity and the Gatekeeper flow; the first DMG a user can install without a terminal is the one after `permissions-gate-window`, `local-services-runtime`, `model-download` and `bundled-engines`.
+
+## What Changes
+
+- `just release` produces exactly two files for the GitHub release: `voicepuncher-vX.Y.Z.dmg` and `voicepuncher-vX.Y.Z.dmg.sha256`. The tarball with the bare binary is retired. The DMG opens a window with `voicepuncher.app` on the left and a shortcut to Applications on the right, with a background picture that says "drag to install"; the DMG is named with the version and the volume is named `voicepuncher X.Y.Z`.
+- `voicepuncher.app` is a proper bundle: `Contents/MacOS/voicepuncher` (the release binary), `Contents/Info.plist` with `CFBundleIdentifier` `io.github.firstpilotpirx.voicepuncher` (open point), `CFBundleName` and `CFBundleDisplayName` `voicepuncher`, `CFBundleShortVersionString` and `CFBundleVersion` from `app/Cargo.toml`, `LSMinimumSystemVersion` `15.0`, `LSUIElement` true (no Dock icon, no application menu: a menu bar application), `NSMicrophoneUsageDescription` ("voicepuncher records your voice while you hold the hotkey, to turn it into text on this Mac."), `NSHumanReadableCopyright`, `LSApplicationCategoryType` `public.app-category.productivity`, `CFBundleIconFile`; `Contents/Resources/voicepuncher.icns` (the icon).
+- The app has an icon made with Claude Design (see `mockups/design-spec.md`): a macOS 26 style icon (rounded square, layered, legible at 16 px), exported at 1024 px and converted to `.icns`. Three candidates are shown to the user at the proposal gate; the chosen one goes into `app/packaging/icons/`.
+- The bundle is code-signed with a self-signed certificate that the user creates once in Keychain Access (Certificate Assistant → Create a Certificate: name `voicepuncher`, identity type Self Signed Root, certificate type Code Signing; then in the certificate's Trust settings, Code Signing: Always Trust). `.env` names it: `VOICEPUNCHER_SIGNING_IDENTITY=voicepuncher`. `just bundle` and `just release` refuse to run without that identity in the keychain (`security find-identity -v -p codesigning`), printing those steps. After signing, the designated requirement of the app (`codesign -d -r- voicepuncher.app`) names the certificate leaf, so every build signed with the same certificate has the same identity for the permission panes: an update keeps Microphone, Accessibility and Input Monitoring.
+- No hardened runtime, no entitlements, no notarization (they need a Developer ID). The README documents the first launch: macOS says the app cannot be verified; the user opens System Settings → Privacy & Security, scrolls to the message about voicepuncher and clicks Open Anyway, once per version (macOS 15 and later no longer accept right-click → Open for this).
+- `just bundle` builds the signed bundle locally into `dist/voicepuncher.app` (release build, no `cargo clean`), for trying the app as installed: `open dist/voicepuncher.app`. The bundle of this version has no menu bar icon yet; it is quit with Activity Monitor or `pkill voicepuncher` — the README of this version says so.
+- `just full-check` gains a `bundle` stage (no machine lock; it uses no service, port or GPU): builds the bundle, checks the Info.plist keys with `plutil`, verifies the signature (`codesign --verify --deep --strict`), prints the designated requirement, builds the DMG, mounts it (`hdiutil attach -nobrowse -readonly`), checks the app and the Applications shortcut are there, detaches. `just check` does not build the bundle.
+- The tool is `cargo-packager` `0.11.8` (`cargo install cargo-packager@0.11.8 --locked`; the recipes' guard `_require-packager` stops with that command when it is missing, as `_require-nextest` does). Its configuration lives in `app/Cargo.toml` under `[package.metadata.packager]`: product name, identifier, icons, formats `app` and `dmg`, out dir `dist`, macOS minimum system version, the Info.plist file to merge (`app/packaging/Info.plist`), the signing identity from the environment, and the DMG window layout (window size, app and Applications positions, background picture `app/packaging/dmg-background.png`, also made with Claude Design).
+- Tech matrix (agent-kit, a PR of its own in `/Users/me/Workspaces/my/agent-kit`, file `claude-code/rules-custom/tech-matrix-rust.md`): the row "macOS .app / PKG (bundled runtime): cargo-bundle + create-dmg" becomes `cargo-packager` (app + dmg, one tool, pinned); a new "macOS Desktop" section starts with: packaging `cargo-packager`; installer: DMG with Applications shortcut (no PKG, no cask, no script); signing without a Developer ID: self-signed code-signing certificate from Keychain Access for a stable TCC identity, Gatekeeper "Open Anyway" documented; `notarytool` only with a Developer ID. `docs/architecture/overview.md` § Technology Choices gets the same rows.
+- README § Install (new, the DMG) and § Release checklist (DMG, signing identity); the Homebrew engine install stays until `bundled-engines`.
+
+Current stage: PoC. Target stage: Prototype (an installable, identifiable application; usable without a terminal only after the sibling changes).
+Scope: the bundle, the icon, the self-signed signature, the DMG, the `bundle` and `release` recipes, the `bundle` stage of `full-check`, README install and release sections, the tech matrix rows.
+Acceptance bar: `just release` on `origin/main` creates the GitHub release with the DMG and its sha256 and nothing else; the DMG installs by drag; the first launch passes Gatekeeper with Open Anyway; the permission panes list "voicepuncher" with its icon; after a second build signed with the same certificate and reinstalled over the first, the permissions are still granted (no new prompt); `codesign --verify --deep --strict` passes; the `bundle` stage of `full-check` passes; the user confirms the flow on their Mac.
+Out of scope: engines in the bundle (`bundled-engines`); any window or menu bar item; auto-update (Sparkle, deferred); Homebrew cask (rejected by the user); Intel builds (Apple Silicon only); moving `~/.voicepuncher` to `~/Library/Application Support` (deferred).
+
+## Capabilities
+
+### New Capabilities
+
+- `app-distribution`: how the application is packaged, signed and distributed: a signed bundle with a stable identity, a DMG as the only release artifact, the first-launch flow without a Developer ID, the icon.
+
+### Modified Capabilities
+
+- none (the binary inside the bundle behaves as before).
+
+## Requirements to specify
+
+1. The release is one DMG: a release build produces `voicepuncher-vX.Y.Z.dmg` with `voicepuncher.app` and an Applications shortcut, plus the sha256 file, and the GitHub release holds exactly these two assets.
+2. The bundle identifies the application: Info.plist carries the bundle identifier, the version from the crate, `LSUIElement`, the microphone usage description and the icon; the permission panes list the app by name with its icon.
+3. The signature keeps the identity across updates: two builds signed with the same self-signed certificate have the same designated requirement, and permissions granted to the first remain granted to the second.
+4. The release refuses to run unsigned: without the signing identity in the keychain, `just bundle` and `just release` stop before building, naming the Keychain Access steps.
+5. The first launch is documented: the README tells how to pass Gatekeeper on macOS 15 and later (Open Anyway) and that this is needed once per version.
+6. The bundle is verified before a merge: `full-check` builds the bundle and the DMG, verifies the signature and the Info.plist keys, and mounts the DMG.
+
+## Implementation guide
+
+1. **Icon and DMG background (stage 2, before the proposal gate).** Follow `mockups/design-spec.md`: make three icon candidates with Claude Design, export 1024 px PNGs into `mockups/icons/`, show them to the user with the proposal; the chosen one becomes `app/packaging/icons/icon-1024.png` plus the standard sizes (16, 32, 64, 128, 256, 512, each also at 2x) in `app/packaging/icons/`; `cargo-packager` builds the `.icns` from the PNG list, or `iconutil -c icns` from an `.iconset` folder when it does not. The DMG background is a 600×400 pt picture (1200×800 px at 2x) with an arrow from the app position to the Applications position and the text "Drag voicepuncher to Applications".
+2. **Info.plist.** `app/packaging/Info.plist` with the keys listed in What Changes; `cargo-packager` merges it over the plist it generates (`macos.info-plist-path`). Verify after a build with `plutil -p dist/voicepuncher.app/Contents/Info.plist`.
+3. **cargo-packager configuration** in `app/Cargo.toml` `[package.metadata.packager]`: `product-name = "voicepuncher"`, `identifier = "io.github.firstpilotpirx.voicepuncher"`, `icons = ["packaging/icons/icon-1024.png", ...]`, `formats = ["app", "dmg"]`, `out-dir = "../dist"`, `[package.metadata.packager.macos]` with `minimum-system-version = "15.0"`, `info-plist-path = "packaging/Info.plist"`, `signing-identity` read from `VOICEPUNCHER_SIGNING_IDENTITY` (cargo-packager reads the environment variable `CARGO_PACKAGER_SIGN_IDENTITY`? check its documentation at implementation; when it only takes the value in the file, the recipe passes it on the command line); `[package.metadata.packager.dmg]` with `background`, `window-size`, `app-position`, `application-folder-position`. The binary name stays `voicepuncher`; the target is `aarch64-apple-darwin` (the host).
+4. **Recipes.** `just bundle`: `_require-packager`, `_require-signing-identity`, `cargo packager --release --formats app` into `dist/`, then `codesign --force --deep --sign "$VOICEPUNCHER_SIGNING_IDENTITY" --timestamp=none dist/voicepuncher.app` when cargo-packager did not sign, `codesign --verify --deep --strict --verbose=2 dist/voicepuncher.app`, `codesign -d -r- dist/voicepuncher.app` printed. `just dmg`: the same with `--formats dmg`, renames the output to `voicepuncher-vX.Y.Z.dmg`, writes the `.sha256`. `_release-package`: `cargo clean`, tests, `just dmg`; `gh release create vX.Y.Z dist/voicepuncher-vX.Y.Z.dmg dist/voicepuncher-vX.Y.Z.dmg.sha256 --generate-notes` (no tarball). The `bundle` stage of `full-check` runs `just bundle` and `just dmg` and the mount check; it runs outside the machine lock, before the model stages, since it uses no shared resource. `dist/` is gitignored.
+5. **Signing identity guard.** `_require-signing-identity`: `security find-identity -v -p codesigning | grep -q "\"$VOICEPUNCHER_SIGNING_IDENTITY\""`, else print the Keychain Access steps (above) and `exit 1`. Document the steps in README § Release checklist.
+6. **Gatekeeper check.** Before the manual run: `xattr -p com.apple.quarantine` on a DMG downloaded from the GitHub release shows the quarantine flag; the first open shows the "cannot be verified" dialog; Open Anyway in Privacy & Security starts the app. Document; the user confirms.
+7. **TCC identity check.** After the first install, grant the three permissions to voicepuncher (the bundle, not a terminal); build again, reinstall, launch: no new prompt, `tccutil` not needed. Document the check in README § Release checklist.
+8. **Docs.** README § Install (download, drag, Open Anyway, permissions appear under the app's name), § Release checklist (identity, DMG), `docs/architecture/overview.md` § Technology Choices (packaging, signing rows), `docs/project-map.md` (`app/packaging/`, `dist/`), `docs/ubiquitous-language.md` (Bundle, Signing identity, DMG), the agent-kit tech matrix PR.
+
+Pitfalls: `--deep` signing must run after every file of the bundle is in place (later changes add engines); never pass `--options runtime` (hardened runtime) without a Developer ID and entitlements, it would block the microphone and the key listener; keep `LSUIElement` true from the start so the Dock never shows the app; the self-signed certificate must be trusted for code signing in Keychain Access or `codesign` reports "no identity found"; the DMG of a self-signed app still shows the Gatekeeper dialog — that is expected, not a bug.
+
+## Impact
+
+- `app/Cargo.toml` (packager metadata), `app/packaging/{Info.plist,icons/,dmg-background.png}`, `.gitignore` (`dist/`)
+- `justfile` (`bundle`, `dmg`, `_require-packager`, `_require-signing-identity`, `_release-package`, `release`, the `bundle` stage of `full-check`), `.env.example` or README (`VOICEPUNCHER_SIGNING_IDENTITY`)
+- `README.md` (§ Install, § Release checklist), `docs/architecture/overview.md`, `docs/project-map.md`, `docs/ubiquitous-language.md`
+- agent-kit: `claude-code/rules-custom/tech-matrix-rust.md` (separate PR there; kit-placement rule)
+- Checks: `just test` after every edit (no Rust code changes expected beyond a test of the Info.plist keys); `just check` after the last group; `just full-check` before the merge (the justfile is a build input); manual run by the user (permissions area): install the DMG, Open Anyway, grant permissions to the app, reinstall a second build, dictate.
+
+## Open points
+
+- Bundle identifier: proposed `io.github.firstpilotpirx.voicepuncher` (the GitHub owner of the repository, reverse-DNS); alternative `com.voicepuncher.app`. It must never change after the first release, it is the permission identity together with the certificate.
+- Minimum macOS: proposed 15.0 (Sequoia); the overlay already falls back below macOS 26; the user runs 27.
+- Whether `cargo-packager` signs by itself with a self-signed identity or the recipe runs `codesign` after it: decided at implementation by trying both; the recipe must verify the signature either way.
+- The icon theme: proposed a microphone with a punch mark or a sound wave hitting a text cursor; three candidates at the gate.
+- The DMG of this version has no way to quit the app except Activity Monitor; accepted for intermediate releases, fixed by `menu-bar-presence`.
+
+## Release
+
+SemVer: MINOR — a new distribution form and a new capability; pre-1.0.
+Target version: 0.26.0 (next above 0.24.2 after `restartable-app-runtime`; corrected at merge with `kit version-check`).
