@@ -1,0 +1,7 @@
+depends_on:
+  - change: restartable-app-runtime
+    why: the pipeline starts only when the services are ready, through the runtime's states and start path
+  - change: whisper-copy-pool
+    why: the copies' ports and the pool that takes the list the runtime started; no HAProxy to start
+  - change: file-logging
+    why: the services' logs use the rotating writer and the logs folder it defines
