@@ -56,3 +56,9 @@
 | Refinement switched off on the command line | component `settings_window.feature` |
 | Previewing a sound | adapter integration `settings_macos_it.rs` (`NSSound` named lookup for all 14); playing heard in the manual run |
 | The window's look, every tab, light and dark | manual run by the user against the mockups |
+
+## Dependencies
+
+- `restartable-app-runtime`: Save applies through `Runtime::reload` and the status line follows the runtime states.
+- `menu-bar-presence`: `Settings…` lives in its menu and the window uses its AppKit technique; the menu-bar-presence delta modifies its requirement.
+- `refinement-off-by-default`: the Refinement tab's switch edits the `[refinement] enabled` key and shows the `--llm` / `--no-llm` overrides that change adds.
