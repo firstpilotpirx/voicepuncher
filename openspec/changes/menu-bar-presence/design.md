@@ -12,13 +12,19 @@ The overlay adapter (`adapters/secondary/visualfeedback/macos/`, `objc2-app-kit`
 
 **D3 — Primary adapter in `adapters/primary/menubar/macos/`.** The menu drives the application (Quit, Settings); displaying the icon is the smaller half. Actions go through a small `MenuActions` trait implemented by the runtime wiring (`quit`, `open_settings`, `open_logs`), so the adapter's unit tests use a mock.
 
-**D4 — SF Symbols, template images, one non-template recording badge.** Template images follow the menu bar appearance for free; the recording state needs colour to be seen at a glance, so it is the one non-template image, per the mockups. No bitmap assets.
+**D4 — SF Symbols, template images, one non-template recording badge.** Template images follow the menu bar appearance for free; the recording state needs colour to be seen at a glance, so it is the one non-template image (a filled microphone with a red dot drawn over it), per the mockups. The processing animation is the `waveform` symbol at the variable values 0.33, 0.66 and 1.0 (SF Symbols' variable rendering), one frame every 400 ms, still at 0.66 under Reduce Motion. No bitmap assets; `mockups/render.swift` draws the mockups with the same symbols, so a manual-run screenshot can be compared with them.
 
 **D5 — Menu rebuilt on open.** `menuNeedsUpdate:` sets the title and status line from the current state right before the menu shows; the icon updates on every state change. No timers except the processing animation.
 
 **D6 — Accessory activation policy in code.** `LSUIElement` hides the Dock icon for the bundle; `setActivationPolicy(Accessory)` does the same for the unbundled developer binary, so both look alike.
 
 **D7 — Quit cancels, never waits.** Quit is the user's decision; a recording is cancelled with the cancel sound (the pipeline's cancel path) and the runtime stops; the process exits 0. A restart waits for a dictation (`restartable-app-runtime`), a quit does not.
+
+**D8 — The status item is a `VisualIndicator` decorator and a `RuntimeObserver` sharing one state cell.** Both feed a single icon state behind a lock (dictation stage, runtime state, voice control listening, commands unavailable); a pure function picks the icon and the status line from the cell, so the precedence (a dictation outranks the commands-unavailable sign, which outranks listening, which outranks ready; a runtime state shows only while no dictation runs) lives in one tested place.
+
+## Dependencies
+
+`restartable-app-runtime` supplies `Runtime::stop()` (Quit), `RuntimeState` and `RuntimeObserver` (the waiting, ready and failed icons and status lines) and the shared overlay wrapper the decorator is installed in; this change waits for its tasks and stacks on its branch.
 
 ## Risks / Trade-offs
 
@@ -30,9 +36,28 @@ The overlay adapter (`adapters/secondary/visualfeedback/macos/`, `objc2-app-kit`
 
 | Scenario | Level |
 |---|---|
-| Signal → icon state, icon state → symbol name/template, runtime state → status line, hotkey → human name | unit tests in `mapping.rs` |
-| The icon mirrors the dictation (each signal), a command sign leaves it | component `menu_bar_presence.feature` (mock status item surface, real decorator) |
-| The menu bar shows the app from launch; starting, restarting, failed states | component `menu_bar_presence.feature` (observer driven) |
-| Quit stops the runtime, cancels a recording, exits 0 | component `menu_bar_presence.feature` (mock actions) + manual run |
-| Open Logs Folder creates and opens the folder; Settings opens the file | adapter integration `menubar_macos_it.rs` (folder creation; the open calls are smoke-tested with a temp file, skipped without a window server) |
-| No Dock icon, pictures match the mockups, light and dark menu bar | manual run by the user |
+| Signal and runtime state → icon state (precedence), icon state → symbol name, template flag and variable value; state → status line; hotkey → human name | unit tests in `mapping.rs` |
+| The status item appears while the app starts | component `menu_bar_presence.feature` (observer driven, status item double) |
+| The ready icon shows once the runtime is ready | component `menu_bar_presence.feature` |
+| A restart shows the waiting icon and ready again afterwards | component `menu_bar_presence.feature` |
+| A failed runtime shows the failed icon | component `menu_bar_presence.feature` |
+| A recording shows the recording icon | component `menu_bar_presence.feature` (real decorator, status item double) |
+| The icon follows every stage of a dictation | component `menu_bar_presence.feature` |
+| A failure notice shows the warning icon until it hides | component `menu_bar_presence.feature` |
+| A command sign leaves the icon as it was | component `menu_bar_presence.feature` |
+| Voice control listening shows the listening icon | component `menu_bar_presence.feature` |
+| Commands unavailable shows the warning badge on the ear | component `menu_bar_presence.feature` |
+| A dictation outranks the commands-unavailable sign | component `menu_bar_presence.feature` |
+| The ready status line names the hotkey | component `menu_bar_presence.feature` (menu opened through the double) |
+| The ready status line in Toggle mode says press | component `menu_bar_presence.feature` |
+| The recording status line says how to stop | component `menu_bar_presence.feature` |
+| The failed status line gives the reason | component `menu_bar_presence.feature` |
+| The status line reflects the state at the moment the menu opens | component `menu_bar_presence.feature` |
+| Every hotkey has a human name | component `menu_bar_presence.feature` (scenario outline over the hotkeys) + unit tests in `mapping.rs` |
+| Quit while idle ends the process cleanly | component `menu_bar_presence.feature` (mock actions) + manual run |
+| Quit during a recording cancels it | component `menu_bar_presence.feature` (recording overlay double) + manual run |
+| Open Logs Folder shows the folder | adapter integration `menubar_macos_it.rs` (temp home; skipped without a window server) |
+| Open Logs Folder creates a missing folder | adapter integration `menubar_macos_it.rs` |
+| Settings opens the configuration file | adapter integration `menubar_macos_it.rs` (temp file; skipped without a window server) |
+| The bare binary shows no Dock icon | manual run by the user |
+| Pictures match the mockups, light and dark menu bar, the animation | manual run by the user |

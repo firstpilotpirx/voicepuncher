@@ -1,0 +1,4 @@
+autonomy: review
+depends_on:
+  - change: restartable-app-runtime
+    why: Runtime::stop for Quit, RuntimeState and RuntimeObserver for the waiting, ready and failed icons, and the shared overlay wrapper the status item decorator is installed in
