@@ -1,0 +1,7 @@
+depends_on:
+  - change: restartable-app-runtime
+    why: the gate opens and closes the pipeline through the runtime's states and start path
+  - change: menu-bar-presence
+    why: the Permissions… item and the waiting state are added to its menu and status line
+  - change: app-bundle-and-dmg
+    why: the manual run checks the permission panes list voicepuncher by its bundle identity; unbundled, the gate names the parent app
