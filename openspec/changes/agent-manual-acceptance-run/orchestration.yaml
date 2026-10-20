@@ -1,0 +1,10 @@
+depends_on:
+  - change: retire-cli-setup-wizard
+    why: the run checks the visual installer that replaces the console setup
+  - change: launch-at-login
+    why: the run checks the launch-at-login setting
+  - change: bundled-engines
+    why: the run installs the app with its bundled engines from the DMG
+  - change: service-reliability-review
+    why: this run is the last change of the backlog, after every other change
+priority: low
