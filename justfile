@@ -101,7 +101,7 @@ check:
 # (see _stages). Incremental like `check`, no `cargo clean`: the clean build is `release`'s. Accuracy runs on 100
 # recordings when the branch changes the recognition path (recognition_paths), on main itself or when that cannot
 # be told, else on 10 (_accuracy-stage); VOICEPUNCHER_ACCURACY_SAMPLE=100 forces 100
-# FULL (~15.5–17.5 min), run before merging: code checks + E2E (seams and outages included) + accuracy on 100 or 10 samples + refinement evaluation
+# FULL (~15.5–17.5 min), run before merging: code checks + E2E (the whole voice control set, seams and outages included) + accuracy on 100 or 10 samples + refinement evaluation
 full-check: _require-models _require-corpus
     #!/usr/bin/env bash
     set -euo pipefail
@@ -116,7 +116,7 @@ full-check: _require-models _require-corpus
     accuracy="accuracy: $count recordings ($stage) — $reason"
     echo "● $accuracy"
     VOICEPUNCHER_STAGES_RECIPE=full-check VOICEPUNCHER_STAGES_ACCURACY="$accuracy" \
-        {{just_executable()}} _stages fmt lint test build bundle build-e2e e2e-smoke e2e-seams e2e-resilience "$stage" refine-eval
+        {{just_executable()}} _stages fmt lint test build bundle build-e2e e2e-smoke e2e-regression e2e-seams e2e-resilience "$stage" refine-eval
     echo "✓ full-check passed — $accuracy; before a release also walk through README.md § Release checklist (manual run)"
 
 # Summary of the stage journal for the runs since a date (2026-10-01) or a span (7d): per recipe and stage the
@@ -625,6 +625,19 @@ _e2e-smoke: _require-nextest _require-models _build
     cargo nextest run --profile e2e-smoke {{placed_commands_tests}}
     cargo nextest run --profile e2e-smoke {{cucumber_e2e_tests}} --no-capture
 
+# The voice control scenarios beyond the smoke set (@regression), run by full-check right after e2e-smoke so it still runs the whole set
+e2e-regression:
+    @VOICEPUNCHER_STAGES_RECIPE=e2e-regression {{just_executable()}} _stages e2e-regression
+
+_e2e-regression: _require-nextest _require-models _build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
+    {{just_executable()}} _start-model-servers-for-e2e
+    export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
+    export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
+    cargo nextest run --profile e2e-regression {{cucumber_e2e_tests}} --no-capture
+
 # WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 %, and no command in 10 recordings of ordinary speech (~1 min)
 e2e-quick:
     @VOICEPUNCHER_STAGES_RECIPE=e2e-quick {{just_executable()}} _stages e2e-quick
@@ -1025,10 +1038,12 @@ start-model-servers *services:
     # supervise <log file> <health URL or -> <command…>: runs the service and starts it again
     # whenever it exits, after 1 s, doubling up to 30 s while it keeps exiting within 30 s of
     # its start. With a health URL, a service that once answered it and then fails it 3 times
-    # in a row, 5 s apart, is killed and so restarted: a service that hangs without exiting.
+    # in a row, VOICEPUNCHER_HEALTH_CHECK_SECS apart (default 5 s; the @resilience steps set 1 s),
+    # is killed and so restarted: a service that hangs without exiting.
     # TERM or INT stops the service and the supervisor, without a restart
     supervise() {
         local log_file=$1 health=$2 delay=1 started code
+        local check_every=${VOICEPUNCHER_HEALTH_CHECK_SECS:-5}
         shift 2
         child="" watcher=""
         trap '[[ -z "$watcher" ]] || kill "$watcher" 2>/dev/null; [[ -z "$child" ]] || kill "$child" 2>/dev/null; wait "$child" 2>/dev/null; exit 0' TERM INT
@@ -1041,7 +1056,7 @@ start-model-servers *services:
                 (
                     answered="" fails=0
                     while kill -0 "$child" 2>/dev/null; do
-                        sleep 5
+                        sleep "$check_every"
                         if curl -fsS -o /dev/null --max-time 2 "$health" 2>/dev/null; then
                             answered=1 fails=0
                         elif [[ -n "$answered" ]]; then

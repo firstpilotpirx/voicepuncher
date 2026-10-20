@@ -2,7 +2,7 @@
 
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
-use voicepuncher_e2e_test::refinement_eval::{self, EvalItem};
+use voicepuncher_e2e_test::refinement_eval::{self, EvalItem, SharedReport};
 
 use super::normalization::live_refiner;
 use super::use_stub;
@@ -54,11 +54,22 @@ fn service_respells_loanword(world: &mut E2eWorld) -> Result<()> {
     )
 }
 
+/// The evaluation of the whole set on the live service: the scenarios that judge it share one
+/// run, so the set goes to the service once per harness run.
+static WHOLE_SET: SharedReport = SharedReport::new();
+
 #[when("the developer runs the refinement evaluation")]
 async fn run_evaluation(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, move |world| {
-        let items = refinement_eval::load_eval_set(&refinement_eval::default_eval_set())?;
-        evaluate(world, &items)
+        let mut refiner = live_refiner(world)?;
+        let report = WHOLE_SET.get_or_run(|| {
+            let items = refinement_eval::load_eval_set(&refinement_eval::default_eval_set())?;
+            let report = refinement_eval::run(&mut refiner, &items)?;
+            eprintln!("\n{}", report.table());
+            Ok(report)
+        })?;
+        world.refinement_report = Some(report);
+        Ok(())
     })
     .await
 }

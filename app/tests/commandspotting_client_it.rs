@@ -203,7 +203,8 @@ fn should_not_count_a_pause_of_its_own_with_a_ping_out_as_the_service_going_away
     exchange(&mut client).unwrap();
     // When the client reads nothing for longer than its silence limit
     std::thread::sleep(CLIENT_PAUSE);
-    // Then
+    // Then the service is not lost: the client logs no error of its own and leaves the error
+    // to whoever gets its failure, so an answered exchange also means no error is logged
     exchange(&mut client).unwrap();
 }
 

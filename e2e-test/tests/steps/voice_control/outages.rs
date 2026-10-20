@@ -13,9 +13,9 @@ use crate::steps::local_services::{healthy, ScenarioServices};
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
-/// As long as the speech recognition service hung in the incident, and longer than the
-/// app's silence limit and the service's deadline for a confirmation.
-const STALL: Duration = Duration::from_secs(15);
+/// Just past the 10 s the scenario names, and longer than the app's silence limit and the
+/// service's deadline for a confirmation.
+const STALL: Duration = Duration::from_secs(11);
 /// Dictating goes on a little past the stall, so the last confirmation is answered.
 const DICTATE_PAST_STALL: Duration = Duration::from_secs(2);
 const BACK_WITHIN: Duration = Duration::from_secs(30);
@@ -75,9 +75,9 @@ async fn dictation_on_own_services(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-/// Pauses the one copy of the speech recognition service for commands for 15 seconds, so the
+/// Pauses the one copy of the speech recognition service for commands for the stall (11 seconds), so the
 /// confirmation it holds is answered only then.
-#[given("the speech recognition service for commands takes 15 seconds to answer one confirmation of the command spotting service")]
+#[given("the speech recognition service for commands holds one confirmation of the command spotting service for longer than the service waits for a confirmation")]
 fn speech_recognition_stalls(world: &mut E2eWorld) -> Result<()> {
     let services = scenario_services(world)?;
     let pid = services
@@ -192,7 +192,7 @@ fn wait_for(limit: Duration, condition: impl Fn() -> bool) -> bool {
     condition()
 }
 
-#[when("the user keeps dictating through those 15 seconds and then says \"stop dictation\"")]
+#[when("the user keeps dictating through that hold and then says \"stop dictation\"")]
 async fn dictate_through_stall(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let hands_free = hands_free(world)?;

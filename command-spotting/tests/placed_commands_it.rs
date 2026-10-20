@@ -253,25 +253,6 @@ fn should_hear_a_stop_after_a_short_breath_as_an_utterance_of_its_own() {
     );
 }
 
-#[test]
-fn should_hear_no_command_in_a_sentence_that_only_holds_a_command_word() {
-    let Some(engine) = engine() else { return };
-    let events = heard(
-        &engine,
-        &DICTATING,
-        &speech("We should stop the server tonight"),
-    );
-    assert!(
-        commands(&events).is_empty() && phrases(&events).is_empty(),
-        "{events:?}"
-    );
-    let events = heard(&engine, &STANDBY, &speech("Enter the building on the left"));
-    assert!(
-        commands(&events).is_empty() && phrases(&events).is_empty(),
-        "{events:?}"
-    );
-}
-
 /// ONNX Runtime aborts when models load or run on several test threads at once.
 static SCRIPTED_RUNS: Mutex<()> = Mutex::new(());
 
@@ -362,19 +343,31 @@ fn carried_out(events: &[ServerEvent]) -> Vec<String> {
         .collect()
 }
 
-#[test]
-fn should_carry_out_the_same_chain_whether_confirmations_come_back_at_once_or_slowly() {
-    const SENTENCE: &str = "We moved the weekly meeting stop enter start and the notes begin here";
+/// The chain said without pauses in a dictation, and the commands it carries out in order.
+const CHAIN_SENTENCE: &str =
+    "We moved the weekly meeting stop enter start and the notes begin here";
+const CHAIN: [&str; 3] = ["stop dictation", "press enter", "start dictation"];
+
+/// Asserts the chain is carried out when each confirmation takes `hearing`. One test per speed,
+/// so nextest runs them in processes of their own at the same time.
+fn assert_chain_carried_out(hearing: Duration) {
     let listening: Vec<&str> = DICTATING.into_iter().chain(["start dictation"]).collect();
-    let chain = ["stop dictation", "press enter", "start dictation"];
-    for hearing in [Duration::ZERO, SLOW_HEARING] {
-        let Some(events) = heard_in_time(&listening, SENTENCE, hearing) else {
-            return;
-        };
-        assert_eq!(
-            carried_out(&events),
-            chain,
-            "hearing in {hearing:?}: {events:?}"
-        );
-    }
+    let Some(events) = heard_in_time(&listening, CHAIN_SENTENCE, hearing) else {
+        return;
+    };
+    assert_eq!(
+        carried_out(&events),
+        CHAIN,
+        "hearing in {hearing:?}: {events:?}"
+    );
+}
+
+#[test]
+fn should_carry_out_the_chain_when_confirmations_come_back_at_once() {
+    assert_chain_carried_out(Duration::ZERO);
+}
+
+#[test]
+fn should_carry_out_the_same_chain_when_confirmations_come_back_slowly() {
+    assert_chain_carried_out(SLOW_HEARING);
 }

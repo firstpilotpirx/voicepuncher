@@ -378,23 +378,3 @@ fn should_send_the_request_twice_when_the_service_keeps_dropping_the_connection(
     assert!(result.is_err());
     assert_eq!(posts.load(Ordering::SeqCst), 2);
 }
-
-#[test]
-fn should_refine_sentence_through_real_service() {
-    // Given — gated on a running text refinement service
-    let Ok(base_url) = std::env::var("VOICEPUNCHER_REFINEMENT_URL") else {
-        eprintln!("GATED: VOICEPUNCHER_REFINEMENT_URL not set, skipping");
-        return;
-    };
-    let cfg = RefinementCfg {
-        base_url,
-        ..RefinementCfg::default()
-    };
-    // When
-    let cleaned = refine(cfg, TRANSCRIPT).unwrap();
-    // Then
-    let cleaned = cleaned.to_lowercase();
-    for word in ["docker", "staging"] {
-        assert!(cleaned.contains(word), "expected '{word}' in '{cleaned}'");
-    }
-}

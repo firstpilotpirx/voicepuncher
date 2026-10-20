@@ -108,7 +108,7 @@ Feature: local-services
 
     Scenario: A busy service is not restarted
       Given the service scripts started the command spotting service
-      When an app streams speech to it for a minute while the speech recognition service for commands answers its confirmations slowly
+      When an app streams speech to it through several of the scripts' checks while the speech recognition service for commands answers its confirmations slowly
       Then the service is not restarted
 
   @serial @resilience

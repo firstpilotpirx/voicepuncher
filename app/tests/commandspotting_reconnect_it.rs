@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use tungstenite::{Message, WebSocket};
 
-use voicepuncher::adapters::secondary::commandspotting::websocket::AudioStream;
+use voicepuncher::adapters::secondary::commandspotting::websocket::{AudioStream, LinkTimings};
 use voicepuncher::core::application::PipelineInput;
 use voicepuncher::core::domain::{SpottingEvent, VoiceCommand};
 
@@ -27,9 +27,12 @@ const RECORD_WITHIN: Duration = Duration::from_secs(2);
 const FIRST_CONNECTION: Duration = Duration::from_millis(500);
 /// The loss is noticed and the service reached again well within this.
 const BACK_WITHIN: Duration = Duration::from_secs(5);
-/// Nothing listens on the port for this long: the spec's minute, many more attempts than
-/// a client that gives up after some would make.
-const LONG_OUTAGE: Duration = Duration::from_secs(60);
+/// The long-outage test runs the client's reconnect pauses and replay this many times faster.
+const TIMINGS_SPEEDUP: u32 = 10;
+/// Nothing listens on the port for this long: past the replay and past the tenth failed
+/// attempt of the client running `TIMINGS_SPEEDUP` times faster (≈ 2.8 s), as a minute is
+/// for the client at its own timings.
+const LONG_OUTAGE: Duration = Duration::from_millis(3_500);
 /// A short outage: the stub refuses every connection for this long after it closed the first.
 const SHORT_OUTAGE: Duration = Duration::from_secs(3);
 /// An outage the replay on the return no longer hides: well past its 5 s.
@@ -180,6 +183,23 @@ fn start_stream(url: &str) -> (AudioStream, Sender<Vec<f32>>, Receiver<PipelineI
     start_stream_from(url, Instant::now())
 }
 
+/// The stream of a client whose reconnect pauses and replay run `TIMINGS_SPEEDUP` times faster.
+fn start_fast_stream(url: &str) -> (AudioStream, Sender<Vec<f32>>, Receiver<PipelineInput>) {
+    let (audio_tx, audio_rx) = mpsc::channel();
+    let (inputs_tx, inputs_rx) = mpsc::channel();
+    let stream = AudioStream::start_with_timings(
+        url,
+        &VoiceCommand::STANDBY,
+        Instant::now(),
+        MIC_RATE_HZ,
+        audio_rx,
+        inputs_tx,
+        LinkTimings::default().faster(TIMINGS_SPEEDUP),
+    )
+    .unwrap();
+    (stream, audio_tx, inputs_rx)
+}
+
 /// The stream of a microphone whose first sample was captured at `audio_start`.
 fn start_stream_from(
     url: &str,
@@ -266,7 +286,7 @@ fn should_be_back_within_seconds_once_the_service_answers_after_a_long_outage() 
     let (listener, url) = free_listener();
     let port_addr = listener.local_addr().unwrap();
     serve_one_connection_then_go(listener);
-    let (stream, audio, inputs) = start_stream(&url);
+    let (stream, audio, inputs) = start_fast_stream(&url);
     let lost = feed_until(
         &audio,
         &inputs,

@@ -16,14 +16,18 @@ use super::{healthy, services, wait_until, ScenarioServices, COMMAND_SPOTTING};
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
-/// Long enough after its start for the scripts to have seen the service answer.
-const ANSWERED_ONCE_AFTER: Duration = Duration::from_secs(7);
+/// How many seconds apart the scripts check the scenario's services: short, so the scenarios
+/// run through several checks in seconds instead of the default 5 s cadence.
+const CHECK_EVERY_SECS: u32 = 1;
+/// Long enough after its start for the scripts to have seen the service answer: three checks.
+const ANSWERED_ONCE_AFTER: Duration = Duration::from_secs(3);
 const RESTART_WITHIN: Duration = Duration::from_secs(30);
 /// What the supervisor writes when it restarts a service that stopped answering.
 const HEALTH_RESTART_NOTE: &str = "stopped answering its health check";
 /// How late the slow speech recognition service answers every confirmation.
 const SLOW_ANSWER: Duration = Duration::from_secs(4);
-const STREAM_FOR: Duration = Duration::from_secs(60);
+/// Through six checks: twice the checks in a row that restart a service.
+const STREAM_FOR: Duration = Duration::from_secs(6);
 const FRAME_SAMPLES: usize = 1_600;
 const FRAME: Duration = Duration::from_millis(100);
 const SPEECH: &str =
@@ -34,6 +38,7 @@ const HEARD: &str = r#"{"text":" the weather is nice","segments":[]}"#;
 async fn command_spotting_started(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let mut services = ScenarioServices::for_outages()?;
+        services.check_health_every(CHECK_EVERY_SECS);
         services.start(&[COMMAND_SPOTTING])?;
         world.local_services = Some(services);
         Ok(())
@@ -78,8 +83,8 @@ async fn service_hangs(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[when("an app streams speech to it for a minute while the speech recognition service for commands answers its confirmations slowly")]
-async fn stream_for_a_minute(world: &mut E2eWorld) -> Result<()> {
+#[when("an app streams speech to it through several of the scripts' checks while the speech recognition service for commands answers its confirmations slowly")]
+async fn stream_through_several_checks(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let services = services(world)?;
         slow_speech_recognition(TcpListener::bind(("127.0.0.1", services.command_stt_port))?);

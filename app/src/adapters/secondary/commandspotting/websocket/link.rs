@@ -15,23 +15,56 @@ const RECONNECT_PAUSES: [Duration; 5] = [
 /// How far before the loss the replay reaches back: the service had not answered for up to
 /// this long when the client gave up on it, so it may not have spotted that audio.
 const REPLAY_BEFORE_LOSS: Duration = Duration::from_secs(5);
-/// An outage is long from when the replay no longer reaches back to the loss: from then on
-/// the return no longer hides it.
-const LONG_OUTAGE: Duration = REPLAY_BEFORE_LOSS;
 /// Failed attempts are logged at the first, then at every this many.
 const ATTEMPTS_LOGGED_EVERY: u32 = 10;
 
-/// The pause before attempt `attempt + 1`, counting the failed ones from 0.
-pub fn reconnect_pause(failed_attempts: u32) -> Duration {
-    let last = RECONNECT_PAUSES.len() - 1;
-    RECONNECT_PAUSES[(failed_attempts as usize).min(last)]
+/// How the worker paces its attempts and how far back it replays. The app runs the default;
+/// a test runs them faster to prove a long outage without waiting it out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LinkTimings {
+    reconnect_pauses: [Duration; 5],
+    replay_before_loss: Duration,
 }
 
-/// Where the replay to the new connection starts: some seconds before the loss, never at or
-/// before the end of the last command the app was told of, so no command comes twice.
-pub fn replay_start(lost_at: Instant, last_command_end: Option<Instant>) -> Instant {
-    let before_loss = lost_at.checked_sub(REPLAY_BEFORE_LOSS).unwrap_or(lost_at);
-    last_command_end.map_or(before_loss, |end| end.max(before_loss))
+impl Default for LinkTimings {
+    fn default() -> Self {
+        Self {
+            reconnect_pauses: RECONNECT_PAUSES,
+            replay_before_loss: REPLAY_BEFORE_LOSS,
+        }
+    }
+}
+
+impl LinkTimings {
+    /// The same timings, `speedup` times shorter.
+    pub fn faster(self, speedup: u32) -> Self {
+        let speedup = speedup.max(1);
+        Self {
+            reconnect_pauses: self.reconnect_pauses.map(|pause| pause / speedup),
+            replay_before_loss: self.replay_before_loss / speedup,
+        }
+    }
+
+    /// The pause before attempt `attempt + 1`, counting the failed ones from 0.
+    pub fn reconnect_pause(&self, failed_attempts: u32) -> Duration {
+        let last = self.reconnect_pauses.len() - 1;
+        self.reconnect_pauses[(failed_attempts as usize).min(last)]
+    }
+
+    /// Where the replay to the new connection starts: some time before the loss, never at or
+    /// before the end of the last command the app was told of, so no command comes twice.
+    pub fn replay_start(&self, lost_at: Instant, last_command_end: Option<Instant>) -> Instant {
+        let before_loss = lost_at
+            .checked_sub(self.replay_before_loss)
+            .unwrap_or(lost_at);
+        last_command_end.map_or(before_loss, |end| end.max(before_loss))
+    }
+
+    /// An outage is long from when the replay no longer reaches back to the loss: from then
+    /// on the return no longer hides it.
+    fn long_outage(&self) -> Duration {
+        self.replay_before_loss
+    }
 }
 
 /// A failed attempt is worth a log line: the first, then every tenth.
@@ -41,6 +74,7 @@ pub fn attempt_logged(failed_attempts: u32) -> bool {
 
 /// The service is away: since when, and when to try it again.
 pub struct Outage {
+    timings: LinkTimings,
     pub lost_at: Instant,
     pub failed_attempts: u32,
     pub next_try: Instant,
@@ -49,11 +83,12 @@ pub struct Outage {
 }
 
 impl Outage {
-    pub fn since(lost_at: Instant) -> Self {
+    pub fn since(lost_at: Instant, timings: LinkTimings) -> Self {
         Self {
+            timings,
             lost_at,
             failed_attempts: 0,
-            next_try: lost_at + reconnect_pause(0),
+            next_try: lost_at + timings.reconnect_pause(0),
             long: false,
         }
     }
@@ -62,9 +97,9 @@ impl Outage {
         now >= self.next_try
     }
 
-    /// True once per outage: at the first `now` at which it has lasted `LONG_OUTAGE`.
+    /// True once per outage: at the first `now` at which it has lasted long.
     pub fn became_long(&mut self, now: Instant) -> bool {
-        let became = !self.long && now >= self.lost_at + LONG_OUTAGE;
+        let became = !self.long && now >= self.lost_at + self.timings.long_outage();
         self.long |= became;
         became
     }
@@ -72,7 +107,7 @@ impl Outage {
     /// Counts a failed attempt at `now` and returns the pause before the next one.
     pub fn failed(&mut self, now: Instant) -> Duration {
         self.failed_attempts += 1;
-        let pause = reconnect_pause(self.failed_attempts);
+        let pause = self.timings.reconnect_pause(self.failed_attempts);
         self.next_try = now + pause;
         pause
     }
@@ -85,7 +120,7 @@ mod tests {
     #[test]
     fn should_grow_the_pause_between_attempts_up_to_four_seconds() {
         let pauses: Vec<u64> = (0..7)
-            .map(|n| reconnect_pause(n).as_millis() as u64)
+            .map(|n| LinkTimings::default().reconnect_pause(n).as_millis() as u64)
             .collect();
         assert_eq!(pauses, [250, 500, 1_000, 2_000, 4_000, 4_000, 4_000]);
     }
@@ -95,7 +130,7 @@ mod tests {
         // Given
         let lost_at = Instant::now() + Duration::from_secs(60);
         // When
-        let start = replay_start(lost_at, None);
+        let start = LinkTimings::default().replay_start(lost_at, None);
         // Then
         assert_eq!(start, lost_at - Duration::from_secs(5));
     }
@@ -106,9 +141,26 @@ mod tests {
         let lost_at = Instant::now() + Duration::from_secs(60);
         let command_end = lost_at - Duration::from_secs(2);
         // When
-        let start = replay_start(lost_at, Some(command_end));
+        let start = LinkTimings::default().replay_start(lost_at, Some(command_end));
         // Then
         assert_eq!(start, command_end);
+    }
+
+    #[test]
+    fn should_shorten_every_pause_and_the_replay_when_faster() {
+        // Given
+        let timings = LinkTimings::default().faster(10);
+        // When
+        let pauses: Vec<u64> = (0..5)
+            .map(|n| timings.reconnect_pause(n).as_millis() as u64)
+            .collect();
+        let lost_at = Instant::now() + Duration::from_secs(60);
+        // Then
+        assert_eq!(pauses, [25, 50, 100, 200, 400]);
+        assert_eq!(
+            timings.replay_start(lost_at, None),
+            lost_at - Duration::from_millis(500)
+        );
     }
 
     #[test]
@@ -121,7 +173,7 @@ mod tests {
     fn should_try_again_after_the_pause_of_each_failed_attempt() {
         // Given
         let lost_at = Instant::now();
-        let mut outage = Outage::since(lost_at);
+        let mut outage = Outage::since(lost_at, LinkTimings::default());
         // When
         let pause = outage.failed(lost_at + Duration::from_secs(1));
         // Then
@@ -134,7 +186,7 @@ mod tests {
     fn should_become_long_once_when_the_replay_no_longer_reaches_back_to_the_loss() {
         // Given
         let lost_at = Instant::now();
-        let mut outage = Outage::since(lost_at);
+        let mut outage = Outage::since(lost_at, LinkTimings::default());
         // When
         let before = outage.became_long(lost_at + Duration::from_millis(4_990));
         let at = outage.became_long(lost_at + Duration::from_secs(5));

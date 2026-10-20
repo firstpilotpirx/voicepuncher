@@ -23,8 +23,12 @@ const HANDSHAKE_LIMIT: Duration = Duration::from_secs(5);
 /// One frame of audio, as long as it lasts in real time.
 const FRAME: Duration = Duration::from_millis(100);
 const PING_EVERY: Duration = Duration::from_millis(250);
-/// How long the app keeps streaming after the speech, as in the incident.
-const WATCH_FOR: Duration = Duration::from_secs(15);
+/// How long the service waits for a confirmation: short, so the test streams past it in seconds
+/// instead of the default 3 s.
+const CONFIRMATION_DEADLINE: Duration = Duration::from_secs(1);
+/// How long the app keeps streaming past the speech: past the wait for its confirmation and the
+/// second attempt of the whole utterance.
+const WATCH_PAST_SPEECH: Duration = Duration::from_secs(2);
 /// The longest the app may wait for an answer to a ping.
 const MAX_PONG_GAP: Duration = Duration::from_secs(1);
 const SILENCE_SECS: f32 = 0.5;
@@ -68,7 +72,7 @@ fn engine_cfg(transcription_url: String) -> Option<EngineCfg> {
         keywords: None,
         transcription_url: Some(transcription_url),
         max_command_secs: 3.0,
-        confirmation_deadline: Duration::from_secs(3),
+        confirmation_deadline: CONFIRMATION_DEADLINE,
     })
 }
 
@@ -140,14 +144,18 @@ fn lines() -> &'static Lines {
 }
 
 /// The longest time between two answers to pings sent every `PING_EVERY` while `audio`
-/// streams in real time, frame after frame, for `WATCH_FOR`.
-fn longest_pong_gap(socket: &mut WebSocket<MaybeTlsStream<TcpStream>>, audio: &[f32]) -> Duration {
+/// streams in real time, frame after frame, for `watch_for`.
+fn longest_pong_gap(
+    socket: &mut WebSocket<MaybeTlsStream<TcpStream>>,
+    audio: &[f32],
+    watch_for: Duration,
+) -> Duration {
     let started = Instant::now();
     let (mut last_ping, mut last_answer, mut longest) = (started, started, Duration::ZERO);
     let mut last_frame = started;
     let mut frames = audio.chunks(FRAME_SAMPLES).cycle();
     socket.send(Message::Ping(Default::default())).unwrap();
-    while started.elapsed() < WATCH_FOR {
+    while started.elapsed() < watch_for {
         if last_frame.elapsed() >= FRAME {
             send_audio(socket, frames.next().unwrap_or_default());
             last_frame = Instant::now();
@@ -178,8 +186,10 @@ fn should_keep_answering_the_app_while_a_confirmation_hangs() {
         return;
     };
     let mut socket = connect(port);
-    // When the app keeps streaming speech for 15 seconds
-    let gap = longest_pong_gap(&mut socket, &speech_then_silence());
+    let audio = speech_then_silence();
+    let speech = Duration::from_secs_f32(audio.len() as f32 / SAMPLE_RATE as f32);
+    // When the app keeps streaming past the wait for the confirmation
+    let gap = longest_pong_gap(&mut socket, &audio, speech + WATCH_PAST_SPEECH);
     // Then
     assert!(
         gap <= MAX_PONG_GAP,

@@ -2,13 +2,18 @@
 
 mod steps;
 
+use std::path::Path;
 use std::sync::mpsc::Receiver;
 
 use cucumber::cli::{Empty, Opts, Parser as _};
 use cucumber::World;
+use voicepuncher_e2e_test::harness_args;
 use voicepuncher_e2e_test::scenario_filter::{self, Gate};
 
 use voicepuncher::core::domain::PttSignal;
+
+/// The folder of the slice and component feature files, relative to the crate.
+const FEATURES: &str = "tests/features";
 
 #[derive(Debug, Default, World)]
 pub struct IntegrationWorld {
@@ -32,9 +37,15 @@ pub struct IntegrationWorld {
 /// it instead of the filter, and the gates with it. `scenario_filter::split` takes it out of the
 /// options and into the one filter that requires both.
 fn main() {
-    // One nextest test, `scenarios`, is the whole run; any other command line is cucumber's own
-    let Some(command_line) = voicepuncher_e2e_test::harness_args::cucumber_command_line() else {
+    // One nextest test per feature file, so nextest runs the files in parallel processes; any
+    // other command line is cucumber's own and runs every file
+    let features = harness_args::feature_names(Path::new(FEATURES));
+    let Some((feature, command_line)) = harness_args::feature_command_line(&features) else {
         return;
+    };
+    let path = match feature {
+        Some(name) => format!("{FEATURES}/{name}.feature"),
+        None => FEATURES.to_string(),
     };
     let gates = vec![
         Gate::wip(),
@@ -49,7 +60,7 @@ fn main() {
         IntegrationWorld::cucumber()
             .fail_on_skipped()
             .with_cli(opts)
-            .filter_run_and_exit("tests/features", move |feature, rule, scenario| {
+            .filter_run_and_exit(path, move |feature, rule, scenario| {
                 filter.runs(feature, rule, scenario)
             }),
     );

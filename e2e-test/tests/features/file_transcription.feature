@@ -3,6 +3,8 @@ Feature: file-transcription
 
   Rule: A recording file runs through the whole pipeline
 
+    # Without refinement, silence of 1, 10 and 60 s runs in speech_recognition.feature,
+    # "Silence produces a lone "you"", whose steps also fail on a startup failure.
     @smoke
     Scenario Outline: Silence is processed without a startup failure
       Given a recording of silence lasting <seconds> seconds
@@ -12,11 +14,8 @@ Feature: file-transcription
       Examples:
         | seconds | refinement |
         | 1       | with       |
-        | 1       | without    |
         | 10      | with       |
-        | 10      | without    |
         | 60      | with       |
-        | 60      | without    |
 
   Rule: Transcription meets the accuracy bar
 

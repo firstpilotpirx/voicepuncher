@@ -17,15 +17,20 @@ fail-fast = false
 final-status-level = "slow"
 
 [test-groups]
-# The tests that load the command spotting models run one at a time: ONNX Runtime aborts when models
-# load or run on several threads, and the shared services must not see more load than before
+# The tests that drive the shared command spotting service run one at a time: the shared services
+# must not see more load than before
 command-spotting-models = { max-threads = 1 }
+# The tests that load the command spotting models in their own process: ONNX Runtime aborts when
+# models load or run on several threads of one process, and nextest runs each test in a process of
+# its own, so several run at once (6: 49–53 s for `just test` over three runs, against 52–74 s with 4
+# and 93 s with 2)
+command-spotting-engine = { max-threads = 6 }
 # The tests that write the real general pasteboard run one at a time: they share that one pasteboard
 pasteboard = { max-threads = 1 }
 
 [[profile.default.overrides]]
 filter = 'binary(engine_it) | binary(placed_commands_it)'
-test-group = "command-spotting-models"
+test-group = "command-spotting-engine"
 
 [[profile.default.overrides]]
 filter = 'binary(textpasting_macos_it)'
@@ -37,14 +42,9 @@ test-group = "pasteboard"
 filter = 'binary(commandspotting_websocket_it) | binary(voice_forms_it) | binary(voice_samples_it)'
 test-group = "command-spotting-models"
 
-# A 60 s outage by design (61–65 s measured): stopped at 3 min
-[[profile.default.overrides]]
-filter = 'binary(commandspotting_reconnect_it) & test(=should_be_back_within_seconds_once_the_service_answers_after_a_long_outage)'
-slow-timeout = { period = "60s", terminate-after = 3 }
-
 # ── Suite profiles ── one per E2E recipe (`cargo nextest run --profile <recipe>`): its scenario selection
 # next to its limits, so a suite never runs under another suite's limit. Each inherits the default profile
-# and its overrides (the model test group, the outage test). A Gherkin harness run is one test, `scenarios`
+# and its overrides (the model test groups). A Gherkin harness run is one test, `scenarios`
 # (e2e-test/src/harness_args.rs), whose `run-extra-args` are cucumber's command line. The service binaries
 # stay captured; their output is printed whole per test, as `-- --nocapture` showed it
 
@@ -57,6 +57,14 @@ filter = 'binary(cucumber_e2e)'
 run-extra-args = ["--tags", "@smoke and not @wip"]
 slow-timeout = { period = "60s", terminate-after = 7 }
 
+# @regression, the voice control scenarios beyond the smoke set, 23 s measured: default 2 min
+[profile.e2e-regression]
+success-output = "immediate"
+
+[[profile.e2e-regression.overrides]]
+filter = 'binary(cucumber_e2e)'
+run-extra-args = ["--tags", "@regression and not @wip"]
+
 # @accuracy on 10 recordings, 62 s measured: 3 min
 [profile.e2e-quick]
 success-output = "immediate"
@@ -66,7 +74,7 @@ filter = 'binary(cucumber_e2e)'
 run-extra-args = ["--tags", "@accuracy and not @wip"]
 slow-timeout = { period = "60s", terminate-after = 3 }
 
-# @refinement, 33 s measured: default 2 min
+# @refinement, 27 s measured (the evaluation set sent once): default 2 min
 [profile.refine-eval]
 success-output = "immediate"
 

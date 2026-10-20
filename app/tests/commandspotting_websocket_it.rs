@@ -326,18 +326,6 @@ fn should_recognize_commands_after_long_listening_with_the_phrase_set_switched_b
 }
 
 #[test]
-fn should_ignore_a_command_phrase_said_inside_a_sentence_after_long_listening() {
-    let Some(url) = service_url() else { return };
-    // Given
-    let mut listening = Listening::start(&url, &VoiceCommand::STANDBY);
-    // When
-    listening.say_after(LONG_LISTENING_SECS, "I will press enter when I am done");
-    // Then
-    assert_eq!(listening.next_command(), None);
-    listening.stream.stop();
-}
-
-#[test]
 fn should_take_a_command_phrase_that_ends_the_utterance() {
     let Some(url) = service_url() else { return };
     for (sentence, command) in [

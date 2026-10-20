@@ -88,6 +88,30 @@ pub fn load_eval_set(path: &Path) -> Result<Vec<EvalItem>> {
         .collect()
 }
 
+/// A report run once, by its first caller, and shared by every caller after it: the scenarios
+/// that judge the whole evaluation set read one run instead of sending the set each.
+pub struct SharedReport(std::sync::OnceLock<std::result::Result<Report, String>>);
+
+impl SharedReport {
+    pub const fn new() -> Self {
+        Self(std::sync::OnceLock::new())
+    }
+
+    /// The report `run` made for the first caller; its failure for every caller when it failed.
+    pub fn get_or_run(&self, run: impl FnOnce() -> Result<Report>) -> Result<Report> {
+        self.0
+            .get_or_init(|| run().map_err(|e| format!("{e:#}")))
+            .clone()
+            .map_err(anyhow::Error::msg)
+    }
+}
+
+impl Default for SharedReport {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Sends every item through refine-or-raw, exactly as the app does before pasting.
 pub fn run(refiner: &mut dyn TextRefiner, items: &[EvalItem]) -> Result<Report> {
     let mut results = Vec::with_capacity(items.len());
@@ -426,5 +450,41 @@ mod tests {
                 "no {category} items"
             );
         }
+    }
+
+    #[test]
+    fn should_run_a_shared_report_once_for_every_caller() {
+        static SHARED: SharedReport = SharedReport::new();
+        let runs = std::sync::atomic::AtomicU32::new(0);
+        let expected = report(&[(&item("fillers", "ну это", "Это."), "Это.")]);
+        let run = || {
+            runs.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(expected.clone())
+        };
+        let first = SHARED.get_or_run(run).unwrap();
+        let second = SHARED.get_or_run(run).unwrap();
+        let third = SHARED.get_or_run(run).unwrap();
+        assert_eq!(runs.load(std::sync::atomic::Ordering::SeqCst), 1);
+        for shared in [first, second, third] {
+            assert_eq!(shared.table(), expected.table());
+        }
+    }
+
+    #[test]
+    fn should_give_every_caller_the_failure_of_the_one_run() {
+        static SHARED: SharedReport = SharedReport::new();
+        let runs = std::sync::atomic::AtomicU32::new(0);
+        let run = || -> Result<Report> {
+            runs.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            anyhow::bail!("the service did not answer")
+        };
+        for _ in 0..2 {
+            let error = SHARED.get_or_run(run).unwrap_err();
+            assert!(
+                error.to_string().contains("the service did not answer"),
+                "{error}"
+            );
+        }
+        assert_eq!(runs.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 }

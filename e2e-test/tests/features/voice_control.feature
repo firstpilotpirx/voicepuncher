@@ -24,17 +24,21 @@ Feature: voice-control
         | clear all text   |
         | paste text       |
 
-    @smoke
     Scenario Outline: A command said after a long time of listening is recognized
       Given the command spotting service is running
       And listening has been on for a long time with nothing said
       When the user says "<phrase>" with a pause before and after it
       Then the "<phrase>" command takes effect
 
+      @smoke
+      Examples:
+        | phrase           |
+        | stop dictation   |
+
+      @regression
       Examples:
         | phrase           |
         | start dictation  |
-        | stop dictation   |
         | cancel dictation |
         | restart dictation |
         | press enter      |
@@ -72,12 +76,17 @@ Feature: voice-control
         | 0.7   |
         | 0.8   |
 
-    @smoke
     Scenario Outline: A command said in a quiet voice is recognized
       Given the command spotting service is running
       When the user says "<said>" in a quiet voice with a pause before and after it
       Then the "<command>" command takes effect
 
+      @smoke
+      Examples:
+        | said              | command           |
+        | restart           | restart dictation |
+
+      @regression
       Examples:
         | said              | command           |
         | start dictation   | start dictation   |
@@ -88,7 +97,6 @@ Feature: voice-control
         | start             | start dictation   |
         | stop              | stop dictation    |
         | cancel            | cancel dictation  |
-        | restart           | restart dictation |
         | enter             | press enter       |
         | clear all text    | clear all text    |
         | clear             | clear all text    |
@@ -101,19 +109,24 @@ Feature: voice-control
 
   Rule: Every command has a one-word short form
 
-    @smoke
     Scenario Outline: A short form is recognized as its command
       Given the command spotting service is running
       When the user says "<said>" with a pause before and after it
       Then the "<command>" command takes effect
 
+      @smoke
+      Examples:
+        | said           | command           |
+        | cancel         | cancel dictation  |
+        | paste          | paste text        |
+
+      @regression
       Examples:
         | said           | command           |
         | start          | start dictation   |
         | start please   | start dictation   |
         | stop           | stop dictation    |
         | stop please    | stop dictation    |
-        | cancel         | cancel dictation  |
         | cancel please  | cancel dictation  |
         | restart        | restart dictation |
         | restart please | restart dictation |
@@ -121,38 +134,45 @@ Feature: voice-control
         | enter please   | press enter       |
         | clear          | clear all text    |
         | clear please   | clear all text    |
-        | paste          | paste text        |
         | paste please   | paste text        |
 
   Rule: A command may end with "please"
 
-    @smoke
     Scenario Outline: A command followed by please is recognized
       Given the command spotting service is running
       When the user says "<said>" with a pause before and after it
       Then the "<command>" command takes effect
 
+      @smoke
+      Examples:
+        | said                    | command          |
+        | press enter please      | press enter      |
+
+      @regression
       Examples:
         | said                    | command          |
         | start dictation please  | start dictation  |
         | stop dictation please   | stop dictation   |
         | cancel dictation please | cancel dictation |
         | restart dictation please | restart dictation |
-        | press enter please      | press enter      |
         | clear all text please   | clear all text   |
         | paste text please       | paste text       |
 
   Rule: "clear text" erases the focused text too
 
-    @smoke
     Scenario Outline: Clear text is recognized as clear all text
       Given the command spotting service is running
       When the user says "<said>" with a pause before and after it
       Then the "clear all text" command takes effect
 
+      @smoke
       Examples:
         | said              |
         | clear text        |
+
+      @regression
+      Examples:
+        | said              |
         | clear text please |
 
   Rule: "paste text" pastes the clipboard
@@ -181,44 +201,56 @@ Feature: voice-control
 
   Rule: Each state accepts its own commands
 
-    @smoke
     Scenario Outline: Start or let's start on its own during a dictation is ignored
       Given the command spotting service is running
       When someone says "<words>" on its own after a sentence, <level>, while dictating
       Then no command takes effect
 
+      @smoke
       Examples:
         | words       | level              |
         | start       | at a normal level  |
-        | start       | in a quiet voice   |
-        | let's start | at a normal level  |
         | let's start | in a quiet voice   |
 
-    @smoke
+      @regression
+      Examples:
+        | words       | level              |
+        | start       | in a quiet voice   |
+        | let's start | at a normal level  |
+
     Scenario Outline: Start ending a dictated sentence is ignored
       Given the command spotting service is running
       When someone says "<words>" in one breath, <level>, while dictating
       Then no command takes effect
 
+      @smoke
       Examples:
         | words                         | level             |
         | we are all here, let's start  | at a normal level |
-        | we are all here, let's start  | in a quiet voice  |
-        | the meeting is about to start | at a normal level |
         | the meeting is about to start | in a quiet voice  |
 
-    @smoke
+      @regression
+      Examples:
+        | words                         | level             |
+        | we are all here, let's start  | in a quiet voice  |
+        | the meeting is about to start | at a normal level |
+
     Scenario Outline: Start inside a dictated sentence is ignored
       Given the command spotting service is running
       When someone says "<words>" in one breath, <level>, while dictating
       Then no command takes effect
 
+      @smoke
       Examples:
         | words                       | level             |
         | let's start with the budget | at a normal level |
+        | we start at nine tomorrow   | in a quiet voice  |
+
+      @regression
+      Examples:
+        | words                       | level             |
         | let's start with the budget | in a quiet voice  |
         | we start at nine tomorrow   | at a normal level |
-        | we start at nine tomorrow   | in a quiet voice  |
 
     @smoke
     Scenario: Stop dictation without a dictation is ignored
@@ -228,12 +260,18 @@ Feature: voice-control
 
   Rule: A command may end an utterance
 
-    @smoke
     Scenario Outline: A command right after other speech takes effect
       Given the command spotting service is running
       When someone says "<words>" in one breath while <state>
       Then the commands "<commands>" take effect in order
 
+      @smoke
+      Examples:
+        | words                                    | state             | commands          |
+        | We meet on Friday at ten, enter          | dictating         | press enter       |
+        | Okay, start                              | no dictation runs | start dictation   |
+
+      @regression
       Examples:
         | words                                    | state             | commands          |
         | We meet on Friday at ten stop            | dictating         | stop dictation    |
@@ -243,12 +281,10 @@ Feature: voice-control
         | Let me say it again, restart             | dictating         | restart dictation |
         | Let me try once more, restart dictation  | dictating         | restart dictation |
         | Okay, press enter                        | no dictation runs | press enter       |
-        | We meet on Friday at ten, enter          | dictating         | press enter       |
         | Okay, enter                              | no dictation runs | press enter       |
         | Okay, clear                              | no dictation runs | clear all text    |
         | Okay, clear all text                     | no dictation runs | clear all text    |
         | Okay, paste                              | no dictation runs | paste text        |
-        | Okay, start                              | no dictation runs | start dictation   |
         | Okay, start dictation                    | no dictation runs | start dictation   |
 
     @smoke
@@ -259,15 +295,19 @@ Feature: voice-control
 
   Rule: "start" may open an utterance
 
-    @smoke
     Scenario Outline: Start followed by the dictation at once
       Given the command spotting service is running
       When someone says "<words>" in one breath while no dictation runs
       Then the commands "start dictation" take effect in order
 
+      @smoke
       Examples:
         | words                                         |
         | Start, the meeting moved to Friday at ten     |
+
+      @regression
+      Examples:
+        | words                                         |
         | Start dictation, the build is green again     |
 
     @smoke
@@ -376,37 +416,45 @@ Feature: voice-control
 
   Rule: A doubled short form counts anywhere
 
-    @smoke
     Scenario Outline: A doubled short form in the middle of speech takes effect once
       Given the command spotting service is running
       When someone says "<words>" in one breath while <state>
       Then the commands "<commands>" take effect in order
 
+      @smoke
+      Examples:
+        | words                                                           | state             | commands         |
+        | Wait, restart restart                                           | dictating         | restart dictation |
+
+      @regression
       Examples:
         | words                                                           | state             | commands         |
         | We move the meeting to Friday stop stop and some more words here | dictating         | stop dictation   |
         | Fine, enter enter, thanks                                       | no dictation runs | press enter      |
         | We move the meeting to Friday cancel cancel                     | dictating         | cancel dictation |
-        | Wait, restart restart                                           | dictating         | restart dictation |
         | Okay, start start                                               | no dictation runs | start dictation   |
         | Fine, clear clear                                               | no dictation runs | clear all text    |
         | Fine, paste paste                                               | no dictation runs | paste text        |
 
   Rule: A chain of commands is carried out in order
 
-    @smoke
     Scenario Outline: A chain of commands takes effect in order
       Given the command spotting service is running
       When someone says "<words>" in one breath while <state>
       Then the commands "<commands>" take effect in order
 
+      @smoke
+      Examples:
+        | words                           | state             | commands                                     |
+        | Forget it, cancel, clear        | dictating         | cancel dictation, clear all text             |
+
+      @regression
       Examples:
         | words                           | state             | commands                                     |
         | That is all, stop enter         | dictating         | stop dictation, press enter                  |
         | That is all, stop, clear        | dictating         | stop dictation, clear all text               |
         | That is all, stop, enter, start | dictating         | stop dictation, press enter, start dictation |
         | That is all, stop, clear, enter | dictating         | stop dictation, clear all text, press enter  |
-        | Forget it, cancel, clear        | dictating         | cancel dictation, clear all text             |
         | Forget it, cancel, enter        | dictating         | cancel dictation, press enter                |
         | That is all, enter, start       | dictating         | press enter, start dictation                 |
         | Okay, enter, clear              | no dictation runs | press enter, clear all text                  |
@@ -518,8 +566,8 @@ Feature: voice-control
     Scenario: A confirmation that takes longer than 10 seconds keeps listening on
       Given the speech recognition service for commands and the command spotting service run on ports of their own
       And listening is on with them and a dictation runs
-      And the speech recognition service for commands takes 15 seconds to answer one confirmation of the command spotting service
-      When the user keeps dictating through those 15 seconds and then says "stop dictation"
+      And the speech recognition service for commands holds one confirmation of the command spotting service for longer than the service waits for a confirmation
+      When the user keeps dictating through that hold and then says "stop dictation"
       Then listening is still on and no error about the command spotting service is logged
       And the dictation ends and its text is pasted
 

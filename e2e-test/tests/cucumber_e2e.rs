@@ -8,11 +8,9 @@ use std::time::Duration;
 
 use cucumber::cli::{Empty, Opts, Parser as _};
 use cucumber::{ScenarioType, World};
+use voicepuncher_e2e_test::harness_args;
 use voicepuncher_e2e_test::scenario_filter::{self, has_tag, Gate};
 
-/// The local services are shared with the user's live session; more concurrent
-/// clients make the speech recognition service reset connections it has no room for.
-const MAX_CONCURRENT_SCENARIOS: usize = 4;
 /// Tags of scenarios that run alone: the accuracy benchmarks load the services on purpose
 /// (the corpus sample is transcribed two at a time), and a scenario beside them would wait
 /// out its timeouts in the speech recognition service's queue.
@@ -68,7 +66,7 @@ impl E2eWorld {
 /// options and into the one filter that requires both.
 fn main() {
     // One nextest test, `scenarios`, is the whole run; any other command line is cucumber's own
-    let Some(command_line) = voicepuncher_e2e_test::harness_args::cucumber_command_line() else {
+    let Some(command_line) = harness_args::cucumber_command_line() else {
         return;
     };
     // The app's log lines, such as its `voice start:` timing, only for the modules RUST_LOG names
@@ -84,12 +82,17 @@ fn main() {
     for line in filter.gated_lines() {
         eprintln!("{line}");
     }
+    // The local services are shared with the user's live session; more concurrent clients make
+    // the speech recognition service reset connections it has no room for
+    let concurrent_scenarios =
+        harness_args::concurrent_scenarios(std::env::var(harness_args::CONCURRENCY_VAR))
+            .unwrap_or_else(|e| panic!("{e}"));
     // The scenario probe for the suite limit (fail-hung-tests-fast, D10): armed, every scenario
     // blocks forever before its first step, so the suite's nextest limit must stop the harness.
     let hang_probe = std::env::var("VOICEPUNCHER_HANG_PROBE").as_deref() == Ok("1");
     futures::executor::block_on(
         E2eWorld::cucumber()
-            .max_concurrent_scenarios(MAX_CONCURRENT_SCENARIOS)
+            .max_concurrent_scenarios(concurrent_scenarios)
             .which_scenario(|feature, rule, scenario| {
                 if RUN_ALONE
                     .iter()

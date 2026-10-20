@@ -562,7 +562,7 @@ When the command spotting service stops answering while listening, the system SH
 - **AND** the app tries to reach the service again, logging its first failed attempt and every tenth
 
 ### Requirement: Listening comes back when the command spotting service is back
-When the command spotting service answers again after it went away, the system SHALL resume listening for the commands of the current state within 5 seconds and log that listening is back, without a restart of the app and without playing a sound.
+When the command spotting service answers again after it went away, the system SHALL resume listening for the commands of the current state within 5 seconds and log that listening is back, without a restart of the app and without playing a sound. The system SHALL NOT give up reaching for the service however many attempts fail: an outage that outlasts the speech it replays and the tenth failed attempt still ends with listening back.
 
 #### Scenario: Commands work again after the command spotting service restarts
 - **GIVEN** listening is on and no dictation runs
@@ -573,17 +573,18 @@ When the command spotting service answers again after it went away, the system S
 
 #### Scenario: Listening is not given up after many failed attempts
 - **GIVEN** listening is on
-- **AND** the command spotting service stays away for a minute
+- **AND** the command spotting service stays away past the speech the app replays and past the tenth failed attempt to reach it
 - **WHEN** the service answers again
 - **THEN** listening is on again within 5 seconds
+- **AND** the first failed attempt and the tenth were logged, and the service was reported still away once
 
 ### Requirement: A slow command spotting service does not stop listening
 The system SHALL keep listening while the command spotting service answers late, however long its spotting results take, as long as the service still answers on its connection; only a dropped connection or a service that answers nothing at all for 5 seconds after the app asked SHALL count as the service going away. A pause of the app's own, during which it reads nothing from the service, SHALL NOT count as the service's silence.
 
 #### Scenario: A confirmation that takes longer than 10 seconds keeps listening on
 - **GIVEN** listening is on and a dictation runs
-- **AND** the speech recognition service for commands takes 15 seconds to answer one confirmation of the command spotting service
-- **WHEN** the user keeps dictating through those 15 seconds and then says "stop dictation"
+- **AND** the speech recognition service for commands holds one confirmation of the command spotting service for longer than 10 seconds, past the time the service waits for a confirmation
+- **WHEN** the user keeps dictating through that hold and then says "stop dictation"
 - **THEN** listening is still on and no error about the command spotting service is logged
 - **AND** the dictation ends and its text is pasted
 

@@ -71,6 +71,9 @@ pub struct ScenarioServices {
     command_copies: Option<u32>,
     /// The ports of the copies the start left running.
     copy_ports: Vec<u16>,
+    /// How many seconds apart the scripts check that a service still answers; the scripts'
+    /// default when `None`.
+    health_check_secs: Option<u32>,
     pool: copies::PoolRun,
     /// Processes a step paused: they are resumed before the services are stopped.
     paused: Vec<u32>,
@@ -107,6 +110,7 @@ impl ScenarioServices {
             copies,
             command_copies: None,
             copy_ports: Vec::new(),
+            health_check_secs: None,
             pool: copies::PoolRun::default(),
             paused: Vec::new(),
             hung: None,
@@ -117,6 +121,12 @@ impl ScenarioServices {
     /// Services on free ports, the speech recognition service for commands as one copy, for
     /// the voice control scenarios that make them fail: a paused copy then stalls every
     /// confirmation, as no other copy routes around it.
+    /// Makes the scripts check every `secs` seconds that a service still answers, when they
+    /// start it next.
+    pub fn check_health_every(&mut self, secs: u32) {
+        self.health_check_secs = Some(secs);
+    }
+
     pub fn for_outages() -> Result<Self> {
         let mut services = Self::on_free_ports()?;
         services.command_copies = Some(1);
@@ -230,6 +240,9 @@ impl ScenarioServices {
             .env("VOICEPUNCHER_KWS_PORT", self.kws_port.to_string());
         if let Some(home) = &self.home {
             just.env("HOME", home.path());
+        }
+        if let Some(secs) = self.health_check_secs {
+            just.env("VOICEPUNCHER_HEALTH_CHECK_SECS", secs.to_string());
         }
         if let Some(copies) = self.copies {
             just.env("VOICEPUNCHER_STT_INSTANCES", copies.to_string());

@@ -109,7 +109,6 @@ Feature: speech-recognition
 
       Examples:
         | language | condition                     |
-        | Russian  | spoken at a normal pace       |
         | Russian  | spoken fast                   |
         | Russian  | with pauses between words     |
         | Russian  | with low background noise     |
@@ -120,7 +119,6 @@ Feature: speech-recognition
         | Russian  | through a phone-quality line  |
         | Russian  | clipped                       |
         | Russian  | with short audio dropouts     |
-        | English  | spoken at a normal pace       |
         | English  | spoken slowly                 |
         | English  | spoken fast                   |
         | English  | with pauses between sentences |

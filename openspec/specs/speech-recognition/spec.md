@@ -273,12 +273,12 @@ The system SHALL send a recording or chunk again, up to 2 more times, when the s
 - **THEN** the other copy answers the next attempt, and the transcript is pasted
 
 ### Requirement: The wait for a transcript follows the length of the audio
-The system SHALL give up on one request after a time that grows with the length of the audio sent, a few seconds for a short recording and never more than the configured request timeout, so a request that hangs holds the dictation for seconds rather than a minute.
+The system SHALL give up on one request after a time that grows with the length of the audio sent, a few seconds for a short recording and never more than the configured request timeout, so a request that hangs holds the dictation for seconds rather than a minute; after the last attempt the cycle is dropped at once.
 
 #### Scenario: A hung short chunk is given up quickly
 - **GIVEN** the speech recognition service never answers any request
 - **WHEN** the user finishes a 5-second recording
-- **THEN** the cycle is dropped as a service failure within 30 seconds of the stop, after every attempt was logged
+- **THEN** the cycle is dropped as a service failure after three attempts, each given up within the wait for a short recording, and every attempt was logged
 
 ### Requirement: A lost chunk does not lose the rest of the dictation
 The system SHALL paste the text of every chunk of a dictation that was transcribed when one chunk fails on every attempt, and SHALL log which chunk was lost.

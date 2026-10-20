@@ -6,7 +6,7 @@ See proposal.md for why. The E2E harness already runs up to 4 scenarios at once;
 
 ## Goals / Non-Goals
 
-**Goals:** every behavior still proved once; `just test` < 20 s; `e2e-smoke` in `check` at least halved.
+**Goals:** every behavior still proved once; `just test` at most 60 s; `e2e-smoke` in `check` no slower than before (the first targets, < 20 s and halved, were not reached; proposal § Acceptance bar).
 
 **Non-Goals:** no production timing changes; `@serial` scenarios keep running alone.
 
@@ -22,7 +22,7 @@ See proposal.md for why. The E2E harness already runs up to 4 scenarios at once;
 8. **Duplicates.** The Gherkin scenario stays where a spec scenario traces to it; the plain Rust test stays where it checks an adapter detail. The PR lists each removed test and the test that keeps its behavior.
 
 9. **Model tests in parallel processes.** nextest runs each test in a process of its own, so ONNX Runtime's one-thread limit holds per process; `engine_it` and `placed_commands_it` move to a group of their own with several threads (measured), while the binaries that drive the shared services stay one at a time.
-10. **Slice/component harness, one test per feature file.** The harness lists `scenarios::<feature>` for each `.feature` file and runs only that file, so nextest spreads the features over its threads; the E2E harness keeps one test, its suites limited by the shared services.
+10. **Slice/component harness, one test per feature file.** The harness lists one test per `.feature` file, named by its path below `tests/features` (`component/voice_control`), and runs only that file, so nextest spreads the features over its threads; the E2E harness keeps one test, its suites limited by the shared services.
 11. **Confirmation delays the spec does not name are short.** Tests that stream past a hung or slow confirmation start the service with a short confirmation wait instead of streaming the default lengths in real time.
 
 ## Test levels

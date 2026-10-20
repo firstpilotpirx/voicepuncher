@@ -21,6 +21,7 @@ use crate::core::domain::{AudioBuffer16k, SpottingEvent, VoiceCommand};
 use capture::{MicCapture, StreamResampler};
 use client::SpottingClient;
 use heard::HeardAudio;
+pub use link::LinkTimings;
 use link::Outage;
 
 /// How long the worker waits between rounds while the service is away.
@@ -55,6 +56,27 @@ impl AudioStream {
         audio: Receiver<Vec<f32>>,
         inputs: Sender<PipelineInput>,
     ) -> Result<Self> {
+        Self::start_with_timings(
+            url,
+            commands,
+            audio_start,
+            native_rate,
+            audio,
+            inputs,
+            LinkTimings::default(),
+        )
+    }
+
+    /// As `start`, pacing the attempts after a loss and the replay by `timings`.
+    pub fn start_with_timings(
+        url: &str,
+        commands: &[VoiceCommand],
+        audio_start: Instant,
+        native_rate: u32,
+        audio: Receiver<Vec<f32>>,
+        inputs: Sender<PipelineInput>,
+        timings: LinkTimings,
+    ) -> Result<Self> {
         let mut client = SpottingClient::connect(url, audio_start)?;
         client.listen_for(commands)?;
         let session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
@@ -66,6 +88,7 @@ impl AudioStream {
             url: url.to_owned(),
             session,
             link: Link::Up(Box::new(client)),
+            timings,
             commands: commands.to_vec(),
             last_command_end: None,
             resampler,
@@ -184,6 +207,8 @@ struct Stream {
     url: String,
     session: u64,
     link: Link,
+    /// How the attempts after a loss are paced and how far back the replay reaches.
+    timings: LinkTimings,
     /// The commands listened for now, sent again to a new connection.
     commands: Vec<VoiceCommand>,
     /// The end of the last command reported: a replay never reaches back to it.
@@ -298,9 +323,10 @@ impl Stream {
     fn lose(&mut self, error: anyhow::Error) {
         log::error!("command spotting: session={} lost: {error:#}", self.session);
         let lost_at = Instant::now();
-        if let Link::Up(client) =
-            std::mem::replace(&mut self.link, Link::Away(Outage::since(lost_at)))
-        {
+        if let Link::Up(client) = std::mem::replace(
+            &mut self.link,
+            Link::Away(Outage::since(lost_at, self.timings)),
+        ) {
             client.close();
         }
         let _ = self.inputs.send(PipelineInput::SpottingLost);
@@ -322,7 +348,8 @@ impl Stream {
         }
         let (lost_at, replay_from) = (
             outage.lost_at,
-            link::replay_start(outage.lost_at, self.last_command_end),
+            self.timings
+                .replay_start(outage.lost_at, self.last_command_end),
         );
         match self.reconnect(replay_from) {
             Ok((client, replayed)) => {

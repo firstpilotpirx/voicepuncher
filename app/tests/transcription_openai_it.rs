@@ -577,14 +577,19 @@ fn five_seconds() -> AudioBuffer16k {
     AudioBuffer16k::new(vec![0; 5 * 16_000])
 }
 
-/// The longest the app may hold a short recording when the service never answers.
-const GIVEN_UP_WITHIN: Duration = Duration::from_secs(30);
+/// The request timeout of the give-up test: shorter than the wait for a short recording, so
+/// each of the three attempts is given up after it and the test waits seconds, not half a minute.
+const GIVE_UP_TIMEOUT_SECS: u64 = 1;
+/// Three attempts of `GIVE_UP_TIMEOUT_SECS` each and their pauses: the cycle is dropped at once
+/// after the last attempt.
+const GIVEN_UP_WITHIN: Duration = Duration::from_secs(5);
 
 #[test]
-fn should_give_up_a_short_recording_the_service_never_answers_within_half_a_minute() {
+fn should_give_up_a_hung_short_recording_after_three_attempts_within_their_waits() {
     // Given
     capturing_logger();
-    let (cfg, attempts) = spawn_scripted_stub(vec![Turn::Hang]);
+    let (mut cfg, attempts) = spawn_scripted_stub(vec![Turn::Hang]);
+    cfg.timeout_secs = GIVE_UP_TIMEOUT_SECS;
     let mut transcriber = OpenAiTranscriber::connect(cfg).unwrap();
     // When
     let started = Instant::now();
@@ -596,11 +601,9 @@ fn should_give_up_a_short_recording_the_service_never_answers_within_half_a_minu
         "held for {:?}",
         started.elapsed()
     );
-    assert_eq!(
-        attempts.load(Ordering::SeqCst),
-        1,
-        "the attempts after the hung one wait for its only copy"
-    );
+    // Each request ends at its own short timeout and frees the only copy, so every attempt
+    // reaches it
+    assert_eq!(attempts.load(Ordering::SeqCst), 3);
     assert_eq!(logged_by_this_thread("WARN speech recognition service"), 3);
     assert_eq!(logged_by_this_thread("— giving up"), 1);
 }
