@@ -4,6 +4,8 @@
 
 The release today is `voicepuncher-vX.Y.Z-aarch64-apple-darwin.tar.gz` (binary + README) made by `_release-package` in the `justfile` with `gh release create`. The permission panes attribute an unbundled binary to the terminal that runs it. The user has no Apple Developer account. The tech matrix lists `cargo-bundle` + `create-dmg` for macOS bundles; neither is in use yet.
 
+The tech matrix now records this design (macOS tools + create-dmg, self-signed signing): https://github.com/firstpilotpirx/agent-kit/pull/224.
+
 ## Decisions
 
 **D1 — Plain `just` recipes on macOS tools make the bundle; `create-dmg` lays out the DMG.** A bundle is three files in a fixed tree: the recipe copies the release binary, fills the Info.plist template with `plutil` and builds the `.icns` with `iconutil`; `codesign` signs, `hdiutil` verifies. The DMG window (background, icon positions, Applications link) needs Finder scripting, which `create-dmg` 1.3.0 (Homebrew, pinned like the other developer tools) already does. `cargo-packager` 0.11.8 was read at explore and rejected: its signing always adds `--options runtime` (the hardened runtime, which without entitlements blocks the microphone and the key listener) and `--timestamp`; its DMG is built from a bundle it re-creates unsigned in the same run, leaving no place for our own signature; and it downloads `create-dmg` from GitHub at build time. `cargo-bundle` was rejected for the same reason: it adds a crate for what `plutil` and `iconutil` do.
@@ -16,7 +18,7 @@ The release today is `voicepuncher-vX.Y.Z-aarch64-apple-darwin.tar.gz` (binary +
 
 **D5 — The bundle check is a stage of `full-check`, outside the lock.** Building the bundle and mounting the DMG takes under a minute and uses no shared service, port or GPU, so it runs before the model stages without waiting for the machine lock. `check` stays without it (it is not needed after every task group).
 
-**D6 — Identity in `.env`, guarded by a recipe; ad-hoc without it.** `VOICEPUNCHER_SIGNING_IDENTITY` names the certificate; `_require-signing-identity` fails fast with the Keychain Access steps, in the style of `_require-nextest`. The certificate exists only on the user's Mac, and `full-check` must pass in every worktree and agent sandbox: with the variable unset, `just bundle` signs ad-hoc (`codesign -s -`) and prints that the bundle has no stable identity; `just release` always requires the variable. A set variable that names no identity in the keychain is an error, never a silent fallback.
+**D6 — Identity in `.env`, guarded by a recipe; ad-hoc without it.** `VOICEPUNCHER_SIGNING_IDENTITY` names the certificate; `_require-signing-identity` fails fast naming `just signing-identity`, the recipe that creates the certificate, in the style of `_require-nextest`. The certificate exists only on the user's Mac, and `full-check` must pass in every worktree and agent sandbox: with the variable unset, `just bundle` signs ad-hoc (`codesign -s -`) and prints that the bundle has no stable identity; `just release` always requires the variable. A set variable that names no identity in the keychain is an error, never a silent fallback.
 
 **D7 — Icon and DMG background from Claude Design, kept in the repository.** The PNG sources live in `app/packaging/`; the mockups folder of this change keeps the candidates and the design spec, as the overlay change did.
 

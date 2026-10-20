@@ -7,6 +7,7 @@
 | `app/` | Rust CLI application — hexagonal architecture (Ports & Adapters + DDD) |
 | `e2e-test/` | Rust benchmark and E2E tests against the compiled binary |
 | `docs/` | Documentation (ubiquitous language, architecture, E2E benchmark design) |
+| `dist/` | Gitignored output of `just bundle` and `just dmg`: `voicepuncher.app`, `voicepuncher-vX.Y.Z.dmg` and its `.sha256` |
 | `Cargo.toml` | Cargo workspace (members: `app`, `e2e-test`) |
 | `justfile` | Task runner — all checks (`check`, `e2e`, `release-check`), setup (`models`, `corpus`), benchmarks (`bench`) |
 
@@ -38,6 +39,7 @@
 | `app/src/adapters/secondary/permissions/macos/` | Secondary adapter | `MacOsPermissionProbe` — probes macOS TCC permissions |
 | `app/src/config.rs`, `app/src/config/` | Config | TOML config loading with `serde`; `Config` is the root struct; `[transcription]` and `[whisper]` migration error in `config/transcription.rs`, `[refinement]` and `[llm]` migration error in `config/refinement.rs`, loopback check in `config/loopback.rs` |
 | `app/src/main.rs` | Composition root | Wires adapters + use cases into a runnable; no business logic |
+| `app/packaging/` | Packaging | Sources of the application bundle: `Info.plist` template (version filled in by `just bundle`), `icons/` (`icon-1024.png` and `voicepuncher.iconset/`, turned into `.icns` by `iconutil`), `dmg-background.png`; checked by `app/tests/packaging_it.rs` |
 | `app/tests/architecture.rs` | Architecture test | Import-graph assertions (layer dependency rule, naming rules, structure rules) |
 | `app/tests/{feature}_{tech}_it.rs` | Integration tests | One file per secondary adapter; named `<feature>_<tech>_it.rs` |
 | `app/tests/features/{slice,component}/<capability>.feature` | Slice / component tests | Gherkin scenarios written from `openspec/specs/<capability>/spec.md`; run by `app/tests/cucumber_integration.rs`, steps in `app/tests/steps/<capability>.rs` |

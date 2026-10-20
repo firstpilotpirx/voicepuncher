@@ -236,6 +236,24 @@
 - **Type:** Driving / Driven Ports (traits in `core/application/`)
 - **Code:** `app/src/core/application/{hotkey_listener,audio_recorder,transcriber,text_refiner,text_paster,focus_probe}.rs`
 
+### Bundle
+- **Type:** Distribution artifact (not a domain object)
+- **Definition:** The macOS application `voicepuncher.app`: the release binary, its `Info.plist` (bundle identifier `io.github.firstpilotpirx.voicepuncher`, version from `app/Cargo.toml`, no Dock icon, microphone usage description) and the icon, signed as one unit. macOS grants Microphone, Accessibility and Input Monitoring to the bundle, by its signing identity, not to the terminal that started it.
+- **Code:** `app/packaging/` (sources), `just bundle` (builds `dist/voicepuncher.app`)
+- **Synonyms to AVOID:** "app package", "binary" (the binary is only one file of the bundle), "installer"
+
+### Signing identity
+- **Type:** Distribution concept
+- **Definition:** The self-signed code-signing certificate, named `voicepuncher` in the maintainer's keychain and in `VOICEPUNCHER_SIGNING_IDENTITY`, that signs every release *bundle*. Its designated requirement names that certificate, so every build signed with it is the same application to the permission system and an update keeps the permissions. Without it a bundle is signed ad-hoc and each build is a new application.
+- **Code:** `justfile` `_sign`, `_require-signing-identity`, `_require-release-identity`
+- **Synonyms to AVOID:** "certificate" (alone — the identity is the certificate with its private key), "Developer ID" (the project has none), "notarization"
+
+### Disk image
+- **Type:** Distribution artifact
+- **Definition:** `voicepuncher-vX.Y.Z.dmg`, the only file a release publishes besides its `.sha256`: a volume `voicepuncher X.Y.Z` whose window shows the *bundle* on the left and a shortcut to Applications on the right, over a background that says to drag one onto the other.
+- **Code:** `just dmg` (builds it with `create-dmg`), `app/packaging/dmg-background.png`
+- **Synonyms to AVOID:** "DMG installer", "package", "tarball" (retired)
+
 ### Project-local tech vocabulary
 
 | `<tech>` segment | Refers to | Used in |

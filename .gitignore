@@ -7,3 +7,4 @@ e2e-test/corpus/
 .idea
 .worktrees/
 __pycache__/
+dist/

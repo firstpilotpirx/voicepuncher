@@ -112,7 +112,7 @@ full-check: _require-models _require-corpus
     accuracy="accuracy: $count recordings ($stage) — $reason"
     echo "● $accuracy"
     VOICEPUNCHER_STAGES_RECIPE=full-check VOICEPUNCHER_STAGES_ACCURACY="$accuracy" \
-        {{just_executable()}} _stages fmt lint test build build-e2e e2e-smoke e2e-seams e2e-resilience "$stage" refine-eval
+        {{just_executable()}} _stages fmt lint test build bundle build-e2e e2e-smoke e2e-seams e2e-resilience "$stage" refine-eval
     echo "✓ full-check passed — $accuracy; before a release also walk through README.md § Release checklist (manual run)"
 
 # Summary of the stage journal for the runs since a date (2026-10-01) or a span (7d): per recipe and stage the
@@ -395,7 +395,7 @@ _stages +stages:
         # Builds run at the utility QoS clamp, so they yield the CPU to another run's model stages; the
         # `test` stage clamps only its own build phase (see _test)
         clamp=()
-        case "$stage" in fmt|lint|build|build-e2e) clamp=(taskpolicy -c utility) ;; esac
+        case "$stage" in fmt|lint|build|bundle|build-e2e) clamp=(taskpolicy -c utility) ;; esac
         run_phase ${clamp[@]+"${clamp[@]}"} env MACHINE_LOCK_DIR="$stage_lock_dir" {{locked}} "_$stage"
         mark="✓"
         [[ $status -eq 0 && -z "$interrupted" ]] || mark="✗"
@@ -691,8 +691,8 @@ _test-real-keyboard: _require-nextest
 # run's own only gives it the wrapper's time limit (MACHINE_LOCK_TIMEOUT, exit 124; the timeout message says
 # `[machine-lock]`; a run killed with KILL leaves that directory, holding an empty tests.lock, in $TMPDIR).
 # `cargo clean` deletes target/release/voicepuncher, which the user may be running: in the main checkout, ask first
-# Tag v<app version>, clean build, publish a GitHub Release with the binary tarball + sha256
-release:
+# Tag v<app version>, clean build, publish a GitHub Release with the signed DMG + sha256 (needs the signing identity)
+release: _require-release-identity
     #!/usr/bin/env bash
     set -euo pipefail
     lock_dir=$(mktemp -d)
@@ -707,36 +707,207 @@ release:
     done
 
 # The checks of the checkout, the clean build and package, then the only steps that publish: tag, push, release
-_release: _require-release-head _release-package
+_release: _require-release-head _require-release-identity _release-package
     #!/usr/bin/env bash
     set -euo pipefail
-    version=$(sed -n 's/^version = "\(.*\)"/\1/p' app/Cargo.toml | head -1)
-    tag="v$version"
-    name="voicepuncher-$tag-aarch64-apple-darwin"
-    dist=target/dist
+    tag="v{{app_version}}"
+    dmg={{quote(dist_dir)}}/voicepuncher-$tag.dmg
     git tag -a "$tag" -m "voicepuncher $tag"
     git push origin "$tag"
-    gh release create "$tag" "$dist/$name.tar.gz" "$dist/$name.tar.gz.sha256" \
-        --title "voicepuncher $tag" --generate-notes --verify-tag
+    gh release create "$tag" "$dmg" "$dmg.sha256" --title "voicepuncher $tag" --generate-notes --verify-tag
     echo "✓ released $tag"
 
 # Everything of a release that publishes nothing, safe to run alone: `cargo clean`, every test (_test: its build
 # at the utility QoS clamp, its test binaries at the default QoS), the release build from scratch at the utility
-# clamp, then the tarball and its .sha256 in target/dist
-_release-package:
+# clamp, then the signed bundle in its DMG and the DMG's .sha256 in dist/
+_release-package: _require-release-identity _require-create-dmg
     #!/usr/bin/env bash
     set -euo pipefail
     cargo clean
+    rm -rf {{quote(dist_dir)}}
     {{just_executable()}} --justfile {{quote(justfile())}} _test
     taskpolicy -c utility cargo build --release
-    version=$(sed -n 's/^version = "\(.*\)"/\1/p' app/Cargo.toml | head -1)
-    name="voicepuncher-v$version-aarch64-apple-darwin"
-    dist=target/dist
-    rm -rf "$dist" && mkdir -p "$dist/$name"
-    cp target/release/voicepuncher README.md "$dist/$name/"
-    tar -C "$dist" -czf "$dist/$name.tar.gz" "$name"
-    (cd "$dist" && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
-    echo "✓ packaged $dist/$name.tar.gz"
+    {{just_executable()}} --justfile {{quote(justfile())}} dmg
+    echo "✓ packaged {{dist_dir}}/voicepuncher-v{{app_version}}.dmg"
+
+# ── Bundle ── the macOS application bundle and its disk image ────────────────
+
+# Where `bundle` and `dmg` write (gitignored): the signed voicepuncher.app, the DMG and its .sha256
+dist_dir := justfile_directory() / "dist"
+app_bundle := dist_dir / "voicepuncher.app"
+packaging_dir := justfile_directory() / "app/packaging"
+app_version := shell("grep -m1 '^version = ' \"$1\" | cut -d '\"' -f2", justfile_directory() / "app/Cargo.toml")
+# The self-signed code-signing certificate of README § Release checklist; empty signs ad-hoc (no stable identity)
+signing_identity := env_var_or_default("VOICEPUNCHER_SIGNING_IDENTITY", "")
+
+# Build the signed application bundle into dist/voicepuncher.app (release build, no `cargo clean`): `open dist/voicepuncher.app`
+bundle: _require-signing-identity
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo build --release
+    app={{quote(app_bundle)}}
+    rm -rf "$app" && mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+    cp target/release/voicepuncher "$app/Contents/MacOS/voicepuncher"
+    iconutil -c icns {{quote(packaging_dir / "icons/voicepuncher.iconset")}} -o "$app/Contents/Resources/voicepuncher.icns"
+    cp {{quote(packaging_dir / "Info.plist")}} "$app/Contents/Info.plist"
+    plutil -replace CFBundleShortVersionString -string {{quote(app_version)}} "$app/Contents/Info.plist"
+    plutil -replace CFBundleVersion -string {{quote(app_version)}} "$app/Contents/Info.plist"
+    {{just_executable()}} --justfile {{quote(justfile())}} _sign "$app"
+    echo "✓ bundle $app"
+
+# Build the release disk image dist/voicepuncher-vX.Y.Z.dmg (the bundle, an Applications shortcut, the background
+# picture) and its .sha256; create-dmg lays the window out through the Finder
+dmg: _require-create-dmg bundle
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dist={{quote(dist_dir)}}
+    name="voicepuncher-v{{app_version}}"
+    stage="$dist/stage"
+    rm -rf "$stage" "$dist/$name.dmg" "$dist/$name.dmg.sha256" && mkdir -p "$stage"
+    cp -R {{quote(app_bundle)}} "$stage/"
+    create-dmg --volname "voicepuncher {{app_version}}" --background {{quote(packaging_dir / "dmg-background.png")}} \
+        --window-pos 200 120 --window-size 600 400 --icon-size 128 --icon voicepuncher.app 150 200 \
+        --hide-extension voicepuncher.app --app-drop-link 450 200 --no-internet-enable \
+        "$dist/$name.dmg" "$stage"
+    (cd "$dist" && shasum -a 256 "$name.dmg" > "$name.dmg.sha256")
+    rm -rf "$stage"
+    echo "✓ dmg $dist/$name.dmg"
+
+# Sign a bundle with the signing identity, or ad-hoc with a notice when none is named, then verify it strictly
+# and print its designated requirement (what the permission panes identify the app by). No hardened runtime: it
+# needs a Developer ID and entitlements, and without them it blocks the microphone and the key listener
+_sign path:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    identity={{quote(signing_identity)}}
+    if [[ -z "$identity" ]]; then
+        echo "● VOICEPUNCHER_SIGNING_IDENTITY is unset: signing ad-hoc — the bundle has no stable identity, so macOS asks for every permission again after each build (README § Release checklist)" >&2
+        identity="-"
+    fi
+    codesign --force --sign "$identity" --timestamp=none {{quote(path)}}
+    codesign --verify --deep --strict --verbose=2 {{quote(path)}}
+    codesign -d -r- {{quote(path)}} 2>&1 | sed -n 's/^# designated => /  identity: /p'
+
+# A named signing identity must be in the keychain; none named is allowed (ad-hoc)
+_require-signing-identity:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    identity={{quote(signing_identity)}}
+    [[ -n "$identity" ]] || exit 0
+    if ! security find-identity -v -p codesigning 2>/dev/null | grep -q "\"$identity\""; then
+        echo "✗ signing identity '$identity' (VOICEPUNCHER_SIGNING_IDENTITY) is not in the keychain" >&2
+        {{just_executable()}} --justfile {{quote(justfile())}} _signing-identity-steps >&2
+        exit 1
+    fi
+
+# A release is always signed with the certificate: the identity must be named and in the keychain
+_require-release-identity:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ -z {{quote(signing_identity)}} ]]; then
+        echo "✗ VOICEPUNCHER_SIGNING_IDENTITY is unset — a release is signed with the self-signed certificate, so that updates keep their permissions" >&2
+        {{just_executable()}} --justfile {{quote(justfile())}} _signing-identity-steps >&2
+        exit 1
+    fi
+    {{just_executable()}} --justfile {{quote(justfile())}} _require-signing-identity
+
+_signing-identity-steps:
+    @echo "  Create the certificate once: 'just signing-identity' (macOS asks for your password to trust it),"
+    @echo "  then add to .env: VOICEPUNCHER_SIGNING_IDENTITY=voicepuncher (README § Release checklist)"
+
+# Creates the self-signed code-signing certificate `voicepuncher` (10 years) in the login keychain, once per
+# machine, and trusts it for code signing; macOS asks for the user's password. Does nothing when it exists
+signing-identity name="voicepuncher":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if security find-identity -v -p codesigning | grep -q "\"{{name}}\""; then
+        echo "✓ code-signing identity \"{{name}}\" already in the keychain"; exit 0
+    fi
+    work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
+    # /usr/bin/openssl (LibreSSL) writes a PKCS#12 file that `security import` reads
+    /usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj "/CN={{name}}" \
+        -keyout "$work/key.pem" -out "$work/cert.pem" \
+        -addext "keyUsage=critical,digitalSignature" -addext "extendedKeyUsage=critical,codeSigning" \
+        -addext "basicConstraints=critical,CA:false" 2>/dev/null
+    /usr/bin/openssl pkcs12 -export -inkey "$work/key.pem" -in "$work/cert.pem" -out "$work/id.p12" -passout pass:voicepuncher
+    keychain=$(security default-keychain | tr -d ' "')
+    security import "$work/id.p12" -k "$keychain" -P voicepuncher -T /usr/bin/codesign
+    echo "  macOS now asks for your password to trust the certificate for code signing"
+    security add-trusted-cert -r trustRoot -p codeSign -k "$keychain" "$work/cert.pem"
+    security find-identity -v -p codesigning | grep "\"{{name}}\""
+    echo "✓ created \"{{name}}\" — add to .env: VOICEPUNCHER_SIGNING_IDENTITY={{name}}"
+
+_require-create-dmg:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    wanted=1.3.0
+    got=$(create-dmg --version 2>/dev/null | head -1 || true)
+    if [[ "$got" != *"$wanted"* ]]; then
+        echo "✗ create-dmg $wanted not found (got '${got}') — run 'brew install create-dmg'" >&2
+        exit 1
+    fi
+
+# The `bundle` stage of full-check: the signing guards, the DMG built, the bundle's Info.plist checked key by
+# key, its signature verified strictly, the DMG mounted and found to hold the app and the Applications shortcut.
+# No shared service, port or GPU: it runs before the model stages, outside the machine lock
+_bundle: _require-create-dmg
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just="{{just_executable()}} --justfile {{justfile()}}"
+    $just _test-bundle-guard
+    $just dmg
+    app={{quote(app_bundle)}}
+    plist="$app/Contents/Info.plist"
+    dmg={{quote(dist_dir)}}/voicepuncher-v{{app_version}}.dmg
+    plutil -lint "$plist"
+    expect_key() { # <key> <value>: the bundle's Info.plist holds the key with that value
+        local got
+        got=$(plutil -extract "$1" raw -o - "$plist" 2>/dev/null) || { echo "✗ Info.plist lacks $1" >&2; exit 1; }
+        [[ "$got" == "$2" ]] || { echo "✗ Info.plist: $1 is '$got', expected '$2'" >&2; exit 1; }
+    }
+    expect_key CFBundleIdentifier io.github.firstpilotpirx.voicepuncher
+    expect_key CFBundleName voicepuncher
+    expect_key CFBundleDisplayName voicepuncher
+    expect_key CFBundleExecutable voicepuncher
+    expect_key CFBundleIconFile voicepuncher
+    expect_key CFBundleShortVersionString {{quote(app_version)}}
+    expect_key CFBundleVersion {{quote(app_version)}}
+    expect_key LSMinimumSystemVersion 15.0
+    expect_key LSUIElement true
+    expect_key LSApplicationCategoryType public.app-category.productivity
+    expect_key NSMicrophoneUsageDescription "voicepuncher records your voice while you hold the hotkey, to turn it into text on this Mac."
+    [[ -f "$app/Contents/Resources/voicepuncher.icns" ]] || { echo "✗ bundle lacks Resources/voicepuncher.icns" >&2; exit 1; }
+    codesign --verify --deep --strict "$app"
+    mount=$(mktemp -d)
+    hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$dmg" >/dev/null 2>&1
+    trap 'hdiutil detach "$mount" -quiet 2>/dev/null || true; rmdir "$mount" 2>/dev/null || true' EXIT
+    [[ -d "$mount/voicepuncher.app" ]] || { echo "✗ $dmg holds no voicepuncher.app" >&2; exit 1; }
+    [[ -L "$mount/Applications" ]] || { echo "✗ $dmg holds no Applications shortcut" >&2; exit 1; }
+    echo "✓ bundle stage: $app signed and verified, $dmg holds the app and the Applications shortcut"
+
+# The bundle's expected behaviour on signing identities (run by the `bundle` stage of full-check): a named
+# identity the keychain lacks stops `bundle` before it builds, no identity signs ad-hoc with a notice, and a
+# release always needs one
+_test-bundle-guard:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just="{{just_executable()}} --justfile {{justfile()}}"
+    expect() { # <description> <pattern> <command...>: the command fails and its output matches the pattern
+        local what=$1 pattern=$2; shift 2
+        local out
+        if out=$("$@" 2>&1); then echo "✗ $what: succeeded, expected a refusal" >&2; echo "$out" >&2; exit 1; fi
+        grep -q -- "$pattern" <<<"$out" || { echo "✗ $what: output lacks '$pattern'" >&2; echo "$out" >&2; exit 1; }
+        echo "  ✓ $what"
+    }
+    expect "bundle refuses an identity the keychain lacks" "just signing-identity" \
+        env VOICEPUNCHER_SIGNING_IDENTITY="voicepuncher-missing-$$" $just bundle
+    expect "bundle names the missing identity" "voicepuncher-missing-$$" \
+        env VOICEPUNCHER_SIGNING_IDENTITY="voicepuncher-missing-$$" $just bundle
+    expect "release refuses without an identity" "just signing-identity" \
+        env VOICEPUNCHER_SIGNING_IDENTITY= $just _require-release-identity
+    out=$(env VOICEPUNCHER_SIGNING_IDENTITY= $just bundle 2>&1) || { echo "✗ bundle without an identity failed" >&2; echo "$out" >&2; exit 1; }
+    grep -q "ad-hoc" <<<"$out" || { echo "✗ bundle without an identity printed no ad-hoc notice" >&2; echo "$out" >&2; exit 1; }
+    echo "  ✓ bundle without an identity signs ad-hoc with a notice"
 
 # ── Services ── local processes the app talks to over loopback ────────────────
 

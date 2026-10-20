@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 600 400">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F7F7F9"/>
+      <stop offset="1" stop-color="#E8E9EE"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="400" fill="url(#bg)"/>
+  <path d="M235 200 C 280 140, 320 140, 365 200" fill="none" stroke="#8A8F9C" stroke-width="5" stroke-linecap="round"/>
+  <path d="M365 200 L 352 176 M365 200 L 339 197" fill="none" stroke="#8A8F9C" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="300" y="332" font-family="-apple-system, Helvetica" font-size="15" fill="#4A4F5A" text-anchor="middle">Drag voicepuncher to Applications</text>
+</svg>

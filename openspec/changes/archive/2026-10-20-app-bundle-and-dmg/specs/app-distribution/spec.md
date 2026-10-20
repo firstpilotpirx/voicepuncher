@@ -61,7 +61,7 @@ The release SHALL stop before building when no signing identity is configured or
 #### Scenario: The release without a signing identity
 - **GIVEN** no signing identity is configured
 - **WHEN** the release is run
-- **THEN** it stops before building anything, naming the steps to create the certificate in Keychain Access
+- **THEN** it stops before building anything, naming the command that creates the certificate
 
 #### Scenario: The bundle build with an identity the keychain lacks
 - **GIVEN** the configured signing identity is not in the keychain

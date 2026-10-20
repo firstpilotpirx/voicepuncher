@@ -10,7 +10,7 @@ manual_run:
   recording: ["app/src/adapters/secondary/recording/**"]
   overlay: ["app/src/adapters/secondary/visualfeedback/**"]
   paste: ["app/src/adapters/secondary/textpasting/**"]
-  permissions: ["app/src/adapters/secondary/permissions/**"]
+  permissions: ["app/src/adapters/secondary/permissions/**", "app/packaging/**"]
   voice control: ["app/src/adapters/secondary/commandspotting/**", "app/src/adapters/secondary/keypressing/**", "app/src/core/application/pipeline/voice_control.rs"]
 release:
   command: just release

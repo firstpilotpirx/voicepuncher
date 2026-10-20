@@ -11,7 +11,7 @@ Push-to-talk voice-to-text CLI for macOS Apple Silicon. Hold a hotkey, speak, re
 
 ## macOS permissions
 
-Three TCC permissions are required. Grant each to the terminal app you launch voicepuncher from (e.g. iTerm2, Terminal, Warp). The app name appears in the error message on first run.
+Three TCC permissions are required. Installed from the disk image, the app asks for them itself and the panes list it as **voicepuncher** with its icon; an update signed with the same certificate keeps them. Run from source (`cargo run`, `just run`), grant each to the terminal app you launch it from (e.g. iTerm2, Terminal, Warp); the app name appears in the error message on first run.
 
 | Permission | Location |
 |---|---|
@@ -21,9 +21,20 @@ Three TCC permissions are required. Grant each to the terminal app you launch vo
 
 ## Install
 
+### From the disk image
+
+1. Download `voicepuncher-vX.Y.Z.dmg` from the [latest release](https://github.com/firstpilotpirx/voicepuncher/releases/latest) (check it against the `.sha256` beside it: `shasum -a 256 -c voicepuncher-vX.Y.Z.dmg.sha256`).
+2. Open it and drag **voicepuncher** onto **Applications**.
+3. Open voicepuncher from Applications. macOS says it cannot verify the app: voicepuncher is signed with the project's own certificate, not an Apple Developer ID, and is not notarized. Click **Done**, open **System Settings → Privacy & Security**, scroll to the message about voicepuncher and click **Open Anyway**, then confirm. Needed once per version; macOS 15 and later no longer offer right-click → Open for this.
+4. Grant Microphone, Accessibility and Input Monitoring when asked; the panes list **voicepuncher**.
+
+The app has no Dock icon and no window in this version: it runs in the background. Quit it in Activity Monitor or with `pkill voicepuncher`. It still needs the local services (`just start-model-servers` from a checkout, below) until a later version bundles them.
+
+### From source
+
 Prerequisites: Rust ≥ 1.88, [`just`](https://github.com/casey/just), Homebrew `whisper-cpp`, `llama.cpp` and `haproxy` (`just start-model-servers` offers to install them).
 
-For the tests, also [cargo-nextest](https://nexte.st) 0.9.146: `cargo +stable install --locked cargo-nextest@0.9.146`.
+For the tests, also [cargo-nextest](https://nexte.st) 0.9.146: `cargo +stable install --locked cargo-nextest@0.9.146`. For the bundle and the disk image (`just bundle`, `just dmg`, the `bundle` stage of `full-check`), also `brew install create-dmg`.
 
 ```bash
 git clone https://github.com/pirx/voicepuncher
@@ -32,6 +43,8 @@ cargo build --release
 ```
 
 Binary: `target/release/voicepuncher`
+
+`just bundle` builds the application bundle `dist/voicepuncher.app` from it (try it as installed: `open dist/voicepuncher.app`), and `just dmg` the disk image `dist/voicepuncher-vX.Y.Z.dmg` with its `.sha256`. Both sign with the certificate named by `VOICEPUNCHER_SIGNING_IDENTITY` (see [Release checklist](#release-checklist)); with the variable unset they sign ad-hoc and say so: such a bundle is a new application to macOS on every build, so it asks for the permissions again.
 
 ## Local services
 
@@ -307,7 +320,7 @@ All checks run through [`just`](https://github.com/casey/just) (`brew install ju
 |---|---|---|---|
 | `just test` | unit + architecture + integration tests under cargo-nextest, each within its time limit | ~1 min | after every edit |
 | `just check` | fmt, clippy, `test`, release build, E2E smoke, WER accuracy on 10 samples, refinement evaluation | ~8.5 min (machine lock ≈ 7.3 min) | often while developing, before every commit you push |
-| `just full-check` | fmt, clippy, `test`, release build, E2E smoke, chunk seams, outages (`e2e-resilience`), WER accuracy on a fixed sample of 100 recordings (or 10, below), refinement evaluation | ~15.5–17.5 min (machine lock ≈ 14.5 min with 10 recordings, ≈ 16.3 min with 100) | before merging a branch and before every release |
+| `just full-check` | fmt, clippy, `test`, release build, the bundle (`bundle`: signing guards, the disk image built and mounted, the bundle's Info.plist and signature checked; no machine lock), E2E smoke, chunk seams, outages (`e2e-resilience`), WER accuracy on a fixed sample of 100 recordings (or 10, below), refinement evaluation | ~15.5–17.5 min (machine lock ≈ 14.5 min with 10 recordings, ≈ 16.3 min with 100) | before merging a branch and before every release |
 
 Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-quick` (10 samples), `e2e-seams` (the seam sweep, plus Russian and English speech under 11 recording conditions, transcribed in chunks), `e2e-bench` (100 samples, two at a time), `e2e-resilience` (the `@resilience` scenarios: a speech recognition service paused while voice control runs, a command spotting service killed or paused and started again by the scripts, a request abandoned in the queue — each on service ports of its own, so the shared services are never touched), `e2e` (smoke + seams + 100 samples + refinement evaluation), `refine-eval` (the `@refinement` scenarios: dictated commands, normalization, and a per-category score of the 41 dictations in `e2e-test/refinement/eval_set.jsonl` against the live text refinement service, next to the raw-transcript baseline; fails when a dictated command is carried out or the language changes). The E2E recipes start every local service they test from the checkout's own code and models, on test ports of their own (28081 dictation, 28085 commands, 28080 text refinement, 28082 command spotting; `VOICEPUNCHER_TEST_STT_PORT` and siblings change them), and stop them afterwards, also when a test fails; your everyday services on the default ports are never reused, stopped or restarted. A service a killed run left on a test port is restarted; any other process holding one stops the run before it starts, naming that process. `check` and `full-check` start the services once for all their E2E stages and end with each stage's time. Speech synthesized with `say` is cached in `~/.cache/voicepuncher/speech/`; delete it to synthesize everything again.
 
@@ -341,7 +354,13 @@ Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-qui
    - [ ] `just test-real-keyboard` passes (hotkey still registered after a paste).
    - [ ] Voice control (`cargo run --release -p voicepuncher -- --voice-control`): the app plays the listening-on sound at start; in a chat input "start dictation", a sentence, "stop dictation" → the sentence is pasted without the stop phrase; "press enter" → the message is sent; "start dictation", speech, "cancel dictation" → nothing is pasted; type text, "clear all text" → it is erased with the clear sound and the `⌫ CLEAR` sign; "enter" → the `⏎ ENTER` sign and the enter sound, different from the clear sound; "start", a sentence, "restart" → only the restart sound, the `↻ RESTART` sign, then the recording again; with `clear_sound = "Funk"` in `[sounds]`, "clear all text" plays Funk; copy a sentence, "paste" → it is pasted with the `⎘ PASTE` sign and the Frog sound, and the clipboard still holds it; "paste enter" → pasted and sent; "I will press enter later" said without pausing → nothing happens; "start", a sentence, "stop" → the sentence is pasted; "start start" and a sentence at once, then "stop" → the whole sentence is pasted from its first word; "start", a short pause, a sentence, "stop" → the same; the hotkey starts a dictation with the overlay and start sound, and "stop dictation" ends it; "start dictation", then the hotkey → pasted, listening stays on. The log shows each `voice control: "…"` line, and every voice start a `voice start: total=…ms` line with `total` under 700.
    - [ ] `just stop-model-servers voicepuncher-command-spotting`, then start with `--voice-control` → it exits naming the command spotting service and `just start-model-servers`.
-3. After the merge, on a clean checkout of `origin/main` with a bumped `version` in `app/Cargo.toml`: `just release` — cleans `target/`, runs the tests and builds from scratch without the machine-wide lock, then tags `vX.Y.Z` and publishes a GitHub Release with the binary tarball and its SHA-256. In the main checkout, `target/release/voicepuncher` is gone until it finishes.
+3. Bundle, on the release machine (required before merging a change to `app/packaging/`, and before the first release from a machine):
+   - [ ] The signing certificate exists, once per machine: `just signing-identity` creates the self-signed Code Signing certificate `voicepuncher`, valid 10 years (a new certificate means one more round of permissions for every user), and macOS asks for your password to trust it for code signing. `security find-identity -v -p codesigning` lists `"voicepuncher"`. Add `VOICEPUNCHER_SIGNING_IDENTITY=voicepuncher` to `.env`. Without it `just release` stops and prints these steps.
+   - [ ] `just dmg`, open the disk image: the app on the left, Applications on the right, the background says to drag one onto the other, the volume is named `voicepuncher X.Y.Z`.
+   - [ ] Drag it to Applications, open it: the Gatekeeper dialog, then Open Anyway in Privacy & Security starts it; no Dock icon appears and the menu bar keeps the frontmost app's menu. Grant the three permissions: each pane lists **voicepuncher** with its icon. Dictate once.
+   - [ ] The identity survives an update: change anything, `just dmg` again, replace the app in Applications, open it → no permission prompt, dictation works. `codesign -d -r- /Applications/voicepuncher.app` names the certificate (`certificate leaf = H"…"`), the same for both builds.
+   - [ ] After a release: download the DMG from the GitHub release (`xattr -p com.apple.quarantine` on it shows the quarantine flag), install it as above.
+4. After the merge, on a clean checkout of `origin/main` with a bumped `version` in `app/Cargo.toml` and the signing identity set: `just release` — cleans `target/` and `dist/`, runs the tests and builds from scratch without the machine-wide lock, builds the signed bundle into `dist/voicepuncher-vX.Y.Z.dmg`, then tags `vX.Y.Z` and publishes a GitHub Release with the disk image and its `.sha256`, nothing else. In the main checkout, `target/release/voicepuncher` is gone until it finishes.
 
 ### Model comparison (not a release gate)
 
