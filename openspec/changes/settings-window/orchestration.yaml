@@ -1,0 +1,5 @@
+depends_on:
+  - change: restartable-app-runtime
+    why: Save applies the new configuration through the runtime's reload and shows its states
+  - change: menu-bar-presence
+    why: the Settings… menu item opens the window; the AppKit window technique and main-thread dispatch it introduces
