@@ -1,0 +1,7 @@
+depends_on:
+  - change: permissions-gate-window
+    why: the gate replaces the terminal's permission exit; the first launch flow it defines
+  - change: settings-window
+    why: the Settings window replaces the wizard's questions; its config document writes the default file
+  - change: model-download
+    why: the download window replaces the manual model step; the first launch flow ends with the services start
