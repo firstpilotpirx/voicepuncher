@@ -26,12 +26,9 @@ Out of scope: fixing flaky tests (`fix-flaky-tests`); skipping stages that passe
 
 ## Open points
 
-- Where the last run's failures are kept: proposed — a file per worktree written by the recipe (e.g. `target/last-failures.txt`).
-- How Gherkin scenarios are selected: proposed — cucumber `--name` with the scenario names of the failed run (the harness already keeps gates under `--tags` and `--name` selections).
-- Whether the generic part (parse failures, rerun them) belongs to agent-kit: proposed — the rule goes to agent-kit if reusable, the recipes stay here.
-- Target version: proposed no release — tooling only.
+None left: design.md settles where the failures come from (the stage journal), how scenarios are selected and what stays in this repository.
 
 ## Release
 
 SemVer: no release — test tooling only; no behavior change.
-Target version: 0.18.0.
+Target version: none (app stays at 0.26.0).
