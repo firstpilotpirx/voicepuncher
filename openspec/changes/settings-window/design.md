@@ -20,7 +20,15 @@
 
 **D8 — Overrides are computed, not remembered.** The window gets the file's `Config` and the effective one (after `Cli::overlay`); a field whose two values differ shows the note with the effective value. Save writes file values only and reloads through the same overlay, so the override stays for the run.
 
-**D9 — Every key, including the rarely used ones.** `[audio] debug_save_wav` (General, advanced) and `[transcription] model` (Dictation, advanced) get controls too, so the key-coverage test needs no exception list.
+**D9 — Every live key, including the rarely used ones.** `[transcription] model` (Dictation, advanced) gets a control too. `[audio] debug_save_wav` is retired (the loader still accepts it, the app warns): it gets no control, and the key-coverage test names it in a short list of retired keys.
+
+**D10 — The applier reports the outcome of a reload.** `Runtime::reload` answers Restarting → Ready even when the new configuration was rejected (a service that does not answer): the window could not tell. `Reloader::reload_reporting` takes a callback that hears `WaitsForDictation`, then `Applied` or `Rejected(reason)`. The settings adapter defines its own `ConfigApplier` port; the menu bar adapter, the only adapter allowed to know the runtime (architecture rule R13), implements it over the `Reloader` and owns the window.
+
+**D11 — The microphone setting takes effect.** `[audio] input_device` was read and never used: recording and command spotting capture always opened the default device. Both now resolve the configured name through one function in the cpal recording adapter (exact name; `Name #2` for the second of two devices with one name; `default` or a missing device → the default device, a missing one logged). The command spotting adapter calls it; both adapters already use cpal.
+
+**D12 — The refinement switch applies on reload.** `WiringAssembler` took `no_llm` once at start; it now reads `[refinement] enabled` of each configuration it assembles (the command line overlay is applied to every reloaded configuration already), so the switch in the window applies without a relaunch.
+
+**D13 — Mockups.** No pictures were made before the proposal gate; `mockups/design-spec.md` (rows, controls, strings, sizes) is the reference, and the manual run's screenshots are checked against it.
 
 **D7 — One window instance owned by the runtime wiring.** Created lazily on first open on the main thread, kept for the process life, shown with `makeKeyAndOrderFront` and `NSApp.activate`.
 
@@ -54,6 +62,10 @@
 | Closing without edits asks nothing | component `settings_window.feature` |
 | A hotkey overridden on the command line | component `settings_window.feature` |
 | Refinement switched off on the command line | component `settings_window.feature` |
+| A named microphone records | manual run; device resolution unit-tested in `recording/cpal` with names |
+| A named microphone that is not connected | unit test of the device resolution (missing name → default, logged) |
+| Refinement switched on applies after Save | component `settings_window.feature` (assembler mock sees the switch); `WiringAssembler` reads it per assembly (unit test) |
+| A setting the running app cannot use is reported | component `settings_window.feature` (assembler fails for that address) |
 | Previewing a sound | adapter integration `settings_macos_it.rs` (`NSSound` named lookup for all 14); playing heard in the manual run |
 | The window's look, every tab, light and dark | manual run by the user against the mockups |
 
@@ -61,4 +73,4 @@
 
 - `restartable-app-runtime`: Save applies through `Runtime::reload` and the status line follows the runtime states.
 - `menu-bar-presence`: `Settings…` lives in its menu and the window uses its AppKit technique; the menu-bar-presence delta modifies its requirement.
-- `refinement-off-by-default`: the Refinement tab's switch edits the `[refinement] enabled` key and shows the `--llm` / `--no-llm` overrides that change adds.
+- `refinement-off-by-default` (stacked on, not declared: the kit refuses a dependency that started later): the Refinement tab's switch edits the `[refinement] enabled` key and shows the `--llm` / `--no-llm` overrides that change adds.

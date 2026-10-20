@@ -11,16 +11,18 @@
 ## 2. Field model
 
 - [ ] 2.1 Red: unit test in `app/src/adapters/primary/settings/macos/fields.rs` that the keys of every `Deserialize` struct in `app/src/config.rs` and `app/src/config/*.rs` equal the fields' keys, each once; see it fail
-- [ ] 2.2 Green: the field table (section, key, tab, label, control kind with range or options, advanced flag) for every key, including `debug_save_wav`, `transcription.model` and `refinement.enabled`
+- [ ] 2.2 Green: the field table (section, key, tab, label, control kind with range or options, advanced flag) for every key, including `transcription.model` and `refinement.enabled`; `debug_save_wav` listed as retired
 - [ ] 2.3 Red → Green: `validate` per field — ranges, loopback addresses through `config::ensure_loopback*`, folder exists or can be created — unit tests for each kind
 - [ ] 2.4 Red → Green: value conversions control ↔ TOML (hotkey human names shared with the menu bar mapping, the whisper language table, sound names plus None, logging levels, comma-separated languages, examples table) — unit tests
 - [ ] 2.5 Red → Green: `InputDevices` port in `app/src/core/application/input_devices.rs`, cpal implementation listing input device names (repeated names numbered), `recording_cpal_it.rs` case; microphone options = System default + devices, unit test with a fake port; `architecture.rs` stays green
+- [ ] 2.6a Red → Green: device resolution by configured name (exact, `Name #2`, `default`, missing → default and logged) — unit tests; `CpalAudioRecorder` and the command spotting `MicCapture` open the resolved device
 - [ ] 2.6 Red → Green: override notes — given the file config and the effective config, the fields that differ and the effective value to show; unit tests for hotkey and refinement
 - [ ] 2.7 `just test` and commit
 
 ## 3. Settings session (save, revert, apply)
 
 - [ ] 3.1 Red: `app/tests/features/component/settings_window.feature` (`@settings_window @component`) with every non-visual scenario of the spec, steps in `app/tests/steps/settings_window.rs` driving the field model over a real document in a temp folder and the runtime with mock assembler; see them fail
+- [ ] 3.1a Red → Green: `Reloader::reload_reporting` reports WaitsForDictation, Applied, Rejected(reason) — unit tests in `runtime/mod.rs`; `WiringAssembler` reads `[refinement] enabled` per assembly — unit test
 - [ ] 3.2 Green: a GUI-free `SettingsSession` (field values, dirty flag, `save` → validate all, write changed keys, reload the runtime with the overlay; `revert`; `close` → needs question when dirty) and status messages from runtime states (Restarting → applying after the current dictation, Ready → applied, Failed → reason)
 - [ ] 3.3 `docs/ubiquitous-language.md`: Settings window, Field validation; `just test` and commit
 

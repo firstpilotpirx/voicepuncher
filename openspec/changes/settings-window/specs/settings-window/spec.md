@@ -21,7 +21,7 @@ Choosing Settings in the menu SHALL show the settings window with its tabs (Gene
 - **AND** no second settings window exists
 
 ### Requirement: Every option has a control
-Every option the configuration file accepts SHALL appear in the settings window as a control on its tab, showing the value the file sets, or the default value when the file does not set it; service addresses and tuning options SHALL sit under an advanced disclosure on their tab.
+Every option the configuration file accepts, except retired ones it only tolerates, SHALL appear in the settings window as a control on its tab, showing the value the file sets, or the default value when the file does not set it; service addresses and tuning options SHALL sit under an advanced disclosure on their tab.
 
 #### Scenario: A value from the file is shown
 - **GIVEN** the configuration file sets the hotkey to the right Command key
@@ -42,6 +42,20 @@ Every option the configuration file accepts SHALL appear in the settings window 
 - **WHEN** the user opens the microphone choice
 - **THEN** it offers the system default and both devices by name
 
+### Requirement: The chosen microphone records
+Dictation and voice control listening SHALL record from the input device the configuration names, and from the system default input device when it names the default; when the named device is not connected, they SHALL record from the system default device and log that the named one is missing.
+
+#### Scenario: A named microphone records
+- **GIVEN** the configuration names a connected input device that is not the system default
+- **WHEN** the user dictates
+- **THEN** the recording comes from the named device
+
+#### Scenario: A named microphone that is not connected
+- **GIVEN** the configuration names an input device that is not connected
+- **WHEN** the user dictates
+- **THEN** the recording comes from the system default device
+- **AND** the log names the missing device
+
 ### Requirement: Saving applies without a relaunch
 Save SHALL write the edited values to the configuration file and apply the saved configuration to the running app, with any command line overrides of this run applied again, in the same process; the window SHALL say when the new settings are applied.
 
@@ -52,6 +66,19 @@ Save SHALL write the edited values to the configuration file and apply the saved
 - **AND** the window says the settings are applied
 - **AND** the next dictation starts with the second hotkey and plays the second start sound
 - **AND** the app was not relaunched
+
+#### Scenario: Refinement switched on applies after Save
+- **GIVEN** the app runs with refinement off
+- **WHEN** the user switches refinement on and saves
+- **THEN** the next dictation is refined
+- **AND** the app was not relaunched
+
+#### Scenario: A setting the running app cannot use is reported
+- **GIVEN** the app runs
+- **WHEN** the user saves a service address on this Mac where no service answers
+- **THEN** the configuration file holds the new address
+- **AND** the window says the settings were not applied and names the service
+- **AND** the app keeps dictating with its previous settings
 
 #### Scenario: A missing configuration file is created on Save
 - **GIVEN** no configuration file exists

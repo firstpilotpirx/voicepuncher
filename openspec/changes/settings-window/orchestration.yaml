@@ -3,5 +3,3 @@ depends_on:
     why: Save applies the new configuration through the runtime's reload and shows its states
   - change: menu-bar-presence
     why: the Settings… menu item opens the window; the AppKit window technique and main-thread dispatch it introduces
-  - change: refinement-off-by-default
-    why: the Refinement tab's switch edits the [refinement] enabled key and shows the --llm/--no-llm overrides that change adds
