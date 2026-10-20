@@ -3,10 +3,11 @@
 
 use std::collections::VecDeque;
 use std::io::Cursor;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use serde::Deserialize;
+use voicepuncher_copy_pool::{CopyPool, Finish, Ran};
 
 const BOUNDARY: &str = "voicepuncher-command-spotting-3f9a";
 const LANGUAGE: &str = "en";
@@ -118,37 +119,76 @@ pub trait Hear: Send + Sync {
     fn hear(&self, samples: &[f32], deadline: Duration) -> Result<Heard>;
 }
 
-/// A client of the speech recognition service (OpenAI Audio Transcriptions API).
+/// A client of the speech recognition service (OpenAI Audio Transcriptions API), one
+/// confirmation per copy of the service.
 pub struct UtteranceTranscriber {
-    endpoint: String,
+    pool: CopyPool,
 }
 
 impl UtteranceTranscriber {
-    /// `base_url` like `http://127.0.0.1:8081/v1`.
-    pub fn new(base_url: &str) -> Self {
-        Self {
-            endpoint: format!("{}/audio/transcriptions", base_url.trim_end_matches('/')),
-        }
+    /// `base_url` like `http://127.0.0.1:8085/v1`: the copies are found from it.
+    pub fn new(base_url: &str) -> Result<Self> {
+        let pool = CopyPool::shared(base_url)
+            .map_err(|e| anyhow!("speech recognition service address {base_url}: {e}"))?;
+        Ok(Self { pool })
     }
 
-    /// What was said in `samples` (16 kHz mono), with each word's times.
+    /// What was said in `samples` (16 kHz mono), with each word's times; the wait for a
+    /// free copy and for its answer together never pass `deadline`.
     pub fn transcribe(
         &self,
         samples: &[f32],
         sample_rate: u32,
         deadline: Duration,
     ) -> Result<Heard> {
+        let started = Instant::now();
         let body = multipart_body(&wav(samples, sample_rate)?);
-        let response = ureq::post(&self.endpoint)
-            .timeout(deadline)
-            .set(
-                "Content-Type",
-                &format!("multipart/form-data; boundary={BOUNDARY}"),
-            )
-            .send_bytes(&body)
-            .with_context(|| format!("speech recognition service at {}", self.endpoint))?
-            .into_string()?;
-        heard_from(&response)
+        let lease = self.pool.lease(deadline).map_err(|e| {
+            log::warn!("confirmation given up unsent: {e}");
+            anyhow!("speech recognition service: {e}")
+        })?;
+        let port = lease.port();
+        let left = deadline.saturating_sub(started.elapsed());
+        let ran = lease.run(left, move |url| post(url, &body, left));
+        match ran {
+            Ran::Answered(answer) => heard_from(&answer?),
+            Ran::GaveUp => bail!(
+                "speech recognition copy {port} sent no answer in {} ms",
+                deadline.as_millis()
+            ),
+        }
+    }
+}
+
+/// Posts `body` to the copy at `url` and reads the whole answer, within `timeout`.
+fn post(url: &str, body: &[u8], timeout: Duration) -> (Result<String>, Finish) {
+    let endpoint = format!("{}/audio/transcriptions", url.trim_end_matches('/'));
+    let sent = ureq::post(&endpoint)
+        .timeout(timeout)
+        .set(
+            "Content-Type",
+            &format!("multipart/form-data; boundary={BOUNDARY}"),
+        )
+        .send_bytes(body);
+    match sent {
+        Ok(response) => (
+            response.into_string().map_err(anyhow::Error::from),
+            Finish::Answered,
+        ),
+        Err(error) => {
+            let refused = matches!(
+                &error,
+                ureq::Error::Transport(t) if t.kind() == ureq::ErrorKind::ConnectionFailed
+            );
+            let finish = if refused {
+                Finish::Refused
+            } else {
+                Finish::Answered
+            };
+            let error = anyhow::Error::from(error)
+                .context(format!("speech recognition service at {endpoint}"));
+            (Err(error), finish)
+        }
     }
 }
 
@@ -202,6 +242,101 @@ fn multipart_body(wav: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::net::TcpListener;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::thread;
+    use voicepuncher_copy_pool::CopyPool;
+
+    /// A fake copy on its own port: answers every request with `answer` and counts them.
+    fn spawn_copy(answer: &'static str) -> (String, Arc<AtomicUsize>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/v1", listener.local_addr().unwrap());
+        let requests = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&requests);
+        thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mut stream = stream.unwrap();
+                let mut first = [0u8; 1];
+                if stream.peek(&mut first).unwrap_or(0) == 0 {
+                    continue;
+                }
+                counter.fetch_add(1, Ordering::SeqCst);
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut length = 0usize;
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    let line = line.trim_end();
+                    if line.is_empty() {
+                        break;
+                    }
+                    if let Some((name, value)) = line.split_once(':') {
+                        if name.eq_ignore_ascii_case("content-length") {
+                            length = value.trim().parse().unwrap();
+                        }
+                    }
+                }
+                reader.read_exact(&mut vec![0u8; length]).unwrap();
+                let reply = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
+                    answer.len()
+                );
+                stream.write_all(reply.as_bytes()).unwrap();
+            }
+        });
+        (url, requests)
+    }
+
+    const PRESS_ENTER: &str = r#"{"text":" press enter","segments":[]}"#;
+    const DEADLINE: Duration = Duration::from_millis(300);
+    const SAMPLE_RATE: u32 = 16_000;
+
+    #[test]
+    fn should_give_a_confirmation_up_unsent_when_every_copy_stays_busy_past_its_deadline() {
+        // Given
+        let lines = crate::test_log::captured();
+        let (url, requests) = spawn_copy(PRESS_ENTER);
+        let transcriber = UtteranceTranscriber::new(&url).unwrap();
+        let held = CopyPool::shared(&url).unwrap().lease(DEADLINE).unwrap();
+        // When
+        let started = Instant::now();
+        let result = transcriber.transcribe(&[0.0; 1_600], SAMPLE_RATE, DEADLINE);
+        // Then
+        assert!(result.is_err());
+        let given_up = lines.containing("confirmation given up unsent");
+        assert!(
+            given_up.iter().any(|line| line.contains(&url)),
+            "{given_up:?}"
+        );
+        assert!(
+            started.elapsed() < DEADLINE * 2,
+            "waited {:?}",
+            started.elapsed()
+        );
+        assert_eq!(requests.load(Ordering::SeqCst), 0);
+        drop(held);
+    }
+
+    #[test]
+    fn should_send_a_confirmation_to_the_copy_that_frees_before_its_deadline() {
+        // Given
+        let (url, requests) = spawn_copy(PRESS_ENTER);
+        let transcriber = UtteranceTranscriber::new(&url).unwrap();
+        let held = CopyPool::shared(&url).unwrap().lease(DEADLINE).unwrap();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(200));
+            held.finished();
+        });
+        // When
+        let heard = transcriber
+            .transcribe(&[0.0; 1_600], SAMPLE_RATE, Duration::from_secs(2))
+            .unwrap();
+        // Then
+        assert_eq!(heard.text, " press enter");
+        assert_eq!(requests.load(Ordering::SeqCst), 1);
+    }
 
     #[test]
     fn should_hold_only_the_last_samples() {

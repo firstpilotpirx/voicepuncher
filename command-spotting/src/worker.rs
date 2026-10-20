@@ -326,30 +326,7 @@ mod tests {
         assert_eq!(first.map(|a| a.id.n), Some(2));
     }
 
-    /// Keeps every log line, for the tests that check what a line names.
-    struct Lines(std::sync::Mutex<Vec<String>>);
-
-    impl log::Log for Lines {
-        fn enabled(&self, _: &log::Metadata) -> bool {
-            true
-        }
-        fn log(&self, record: &log::Record) {
-            let thread = std::thread::current();
-            let line = format!("[{}] {}", thread.name().unwrap_or("-"), record.args());
-            self.0.lock().unwrap().push(line);
-        }
-        fn flush(&self) {}
-    }
-
-    fn captured() -> &'static Lines {
-        static LINES: std::sync::OnceLock<&'static Lines> = std::sync::OnceLock::new();
-        LINES.get_or_init(|| {
-            let lines: &'static Lines = Box::leak(Box::new(Lines(std::sync::Mutex::default())));
-            let _ = log::set_logger(lines);
-            log::set_max_level(log::LevelFilter::Trace);
-            lines
-        })
-    }
+    use crate::test_log::captured;
 
     #[test]
     fn should_name_the_job_its_kind_and_its_attempt_in_every_line_about_it() {

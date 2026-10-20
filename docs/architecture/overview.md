@@ -44,7 +44,7 @@ flowchart TB
     MACOS -->|audio stream| CPAL
     MACOS <-->|TCC probe| PROBE
     MACOS <--|paste text| PASTER
-    WHISPER -->|WAV over loopback HTTP| STT[("whisper-server\n(separate process)")]
+    WHISPER -->|WAV over loopback HTTP, one request per copy| STT[("whisper-server copies\n(separate processes)")]
     FS -->|model binary| LLAMA
     FS -->|WAV file| FSREC
 
@@ -91,7 +91,7 @@ Signals received while the pipeline is in any non-Idle state (except `Recording`
 |---|---|---|
 | Hotkey capture | `rdev` | Global key listener without a visible window; works in terminal |
 | Audio recording | `cpal` | Cross-platform abstraction; picks CoreAudio on macOS |
-| Speech-to-text | local `whisper-server` (whisper.cpp) over the OpenAI Audio Transcriptions API, via `ureq` | The engine runs outside the app (Metal acceleration, any `ggml-*.bin` model); the app stays engine-agnostic and builds without C++ |
+| Speech-to-text | local `whisper-server` (whisper.cpp) over the OpenAI Audio Transcriptions API, via `ureq` | The engine runs outside the app (Metal acceleration, any `ggml-*.bin` model); the app stays engine-agnostic and builds without C++. The service runs as copies on the ports 10000 above its own; the crate `copy-pool` finds them from the address and gives each request a free copy |
 | Text refinement | `llama-cpp-2` (llama.cpp FFI) | Runs Qwen2.5-3B-Instruct locally; Metal acceleration |
 | Clipboard paste | `arboard` + `CGEventPost` | `arboard` writes to NSPasteboard; `CGEventPost` sends Cmd+V |
 | Audio playback | macOS `NSSound` / `AVAudioPlayer` | Start/stop beeps via macOS native sound API |

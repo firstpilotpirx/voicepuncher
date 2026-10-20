@@ -140,13 +140,36 @@
 
 ### Speech recognition service for dictation
 - **Type:** External system (a *speech recognition service*)
-- **Definition:** The *speech recognition service* the app sends dictations and recording files to (`[transcription].base_url`, port 8081 by default). The service scripts start it as `whisper-server` (three copies behind HAProxy) with the Whisper large-v3-turbo model, 5-bit quantized (`ggml-large-v3-turbo-q5_0.bin`), unless the user names another model in `VOICEPUNCHER_WHISPER_MODEL`.
+- **Definition:** The *speech recognition service* the app sends dictations and recording files to (`[transcription].base_url`, port 8081 by default). The service scripts start it as `whisper-server` (three *copies* found from its address) with the Whisper large-v3-turbo model, 5-bit quantized (`ggml-large-v3-turbo-q5_0.bin`), unless the user names another model in `VOICEPUNCHER_WHISPER_MODEL`.
 - **Synonyms to AVOID:** "turbo server", "main whisper", "dictation whisper"
 
 ### Speech recognition service for commands
 - **Type:** External system (a *speech recognition service*)
-- **Definition:** The *speech recognition service* the *command spotting service* confirms utterances with (port 8085 by default, `VOICEPUNCHER_COMMAND_STT_PORT`). The service scripts start it as `whisper-server-commands` (three copies behind HAProxy) with the Whisper small model (`ggml-small.bin`), unless the user names another model in `VOICEPUNCHER_COMMAND_WHISPER_MODEL`. The app never talks to it.
+- **Definition:** The *speech recognition service* the *command spotting service* confirms utterances with (port 8085 by default, `VOICEPUNCHER_COMMAND_STT_PORT`). The service scripts start it as `whisper-server-commands` (three *copies* found from its address) with the Whisper small model (`ggml-small.bin`), unless the user names another model in `VOICEPUNCHER_COMMAND_WHISPER_MODEL`. The app never talks to it.
 - **Synonyms to AVOID:** "command whisper", "confirmation server", "second whisper", "small server"
+
+### Copy
+- **Type:** External system (one process of a *speech recognition service*)
+- **Definition:** One `whisper-server` process of a *speech recognition service*; it transcribes one request at a time. With several copies, copy *n* listens on the service's port + 10000 + *n* (− 10000 when that would pass the last port; at most 8 copies) and nothing listens on the service's own port; a single copy listens on the service's own port. A client finds the copies from the service's address alone.
+- **Code:** `copy-pool/src/address.rs` — `ServiceAddress::copy_ports`
+- **Synonyms to AVOID:** "instance", "backend", "replica", "worker"
+
+### Copy pool
+- **Type:** Shared library (`copy-pool/`, used by the app's transcription adapter and the command spotting service)
+- **Definition:** The *copies* of one *speech recognition service* as one client process sees them: which accept connections (probed every second), which are held, and the requests waiting for one, first come first served. One pool per process per service address.
+- **Code:** `copy-pool/src/pool.rs` — `CopyPool`
+- **Synonyms to AVOID:** "load balancer", "proxy", "router"
+
+### Lease
+- **Type:** Value (held by one request)
+- **Definition:** One *copy* held by one request: no other request goes to that copy until the lease ends — when the copy answered, or refused the connection (the copy is then down until it accepts connections again).
+- **Code:** `copy-pool/src/pool/lease.rs` — `Lease`
+- **Synonyms to AVOID:** "slot", "connection", "ticket"
+
+### Draining copy
+- **Type:** State of a *copy*
+- **Definition:** A *copy* still transcribing a request its client gave up on: its *lease* lasts until that answer arrives, so the client's next request goes to another copy or waits. A copy draining past twice the request's wait is logged as hung.
+- **Synonyms to AVOID:** "stuck copy", "zombie request"
 
 ### Text refinement service
 - **Type:** External system (outside the app process)

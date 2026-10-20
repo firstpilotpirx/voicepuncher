@@ -49,12 +49,30 @@ Feature: local-services
       Then the start fails within 15 seconds naming the service and its log, and no process of it is left
 
   @smoke @serial
-  Rule: The speech recognition service runs as several copies behind one address
+  Rule: The speech recognition service runs as several copies found from its address
 
     Scenario: Requests that arrive at once are shared by the copies
       Given the service scripts started the speech recognition service for dictation without a number of copies
       When several transcription requests arrive at once
       Then every request gets its transcript, and each of the three copies transcribed some of them
+
+    Scenario: Requests wait their turn when every copy is busy
+      Given the speech recognition service for dictation runs as two copies, both busy with long speech
+      When two more requests arrive one after another
+      Then each starts on the first copy that frees, in the order they arrived, and no copy transcribes two requests at once
+
+  @smoke @serial
+  Rule: Copies of a speech recognition service are found from its address
+
+    Scenario: Three copies are found from the service address
+      Given the service scripts started the speech recognition service for dictation as three copies
+      When a client connects to the service by its address
+      Then the client sends its requests to the three copies, and nothing listens on the service's own port
+
+    Scenario: A single copy on the service's own port is found
+      Given the service scripts started the speech recognition service for dictation as one copy
+      When a client connects to the service by its address
+      Then the client sends its requests to that copy on the service's own port
 
   @smoke @serial
   Rule: A copy that stops does not stop the service
@@ -65,20 +83,12 @@ Feature: local-services
       Then the service keeps answering transcription requests, and that copy answers again within 30 seconds
 
   @smoke @serial
-  Rule: Short speech is transcribed ahead of long speech
-
-    Scenario: A short utterance overtakes long speech that waits
-      Given the speech recognition service for dictation runs as two copies, both busy with long speech, and more long speech waits
-      When a short utterance arrives
-      Then the short utterance is transcribed before the long speech that waited
-
-  @smoke @serial
   Rule: Stopping the speech recognition service stops every copy
 
     Scenario: The user stops the speech recognition service that runs as several copies
       Given the service scripts started the speech recognition service as several copies
       When the user stops it with the service scripts
-      Then nothing answers on its port, and no copy of it is left
+      Then no copy of it is left, and nothing answers on any of its ports
 
   @smoke @serial
   Rule: Several copies that cannot start are reported and leave nothing behind
@@ -86,7 +96,7 @@ Feature: local-services
     Scenario: The second of several copies cannot start
       Given the speech recognition service is to run as several copies, and its second copy cannot start
       When the service scripts start the speech recognition service
-      Then the start fails naming the service and the log of the copy that failed, and neither the copy that started nor anything in front of it is left
+      Then the start fails naming the service and the log of the copy that failed, and the copy that started is not left
 
   @serial @resilience
   Rule: A service that stops answering is started again
@@ -104,10 +114,17 @@ Feature: local-services
   @serial @resilience
   Rule: A request given up by its client does not hold a copy
 
+    Scenario: The request after an abandoned one goes to another copy
+      Given the speech recognition service for dictation runs as two copies
+      And a client gave up on a request that one copy is still transcribing
+      When the client sends its next request
+      Then the other copy answers it, and the first copy gets a new request only after it answered the abandoned one
+
     Scenario: An abandoned request is not transcribed
-      Given the speech recognition service runs as two copies, both busy with long speech, and a third request waits and its client gives up
+      Given the speech recognition service for dictation runs as two copies, both busy with long speech
+      And a third request waits and its client gives up
       When the copies become free
-      Then the copy that takes the abandoned request gives it up at once instead of transcribing it
+      Then the abandoned request is not sent to any copy
 
 
   @serial @resilience

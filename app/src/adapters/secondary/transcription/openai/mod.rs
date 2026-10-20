@@ -1,9 +1,9 @@
-use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
-use url::Url;
+use voicepuncher_copy_pool::{CopyPool, Finish, PoolError, Ran};
 
 use crate::adapters::secondary::http::failure::Failure;
 use crate::config::TranscriptionCfg;
@@ -18,19 +18,17 @@ use language::{retry_language, TranscriptionResponse};
 use request::{encode_wav, multipart_body, normalize_transcript};
 
 const TRANSCRIPTIONS_PATH: &str = "audio/transcriptions";
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 const SLOW_REQUEST_LOG_MS: u128 = 600;
 const START_HINT: &str = "start it with 'just start-model-servers'";
-/// Pauses before each new attempt when the service drops the connection before it
-/// answers (a busy service resets connections it has no room for).
+/// Pauses before each new attempt when the service refuses or drops the connection
+/// before it answers (a busy service resets connections it has no room for).
 const RETRY_PAUSES: [Duration; 3] = [
     Duration::from_millis(200),
     Duration::from_millis(400),
     Duration::from_millis(800),
 ];
 /// New attempts after a request the service did not answer in time or answered with an
-/// error: the service aborts the request the app gave up on, and the next one goes to a
-/// free copy.
+/// error; each goes to another copy than the one still working on the abandoned one.
 const SLOW_RETRIES: u32 = 2;
 const SLOW_RETRY_PAUSE: Duration = Duration::from_millis(200);
 /// The wait for one request: this, plus half the length of its audio.
@@ -38,36 +36,66 @@ const DEADLINE_BASE: Duration = Duration::from_secs(5);
 const DEADLINE_PER_AUDIO_SECOND: f32 = 0.5;
 
 /// Transcribes audio through a local speech recognition service that speaks the
-/// OpenAI Audio Transcriptions API (whisper.cpp `whisper-server`, Speaches, LocalAI).
+/// OpenAI Audio Transcriptions API (whisper.cpp `whisper-server`, Speaches, LocalAI),
+/// one request per copy of the service.
 pub struct OpenAiTranscriber {
     agent: ureq::Agent,
-    endpoint: String,
+    pool: CopyPool,
     cfg: TranscriptionCfg,
     /// Numbers the requests, for the log: `request=<n>`.
     requests: u64,
 }
 
+/// Why one attempt brought no answer.
+struct AttemptFailure {
+    failure: Failure,
+    /// What the service did, for the log.
+    what: String,
+    error: String,
+}
+
+impl AttemptFailure {
+    fn of(error: &ureq::Error) -> Self {
+        let failure = Failure::of(error);
+        Self {
+            failure,
+            what: failure.describe(),
+            error: error.to_string(),
+        }
+    }
+
+    fn of_pool(error: &PoolError) -> Self {
+        let (failure, what) = match error {
+            PoolError::NoFreeCopy { .. } => (Failure::TimedOut, "had no free copy in time"),
+            PoolError::NoCopies { .. } => (Failure::Dropped, "accepts no connections"),
+        };
+        Self {
+            failure,
+            what: what.to_owned(),
+            error: error.to_string(),
+        }
+    }
+}
+
 impl OpenAiTranscriber {
-    /// Checks that the service accepts connections, then returns a transcriber for it.
+    /// Finds the copies of the service, then returns a transcriber for them.
     pub fn connect(cfg: TranscriptionCfg) -> Result<Self> {
-        let addrs = socket_addrs(&cfg.base_url)?;
-        let reachable = addrs
-            .iter()
-            .any(|addr| TcpStream::connect_timeout(addr, CONNECT_TIMEOUT).is_ok());
-        if !reachable {
+        let pool = CopyPool::shared(&cfg.base_url).map_err(|e| {
+            anyhow!(
+                "invalid speech recognition service address {}: {e}",
+                cfg.base_url
+            )
+        })?;
+        if !pool.has_copies() {
             bail!(
                 "speech recognition service is not reachable at {} — {START_HINT}",
                 cfg.base_url
             );
         }
-        let endpoint = format!(
-            "{}/{TRANSCRIPTIONS_PATH}",
-            cfg.base_url.trim_end_matches('/')
-        );
         let agent = request_agent(Duration::from_secs(cfg.timeout_secs));
         Ok(Self {
             agent,
-            endpoint,
+            pool,
             cfg,
             requests: 0,
         })
@@ -106,33 +134,25 @@ impl OpenAiTranscriber {
             audio.duration_ms(),
             deadline.as_millis()
         );
-        let response = self.post_with_retries(&body, deadline)?;
-        let json = response
-            .into_string()
-            .context("read speech recognition response")?;
+        let json = self.post_with_retries(Arc::new(body), deadline)?;
         serde_json::from_str(&json)
             .with_context(|| format!("unexpected speech recognition response: {json}"))
     }
 
-    /// Posts `body`, again after a dropped connection, a timeout or an error answer, as
-    /// often as each allows; every failed attempt is logged with how long it took.
-    fn post_with_retries(&self, body: &[u8], deadline: Duration) -> Result<ureq::Response> {
+    /// Posts `body`, again after a refused or dropped connection, a timeout or an error
+    /// answer, as often as each allows, each time to a copy not tried yet when one is
+    /// free; every failed attempt is logged with how long it took.
+    fn post_with_retries(&self, body: Arc<Vec<u8>>, deadline: Duration) -> Result<String> {
         let (mut dropped, mut slow, mut attempt) = (0usize, 0u32, 0u32);
+        let mut tried: Vec<u16> = Vec::new();
         loop {
             attempt += 1;
             let started = Instant::now();
-            let result = self
-                .agent
-                .post(&self.endpoint)
-                .timeout(deadline)
-                .set("Content-Type", &request::content_type())
-                .send_bytes(body);
-            let error = match result {
-                Ok(response) => return Ok(response),
-                Err(e) => e,
+            let failed = match self.attempt(&body, deadline, attempt, &mut tried) {
+                Ok(text) => return Ok(text),
+                Err(failed) => failed,
             };
-            let failure = Failure::of(&error);
-            let pause = match failure {
+            let pause = match failed.failure {
                 Failure::Dropped if dropped < RETRY_PAUSES.len() => {
                     dropped += 1;
                     RETRY_PAUSES[dropped - 1]
@@ -143,29 +163,102 @@ impl OpenAiTranscriber {
                 }
                 _ => {
                     log::warn!(
-                        "speech recognition service {} (request={} attempt {attempt}, after {}ms, deadline {}ms): {error} — giving up",
-                        failure.describe(),
+                        "speech recognition service {} (request={} attempt {attempt}, after {}ms, deadline {}ms): {} — giving up",
+                        failed.what,
                         self.requests,
                         started.elapsed().as_millis(),
-                        deadline.as_millis()
+                        deadline.as_millis(),
+                        failed.error
                     );
                     bail!(
-                        "speech recognition request to {} failed: {error}",
-                        self.endpoint
+                        "speech recognition request to {} failed on copies {}: {}",
+                        self.cfg.base_url,
+                        ports_list(&tried),
+                        failed.error
                     )
                 }
             };
             log::warn!(
-                "speech recognition service {} (request={} attempt {attempt}, after {}ms, deadline {}ms): {error} — retrying in {}ms",
-                failure.describe(),
+                "speech recognition service {} (request={} attempt {attempt}, after {}ms, deadline {}ms): {} — retrying in {}ms",
+                failed.what,
                 self.requests,
                 started.elapsed().as_millis(),
                 deadline.as_millis(),
+                failed.error,
                 pause.as_millis()
             );
             thread::sleep(pause);
         }
     }
+
+    /// One attempt on a free copy, waiting at most `deadline` for the copy and again for
+    /// its answer; a copy given up on stays held until it answered.
+    fn attempt(
+        &self,
+        body: &Arc<Vec<u8>>,
+        deadline: Duration,
+        attempt: u32,
+        tried: &mut Vec<u16>,
+    ) -> Result<String, AttemptFailure> {
+        let lease = self
+            .pool
+            .lease_avoiding(deadline, tried)
+            .map_err(|e| AttemptFailure::of_pool(&e))?;
+        let port = lease.port();
+        if !tried.contains(&port) {
+            tried.push(port);
+        }
+        log::debug!(
+            "speech recognition: request={} attempt {attempt} on copy {port}",
+            self.requests
+        );
+        let (agent, body) = (self.agent.clone(), Arc::clone(body));
+        let ran = lease.run(deadline, move |url| post(&agent, url, &body));
+        match ran {
+            Ran::Answered(answer) => answer,
+            Ran::GaveUp => Err(AttemptFailure {
+                failure: Failure::TimedOut,
+                what: Failure::TimedOut.describe(),
+                error: format!("copy {port} sent no answer in {}ms", deadline.as_millis()),
+            }),
+        }
+    }
+}
+
+/// Posts `body` to the copy at `url` and reads the whole answer.
+fn post(agent: &ureq::Agent, url: &str, body: &[u8]) -> (Result<String, AttemptFailure>, Finish) {
+    let endpoint = format!("{}/{TRANSCRIPTIONS_PATH}", url.trim_end_matches('/'));
+    let sent = agent
+        .post(&endpoint)
+        .set("Content-Type", &request::content_type())
+        .send_bytes(body);
+    match sent {
+        Ok(response) => {
+            let read = response.into_string().map_err(|e| AttemptFailure {
+                failure: Failure::Other,
+                what: "sent an unreadable answer".to_owned(),
+                error: e.to_string(),
+            });
+            (read, Finish::Answered)
+        }
+        Err(error) => {
+            let refused = matches!(
+                &error,
+                ureq::Error::Transport(t) if t.kind() == ureq::ErrorKind::ConnectionFailed
+            );
+            let finish = if refused {
+                Finish::Refused
+            } else {
+                Finish::Answered
+            };
+            (Err(AttemptFailure::of(&error)), finish)
+        }
+    }
+}
+
+fn ports_list(ports: &[u16]) -> String {
+    let ports: Vec<String> = ports.iter().map(u16::to_string).collect();
+    ports.join(", ")
 }
 
 /// How long one request may take: a few seconds for a short recording, more for long
@@ -173,22 +266,6 @@ impl OpenAiTranscriber {
 fn request_deadline(audio: &AudioBuffer16k, timeout: Duration) -> Duration {
     let audio_secs = audio.duration_ms() as f32 / 1_000.0;
     (DEADLINE_BASE + Duration::from_secs_f32(audio_secs * DEADLINE_PER_AUDIO_SECOND)).min(timeout)
-}
-
-fn socket_addrs(base_url: &str) -> Result<Vec<SocketAddr>> {
-    let url = Url::parse(base_url)
-        .with_context(|| format!("invalid speech recognition service address: {base_url}"))?;
-    let host = url
-        .host_str()
-        .ok_or_else(|| anyhow!("speech recognition service address has no host: {base_url}"))?;
-    let port = url
-        .port_or_known_default()
-        .ok_or_else(|| anyhow!("speech recognition service address has no port: {base_url}"))?;
-    let host = host.trim_start_matches('[').trim_end_matches(']');
-    Ok((host, port)
-        .to_socket_addrs()
-        .with_context(|| format!("resolve speech recognition service address {base_url}"))?
-        .collect())
 }
 
 impl Transcriber for OpenAiTranscriber {
@@ -249,10 +326,8 @@ mod tests {
         // When
         let transcriber = OpenAiTranscriber::connect(cfg_for_port(port)).unwrap();
         // Then
-        assert_eq!(
-            transcriber.endpoint,
-            format!("http://127.0.0.1:{port}/v1/audio/transcriptions")
-        );
+        let ports: Vec<u16> = transcriber.pool.snapshot().iter().map(|c| c.port).collect();
+        assert_eq!(ports, [port]);
     }
 
     #[test]
@@ -301,13 +376,5 @@ mod tests {
             request_deadline(&chunk, Duration::from_secs(10)),
             Duration::from_secs(10)
         );
-    }
-
-    #[test]
-    fn should_resolve_ipv6_loopback_address() {
-        let addrs = socket_addrs("http://[::1]:8081/v1").unwrap();
-        assert!(addrs
-            .iter()
-            .all(|a| a.ip().is_loopback() && a.port() == 8081));
     }
 }

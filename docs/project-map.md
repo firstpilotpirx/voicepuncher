@@ -5,10 +5,12 @@
 | Folder | Purpose |
 |---|---|
 | `app/` | Rust CLI application — hexagonal architecture (Ports & Adapters + DDD) |
+| `command-spotting/` | Rust binary: the command spotting service (voice control) |
+| `copy-pool/` | Rust library: the *copy pool* — routes requests to the copies of a speech recognition service, used by `app/` and `command-spotting/` |
 | `e2e-test/` | Rust benchmark and E2E tests against the compiled binary |
 | `docs/` | Documentation (ubiquitous language, architecture, E2E benchmark design) |
 | `dist/` | Gitignored output of `just bundle` and `just dmg`: `voicepuncher.app`, `voicepuncher-vX.Y.Z.dmg` and its `.sha256` |
-| `Cargo.toml` | Cargo workspace (members: `app`, `e2e-test`) |
+| `Cargo.toml` | Cargo workspace (members: `app`, `command-spotting`, `copy-pool`, `e2e-test`) |
 | `justfile` | Task runner — all checks (`check`, `e2e`, `release-check`), setup (`models`, `corpus`), benchmarks (`bench`) |
 
 ## App structure (`app/`)

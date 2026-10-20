@@ -1,18 +1,20 @@
 //! Steps of `local_services.feature` about the speech recognition service run as several
-//! copies behind one address: the copies share the requests, one that dies comes back,
-//! short speech goes first, and stopping leaves nothing behind.
+//! copies found from its address: clients find the copies, the copies share the requests,
+//! one that dies comes back, an abandoned request holds no copy, and stopping leaves nothing
+//! behind.
 
 use std::process::Command;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use anyhow::{ensure, Context, Result};
+use anyhow::{anyhow, ensure, Context, Result};
 use cucumber::{given, then, when};
 
 use voicepuncher::adapters::secondary::transcription::openai::OpenAiTranscriber;
 use voicepuncher::config::TranscriptionCfg;
 use voicepuncher::core::application::Transcriber;
 use voicepuncher::core::domain::AudioBuffer16k;
+use voicepuncher_copy_pool::{CopyPool, Finish, Ran, ServiceAddress};
 use voicepuncher_e2e_test::speech::{synthesize, Condition, Lang};
 use voicepuncher_e2e_test::speech_cache::{synthesized, SayRequest};
 
@@ -28,12 +30,12 @@ const DEFAULT_COPIES: usize = 3;
 /// "Several copies" in the scenarios: the fewest that can share requests.
 const SEVERAL_COPIES: u32 = 2;
 const REQUESTS_AT_ONCE: usize = 9;
+/// "Three copies" in the scenarios.
+const THREE_COPIES: u32 = 3;
 const COPY_BACK_WITHIN: Duration = Duration::from_secs(30);
 const PROCESS_GONE_WITHIN: Duration = Duration::from_secs(10);
-/// Long speech: two keep both copies busy, two wait in the queue.
-const LONG_REQUESTS: usize = 4;
-/// The first long request that had to wait for a copy.
-const FIRST_WAITING: usize = 2;
+/// The requests that arrive "one after another" while every copy is busy.
+const MORE_REQUESTS: usize = 2;
 /// Requests sent at once right after a copy died: more than the copies that still answer.
 const REQUESTS_WHILE_DOWN: usize = 4;
 /// Between two requests sent "one after another", so they reach the queue in that order.
@@ -42,15 +44,24 @@ const BETWEEN_REQUESTS: Duration = Duration::from_millis(200);
 const TRANSCRIBED_LOG_LINE: &str = "whisper_vad: detected";
 const SHORT_UTTERANCE: &str = "press enter";
 
-/// The long requests of the queue scenario, each ending with the moment it was answered,
-/// and the moment the short utterance was answered.
+/// What the copy scenarios sent and saw: the long requests that keep the copies busy and
+/// the requests sent after them, each ending with the moment it was answered.
 #[derive(Debug, Default)]
 pub struct PoolRun {
     long: Vec<JoinHandle<Result<Instant>>>,
-    short_answered: Option<Instant>,
+    more: Vec<JoinHandle<Result<Instant>>>,
+    /// When each of the `more` requests reached a copy, from the copies' logs.
+    reached: Option<JoinHandle<Vec<Instant>>>,
     unanswered: Option<Vec<String>>,
     copy_killed: Option<Instant>,
     taken: Option<TakenPort>,
+    /// The copies the client found from the service address.
+    found: Option<Vec<u16>>,
+    /// The copy still transcribing a request its client gave up on.
+    abandoned: Option<u16>,
+    /// When the next request was answered: the requests the copy of the abandoned one and
+    /// the other copy had taken.
+    after_abandoned: Option<(usize, usize)>,
 }
 
 impl ScenarioServices {
@@ -77,21 +88,15 @@ fn copy_list(stt_port: u16) -> std::path::PathBuf {
     services_dir("run").join(format!("{SPEECH_RECOGNITION}-{stt_port}.copies"))
 }
 
-fn balancer_config(stt_port: u16) -> std::path::PathBuf {
-    services_dir("run").join(format!("haproxy-{stt_port}.cfg"))
-}
-
-/// The load balancer in front of the copies on `stt_port`, found by its configuration.
-pub(super) fn balancer_process(stt_port: u16) -> Option<u32> {
-    pgrep(&format!("haproxy .*haproxy-{stt_port}\\.cfg"))
-}
-
-pub(super) fn remove_balancer_files(stt_port: u16) {
+/// The list of copies the service scripts keep for the service on `stt_port`.
+pub(super) fn remove_copy_list(stt_port: u16) {
     let _ = std::fs::remove_file(copy_list(stt_port));
-    let _ = std::fs::remove_file(balancer_config(stt_port));
-    for (dir, ext) in [("run", "pid"), ("logs", "log")] {
-        let _ = std::fs::remove_file(services_dir(dir).join(format!("haproxy-{stt_port}.{ext}")));
-    }
+}
+
+/// The copies the client pool of this process finds from the service address `url`.
+fn found_copies(url: &str) -> Result<Vec<u16>> {
+    let pool = CopyPool::shared(url).map_err(|e| anyhow!("{e}"))?;
+    Ok(pool.snapshot().iter().map(|copy| copy.port).collect())
 }
 
 /// The transcript the service at `url` gives for `samples`, through the app's own client.
@@ -180,26 +185,6 @@ async fn started_as_copies(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| started_with(world, Some(SEVERAL_COPIES))).await
 }
 
-#[given("the speech recognition service for dictation runs as two copies, both busy with long speech, and more long speech waits")]
-async fn copies_busy(world: &mut E2eWorld) -> Result<()> {
-    off_thread(world, |world| {
-        started_with(world, Some(SEVERAL_COPIES))?;
-        let services = services(world)?;
-        let url = services.transcription_url();
-        let speech = long_speech()?;
-        for _ in 0..LONG_REQUESTS {
-            let (url, speech) = (url.clone(), speech.clone());
-            services.pool.long.push(std::thread::spawn(move || {
-                transcribe(&url, speech)?;
-                Ok(Instant::now())
-            }));
-            std::thread::sleep(BETWEEN_REQUESTS);
-        }
-        Ok(())
-    })
-    .await
-}
-
 #[when("several transcription requests arrive at once")]
 async fn requests_at_once(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
@@ -228,17 +213,6 @@ async fn copy_dies(world: &mut E2eWorld) -> Result<()> {
             .status()?;
         services.pool.copy_killed = Some(Instant::now());
         wait_until(PROCESS_GONE_WITHIN, || !alive(pid));
-        Ok(())
-    })
-    .await
-}
-
-#[when("a short utterance arrives")]
-async fn short_utterance(world: &mut E2eWorld) -> Result<()> {
-    off_thread(world, |world| {
-        let services = services(world)?;
-        transcribe(&services.transcription_url(), short_speech()?)?;
-        services.pool.short_answered = Some(Instant::now());
         Ok(())
     })
     .await
@@ -295,39 +269,10 @@ async fn copy_came_back(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[then("the short utterance is transcribed before the long speech that waited")]
-async fn short_went_first(world: &mut E2eWorld) -> Result<()> {
-    off_thread(world, |world| {
-        let services = services(world)?;
-        let short = services
-            .pool
-            .short_answered
-            .context("no short utterance was sent")?;
-        let mut long = Vec::new();
-        for request in services.pool.long.drain(..) {
-            long.push(request.join().expect("a long request thread panicked")?);
-        }
-        let waited = *long
-            .get(FIRST_WAITING)
-            .context("too little long speech was sent")?;
-        ensure!(
-            short < waited,
-            "the short utterance was answered {:?} after the long speech that waited",
-            short.duration_since(waited)
-        );
-        Ok(())
-    })
-    .await
-}
-
-#[then("nothing answers on its port, and no copy of it is left")]
+#[then("no copy of it is left, and nothing answers on any of its ports")]
 async fn no_copy_left(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let services = services(world)?;
-        ensure!(
-            !answers(services.stt_port),
-            "the speech recognition service still answers after it was stopped"
-        );
         ensure!(
             !services.copy_ports.is_empty(),
             "the start left no copies to check"
@@ -339,30 +284,29 @@ async fn no_copy_left(world: &mut E2eWorld) -> Result<()> {
                 any_process(*port)
             );
         }
-        let stt_port = services.stt_port;
+        let ports = std::iter::once(services.stt_port).chain(services.copy_ports.iter().copied());
+        for port in ports {
+            ensure!(
+                !answers(port),
+                "port {port} of the speech recognition service still answers after it was stopped"
+            );
+        }
         ensure!(
-            wait_until(PROCESS_GONE_WITHIN, || balancer_process(stt_port).is_none()),
-            "the load balancer in front of the copies is left"
-        );
-        ensure!(
-            !copy_list(stt_port).exists() && !balancer_config(stt_port).exists(),
-            "the list of copies or the load balancer's configuration is left"
+            !copy_list(services.stt_port).exists(),
+            "the list of copies is left"
         );
         Ok(())
     })
     .await
 }
 
-/// The ports the service scripts give the copies of the service on `stt_port`: 10000 above it,
-/// or 10000 below when that would pass the last port.
+/// The ports the service scripts give the copies of the service on `stt_port`, as a client
+/// finds them from its address.
 fn expected_copy_ports(stt_port: u16, copies: u32) -> Vec<u32> {
-    let port = u32::from(stt_port);
-    let base = if port + 10_000 + copies <= u32::from(u16::MAX) {
-        port + 10_000
-    } else {
-        port - 10_000
-    };
-    (1..=copies).map(|i| base + i).collect()
+    let address = ServiceAddress::parse(&format!("http://127.0.0.1:{stt_port}/v1"))
+        .expect("a loopback address");
+    let ports = address.copy_ports().into_iter().map(u32::from);
+    ports.take(copies as usize).collect()
 }
 
 /// Holds `port` bound without listening, so a server cannot bind it while nothing answers
@@ -431,7 +375,7 @@ async fn stale_copy_list(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[then("the start fails naming the service and the log of the copy that failed, and neither the copy that started nor anything in front of it is left")]
+#[then("the start fails naming the service and the log of the copy that failed, and the copy that started is not left")]
 async fn copies_start_failed(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let services = services(world)?;
@@ -457,8 +401,8 @@ async fn copies_start_failed(world: &mut E2eWorld) -> Result<()> {
             any_process(first)
         );
         ensure!(
-            balancer_process(stt_port).is_none() && !copy_list(stt_port).exists(),
-            "the load balancer or the list of copies is left after the failed start"
+            !copy_list(stt_port).exists(),
+            "the list of copies is left after the failed start"
         );
         Ok(())
     })
@@ -467,26 +411,89 @@ async fn copies_start_failed(world: &mut E2eWorld) -> Result<()> {
 
 /// How long the client of the abandoned request waits before it gives up on it.
 const GIVES_UP_AFTER: Duration = Duration::from_millis(300);
-/// The long requests that keep both copies busy, each this many times the long speech.
+/// The long requests that keep both copies busy.
 const BUSY_REQUESTS: usize = 2;
-/// Long enough that both copies are still busy when the third client gives up.
-const LONG_SPEECH_REPEATS: usize = 10;
-/// How long after the copies become free the abandoned request is given up: at once.
-const GIVEN_UP_WITHIN: Duration = Duration::from_secs(2);
-/// What a copy logs when it gives up a request whose client is gone.
-const ABORTED_LOG_LINE: &str = "client disconnected, aborted processing";
+/// The long speech of a busy copy, this many times the long speech: still busy when the
+/// requests after it arrive.
+const BUSY_SPEECH_REPEATS: usize = 3;
+/// The abandoned request, this many times the long speech: still transcribed when the
+/// client's next request is answered.
+const ABANDONED_SPEECH_REPEATS: usize = 10;
 /// How long the long requests may take to reach both copies.
 const BUSY_WITHIN: Duration = Duration::from_secs(20);
+/// How long the waiting requests may take to reach a copy: the long ones take seconds each.
+const REACHED_WITHIN: Duration = Duration::from_secs(120);
+/// How often the copies' logs are read for a request they took.
+const LOG_POLL: Duration = Duration::from_millis(20);
 /// What a copy logs for every request it takes, with the length of its audio.
 pub(super) const REQUEST_LOG_LINE: &str = "processing '";
 
-#[given("the speech recognition service runs as two copies, both busy with long speech, and a third request waits and its client gives up")]
-async fn abandoned_request(world: &mut E2eWorld) -> Result<()> {
+#[given("the service scripts started the speech recognition service for dictation as three copies")]
+async fn started_as_three(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, |world| started_with(world, Some(THREE_COPIES))).await
+}
+
+#[given("the service scripts started the speech recognition service for dictation as one copy")]
+async fn started_as_one(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, |world| started_with(world, Some(1))).await
+}
+
+#[given("the speech recognition service for dictation runs as two copies")]
+async fn started_as_two(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, |world| started_with(world, Some(SEVERAL_COPIES))).await
+}
+
+#[when("a client connects to the service by its address")]
+async fn client_connects(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, |world| {
+        let services = services(world)?;
+        let url = services.transcription_url();
+        let text = transcribe(&url, short_speech()?)?;
+        ensure!(!text.is_empty(), "the client got an empty transcript");
+        services.pool.found = Some(found_copies(&url)?);
+        Ok(())
+    })
+    .await
+}
+
+#[then("the client sends its requests to the three copies, and nothing listens on the service's own port")]
+fn found_three(world: &mut E2eWorld) -> Result<()> {
+    let services = services(world)?;
+    let found = services.pool.found.clone().context("no client connected")?;
+    ensure!(
+        services.copy_ports.len() == THREE_COPIES as usize && found == services.copy_ports,
+        "the client found the copies {found:?}, the service scripts started {:?}",
+        services.copy_ports
+    );
+    ensure!(
+        !answers(services.stt_port),
+        "something listens on the service's own port {}",
+        services.stt_port
+    );
+    Ok(())
+}
+
+#[then("the client sends its requests to that copy on the service's own port")]
+fn found_one(world: &mut E2eWorld) -> Result<()> {
+    let services = services(world)?;
+    let found = services.pool.found.clone().context("no client connected")?;
+    ensure!(
+        found == [services.stt_port],
+        "the client found the copies {found:?}, not the service's own port {}",
+        services.stt_port
+    );
+    Ok(())
+}
+
+#[given(
+    "the speech recognition service for dictation runs as two copies, both busy with long speech"
+)]
+async fn copies_busy(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         started_with(world, Some(SEVERAL_COPIES))?;
         let services = services(world)?;
         let url = services.transcription_url();
-        let speech: Vec<i16> = long_speech()?.repeat(LONG_SPEECH_REPEATS);
+        let speech: Vec<i16> = long_speech()?.repeat(BUSY_SPEECH_REPEATS);
         for _ in 0..BUSY_REQUESTS {
             let (url, speech) = (url.clone(), speech.clone());
             services.pool.long.push(std::thread::spawn(move || {
@@ -500,13 +507,177 @@ async fn abandoned_request(world: &mut E2eWorld) -> Result<()> {
                 >= BUSY_REQUESTS),
             "the copies did not both take a long request within {BUSY_WITHIN:?}"
         );
+        Ok(())
+    })
+    .await
+}
+
+#[when("two more requests arrive one after another")]
+async fn more_requests(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, |world| {
+        let services = services(world)?;
+        let url = services.transcription_url();
+        let speech = short_speech()?;
+        let ports = services.copy_ports.clone();
+        services.pool.reached = Some(std::thread::spawn(move || {
+            let mut reached = Vec::new();
+            let started = Instant::now();
+            while reached.len() < MORE_REQUESTS && started.elapsed() < REACHED_WITHIN {
+                if requests_taken(&ports) > BUSY_REQUESTS + reached.len() {
+                    reached.push(Instant::now());
+                    continue;
+                }
+                std::thread::sleep(LOG_POLL);
+            }
+            reached
+        }));
+        for _ in 0..MORE_REQUESTS {
+            let (url, speech) = (url.clone(), speech.clone());
+            services.pool.more.push(std::thread::spawn(move || {
+                let text = transcribe(&url, speech)?;
+                ensure!(!text.is_empty(), "a request got an empty transcript");
+                Ok(Instant::now())
+            }));
+            std::thread::sleep(BETWEEN_REQUESTS);
+        }
+        Ok(())
+    })
+    .await
+}
+
+/// The moments the requests in `requests` were answered, in the order they were sent.
+fn answered(requests: Vec<JoinHandle<Result<Instant>>>) -> Result<Vec<Instant>> {
+    requests
+        .into_iter()
+        .map(|request| {
+            request
+                .join()
+                .map_err(|_| anyhow!("a request thread panicked"))?
+        })
+        .collect()
+}
+
+#[then("each starts on the first copy that frees, in the order they arrived, and no copy transcribes two requests at once")]
+async fn waited_their_turn(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, |world| {
+        let services = services(world)?;
+        let long = answered(std::mem::take(&mut services.pool.long))?;
+        let more = answered(std::mem::take(&mut services.pool.more))?;
+        let first_free = *long.iter().min().context("no long request was sent")?;
+        ensure!(
+            more.iter().all(|at| *at >= first_free),
+            "a request was answered while every copy was still busy"
+        );
+        let reached = services
+            .pool
+            .reached
+            .take()
+            .context("no request was sent")?
+            .join()
+            .map_err(|_| anyhow!("the log watcher panicked"))?;
+        ensure!(
+            reached.len() == MORE_REQUESTS,
+            "only {} of {MORE_REQUESTS} requests reached a copy",
+            reached.len()
+        );
+        // The n-th waiting request may start only once n copies freed: a long request
+        // answered, or an earlier waiting one
+        let mut freed: Vec<Instant> = long.iter().chain(&more).copied().collect();
+        freed.sort();
+        for (n, at) in reached.iter().enumerate() {
+            ensure!(
+                *at >= freed[n],
+                "request {} reached a copy {:?} before a copy was free for it: a copy took two requests at once",
+                BUSY_REQUESTS + n + 1,
+                freed[n] - *at
+            );
+        }
+        ensure!(
+            more.windows(2).all(|pair| pair[0] <= pair[1]),
+            "the second request was answered before the first one"
+        );
+        let taken = requests_taken(&services.copy_ports);
+        ensure!(
+            taken == BUSY_REQUESTS + MORE_REQUESTS,
+            "the copies took {taken} requests, not {}",
+            BUSY_REQUESTS + MORE_REQUESTS
+        );
+        Ok(())
+    })
+    .await
+}
+
+#[given("a client gave up on a request that one copy is still transcribing")]
+async fn gave_up_on_a_request(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, |world| {
+        let services = services(world)?;
+        let pool = CopyPool::shared(&services.transcription_url()).map_err(|e| anyhow!("{e}"))?;
+        let lease = pool.lease(BUSY_WITHIN)?;
+        let port = lease.port();
+        let speech: Vec<i16> = long_speech()?.repeat(ABANDONED_SPEECH_REPEATS);
+        let ran = lease.run(GIVES_UP_AFTER, move |copy| {
+            (transcribe(copy, speech).is_ok(), Finish::Answered)
+        });
+        ensure!(
+            matches!(ran, Ran::GaveUp),
+            "the copy answered the long request before its client gave up"
+        );
+        services.pool.abandoned = Some(port);
+        Ok(())
+    })
+    .await
+}
+
+#[when("the client sends its next request")]
+async fn next_request(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, |world| {
+        let services = services(world)?;
+        let text = transcribe(&services.transcription_url(), short_speech()?)?;
+        ensure!(!text.is_empty(), "the next request got an empty transcript");
+        let abandoned = services.pool.abandoned.context("no request was given up")?;
+        let other = *services
+            .copy_ports
+            .iter()
+            .find(|port| **port != abandoned)
+            .context("no other copy runs")?;
+        services.pool.after_abandoned =
+            Some((requests_taken(&[abandoned]), requests_taken(&[other])));
+        Ok(())
+    })
+    .await
+}
+
+#[then("the other copy answers it, and the first copy gets a new request only after it answered the abandoned one")]
+fn other_copy_answered(world: &mut E2eWorld) -> Result<()> {
+    let services = services(world)?;
+    let (abandoned, other) = services
+        .pool
+        .after_abandoned
+        .context("no next request was sent")?;
+    ensure!(
+        abandoned == 1,
+        "the copy of the abandoned request took {abandoned} requests while still transcribing it"
+    );
+    ensure!(
+        other == 1,
+        "the other copy took {other} requests, not the next one"
+    );
+    Ok(())
+}
+
+#[given("a third request waits and its client gives up")]
+async fn third_request_gives_up(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, |world| {
+        let services = services(world)?;
         let short: Vec<f32> = short_speech()?
             .into_iter()
             .map(|s| f32::from(s) / f32::from(i16::MAX))
             .collect();
-        let gave_up = voicepuncher_command_spotting::confirm::UtteranceTranscriber::new(&url)
-            .transcribe(&short, AudioBuffer16k::SAMPLE_RATE_HZ, GIVES_UP_AFTER)
-            .is_err();
+        let gave_up = voicepuncher_command_spotting::confirm::UtteranceTranscriber::new(
+            &services.transcription_url(),
+        )?
+        .transcribe(&short, AudioBuffer16k::SAMPLE_RATE_HZ, GIVES_UP_AFTER)
+        .is_err();
         ensure!(
             gave_up,
             "the third request was answered although both copies were busy"
@@ -534,37 +705,19 @@ fn requests_taken(ports: &[u16]) -> usize {
 async fn copies_free(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let services = services(world)?;
-        for request in services.pool.long.drain(..) {
-            request
-                .join()
-                .map_err(|_| anyhow::anyhow!("a long request panicked"))??;
-        }
+        answered(std::mem::take(&mut services.pool.long))?;
         Ok(())
     })
     .await
 }
 
-#[then("the copy that takes the abandoned request gives it up at once instead of transcribing it")]
-fn abandoned_given_up(world: &mut E2eWorld) -> Result<()> {
+#[then("the abandoned request is not sent to any copy")]
+fn abandoned_not_sent(world: &mut E2eWorld) -> Result<()> {
     let services = services(world)?;
-    let aborted_lines = || -> usize {
-        services
-            .copy_ports
-            .iter()
-            .filter_map(|port| {
-                std::fs::read_to_string(
-                    services_dir("logs").join(format!("{SPEECH_RECOGNITION}-{port}.log")),
-                )
-                .ok()
-            })
-            .map(|text| text.matches(ABORTED_LOG_LINE).count())
-            .sum::<usize>()
-    };
-    wait_until(GIVEN_UP_WITHIN, || aborted_lines() >= 1);
-    let aborted = aborted_lines();
+    let taken = requests_taken(&services.copy_ports);
     ensure!(
-        aborted == 1,
-        "{aborted} requests were given up by a copy, not the one abandoned request"
+        taken == BUSY_REQUESTS,
+        "the copies took {taken} requests, not only the {BUSY_REQUESTS} long ones"
     );
     Ok(())
 }

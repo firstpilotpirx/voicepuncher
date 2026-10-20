@@ -27,9 +27,9 @@ The system SHALL send the recording again, up to 3 more times with a growing pau
 - **THEN** the recording is sent 3 times in total and then the cycle is dropped as a service failure
 
 #### Scenario: A chunk whose copy is killed is transcribed by another copy
-- **GIVEN** the speech recognition service for dictation runs as several copies, and a dictation long enough for several chunks runs
-- **WHEN** the copy that is to transcribe the next chunk is killed
-- **THEN** that chunk is transcribed by another copy, and every chunk's text is in the pasted text
+- **GIVEN** the speech recognition service for dictation runs as several copies
+- **WHEN** the copy that is to transcribe a chunk is killed as the chunk reaches it
+- **THEN** that chunk is transcribed by another copy, and the killed copy gets no second attempt
 
 ### Requirement: A request that times out or gets an error answer is retried
 The system SHALL send a recording or chunk again, up to 2 more times, when the speech recognition service does not answer it in time or answers with an error, and SHALL log each failed attempt with how long it took; an attempt after one the app gave up on SHALL go to another copy than the one still working on the abandoned attempt, or wait for a free copy, never queue behind the abandoned attempt.

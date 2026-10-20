@@ -25,6 +25,7 @@ regex = "1"
 [dev-dependencies]
 env_logger = "=0.11.10"
 voicepuncher-command-spotting = { path = "../command-spotting" }
+voicepuncher-copy-pool = { path = "../copy-pool" }
 futures = "=0.3.34"
 ureq = { version = "=2.12.1", default-features = false }
 tungstenite = "=0.30.0"

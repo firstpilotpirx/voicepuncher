@@ -23,6 +23,7 @@ fn r1_domain_no_adapter_imports() {
         "core_graphics",
         "tungstenite",
         "sherpa_onnx",
+        "voicepuncher_copy_pool",
     ];
 
     let mut violations: Vec<String> = Vec::new();
@@ -68,6 +69,7 @@ fn r2_application_no_adapter_imports() {
         "core_graphics",
         "tungstenite",
         "sherpa_onnx",
+        "voicepuncher_copy_pool",
     ];
 
     let mut violations: Vec<String> = Vec::new();

@@ -11,3 +11,6 @@ pub mod outbox;
 pub mod protocol;
 pub mod server;
 pub mod worker;
+
+#[cfg(test)]
+mod test_log;

@@ -2,13 +2,13 @@
 
 ## Context
 
-`OpenAiTranscriber` (`adapters/secondary/transcription/http/`) posts chunks with ureq to `[transcription] base_url` and retries on dropped connections; the live chunk worker sends chunks as they close. `UtteranceTranscriber` in `command-spotting/src/confirm.rs` posts short utterances with a deadline. HAProxy gives both one address for three copies, leastconn with maxconn 1, a priority class for short requests, abortonclose, TCP health checks. The `justfile` computes copy ports as base + 10000 + i (or base − 10000 + i past 65535). The `local-services` spec has 15 requirements written for the scripts.
+`OpenAiTranscriber` (`adapters/secondary/transcription/openai/`) posts chunks with ureq to `[transcription] base_url` and retries on dropped connections; the live chunk worker sends chunks as they close. `UtteranceTranscriber` in `command-spotting/src/confirm.rs` posts short utterances with a deadline. HAProxy gives both one address for three copies, leastconn with maxconn 1, a priority class for short requests, abortonclose, TCP health checks. The `justfile` computes copy ports as base + 10000 + i (or base − 10000 + i past 65535). The `local-services` spec has 15 requirements written for the scripts.
 
 ## Decisions
 
 **D1 — A workspace crate, not a module of the app.** The pool is needed by two binaries (the app and the command spotting service); a crate `copy-pool/` with only `log` as a dependency is the smallest shared unit and keeps `core` free of it (adapters use it). Alternative: a module in `command-spotting` re-exported — rejected, the app must not depend on the service's crate.
 
-**D2 — Discovery by the existing port convention.** The `justfile` already places copies at base + 10000 + i (base − 10000 + i when that would pass 65535; the pool applies the same rule). When the base port itself answers, it is the only copy and the convention ports are not used: the `justfile` never runs both, and tests with a fake server on a random base port would otherwise take another test's fake server on base + 10001 for a copy; making the clients know the same rule needs no config key, no file, no protocol, and `local-services-runtime` can later pass the exact list. Probing nine ports every second with a 200 ms connect timeout is negligible on loopback.
+**D2 — Discovery by the existing port convention.** The `justfile` already places copies at base + 10000 + i (base − 10000 + i when that would pass 65535; the pool applies the same rule). When the base port itself answers, it is the only copy and the convention ports are not used: the `justfile` never runs both, and tests with a fake server on a random base port would otherwise take another test's fake server on base + 10001 for a copy; making the clients know the same rule needs no config key, no file, no protocol, and `local-services-runtime` can later pass the exact list. Probing five ports every second (at most four copies, so dictation on 8081 and commands on 8085 never see each other's copies) with a 200 ms connect timeout is negligible on loopback.
 
 **D3 — One request per copy, FIFO waiting on a condvar.** This is HAProxy's `maxconn 1` + queue in ten lines; it keeps whisper-server from queueing internally where nothing can see or abort a request. One pool per process per service address: `CopyPool::shared(base_url)` hands every client of a process the same pool (a registry keyed by the address), because the E2E steps and the app's tests build a client per request, and nine clients with a pool each would all take the first copy. Alternative: a pool per client — rejected for that reason.
 
@@ -27,8 +27,8 @@
 ## Risks / Trade-offs
 
 - [Chunks of one dictation on different copies lose the per-copy prompt cache] → HAProxy already spread them; no change in accuracy expected; `full-check` on 100 recordings measures it.
-- [A single copy on the base port and the convention ports both answering] → impossible by the `justfile`; the pool treats every answering port as a copy anyway.
-- [Probing from two processes (app and command spotting) doubles the probe load] → 18 connects per second on loopback; negligible.
+- [A single copy on the base port and the convention ports both answering] → impossible by the `justfile`; should it happen, the pool takes the base port alone (D2).
+- [Probing from two processes (app and command spotting) doubles the probe load] → 10 connects per second on loopback; negligible.
 
 ## Test levels
 
@@ -49,10 +49,10 @@
 | The request after an abandoned one goes to another copy | E2E `local_services.feature` (`@resilience`) |
 | An abandoned request is not transcribed | unit test in `copy-pool`; E2E `local_services.feature` (`@resilience`) |
 | Service is briefly busy | adapter integration `transcription_openai_it.rs` (existing) |
-| Drop reported as an invalid argument | adapter integration `http_failure_it.rs` (existing) |
+| Drop reported as an invalid argument | unit tests in `app/src/adapters/secondary/http/failure/mod.rs` (existing) |
 | Service keeps dropping the connection | adapter integration `transcription_openai_it.rs` (existing) |
 | Service answers with an error | adapter integration `transcription_openai_it.rs` (existing) |
-| A chunk whose copy is killed is transcribed by another copy | adapter integration `transcription_openai_it.rs` (fake copies, one closed) |
+| A chunk whose copy is killed is transcribed by another copy | adapter integration `transcription_openai_it.rs` (fake copies, one resets the connection); a whole dictation with a copy killed is the manual run (tasks 5.3) |
 | The first request of a chunk hangs | adapter integration `transcription_openai_it.rs` (existing) |
 | One error answer is retried | adapter integration `transcription_openai_it.rs` (existing) |
 | The attempt after a hung one goes to another copy | adapter integration `transcription_openai_it.rs` (fake copies) |

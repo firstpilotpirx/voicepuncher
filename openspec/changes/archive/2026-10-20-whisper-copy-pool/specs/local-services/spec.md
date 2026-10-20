@@ -3,7 +3,7 @@
 ## ADDED Requirements
 
 ### Requirement: Copies of a speech recognition service are found from its address
-A client of a speech recognition service SHALL find the copies of the service from the service's address alone: when the service's own port accepts connections it is the one copy; otherwise every port among the eight that follow its port plus ten thousand (minus ten thousand when those would pass the last port) that accepts a connection is a copy. A copy SHALL leave at its first refused connection and join, again or anew, within a second of accepting connections.
+A client of a speech recognition service SHALL find the copies of the service from the service's address alone: when the service's own port accepts connections it is the one copy; otherwise every port among the four that follow its port plus ten thousand (minus ten thousand when those would pass the last port) that accepts a connection is a copy. A copy SHALL leave at its first refused connection and join, again or anew, within a second of accepting connections.
 
 #### Scenario: Three copies are found from the service address
 - **GIVEN** the service scripts started the speech recognition service for dictation as three copies
@@ -27,7 +27,7 @@ When a request cannot connect to the copy it took, the client SHALL mark that co
 - **GIVEN** the speech recognition service runs as several copies
 - **AND** one copy exits as a request is about to reach it
 - **WHEN** the request is sent
-- **THEN** the request is answered by another copy, and the dead copy is logged as skipped
+- **THEN** the request is answered by another copy, and the failed attempt on the dead copy is logged
 
 #### Scenario: Every copy refuses the request
 - **GIVEN** the speech recognition service runs as several copies, and none accepts connections
@@ -43,7 +43,7 @@ A copy that has not answered a request within twice that request's time limit SH
 - **THEN** that copy is logged as hung with the time waited, and the following requests go to the other copies
 
 ### Requirement: Clients of one process share the copies
-Every client of one speech recognition service within one process SHALL share one view of its copies and one queue, and processes that use the same service SHALL start with different copies, so that requests sent at once from several clients or processes are spread over the copies rather than piled on the first one.
+Every client of one speech recognition service within one process SHALL share one view of its copies and one queue, and each process SHALL start its search for a free copy at a copy picked by its process id, so that two processes usually take different copies and requests sent at once from several clients or processes are spread over the copies rather than piled on the first one.
 
 #### Scenario: Nine requests from one process spread over three copies
 - **GIVEN** the speech recognition service for dictation runs as three copies
@@ -52,7 +52,8 @@ Every client of one speech recognition service within one process SHALL share on
 
 #### Scenario: Two processes start with different copies
 - **GIVEN** the speech recognition service for dictation runs as three copies and is idle
-- **WHEN** two processes send a request each at once
+- **AND** two processes whose process ids pick different copies
+- **WHEN** each sends a request
 - **THEN** the requests go to two different copies
 
 ## RENAMED Requirements

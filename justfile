@@ -30,14 +30,18 @@ export VOICEPUNCHER_BENCH_CORPUS := env_var_or_default("VOICEPUNCHER_BENCH_CORPU
 # Local services started by `start-model-servers`; their URLs are the app's default [transcription].base_url and [refinement].base_url
 stt_port := env_var_or_default("VOICEPUNCHER_STT_PORT", "8081")
 stt_url := "http://127.0.0.1:" + stt_port + "/v1"
-# Copies of the speech recognition service behind HAProxy on its port: whisper-server serves one
-# request at a time, and two to four copies on one GPU are twice as fast on long speech
+# Copies of the speech recognition service, 1 to max_copies: whisper-server serves one request at a time, and
+# two to four copies on one GPU are twice as fast on long speech. One copy listens on the service's own port;
+# several listen on the first ports of the ones its clients look at (copy_ports) and nothing on its own port
 stt_instances := env_var_or_default("VOICEPUNCHER_STT_INSTANCES", "3")
 # The speech recognition service for commands: only the command spotting service confirms utterances with it.
-# Its copies listen 10000 above its port (18086–18088), clear of up to four copies of the one for dictation
+# Its copies listen 10000 above its port (18086–18089), clear of the copies of the one for dictation (18082–18085)
 command_stt_port := env_var_or_default("VOICEPUNCHER_COMMAND_STT_PORT", "8085")
 command_stt_url := "http://127.0.0.1:" + command_stt_port + "/v1"
 command_stt_instances := env_var_or_default("VOICEPUNCHER_COMMAND_STT_INSTANCES", "3")
+# The most copies a speech recognition service runs: the clients look for its copies on the four ports
+# 10001–10004 above its own (10000 below when they would pass 65535), crate copy-pool, address.rs MAX_COPIES
+max_copies := "4"
 llm_port := env_var_or_default("VOICEPUNCHER_LLM_PORT", "8080")
 llm_url := "http://127.0.0.1:" + llm_port + "/v1"
 kws_port := env_var_or_default("VOICEPUNCHER_KWS_PORT", "8082")
@@ -72,7 +76,7 @@ export VOICEPUNCHER_STAGE_JOURNAL := env_var_or_default("VOICEPUNCHER_STAGE_JOUR
 # their comments). `check` and `full-check` take it only for their model stages (see _stages)
 machine_lock := env_var_or_default("MACHINE_LOCK", home_directory() / ".claude/bin/with-machine-lock")
 # The service ports of every run under the lock: apart from the defaults above, which the user's own services
-# hold, and from their copies 10000 above (18082–18088); these copies listen on 38082–38088, below the free
+# hold, and from their copies 10000 above (18082–18089); these copies listen on 38082–38089, below the free
 # ports (49152+) the @local_services and @resilience steps take. A locked run starts every service it tests
 # here and never reuses one it did not start (_start-model-servers-for-e2e)
 test_stt_port := env_var_or_default("VOICEPUNCHER_TEST_STT_PORT", "28081")
@@ -209,6 +213,7 @@ stage-times $since="30d":
 # settings); the Cargo files when a line other than `version = "…"` changed. One glob per line, matched with
 # bash `[[ == ]]` (`*` spans `/`). A branch that adds a file on this path adds it here
 recognition_paths := '''
+    copy-pool/src/*
     app/src/main.rs
     app/src/adapters/primary/cli/*
     app/src/config.rs
@@ -929,7 +934,7 @@ _start-model-servers-for-e2e:
     # copy_ports <port> <copies>: the ports of a speech recognition service's copies, as start-model-servers picks them
     copy_ports() {
         (( $2 > 1 )) || return 0
-        local base=$(( $1 + 10000 + $2 <= 65535 ? $1 + 10000 : $1 - 10000 )) i
+        local base=$(( $1 + 10000 + {{max_copies}} <= 65535 ? $1 + 10000 : $1 - 10000 )) i
         for i in $(seq 1 "$2"); do echo "$(( base + i ))"; done
     }
     held=""
@@ -957,9 +962,18 @@ _start-model-servers-for-e2e:
         local port=$1 label=$2 model=$3 binary=$4
         echo "● testing $label on port $port: $(basename "$model"), pid $(cat "{{services_run_dir}}/$binary-$port.pid" 2>/dev/null || echo '?')"
     }
-    whisper_binary() { (( $1 > 1 )) && echo haproxy || echo whisper-server; }
-    started {{stt_port}} whisper-server "$VOICEPUNCHER_WHISPER_MODEL" "$(whisper_binary {{stt_instances}})"
-    started {{command_stt_port}} whisper-server-commands "$VOICEPUNCHER_COMMAND_WHISPER_MODEL" "$(whisper_binary {{command_stt_instances}})"
+    # started_copies <port> <copies> <label> <model>: the same for a speech recognition service, one PID per copy
+    started_copies() {
+        local port=$1 copies=$2 label=$3 model=$4 ports p pids=()
+        ports=$(copy_ports "$port" "$copies" | xargs)
+        ports=${ports:-$port}
+        for p in $ports; do
+            pids+=("$(cat "{{services_run_dir}}/whisper-server-$p.pid" 2>/dev/null || echo '?')")
+        done
+        echo "● testing $label on port $port, copies on $ports: $(basename "$model"), pids ${pids[*]}"
+    }
+    started_copies {{stt_port}} {{stt_instances}} whisper-server "$VOICEPUNCHER_WHISPER_MODEL"
+    started_copies {{command_stt_port}} {{command_stt_instances}} whisper-server-commands "$VOICEPUNCHER_COMMAND_WHISPER_MODEL"
     started {{llm_port}} llama-server "$VOICEPUNCHER_LLM_MODEL" llama-server
     started {{kws_port}} voicepuncher-command-spotting "$VOICEPUNCHER_KWS_MODEL_DIR" voicepuncher-command-spotting
 
@@ -1104,68 +1118,55 @@ start-model-servers *services:
             --inference-path /v1/audio/transcriptions -l auto -t "$3"
             -bo 1 -nf -sns -mc 0 --vad -vm "$VOICEPUNCHER_VAD_MODEL" -vsd 2000 -vp 500 -nlp)
     }
-    # haproxy_config <frontend port> <copy port…>: one address for the copies. A request goes to a
-    # free copy (leastconn, one request per copy) or waits in the queue; short audio (under 160 kB,
-    # about 5 s: a command confirmation) waits ahead of long dictation chunks. A copy whose
-    # port does not answer — at the first refused connection, or by the health check — gets no
-    # requests while its supervisor restarts it, and a request that could not reach a copy is
-    # retried on another one. A waiting request whose client gave up is dropped (abortonclose),
-    # so the command spotting service's abandoned confirmations never occupy a copy
-    haproxy_config() {
-        local frontend=$1
-        shift
-        printf '%s\n' "global" "    maxconn 256" "defaults" "    mode http" \
-            "    timeout connect 2s" "    timeout client 300s" "    timeout server 300s" \
-            "    timeout queue 300s" "    option http-server-close" "    option abortonclose" "    retries 3" "    option redispatch 1" \
-            "frontend speech_recognition" "    bind 127.0.0.1:$frontend" \
-            "    http-request set-priority-class int(-1) if { req.hdr_val(content-length) -m int lt 160000 }" \
-            "    default_backend copies" "backend copies" "    balance leastconn"
-        local i=0 port
-        for port in "$@"; do
-            i=$((i + 1))
-            echo "    server copy$i 127.0.0.1:$port maxconn 1 check inter 1s fall 2 rise 1 observe layer4 error-limit 1 on-error mark-down"
-        done
+    # copy_ports <port> <copies>: the ports of the copies of the speech recognition service on <port>,
+    # the first <copies> of the ports its clients look at (crate copy-pool): 10001–10004 above its
+    # port, or 10000 below when those would pass 65535
+    copy_ports() {
+        local base=$(( $1 + 10000 + {{max_copies}} <= 65535 ? $1 + 10000 : $1 - 10000 )) i
+        for i in $(seq 1 "$2"); do echo "$(( base + i ))"; done
     }
     # start_whisper <name> <port> <copies> <model variable> <label>: one speech recognition service,
-    # as one whisper-server on its port or as copies behind HAProxy there. Its PID, log, copy-list
-    # and HAProxy files are named by its port, so the two services never share a file
+    # as one whisper-server on its port or as copies on the ports its clients find from that port,
+    # with nothing on the port itself. Its PID, log and copy-list files are named by its port, so the
+    # two services never share a file
     start_whisper() {
         local name=$1 port=$2 copies=$3 model_var=$4 label=$5
         require_binary whisper-server whisper-cpp
-        if port_open "$port"; then
-            echo "✓ $label already running at http://127.0.0.1:$port/v1"
-            return 0
+        if ! [[ "$copies" =~ ^[0-9]+$ ]] || (( copies < 1 || copies > {{max_copies}} )); then
+            echo "✗ $label: $copies copies — set 1 to {{max_copies}}: its clients look for at most {{max_copies}}" >&2
+            exit 1
         fi
+        local p
+        for p in "$port" $(copy_ports "$port" {{max_copies}}); do
+            if port_open "$p"; then
+                echo "✓ $label already running at http://127.0.0.1:$port/v1 (port $p answers)"
+                return 0
+            fi
+        done
         require_model "$model_var"
         require_model VOICEPUNCHER_VAD_MODEL
         local model="${!model_var}" cores
         cores=$(sysctl -n hw.ncpu)
-        if (( copies <= 1 )); then
+        if (( copies == 1 )); then
             # A copy list left from an earlier start would make the stop look for copies
-            rm -f "$run_dir/whisper-server-$port.copies" "$run_dir/haproxy-$port.cfg"
+            rm -f "$run_dir/whisper-server-$port.copies"
             whisper_args "$model" "$port" "$cores"
             start_service whisper-server "$port" "$label" "port_open $port" - "${whisper_cmd[@]}"
             return 0
         fi
-        require_binary haproxy haproxy
         local threads=$(( cores / copies > 0 ? cores / copies : 1 ))
-        local base=$(( port + 10000 + copies <= 65535 ? port + 10000 : port - 10000 ))
-        local list="$run_dir/whisper-server-$port.copies" config="$run_dir/haproxy-$port.cfg"
-        local ports=() i
-        for i in $(seq 1 "$copies"); do ports+=($(( base + i ))); done
+        local list="$run_dir/whisper-server-$port.copies"
+        local ports=($(copy_ports "$port" "$copies")) i
         echo "${ports[*]}" >"$list"
-        # A copy or HAProxy that cannot start stops what this start already started of this service only
+        # A copy that cannot start stops what this start already started of this service only
         trap 'code=$?; (( code == 0 )) || {{quote(just_executable())}} --justfile {{quote(justfile())}} stop-model-servers '"$name"' >/dev/null 2>&1 || true' EXIT
         for i in "${!ports[@]}"; do
             whisper_args "$model" "${ports[$i]}" "$threads"
             start_service whisper-server "${ports[$i]}" "$label: copy $((i + 1)) of $copies" \
                 "port_open ${ports[$i]}" - "${whisper_cmd[@]}"
         done
-        haproxy_config "$port" "${ports[@]}" >"$config"
-        haproxy -c -q -f "$config"
-        start_service haproxy "$port" "$label ($copies copies)" "port_open $port" - \
-            haproxy -db -f "$config"
         trap - EXIT
+        echo "✓ $label: $copies copies on ports ${ports[*]}, found by its clients from http://127.0.0.1:$port/v1"
     }
     start_llama() {
         require_binary llama-server llama.cpp
@@ -1247,8 +1248,8 @@ stop-model-servers *services:
         fi
         rm -f "$pid_file"
     }
-    # stop_speech_recognition <port> <label>: the speech recognition service on that port, HAProxy
-    # and its copies when it runs as several, or the one whisper-server on its port
+    # stop_speech_recognition <port> <label>: the copies of the speech recognition service on that port
+    # when it runs as several, or the one whisper-server on its port
     stop_speech_recognition() {
         local service_port=$1 label=$2
         local list="{{services_run_dir}}/whisper-server-$service_port.copies" port
@@ -1256,11 +1257,10 @@ stop-model-servers *services:
             stop_service whisper-server "$service_port" "$label"
             return 0
         fi
-        stop_service haproxy "$service_port" "load balancer of the $label"
         for port in $(cat "$list"); do
             stop_service whisper-server "$port" "$label: copy on port $port"
         done
-        rm -f "$list" "{{services_run_dir}}/haproxy-$service_port.cfg"
+        rm -f "$list"
     }
     selected="{{services}}"
     for service in ${selected:-whisper-server whisper-server-commands llama-server voicepuncher-command-spotting}; do

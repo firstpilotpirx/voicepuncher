@@ -3201,7 +3201,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "voicepuncher"
-version = "0.25.0"
+version = "0.26.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -3236,6 +3236,7 @@ dependencies = [
  "tungstenite",
  "ureq",
  "url",
+ "voicepuncher-copy-pool",
  "voicepuncher-e2e-test",
  "walkdir",
 ]
@@ -3255,6 +3256,14 @@ dependencies = [
  "tempfile",
  "tungstenite",
  "ureq",
+ "voicepuncher-copy-pool",
+]
+
+[[package]]
+name = "voicepuncher-copy-pool"
+version = "0.1.0"
+dependencies = [
+ "log",
 ]
 
 [[package]]
@@ -3274,6 +3283,7 @@ dependencies = [
  "ureq",
  "voicepuncher",
  "voicepuncher-command-spotting",
+ "voicepuncher-copy-pool",
 ]
 
 [[package]]

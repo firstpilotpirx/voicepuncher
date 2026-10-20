@@ -24,7 +24,7 @@ const MAX_CONFIRMATION: Duration = Duration::from_secs(2);
 fn confirmations_of_russian_speech_stay_under_two_seconds() {
     let url = std::env::var("VOICEPUNCHER_TRANSCRIPTION_URL")
         .expect("VOICEPUNCHER_TRANSCRIPTION_URL names the speech recognition service");
-    let transcriber = UtteranceTranscriber::new(&url);
+    let transcriber = UtteranceTranscriber::new(&url).unwrap();
     let speech = russian_speech();
     let window = (WINDOW_SECS * SAMPLE_RATE_HZ as f32) as usize;
     let step = (STEP_SECS * SAMPLE_RATE_HZ as f32) as usize;

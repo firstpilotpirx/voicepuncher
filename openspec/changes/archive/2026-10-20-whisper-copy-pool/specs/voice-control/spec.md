@@ -8,7 +8,7 @@ The command spotting service SHALL send a confirmation to a free copy of the spe
 #### Scenario: Every copy for commands is busy past the deadline
 - **GIVEN** voice control runs, and every copy of the speech recognition service for commands is busy for longer than a confirmation's deadline
 - **WHEN** the user says "press enter"
-- **THEN** that confirmation is logged as given up, no copy receives it, and listening goes on
+- **THEN** that confirmation is logged as given up and ends without waiting much past its deadline, and no copy receives it
 
 #### Scenario: A copy frees before the deadline
 - **GIVEN** voice control runs, and every copy of the speech recognition service for commands is busy for one more second

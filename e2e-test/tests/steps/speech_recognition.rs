@@ -1,10 +1,11 @@
-use std::net::TcpListener;
+use std::net::{TcpListener, TcpStream};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 use regex::Regex;
+use voicepuncher_copy_pool::ServiceAddress;
 
 use voicepuncher_e2e_test::speech::{
     dropped_phrase_len, missing_word_share, repeated_phrases, synthesize, write_wav, Condition,
@@ -50,9 +51,24 @@ fn remote_service(world: &mut E2eWorld) {
 
 #[given("no speech recognition service is listening at the configured address")]
 fn closed_service_port(world: &mut E2eWorld) -> Result<()> {
-    let port = TcpListener::bind("127.0.0.1:0")?.local_addr()?.port();
-    world.transcription_url = Some(format!("http://127.0.0.1:{port}/v1"));
-    Ok(())
+    // The app looks for copies on the ports above the address too: something else of the
+    // machine listening on one of them would be taken for a copy of the service
+    loop {
+        let port = TcpListener::bind("127.0.0.1:0")?.local_addr()?.port();
+        let url = format!("http://127.0.0.1:{port}/v1");
+        let copy_ports = ServiceAddress::parse(&url)
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+            .copy_ports();
+        if !std::iter::once(port).chain(copy_ports).any(answers) {
+            world.transcription_url = Some(url);
+            return Ok(());
+        }
+    }
+}
+
+fn answers(port: u16) -> bool {
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok()
 }
 
 #[given("the configuration sets a speech recognition model file path")]
@@ -327,6 +343,7 @@ const UTTERANCE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(1
 
 fn confirm_silence(url: &str) -> std::result::Result<usize, String> {
     voicepuncher_command_spotting::confirm::UtteranceTranscriber::new(url)
+        .map_err(|e| e.to_string())?
         .transcribe(
             &[0.0; SILENT_UTTERANCE_SAMPLES],
             UTTERANCE_SAMPLE_RATE,

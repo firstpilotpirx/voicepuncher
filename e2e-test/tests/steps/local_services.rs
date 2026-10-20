@@ -6,8 +6,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::{Duration, Instant};
 
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{anyhow, bail, ensure, Context, Result};
 use cucumber::{given, then, when};
+use voicepuncher_copy_pool::ServiceAddress;
 
 use crate::steps::off_thread;
 use crate::E2eWorld;
@@ -88,8 +89,8 @@ impl ScenarioServices {
 
     fn with_copies(copies: Option<u32>) -> Result<Self> {
         Ok(Self {
-            stt_port: free_port()?,
-            command_stt_port: free_port()?,
+            stt_port: free_speech_recognition_port()?,
+            command_stt_port: free_speech_recognition_port()?,
             llm_port: free_port()?,
             kws_port: free_port()?,
             speech_model: None,
@@ -293,9 +294,7 @@ impl Drop for ScenarioServices {
             .copy_ports
             .iter()
             .chain(&command_copy_ports)
-            .filter_map(|port| any_process(*port))
-            .chain(copies::balancer_process(self.stt_port))
-            .chain(copies::balancer_process(self.command_stt_port));
+            .filter_map(|port| any_process(*port));
         for pid in [
             self.supervisor,
             self.service,
@@ -329,8 +328,8 @@ impl Drop for ScenarioServices {
                 );
             }
         }
-        copies::remove_balancer_files(self.stt_port);
-        copies::remove_balancer_files(self.command_stt_port);
+        copies::remove_copy_list(self.stt_port);
+        copies::remove_copy_list(self.command_stt_port);
     }
 }
 
@@ -365,6 +364,20 @@ fn services_dir(name: &str) -> PathBuf {
 
 fn free_port() -> Result<u16> {
     Ok(TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
+}
+
+/// A free port for a speech recognition service whose copy ports are free too: the service
+/// scripts and the clients take anything listening on them for a copy of the service.
+fn free_speech_recognition_port() -> Result<u16> {
+    loop {
+        let port = free_port()?;
+        let copy_ports = ServiceAddress::parse(&format!("http://127.0.0.1:{port}/v1"))
+            .map_err(|e| anyhow!("{e}"))?
+            .copy_ports();
+        if !copy_ports.into_iter().any(answers) {
+            return Ok(port);
+        }
+    }
 }
 
 fn answers(port: u16) -> bool {

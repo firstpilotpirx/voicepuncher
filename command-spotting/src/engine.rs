@@ -133,7 +133,8 @@ impl Engine {
             hear: cfg
                 .transcription_url
                 .as_deref()
-                .map(|url| Arc::new(UtteranceTranscriber::new(url)) as Arc<dyn Hear>),
+                .map(|url| UtteranceTranscriber::new(url).map(|t| Arc::new(t) as Arc<dyn Hear>))
+                .transpose()?,
             deadline: cfg.confirmation_deadline,
             max_command_samples: samples_in(cfg.max_command_secs),
             min_silence_samples: samples_in(cfg.min_silence_secs),
