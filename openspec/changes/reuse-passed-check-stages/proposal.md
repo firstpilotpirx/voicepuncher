@@ -30,16 +30,15 @@ Out of scope: fixing flaky tests (`fix-flaky-tests`); making stages themselves f
 - `justfile` (`_stages`, `_model-stages`, `check`, `full-check`), a cache directory for stage results (e.g. under `target/` or `~/.cache/voicepuncher/`), `AGENTS.md` § How to verify a change, `.claude/kit.yaml` `checks`.
 - Possibly agent-kit: `kit sync-base`, `kit verify`, `kit land`.
 
-## Open points
+## Decisions taken
 
-- What a stage's inputs are: proposed — a hash of the tracked files the stage builds or reads (per stage path lists, like `recognition_paths`), plus the toolchain, nextest version, model files and corpus; everything else counts as an input of every stage until listed.
-- How long a recorded pass is trusted: proposed — any age, while its inputs hash the same.
-- Whether `kit` or the `justfile` decides what runs after `kit sync-base`: proposed — the `justfile` skips stages by input hash, `kit sync-base` keeps naming the check; a kit change only if needed (`~/.claude/rules-custom/kit-placement.md`).
-- Whether a stage passed in another worktree on the same inputs counts: decided — yes (user, 2026-10-18), including passes on `main`. Open: how fine-grained stage inputs must be for a change to skip a stage (proposed — split `e2e-smoke` by capability: voice control, speech recognition, refinement, local services, each with its own path list).
-- Where the record lives: proposed — a machine-wide directory (e.g. `~/.cache/voicepuncher/stage-passes/`), written only by a passing stage, never by hand.
-- Target version: proposed no release — tooling only.
+- Stage inputs: a hash of the files each stage reads (per stage path lists; an unlisted file feeds every stage), plus toolchain, models, corpus and service binaries (design.md).
+- A pass is trusted at any age while its inputs hash the same, from any worktree of this machine, `main` included; recorded in `~/.cache/voicepuncher/stage-passes/`.
+- The `justfile` decides; no kit change.
+- `e2e-smoke` splits by capability (voice control, speech recognition, refinement, local services, the rest).
+- Related fix: `copy-pool/` added to the build inputs in `.claude/kit.yaml` and AGENTS.md.
 
 ## Release
 
 SemVer: no release — test tooling only; no behavior change.
-Target version: 0.18.0.
+Target version: none (stays 0.26.0).
