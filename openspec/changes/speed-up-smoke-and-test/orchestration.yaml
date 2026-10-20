@@ -1,0 +1,4 @@
+depends_on:
+  - change: match-late-confirmation-to-its-state
+    why: names commandspotting_websocket_it
+autonomy: auto
