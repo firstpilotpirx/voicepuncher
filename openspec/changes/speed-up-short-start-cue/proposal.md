@@ -35,9 +35,9 @@ Out of scope: loosening the bar; other voice commands; the dictation path.
 ## Open points
 
 - Whether the delay sits in the command spotting engine or in the app's handling of the confirmation — settled on 2026-10-20: in the engine (the app delivers and cues within 50 ms); the three causes above.
-- Target version — proposed: 0.22.3, the next PATCH after fix-flaky-tests (0.22.2).
+- Target version — 0.24.4, the PATCH above match-late-confirmation-to-its-state (0.24.3), which this change waits for.
 
 ## Release
 
 SemVer: PATCH — a faster start cue, no new capability.
-Target version: 0.22.3.
+Target version: 0.24.4.

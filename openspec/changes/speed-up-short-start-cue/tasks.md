@@ -25,5 +25,5 @@
 
 ## 4. Release
 
-- [ ] 4.1 Bump `version` in `app/Cargo.toml` to 0.22.3; `just test`, commit
+- [ ] 4.1 Bump `version` in `app/Cargo.toml` to 0.24.4; `just test`, commit
 - [ ] 4.2 Manual checks: none (no hotkey, recording, overlay, paste or permissions change; the app's voice control code is unchanged)

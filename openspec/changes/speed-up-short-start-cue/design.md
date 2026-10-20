@@ -24,6 +24,10 @@ When the trigger stream spots "start" or "restart" inside a short segment whose 
 
 While "start dictation" is listened for, once the quiet run of a running short utterance reaches half the minimum silence, its audio so far (pre-roll included, as the segment would send) is heard at once. The answer stands for the segment's hearing only when the segment then closes with that same quiet run and no louder frame came after it; any louder frame drops it, and the segment is heard as today. Only in standby: during a dictation every utterance would cost an extra request. Rejected: a shorter minimum silence — it splits "start dictation" in two.
 
+## Dependencies
+
+Waits for match-late-confirmation-to-its-state: it makes every job read its answer with the phrases it was asked under, and a re-hearing inherit its job's; the early second hearing and the half-pause hearing added here are such jobs and follow that rule.
+
 ## Risks / Trade-offs
 
 - [Extra requests in standby on every short sound followed by half a pause] → only short utterances, one request each; the command service has three copies.

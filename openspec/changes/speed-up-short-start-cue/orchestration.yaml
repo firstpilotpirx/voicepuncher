@@ -1,3 +1,5 @@
 depends_on:
   - change: fix-flaky-tests
     why: its queued checks change when the head and segment checks of a start are asked
+  - change: match-late-confirmation-to-its-state
+    why: it reworks how a confirmation's answer is read (per-job phrases, re-hearings), which the new early hearings build on
