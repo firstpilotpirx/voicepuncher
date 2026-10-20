@@ -1,0 +1,39 @@
+depends_on:
+  - change: speed-up-short-start-cue
+    why: final reliability review runs after every change open when filed
+  - change: speed-up-tests
+    why: final reliability review runs after every change open when filed
+  - change: menu-bar-presence
+    why: final reliability review runs after every change open when filed
+  - change: match-late-confirmation-to-its-state
+    why: final reliability review runs after every change open when filed
+  - change: file-logging
+    why: final reliability review runs after every change open when filed
+  - change: app-bundle-and-dmg
+    why: final reliability review runs after every change open when filed
+  - change: restartable-app-runtime
+    why: final reliability review runs after every change open when filed
+  - change: retire-cli-setup-wizard
+    why: final reliability review runs after every change open when filed
+  - change: launch-at-login
+    why: final reliability review runs after every change open when filed
+  - change: bundled-engines
+    why: final reliability review runs after every change open when filed
+  - change: model-download
+    why: final reliability review runs after every change open when filed
+  - change: settings-window
+    why: final reliability review runs after every change open when filed
+  - change: local-services-runtime
+    why: final reliability review runs after every change open when filed
+  - change: permissions-gate-window
+    why: final reliability review runs after every change open when filed
+  - change: whisper-copy-pool
+    why: final reliability review runs after every change open when filed
+  - change: fail-fast-stage-order
+    why: final reliability review runs after every change open when filed
+  - change: rerun-only-failed-tests
+    why: final reliability review runs after every change open when filed
+  - change: split-machine-lock
+    why: final reliability review runs after every change open when filed
+  - change: reuse-passed-check-stages
+    why: final reliability review runs after every change open when filed
