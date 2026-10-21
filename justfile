@@ -53,7 +53,15 @@ services_run_dir := home_directory() / ".voicepuncher/run"
 # before the machine lock: another package or feature selection would build other artifacts
 command_spotting_build := "-p voicepuncher-command-spotting"
 # The stages of the smoke set, one per capability (_e2e-smoke-part)
-e2e_smoke_stages := "e2e-smoke-speech e2e-smoke-refinement e2e-smoke-voice e2e-smoke-services"
+e2e_smoke_stages := "e2e-smoke-voice e2e-smoke-refinement e2e-smoke-speech e2e-smoke-services"
+# The model stages of check and full-check in the order that shows a failure soonest (fail-fast-stage-order): the
+# light phase first, as voice control held the most failures; in each phase the short stages first and the long
+# Gherkin runs last. `accuracy` stands for the accuracy stage full-check picks (_accuracy-stage)
+check_model_stages := "e2e-smoke-voice e2e-smoke-refinement refine-eval e2e-smoke-speech e2e-quick e2e-smoke-services"
+full_check_model_stages := "e2e-smoke-voice e2e-regression e2e-resilience e2e-smoke-refinement refine-eval e2e-bundle e2e-smoke-speech accuracy e2e-smoke-services e2e-seams"
+# The test binaries of the voice control smoke part, the most failing first; placed_commands_it is the command
+# spotting service's, the others the app's
+voice_smoke_binaries := "placed_commands_it voice_forms_it voice_samples_it commandspotting_websocket_it"
 # The app's service binaries of the smoke set
 e2e_smoke_binaries := "transcription_openai_it textrefinement_openai_it commandspotting_websocket_it voice_samples_it voice_forms_it"
 e2e_smoke_tests := "-p voicepuncher " + prepend("--test ", e2e_smoke_binaries)
@@ -62,10 +70,15 @@ placed_commands_tests := "-p voicepuncher-command-spotting --test placed_command
 cucumber_e2e_tests := "-p voicepuncher-e2e-test --test cucumber_e2e"
 # What `test` runs: every test target of the workspace but the E2E harness (one cargo call cannot pick targets
 # per package; a binary the filter excludes is not even listed)
-test_selection := "--workspace -E 'not binary_id(voicepuncher-e2e-test::cucumber_e2e)'"
+test_filter := "-E 'not binary_id(voicepuncher-e2e-test::cucumber_e2e)'"
+test_selection := "--workspace " + test_filter
 # A rerun's selection (just rerun-failed): added to every nextest call of the E2E recipes, whose calls may each
 # hold none of the failed tests; _test narrows its own selection with it
 rerun_filter := '${VOICEPUNCHER_RERUN_FILTER:+-E "$VOICEPUNCHER_RERUN_FILTER" --no-tests=pass}'
+# check and full-check set VOICEPUNCHER_FAIL_FAST=1, so a model stage stops at its first failure: nextest runs no
+# further test of the binary and the E2E harness no further scenario (harness_args::with_fail_fast). Standalone
+# recipes and rerun-failed report every failure. A volatile variable: it changes no stage key (_stage-keys)
+fail_fast := '${VOICEPUNCHER_FAIL_FAST:+--fail-fast}'
 
 # nextest prints captured test output unindented, so libtest's `test … FAILED` and `thread '…' panicked at
 # <file:line:col>:` lines start at column 0, where `kit run` finds the failed tests and their locations
@@ -121,7 +134,7 @@ default:
 # build-e2e ran without it (see _stages). Incremental, no `cargo clean`
 # FAST (~8.5 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples + refinement evaluation
 check:
-    @VOICEPUNCHER_STAGES_RECIPE=check {{just_executable()}} _stages fmt lint test build build-e2e {{e2e_smoke_stages}} e2e-quick refine-eval
+    @VOICEPUNCHER_FAIL_FAST=1 VOICEPUNCHER_STAGES_RECIPE=check {{just_executable()}} _stages fmt lint test build build-e2e {{check_model_stages}}
 
 # Only the model stages take the machine lock, held ≈ 16.3 min with 100 recordings and ≈ 14.5 min with 10 (measured)
 # (see _stages). Incremental like `check`, no `cargo clean`: the clean build is `release`'s. Accuracy runs on 100
@@ -141,12 +154,13 @@ full-check: _require-models _require-corpus
     esac
     accuracy="accuracy: $count recordings ($stage) — $reason"
     echo "● $accuracy"
-    VOICEPUNCHER_STAGES_RECIPE=full-check VOICEPUNCHER_STAGES_ACCURACY="$accuracy" \
-        {{just_executable()}} _stages fmt lint test build bundle build-e2e {{e2e_smoke_stages}} e2e-regression e2e-seams e2e-resilience e2e-bundle "$stage" refine-eval
+    VOICEPUNCHER_FAIL_FAST=1 VOICEPUNCHER_STAGES_RECIPE=full-check VOICEPUNCHER_STAGES_ACCURACY="$accuracy" \
+        {{just_executable()}} _stages fmt lint test build bundle build-e2e {{replace(full_check_model_stages, "accuracy", '"$stage"')}}
     echo "✓ full-check passed — $accuracy; before a release also walk through README.md § Release checklist (manual run)"
 
 # Summary of the stage journal for the runs since a date (2026-10-01) or a span (7d): per recipe and stage the
-# runs, median, total and failures, and the runs that reused an earlier pass (left out of the times); the lock
+# runs, median, total and failures, the runs that reused an earlier pass (left out of the times) and the time
+# they saved (the seconds of the passes they reused), with the total saved; the lock
 # wait; the failed tests, most first; runs and time per branch (a change's branch is <type>/<change>, so per change)
 stage-times $since="30d":
     #!/usr/bin/env perl
@@ -188,14 +202,21 @@ stage-times $since="30d":
     }
     unless (@runs) { print "no runs since $period in $path\n"; exit 0 }
     $results{$_->{result}}++ for @runs;
-    my (@keys, %stages, @waits, %tests, @branches, %branches);
+    my (@keys, %stages, @waits, %tests, @branches, %branches, $saved, $reused);
     for my $run (@runs) {
         for my $stage (@{ $run->{stages} }) {
             next if $stage->{result} eq "skipped";
             my $key = "$run->{recipe}\t$stage->{name}";
             push @keys, $key unless $stages{$key};
-            my $row = $stages{$key} ||= { seconds => [], failed => 0, reused => 0 };
-            if ($stage->{result} eq "reused") { $row->{reused}++; next }
+            my $row = $stages{$key} ||= { seconds => [], failed => 0, reused => 0, saved => 0 };
+            if ($stage->{result} eq "reused") {
+                my $seconds = ($stage->{from} || {})->{seconds} || 0;
+                $row->{reused}++;
+                $row->{saved} += $seconds;
+                $saved += $seconds;
+                $reused++;
+                next;
+            }
             push @{ $row->{seconds} }, $stage->{seconds};
             $row->{failed}++ if $stage->{result} eq "failed";
         }
@@ -210,7 +231,7 @@ stage-times $since="30d":
     }
     printf "stage times since %s: %d runs — %s\n", $period, scalar @runs,
         join(", ", map { "$results{$_} $_" } grep { $results{$_} } qw(passed failed interrupted));
-    printf "\n%-16s %-20s %5s %9s %10s %7s %7s\n", qw(recipe stage runs median total failed reused);
+    printf "\n%-16s %-20s %5s %9s %10s %7s %7s %10s\n", qw(recipe stage runs median total failed reused saved);
     for my $key (@keys) {
         my ($recipe, $stage) = split /\t/, $key;
         my $row = $stages{$key};
@@ -218,8 +239,10 @@ stage-times $since="30d":
         my $total = 0;
         $total += $_ for @seconds;
         my $median_text = @seconds ? $span->($median->(@seconds)) : "-";
-        printf "%-16s %-20s %5d %9s %10s %7d %7d\n", $recipe, $stage, scalar @seconds, $median_text, $span->($total), $row->{failed}, $row->{reused};
+        printf "%-16s %-20s %5d %9s %10s %7d %7d %10s\n", $recipe, $stage, scalar @seconds, $median_text, $span->($total), $row->{failed}, $row->{reused},
+            $row->{reused} ? $span->($row->{saved}) : "-";
     }
+    printf "\nreuse saved: %d stages, %s\n", $reused, $span->($saved) if $reused;
     if (@waits) {
         my $total = 0;
         $total += $_ for @waits;
@@ -410,7 +433,9 @@ stage_inputs := '''
 # what it runs on outside the repository: the size and mtime of every file or directory such a variable names
 # (models, corpus, voice samples) and of the whisper-server and llama-server binaries; for it a Cargo file's `version = "…"` lines of the workspace's own
 # packages do not count (no model stage reads the version). An input this misses (another program on the PATH,
-# a system library) is a reason to run with VOICEPUNCHER_REUSE_STAGES=0. VOICEPUNCHER_STAGE_ROOT names another
+# a system library) is a reason to run with VOICEPUNCHER_REUSE_STAGES=0. The test stage's parts (_test) have keys
+# too: `test@<member>` over the code inputs but the files of members its tests do not build (`test@members` names
+# one per workspace member), `test@justfile` over the justfile alone. VOICEPUNCHER_STAGE_ROOT names another
 # repository (_test-stage-keys)
 _stage-keys +stages:
     #!/usr/bin/env perl
@@ -419,7 +444,7 @@ _stage-keys +stages:
     use Digest::SHA qw(sha256_hex);
     use File::Find qw(find);
     use IPC::Open2 qw(open2);
-    my @stages = split " ", "{{stages}}";
+    my @stages = split " ", '{{stages}}';
     my $root = $ENV{VOICEPUNCHER_STAGE_ROOT} || {{quote(justfile_directory())}};
     my $table = <<'TABLE';
     {{stage_inputs}}
@@ -481,7 +506,7 @@ _stage-keys +stages:
         } }, $path);
         $text;
     };
-    my $volatile = qr/^(VOICEPUNCHER_STAGE.*|VOICEPUNCHER_REUSE_STAGES|VOICEPUNCHER_TEST_PORTS|VOICEPUNCHER_.*_PORT|VOICEPUNCHER_E2E_SERVICES_HELD|CARGO_TERM_.*)$/;
+    my $volatile = qr/^(VOICEPUNCHER_STAGE.*|VOICEPUNCHER_REUSE_STAGES|VOICEPUNCHER_TEST_PORTS|VOICEPUNCHER_.*_PORT|VOICEPUNCHER_E2E_SERVICES_HELD|VOICEPUNCHER_FAIL_FAST|CARGO_TERM_.*)$/;
     my ($variables, $runtime) = ("", "");
     for my $name (sort grep { /^(VOICEPUNCHER_|CUCUMBER_|RUSTFLAGS$|RUSTDOCFLAGS$|RUSTC_WRAPPER$|CARGO_BUILD_|CARGO_PROFILE_|CARGO_TARGET_|CARGO_ENCODED_RUSTFLAGS$|NEXTEST_PROFILE$|NEXTEST_RETRIES$|NEXTEST_TEST_THREADS$)/ && !/$volatile/ } keys %ENV) {
         my $value = $ENV{$name};
@@ -492,7 +517,42 @@ _stage-keys +stages:
         chomp(my $path = `command -v $binary 2>/dev/null` // "");
         $runtime .= "$binary " . ($path ? $described->($path) : "none\n");
     }
+    # The workspace members (root Cargo.toml `members`) and the scope of each one's part test@<member>, as Cargo
+    # builds its tests: the member, its `path = "../<member>"` dependencies and dev-dependencies, and from those on
+    # their normal dependencies only (a dependency's dev-dependencies are not built for its dependents)
+    my $read = sub { open my $fh, "<", "$root/$_[0]" or return ""; local $/; <$fh> };
+    my @members = ($read->("Cargo.toml") =~ /^members\s*=\s*\[([^\]]*)\]/m ? $1 =~ /"([^"]+)"/g : ());
+    my %member = map { $_ => 1 } @members;
+    my (%deps, %dev);
+    for my $m (@members) {
+        my $section = "";
+        for my $line (split /\n/, $read->("$m/Cargo.toml")) {
+            $section = $1 if $line =~ /^\s*\[([^\]]+)\]/;
+            my ($dep) = $line =~ /path\s*=\s*"\.\.\/([^"\/]+)\/?"/ or next;
+            next unless $member{$dep};
+            push @{ ($section =~ /dev-dependencies/ ? \%dev : \%deps)->{$m} }, $dep;
+        }
+    }
+    my %scope;
+    for my $m (@members) {
+        my @todo = ($m, @{ $dev{$m} || [] });
+        while (defined(my $next = shift @todo)) {
+            next if $scope{$m}{$next}++;
+            push @todo, @{ $deps{$next} || [] };
+        }
+    }
+    @stages = map { $_ eq "test\@members" ? map { "test\@$_" } @members : $_ } @stages;
+    # The member a path lies under, if any
+    my $owner = sub { for my $m (@members) { return $m if index($_[0], "$m/") == 0 } undef };
     for my $stage (@stages) {
+        my ($part) = $stage =~ /^test\@(.+)$/;
+        if (defined $part && $part eq "justfile") {
+            my $sha = Digest::SHA->new(256);
+            $sha->add("stage $stage\n", $toolchain, $variables, "justfile " . ($hash{justfile} // "none") . "\n");
+            print "$stage ", $sha->hexdigest, "\n";
+            next;
+        }
+        die "✗ $stage: no workspace member $part\n" if defined $part && !$member{$part};
         my $is_model = $model->($stage);
         my $sha = Digest::SHA->new(256);
         $sha->add("stage $stage\n", $toolchain, $variables);
@@ -509,6 +569,10 @@ _stage-keys +stages:
             }
             next if $none;
             next if $named && $is_model && !$feeds;
+            if (defined $part) {
+                my $of = $owner->($path);
+                next if defined $of && !$scope{$part}{$of};
+            }
             my $content = $is_model && $path =~ /(^|\/)Cargo\.(toml|lock)$/ ? $unversioned->($path) : $hash{$path};
             $sha->add("$path $content\n");
         }
@@ -569,11 +633,7 @@ _stages +stages:
     fi
     reused_from() { awk -v s="$1" '$1 == s { print $2 }' "$reuse"; }
     # One line on the pass a reused stage came from
-    reused_line() {
-        perl -MJSON::PP -e 'my $r = eval { local $/; open my $f, "<", $ARGV[0] or die; decode_json(<$f>) } || {};
-            my $at = ($r->{finished} // "") =~ s/^(\d{4}-\d\d-\d\d)T(\d\d:\d\d).*/$1 $2/r;
-            printf "passed %s on %s at %s%s", $at || "?", $r->{branch} // "?", $r->{commit} // "?", $r->{dirty} ? " (uncommitted edits)" : ""' "$1"
-    }
+    reused_line() { {{just_executable()}} --justfile {{quote(justfile())}} _pass-line "$1"; }
     reuse_stage() { # <stage>: reuses it when it has a pass record; fails otherwise
         local record
         record=$(reused_from "$1")
@@ -608,17 +668,7 @@ _stages +stages:
                 continue
             fi
             seconds=$(awk -v s="$stage" '$1 == "stage" && $3 == s { print $4 }' "$report" | tail -1)
-            mkdir -p "$passes/$stage"
-            record=$(mktemp "$passes/$stage/.record.XXXXXX")
-            STAGE="$stage" KEY="$key" SECONDS_TAKEN="$seconds" perl -MJSON::PP -MPOSIX=strftime -e '
-                my $git = sub { my $out = `git -C "$ARGV[0]" @_ 2>/dev/null`; chomp $out; length $out ? $out : undef };
-                (my $finished = strftime("%Y-%m-%dT%H:%M:%S%z", localtime)) =~ s/(\d\d)(\d\d)$/$1:$2/;
-                print JSON::PP->new->canonical->encode({ stage => $ENV{STAGE}, key => $ENV{KEY},
-                    commit => $git->("rev-parse --short HEAD"), branch => $git->("rev-parse --abbrev-ref HEAD"),
-                    dirty => length(`git -C "$ARGV[0]" status --porcelain 2>/dev/null`) ? JSON::PP::true : JSON::PP::false,
-                    worktree => $ARGV[0], finished => $finished, seconds => $ENV{SECONDS_TAKEN} + 0 }), "\n"' \
-                {{quote(justfile_directory())}} >"$record"
-            mv "$record" "$passes/$stage/$key"
+            {{just_executable()}} --justfile {{quote(justfile())}} _record-pass "$stage" "$key" "$seconds"
         done <<<"$now_keys"
     }
     run="" status=0 interrupted="" phase_class=""
@@ -868,10 +918,11 @@ _stage-journal-append:
             push @failed, $name if defined $name && !$seen{$name}++;
         }
     }
-    # A reused stage names the pass it came from: that pass record's commit, branch, worktree and finish time
+    # A reused stage names the pass it came from: that pass record's commit, branch, worktree, finish time and the
+    # seconds it took, the time the reuse saved
     my $from = sub {
         my $record = eval { open my $fh, "<", $_[0] or die; local $/; decode_json(<$fh>) } || {};
-        +{ map { $_ => $record->{$_} } qw(commit branch worktree finished) };
+        +{ map { $_ => $record->{$_} } qw(commit branch worktree finished seconds) };
     };
     my $git = sub { my $out = `git -C "$env{WORKTREE}" @_ 2>/dev/null`; chomp $out; length $out ? $out : undef };
     my $started = strftime("%Y-%m-%dT%H:%M:%S%z", localtime $env{STARTED});
@@ -1017,23 +1068,94 @@ rerun-failed *names:
 # to one test per core over all binaries, each test in a process of its own in its package directory, with
 # the limits of .config/nextest.toml: a test over its limit is stopped and reported TIMEOUT, and the run ends
 # listing the failed, timed-out and slow tests after its `Summary` line. The build runs at the utility QoS
-# clamp; the tests keep the default QoS (clamped timers fire late under load). A rerun (VOICEPUNCHER_RERUN_FILTER)
-# runs only the tests of that selection within it
+# clamp; the tests keep the default QoS (clamped timers fire late under load). Only the packages whose part key
+# (_stage-keys test@<member>) has no pass record run, the self-tests only when test@justfile has none; the others
+# are reused (↺), and each part that passed gets its record (VOICEPUNCHER_REUSE_STAGES=0 runs every part). A
+# narrower package set may rebuild shared dependencies once (Cargo unifies features per selection). A rerun
+# (VOICEPUNCHER_RERUN_FILTER) runs only the tests of that selection over the workspace, reusing and recording nothing
 _test: _require-nextest
     #!/usr/bin/env bash
     set -euo pipefail
-    selection=({{test_selection}})
+    me=({{just_executable()}} --justfile {{quote(justfile())}})
+    now() { perl -MTime::HiRes=time -e 'printf "%.1f", time'; }
+    # A rerun runs only its failed tests over the workspace, not the self-tests, and neither reuses nor records
     if [[ -n "${VOICEPUNCHER_RERUN_FILTER:-}" ]]; then
         selection=(--workspace -E "not binary_id(voicepuncher-e2e-test::cucumber_e2e) & ($VOICEPUNCHER_RERUN_FILTER)" --no-tests=pass)
+        taskpolicy -c utility cargo nextest run "${selection[@]}" --no-run
+        cargo nextest run "${selection[@]}"
+        exit 0
     fi
-    taskpolicy -c utility cargo nextest run "${selection[@]}" --no-run
-    cargo nextest run "${selection[@]}"
-    # A rerun runs only its failed tests, not the self-tests
-    if [[ -z "${VOICEPUNCHER_RERUN_FILTER:-}" ]]; then
-        {{just_executable()}} --justfile {{quote(justfile())}} _test-stage-keys
-        {{just_executable()}} --justfile {{quote(justfile())}} _test-lock-phases
-        {{just_executable()}} --justfile {{quote(justfile())}} _test-class-locks
+    passes="${VOICEPUNCHER_STAGE_PASSES:-{{stage_passes}}}"
+    keys=$(mktemp)
+    trap 'rm -f "$keys"' EXIT
+    if ! "${me[@]}" _stage-keys test@members test@justfile >"$keys"; then
+        echo "✗ the part keys could not be computed: every package runs and no part pass is recorded" >&2
+        : >"$keys"
     fi
+    # The parts to run: every one without a pass record (all of them without keys or with VOICEPUNCHER_REUSE_STAGES=0)
+    parts="" packages=() self=1
+    if [[ -s "$keys" ]]; then
+        while read -r part key; do
+            if [[ "${VOICEPUNCHER_REUSE_STAGES:-1}" != 0 && -f "$passes/$part/$key" ]]; then
+                echo "↺ $(date +%H:%M:%S) $part reused: $("${me[@]}" _pass-line "$passes/$part/$key")"
+                [[ "$part" != test@justfile ]] || self=""
+                continue
+            fi
+            parts+=" $part"
+            [[ "$part" == test@justfile ]] && continue
+            name=$(perl -ne 'if (/^name\s*=\s*"([^"]+)"/) { print $1; exit }' "{{justfile_directory()}}/${part#test@}/Cargo.toml")
+            packages+=(-p "$name")
+        done <"$keys"
+    else
+        packages=(--workspace)
+    fi
+    started=$(now)
+    if [[ ${#packages[@]} -gt 0 ]]; then
+        taskpolicy -c utility cargo nextest run "${packages[@]}" {{test_filter}} --no-run
+        cargo nextest run "${packages[@]}" {{test_filter}}
+    else
+        echo "↺ every package reused: no test runs"
+    fi
+    if [[ -n "$self" ]]; then
+        "${me[@]}" _test-stage-keys
+        "${me[@]}" _test-lock-phases
+        "${me[@]}" _test-class-locks
+    fi
+    # The pass records of the parts that ran, when what they read held through the run
+    [[ -n "$parts" ]] || exit 0
+    seconds=$(perl -e "printf '%.1f', $(now) - $started")
+    "${me[@]}" _stage-keys $parts | while read -r part key; do
+        if grep -qx "$part $key" "$keys"; then
+            "${me[@]}" _record-pass "$part" "$key" "$seconds"
+        else
+            echo "● $part passed, but what it reads changed during the run: no pass recorded"
+        fi
+    done
+
+# One line on a pass record: when, on which branch and commit it passed
+_pass-line record:
+    @perl -MJSON::PP -e 'my $r = eval { local $/; open my $f, "<", $ARGV[0] or die; decode_json(<$f>) } || {}; \
+        my $at = ($r->{finished} // "") =~ s/^(\d{4}-\d\d-\d\d)T(\d\d:\d\d).*/$1 $2/r; \
+        printf "passed %s on %s at %s%s", $at || "?", $r->{branch} // "?", $r->{commit} // "?", $r->{dirty} ? " (uncommitted edits)" : ""' {{quote(record)}}
+
+# Writes the pass record of a stage (or a part of one, test@<member>) under its key in stage_passes: commit,
+# branch, whether the tree had uncommitted edits, worktree, finish time and the seconds it took; by temp file and
+# rename, so a reader never sees half a record
+_record-pass stage key seconds:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    passes="${VOICEPUNCHER_STAGE_PASSES:-{{stage_passes}}}"
+    mkdir -p "$passes/{{stage}}"
+    record=$(mktemp "$passes/{{stage}}/.record.XXXXXX")
+    STAGE={{quote(stage)}} KEY={{quote(key)}} SECONDS_TAKEN={{quote(seconds)}} perl -MJSON::PP -MPOSIX=strftime -e '
+        my $git = sub { my $out = `git -C "$ARGV[0]" @_ 2>/dev/null`; chomp $out; length $out ? $out : undef };
+        (my $finished = strftime("%Y-%m-%dT%H:%M:%S%z", localtime)) =~ s/(\d\d)(\d\d)$/$1:$2/;
+        print JSON::PP->new->canonical->encode({ stage => $ENV{STAGE}, key => $ENV{KEY},
+            commit => $git->("rev-parse --short HEAD"), branch => $git->("rev-parse --abbrev-ref HEAD"),
+            dirty => length(`git -C "$ARGV[0]" status --porcelain 2>/dev/null`) ? JSON::PP::true : JSON::PP::false,
+            worktree => $ARGV[0], finished => $finished, seconds => ($ENV{SECONDS_TAKEN} || 0) + 0 }), "\n"' \
+        {{quote(justfile_directory())}} >"$record"
+    mv "$record" "$passes/{{stage}}/{{key}}"
 
 # Run the app for real use with one command: download missing models, restart the services (the command spotting service is rebuilt), build and start the app with voice control; extra arguments go to the app; text refinement is off unless they hold `--llm`, and only then are its model and llama-server needed (`just run --llm`)
 run *args:
@@ -1071,12 +1193,12 @@ e2e-smoke:
 # services. Each part's scenario selection and limits are its profile's (.config/nextest.toml)
 _e2e-smoke-speech: (_e2e-smoke-part "e2e-smoke-speech" "transcription_openai_it")
 _e2e-smoke-refinement: (_e2e-smoke-part "e2e-smoke-refinement" "textrefinement_openai_it")
-_e2e-smoke-voice: (_e2e-smoke-part "e2e-smoke-voice" "commandspotting_websocket_it voice_samples_it voice_forms_it")
+_e2e-smoke-voice: (_e2e-smoke-part "e2e-smoke-voice" voice_smoke_binaries)
 _e2e-smoke-services: (_e2e-smoke-part "e2e-smoke-services")
 
-# One nextest run per app test binary, one after another as cargo test ran them, so the services see the
-# load of one binary's tests at a time; the first failing binary ends the part. The voice control part also
-# runs the command spotting service's placed commands; then the part's Gherkin scenarios stream (--no-capture)
+# One nextest run per test binary, one after another as cargo test ran them, so the services see the load of one
+# binary's tests at a time; the first failing binary ends the part. placed_commands_it is the command spotting
+# service's binary, every other one the app's; then the part's Gherkin scenarios stream (--no-capture)
 _e2e-smoke-part profile binaries="": _require-nextest _require-models _build
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1085,10 +1207,11 @@ _e2e-smoke-part profile binaries="": _require-nextest _require-models _build
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
     export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
     for binary in {{binaries}}; do
-        cargo nextest run --profile {{profile}} -p voicepuncher --test "$binary" {{rerun_filter}}
+        package=voicepuncher
+        [[ "$binary" != placed_commands_it ]] || package=voicepuncher-command-spotting
+        cargo nextest run --profile {{profile}} -p "$package" --test "$binary" {{rerun_filter}} {{fail_fast}}
     done
-    [[ {{profile}} != e2e-smoke-voice ]] || cargo nextest run --profile {{profile}} {{placed_commands_tests}} {{rerun_filter}}
-    cargo nextest run --profile {{profile}} {{cucumber_e2e_tests}} --no-capture {{rerun_filter}}
+    cargo nextest run --profile {{profile}} {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
 # The voice control scenarios beyond the smoke set (@regression), run by full-check right after e2e-smoke so it still runs the whole set
 e2e-regression:
@@ -1101,7 +1224,7 @@ _e2e-regression: _require-nextest _require-models _build
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
     export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
-    cargo nextest run --profile e2e-regression {{cucumber_e2e_tests}} --no-capture {{rerun_filter}}
+    cargo nextest run --profile e2e-regression {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
 # WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 %, and no command in 10 recordings of ordinary speech (~1 min)
 e2e-quick:
@@ -1113,7 +1236,7 @@ _e2e-quick: _require-nextest _require-models _require-corpus _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" VOICEPUNCHER_BENCH_LIMIT=10 \
-        cargo nextest run --profile e2e-quick {{cucumber_e2e_tests}} --no-capture {{rerun_filter}}
+        cargo nextest run --profile e2e-quick {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
 # Text refinement on the live services: dictated commands, normalization, evaluation per category (@refinement) (~30 s)
 refine-eval:
@@ -1125,14 +1248,14 @@ _refine-eval: _require-nextest _require-models _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" \
-        cargo nextest run --profile refine-eval {{cucumber_e2e_tests}} --no-capture {{rerun_filter}}
+        cargo nextest run --profile refine-eval {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
 # Outages: services that hang, die and come back while voice control runs (@resilience), each scenario on service ports of its own, so the shared services are never touched (~4 min)
 e2e-resilience:
     @VOICEPUNCHER_STAGES_RECIPE=e2e-resilience {{just_executable()}} _stages e2e-resilience
 
 _e2e-resilience: _require-nextest _require-models _build
-    cargo nextest run --profile e2e-resilience {{cucumber_e2e_tests}} --no-capture {{rerun_filter}}
+    cargo nextest run --profile e2e-resilience {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
 # The bundled engines: a copy of dist/voicepuncher.app launched outside the build folder with nothing but the system
 # folders on $PATH starts every service from its own engines, on ports of its own; a transcription, a refinement and
@@ -1144,7 +1267,7 @@ bundle-smoke:
 # missing or stale one; starts no shared service (_model-stages)
 _e2e-bundle: _require-nextest _require-models _require-corpus
     {{just_executable()}} --justfile {{quote(justfile())}} bundle
-    cargo nextest run --profile e2e-bundle {{cucumber_e2e_tests}} --no-capture {{rerun_filter}}
+    cargo nextest run --profile e2e-bundle {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
 # Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words; and the start cue of each voice start, timed from the end of the command's words (~4 min)
 e2e-seams:
@@ -1158,8 +1281,8 @@ _e2e-seams: _require-nextest _require-models _build
     # The command spotting services for the voice start timing scenarios (@seams)
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
     export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
-    cargo nextest run --profile e2e-seams {{e2e_seams_tests}} {{rerun_filter}}
-    cargo nextest run --profile e2e-seams {{cucumber_e2e_tests}} --no-capture {{rerun_filter}}
+    cargo nextest run --profile e2e-seams {{e2e_seams_tests}} {{rerun_filter}} {{fail_fast}}
+    cargo nextest run --profile e2e-seams {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
 # WER accuracy on a fixed sample of 100 recordings (50 per language), two at a time — fails if mean WER > 30 %, and no command in 20 recordings of ordinary speech (~3 min)
 e2e-bench:
@@ -1171,7 +1294,7 @@ _e2e-bench: _require-nextest _require-models _require-corpus _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" \
-        cargo nextest run --profile e2e-bench {{cucumber_e2e_tests}} --no-capture {{rerun_filter}}
+        cargo nextest run --profile e2e-bench {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
 # Manual: @real_keyboard scenarios drive the real hotkey + paste — needs Accessibility and Input Monitoring for the terminal, a GUI session, hands off the keyboard
 test-real-keyboard:
@@ -1362,7 +1485,7 @@ _bundle: _require-nextest _require-create-dmg
     just="{{just_executable()}} --justfile {{justfile()}}"
     $just dmg
     $just _check-bundle {{quote(app_bundle)}} {{quote(dist_dir)}}/voicepuncher-v{{app_version}}.dmg
-    cargo nextest run --profile bundle {{cucumber_e2e_tests}} --no-capture {{rerun_filter}}
+    cargo nextest run --profile bundle {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
 # A bundle's Info.plist checked key by key, then its signature verified strictly, and its DMG mounted and found
 # to hold the app and the Applications shortcut; the first failure names what is wrong
@@ -1474,12 +1597,25 @@ _test-lock-phases:
         [[ "$got" == "$want" ]] || { printf '✗ %s\nwant:\n%s\ngot:\n%s\n' "$what" "$want" "$got" >&2; exit 1; }
         echo "  ✓ $what"
     }
-    expect "check: heavy first, voice control apart" \
-        $'heavy e2e-smoke-speech e2e-smoke-refinement e2e-smoke-services e2e-quick refine-eval\nlight e2e-smoke-voice' \
-        e2e-smoke-speech e2e-smoke-refinement e2e-smoke-voice e2e-smoke-services e2e-quick refine-eval
-    expect "full-check: every voice control stage light" \
-        $'heavy e2e-smoke-speech e2e-seams e2e-bench refine-eval\nlight e2e-smoke-voice e2e-regression e2e-resilience' \
-        e2e-smoke-speech e2e-smoke-voice e2e-regression e2e-seams e2e-resilience e2e-bench refine-eval
+    # check and full-check (fail-fast-stage-order): the light phase first, voice control holding the most failures;
+    # in each phase the short stages first, the long Gherkin runs last; the same stages as before the reorder
+    expect "check: voice control first, then the short heavy stages" \
+        $'light e2e-smoke-voice\nheavy e2e-smoke-refinement refine-eval e2e-smoke-speech e2e-quick e2e-smoke-services' \
+        {{check_model_stages}}
+    expect "full-check: every voice control stage first, the seams last" \
+        $'light e2e-smoke-voice e2e-regression e2e-resilience\nheavy e2e-smoke-refinement refine-eval e2e-bundle e2e-smoke-speech accuracy e2e-smoke-services e2e-seams' \
+        {{full_check_model_stages}}
+    sorted() { tr ' ' '\n' <<<"$*" | grep . | sort | tr '\n' ' '; }
+    [[ $(sorted {{check_model_stages}}) == $(sorted e2e-smoke-speech e2e-smoke-refinement e2e-smoke-voice e2e-smoke-services e2e-quick refine-eval) ]] \
+        || { echo "✗ check runs other stages than before: {{check_model_stages}}" >&2; exit 1; }
+    [[ $(sorted {{full_check_model_stages}}) == $(sorted e2e-smoke-speech e2e-smoke-refinement e2e-smoke-voice e2e-smoke-services e2e-regression e2e-seams e2e-resilience e2e-bundle accuracy refine-eval) ]] \
+        || { echo "✗ full-check runs other stages than before: {{full_check_model_stages}}" >&2; exit 1; }
+    [[ $(sorted {{e2e_smoke_stages}}) == $(sorted e2e-smoke-speech e2e-smoke-refinement e2e-smoke-voice e2e-smoke-services) && "{{e2e_smoke_stages}}" == e2e-smoke-voice* ]] \
+        || { echo "✗ the smoke parts are not voice control first: {{e2e_smoke_stages}}" >&2; exit 1; }
+    echo "  ✓ check and full-check run the same stages as before"
+    [[ "{{voice_smoke_binaries}}" == "placed_commands_it voice_forms_it "* ]] \
+        || { echo "✗ the voice control part does not run placed_commands_it and voice_forms_it first: {{voice_smoke_binaries}}" >&2; exit 1; }
+    echo "  ✓ the voice control part runs its most failing binaries first"
     expect "a light first stage runs its phase first" $'light e2e-resilience\nheavy e2e-seams' e2e-resilience e2e-seams
     expect "an unknown stage is heavy" "heavy e2e-something-new" e2e-something-new
     expect "only light stages give one phase" "light e2e-regression" e2e-regression
@@ -1554,9 +1690,36 @@ _test-stage-keys:
     for stage in fmt test; do [[ $(key "$stage" "$after") == $(key "$stage" "$before") ]] || fail "a model file: $stage changed its key"; done
     echo "  ✓ a changed model file changes the model stages only"
     before=$(keys)
-    after=$(VOICEPUNCHER_STAGE_JOURNAL=/elsewhere VOICEPUNCHER_TEST_STT_PORT=1 keys)
+    after=$(VOICEPUNCHER_STAGE_JOURNAL=/elsewhere VOICEPUNCHER_TEST_STT_PORT=1 VOICEPUNCHER_FAIL_FAST=1 keys)
     [[ "$after" == "$before" ]] || fail "a volatile variable changed a key"
     echo "  ✓ volatile variables change no key"
+    # The test stage's parts: one key per workspace member, over its own files, the members it depends on and
+    # every file outside the members; one over the justfile alone
+    put Cargo.toml $'[workspace]\nmembers = ["app", "command-spotting", "copy-pool", "e2e-test"]'
+    put app/Cargo.toml $'[package]\nname = "voicepuncher"\n\n[dependencies]\nvoicepuncher-copy-pool = { path = "../copy-pool" }\n\n[dev-dependencies]\nvoicepuncher-e2e-test = { path = "../e2e-test" }'
+    put command-spotting/Cargo.toml $'[package]\nname = "voicepuncher-command-spotting"\n\n[dependencies]\nvoicepuncher-copy-pool = { path = "../copy-pool" }'
+    put copy-pool/Cargo.toml $'[package]\nname = "voicepuncher-copy-pool"'
+    put e2e-test/Cargo.toml $'[package]\nname = "voicepuncher-e2e-test"\n\n[dependencies]\nvoicepuncher = { path = "../app" }\n\n[dev-dependencies]\nvoicepuncher-command-spotting = { path = "../command-spotting" }'
+    put justfile "test:"
+    stages="test@members test@justfile"
+    parts="test@app test@command-spotting test@copy-pool test@e2e-test test@justfile"
+    before=$(keys)
+    for part in $parts; do
+        [[ $(key "$part" "$before") =~ ^[0-9a-f]{64}$ ]] || { after=""; fail "no key for $part"; }
+    done
+    expect "the same inputs give the same part keys" "" "$parts"
+    put command-spotting/src/engine.rs "fn spot() { todo!() }"
+    expect "a command spotting edit changes its part and its dependents' only" "test@command-spotting test@e2e-test" "test@app test@copy-pool test@justfile"
+    put copy-pool/src/lib.rs "pub fn pool() {}"
+    expect "a copy pool edit changes every package's part" "test@app test@command-spotting test@copy-pool test@e2e-test" "test@justfile"
+    put app/src/core/domain/text.rs "pub struct Text(u8);"
+    expect "an app edit reaches app and e2e-test, its dev-dependency cycle" "test@app test@e2e-test" "test@command-spotting test@copy-pool test@justfile"
+    put .config/nextest.toml "[profile.default]"
+    expect "a file outside the members changes every package's part" "test@app test@command-spotting test@copy-pool test@e2e-test" "test@justfile"
+    put docs/notes.md "even more notes"
+    expect "a docs edit changes no part" "" "$parts"
+    put justfile "test: _test"
+    expect "a justfile edit changes the self-tests' part" "$parts" ""
 
 # ── Engines ── the pinned engines the bundle carries (app/packaging/engines.lock) ─────────────
 

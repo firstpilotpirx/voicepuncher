@@ -75,6 +75,9 @@ fn main() {
     let Some(command_line) = harness_args::cucumber_command_line() else {
         return;
     };
+    // check and full-check stop at the first failed scenario
+    let command_line =
+        harness_args::with_fail_fast(command_line, std::env::var(harness_args::FAIL_FAST_VAR));
     // The app's log lines, such as its `voice start:` timing, only for the modules RUST_LOG names
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("off")).init();
     // The user's recorded commands stay on the machine; scenarios that need them run only

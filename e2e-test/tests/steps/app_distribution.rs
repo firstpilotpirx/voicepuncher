@@ -199,7 +199,40 @@ fn recipe_stages(recipe: &str) -> Result<Vec<String>> {
                 .map(|(_, rest)| rest.to_string())
         })
         .with_context(|| format!("{recipe} runs no _stages:\n{shown}"))?;
-    Ok(line.split_whitespace().map(str::to_string).collect())
+    let mut stages = Vec::new();
+    let mut rest = line.as_str();
+    while let Some((literal, after)) = rest.split_once("{{") {
+        stages.extend(literal.split_whitespace().map(str::to_string));
+        let (expression, tail) = after
+            .split_once("}}")
+            .with_context(|| format!("unclosed {{{{ in {recipe}: {line}"))?;
+        stages.extend(expand_stage_list(expression)?);
+        rest = tail;
+    }
+    stages.extend(rest.split_whitespace().map(str::to_string));
+    Ok(stages)
+}
+
+/// The stages a `{{…}}` expression of a recipe names: the justfile variable it reads, with the
+/// stage a `replace(…)` swaps for the loop's `"$stage"` swapped the same way.
+fn expand_stage_list(expression: &str) -> Result<Vec<String>> {
+    let variable = expression
+        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .find(|word| word.contains('_'))
+        .with_context(|| format!("no variable in {expression}"))?;
+    let output = just(&["--evaluate", variable], None)?;
+    ensure!(output.status.success(), "{}", text(&output));
+    let replaced = expression.split_once("replace(").and_then(|(_, args)| {
+        let quoted: Vec<&str> = args.split('"').collect();
+        (quoted.len() >= 3).then(|| quoted[1].to_string())
+    });
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .split_whitespace()
+        .map(|stage| match &replaced {
+            Some(from) if stage == from => "\"$stage\"".to_string(),
+            _ => stage.to_string(),
+        })
+        .collect())
 }
 
 /// A stage `_stages` runs under the machine-wide lock, by its rule: an E2E stage, the refinement

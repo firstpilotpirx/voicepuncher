@@ -47,6 +47,22 @@ pub fn cucumber_command_line() -> Option<Vec<String>> {
     }
 }
 
+/// The variable `check` and `full-check` set to `1`, so the harness stops at the first failed
+/// scenario (openspec change fail-fast-stage-order).
+pub const FAIL_FAST_VAR: &str = "VOICEPUNCHER_FAIL_FAST";
+
+/// The cucumber command line with cucumber's `--fail-fast` added when the value of
+/// [`FAIL_FAST_VAR`] is `1`; unchanged otherwise.
+pub fn with_fail_fast(
+    mut command_line: Vec<String>,
+    var: Result<String, std::env::VarError>,
+) -> Vec<String> {
+    if var.as_deref() == Ok("1") {
+        command_line.push("--fail-fast".to_string());
+    }
+    command_line
+}
+
 /// The variable that sets how many scenarios the E2E harness runs at once.
 pub const CONCURRENCY_VAR: &str = "VOICEPUNCHER_E2E_CONCURRENCY";
 /// Scenarios the E2E harness runs at once without the variable: the fastest green value of
@@ -154,6 +170,25 @@ mod tests {
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|a| a.to_string()).collect()
+    }
+
+    #[test]
+    fn should_add_fail_fast_to_the_cucumber_command_line_when_the_variable_is_one() {
+        assert_eq!(
+            with_fail_fast(args(&["prog", "--tags", "@smoke"]), Ok("1".to_string())),
+            args(&["prog", "--tags", "@smoke", "--fail-fast"])
+        );
+    }
+
+    #[test]
+    fn should_keep_the_cucumber_command_line_when_the_variable_is_not_one() {
+        let line = args(&["prog", "--tags", "@smoke"]);
+        assert_eq!(
+            with_fail_fast(line.clone(), Err(std::env::VarError::NotPresent)),
+            line
+        );
+        assert_eq!(with_fail_fast(line.clone(), Ok("0".to_string())), line);
+        assert_eq!(with_fail_fast(line.clone(), Ok(String::new())), line);
     }
 
     #[test]
