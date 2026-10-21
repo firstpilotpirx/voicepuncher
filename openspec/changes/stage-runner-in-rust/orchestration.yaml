@@ -1,0 +1,5 @@
+depends_on:
+  - change: adopt-static-analyzers
+    why: moves the recipes that change adds into the runner
+  - change: unmask-gated-tests
+    why: moves the real-device stage and skip counting that change adds into the runner
