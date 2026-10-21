@@ -114,6 +114,14 @@ filter = 'binary(cucumber_e2e)'
 run-extra-args = ["--tags", "@seams and not @wip"]
 slow-timeout = { period = "60s", terminate-after = 9 }
 
+# @bundle, the app-distribution scenarios of full-check's bundle stage, 26 s measured: default 2 min
+[profile.bundle]
+success-output = "immediate"
+
+[[profile.bundle.overrides]]
+filter = 'binary(cucumber_e2e)'
+run-extra-args = ["--tags", "@bundle and not @wip"]
+
 # Manual: the @real_keyboard scenarios of the slice/component harness, not measured: default 2 min
 [profile.real-keyboard]
 success-output = "immediate"

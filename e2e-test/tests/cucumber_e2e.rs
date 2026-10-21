@@ -44,6 +44,7 @@ pub struct E2eWorld {
     pub session: Option<steps::voice_control::HandsFreeSession>,
     pub local_services: Option<steps::local_services::ScenarioServices>,
     pub archive: steps::dictation_archive::ArchiveRun,
+    pub distribution: steps::app_distribution::DistributionRun,
 }
 
 impl E2eWorld {
@@ -62,7 +63,7 @@ impl E2eWorld {
 
 /// Runs the scenarios the command line selects (a rerun's names instead, when
 /// `VOICEPUNCHER_RERUN_SCENARIOS` holds any) that the gates admit: `@wip` never, `@voice_samples`
-/// only where the user's recordings exist.
+/// only where the user's recordings exist, `@signing_identity` only where the certificate is named.
 ///
 /// cucumber never gets the selection (`--name`, `--tags`, `CUCUMBER_FILTER_TAGS`): it would apply
 /// it instead of the filter, and the gates with it. `scenario_filter::split` takes it out of the
@@ -79,6 +80,7 @@ fn main() {
     let gates = vec![
         Gate::wip(),
         Gate::voice_samples(std::env::var("VOICEPUNCHER_VOICE_SAMPLES")),
+        Gate::signing_identity(std::env::var("VOICEPUNCHER_SIGNING_IDENTITY")),
     ];
     let (opts, filter) =
         scenario_filter::split(Opts::<_, _, _, Empty>::parse_from(command_line), gates);

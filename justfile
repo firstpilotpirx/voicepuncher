@@ -962,18 +962,26 @@ _require-create-dmg:
         exit 1
     fi
 
-# The `bundle` stage of full-check: the signing guards, the DMG built, the bundle's Info.plist checked key by
-# key, its signature verified strictly, the DMG mounted and found to hold the app and the Applications shortcut.
-# No shared service, port or GPU: it runs before the model stages, outside the machine lock
-_bundle: _require-create-dmg
+# The `bundle` stage of full-check: the DMG built, the bundle and the DMG checked (_check-bundle), then the
+# app-distribution scenarios (@bundle) on them: the bundle's information, its signature, the DMG as an
+# installer and the signing guards. No shared service, port or GPU: it runs before the model stages, outside
+# the machine lock
+_bundle: _require-nextest _require-create-dmg
     #!/usr/bin/env bash
     set -euo pipefail
     just="{{just_executable()}} --justfile {{justfile()}}"
-    $just _test-bundle-guard
     $just dmg
-    app={{quote(app_bundle)}}
+    $just _check-bundle {{quote(app_bundle)}} {{quote(dist_dir)}}/voicepuncher-v{{app_version}}.dmg
+    cargo nextest run --profile bundle {{cucumber_e2e_tests}} --no-capture {{rerun_filter}}
+
+# A bundle's Info.plist checked key by key, then its signature verified strictly, and its DMG mounted and found
+# to hold the app and the Applications shortcut; the first failure names what is wrong
+_check-bundle app dmg:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    app={{quote(app)}}
     plist="$app/Contents/Info.plist"
-    dmg={{quote(dist_dir)}}/voicepuncher-v{{app_version}}.dmg
+    dmg={{quote(dmg)}}
     plutil -lint "$plist"
     expect_key() { # <key> <value>: the bundle's Info.plist holds the key with that value
         local got
@@ -999,30 +1007,6 @@ _bundle: _require-create-dmg
     [[ -d "$mount/voicepuncher.app" ]] || { echo "✗ $dmg holds no voicepuncher.app" >&2; exit 1; }
     [[ -L "$mount/Applications" ]] || { echo "✗ $dmg holds no Applications shortcut" >&2; exit 1; }
     echo "✓ bundle stage: $app signed and verified, $dmg holds the app and the Applications shortcut"
-
-# The bundle's expected behaviour on signing identities (run by the `bundle` stage of full-check): a named
-# identity the keychain lacks stops `bundle` before it builds, no identity signs ad-hoc with a notice, and a
-# release always needs one
-_test-bundle-guard:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    just="{{just_executable()}} --justfile {{justfile()}}"
-    expect() { # <description> <pattern> <command...>: the command fails and its output matches the pattern
-        local what=$1 pattern=$2; shift 2
-        local out
-        if out=$("$@" 2>&1); then echo "✗ $what: succeeded, expected a refusal" >&2; echo "$out" >&2; exit 1; fi
-        grep -q -- "$pattern" <<<"$out" || { echo "✗ $what: output lacks '$pattern'" >&2; echo "$out" >&2; exit 1; }
-        echo "  ✓ $what"
-    }
-    expect "bundle refuses an identity the keychain lacks" "just signing-identity" \
-        env VOICEPUNCHER_SIGNING_IDENTITY="voicepuncher-missing-$$" $just bundle
-    expect "bundle names the missing identity" "voicepuncher-missing-$$" \
-        env VOICEPUNCHER_SIGNING_IDENTITY="voicepuncher-missing-$$" $just bundle
-    expect "release refuses without an identity" "just signing-identity" \
-        env VOICEPUNCHER_SIGNING_IDENTITY= $just _require-release-identity
-    out=$(env VOICEPUNCHER_SIGNING_IDENTITY= $just bundle 2>&1) || { echo "✗ bundle without an identity failed" >&2; echo "$out" >&2; exit 1; }
-    grep -q "ad-hoc" <<<"$out" || { echo "✗ bundle without an identity printed no ad-hoc notice" >&2; echo "$out" >&2; exit 1; }
-    echo "  ✓ bundle without an identity signs ad-hoc with a notice"
 
 # ── Services ── local processes the app talks to over loopback ────────────────
 

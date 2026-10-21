@@ -10,6 +10,8 @@ use regex::Regex;
 
 const VOICE_SAMPLES_VARIABLE: &str = "VOICEPUNCHER_VOICE_SAMPLES";
 const VOICE_SAMPLES_TAG: &str = "voice_samples";
+const SIGNING_IDENTITY_VARIABLE: &str = "VOICEPUNCHER_SIGNING_IDENTITY";
+const SIGNING_IDENTITY_TAG: &str = "signing_identity";
 const REAL_KEYBOARD_VARIABLE: &str = "VOICEPUNCHER_REAL_KEYBOARD_IT";
 const REAL_KEYBOARD_TAG: &str = "real_keyboard";
 const WIP_TAG: &str = "wip";
@@ -38,12 +40,21 @@ impl Gate {
     /// `VOICEPUNCHER_VOICE_SAMPLES` (`std::env::var`).
     /// Unset and empty both close it, each with its own line.
     pub fn voice_samples(value: Result<String, std::env::VarError>) -> Self {
-        let state = match value {
-            Ok(dir) if !dir.is_empty() => None,
-            Ok(_) => Some("empty"),
-            Err(_) => Some("not set"),
-        };
-        Self::closed_by_variable(VOICE_SAMPLES_TAG, VOICE_SAMPLES_VARIABLE, state)
+        Self::closed_by_variable(
+            VOICE_SAMPLES_TAG,
+            VOICE_SAMPLES_VARIABLE,
+            unset_or_empty(&value),
+        )
+    }
+
+    /// `@signing_identity`: runs where the code-signing certificate is named, from the value of
+    /// `VOICEPUNCHER_SIGNING_IDENTITY` (`std::env::var`). Unset and empty both close it.
+    pub fn signing_identity(value: Result<String, std::env::VarError>) -> Self {
+        Self::closed_by_variable(
+            SIGNING_IDENTITY_TAG,
+            SIGNING_IDENTITY_VARIABLE,
+            unset_or_empty(&value),
+        )
     }
 
     /// `@real_keyboard`: runs with `VOICEPUNCHER_REAL_KEYBOARD_IT` set to any value.
@@ -75,6 +86,15 @@ impl Gate {
 
     fn admits(&self, tags: &[&str]) -> bool {
         self.open || !tags.contains(&self.tag)
+    }
+}
+
+/// Why a variable that must name something closes its gate, `None` when it names something.
+fn unset_or_empty(value: &Result<String, std::env::VarError>) -> Option<&'static str> {
+    match value {
+        Ok(named) if !named.is_empty() => None,
+        Ok(_) => Some("empty"),
+        Err(_) => Some("not set"),
     }
 }
 

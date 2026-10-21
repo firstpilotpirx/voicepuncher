@@ -253,3 +253,30 @@ fn should_close_the_real_keyboard_gate_only_when_the_variable_is_unset() {
     );
     assert!(Gate::real_keyboard(Ok(String::new())).is_open());
 }
+
+#[test]
+fn should_close_the_signing_identity_gate_when_the_variable_is_unset() {
+    let gate = Gate::signing_identity(Err(VarError::NotPresent));
+    assert!(!gate.is_open());
+    assert_eq!(
+        gate.line(),
+        Some("GATED: VOICEPUNCHER_SIGNING_IDENTITY not set, skipping @signing_identity scenarios")
+    );
+}
+
+#[test]
+fn should_close_the_signing_identity_gate_when_the_variable_is_empty() {
+    let gate = Gate::signing_identity(Ok(String::new()));
+    assert!(!gate.is_open());
+    assert_eq!(
+        gate.line(),
+        Some("GATED: VOICEPUNCHER_SIGNING_IDENTITY empty, skipping @signing_identity scenarios")
+    );
+}
+
+#[test]
+fn should_open_the_signing_identity_gate_when_the_variable_names_an_identity() {
+    let gate = Gate::signing_identity(Ok("voicepuncher".to_string()));
+    assert!(gate.is_open());
+    assert_eq!(gate.line(), None);
+}
