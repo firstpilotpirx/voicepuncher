@@ -1,0 +1,3 @@
+depends_on:
+  - change: enforce-unsafe-safety-comments
+    why: removes entries from the unsafe impl allowlist that change creates
