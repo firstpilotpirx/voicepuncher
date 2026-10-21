@@ -17,7 +17,7 @@ Out of scope: fixing the flaky tests (`eradicate-flaky-tests`); the kit default 
 
 ### Modified Capabilities
 
-- `change-workflow`: a flake is a failure; the lock wait outlasts the queue.
+- none: check policy and test tooling only; no product capability changes (`skip_specs: true`).
 
 ## Impact
 
