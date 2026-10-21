@@ -1,0 +1,4 @@
+depends_on:
+  - change: enforce-size-and-complexity-budgets
+    why: shares clippy.toml, [workspace.lints] and the ratchet baseline
+priority: high
