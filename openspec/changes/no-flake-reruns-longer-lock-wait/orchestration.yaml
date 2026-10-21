@@ -1,0 +1,4 @@
+depends_on:
+  - change: split-machine-lock
+    why: names MACHINE_LOCK_WAIT
+priority: high
