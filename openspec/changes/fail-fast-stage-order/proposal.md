@@ -9,8 +9,8 @@ A check that fails late wastes the minutes before the failure and keeps the mach
 - Every stage and test still runs on a passing check; only the order changes.
 
 Current stage: PoC. Target stage: PoC.
-Scope: `justfile` (`check`, `full-check`, `_stages`, `_model-stages`, `_e2e-smoke` order of `e2e_smoke_binaries`), `.config/nextest.toml` (fail-fast per suite), AGENTS.md § How to verify a change.
-Acceptance bar: a check with one failing `*_it` test or a failing `refine-eval` fails within the first ~2 minutes of its model phase instead of after `e2e-smoke`'s Gherkin run; a passing check runs every stage it ran before; stage tables before and after in the PR.
+Scope: `justfile` (`check`, `full-check`, the order of the smoke parts and of the voice control part's binaries, the E2E recipes' nextest calls, the stage keys), `e2e-test` harness (cucumber fail-fast), AGENTS.md § How to verify a change.
+Acceptance bar: a check with one failing voice control `*_it` test fails within the first ~2 minutes of its light phase, a failing `refine-eval` within the first ~2 minutes of its heavy phase, instead of after the long Gherkin runs; a passing check runs every stage it ran before; stage tables before and after in the PR.
 Out of scope: dropping or shortening stages (`speed-up-tests`), reusing passed stages (`reuse-passed-check-stages`), the lock split (`split-machine-lock`), flaky tests (`fix-flaky-tests`).
 
 ## Capabilities
@@ -21,15 +21,13 @@ Out of scope: dropping or shortening stages (`speed-up-tests`), reusing passed s
 
 ## Impact
 
-- `justfile`, `.config/nextest.toml`, AGENTS.md § How to verify a change.
+- `justfile`, `e2e-test/src/harness_args.rs`, `e2e-test/tests/cucumber_e2e.rs`, AGENTS.md § How to verify a change.
 
 ## Open points
 
-- Fixed order or one learned from recent failures: proposed — a fixed order now (fastest first, then most often failing), revisited after `fix-flaky-tests` lands.
-- Stopping at the first failure: proposed — yes inside `check` and `full-check` (nextest `fail-fast` per suite), no in standalone E2E recipes used for debugging, where seeing every failure helps.
-- Target version: proposed no release — tooling only.
+- Settled in design.md: a fixed order (light phase first, short stages first in each phase); fail-fast only in `check` and `full-check`; no release.
 
 ## Release
 
 SemVer: no release — test tooling only; no behavior change.
-Target version: 0.18.0.
+Target version: none (no release).
