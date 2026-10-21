@@ -68,6 +68,7 @@ impl Pipeline {
                 Ok(())
             }
             PipelineInput::SpottingBack => self.regain_spotting(),
+            PipelineInput::Shutdown => self.shut_down(),
         }
     }
 
@@ -112,6 +113,16 @@ impl Pipeline {
         voice.listening = true;
         self.sound_player.play_listening_on();
         log::info!("voice control: listening");
+    }
+
+    /// Closes the microphone of voice control; nothing without voice control.
+    pub(super) fn turn_listening_off(&mut self) {
+        let Some(voice) = self.voice.as_mut().filter(|voice| voice.listening) else {
+            return;
+        };
+        voice.spotter.stop_listening();
+        voice.listening = false;
+        log::info!("voice control: listening off");
     }
 
     fn recognize(&mut self, event: SpottingEvent) -> Vec<SpokenCommand> {
@@ -748,6 +759,31 @@ mod tests {
         // Then
         assert!(!pipeline.is_recording());
         assert!(pipeline.listening());
+    }
+
+    #[test]
+    fn should_stop_listening_on_shutdown() {
+        // Given
+        let mut spotter = MockCommandSpotter::new();
+        spotter
+            .expect_start_listening()
+            .once()
+            .returning(|_| Ok(()));
+        spotter.expect_stop_listening().once().return_const(());
+        let mut pipeline = pipeline(
+            idle_recorder(),
+            MockTextPaster::new(),
+            spotter,
+            RecordingMode::Toggle,
+        );
+        let (inputs, rx) = std::sync::mpsc::channel::<PipelineInput>();
+        inputs.send(PipelineInput::Shutdown).unwrap();
+        // When
+        let result = pipeline.run(rx);
+        // Then
+        assert!(result.is_ok());
+        assert!(!pipeline.listening());
+        drop(inputs);
     }
 
     #[test]

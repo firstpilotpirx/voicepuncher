@@ -27,6 +27,8 @@
 | `app/src/core/application/text_paster.rs` | Port | `TextPaster` trait |
 | `app/src/core/application/sound_player.rs` | Port | `SoundPlayer` trait |
 | `app/src/core/application/permission_probe.rs` | Port | `PermissionProbe` trait |
+| `app/src/runtime/` | Composition | `Runtime` — starts, reloads and stops the pipeline in place; `SignalRouter`, `SharedVisualIndicator`, `RuntimeState` and observers, the activity register, `PipelineAssembler` with the real `WiringAssembler`, the hang-up signal thread |
+| `app/src/core/application/pipeline_activity.rs` | Port | `PipelineActivitySink` trait — the pipeline publishes `Idle` / `Recording` / `Processing` |
 | `app/src/adapters/primary/cli/` | Primary adapter | `Cli` — `clap`-based argument parser |
 | `app/src/adapters/primary/ptt/rdev/` | Primary adapter | `RdevHotkeyListener` — captures hotkey events via `rdev` |
 | `app/src/adapters/primary/setup/cli/` | Primary adapter | `SetupWizard` — interactive first-run configuration wizard |

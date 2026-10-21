@@ -28,6 +28,7 @@ pub struct IntegrationWorld {
     pub notices: Option<steps::failure_notices::NoticesRun>,
     pub pointer: Option<steps::dictation_pointer::PointerRun>,
     pub archive: Option<steps::dictation_archive::ArchiveRun>,
+    pub runtime: Option<steps::app_runtime::RuntimeRun>,
     pub logging: Option<steps::app_logging::LoggingRun>,
 }
 

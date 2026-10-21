@@ -12,4 +12,6 @@ pub enum PipelineInput {
     SpottingStillAway,
     /// The command spotting service answers again after it was lost.
     SpottingBack,
+    /// The runtime ends this pipeline: a recording in progress is cancelled, listening stops.
+    Shutdown,
 }

@@ -17,8 +17,9 @@ use crate::core::application::pipeline::live_transcript::{LiveTranscript, Record
 use crate::core::application::text_refiner::refine_or_raw;
 use crate::core::application::{
     hotkey_pressed_during_wait, insert_text, AudioRecorder, DictationArchive, DictationOutcome,
-    DictationStart, FocusProbe, FocusWaitCfg, Insertion, PipelineInput, SoundPlayer, StageTiming,
-    TextPaster, TextRefiner, Transcriber, VisualIndicator,
+    DictationStart, FocusProbe, FocusWaitCfg, Insertion, NoActivitySink, PipelineActivity,
+    PipelineActivitySink, PipelineInput, SoundPlayer, StageTiming, TextPaster, TextRefiner,
+    Transcriber, VisualIndicator,
 };
 
 use crate::core::domain::{
@@ -106,6 +107,8 @@ pub struct Pipeline {
     archive: Option<Box<dyn DictationArchive>>,
     /// The running dictation as its archive entry will hold it; none without an archive.
     trace: Option<DictationTrace>,
+    /// Where the activity (idle, recording, processing) is published after every input.
+    activity: Box<dyn PipelineActivitySink>,
 }
 
 /// How a dictation that ends before its text is refined ends, with the stages it ran.
@@ -151,7 +154,14 @@ impl Pipeline {
             pending_notice: None,
             archive: None,
             trace: None,
+            activity: Box::new(NoActivitySink),
         }
+    }
+
+    /// Publishes the activity to `sink` after every input, so a restart can wait for Idle.
+    pub fn with_activity_sink(mut self, sink: Box<dyn PipelineActivitySink>) -> Self {
+        self.activity = sink;
+        self
     }
 
     /// Text refinement is off: the overlay never shows its processing stage.
@@ -183,21 +193,55 @@ impl Pipeline {
                     .recv()
                     .map_err(|_| anyhow::anyhow!("pipeline input channel closed"))?,
             };
+            if input == PipelineInput::Shutdown {
+                return self.shut_down();
+            }
             self.handle(input)?;
         }
     }
 
+    /// Handles one input and publishes the activity it leaves the pipeline in; a dictation
+    /// being stopped counts as processing until its paste.
     fn handle(&mut self, input: PipelineInput) -> anyhow::Result<()> {
+        if self.is_recording() {
+            self.activity.publish(PipelineActivity::Processing);
+        }
+        let outcome = self.dispatch(input);
+        self.publish_activity();
+        outcome
+    }
+
+    fn dispatch(&mut self, input: PipelineInput) -> anyhow::Result<()> {
         if self.voice.is_some() {
             return self.handle_with_voice_control(input);
         }
         match input {
             PipelineInput::Hotkey(signal) => self.step(signal),
+            PipelineInput::Shutdown => self.shut_down(),
             other => {
                 log::warn!("ignoring {other:?}: voice control is off");
                 Ok(())
             }
         }
+    }
+
+    fn publish_activity(&self) {
+        self.activity.publish(if self.is_recording() {
+            PipelineActivity::Recording
+        } else {
+            PipelineActivity::Idle
+        });
+    }
+
+    /// Ends this pipeline: a recording in progress is cancelled, listening stops.
+    fn shut_down(&mut self) -> anyhow::Result<()> {
+        log::info!("pipeline shutting down");
+        if self.is_recording() {
+            self.cancel_recording()?;
+        }
+        self.turn_listening_off();
+        self.publish_activity();
+        Ok(())
     }
 
     fn step(&mut self, signal: PttSignal) -> anyhow::Result<()> {
@@ -737,6 +781,7 @@ mod tests {
     use crate::core::application::live_transcript_view::{
         HiddenLiveTranscript, MockLiveTranscriptView,
     };
+    use crate::core::application::pipeline_activity::{PipelineActivity, PipelineActivitySink};
     use crate::core::application::sound_player::MockSoundPlayer;
     use crate::core::application::text_paster::MockTextPaster;
     use crate::core::application::text_refiner::MockTextRefiner;
@@ -886,6 +931,169 @@ mod tests {
                 chunking: ChunkingCfg::default(),
             },
         )
+    }
+
+    struct RecordingActivitySink(Arc<Mutex<Vec<PipelineActivity>>>);
+
+    impl PipelineActivitySink for RecordingActivitySink {
+        fn publish(&self, activity: PipelineActivity) {
+            self.0.lock().unwrap().push(activity);
+        }
+    }
+
+    fn observed_activity() -> (Arc<Mutex<Vec<PipelineActivity>>>, RecordingActivitySink) {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        (Arc::clone(&seen), RecordingActivitySink(Arc::clone(&seen)))
+    }
+
+    fn pasting_pipeline(recorder: MockAudioRecorder) -> Pipeline {
+        let mut transcriber = MockTranscriber::new();
+        transcriber
+            .expect_transcribe()
+            .returning(|_| Ok(Some(RawTranscript::new("hello world".to_owned()).unwrap())));
+        let mut refiner = MockTextRefiner::new();
+        refiner
+            .expect_refine()
+            .returning(|_| Ok(CleanedText::new("hello world".to_owned()).unwrap()));
+        let mut paster = MockTextPaster::new();
+        paster.expect_paste().returning(|_| Ok(()));
+        make_pipeline(recorder, transcriber, refiner, paster)
+    }
+
+    fn make_recorder_with_start() -> MockAudioRecorder {
+        let mut recorder = MockAudioRecorder::new();
+        recorder.expect_start().once().returning(|| Ok(()));
+        recorder
+            .expect_start_live_chunks()
+            .times(..)
+            .returning(|_| Ok(None));
+        recorder
+            .expect_flush_live_chunks()
+            .times(..)
+            .return_const(());
+        recorder
+    }
+
+    #[test]
+    fn should_publish_recording_when_a_recording_starts() {
+        // Given
+        let (seen, sink) = observed_activity();
+        let mut pipeline =
+            pasting_pipeline(make_recorder_with_start()).with_activity_sink(Box::new(sink));
+        // When
+        pipeline
+            .handle(PipelineInput::Hotkey(PttSignal::Pressed))
+            .unwrap();
+        // Then
+        assert_eq!(*seen.lock().unwrap(), vec![PipelineActivity::Recording]);
+    }
+
+    #[test]
+    fn should_publish_processing_through_the_paste_then_idle() {
+        // Given
+        let (seen, sink) = observed_activity();
+        let mut pipeline = pasting_pipeline(make_recorder_with_start_stop(one_second_audio()))
+            .with_activity_sink(Box::new(sink));
+        pipeline
+            .handle(PipelineInput::Hotkey(PttSignal::Pressed))
+            .unwrap();
+        // When — second Pressed stops in Toggle mode
+        pipeline
+            .handle(PipelineInput::Hotkey(PttSignal::Pressed))
+            .unwrap();
+        // Then
+        assert_eq!(
+            *seen.lock().unwrap(),
+            vec![
+                PipelineActivity::Recording,
+                PipelineActivity::Processing,
+                PipelineActivity::Idle
+            ]
+        );
+    }
+
+    #[test]
+    fn should_publish_idle_after_a_cancel() {
+        // Given
+        let (seen, sink) = observed_activity();
+        let mut pipeline = pasting_pipeline(make_recorder_with_start_stop(one_second_audio()))
+            .with_activity_sink(Box::new(sink));
+        pipeline
+            .handle(PipelineInput::Hotkey(PttSignal::Pressed))
+            .unwrap();
+        // When
+        pipeline
+            .handle(PipelineInput::Hotkey(PttSignal::Cancel))
+            .unwrap();
+        // Then
+        assert_eq!(seen.lock().unwrap().last(), Some(&PipelineActivity::Idle));
+    }
+
+    #[test]
+    fn should_return_from_run_on_shutdown_while_idle() {
+        // Given
+        let mut recorder = MockAudioRecorder::new();
+        recorder.expect_start().never();
+        let mut pipeline = make_pipeline(
+            recorder,
+            MockTranscriber::new(),
+            MockTextRefiner::new(),
+            MockTextPaster::new(),
+        );
+        let (inputs, rx) = mpsc::channel::<PipelineInput>();
+        inputs.send(PipelineInput::Shutdown).unwrap();
+        // When
+        let result = pipeline.run(rx);
+        // Then — the channel is still open, so only the shutdown ended the loop
+        assert!(result.is_ok());
+        drop(inputs);
+    }
+
+    #[test]
+    fn should_cancel_the_recording_on_shutdown() {
+        // Given
+        let mut recorder = MockAudioRecorder::new();
+        recorder.expect_start().once().returning(|| Ok(()));
+        recorder
+            .expect_start_live_chunks()
+            .times(..)
+            .returning(|_| Ok(None));
+        recorder
+            .expect_flush_live_chunks()
+            .times(..)
+            .return_const(());
+        recorder
+            .expect_stop()
+            .once()
+            .returning(|| Ok(one_second_audio()));
+        let mut sounds = MockSoundPlayer::new();
+        sounds.expect_play_start().once().return_const(());
+        sounds.expect_play_cancel().once().return_const(());
+        let mut paster = MockTextPaster::new();
+        paster.expect_paste().never();
+        let mut pipeline = Pipeline::new(
+            Box::new(recorder),
+            Box::new(MockTranscriber::new()),
+            Box::new(MockTextRefiner::new()),
+            Box::new(paster),
+            Box::new(sounds),
+            Box::new(noop_visual_indicator()),
+            PipelineConfig {
+                min_press_ms: 0,
+                recording_mode: RecordingMode::Toggle,
+                chunking: ChunkingCfg::default(),
+            },
+        );
+        let (inputs, rx) = mpsc::channel::<PipelineInput>();
+        inputs
+            .send(PipelineInput::Hotkey(PttSignal::Pressed))
+            .unwrap();
+        inputs.send(PipelineInput::Shutdown).unwrap();
+        // When
+        let result = pipeline.run(rx);
+        // Then
+        assert!(result.is_ok());
+        assert!(matches!(pipeline.state, PipelineState::Idle));
     }
 
     #[test]

@@ -22,7 +22,7 @@ pub use cleaned_text::CleanedText;
 pub use command_words::{without_leading_command, without_trailing_command};
 pub use failure_notice::{AccessibilityMissing, FailingPart, FailureNotice};
 pub use filler_sounds::{is_filler_sound, without_filler_sounds};
-pub use hotkey::HotKey;
+pub use hotkey::{HotKey, HotkeyBinding};
 pub use level_history::LevelHistory;
 pub use normalization_check::{check_normalization, NotANormalization};
 pub use ptt_signal::PttSignal;

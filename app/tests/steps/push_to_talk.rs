@@ -12,7 +12,7 @@ use rdev::{simulate, EventType, Key};
 use voicepuncher::adapters::primary::ptt::rdev::RdevHotkeyListener;
 use voicepuncher::adapters::secondary::textpasting::macos::MacOsTextPaster;
 use voicepuncher::core::application::{HotkeyListener, TextPaster};
-use voicepuncher::core::domain::{CleanedText, HotKey, PttSignal};
+use voicepuncher::core::domain::{CleanedText, HotKey, HotkeyBinding, PttSignal};
 
 use crate::IntegrationWorld;
 
@@ -27,7 +27,7 @@ fn hotkey_pressed_twice(world: &mut IntegrationWorld) -> Result<()> {
     let (tx, rx) = mpsc::channel::<PttSignal>();
     let listener: Box<dyn HotkeyListener> = Box::new(RdevHotkeyListener::new());
     listener
-        .spawn(HotKey::RightOption, tx)
+        .spawn(HotkeyBinding::new(HotKey::RightOption), tx)
         .context("rdev listener must spawn (Accessibility / Input Monitoring granted?)")?;
     std::thread::sleep(TAP_INSTALL_GRACE);
     for _ in 0..2 {

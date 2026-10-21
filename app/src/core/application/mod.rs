@@ -10,6 +10,7 @@ pub mod key_presser;
 pub mod live_transcript_view;
 pub mod permission_probe;
 pub mod pipeline;
+pub mod pipeline_activity;
 pub mod pipeline_input;
 pub mod preflight;
 pub mod sound_player;
@@ -34,6 +35,7 @@ pub use hotkey_listener::HotkeyListener;
 pub use key_presser::KeyPresser;
 pub use live_transcript_view::LiveTranscriptView;
 pub use permission_probe::PermissionProbe;
+pub use pipeline_activity::{NoActivitySink, PipelineActivity, PipelineActivitySink};
 pub use pipeline_input::PipelineInput;
 pub use sound_player::SoundPlayer;
 pub use text_insertion::{

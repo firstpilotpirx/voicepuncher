@@ -490,3 +490,78 @@ fn r9_every_primary_adapter_has_it() {
         violations.join("\n")
     );
 }
+
+fn rust_files(root: &str) -> Vec<std::path::PathBuf> {
+    WalkDir::new(root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("rs"))
+        .map(|e| e.path().to_path_buf())
+        .collect()
+}
+
+#[test]
+fn r11_core_never_imports_the_runtime() {
+    let mut violations: Vec<String> = Vec::new();
+    for path in rust_files("src/core") {
+        for (line_no, line) in read_lines(&path).iter().enumerate() {
+            if line.contains("crate::runtime") {
+                violations.push(format!(
+                    "{}:{}: {}",
+                    path.display(),
+                    line_no + 1,
+                    line.trim()
+                ));
+            }
+        }
+    }
+    assert!(
+        violations.is_empty(),
+        "R11 violations: core imports the runtime\n{}",
+        violations.join("\n")
+    );
+}
+
+/// The dictation pipeline of hotkey mode is assembled in `src/runtime/` only; `main.rs`
+/// assembles the one of file mode and nothing else does, and no file outside the adapters,
+/// the runtime and `main.rs` imports a secondary adapter.
+#[test]
+fn r12_only_the_runtime_assembles_the_hotkey_pipeline() {
+    let mut violations: Vec<String> = Vec::new();
+    for path in rust_files("src") {
+        if path.starts_with("src/runtime") || path.starts_with("src/core") {
+            continue;
+        }
+        let composes =
+            path.starts_with("src/adapters") || path == std::path::Path::new("src/main.rs");
+        if !composes {
+            for (line_no, line) in read_lines(&path).iter().enumerate() {
+                if line.contains("adapters::secondary") {
+                    violations.push(format!(
+                        "{}:{}: imports a secondary adapter — {}",
+                        path.display(),
+                        line_no + 1,
+                        line.trim()
+                    ));
+                }
+            }
+        }
+        let assemblies = read_lines(&path)
+            .iter()
+            .filter(|line| line.contains("Pipeline::new("))
+            .count();
+        let allowed = usize::from(path == std::path::Path::new("src/main.rs"));
+        if assemblies > allowed {
+            violations.push(format!(
+                "{}: assembles {assemblies} pipelines, {allowed} allowed",
+                path.display()
+            ));
+        }
+    }
+    assert!(
+        violations.is_empty(),
+        "R12 violations: a pipeline assembled outside the runtime\n{}",
+        violations.join("\n")
+    );
+}

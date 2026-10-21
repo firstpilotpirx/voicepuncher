@@ -35,7 +35,7 @@
 | Scenario | Level |
 |---|---|
 | Every service answers; A service does not answer; The hotkey changes on reload; Two reloads in a row; Reload during a recording; Reload while the pipeline waits for focus; Reload with an invalid configuration | component `app_runtime.feature` (assembler with mocks, fake hotkey feed) |
-| An observer sees every state in order; a late observer learns the current state | unit tests in `runtime/mod.rs` |
+| An observer sees every state in order; a late observer learns the current state | unit tests in `runtime/observer.rs` (`Observers`) and `runtime/mod.rs` (a runtime started, reloaded and stopped) |
 | Hang-up signal with an edited configuration file; Hang-up signal with a broken configuration file | adapter integration `runtime_signal_it.rs` (SIGHUP to itself, temp config) |
 | Stop while idle; Stop during a recording | component `app_runtime.feature` |
 | Single key rebinds; chord half pressed when the binding changes | unit tests in `adapters/primary/ptt/rdev/` |

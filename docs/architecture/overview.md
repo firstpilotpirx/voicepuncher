@@ -18,6 +18,12 @@ flowchart TB
         CLI["Cli\n(clap)"]
     end
 
+    subgraph runtime["runtime (composition)"]
+        RUNTIME["Runtime\n(start · reload · stop)"]
+        ROUTER["SignalRouter"]
+        WIRING["WiringAssembler"]
+    end
+
     subgraph app["core/application"]
         PIPELINE["Pipeline\n(use case)"]
         PREFLIGHT["Preflight\n(use case)"]
@@ -48,8 +54,13 @@ flowchart TB
     FS -->|model binary| LLAMA
     FS -->|WAV file| FSREC
 
-    RDEV -->|PttSignal| PIPELINE
-    CLI --> PIPELINE
+    RDEV -->|PttSignal| ROUTER
+    ROUTER -->|PttSignal| PIPELINE
+    CLI --> RUNTIME
+    MACOS -->|SIGHUP| RUNTIME
+    RUNTIME -->|assembles| WIRING
+    WIRING -->|builds| PIPELINE
+    RUNTIME -->|Shutdown| PIPELINE
     WIZARD --> PREFLIGHT
     PIPELINE --> PORTS
     PREFLIGHT --> PORTS
@@ -65,7 +76,7 @@ flowchart TB
     PREFLIGHT --> domain
 ```
 
-The domain ring contains only pure Rust value objects with zero external dependencies. The application ring holds the two use cases (`Pipeline`, `Preflight`) and the port traits. All technology — audio, inference, clipboard, hotkey — lives exclusively in adapters and never crosses into `core/`.
+The domain ring contains only pure Rust value objects with zero external dependencies. The application ring holds the two use cases (`Pipeline`, `Preflight`) and the port traits. All technology — audio, inference, clipboard, hotkey — lives exclusively in adapters and never crosses into `core/`. The `runtime` module beside them composes the adapters into a pipeline: it starts one at launch, replaces it on a reload (the hang-up signal) once the dictation in progress ends, and ends it on a stop; the hotkey listener and the overlay live once per process, and the signal router points the listener at the pipeline that runs.
 
 ## Pipeline State Machine
 

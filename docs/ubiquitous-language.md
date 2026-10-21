@@ -20,7 +20,7 @@
 - **Type:** Value Object (immutable enum)
 - **Definition:** The keyboard key or chord used to control recording. Curated subset of macOS keys, including CmdE and LeftOptionE (left Option + E).
 - **Code:** `app/src/core/domain/hotkey.rs`
-- **Synonyms to AVOID:** "shortcut" (implies a combo), "binding"
+- **Synonyms to AVOID:** "shortcut" (implies a combo), "binding" (the holder the listener reads is the Hotkey binding)
 
 ### AudioBuffer16k
 - **Type:** Value Object
@@ -59,6 +59,42 @@
 - **Definition:** Abstracts macOS-specific permission probing (`AXIsProcessTrusted`, opening the default `cpal` input device, parent process discovery via `ps`) so `Preflight` stays platform-agnostic.
 - **Code:** `app/src/core/application/permission_probe.rs`
 - **Synonyms to AVOID:** "PermissionChecker", "PermissionService"
+
+### Runtime
+- **Type:** Composition root (outside `core/`)
+- **Definition:** Owns the life of the application between launch and quit: starts the `Pipeline` from the configuration, restarts it with a new configuration inside the same process (after the dictation in progress ends), and stops it. Keeps one hotkey listener and one overlay for the whole process.
+- **Code:** `app/src/runtime/mod.rs`
+- **Synonyms to AVOID:** "app", "supervisor", "daemon"
+
+### Runtime state
+- **Type:** Value (enum, outside `core/`)
+- **Definition:** What the `Runtime` reports to its observers: `Starting`, `Ready` (with the hotkey and whether voice control is on), `Restarting`, `Stopped`, `Failed` (with the reason). A new observer is told the current state at once.
+- **Code:** `app/src/runtime/observer.rs`
+- **Synonyms to AVOID:** "status", "health"
+
+### Hotkey binding
+- **Type:** Shared value (domain)
+- **Definition:** The `HotKey` the hotkey listener matches every key event against. The `Runtime` rebinds it on a reload; the listener sees the new key at its next event, and a chord half pressed at that moment is forgotten.
+- **Code:** `app/src/core/domain/hotkey.rs` (`HotkeyBinding`)
+- **Synonyms to AVOID:** "shortcut", "key mapping"
+
+### Signal router
+- **Type:** Runtime part (outside `core/`)
+- **Definition:** Forwards `PttSignal`s from the hotkey listener to the `Pipeline` that runs now; while no pipeline runs (during a restart), signals are dropped.
+- **Code:** `app/src/runtime/router.rs`
+- **Synonyms to AVOID:** "dispatcher", "bus"
+
+### Pipeline activity
+- **Type:** Value + driven port (`core/application/`)
+- **Definition:** What the `Pipeline` is doing as far as a restart cares: `Idle`, `Recording` or `Processing` (recognition, refinement, the focus wait, the paste). The pipeline publishes it on every transition; a restart waits for `Idle`.
+- **Code:** `app/src/core/application/pipeline_activity.rs`
+- **Synonyms to AVOID:** "busy flag", "pipeline state" (that is the state machine of `Pipeline`)
+
+### Shutdown
+- **Type:** Pipeline input
+- **Definition:** The input that ends a `Pipeline`: it cancels a recording in progress, stops voice control listening (closing the microphone) and returns from its run loop. The `Runtime` sends it on a restart, once the pipeline is `Idle`, and on a stop, at once.
+- **Code:** `app/src/core/application/pipeline_input.rs` (`PipelineInput::Shutdown`)
+- **Synonyms to AVOID:** "quit", "kill", "close"
 
 ### SoundPlayer
 - **Type:** Driven Port (trait in `core/application/`)

@@ -161,6 +161,16 @@ A command works when it is:
 
 Any command may end with "please". The same words inside a sentence ("we should stop the server") do nothing. Details: [Voice control](#voice-control).
 
+## Reload the configuration without a restart
+
+Edit `~/.voicepuncher/config.toml` (or the file `--config` names), then send the running app the hang-up signal:
+
+```bash
+kill -HUP "$(pgrep -x voicepuncher)"
+```
+
+The app reads the file again, applies the command line options over it, and restarts its pipeline inside the same process: the log shows `runtime: reloading configuration`, `runtime: restarting` and `runtime: ready (hotkey …)`. A dictation in progress finishes and pastes first. A file that does not load or validate is rejected: the log names the reason (`runtime: configuration rejected: …`) and the app keeps its settings.
+
 ## Voice control
 
 Hands-free dictation, off by default. Turn it on with `--voice-control` or in the config:

@@ -3,13 +3,15 @@ use std::thread::JoinHandle;
 
 use anyhow::Result;
 
-use crate::core::domain::{HotKey, PttSignal};
+use crate::core::domain::{HotkeyBinding, PttSignal};
 
 #[cfg_attr(test, mockall::automock)]
+/// Listens to the keyboard for the life of the process and signals presses and releases
+/// of the hotkey `binding` holds at the moment of each key event.
 pub trait HotkeyListener: Send + 'static {
     fn spawn(
         self: Box<Self>,
-        target: HotKey,
+        binding: HotkeyBinding,
         tx: mpsc::Sender<PttSignal>,
     ) -> Result<JoinHandle<()>>;
 }

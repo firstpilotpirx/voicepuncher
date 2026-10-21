@@ -71,18 +71,20 @@ impl Cli {
         self.archive_dir.is_some() && !self.no_archive
     }
 
-    pub fn overlay(self, cfg: &mut crate::config::Config) {
+    /// Sets what the command line names over `cfg`; the runtime applies it again on every
+    /// reload of the configuration file.
+    pub fn overlay(&self, cfg: &mut crate::config::Config) {
         if let Some(key) = self.hotkey {
             cfg.hotkey.key = key;
         }
-        if let Some(url) = self.transcription_url {
-            cfg.transcription.base_url = url;
+        if let Some(url) = &self.transcription_url {
+            cfg.transcription.base_url = url.clone();
         }
-        if let Some(url) = self.refinement_url {
-            cfg.refinement.base_url = url;
+        if let Some(url) = &self.refinement_url {
+            cfg.refinement.base_url = url.clone();
         }
-        if let Some(dir) = self.archive_dir {
-            cfg.archive.dir = dir;
+        if let Some(dir) = &self.archive_dir {
+            cfg.archive.dir = dir.clone();
             cfg.archive.enabled = true;
         }
         if self.no_archive {

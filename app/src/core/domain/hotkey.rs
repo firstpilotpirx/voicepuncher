@@ -1,3 +1,30 @@
+use std::sync::{Arc, Mutex};
+
+/// The hotkey the listener matches key events against; the runtime rebinds it on a reload,
+/// and every clone sees the new key at its next read.
+#[derive(Debug, Clone)]
+pub struct HotkeyBinding(Arc<Mutex<HotKey>>);
+
+impl HotkeyBinding {
+    pub fn new(hotkey: HotKey) -> Self {
+        Self(Arc::new(Mutex::new(hotkey)))
+    }
+
+    pub fn current(&self) -> HotKey {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    pub fn rebind(&self, hotkey: HotKey) {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = hotkey;
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
 pub enum HotKey {
     RightOption,
@@ -81,6 +108,28 @@ mod tests {
     #[derive(serde::Deserialize)]
     struct Wrapper {
         key: HotKey,
+    }
+
+    #[test]
+    fn should_read_the_hotkey_it_was_bound_with() {
+        // Given
+        let binding = HotkeyBinding::new(HotKey::RightOption);
+        // When
+        let current = binding.current();
+        // Then
+        assert_eq!(current, HotKey::RightOption);
+    }
+
+    #[test]
+    fn should_show_a_rebind_to_every_clone_on_another_thread() {
+        // Given
+        let binding = HotkeyBinding::new(HotKey::RightOption);
+        let reader = binding.clone();
+        // When
+        binding.rebind(HotKey::F19);
+        let seen = std::thread::spawn(move || reader.current()).join().unwrap();
+        // Then
+        assert_eq!(seen, HotKey::F19);
     }
 
     #[test]
