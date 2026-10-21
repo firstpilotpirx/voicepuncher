@@ -1,0 +1,3 @@
+depends_on:
+  - change: adopt-static-analyzers
+    why: CI runs the just lint, just tools and just metrics recipes that change adds
