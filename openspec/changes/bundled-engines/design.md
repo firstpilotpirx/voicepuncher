@@ -16,7 +16,17 @@ Homebrew's `whisper-server` links `/opt/homebrew/opt/ggml/lib/libggml.0.dylib` a
 
 **D5 — The resolver stays in `local-services-runtime`'s catalog; this change only adds the bundle lookup and version logging.** No new port: the engine path is configuration data.
 
-**D6 — Licenses ship in `Contents/Resources/licenses/`.** MIT and Apache-2.0 require the notice; copying the files is the simplest compliant form.
+**D6 — Licenses ship in `Contents/Resources/licenses/`.** MIT and Apache-2.0 require the notice; copying the files is the simplest compliant form. ONNX Runtime's license is not on disk (sherpa-onnx's build script downloads its static libraries), so its MIT text is committed at `app/packaging/licenses/onnxruntime-LICENSE`; the others are copied from the Homebrew folders, the release archive and the cargo registry.
+
+**D7 — Values found at implementation.** Homebrew's formula is now `whisper.cpp` (renamed from `whisper-cpp`), 1.9.5, on `ggml` 0.27.0, whose `libggml-base` links Homebrew's `libomp` 23.1.3: the whisper folder carries `libomp.dylib` too, and the lock pins the three formulae. ggml's backends are `libexec/libggml-{blas,metal,cpu-apple_m1,cpu-apple_m2_m3,cpu-apple_m4}.so`, loaded at run time. llama.cpp now publishes `llama-TAG-bin-macos-arm64.tar.gz` (no zip); Homebrew's `llama.cpp` 0.7.0 is commit `620d2225c`, release `b11669`; that archive is already relocatable (`@rpath` + `@loader_path`, backends linked, not loaded) and runs with a clean environment. The lock is TOML with one table per engine and two sub-tables, `<engine>.from` (file → path in its source) and `<engine>.sha256` (file → checksum of the source file), parsed by the recipe's Perl.
+
+**D8 — The compiled-in backend folder is blanked.** Homebrew's `libggml.0.dylib` carries `GGML_BACKEND_DIR` (`…/Cellar/ggml/0.27.0/libexec`) and searches it before the executable's folder; with it, a bundled whisper on a Mac with Homebrew would load Homebrew's backends, and on a Mac without it the folder is merely missing. ggml searches the executable's folder next and, for the backends without variants (`blas`, `metal`), loads `libggml-<name>.so` from the first search path where it exists. Measured: a blanked (all-zero) string makes whisper load BLAS, Metal and the best CPU variant from its own folder whatever the working directory; a path to an existing empty folder (`/var/empty`, `.`) instead loads only the CPU backend. So `just engines` overwrites each `…/Cellar/<formula>/<version>/libexec` string of a staged file with zero bytes of the same length, before signing. Alternative: `GGML_BACKEND_PATH` from the app — rejected, it loads one backend file and needs the app to know ggml's internals.
+
+**D9 — Folder names and version files.** The engine folders are `engines/whisper/`, `engines/llama/` and `engines/command-spotting/` as the proposal names them; the resolver of `local-services-runtime` looked in `engines/<program>/`, so it moves to the folder names. Each folder holds a `VERSION` file written from the lock (whisper `1.9.5`, llama `b11669`, command spotting the crate's version), which the app logs: whisper-server has no `--version`, and running every engine at each launch would cost a process per engine. An engine from `$PATH` is logged with the version folder of its Homebrew installation (`…/Cellar/<formula>/<version>/bin/…`, after resolving the link), else "version unknown".
+
+**D10 — The bundle engine stage runs the bundled app.** The model stage `e2e-bundle` (heavy lock class) copies `dist/voicepuncher.app` into a temporary folder, sets the quarantine attribute on the copy, and launches the copy's `Contents/MacOS/voicepuncher` in hotkey mode with a home of its own, a configuration with refinement and voice control on and ports of its own, `PATH=/usr/bin:/bin`, no `*_BINARY` and no `DYLD_*` variable, and the models from the environment the `justfile` exports — as `local_services`' "A real launch" scenario launches the build. It waits for every service to be ready, transcribes recording 1 of the corpus through the copy pool client, refines one sentence, checks the command spotting service's health, reads the engines' logs in the scenario's logs folder for Metal (`loaded MTL backend` for whisper, `ggml_metal` for llama) and stops the app. The stage needs the bundle from the `bundle` stage before it; run alone it fails naming `just bundle` (`just bundle-smoke` runs both). It starts no shared test service (`_model-stages` skips them for it as for `e2e-resilience`). Its time limit is 5 min until a measured run sets twice the longest one.
+
+**D11 — `just engines` is incremental.** It writes the lock's checksum into `app/packaging/engines/.lock-sha256`; `just bundle` restages whisper and llama only when that differs from the lock (or a folder is missing), and always rebuilds and restages the command spotting service (cargo is incremental). The release archive is downloaded once into `~/.cache/voicepuncher/engines/llama/TAG/` (`VOICEPUNCHER_ENGINE_CACHE`); a cached archive with another checksum is refused, never deleted. `VOICEPUNCHER_ENGINES_LOCK` names another lock (the refusal scenarios use it with a staging folder of their own).
 
 ## Risks / Trade-offs
 
@@ -29,8 +39,21 @@ Homebrew's `whisper-server` links `/opt/homebrew/opt/ggml/lib/libggml.0.dylib` a
 
 | Scenario | Level |
 |---|---|
-| Lock parsing, version comparison, relocation list (which references to change) | unit tests of the small Rust helper only if one exists; otherwise the recipe's own checks (`just engines` exits non-zero on a wrong version or checksum: a `just`-level test in `full-check`'s `bundle` stage with a temporary bad lock) |
-| No absolute paths; signature verifies; each engine runs with a clean environment | `bundle` stage of `full-check` (recipe assertions) |
-| Bundled engines serve a transcription and a refinement with Metal from a quarantined copy | E2E `app_distribution.feature` `@bundle` (`just bundle-smoke`, under the lock) |
-| The resolver prefers the bundle folder and logs origin and version | unit tests in `localservices/catalog` (fake `current_exe` path) |
-| A DMG runs on a Mac without Homebrew | manual run by the user |
+| Each engine runs on its own from the bundle | E2E `app_distribution.feature` `@bundle` (bundle stage, no lock), on `dist/voicepuncher.app`; also asserted by `_check-bundle` |
+| The engine folders hold what the services need | E2E `@bundle` |
+| A different Homebrew version is refused | E2E `@bundle`, `just _engines` with a lock and a staging folder of the scenario's own |
+| A release archive with another checksum is refused | E2E `@bundle`, same way |
+| The pinned engines are staged | E2E `@bundle`, the checkout's lock into a staging folder of the scenario's own |
+| No bundled file points outside the bundle | E2E `@bundle`; also asserted by `_check-bundle` |
+| Every bundled file carries the application's signature | E2E `@bundle`; also asserted by `_check-bundle` |
+| The bundle holds the licenses | E2E `@bundle` |
+| A downloaded bundle serves dictation and refinement on Metal | E2E `@bundle_engines` (`e2e-bundle` stage, heavy lock class; `just bundle-smoke`) |
+| A user without Homebrew installs the disk image | manual run by the user (`@wip` scenario) |
+| The full check verifies the bundle | E2E `@bundle` (existing, unchanged) |
+| The full check runs the bundled engines | E2E `@bundle`, reading `full-check`'s stage list as the existing stage scenarios do |
+| The full check fails on a broken bundle | E2E `@bundle` (existing, unchanged) |
+| The quick check stays without the bundle | E2E `@bundle` (existing, unchanged) |
+| The bundle's engine comes before `$PATH` | unit test in `localservices/catalog/tests.rs` (fake `app_dir`) |
+| An app outside a bundle uses `$PATH` | unit test in `localservices/catalog/tests.rs` |
+| A bundled engine is logged with its version | unit test in `localservices/catalog/tests.rs` (the origin line the runtime logs) |
+| A Homebrew engine is logged with its version | unit test in `localservices/catalog/tests.rs` (a fake Cellar folder and link) |
