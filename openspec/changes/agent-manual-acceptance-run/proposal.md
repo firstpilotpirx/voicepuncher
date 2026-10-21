@@ -37,4 +37,4 @@ Out of scope: fixing the bugs found (they are filed, not fixed here); automating
 ## Release
 
 SemVer: no release — the run changes no behavior.
-Target version: 0.25.0.
+Target version: none (no release).
