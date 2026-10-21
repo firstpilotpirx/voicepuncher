@@ -1,0 +1,12 @@
+depends_on:
+  - change: app-distribution-feature
+    why: names _stages
+  - change: local-services-runtime
+    why: names recognition_paths
+  - change: reuse-passed-check-stages
+    why: names kit sync-base
+  - change: split-machine-lock
+    why: names _stages
+  - change: eradicate-flaky-tests
+    why: only passing stages are cached, so the tests must be deterministic first
+priority: high
