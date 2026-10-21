@@ -23,8 +23,8 @@ Out of scope: the paste behavior of the app itself; other flaky tests.
 
 ## Open points
 
-- Which lock: a dedicated pasteboard file lock under `~/.cache/voicepuncher/` (proposed, so `just test` never waits for a model run), or the existing machine-wide test lock.
-- Whether other tests touch the pasteboard (text insertion slices, E2E paste) and need the same lock.
+- Which lock: settled in design D1 — a dedicated pasteboard file lock under `~/.cache/voicepuncher/`, so `just test` never waits for a model run.
+- Whether other tests touch the pasteboard: settled in design Context and D4 — only the manual `@real_keyboard` paste step, which takes the same lock.
 
 ## Release
 
