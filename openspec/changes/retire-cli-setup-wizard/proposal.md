@@ -4,7 +4,7 @@ The terminal was the user interface of the proof of concept: `SetupWizard` (`app
 
 ## What Changes
 
-- `SetupWizard`, the `--setup` flag and the dependencies `dialoguer` and `console` are removed. A launch with no `~/.voicepuncher/config.toml` creates one from an embedded template (`app/src/config/default.toml`, `include_str!`) that lists every key of every section with a comment explaining it and its default — the same text the README's settings table uses — and logs `config: created ~/.voicepuncher/config.toml with the defaults`. The defaults are today's wizard defaults: hotkey `right_option`, mode `hold`, language `auto`, refinement on. The user changes them in the Settings window.
+- `SetupWizard`, the `--setup` flag and the dependencies `dialoguer` and `console` are removed. A launch with no `~/.voicepuncher/config.toml` creates one from an embedded template (`app/src/config/default.toml`, `include_str!`) that lists every key of every section with a comment explaining it and its default — the same text the README's settings table uses — and logs `config: created ~/.voicepuncher/config.toml with the defaults`. The defaults are the built-in defaults (`Config::default()`): hotkey right Option, language `auto`, refinement off; the long refinement instruction and examples stay built in (named in a comment, not copied), so they keep improving with the app. The user changes them in the Settings window.
 - The first launch of the installed app is: Gatekeeper's Open Anyway (documented) → the permissions gate window → the models download window → services start → the menu bar icon says Ready → the optional login item offer (`launch-at-login`). Nothing asks anything in a terminal; nothing is printed to a terminal except the log tee when stderr is a TTY (`file-logging`).
 - Exit codes are redefined for a GUI app: the process exits non-zero only for a wrong command line (clap, 2), for file mode failures (`--input-file`: 1 for a transcription error, 2 for a service that does not answer — unchanged), and for `--download-models` (0 or 1). In hotkey mode a missing permission, model or service never ends the process: the windows and the menu handle it. README § Developer lists the codes.
 - The command line keeps only what developers and tests need, documented under README § Developer: `--config PATH`, `--input-file`, `--output`, `--no-llm`, `--hotkey`, `--voice-control`, `--transcription-url`, `--refinement-url`, `--archive-dir`, `--no-archive`, `--download-models`, `--models-dir`, `--version`, `--help`. Each flag's help text says it overrides the configuration for this run.
@@ -61,4 +61,4 @@ Pitfalls: `include_str!` paths are relative to the source file; keep the templat
 ## Release
 
 SemVer: MINOR — a capability is removed (the terminal wizard) and the first launch changes; pre-1.0.
-Target version: 0.36.0 (corrected at merge with `kit version-check`).
+Target version: 0.35.0 (stacked on `model-download`, 0.34.0).

@@ -14,6 +14,16 @@
 
 **D4 — The README is rewritten for the person who installs the DMG; developer matter moves under one section.** Install, first launch, use, settings, logs, uninstall, privacy, licenses first; developer last.
 
+**D5 — The long refinement texts stay built in.** `refinement.system_prompt` and `refinement.examples` are named in a comment of the default file, not copied: a copy would freeze them at the version that wrote the file. The retired `audio.debug_save_wav` is left out too. The key test lists these three exemptions by name.
+
+**D6 — File mode reads the recording before it asks a service.** An unreadable recording ends with 1 without any service, so the exit code test needs no service; a service that does not answer still ends with 2.
+
+**D7 — The default file is written in every mode but the headless download**, before the configuration is read; `--config /dev/null` (the E2E harness) exists and is never written.
+
+## Dependencies
+
+Stacked on `model-download` (`kit stack`): its Download window and models gate complete the first launch this change documents; it merges first.
+
 ## Risks / Trade-offs
 
 - [A developer used `--setup` to reset the config] → delete the file; the next launch recreates it (README § Developer says so).
@@ -24,8 +34,15 @@
 
 | Scenario | Level |
 |---|---|
-| The template parses to the defaults and lists every key | unit tests in `config.rs` |
-| A first launch without a configuration file creates it and reaches Ready; the terminal asks nothing with permissions, models or services missing | component `settings_window.feature` and `app_runtime.feature` (new scenarios, runtime with mocks) |
-| Exit codes: wrong flag, file mode errors, headless download; `--help` lists the flags | CLI integration `cli_it.rs` |
-| No wizard code or dependency remains | `just check` (clippy on unused deps is not enough: a test greps `Cargo.lock` for `dialoguer` and `console`) |
+| A first launch writes the default file | unit test of `config::ensure_exists`; CLI integration `cli_it.rs` (binary with a missing `--config`) |
+| The default file holds the defaults | unit test in `config.rs` |
+| The default file names every option | unit test in `config.rs` (keys of `Config::default()` serialized, minus the three exemptions of D5) |
+| An existing file is kept | unit test of `config::ensure_exists` |
+| A first launch asks nothing | CLI integration `cli_it.rs` (stdin closed, missing `--config`, unreadable recording: file written, exit 1) |
+| The setup option is gone | CLI integration `cli_it.rs` |
+| The help lists the developer options | CLI integration `cli_it.rs` (help text snapshot of the flag list) |
+| An unknown option exits with 2 | CLI integration `cli_it.rs` |
+| File mode without its service exits with 2 | CLI integration `cli_it.rs` (refused port) |
+| File mode with an unreadable recording exits with 1 | CLI integration `cli_it.rs` |
+| No wizard code or dependency remains | CLI integration `cli_it.rs` reads `Cargo.lock` |
 | Install and first launch by the README on a clean account | manual run by the user |
