@@ -1,9 +1,12 @@
 use anyhow::{anyhow, bail, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RefinementCfg {
+    /// Refinement runs only when turned on here or with `--llm`; `--no-llm` wins over both.
+    #[serde(default)]
+    pub enabled: bool,
     /// Base URL of the OpenAI-compatible text refinement service; must be on this machine.
     #[serde(default = "RefinementCfg::default_base_url")]
     pub base_url: String,
@@ -68,7 +71,7 @@ const DEFAULT_EXAMPLES: [(&str, &str); 8] = [
 ];
 
 /// A transcript and its expected normalization, shown to the model as an example.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RefinementExample {
     pub transcript: String,
@@ -142,6 +145,7 @@ impl RefinementCfg {
 impl Default for RefinementCfg {
     fn default() -> Self {
         Self {
+            enabled: false,
             base_url: Self::default_base_url(),
             model: Self::default_model(),
             api_key: String::new(),

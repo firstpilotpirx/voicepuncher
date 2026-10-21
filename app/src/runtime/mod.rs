@@ -6,6 +6,7 @@ pub mod assembler;
 pub mod observer;
 pub mod overlay;
 pub mod permissions;
+pub mod report;
 pub mod router;
 pub mod signals;
 pub mod wiring;
@@ -31,6 +32,7 @@ pub use assembler::PipelineAssembler;
 pub use observer::{LogObserver, Observers, RuntimeObserver, RuntimeState};
 pub use overlay::SharedVisualIndicator;
 pub use permissions::PermissionsWatch;
+pub use report::{ReloadListener, ReloadReport};
 pub use router::SignalRouter;
 
 /// How often a restart checks whether the dictation in progress has ended.
@@ -47,7 +49,7 @@ pub struct Runtime {
 }
 
 enum Command {
-    Reload(Box<Config>),
+    Reload(Box<Config>, Option<ReloadListener>),
     Stop,
 }
 
@@ -159,12 +161,23 @@ pub struct Reloader {
 impl Reloader {
     /// As [`Runtime::reload`].
     pub fn reload(&self, config: Config) -> Result<()> {
+        self.send_reload(config, None)
+    }
+
+    /// As [`Reloader::reload`], telling `listener` what becomes of this reload: whether
+    /// it waits for the dictation in progress, and whether it was applied or rejected.
+    pub fn reload_reporting(&self, config: Config, listener: ReloadListener) -> Result<()> {
+        self.send_reload(config, Some(listener))
+    }
+
+    fn send_reload(&self, config: Config, mut listener: Option<ReloadListener>) -> Result<()> {
         if let Err(e) = config::validate(&config) {
             log_rejection(&e);
+            tell(&mut listener, ReloadReport::Rejected(format!("{e:#}")));
             return Err(e);
         }
         self.commands
-            .send(Command::Reload(Box::new(config)))
+            .send(Command::Reload(Box::new(config), listener))
             .map_err(|_| anyhow::anyhow!("the runtime has stopped"))
     }
 }
@@ -173,6 +186,12 @@ fn lock(observers: &Mutex<Observers>) -> MutexGuard<'_, Observers> {
     observers
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn tell(listener: &mut Option<ReloadListener>, report: ReloadReport) {
+    if let Some(listener) = listener {
+        listener(report);
+    }
 }
 
 pub(crate) fn log_rejection(reason: &anyhow::Error) {
@@ -381,8 +400,9 @@ impl Supervisor {
                 },
             };
             match command {
-                Command::Reload(config) => {
-                    if let Wait::Stopped = self.reload(*config, &commands, &mut pending) {
+                Command::Reload(config, mut listener) => {
+                    let reload = self.reload(*config, &mut listener, &commands, &mut pending);
+                    if let Wait::Stopped = reload {
                         return self.stop();
                     }
                 }
@@ -394,6 +414,7 @@ impl Supervisor {
     fn reload(
         &mut self,
         config: Config,
+        listener: &mut Option<ReloadListener>,
         commands: &Receiver<Command>,
         pending: &mut std::collections::VecDeque<Command>,
     ) -> Wait {
@@ -405,11 +426,12 @@ impl Supervisor {
             Ok(next) => next,
             Err(e) => {
                 log_rejection(&e);
+                tell(listener, ReloadReport::Rejected(format!("{e:#}")));
                 self.change(self.ready());
                 return Wait::Idle;
             }
         };
-        if let Wait::Stopped = self.wait_for_idle(commands, pending) {
+        if let Wait::Stopped = self.wait_for_idle(listener, commands, pending) {
             return Wait::Stopped;
         }
         if let Some(old) = self.pipeline.take() {
@@ -421,6 +443,7 @@ impl Supervisor {
         self.router.route_to(running.inputs.clone());
         self.pipeline = Some(running);
         self.change(self.ready());
+        tell(listener, ReloadReport::Applied);
         Wait::Idle
     }
 
@@ -436,6 +459,7 @@ impl Supervisor {
     /// a stop arriving meanwhile ends the wait, a reload waits its turn.
     fn wait_for_idle(
         &mut self,
+        listener: &mut Option<ReloadListener>,
         commands: &Receiver<Command>,
         pending: &mut std::collections::VecDeque<Command>,
     ) -> Wait {
@@ -460,6 +484,7 @@ impl Supervisor {
             }
             if !told {
                 log::info!("runtime: restart waits for the dictation in progress");
+                tell(listener, ReloadReport::WaitsForDictation);
                 told = true;
             }
             std::thread::sleep(IDLE_POLL_INTERVAL);
@@ -589,6 +614,84 @@ mod tests {
                 RuntimeState::Stopped,
             ]
         );
+    }
+
+    struct FailingReassembly(usize);
+
+    impl PipelineAssembler for FailingReassembly {
+        fn assemble(&mut self, config: &Config, inputs: Sender<PipelineInput>) -> Result<Pipeline> {
+            self.0 += 1;
+            if self.0 > 1 {
+                bail!("speech recognition service is not reachable");
+            }
+            IdleAssembler.assemble(config, inputs)
+        }
+    }
+
+    fn reports_of(
+        runtime: &Runtime,
+        config: Config,
+    ) -> (Result<()>, Arc<Mutex<Vec<ReloadReport>>>) {
+        let reports = Arc::new(Mutex::new(Vec::new()));
+        let told = Arc::clone(&reports);
+        let result = runtime
+            .reloader()
+            .unwrap()
+            .reload_reporting(config, Box::new(move |r| told.lock().unwrap().push(r)));
+        (result, reports)
+    }
+
+    fn wait_for_report(reports: &Mutex<Vec<ReloadReport>>) -> Vec<ReloadReport> {
+        let deadline = Instant::now() + REACTION;
+        while reports.lock().unwrap().is_empty() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        reports.lock().unwrap().clone()
+    }
+
+    #[test]
+    fn should_report_a_reload_applied_once_the_new_pipeline_runs() {
+        // Given
+        let mut runtime = Runtime::new(Box::new(IdleAssembler), listener());
+        runtime.start(with_hotkey(HotKey::F13)).unwrap();
+        // When
+        let (result, reports) = reports_of(&runtime, with_hotkey(HotKey::F19));
+        // Then
+        assert!(result.is_ok());
+        assert_eq!(wait_for_report(&reports), vec![ReloadReport::Applied]);
+        assert_eq!(runtime.state(), Some(ready(HotKey::F19)));
+    }
+
+    #[test]
+    fn should_report_a_reload_rejected_with_the_reason_a_service_gave() {
+        // Given
+        let mut runtime = Runtime::new(Box::new(FailingReassembly(0)), listener());
+        runtime.start(with_hotkey(HotKey::F13)).unwrap();
+        // When
+        let (_, reports) = reports_of(&runtime, with_hotkey(HotKey::F19));
+        // Then
+        let reports = wait_for_report(&reports);
+        assert!(
+            matches!(&reports[..], [ReloadReport::Rejected(reason)] if reason.contains("speech recognition")),
+            "{reports:?}"
+        );
+    }
+
+    #[test]
+    fn should_report_a_configuration_that_does_not_validate_rejected_at_once() {
+        // Given
+        let mut runtime = Runtime::new(Box::new(IdleAssembler), listener());
+        runtime.start(with_hotkey(HotKey::F13)).unwrap();
+        let mut remote = with_hotkey(HotKey::F19);
+        remote.transcription.base_url = "http://192.0.2.1:8081".into();
+        // When
+        let (result, reports) = reports_of(&runtime, remote);
+        // Then
+        assert!(result.is_err());
+        assert!(matches!(
+            &reports.lock().unwrap()[..],
+            [ReloadReport::Rejected(_)]
+        ));
     }
 
     #[test]

@@ -142,7 +142,8 @@ pub fn transcribe_command(
         .arg("--transcription-url")
         .arg(env("VOICEPUNCHER_TRANSCRIPTION_URL")?);
     if with_refinement {
-        cmd.arg("--refinement-url")
+        cmd.arg("--llm")
+            .arg("--refinement-url")
             .arg(env("VOICEPUNCHER_REFINEMENT_URL")?);
     } else {
         cmd.arg("--no-llm");

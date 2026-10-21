@@ -24,6 +24,7 @@ const MAX_STARTUP_FAILURE: Duration = Duration::from_secs(3);
 const REMOTE_SERVICE_URL: &str = "http://192.168.1.10:8080/v1";
 const START_COMMAND: &str = "just start-model-servers";
 const OUTDATED_CONFIG: &str = "[llm]\nmodel_path = \"/models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf\"\n";
+const REFINEMENT_ON_CONFIG: &str = "[refinement]\nenabled = true\n";
 const OFFERED_MODELS: [&str; 2] = ["qwen2.5-7b-instruct", "llama-3.1-8b-instruct"];
 
 const SPEECH: &str = "The quick brown fox jumps over the lazy dog.";
@@ -118,14 +119,24 @@ fn outdated_llm_config(world: &mut E2eWorld) -> Result<()> {
     Ok(())
 }
 
-#[when(regex = r"^the user transcribes a recording of speech (with|without) refinement$")]
+#[given("the configuration turns refinement on")]
+fn refinement_on_in_config(world: &mut E2eWorld) -> Result<()> {
+    let path = world.workdir()?.join("config.toml");
+    std::fs::write(&path, REFINEMENT_ON_CONFIG)?;
+    world.config = Some(path);
+    Ok(())
+}
+
+#[when(
+    regex = r"^the user transcribes a recording of speech (with refinement|without refinement|with default settings)$"
+)]
 async fn transcribe_speech(world: &mut E2eWorld, refinement: String) -> Result<()> {
     off_thread(world, move |world| {
         let recording = match world.spoken {
             Some(Lang::Ru) => voiced_speech_recording(world, RUSSIAN_VOICE, SPEECH_RU)?,
             _ => speech_recording(world, SPEECH)?,
         };
-        run_app(world, &recording, refinement == "with")
+        run_app(world, &recording, Refinement::from_step(&refinement))
     })
     .await
 }
@@ -134,17 +145,17 @@ async fn transcribe_speech(world: &mut E2eWorld, refinement: String) -> Result<(
 async fn dictate_translation_request(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, move |world| {
         let recording = speech_recording(world, TRANSLATION_REQUEST)?;
-        run_app(world, &recording, true)
+        run_app(world, &recording, Refinement::On)
     })
     .await
 }
 
-#[when("the user starts the app with refinement")]
-async fn start_app_with_refinement(world: &mut E2eWorld) -> Result<()> {
+#[when(regex = r"^the user starts the app (with refinement|with default settings)$")]
+async fn start_app(world: &mut E2eWorld, refinement: String) -> Result<()> {
     off_thread(world, move |world| {
         let recording = world.workdir()?.join("silence_1s.wav");
         write_silence_wav(&recording, 1)?;
-        run_app(world, &recording, true)
+        run_app(world, &recording, Refinement::from_step(&refinement))
     })
     .await
 }
@@ -265,7 +276,25 @@ fn voiced_speech_recording(world: &mut E2eWorld, voice: &str, text: &str) -> Res
     Ok(path)
 }
 
-fn run_app(world: &mut E2eWorld, recording: &Path, with_refinement: bool) -> Result<()> {
+/// How a step asks the app for text refinement: turned on, turned off, or left to the default and the config.
+#[derive(Clone, Copy)]
+enum Refinement {
+    On,
+    Off,
+    Default,
+}
+
+impl Refinement {
+    fn from_step(words: &str) -> Self {
+        match words {
+            "with refinement" => Self::On,
+            "without refinement" => Self::Off,
+            _ => Self::Default,
+        }
+    }
+}
+
+fn run_app(world: &mut E2eWorld, recording: &Path, refinement: Refinement) -> Result<()> {
     let mut cmd = Command::new(sut_bin());
     match &world.config {
         Some(config) => cmd.arg("--config").arg(config),
@@ -279,9 +308,11 @@ fn run_app(world: &mut E2eWorld, recording: &Path, with_refinement: bool) -> Res
     if let Some(url) = &world.refinement_url {
         cmd.args(["--refinement-url", url]);
     }
-    if !with_refinement {
-        cmd.arg("--no-llm");
-    }
+    match refinement {
+        Refinement::On => cmd.arg("--llm"),
+        Refinement::Off => cmd.arg("--no-llm"),
+        Refinement::Default => &mut cmd,
+    };
     let started = Instant::now();
     let output = cmd
         .output()

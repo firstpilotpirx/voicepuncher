@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::traits::{DeviceTrait, StreamTrait};
 use cpal::{Stream, StreamConfig};
 use rubato::{
     Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
@@ -14,6 +14,8 @@ use crate::core::application::audio_recorder::{AudioRecorder, LiveChunk};
 use crate::core::application::chunking::{next_chunk_start, next_cut, ChunkingCfg};
 use crate::core::domain::audio_level::AudioLevel;
 use crate::core::domain::AudioBuffer16k;
+
+pub mod devices;
 
 const I16_MAX_F32: f32 = i16::MAX as f32;
 
@@ -29,6 +31,8 @@ pub struct CpalAudioRecorder {
     native_rate_out: Option<Arc<AtomicU32>>,
     level_register: Arc<AtomicU32>,
     last_recording: Option<NativeRecording>,
+    /// The configuration's `input_device`: a device name or `default`.
+    input_device: String,
 }
 
 /// What a stopped recording captured, at the device's own sample rate.
@@ -71,6 +75,7 @@ impl CpalAudioRecorder {
             native_rate_out: None,
             level_register,
             last_recording: None,
+            input_device: devices::DEFAULT_DEVICE.to_owned(),
         }
     }
 
@@ -87,17 +92,21 @@ impl CpalAudioRecorder {
             native_rate_out: Some(native_rate_out),
             level_register,
             last_recording: None,
+            input_device: devices::DEFAULT_DEVICE.to_owned(),
         }
+    }
+
+    /// Records from the input device `name` names (see [`devices::open`]).
+    pub fn with_input_device(mut self, name: &str) -> Self {
+        self.input_device = name.to_owned();
+        self
     }
 }
 
 impl AudioRecorder for CpalAudioRecorder {
     fn start(&mut self) -> Result<()> {
         self.last_recording = None;
-        let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .ok_or_else(|| anyhow!("no default input device available"))?;
+        let device = devices::open(&self.input_device)?;
 
         let supported_config = device.default_input_config()?;
         let native_sample_rate = supported_config.sample_rate();

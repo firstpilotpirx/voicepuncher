@@ -2,6 +2,7 @@
 //! with the state in words, Settings, the logs folder and Quit.
 
 pub mod actions;
+pub mod applier;
 pub mod indicator;
 pub mod mapping;
 pub mod status_item;

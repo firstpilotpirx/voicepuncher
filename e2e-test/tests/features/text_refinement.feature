@@ -226,11 +226,25 @@ Feature: text-refinement
       When the developer runs the refinement evaluation on a sentence with Russian loanwords
       Then the evaluation fails and names the transcript whose loanword left Cyrillic
 
-  Rule: Refinement can be disabled
+  Rule: Refinement is off unless the user turns it on
 
     @smoke
-    Scenario: Running without refinement
+    Scenario: Default settings paste the raw transcript
       Given no text refinement service is listening at the configured address
+      When the user transcribes a recording of speech with default settings
+      Then the raw transcript is pasted
+
+    @smoke
+    Scenario: Refinement turned on in the configuration
+      Given the configuration turns refinement on
+      And no text refinement service is listening at the configured address
+      When the user starts the app with default settings
+      Then the app exits within 3 seconds with a message naming the text refinement service address and how to start it
+
+    @smoke
+    Scenario: Turning refinement off on the command line wins over the configuration
+      Given the configuration turns refinement on
+      And no text refinement service is listening at the configured address
       When the user transcribes a recording of speech without refinement
       Then the raw transcript is pasted
 

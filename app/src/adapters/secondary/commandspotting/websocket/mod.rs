@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 
+use crate::adapters::secondary::recording::cpal::devices;
 use crate::core::application::{CommandSpotter, PipelineInput};
 use crate::core::domain::{AudioBuffer16k, SpottingEvent, VoiceCommand};
 
@@ -135,6 +136,8 @@ pub struct WebSocketCommandSpotter {
     url: String,
     inputs: Sender<PipelineInput>,
     listening: Option<Listening>,
+    /// The configuration's `input_device`: a device name or `default`.
+    input_device: String,
 }
 
 impl WebSocketCommandSpotter {
@@ -143,7 +146,14 @@ impl WebSocketCommandSpotter {
             url,
             inputs,
             listening: None,
+            input_device: devices::DEFAULT_DEVICE.to_owned(),
         }
+    }
+
+    /// Listens on the input device `name` names (see [`devices::open`]).
+    pub fn with_input_device(mut self, name: &str) -> Self {
+        self.input_device = name.to_owned();
+        self
     }
 }
 
@@ -155,7 +165,7 @@ impl CommandSpotter for WebSocketCommandSpotter {
     fn start_listening(&mut self, commands: &[VoiceCommand]) -> Result<()> {
         self.stop_listening();
         let (audio_tx, audio_rx) = mpsc::channel();
-        let (capture, native_rate) = MicCapture::open(audio_tx)?;
+        let (capture, native_rate) = MicCapture::open(audio_tx, &self.input_device)?;
         log::info!(
             "command spotting: microphone open at {native_rate} Hz, connecting to {}",
             self.url

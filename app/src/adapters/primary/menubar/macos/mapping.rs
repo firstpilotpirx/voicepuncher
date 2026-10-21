@@ -261,26 +261,7 @@ pub fn title_line() -> String {
 
 /// The key as a person would say it.
 pub fn hotkey_name(key: HotKey) -> &'static str {
-    match key {
-        HotKey::RightOption => "Right Option",
-        HotKey::RightControl => "Right Control",
-        HotKey::RightShift => "Right Shift",
-        HotKey::RightCommand => "Right Command",
-        HotKey::LeftOption => "Left Option",
-        HotKey::LeftControl => "Left Control",
-        HotKey::Fn => "Fn",
-        HotKey::CapsLock => "Caps Lock",
-        HotKey::Space => "Space",
-        HotKey::CmdE => "Cmd+E",
-        HotKey::LeftOptionE => "Option+E",
-        HotKey::F13 => "F13",
-        HotKey::F14 => "F14",
-        HotKey::F15 => "F15",
-        HotKey::F16 => "F16",
-        HotKey::F17 => "F17",
-        HotKey::F18 => "F18",
-        HotKey::F19 => "F19",
-    }
+    key.human_name()
 }
 
 #[cfg(test)]

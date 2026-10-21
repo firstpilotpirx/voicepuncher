@@ -192,6 +192,24 @@
 - **Code:** `StatusItemState::status_line`, `hotkey_name` in `app/src/adapters/primary/menubar/macos/mapping.rs`
 - **Synonyms to AVOID:** "tooltip", "subtitle", "status" (alone)
 
+### Config document
+- **Type:** Adapter-facing value (configuration layer)
+- **Definition:** The configuration file as the user wrote it — comments, order and the format of every value kept — that the `Settings window` edits: only the values the user changed are rewritten, a missing section is added at the end, a missing file is created on the first save, and a save replaces the file in one step. Its values are checked exactly as the loader checks a file before anything is written.
+- **Code:** `ConfigDocument` in `app/src/config/document.rs`
+- **Synonyms to AVOID:** "config struct", "settings file" (alone), "serialised config"
+
+### Settings window
+- **Type:** Primary adapter concept (macOS)
+- **Definition:** The window Settings in the menu opens, one at a time: a tab per area (General, Dictation, Refinement, Sounds, Paste, Archive, Logging) with one control per option of the configuration file. Save checks every edited value (`Field validation`), writes the edits into the `Config document` and applies the saved configuration, with this run's command line over it, to the running app without a relaunch; its status line says whether the settings wait for the current dictation, were applied, or were not applied and why. Revert drops unsaved edits; closing with unsaved edits asks first. An option the command line overrides shows the file's value with a note naming the value of this run.
+- **Code:** `SettingsSession` (without its controls) in `app/src/adapters/primary/settings/macos/session.rs`; the field table in `table.rs`; `RuntimeApplier` in `app/src/adapters/primary/menubar/macos/applier.rs`
+- **Synonyms to AVOID:** "preferences pane", "config editor", "options dialog"
+
+### Field validation
+- **Type:** Primary adapter rule (settings window)
+- **Definition:** The check a value entered in the `Settings window` must pass before Save writes anything: a number or slider within its range, a service address on this Mac (loopback, the right scheme), a folder that exists or can be created, known language codes. A refused value marks its field, the window names the reason (the allowed range, "must be on this Mac"), and neither the file nor the running app changes.
+- **Code:** `validate` in `app/src/adapters/primary/settings/macos/validation.rs`
+- **Synonyms to AVOID:** "form validation", "sanity check"
+
 ### Processing stage
 - **Type:** Domain concept (overlay state)
 - **Definition:** The step a dictation is in between the end of its recording and the paste, as the overlay shows it with an icon and an English label of its own, and an indeterminate spinner beside the label: **speech recognition** — a breathing ear, "Recognizing", no text window — from the stop until the transcript is ready (with live chunks, the transcription still running after the stop), then **text refinement** — breathing sparkles, "Refining text", and the raw transcript being refined, dimmed, in the text window — from its start until the corrected text is ready. With text refinement off only speech recognition is shown.
@@ -245,7 +263,7 @@
 
 ### Text refinement
 - **Type:** Pipeline step
-- **Definition:** Normalizing a `RawTranscript` before it is pasted — punctuation, capitals, filler sounds removed, misrecognized words, technical terms and wrong word endings (case, gender, number, conjugation) fixed, meaning and language kept — done by the text refinement service and accepted only after the normalization check. Dictated words that sound like commands are normalized, never carried out. Disabled with `--no-llm`: the raw transcript is pasted unchanged.
+- **Definition:** Normalizing a `RawTranscript` before it is pasted — punctuation, capitals, filler sounds removed, misrecognized words, technical terms and wrong word endings (case, gender, number, conjugation) fixed, meaning and language kept — done by the text refinement service and accepted only after the normalization check. Dictated words that sound like commands are normalized, never carried out. Off by default: the raw transcript is pasted unchanged unless `--llm` or `[refinement] enabled = true` turns it on; `--no-llm` keeps it off.
 - **Code:** `app/src/core/application/text_refiner.rs` — `TextRefiner` port; `refine_or_raw`
 - **Synonyms to AVOID:** "LLM cleanup", "post-processing", "polishing"
 

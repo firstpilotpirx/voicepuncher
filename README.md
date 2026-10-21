@@ -86,7 +86,7 @@ whisper-server 1.9.5 accepts `-nf` (no temperature fallback) but ignores it: eve
 
 **English terms in Russian dictation:** without a prompt, "oh-my-zsh, zsh и Powerlevel10k" spoken in Russian came out as "а май ZSH, ZSH и по-ирлевелтинке"; with the prompt "В терминале у меня zsh с oh-my-zsh и темой Powerlevel10k, пакеты ставлю через Homebrew и npm." the terms came out as written. There is no default prompt: a Russian prompt also pushes English dictation toward Russian (a short English phrase after a voice command came out as "Кофе машине на 3rd floor", and a long English recording got invented Russian text). Set such a prompt only if you dictate mostly in Russian, and name the terms you use.
 
-The app checks both services at startup and exits with code 2 if one is not reachable, or if the text refinement service offers several models and none matches `[refinement].model`. Only addresses on this machine are accepted (`localhost`, `127.0.0.0/8`, `[::1]`). With `--no-llm` the text refinement service is neither checked nor used. If refinement fails during a recording (service stopped, timeout, cut-off or too short answer), the raw transcript is pasted.
+The app checks both services at startup and exits with code 2 if one is not reachable, or if the text refinement service offers several models and none matches `[refinement].model`. Only addresses on this machine are accepted (`localhost`, `127.0.0.0/8`, `[::1]`). Text refinement is off by default: the raw transcript is pasted and the text refinement service is neither checked nor used. Turn it on with `--llm` or `[refinement] enabled = true`; `--no-llm` turns it off and wins over both. If refinement fails during a recording (service stopped, timeout, cut-off or too short answer), the raw transcript is pasted.
 
 ### Command spotting (voice control)
 
@@ -129,7 +129,7 @@ cp app/config.example.toml ~/.voicepuncher/config.toml
 just run
 ```
 
-`just run` does everything in one command: downloads missing models, restarts the four local services (the command spotting service is rebuilt from the checkout; each service is started again if it crashes while the app runs), builds the app and starts it with voice control; the hotkey records as push-to-talk too. Extra arguments go to the app: `just run --no-llm`. Restarting reloads the models, so it takes a few seconds more than `just start-model-servers` followed by `cargo run --release -p voicepuncher`. It is also how an existing setup picks up a new model: after an update that changed one, `just run` downloads it and restarts the services on it.
+`just run` does everything in one command: downloads missing models, restarts the local services (the command spotting service is rebuilt from the checkout; each service is started again if it crashes while the app runs), builds the app and starts it with voice control; the hotkey records as push-to-talk too. Extra arguments go to the app. Text refinement stays off, and its model and the text refinement service (llama-server) are neither downloaded nor started, unless the arguments hold `--llm`: `just run --llm`. With `[refinement] enabled = true` in the config, pass `--llm` to `just run` as well, or the app exits because no text refinement service runs. Restarting reloads the models, so it takes a few seconds more than `just start-model-servers` followed by `cargo run --release -p voicepuncher`. It is also how an existing setup picks up a new model: after an update that changed one, `just run` downloads it and restarts the services on it.
 
 Default hotkey is `RightOption`.
 
@@ -138,7 +138,7 @@ Default hotkey is `RightOption`.
 **Menu bar.** The app lives in the menu bar, without a Dock icon. The icon shows what it does: an hourglass while it starts, a microphone when ready, an ear when voice control listens, a microphone with a red dot while recording, a moving waveform while it recognizes and refines the text, a keyboard while the text waits for a text field, a warning triangle with a failure. Click it for the menu:
 
 - the version and the state in words ("Ready — hold Right Option to dictate");
-- `Settings…` (⌘,) opens `~/.voicepuncher/config.toml` in the text editor;
+- `Settings…` (⌘,) opens the [settings window](#settings);
 - `Open Logs Folder` shows `~/.voicepuncher/logs/` in Finder;
 - `Quit voicepuncher` (⌘Q) cancels a recording in progress and quits.
 
@@ -169,6 +169,48 @@ A command works when it is:
 - a chain of 2–3 commands: "stop enter", "stop clear enter", "stop enter start", "paste enter".
 
 Any command may end with "please". The same words inside a sentence ("we should stop the server") do nothing. Details: [Voice control](#voice-control).
+
+## Settings
+
+`Settings…` in the menu (⌘,) opens the settings window: a toolbar tab per section and a system control for every option of `~/.voicepuncher/config.toml` (or the file `--config` names). Rarely changed options sit under `Show advanced`.
+
+- **Save** checks every value first: a value out of range or a service address that is not on this Mac is refused, outlined in red and named in the status line, and the file stays unchanged. Otherwise only the changed keys are written; comments, order and the examples you did not touch stay as they are. A missing file is created.
+- The saved settings apply without a relaunch: the status line says `Saved and applied.`, or that they apply after the current dictation, or why the running app could not use them (the file keeps the values).
+- **Revert** drops the unsaved edits; closing the window with unsaved edits asks Save, Don't Save or Cancel.
+- An option this run's command line overrides (`--hotkey`, `--no-llm`, …) shows the file's value with a note under it naming the value the run uses.
+
+| Tab | Option | Control | Key |
+|---|---|---|---|
+| General | Hotkey | pop-up | `hotkey.key` |
+| General | Recording mode | two radio buttons | `hotkey.recording_mode` |
+| General | Minimum press | number, ms | `hotkey.min_press_ms` |
+| General | Microphone | pop-up: System default and the Mac's input devices | `audio.input_device` |
+| General | Longest recording | number, s | `audio.max_recording_seconds` |
+| General | Voice control | switch | `voice_control.enabled` |
+| General (advanced) | Voice control service | text | `voice_control.url` |
+| Dictation | Language | pop-up: Detect automatically and the speech recognition service's languages | `transcription.language` |
+| Dictation | Languages to expect | text, comma-separated codes | `transcription.languages` |
+| Dictation | Prompt | text view | `transcription.prompt` |
+| Dictation | Temperature | slider | `transcription.temperature` |
+| Dictation | Timeout | number, s | `transcription.timeout_secs` |
+| Dictation (advanced) | Chunk threshold, Chunk overlap, VAD lookback | numbers, s | `transcription.chunk_threshold_secs, chunk_overlap_secs, vad_lookback_secs` |
+| Dictation (advanced) | Model name | text | `transcription.model` |
+| Dictation (advanced) | Service address | text | `transcription.base_url` |
+| Refinement | Refine text with the language model | switch | `refinement.enabled` |
+| Refinement | Model | text | `refinement.model` |
+| Refinement | System prompt | text view | `refinement.system_prompt` |
+| Refinement | Examples | table with + and − | `[[refinement.examples]]` |
+| Refinement | Temperature | slider | `refinement.temperature` |
+| Refinement | Max tokens | number | `refinement.max_tokens` |
+| Refinement | Timeout | number, s | `refinement.timeout_secs` |
+| Refinement (advanced) | Service address, API key | text | `refinement.base_url, api_key` |
+| Sounds | Start, Stop, Cancel, Listening on, Listening off, Enter, Clear, Paste, Restart | pop-up of the 14 system sounds and None, ▶ plays it | `sounds.*_sound` |
+| Paste | Clipboard restore delay | number, ms | `paste.clipboard_restore_delay_ms` |
+| Paste | Wait for a text field | number, s | `paste.focus_wait_seconds` |
+| Archive | Keep every dictation | switch | `archive.enabled` |
+| Archive | Folder | path, Choose… and Show in Finder | `archive.dir` |
+| Archive | Size limit | number, MB | `archive.max_size_mb` |
+| Logging | Level | pop-up; Open Logs Folder beside it | `logging.level` |
 
 ## Reload the configuration without a restart
 
@@ -231,7 +273,8 @@ Result pasted at cursor: `Hello world, I think the API is fine.`
 --hotkey <KEY>            Override [hotkey].key
 --transcription-url <URL> Override [transcription].base_url (speech recognition service, loopback only)
 --refinement-url <URL>    Override [refinement].base_url (text refinement service, loopback only)
---no-llm                  Skip text refinement; paste the raw transcript without contacting the service
+--llm                     Turn text refinement on (overrides [refinement].enabled; off by default)
+--no-llm                  Skip text refinement; paste the raw transcript (the default; wins over --llm)
 --voice-control           Voice control: spoken commands drive dictation alongside the hotkey
 --archive-dir <DIR>       Keep each dictation in this folder (also archives a file run with --input-file)
 --no-archive              Keep no dictation archive (wins over --archive-dir)
@@ -377,12 +420,12 @@ Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-qui
    - [ ] Permissions: remove each permission for the terminal in System Settings (`tccutil reset Microphone`, `Accessibility`, `ListenEvent` for its bundle id), launch → the Permissions window names the terminal; Request… shows the system prompt and the row shows Checking…; Open System Settings opens the right pane; the log shows `permissions: …` at each change; dictation starts once the last one is granted. Revoke Accessibility while it runs → within 5 s the window reopens with `Accessibility was revoked — dictation stopped`; grant it again → dictation works. Compare the window in light and dark with `openspec/changes/archive/*-permissions-gate-window/mockups/states/`.
    - [ ] Long dictation (> 30 s, crosses a chunk boundary) → no repeated or missing words at the seam.
    - [ ] Mixed Russian + English ("задеплой в Docker") → each language kept as spoken, terms in Latin script.
-   - [ ] Same with `--no-llm` → the raw transcript is pasted.
+   - [ ] Same with `--llm` → the text is refined (punctuation, terms); without it the raw transcript is pasted and the overlay shows no "Refining text".
    - [ ] `just stop-model-servers whisper-server`, then start the app → it exits naming the speech recognition service address and `just start-model-servers`.
    - [ ] Stop the speech recognition service while the app runs and record → nothing is pasted, the failure is logged; after `just start-model-servers` the next recording works.
-   - [ ] `just stop-model-servers llama-server`, then start the app → it exits naming the text refinement service address and `just start-model-servers`.
-   - [ ] With the text refinement service stopped, start with `--no-llm` → the raw transcript is pasted.
-   - [ ] Stop the text refinement service while the app runs and record → the raw transcript is pasted, the failure is logged.
+   - [ ] `just stop-model-servers llama-server`, then start the app with `--llm` → it exits naming the text refinement service address and `just start-model-servers`.
+   - [ ] With the text refinement service stopped, start without `--llm` → the raw transcript is pasted.
+   - [ ] Stop the text refinement service while the app runs with `--llm` and record → the raw transcript is pasted, the failure is logged.
    - [ ] Overlay shows while recording and while processing, also on a second display if present.
    - [ ] A tap shorter than the minimum press time is ignored.
    - [ ] `just test-real-keyboard` passes (hotkey still registered after a paste).

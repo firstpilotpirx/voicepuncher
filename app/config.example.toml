@@ -22,6 +22,7 @@ vad_lookback_secs = 5      # max seconds to look back from hard chunk boundary w
 [refinement]
 # Local text refinement service (OpenAI Chat Completions API). Start it with
 # `just start-model-servers`; the model and its context size are set when starting the service.
+enabled = false                         # off by default: the raw transcript is pasted; `--llm` turns it on, `--no-llm` wins
 base_url = "http://127.0.0.1:8080/v1"   # must be on this machine: localhost, 127.0.0.0/8 or [::1]
 model = "local"                         # llama-server serves one model and accepts any name
 api_key = ""                            # sent as a bearer token when not empty (llama-server --api-key)

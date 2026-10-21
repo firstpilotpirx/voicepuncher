@@ -10,7 +10,9 @@ use std::time::{Duration, Instant};
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 
-use voicepuncher::adapters::primary::menubar::macos::actions::{MacosMenuActions, MenuActions};
+use voicepuncher::adapters::primary::menubar::macos::actions::{
+    MacosMenuActions, MenuActions, SettingsOpener,
+};
 use voicepuncher::adapters::primary::menubar::macos::indicator::{
     MenuModel, StatusItemCell, StatusItemSurface,
 };
@@ -84,6 +86,7 @@ pub struct MenuBarRun {
     quit_log: Arc<Mutex<Vec<QuitEvent>>>,
     /// The menu's actions once the user chose one; they own the runtime.
     actions: Option<MacosMenuActions>,
+    settings_opens: Arc<Mutex<usize>>,
     /// How many icons were drawn before the scenario's action.
     drawn_before: usize,
 }
@@ -128,6 +131,7 @@ impl Default for MenuBarRun {
             menu: None,
             quit_log: Arc::default(),
             actions: None,
+            settings_opens: Arc::default(),
             drawn_before: 0,
         }
     }
@@ -514,12 +518,46 @@ fn user_quits(world: &mut IntegrationWorld) -> Result<()> {
     let scratch = std::env::temp_dir();
     let actions = MacosMenuActions::ending_with(
         runtime,
-        scratch.join("config.toml"),
+        Box::new(SettingsOpens(Arc::default())),
         scratch.join("logs"),
         Box::new(end_process),
     );
     actions.quit();
     run.actions = Some(actions);
+    Ok(())
+}
+
+/// Counts how often the menu opened the settings window.
+struct SettingsOpens(Arc<Mutex<usize>>);
+
+impl SettingsOpener for SettingsOpens {
+    fn open(&self) {
+        *self.0.lock().unwrap() += 1;
+    }
+}
+
+#[when("the user chooses Settings in the menu")]
+fn user_chooses_settings(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    let runtime = run.runtime.take().context("the runtime was not started")?;
+    let opens = Arc::clone(&run.settings_opens);
+    let actions = MacosMenuActions::ending_with(
+        runtime,
+        Box::new(SettingsOpens(opens)),
+        std::env::temp_dir().join("logs"),
+        Box::new(|_| {}),
+    );
+    actions.open_settings();
+    run.actions = Some(actions);
+    Ok(())
+}
+
+#[then("the settings window opens in front")]
+fn settings_window_opens(world: &mut IntegrationWorld) -> Result<()> {
+    let opens = *run(world).settings_opens.lock().unwrap();
+    if opens != 1 {
+        bail!("the settings window was opened {opens} times");
+    }
     Ok(())
 }
 

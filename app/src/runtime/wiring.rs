@@ -30,19 +30,13 @@ const FOCUS_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 /// Builds every pipeline over the process's one overlay and one level register.
 pub struct WiringAssembler {
-    no_llm: bool,
     overlay: SharedVisualIndicator,
     level_register: Arc<AtomicU32>,
 }
 
 impl WiringAssembler {
-    pub fn new(
-        no_llm: bool,
-        overlay: SharedVisualIndicator,
-        level_register: Arc<AtomicU32>,
-    ) -> Self {
+    pub fn new(overlay: SharedVisualIndicator, level_register: Arc<AtomicU32>) -> Self {
         Self {
-            no_llm,
             overlay,
             level_register,
         }
@@ -57,12 +51,15 @@ impl PipelineAssembler for WiringAssembler {
             .then(|| connect_command_spotter(config, inputs))
             .transpose()?;
         let transcriber = connect_transcriber(config)?;
-        let refiner = connect_refiner(config, self.no_llm)?;
+        let refiner = connect_refiner(config)?;
         let mut pipeline = Pipeline::new(
-            Box::new(CpalAudioRecorder::new(
-                config.audio.max_recording_seconds,
-                Arc::clone(&self.level_register),
-            )),
+            Box::new(
+                CpalAudioRecorder::new(
+                    config.audio.max_recording_seconds,
+                    Arc::clone(&self.level_register),
+                )
+                .with_input_device(&config.audio.input_device),
+            ),
             Box::new(transcriber),
             refiner,
             Box::new(MacOsTextPaster::new(
@@ -83,11 +80,11 @@ impl PipelineAssembler for WiringAssembler {
                 poll_interval: FOCUS_POLL_INTERVAL,
             },
         );
-        if self.no_llm {
+        if !config.refinement.enabled {
             pipeline = pipeline.without_text_refinement_stage();
         }
         if config.archive.enabled {
-            pipeline = pipeline.with_archive(Box::new(connect_archive(config, self.no_llm)));
+            pipeline = pipeline.with_archive(Box::new(connect_archive(config)));
         } else {
             log::info!("dictation archive: off");
         }
@@ -121,7 +118,7 @@ fn sound_player(config: &Config) -> MacosSoundPlayer {
 }
 
 /// The dictation archive in the configured folder, with the models every entry records.
-pub fn connect_archive(config: &Config, no_llm: bool) -> FileSystemDictationArchive {
+pub fn connect_archive(config: &Config) -> FileSystemDictationArchive {
     let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
     let dir = config.archive.resolved_dir(&home);
     log::info!(
@@ -131,7 +128,10 @@ pub fn connect_archive(config: &Config, no_llm: bool) -> FileSystemDictationArch
     );
     let setup = ArchiveSetup {
         dictation_model: config.transcription.model.clone(),
-        refinement_model: (!no_llm).then(|| config.refinement.model.clone()),
+        refinement_model: config
+            .refinement
+            .enabled
+            .then(|| config.refinement.model.clone()),
         app_version: env!("CARGO_PKG_VERSION").to_string(),
     };
     FileSystemDictationArchive::new(dir, config.archive.max_size_bytes(), setup)
@@ -142,7 +142,8 @@ fn connect_command_spotter(
     config: &Config,
     inputs: Sender<PipelineInput>,
 ) -> Result<WebSocketCommandSpotter> {
-    let spotter = WebSocketCommandSpotter::new(config.voice_control.url.clone(), inputs);
+    let spotter = WebSocketCommandSpotter::new(config.voice_control.url.clone(), inputs)
+        .with_input_device(&config.audio.input_device);
     spotter.probe()?;
     Ok(spotter)
 }
@@ -151,9 +152,11 @@ pub fn connect_transcriber(config: &Config) -> Result<OpenAiTranscriber> {
     OpenAiTranscriber::connect(config.transcription.clone())
 }
 
-pub fn connect_refiner(config: &Config, no_llm: bool) -> Result<Box<dyn TextRefiner>> {
-    if no_llm {
-        log::info!("text refinement disabled (--no-llm), pasting raw transcripts");
+/// The text refiner `[refinement] enabled` asks for, read anew at every assembly so a
+/// reload switches refinement on or off.
+pub fn connect_refiner(config: &Config) -> Result<Box<dyn TextRefiner>> {
+    if !config.refinement.enabled {
+        log::info!("text refinement off (turn it on with --llm), pasting raw transcripts");
         return Ok(Box::new(PassthroughTextRefiner));
     }
     Ok(Box::new(OpenAiTextRefiner::connect(
@@ -166,5 +169,34 @@ pub fn chunking_cfg(cfg: &TranscriptionCfg) -> ChunkingCfg {
         chunk_threshold_secs: cfg.chunk_threshold_secs,
         chunk_overlap_secs: cfg.chunk_overlap_secs,
         vad_lookback_secs: cfg.vad_lookback_secs,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_paste_raw_transcripts_without_a_refinement_service_when_refinement_is_off() {
+        // Given
+        let mut config = Config::default();
+        config.refinement.enabled = false;
+        config.refinement.base_url = "http://127.0.0.1:1/v1".into();
+        // When
+        let refiner = connect_refiner(&config);
+        // Then
+        assert!(refiner.is_ok());
+    }
+
+    #[test]
+    fn should_need_the_refinement_service_when_refinement_is_on() {
+        // Given
+        let mut config = Config::default();
+        config.refinement.enabled = true;
+        config.refinement.base_url = "http://127.0.0.1:1/v1".into();
+        // When
+        let refiner = connect_refiner(&config);
+        // Then
+        assert!(refiner.is_err());
     }
 }

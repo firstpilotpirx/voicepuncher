@@ -676,10 +676,19 @@ _test: _require-nextest
     taskpolicy -c utility cargo nextest run "${selection[@]}" --no-run
     cargo nextest run "${selection[@]}"
 
-# Run the app for real use with one command: download missing models, restart the four services (the command spotting service is rebuilt), build and start the app with voice control; extra arguments go to the app (`just run --no-llm`)
-run *args: models
+# Run the app for real use with one command: download missing models, restart the services (the command spotting service is rebuilt), build and start the app with voice control; extra arguments go to the app; text refinement is off unless they hold `--llm`, and only then are its model and llama-server needed (`just run --llm`)
+run *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    services="whisper-server whisper-server-commands voicepuncher-command-spotting"
+    refinement=no
+    for arg in {{args}}; do
+        [[ "$arg" == --llm ]] && refinement=yes
+    done
+    [[ "$refinement" == yes ]] && services="$services llama-server"
+    just models "$refinement"
     just stop-model-servers
-    just start-model-servers
+    just start-model-servers $services
     cargo run --release -p voicepuncher -- --voice-control {{args}}
 
 # Build the release binary
@@ -1379,7 +1388,7 @@ stop-model-servers *services:
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
 # Download default models into ~/.voicepuncher/models (whisper large-v3-turbo q5_0 ~550 MB for dictation, whisper small ~460 MB for commands, Silero VAD ~1 MB, Qwen3-4B-Instruct-2507 ~2.5 GB, keyword spotting ~20 MB, Silero VAD for sherpa-onnx ~1 MB)
-models:
+models refinement="yes":
     #!/usr/bin/env bash
     set -euo pipefail
     dir=~/.voicepuncher/models
@@ -1406,8 +1415,8 @@ models:
     fetch "$whisper/{{dictation_model_file}}" {{dictation_model_file}} 394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2
     fetch "$whisper/{{command_model_file}}" {{command_model_file}} 1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b
     fetch https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin ggml-silero-v5.1.2.bin
-    # The text refinement model, pinned to one revision and checked
-    fetch https://huggingface.co/bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF/resolve/ae44f08e1392f39c0e474af10c3ff8355c8b6688/{{refinement_model_file}} {{refinement_model_file}} 2fde00ce69dd4899c70d020845e2638353015bba0fdf161b3eb965f2bca4464e
+    # The text refinement model, pinned to one revision and checked; skipped by `just run` without `--llm`
+    [[ "{{refinement}}" == no ]] || fetch https://huggingface.co/bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF/resolve/ae44f08e1392f39c0e474af10c3ff8355c8b6688/{{refinement_model_file}} {{refinement_model_file}} 2fde00ce69dd4899c70d020845e2638353015bba0fdf161b3eb965f2bca4464e
     fetch https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx silero_vad.onnx
     kws=sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01
     if [[ -d "$dir/$kws" ]]; then
@@ -1444,7 +1453,7 @@ _bench-smoke:
 
 # ── Guards ── fail fast instead of letting E2E tests skip silently (GATED) ────
 
-_require-models:
+_require-models refinement="yes":
     #!/usr/bin/env bash
     set -euo pipefail
     # Defaults are found by exact file name (see the settings at the top); a default that is not on disk is empty

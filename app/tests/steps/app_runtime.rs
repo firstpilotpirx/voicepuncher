@@ -26,7 +26,7 @@ use voicepuncher::core::domain::{
     PermissionStatus, PttSignal, RawTranscript, RecordingMode, VoiceCommand,
 };
 use voicepuncher::runtime::{
-    PermissionsWatch, PipelineAssembler, Runtime, RuntimeObserver, RuntimeState,
+    PermissionsWatch, PipelineAssembler, Reloader, Runtime, RuntimeObserver, RuntimeState,
 };
 
 use crate::IntegrationWorld;
@@ -52,6 +52,8 @@ type Generation = usize;
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Event {
     Assembled(Generation, HotKey),
+    /// The start sound and whether the pipeline refines, as its configuration set them.
+    Configured(Generation, String, bool),
     RecordingStarted(Generation),
     CancelPlayed(Generation),
     Pasted(Generation),
@@ -126,6 +128,18 @@ fn config_with(hotkey: HotKey) -> Config {
 }
 
 impl RuntimeRun {
+    /// Counts the dictations pasted so far whenever it is called, from any thread.
+    pub(crate) fn paste_counter(&self) -> impl Fn() -> usize + Send + 'static {
+        let events = Arc::clone(&self.events);
+        move || {
+            let events = events.lock().unwrap();
+            events
+                .iter()
+                .filter(|e| matches!(e, Event::Pasted(_)))
+                .count()
+        }
+    }
+
     fn events(&self) -> Vec<Event> {
         self.events.lock().unwrap().clone()
     }
@@ -301,6 +315,42 @@ impl RuntimeRun {
             }
             std::thread::sleep(Duration::from_millis(5));
         }
+    }
+
+    /// Starts the runtime from `config` and waits until it is Ready.
+    pub(crate) fn start_from(&mut self, config: Config) -> Result<()> {
+        self.config = config;
+        self.start_ready()
+    }
+
+    pub(crate) fn reloader(&self) -> Result<Reloader> {
+        self.runtime()?.reloader()
+    }
+
+    /// Whether a press of `key` starts a recording on the running pipeline.
+    pub(crate) fn hotkey_records(&self, key: HotKey) -> bool {
+        self.recordings_after(key) == 1
+    }
+
+    /// Ends the recording `key` started and waits until it was pasted.
+    pub(crate) fn finish_dictation(&self, key: HotKey) -> Result<()> {
+        let before = self.count(|e| matches!(e, Event::Pasted(_)));
+        self.keyboard.press(key);
+        self.wait_for_nth(before + 1, |e| matches!(e, Event::Pasted(_)))?;
+        Ok(())
+    }
+
+    /// The start sound and the refinement switch of the newest pipeline.
+    pub(crate) fn newest_setup(&self) -> Option<(String, bool)> {
+        self.events().into_iter().rev().find_map(|e| match e {
+            Event::Configured(_, sound, refines) => Some((sound, refines)),
+            _ => None,
+        })
+    }
+
+    /// From now on every speech recognition service the runtime probes is silent.
+    pub(crate) fn services_stop_answering(&self) {
+        *self.services_answer.lock().unwrap() = false;
     }
 
     fn latest_generation(&self) -> Option<Generation> {
@@ -599,7 +649,7 @@ fn restarts_after_focus(world: &mut IntegrationWorld) -> Result<()> {
 }
 
 /// Checks the order Restarting, the old pipeline's paste, its end, Ready.
-fn restarted_after_the_dictation(run: &RuntimeRun) -> Result<()> {
+pub(crate) fn restarted_after_the_dictation(run: &RuntimeRun) -> Result<()> {
     run.wait_for(|e| *e == Event::PipelineDropped(1))?;
     run.state_becomes(|s| matches!(s, RuntimeState::Ready { .. }))?;
     let pasted = run.position(|e| *e == Event::Pasted(1))?;
@@ -766,6 +816,14 @@ impl PipelineAssembler for StandInAssembler {
         push(
             &self.events,
             Event::Assembled(generation, config.hotkey.key),
+        );
+        push(
+            &self.events,
+            Event::Configured(
+                generation,
+                config.sounds.start_sound.clone(),
+                config.refinement.enabled,
+            ),
         );
         let part = || Part {
             events: Arc::clone(&self.events),

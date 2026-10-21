@@ -1,6 +1,6 @@
 [package]
 name = "voicepuncher"
-version = "0.30.0"
+version = "0.31.0"
 edition = "2021"
 rust-version = "1.88"
 
@@ -19,6 +19,7 @@ rdev = "0.5.3"
 arboard = "3.6"
 
 toml = "0.8"
+toml_edit = "=0.25.11"
 dirs = "5"
 clap = { version = "4", features = ["derive"] }
 
@@ -36,37 +37,70 @@ core-foundation = "0.10"
 core-graphics = "0.25"
 objc2 = "0.6"
 block2 = "=0.6.2"
-objc2-foundation = { version = "0.3", features = ["NSBundle", "NSDate", "NSNotification", "NSProcessInfo", "NSRunLoop", "NSString", "NSURL", "NSValue"] }
+objc2-foundation = { version = "0.3", features = ["NSArray", "NSBundle", "NSData", "NSDate", "NSDictionary", "NSIndexSet", "NSNotification", "NSProcessInfo", "NSRunLoop", "NSString", "NSURL", "NSValue"] }
 objc2-app-kit = { version = "0.3", features = [
     "NSAccessibility",
+    "NSActionCell",
+    "NSAlert",
+    "NSAppearance",
     "NSApplication",
+    "NSAttributedString",
+    "NSButton",
+    "NSBitmapImageRep",
+    "NSButtonCell",
     "NSCell",
+    "NSClipView",
     "NSColor",
+    "NSColorSpace",
     "NSControl",
     "NSEvent",
     "NSFont",
     "NSFontDescriptor",
     "NSGlassEffectView",
     "NSGraphics",
+    "NSGridView",
     "NSImage",
+    "NSImageRep",
     "NSImageView",
+    "NSLayoutConstraint",
     "NSMenu",
     "NSMenuItem",
+    "NSOpenPanel",
+    "NSPanel",
     "NSPasteboard",
     "NSPasteboardItem",
+    "NSPathControl",
+    "NSPopUpButton",
     "NSProgressIndicator",
+    "NSResponder",
     "NSRunningApplication",
+    "NSSavePanel",
     "NSScreen",
+    "NSScrollView",
+    "NSSlider",
+    "NSSound",
+    "NSStackView",
     "NSStatusBar",
     "NSStatusBarButton",
     "NSStatusItem",
+    "NSStepper",
+    "NSSwitch",
+    "NSTableColumn",
+    "NSTableHeaderView",
+    "NSTableView",
+    "NSTabViewController",
+    "NSTabViewItem",
     "NSText",
     "NSTextField",
-    "NSAppearance",
-    "NSButton",
+    "NSTextStorage",
+    "NSTextView",
+    "NSUserInterfaceItemIdentification",
+    "NSUserInterfaceLayout",
     "NSView",
+    "NSViewController",
     "NSVisualEffectView",
     "NSWindow",
+    "NSWindowController",
     "NSWorkspace",
 ] }
 objc2-core-foundation = "0.3"
@@ -100,4 +134,8 @@ harness = false
 
 [[test]]
 name = "menubar_macos_it"
+harness = false
+
+[[test]]
+name = "settings_macos_it"
 harness = false

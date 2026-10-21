@@ -28,7 +28,7 @@ The E2E steps that run the app with refinement pass `--llm` instead of relying o
 | Service is not running at startup (modified) | E2E `text_refinement.feature`, existing scenario, now with `--llm` |
 | Configured model is not offered (modified) | E2E `text_refinement.feature`, existing scenario, now with `--llm` |
 
-The flag parsing and the overlay precedence (`--llm`, `--no-llm`, config) also get unit tests in `cli/mod.rs`, and the config default a unit test in `config/refinement.rs`.
+The flag parsing and the overlay precedence (`--llm`, `--no-llm`, config) also get unit tests in `cli/mod.rs`, and the config default a unit test in `config.rs`.
 
 ## Risks
 

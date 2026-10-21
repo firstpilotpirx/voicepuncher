@@ -1,21 +1,18 @@
-//! What the menu's items do: quit the app, open the settings, show the logs folder, bring
-//! the Permissions window to the front.
+//! What the menu's items do: quit the app, open the settings window, show the logs folder,
+//! bring the Permissions window to the front.
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
-use anyhow::{bail, Context, Result};
+use objc2::MainThreadMarker;
 use objc2_app_kit::NSWorkspace;
-use objc2_foundation::{NSString, NSURL};
+use objc2_foundation::NSString;
 
+use crate::adapters::primary::settings::macos::window::SettingsWindow;
 use crate::runtime::Runtime;
 
 /// The process's exit code after Quit.
 pub const QUIT_EXIT_CODE: i32 = 0;
-/// Opens a file with the system's plain text editor: `open -t`.
-const OPEN_COMMAND: &str = "open";
-const PLAIN_TEXT_EDITOR_FLAG: &str = "-t";
 
 /// The menu's actions; called on the main thread when the user chooses an item.
 pub trait MenuActions {
@@ -44,10 +41,27 @@ impl<T: MenuActions + ?Sized> MenuActions for std::rc::Rc<T> {
     }
 }
 
+/// Opens the settings window; called on the main thread.
+pub trait SettingsOpener {
+    fn open(&self);
+}
+
+impl SettingsOpener for SettingsWindow {
+    fn open(&self) {
+        let Some(mtm) = MainThreadMarker::new() else {
+            log::warn!("menu: settings asked for off the main thread");
+            return;
+        };
+        if let Err(e) = self.show(mtm) {
+            log::warn!("menu: settings not opened: {e:#}");
+        }
+    }
+}
+
 /// The actions of the app: Quit owns the runtime it stops.
 pub struct MacosMenuActions {
     runtime: RefCell<Option<Runtime>>,
-    config_path: PathBuf,
+    settings: Box<dyn SettingsOpener>,
     logs_dir: PathBuf,
     end_process: Box<dyn Fn(i32)>,
     open_permissions: Box<dyn Fn()>,
@@ -55,10 +69,10 @@ pub struct MacosMenuActions {
 
 impl MacosMenuActions {
     /// Quit ends the process.
-    pub fn new(runtime: Runtime, config_path: PathBuf, logs_dir: PathBuf) -> Self {
+    pub fn new(runtime: Runtime, settings: Box<dyn SettingsOpener>, logs_dir: PathBuf) -> Self {
         Self::ending_with(
             runtime,
-            config_path,
+            settings,
             logs_dir,
             Box::new(|code| std::process::exit(code)),
         )
@@ -67,13 +81,13 @@ impl MacosMenuActions {
     /// Quit calls `end_process` with the exit code once the runtime stopped.
     pub fn ending_with(
         runtime: Runtime,
-        config_path: PathBuf,
+        settings: Box<dyn SettingsOpener>,
         logs_dir: PathBuf,
         end_process: Box<dyn Fn(i32)>,
     ) -> Self {
         Self {
             runtime: RefCell::new(Some(runtime)),
-            config_path,
+            settings,
             logs_dir,
             end_process,
             open_permissions: Box::new(|| log::warn!("menu: no Permissions window")),
@@ -97,9 +111,7 @@ impl MenuActions for MacosMenuActions {
     }
 
     fn open_settings(&self) {
-        if let Err(e) = open_in_text_editor(&self.config_path) {
-            log::warn!("menu: settings not opened: {e:#}");
-        }
+        self.settings.open();
     }
 
     fn open_permissions(&self) {
@@ -126,25 +138,4 @@ pub fn show_in_file_browser(folder: &Path) -> bool {
     }
     let path = NSString::from_str(&folder.to_string_lossy());
     NSWorkspace::sharedWorkspace().selectFile_inFileViewerRootedAtPath(Some(&path), &path)
-}
-
-/// Opens `file` in the editor the system uses for it, or the plain text editor when none is set.
-pub fn open_in_text_editor(file: &Path) -> Result<()> {
-    let path = NSString::from_str(&file.to_string_lossy());
-    let url = NSURL::fileURLWithPath(&path);
-    if NSWorkspace::sharedWorkspace().openURL(&url) {
-        return Ok(());
-    }
-    let status = Command::new(OPEN_COMMAND)
-        .arg(PLAIN_TEXT_EDITOR_FLAG)
-        .arg(file)
-        .status()
-        .with_context(|| format!("cannot run {OPEN_COMMAND}"))?;
-    if !status.success() {
-        bail!(
-            "{} not opened in the plain text editor: {status}",
-            file.display()
-        );
-    }
-    Ok(())
 }

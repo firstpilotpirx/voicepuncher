@@ -356,6 +356,7 @@ def _run_one(
                 "--config", "/dev/null",
                 "--input-file", str(wav),
                 "--transcription-url", transcription_url,
+                "--llm",
                 "--refinement-url", refinement_url,
             ],
             capture_output=True,

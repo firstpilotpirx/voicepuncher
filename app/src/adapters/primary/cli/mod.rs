@@ -4,7 +4,7 @@ use clap::Parser;
 
 use crate::core::domain::HotKey;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(
     name = "voicepuncher",
     version,
@@ -53,9 +53,15 @@ pub struct Cli {
 
     #[arg(
         long,
-        help = "Skip text refinement; paste the raw transcript without contacting the text refinement service"
+        help = "Skip text refinement (the default; wins over --llm and [refinement].enabled)"
     )]
     pub no_llm: bool,
+
+    #[arg(
+        long,
+        help = "Refine each transcript through the text refinement service (overrides [refinement].enabled)"
+    )]
+    pub llm: bool,
 
     #[arg(
         long,
@@ -92,6 +98,12 @@ impl Cli {
         }
         if self.voice_control {
             cfg.voice_control.enabled = true;
+        }
+        if self.llm {
+            cfg.refinement.enabled = true;
+        }
+        if self.no_llm {
+            cfg.refinement.enabled = false;
         }
     }
 }
@@ -130,6 +142,7 @@ mod tests {
             input_file: None,
             setup: false,
             no_llm: false,
+            llm: false,
             voice_control: false,
         };
         let mut cfg = Config::default();
@@ -156,6 +169,60 @@ mod tests {
         let cli = Cli::parse_from(["voicepuncher", "--no-llm"]);
         // Then
         assert!(cli.no_llm);
+    }
+
+    #[test]
+    fn should_parse_llm_flag() {
+        // Given / When
+        let cli = Cli::parse_from(["voicepuncher", "--llm"]);
+        // Then
+        assert!(cli.llm);
+    }
+
+    #[test]
+    fn should_turn_refinement_on_with_llm() {
+        // Given
+        let cli = Cli::parse_from(["voicepuncher", "--llm"]);
+        let mut cfg = Config::default();
+        // When
+        cli.overlay(&mut cfg);
+        // Then
+        assert!(cfg.refinement.enabled);
+    }
+
+    #[test]
+    fn should_keep_refinement_on_from_config_without_flags() {
+        // Given
+        let cli = Cli::parse_from(["voicepuncher"]);
+        let mut cfg = Config::default();
+        cfg.refinement.enabled = true;
+        // When
+        cli.overlay(&mut cfg);
+        // Then
+        assert!(cfg.refinement.enabled);
+    }
+
+    #[test]
+    fn should_turn_refinement_off_with_no_llm_over_config() {
+        // Given
+        let cli = Cli::parse_from(["voicepuncher", "--no-llm"]);
+        let mut cfg = Config::default();
+        cfg.refinement.enabled = true;
+        // When
+        cli.overlay(&mut cfg);
+        // Then
+        assert!(!cfg.refinement.enabled);
+    }
+
+    #[test]
+    fn should_turn_refinement_off_with_no_llm_over_llm() {
+        // Given
+        let cli = Cli::parse_from(["voicepuncher", "--llm", "--no-llm"]);
+        let mut cfg = Config::default();
+        // When
+        cli.overlay(&mut cfg);
+        // Then
+        assert!(!cfg.refinement.enabled);
     }
 
     #[test]

@@ -128,14 +128,6 @@ The menu SHALL offer Open Logs Folder. Choosing it SHALL show the app's logs fol
 - **WHEN** the user chooses Open Logs Folder
 - **THEN** the logs folder exists and the file browser shows it
 
-### Requirement: Settings open from the menu
-The menu SHALL offer Settings with the standard shortcut. Until the app has a settings window, choosing it SHALL open the configuration file in the editor the system uses for it, or in the system's plain text editor when none is set.
-
-#### Scenario: Settings opens the configuration file
-- **GIVEN** the app runs with its configuration file
-- **WHEN** the user chooses Settings
-- **THEN** the configuration file opens in a text editor
-
 ### Requirement: The app has no Dock icon
 The app SHALL run as a menu bar application: no Dock icon and no application menu, whether it runs from its bundle or as a bare binary from a terminal.
 
@@ -143,6 +135,14 @@ The app SHALL run as a menu bar application: no Dock icon and no application men
 - **GIVEN** the app is started from a terminal
 - **WHEN** it is running
 - **THEN** the Dock shows no icon for it and the status item is in the menu bar
+
+### Requirement: Settings open the settings window from the menu
+The menu SHALL offer Settings with the standard shortcut. Choosing it SHALL open the settings window.
+
+#### Scenario: Settings opens the settings window
+- **GIVEN** the app runs with its configuration file
+- **WHEN** the user chooses Settings
+- **THEN** the settings window opens in front
 
 ### Requirement: The menu shows the wait for permissions
 While the runtime waits for permissions, the status item SHALL show the waiting icon and the menu's status line SHALL read "Waiting for permissions — open Permissions…".

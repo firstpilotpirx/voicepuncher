@@ -33,19 +33,20 @@
 | `app/src/adapters/primary/ptt/rdev/` | Primary adapter | `RdevHotkeyListener` — captures hotkey events via `rdev` |
 | `app/src/adapters/primary/setup/cli/` | Primary adapter | `SetupWizard` — interactive first-run configuration wizard |
 | `app/src/adapters/primary/permissions/macos/` | Primary adapter | `PermissionsWindow` — the Permissions window (rows, badges, Request…, Open System Settings, Quit, Continue); `mapping.rs` holds what it shows |
-| `app/src/adapters/primary/menubar/macos/` | Primary adapter | `MacosStatusItem` — the menu bar icon and its menu (Settings, Open Logs Folder, Quit); `StatusItemCell` fed by the overlay decorator and the runtime observer; `MacosMenuActions` |
+| `app/src/adapters/primary/menubar/macos/` | Primary adapter | `MacosStatusItem` — the menu bar icon and its menu (Settings, Open Logs Folder, Quit); `StatusItemCell` fed by the overlay decorator and the runtime observer; `MacosMenuActions`; `RuntimeApplier` applies saved settings through the runtime's `Reloader` |
+| `app/src/adapters/primary/settings/macos/` | Primary adapter | The settings window: the field table (`table.rs`, a tab, label and control per configuration key), `validate`, value conversions, override notes, the GUI-free `SettingsSession` (edit, save, revert, apply through the `ConfigApplier` port) and the AppKit window (`window.rs`, `form.rs`, `layout.rs`, `build.rs`) |
 | `app/src/adapters/main_queue.rs` | Adapter helper | Work dispatched to the main queue, shared by the overlay and the status item |
 | `app/src/adapters/secondary/recording/cpal/` | Secondary adapter | `CpalAudioRecorder` — records microphone via `cpal` |
 | `app/src/adapters/secondary/recording/filesystem/` | Secondary adapter | `FileSystemAudioRecorder` — reads WAV file (file mode + E2E) |
 | `app/src/adapters/secondary/transcription/openai/` | Secondary adapter | `OpenAiTranscriber` — sends audio to the local speech recognition service (OpenAI Audio Transcriptions API, loopback only) |
 | `app/src/adapters/secondary/textrefinement/openai/` | Secondary adapter | `OpenAiTextRefiner` — sends the raw transcript to the local text refinement service (OpenAI Chat Completions API, loopback only) |
-| `app/src/adapters/secondary/textrefinement/passthrough/` | Secondary adapter | `PassthroughTextRefiner` — pastes the raw transcript (`--no-llm`) |
+| `app/src/adapters/secondary/textrefinement/passthrough/` | Secondary adapter | `PassthroughTextRefiner` — pastes the raw transcript (refinement off, the default) |
 | `app/src/adapters/secondary/textpasting/macos/` | Secondary adapter | `MacOsTextPaster` — pastes text via `arboard` + `CGEventPost` |
 | `app/src/adapters/secondary/textpasting/stdio/` | Secondary adapter | `StdioTextPaster` — writes text to stdout (file mode / E2E) |
 | `app/src/adapters/secondary/soundplaying/macos/` | Secondary adapter | `MacosSoundPlayer` — plays start/stop sounds via macOS `afplay` |
 | `app/src/adapters/secondary/logging/file/` | Secondary adapter | `RotatingFileWriter`, `TeeWriter` — the app's log file `~/.voicepuncher/logs/voicepuncher.log`, size-rotated and teed to a terminal; the launch header and the panic hook |
 | `app/src/adapters/secondary/permissions/macos/` | Secondary adapter | `MacOsPermissionProbe` — macOS TCC status, requests, deep links and the responsible app |
-| `app/src/config.rs`, `app/src/config/` | Config | TOML config loading with `serde`; `Config` is the root struct; `[transcription]` and `[whisper]` migration error in `config/transcription.rs`, `[refinement]` and `[llm]` migration error in `config/refinement.rs`, loopback check in `config/loopback.rs` |
+| `app/src/config.rs`, `app/src/config/` | Config | TOML config loading with `serde`; `Config` is the root struct; `[transcription]` and `[whisper]` migration error in `config/transcription.rs`, `[refinement]` and `[llm]` migration error in `config/refinement.rs`, loopback check in `config/loopback.rs`; `config/document.rs` — `ConfigDocument`, the file as `toml_edit` keeps it, so a Save changes only the edited keys |
 | `app/src/main.rs` | Composition root | Wires adapters + use cases into a runnable; no business logic |
 | `app/packaging/` | Packaging | Sources of the application bundle: `Info.plist` template (version filled in by `just bundle`), `icons/` (`icon-1024.png` and `voicepuncher.iconset/`, turned into `.icns` by `iconutil`), `dmg-background.png`; checked by `app/tests/packaging_it.rs` |
 | `app/tests/architecture.rs` | Architecture test | Import-graph assertions (layer dependency rule, naming rules, structure rules) |

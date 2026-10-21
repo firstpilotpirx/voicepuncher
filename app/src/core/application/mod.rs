@@ -6,6 +6,7 @@ pub mod command_spotter;
 pub mod dictation_archive;
 pub mod focus_probe;
 pub mod hotkey_listener;
+pub mod input_devices;
 pub mod key_presser;
 pub mod live_transcript_view;
 pub mod permission_probe;
@@ -32,6 +33,7 @@ pub use dictation_archive::{
 };
 pub use focus_probe::FocusProbe;
 pub use hotkey_listener::HotkeyListener;
+pub use input_devices::InputDevices;
 pub use key_presser::KeyPresser;
 pub use live_transcript_view::LiveTranscriptView;
 pub use permission_probe::PermissionProbe;

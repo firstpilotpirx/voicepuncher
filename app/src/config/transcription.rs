@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TranscriptionCfg {
     /// Base URL of the OpenAI-compatible speech recognition service; must be on this machine.
@@ -54,6 +54,11 @@ impl TranscriptionCfg {
             .iter()
             .map(|&code| code.to_owned())
             .collect()
+    }
+
+    /// Every language code `languages` accepts, with the name whisper gives it.
+    pub fn language_names() -> &'static [(&'static str, &'static str)] {
+        LANGUAGE_NAMES
     }
 
     /// The name the speech recognition service gives the language of `code` ("ru" →

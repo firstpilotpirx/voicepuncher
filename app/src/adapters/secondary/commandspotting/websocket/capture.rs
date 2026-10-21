@@ -4,8 +4,10 @@ use std::sync::mpsc::Sender;
 use std::time::Instant;
 
 use anyhow::{anyhow, Result};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::traits::{DeviceTrait, StreamTrait};
 use cpal::{Stream, StreamConfig};
+
+use crate::adapters::secondary::recording::cpal::devices;
 use rubato::{
     Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
 };
@@ -22,12 +24,10 @@ pub struct MicCapture {
 }
 
 impl MicCapture {
-    /// Opens the default input device; every captured chunk goes to `chunks`, mono at
-    /// the device's own rate, which [`MicCapture::sample_rate`] reports.
-    pub fn open(chunks: Sender<Vec<f32>>) -> Result<(Self, u32)> {
-        let device = cpal::default_host()
-            .default_input_device()
-            .ok_or_else(|| anyhow!("no default input device available"))?;
+    /// Opens the input device `input_device` names (see [`devices::open`]); every
+    /// captured chunk goes to `chunks`, mono at the device's own rate, returned beside it.
+    pub fn open(chunks: Sender<Vec<f32>>, input_device: &str) -> Result<(Self, u32)> {
+        let device = devices::open(input_device)?;
         let supported = device.default_input_config()?;
         let channels = supported.channels() as usize;
         let rate = supported.sample_rate();

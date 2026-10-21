@@ -14,7 +14,7 @@ Conclusion: refinement gives little, sometimes corrupts the meaning, and doubles
 ## What Changes
 
 - The app pastes the raw transcript by default, without calling the text refinement service; the overlay shows no "Refining text" step.
-- Text refinement becomes opt-in: an explicit flag on the command line (proposed `--llm`) or a config setting (proposed `[refinement] enabled = true`) turns it back on; `--no-llm` keeps working as a no-op alias of the default so existing commands do not break.
+- Text refinement becomes opt-in: an explicit flag on the command line (proposed `--llm`) or a config setting (proposed `[refinement] enabled = true`) turns it back on; `--no-llm` keeps working, so existing commands do not break, and it wins over the opt-in from either place.
 - `just run` (the user's one command to run the app) does not start llama-server when refinement is off, and does not require the refinement model on disk; with the opt-in it starts it as today.
 - The startup check that the text refinement service answers runs only when refinement is on.
 
@@ -45,4 +45,4 @@ Out of scope: improving the refinement prompt or the normalization check; removi
 ## Release
 
 SemVer: MINOR — pre-1.0 change of default behavior (refinement no longer runs unless opted in).
-Target version: 0.25.0.
+Target version: 0.30.0.

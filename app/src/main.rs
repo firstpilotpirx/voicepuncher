@@ -4,10 +4,13 @@ use objc2_app_kit::NSApplication;
 
 use voicepuncher::adapters::primary::cli::Cli;
 use voicepuncher::adapters::primary::menubar::macos::actions::{MacosMenuActions, MenuActions};
+use voicepuncher::adapters::primary::menubar::macos::applier::RuntimeApplier;
 use voicepuncher::adapters::primary::menubar::macos::indicator::StatusItemCell;
 use voicepuncher::adapters::primary::menubar::macos::status_item::MacosStatusItem;
 use voicepuncher::adapters::primary::permissions::macos::{self as permissions, PermissionsWindow};
 use voicepuncher::adapters::primary::ptt::rdev::RdevHotkeyListener;
+use voicepuncher::adapters::primary::settings::macos::session::{SessionParts, SettingsSession};
+use voicepuncher::adapters::primary::settings::macos::window::SettingsWindow;
 use voicepuncher::adapters::primary::setup::cli::SetupWizard;
 use voicepuncher::adapters::secondary::commandspotting::websocket::client::SpottingClient;
 use voicepuncher::adapters::secondary::logging::file::{
@@ -15,6 +18,7 @@ use voicepuncher::adapters::secondary::logging::file::{
     KEPT_BACKUPS, LOG_FILE_NAME, MAX_LOG_BYTES,
 };
 use voicepuncher::adapters::secondary::permissions::macos::MacOsPermissionProbe;
+use voicepuncher::adapters::secondary::recording::cpal::devices::CpalInputDevices;
 use voicepuncher::adapters::secondary::recording::filesystem::FileSystemAudioRecorder;
 use voicepuncher::adapters::secondary::soundplaying::macos::MacosSoundPlayer;
 use voicepuncher::adapters::secondary::textpasting::stdio::StdioTextPaster;
@@ -68,7 +72,6 @@ fn main() {
     });
 
     let input_file = cli.input_file.clone();
-    let no_llm = cli.no_llm;
     let archives_file_mode = cli.archives_file_mode();
     cli.overlay(&mut config);
     voicepuncher::config::validate(&config).unwrap_or_else(|e| {
@@ -95,7 +98,7 @@ fn main() {
     }
 
     if let Some(ref input_path) = input_file {
-        run_file_mode(input_path, &config, no_llm, archives_file_mode);
+        run_file_mode(input_path, &config, archives_file_mode);
         return;
     }
 
@@ -120,7 +123,7 @@ fn main() {
             MacosVisualIndicator::initialize(mtm, std::sync::Arc::clone(&level_register)),
             MacosPointerSign::initialize(mtm),
         ))));
-    let assembler = WiringAssembler::new(no_llm, overlay, level_register);
+    let assembler = WiringAssembler::new(overlay, level_register);
     let gate = std::sync::Arc::new(PermissionsGate::new(Box::new(MacOsPermissionProbe)));
     let permissions_window = PermissionsWindow::install(mtm, std::sync::Arc::clone(&gate));
     // a missing permission makes the runtime wait for it, not the process exit
@@ -136,6 +139,7 @@ fn main() {
     let reloader = runtime
         .reloader()
         .expect("the runtime runs after its start");
+    let settings = settings_window(&config_path, &cli, &reloader);
     signals::reload_on_hang_up(
         config_path.clone(),
         Box::new(move |cfg| cli.overlay(cfg)),
@@ -147,7 +151,7 @@ fn main() {
     });
     // Quit in the menu stops the runtime and ends the process; run() never returns.
     let actions = std::rc::Rc::new(
-        MacosMenuActions::new(runtime, config_path, logs_folder())
+        MacosMenuActions::new(runtime, Box::new(settings), logs_folder())
             .with_permissions_window(Box::new(permissions::bring_to_front)),
     );
     status_item.set_actions(Box::new(std::rc::Rc::clone(&actions)));
@@ -156,15 +160,36 @@ fn main() {
     app.run();
 }
 
+/// The settings window over the configuration file; Save applies through `reloader` with
+/// this run's command line over the saved settings.
+fn settings_window(
+    config_path: &std::path::Path,
+    cli: &Cli,
+    reloader: &voicepuncher::runtime::Reloader,
+) -> SettingsWindow {
+    let (config_path, cli, reloader) = (config_path.to_path_buf(), cli.clone(), reloader.clone());
+    let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    let opener = move || {
+        let cli = cli.clone();
+        let parts = SessionParts {
+            overlay: Box::new(move |cfg| cli.overlay(cfg)),
+            applier: Box::new(RuntimeApplier::new(reloader.clone())),
+            devices: Box::new(CpalInputDevices),
+        };
+        SettingsSession::open(&config_path, &home, parts)
+    };
+    SettingsWindow::new(Box::new(opener), logs_folder())
+}
+
 /// The folder the services' logs live in: `~/.voicepuncher/logs`.
 fn logs_folder() -> std::path::PathBuf {
     logs_dir(&dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(".")))
 }
 
 /// Transcribes one WAV file and prints the text; archives it only when a folder was named.
-fn run_file_mode(input_path: &std::path::Path, config: &Config, no_llm: bool, archives: bool) {
+fn run_file_mode(input_path: &std::path::Path, config: &Config, archives: bool) {
     let transcriber = connect_transcriber(config);
-    let refiner = connect_refiner(config, no_llm);
+    let refiner = connect_refiner(config);
     let audio = FileSystemAudioRecorder::load(input_path).unwrap_or_else(|e| {
         log::error!("file mode: {e:#}");
         std::process::exit(1);
@@ -182,11 +207,11 @@ fn run_file_mode(input_path: &std::path::Path, config: &Config, no_llm: bool, ar
             chunking: wiring::chunking_cfg(&config.transcription),
         },
     );
-    if no_llm {
+    if !config.refinement.enabled {
         pipeline = pipeline.without_text_refinement_stage();
     }
     if archives {
-        pipeline = pipeline.with_archive(Box::new(wiring::connect_archive(config, no_llm)));
+        pipeline = pipeline.with_archive(Box::new(wiring::connect_archive(config)));
     }
     pipeline.run_once(audio).unwrap_or_else(|e| {
         log::error!("file mode failed: {e:#}");
@@ -201,8 +226,8 @@ fn connect_transcriber(config: &Config) -> OpenAiTranscriber {
     })
 }
 
-fn connect_refiner(config: &Config, no_llm: bool) -> Box<dyn TextRefiner> {
-    wiring::connect_refiner(config, no_llm).unwrap_or_else(|e| {
+fn connect_refiner(config: &Config) -> Box<dyn TextRefiner> {
+    wiring::connect_refiner(config).unwrap_or_else(|e| {
         log::error!("{e:#}");
         std::process::exit(2);
     })

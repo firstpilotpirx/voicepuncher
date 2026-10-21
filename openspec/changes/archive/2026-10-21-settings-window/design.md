@@ -10,7 +10,7 @@
 
 **D2 — A pure field model drives the window.** Every field (section, key, control kind, range, label, tab) is data in `fields.rs`; the window is built from it, validation runs on it, and a test checks that the set of fields equals the set of keys in `config.rs` (parsed from the `Deserialize` structs by a small reflection test over the file text). The GUI code becomes a generic builder plus a few special tabs (sounds, examples table).
 
-**D3 — Explicit Save, applied through the runtime.** Save writes, then `Runtime::reload`; the runtime's Restarting/Ready states feed the status line. No live apply on each keystroke: a reload restarts the pipeline. The window never touches the pipeline directly.
+**D3 — Explicit Save, applied through the runtime.** Save writes, then `Runtime::reload`; the reload reports of D10 feed the status line. No live apply on each keystroke: a reload restarts the pipeline. The window never touches the pipeline directly.
 
 **D4 — The refinement switch edits `[refinement] enabled` from `refinement-off-by-default`.** This change adds no key and no wiring for it; `--llm` / `--no-llm` are shown as command line overrides like the other flags. Alternative: own key with default true (the original plan) — rejected, the user turned refinement off by default in that change.
 
@@ -71,6 +71,6 @@
 
 ## Dependencies
 
-- `restartable-app-runtime`: Save applies through `Runtime::reload` and the status line follows the runtime states.
+- `restartable-app-runtime`: Save applies through the runtime's `Reloader`; this change adds `reload_reporting` to it, and the status line follows its reports (D10).
 - `menu-bar-presence`: `Settings…` lives in its menu and the window uses its AppKit technique; the menu-bar-presence delta modifies its requirement.
 - `refinement-off-by-default` (stacked on, not declared: the kit refuses a dependency that started later): the Refinement tab's switch edits the `[refinement] enabled` key and shows the `--llm` / `--no-llm` overrides that change adds.

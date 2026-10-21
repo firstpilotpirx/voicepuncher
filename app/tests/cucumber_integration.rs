@@ -32,6 +32,7 @@ pub struct IntegrationWorld {
     pub runtime: Option<steps::app_runtime::RuntimeRun>,
     pub menu_bar: Option<steps::menu_bar_presence::MenuBarRun>,
     pub logging: Option<steps::app_logging::LoggingRun>,
+    pub settings: Option<steps::settings_window::SettingsRun>,
 }
 
 /// Runs the scenarios the command line selects (a rerun's names instead, when

@@ -128,3 +128,10 @@ Feature: menu-bar-presence
       When the user chooses Quit in the menu
       Then the recording is cancelled with the cancel sound and nothing is pasted
       And the runtime stops and the process ends with exit code 0
+
+  Rule: Settings open the settings window from the menu
+
+    Scenario: Settings opens the settings window
+      Given the runtime is ready and no dictation runs
+      When the user chooses Settings in the menu
+      Then the settings window opens in front

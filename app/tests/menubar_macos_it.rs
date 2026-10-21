@@ -8,7 +8,7 @@ use std::time::Duration;
 use objc2::MainThreadMarker;
 use objc2_app_kit::NSApplication;
 use voicepuncher::adapters::primary::menubar::macos::actions::{
-    ensure_folder, open_in_text_editor, show_in_file_browser,
+    ensure_folder, show_in_file_browser,
 };
 use voicepuncher::adapters::primary::menubar::macos::indicator::StatusItemCell;
 use voicepuncher::adapters::primary::menubar::macos::mapping::{title_line, StatusItemState};
@@ -38,10 +38,6 @@ const TESTS: &[Test] = &[
     (
         "should_show_the_logs_folder_in_the_file_browser",
         should_show_the_logs_folder_in_the_file_browser,
-    ),
-    (
-        "should_open_the_configuration_file_in_a_text_editor",
-        should_open_the_configuration_file_in_a_text_editor,
     ),
     (
         "should_put_the_status_item_in_the_menu_bar_and_take_it_away",
@@ -168,18 +164,4 @@ fn should_show_the_logs_folder_in_the_file_browser() {
     let shown = show_in_file_browser(&logs);
     // Then
     assert!(shown, "the file browser did not show {}", logs.display());
-}
-
-fn should_open_the_configuration_file_in_a_text_editor() {
-    if !windows_allowed() {
-        return;
-    }
-    // Given
-    let home = tempfile::tempdir().unwrap();
-    let config = home.path().join("config.toml");
-    std::fs::write(&config, "[hotkey]\nkey = \"F13\"\n").unwrap();
-    // When
-    let opened = open_in_text_editor(&config);
-    // Then
-    assert!(opened.is_ok(), "{opened:?}");
 }

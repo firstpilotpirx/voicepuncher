@@ -25,7 +25,7 @@ impl HotkeyBinding {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub enum HotKey {
     RightOption,
     RightControl,
@@ -45,6 +45,54 @@ pub enum HotKey {
     F17,
     F18,
     F19,
+}
+
+impl HotKey {
+    /// Every hotkey the listener supports, in the order the settings window offers them.
+    pub const ALL: [HotKey; 18] = [
+        HotKey::RightOption,
+        HotKey::RightControl,
+        HotKey::RightShift,
+        HotKey::RightCommand,
+        HotKey::LeftOption,
+        HotKey::LeftControl,
+        HotKey::Fn,
+        HotKey::CapsLock,
+        HotKey::Space,
+        HotKey::LeftOptionE,
+        HotKey::CmdE,
+        HotKey::F13,
+        HotKey::F14,
+        HotKey::F15,
+        HotKey::F16,
+        HotKey::F17,
+        HotKey::F18,
+        HotKey::F19,
+    ];
+
+    /// The hotkey as a person reads it: "Right Option", "Cmd+E".
+    pub fn human_name(self) -> &'static str {
+        match self {
+            HotKey::RightOption => "Right Option",
+            HotKey::RightControl => "Right Control",
+            HotKey::RightShift => "Right Shift",
+            HotKey::RightCommand => "Right Command",
+            HotKey::LeftOption => "Left Option",
+            HotKey::LeftControl => "Left Control",
+            HotKey::Fn => "Fn",
+            HotKey::CapsLock => "Caps Lock",
+            HotKey::Space => "Space",
+            HotKey::CmdE => "Cmd+E",
+            HotKey::LeftOptionE => "Option+E",
+            HotKey::F13 => "F13",
+            HotKey::F14 => "F14",
+            HotKey::F15 => "F15",
+            HotKey::F16 => "F16",
+            HotKey::F17 => "F17",
+            HotKey::F18 => "F18",
+            HotKey::F19 => "F19",
+        }
+    }
 }
 
 impl std::fmt::Display for HotKey {
@@ -130,6 +178,23 @@ mod tests {
         let seen = std::thread::spawn(move || reader.current()).join().unwrap();
         // Then
         assert_eq!(seen, HotKey::F19);
+    }
+
+    #[test]
+    fn should_list_every_hotkey_once_each_with_a_name_of_its_own() {
+        // Given
+        let mut names: Vec<&str> = HotKey::ALL.iter().map(|key| key.human_name()).collect();
+        let mut parsed: Vec<HotKey> = HotKey::ALL
+            .iter()
+            .map(|key| key.to_string().parse().unwrap())
+            .collect();
+        // When
+        names.sort_unstable();
+        names.dedup();
+        parsed.dedup();
+        // Then
+        assert_eq!(names.len(), HotKey::ALL.len());
+        assert_eq!(parsed, HotKey::ALL);
     }
 
     #[test]

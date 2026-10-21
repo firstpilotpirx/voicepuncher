@@ -1,10 +1,11 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::core::domain::{HotKey, RecordingMode};
 
+pub mod document;
 mod loopback;
 mod refinement;
 mod transcription;
@@ -13,7 +14,7 @@ pub use loopback::{ensure_loopback, ensure_loopback_websocket};
 pub use refinement::{RefinementCfg, RefinementExample};
 pub use transcription::TranscriptionCfg;
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     #[serde(default)]
@@ -36,7 +37,7 @@ pub struct Config {
     pub logging: LoggingCfg,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct HotkeyCfg {
     #[serde(default = "HotkeyCfg::default_key")]
@@ -66,7 +67,7 @@ impl Default for HotkeyCfg {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AudioCfg {
     #[serde(default = "AudioCfg::default_input_device")]
@@ -97,7 +98,7 @@ impl Default for AudioCfg {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PasteCfg {
     #[serde(default = "PasteCfg::default_clipboard_restore_delay_ms")]
@@ -124,7 +125,7 @@ impl Default for PasteCfg {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SoundsCfg {
     #[serde(default = "SoundsCfg::default_start_sound")]
@@ -205,7 +206,7 @@ impl Default for SoundsCfg {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct VoiceControlCfg {
     #[serde(default)]
@@ -230,7 +231,7 @@ impl Default for VoiceControlCfg {
 }
 
 /// The dictation archive: where each dictation's audio and texts are kept, and how much.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ArchiveCfg {
     #[serde(default = "ArchiveCfg::default_enabled")]
@@ -283,7 +284,7 @@ impl Default for ArchiveCfg {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LoggingCfg {
     #[serde(default = "LoggingCfg::default_level")]
@@ -307,15 +308,19 @@ impl Default for LoggingCfg {
 pub fn load(path: &Path) -> Result<Config> {
     let raw = std::fs::read_to_string(path)
         .with_context(|| format!("read config: {}", path.display()))?;
+    parse(&raw, &path.display().to_string())
+}
+
+/// The configuration `raw` holds, checked as a file is; `origin` names it in errors.
+pub fn parse(raw: &str, origin: &str) -> Result<Config> {
     let table: toml::Table =
-        toml::from_str(&raw).with_context(|| format!("parse config: {}", path.display()))?;
+        toml::from_str(raw).with_context(|| format!("parse config: {origin}"))?;
     transcription::reject_removed_whisper_section(&table)
         .and_then(|()| transcription::reject_removed_transcription_keys(&table))
         .and_then(|()| refinement::reject_removed_llm_section(&table))
-        .with_context(|| format!("outdated config: {}", path.display()))?;
-    let cfg: Config =
-        toml::from_str(&raw).with_context(|| format!("parse config: {}", path.display()))?;
-    validate(&cfg).with_context(|| format!("invalid config: {}", path.display()))?;
+        .with_context(|| format!("outdated config: {origin}"))?;
+    let cfg: Config = toml::from_str(raw).with_context(|| format!("parse config: {origin}"))?;
+    validate(&cfg).with_context(|| format!("invalid config: {origin}"))?;
     Ok(cfg)
 }
 
@@ -621,6 +626,25 @@ mod tests {
         assert_eq!(r.temperature, 0.1_f32);
         assert_eq!(r.max_tokens, 256);
         assert_eq!(r.timeout_secs, 5);
+    }
+
+    #[test]
+    fn should_keep_refinement_off_by_default() {
+        // Given / When
+        let cfg = Config::default();
+        // Then
+        assert!(!cfg.refinement.enabled);
+    }
+
+    #[test]
+    fn should_turn_refinement_on_from_toml() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(f, "[refinement]\nenabled = true").unwrap();
+        // When
+        let cfg = load(f.path()).unwrap();
+        // Then
+        assert!(cfg.refinement.enabled);
     }
 
     #[test]
