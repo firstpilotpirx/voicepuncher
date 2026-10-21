@@ -5,6 +5,8 @@ depends_on:
     why: the run checks the launch-at-login setting
   - change: bundled-engines
     why: the run installs the app with its bundled engines from the DMG
+  - change: model-download
+    why: the run checks the installer's model download that model-download reworks
   - change: service-reliability-review
     why: this run is the last change of the backlog, after every other change
 priority: low

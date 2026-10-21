@@ -22,6 +22,10 @@ Claude drives Finder, the app's windows and menu, System Settings (read only) an
 
 The report `docs/acceptance-runs/<date>.md` copies the checklist with a result per item (pass, fail, blocked) and a one-line observation for each failure; failure screenshots are sent to the user, not committed. All failures of the run are filed as one change with `/create-change` (one change per bug hunt).
 
+## Dependencies
+
+The run checks the assembled product, so it waits for retire-cli-setup-wizard (the visual installer), launch-at-login, bundled-engines, model-download (the installer's model download it reworks) and service-reliability-review (the last other change of the backlog).
+
 ## Test levels
 
 The change adds no spec scenario; the run itself is a manual run of existing scenarios. `just test` guards the repository after the document commits.
