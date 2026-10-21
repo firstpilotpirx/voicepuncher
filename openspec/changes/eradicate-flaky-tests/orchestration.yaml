@@ -1,0 +1,10 @@
+depends_on:
+  - change: fast-confirmation-of-repeating-russian-speech
+    why: names local_services.feature
+  - change: local-services-runtime
+    why: names local_services.feature
+  - change: match-late-confirmation-to-its-state
+    why: names commandspotting_websocket_it
+  - change: steady-overlay-waveform-test
+    why: names should_raise_waveform_columns_for_a_loud_level
+priority: high
