@@ -6,7 +6,7 @@ On 2026-10-20/21 the same branch passed `full-check` up to four times (`restarta
 
 - `.claude/kit.yaml` gets `landing: {batch: true, max_batch: 4}`: `kit land` queues the branch instead of refusing it for being behind `main`; the leader checks the group once and lands it.
 - `AGENTS.md` § Workflow stages 9–11 describe landing through the queue: `kit land` after the branch's own check, the group's `full-check` is the merge gate, the session waits for the queue's verdict without polling and does docs or the next change meanwhile.
-- The branch's own check before the queue is `just check` (fmt, lint, tests, build, smoke); the one `full-check` runs on the group — if agent-kit's `guardOwnCheck` still demands the branch's own `full-check`, that is raised in `parallel-check-churn` (agent-kit) and this change follows what lands there.
+- The branch's own check before the queue is `just check` (fmt, lint, tests, build, smoke): agent-kit queues a branch with build inputs on `after_group`, and the one `full-check` runs on the group's combined state.
 
 Current stage: PoC. Target stage: PoC.
 Scope: `.claude/kit.yaml`, `AGENTS.md`, the `proceed-change` values this project supplies.
@@ -23,11 +23,11 @@ Out of scope: speculative (parallel) batches; the overlap rule itself (agent-kit
 
 - `.claude/kit.yaml`, `AGENTS.md`, `README.md` § Release checklist if it names `kit land`.
 
-## Open points
+## Decisions
 
-- Must land after `eradicate-flaky-tests`: with a 25 % pass rate a group of four is red almost always and the bisect costs more than today — proposed: `depends_on` it; until then the orchestrator keeps at most 3 changes checking at once.
-- Whether the own check before the queue becomes `just check` in this project before agent-kit changes `guardOwnCheck` — proposed: follow agent-kit `parallel-check-churn`.
-- Target version: no release (workflow only) — proposed.
+- Lands after `eradicate-flaky-tests` and `reuse-passed-check-stages` (both archived on `main`).
+- The own check before the queue is `just check`, as agent-kit's batch landing already does (`after_group`).
+- No release: workflow only.
 
 ## Release
 
