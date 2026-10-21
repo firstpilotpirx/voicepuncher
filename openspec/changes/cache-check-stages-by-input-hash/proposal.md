@@ -1,37 +1,40 @@
 ## Why
 
-A `full-check` takes 15–24 min under the machine lock whatever the branch changed, and `just test` takes ~2 min and ran 161 times on 2026-10-20/21 (5.6 h). Every run rebuilds the same verdict: a branch that touched only `command-spotting/` still runs the dictation E2E, the WER benchmark and the refinement evaluation; a merge of `main` that brought only documents or another crate still invalidates every passing stage, because `reuse-passed-check-stages` (filed, 0/14 tasks) keys the reuse on the commit SHA, not on what the stage reads. The user's decision (audit of 2026-10-21): cache the checks "to the maximum", the way Bazel, Gradle, Nx and Turborepo do — a stage whose inputs did not change is not run again.
+A `full-check` takes 15–24 min under the machine lock whatever the branch changed, and `just test` takes ~2 min and ran 161 times on 2026-10-20/21 (5.6 h). The user's decision (audit of 2026-10-21): cache the checks "to the maximum", the way Bazel, Gradle, Nx and Turborepo do — a stage whose inputs did not change is not run again.
+
+`reuse-passed-check-stages` (archived 2026-10-21) already landed most of it: every stage of `test`, `check`, `full-check` and the E2E recipes has a content hash of its inputs (`_stage-keys`, `stage_inputs`), a stage whose key has a pass record from any worktree of this machine is reused (`↺ reused`), the smoke set is split per capability so a change to one capability reuses the others, and a merge of `main` reruns only the stages whose inputs it changed. What is left:
+
+- The `test` stage is one unit: an edit under `command-spotting/` alone reruns every test of `app/` (the largest crate), though no `app/` test reads it.
+- `just stage-times` counts reused stages but not the time they saved, so nobody can tell what the cache is worth.
 
 ## What Changes
 
-- Every stage of `test`, `check` and `full-check` gets a content hash of its inputs: the files of the crates it tests (per `build_inputs` and the Cargo package graph), `.config/nextest.toml`, the `justfile` recipe text, the model files and their settings for the model stages, the corpus sample for `e2e-bench`. The stage journal records the hash with the result.
-- A stage whose hash has a passing record on this machine is skipped and reported as `cached` (with the run it came from), in every recipe; a failing record is never reused. `VOICEPUNCHER_NO_CACHE=1` forces every stage.
-- `just test` runs only the tests of the crates whose inputs changed since the last passing run and the crates that depend on them (nextest package filter over the workspace graph); nothing changed → nothing runs, verdict `cached`.
-- The E2E stages pick their scenario sets from the changed paths through a path → capability-tag map in the `justfile` (as `recognition_paths` already picks the accuracy sample): a change that touches only voice control runs `@voice_control` and the seams, not the refinement evaluation; a change that touches shared code (`pipeline`, `main.rs`, wiring, `Cargo.lock` with a new dependency) runs everything.
-- `kit sync-base` and `kit land` read the same cache: after a merge of `main`, the stages whose hash is unchanged carry over, so a docs-only or other-crate move costs nothing; this supersedes `reuse-passed-check-stages`, whose SHA-keyed reuse is a special case of the hash.
-- `just stage-times` shows cached stages and the time they saved.
+- The `test` stage keys each workspace package on its own: the files of the package, of every workspace package it depends on (dev-dependencies included) and every file outside the packages that feeds a code stage. When the stage itself is not reused, it runs only the packages whose key has no pass record (nextest `-p` filter); the others are reported `↺ reused` with the pass they came from. The `justfile` self-tests run only when the `justfile` changed. Each package that passed gets its pass record in `stage-passes/test@<dir>/`. Nothing changed → nothing runs. `VOICEPUNCHER_REUSE_STAGES=0` runs every package.
+- A reused stage's journal entry carries the seconds of the pass it reused; `just stage-times` shows per stage the time reuse saved and the total saved over the period.
+- `AGENTS.md` § How to verify a change says so.
 
 Current stage: PoC. Target stage: PoC.
-Scope: `justfile` (`_stages`, `test`, `check`, `full-check`, the E2E recipes, `stage-times`), `.config/nextest.toml`, the stage journal format, `.claude/kit.yaml` `checks` if kit must learn the cache.
-Acceptance bar: a second `full-check` on an unchanged tree finishes in under 1 min with every stage `cached`; a change under `command-spotting/` only runs no dictation E2E and no `e2e-bench`; `just stage-times 1d` after a day of orchestrated changes shows lock hold per change below half the 2026-10-20/21 baseline (≈ 60 min per change).
-Out of scope: fixing flaky tests (`eradicate-flaky-tests`); batch landing (`batch-landing`); the lock itself.
+Scope: `justfile` (`_stage-keys`, `_test`, `_stages` pass records, `_stage-journal-append`, `stage-times`, `_test-stage-keys`), `AGENTS.md` § How to verify a change.
+Acceptance bar: `_test-stage-keys` proves that a file under `command-spotting/` changes the keys of `command-spotting` and `e2e-test` but not of `app` or `copy-pool`, a file under `copy-pool/` changes every package's key, a file outside the packages changes every key and a `justfile` edit alone changes the self-tests' key; `just test` twice on an unchanged tree runs no package the second time (the stage itself is then reused); `just stage-times` prints a saved column.
+Out of scope: fixing flaky tests (`eradicate-flaky-tests`, archived); batch landing; the lock itself; kit changes (`kit verify` keeps reading the recipe's exit code).
 
 ## Capabilities
 
 ### Modified Capabilities
 
-- `test-infrastructure` (the capability the check recipes and the stage journal live under): stages are cached by input hash and selected by changed paths.
+- none: test tooling only (check recipes and the stage journal); no product capability changes (`skip_specs`).
 
 ## Impact
 
-- `justfile`, `.config/nextest.toml`, `~/.cache/voicepuncher/stage-times.jsonl` (new fields), `AGENTS.md` § How to verify a change, `openspec/changes/reuse-passed-check-stages` (superseded or narrowed).
+- `justfile`, `~/.cache/voicepuncher/stage-times.jsonl` (reused stages carry `from.seconds`), `~/.cache/voicepuncher/stage-passes/test@<dir>/`, `AGENTS.md`.
 
-## Open points
+## Decisions taken
 
-- Only "passed" is cached; a cached pass requires deterministic tests, so this change lands after `eradicate-flaky-tests` — proposed: `depends_on` it.
-- Whether kit's check records (`kit verify`, `carryOver`) read the journal hash or the `justfile` reports `cached` as a pass to kit — proposed: the recipe exits 0 with `cached` stages and kit stays unchanged; a later agent-kit change may read the hash.
-- Whether `reuse-passed-check-stages` is archived into this change or kept for the kit-side part — proposed: superseded, archived with a note.
-- Target version: no release (tooling only) — proposed.
+- The name stays `reused` and the switch `VOICEPUNCHER_REUSE_STAGES=0`, as landed; no `cached` alias or `VOICEPUNCHER_NO_CACHE`.
+- kit stays unchanged: a recipe whose stages are all reused exits 0 and counts as passed.
+- `reuse-passed-check-stages` is already archived with its own implementation; nothing to supersede.
+- A change under `command-spotting/` keeps running the accuracy stage: the `@accuracy` scenarios run command spotting and voice-command matching (`recognition_paths`), so skipping it would lose coverage; the original acceptance item "no `e2e-bench`" is dropped.
+- The lock-hold-per-change target (below half the 2026-10-20/21 baseline) is measured after the batch lands, not a gate of this change.
 
 ## Release
 
