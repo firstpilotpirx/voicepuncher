@@ -1,0 +1,3 @@
+depends_on:
+  - change: fix-transcriber-loss-and-stop-hang
+    why: rewrites the same pipeline.rs paths the fix changes; the fix lands first
