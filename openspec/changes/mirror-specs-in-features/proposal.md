@@ -1,0 +1,33 @@
+## Why
+
+`AGENTS.md` § Gherkin says one `.feature` per capability with one `Rule:` per `### Requirement:`, and the `spec-test-reviewer` relies on it; the audit of 2026-10-22 found the mirror incomplete: `visual-feedback` has 1 of 11 requirements in `visual_feedback.feature` (the rest in `visualfeedback_macos_it.rs`), `local-services` 14 of 29, `text-insertion` 4 of 6, `processing-stages` 3 of 4; the `push-to-talk` spec has 2 requirements, neither the core "hold to record, release to paste", and its only scenario is `@real_keyboard`, never run (`push_to_talk.feature:3`). Traceability spec → test then rests on plain-Rust integration tests, which the reviewer compares worse, and a spec requirement can lose its test without anyone noticing.
+
+## What Changes
+
+- Every requirement of every capability has a `Rule:` with at least one scenario in its `.feature` at the component or E2E level; where the behavior is only observable through AppKit, the scenario drives the real adapter behind the same steps the `_it` test uses today, and the `_it` test keeps only the adapter contract.
+- The push-to-talk spec gains the core requirement (hold → recording, release → transcription and paste, short press dropped) with scenarios the component harness runs on the fake hotkey listener; `@real_keyboard` stays as the manual scenario.
+- A check (a test of `architecture.rs` or a `kit` command) maps `### Requirement:` headings to `Rule:` headings per capability and fails on a requirement without a rule, so the mirror cannot decay.
+
+Current stage: PoC. Target stage: PoC.
+Scope: the four features named, the push-to-talk spec and feature, the mapping check, `AGENTS.md` § Gherkin.
+Acceptance bar: the mapping check passes for all 21 capabilities; `just test` and the E2E smoke pass; the `spec-test-reviewer` reports no UNTRACED requirement on these capabilities.
+Out of scope: changing any requirement's meaning except adding the missing push-to-talk one.
+
+## Capabilities
+
+### Modified Capabilities
+
+- `push-to-talk`: the core requirement stated and tested.
+
+## Impact
+
+- `app/tests/features/component/{visual_feedback,text_insertion,processing_stages,push_to_talk}.feature`, `e2e-test/tests/features/local_services.feature`, their steps, `openspec/specs/push-to-talk/spec.md`, `app/tests/architecture.rs` (or a `kit` command), `AGENTS.md`.
+
+## Open points
+
+- Whether the mapping check belongs to the kit (`kit spec-index` already reads requirements) or to the project; proposed: the kit, filed in agent-kit as part of `kit-metrics-command`, with the project calling it.
+
+## Release
+
+SemVer: no release — tests and spec text only.
+Target version: unchanged.

@@ -1,0 +1,3 @@
+depends_on:
+  - change: unmask-gated-tests
+    why: both reshape the shared step definitions of app/tests/steps and e2e-test/tests/steps
