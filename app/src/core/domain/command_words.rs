@@ -106,7 +106,8 @@ pub fn without_trailing_command(text: &str) -> String {
 
 /// Removes the words of `command`, the command that started a dictation, that open `text`
 /// when more text follows: "start", a doubled "start start" or "start dictation", and the
-/// same for "restart".
+/// same for "restart", each maybe with "please"; or "please" alone, when the recording
+/// began after the command.
 pub fn without_leading_command(command: VoiceCommand, text: &str) -> String {
     let forms = match command {
         VoiceCommand::StartDictation => START_FORMS,
@@ -114,14 +115,21 @@ pub fn without_leading_command(command: VoiceCommand, text: &str) -> String {
         _ => return text.to_owned(),
     };
     let words = words(text);
-    let Some(form) = forms
+    let mut opening = match forms
         .iter()
         .find(|form| words.len() > form.len() && says(&words[..form.len()], form))
-    else {
-        return text.to_owned();
+    {
+        Some(form) if form.len() == 1 && words.len() > 2 && words[1].text == words[0].text => 2,
+        Some(form) => form.len(),
+        None => 0,
     };
-    let doubled = form.len() == 1 && words.len() > 2 && words[1].text == words[0].text;
-    let opening = if doubled { 2 } else { form.len() };
+    // A "please" closing the command, also when the recording began after the command.
+    if words.len() > opening + 1 && POLITE_WORDS.contains(&words[opening].text.as_str()) {
+        opening += 1;
+    }
+    if opening == 0 {
+        return text.to_owned();
+    }
     let rest = &text[words[opening].start..];
     let mut chars = rest.chars();
     chars
@@ -205,6 +213,30 @@ mod tests {
                 kept,
                 "{text}"
             );
+        }
+    }
+
+    #[test]
+    fn should_remove_a_please_that_opens_the_text_after_a_voice_start() {
+        for (command, text, kept) in [
+            (
+                VoiceCommand::StartDictation,
+                "please. The build is green again.",
+                "The build is green again.",
+            ),
+            (
+                VoiceCommand::StartDictation,
+                "Start dictation please, meeting moved to Friday.",
+                "Meeting moved to Friday.",
+            ),
+            (
+                VoiceCommand::RestartDictation,
+                "Пожалуйста. Встреча в пятницу.",
+                "Встреча в пятницу.",
+            ),
+            (VoiceCommand::StartDictation, "Please.", "Please."),
+        ] {
+            assert_eq!(without_leading_command(command, text), kept, "{text}");
         }
     }
 

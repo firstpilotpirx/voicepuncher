@@ -83,7 +83,7 @@ The system SHALL carry out commands in the order they were spoken. A command spo
 - **AND** the Return key is pressed after it
 
 ### Requirement: A command may end with "please"
-The system SHALL take each command phrase followed by "please" ("start dictation please", "press enter please") as that command, under the same rules as the phrase alone.
+The system SHALL take each command phrase followed by "please" ("start dictation please", "press enter please") as that command, under the same rules as the phrase alone. A "please" that opens a dictation started by "start dictation" or "restart dictation" belongs to the command and SHALL NOT be pasted, even when the command was recognized before the "please" was heard.
 
 #### Scenario: Press enter please presses Return
 - **GIVEN** listening is on
@@ -96,6 +96,13 @@ The system SHALL take each command phrase followed by "please" ("start dictation
 - **AND** the user has said a sentence in it
 - **WHEN** the user says "stop dictation please"
 - **THEN** the sentence is pasted into the focused app
+
+#### Scenario: Please after start dictation is not pasted
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** the user says "start dictation please" and a sentence, the start being recognized before the "please" was heard, and later ends the dictation
+- **THEN** the sentence is pasted into the focused app
+- **AND** the pasted text does not contain "please"
 
 ### Requirement: "clear text" erases the focused text too
 The system SHALL take "clear text", with or without "please", as the "clear all text" command.
@@ -116,7 +123,7 @@ The system SHALL carry out a command once when the user repeats it within one ut
 - **THEN** the Return key is pressed once
 
 ### Requirement: The user's own way of saying the commands is recognized
-The system SHALL recognize the commands as the user says them, including small slips of pronunciation or of the speech recognition service ("star dictation", "stuck dictation", "presenter", "and restart" for a quick "enter start" closing a chain). A command said on its own SHALL be recognized whatever the length of the pause before it, and in a quiet voice, as quiet as the user's quietest recorded commands, as well as at a normal level. Every command the user said in a recording kept for testing SHALL be recognized exactly once, apart from recordings marked unclear; repeats said without a pause of 0.3 s are one command. A short Russian phrase SHALL NOT be taken for a command; "стоп" is left out of this rule, since the speech recognition service may hear it as the short form "stop".
+The system SHALL recognize the commands as the user says them, including small slips of pronunciation or of the speech recognition service ("star dictation", "stuck dictation", "presenter", "capsule dictation" for "cancel dictation", "and restart" for a quick "enter start" closing a chain). A command said on its own SHALL be recognized whatever the length of the pause before it, and in a quiet voice, as quiet as the user's quietest recorded commands, as well as at a normal level. Every command the user said in a recording kept for testing SHALL be recognized exactly once, apart from recordings marked unclear; repeats said without a pause of 0.3 s are one command. A short Russian phrase SHALL NOT be taken for a command; "стоп" is left out of this rule, since the speech recognition service may hear it as the short form "stop".
 
 #### Scenario: Every recorded command of the user is recognized
 - **GIVEN** the user's recordings of the commands, each labelled with the command said
@@ -152,6 +159,11 @@ The system SHALL recognize the commands as the user says them, including small s
 - **AND** no dictation runs
 - **WHEN** the user says "clear all text" on its own, as quiet as the user's quietest recorded commands, with a pause before and after it
 - **THEN** the focused text is selected and deleted once
+
+#### Scenario: Cancel dictation heard as capsule dictation discards the dictation
+- **GIVEN** a dictation runs
+- **WHEN** the user says "cancel dictation" on its own and the speech recognition service hears it as "Capsule dictation"
+- **THEN** the dictation is discarded and nothing is pasted
 
 ### Requirement: A whole hands-free session runs as said
 The system SHALL carry out a long hands-free session — dictations ended by "stop dictation" or "cancel dictation", Return presses and clears, in any order, with or without "please" — exactly as said: each stopped dictation pasted with its own words and without the command phrase, each cancelled one dropped, each key press done once, in order.

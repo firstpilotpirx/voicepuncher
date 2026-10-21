@@ -32,4 +32,4 @@ Out of scope: the other hands-free session scenarios, the dictation path, other 
 ## Release
 
 SemVer: PATCH — bug fix in voice control.
-Target version: 0.30.1.
+Target version: 0.31.1.

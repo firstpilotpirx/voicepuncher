@@ -16,6 +16,7 @@ const ALIASES: &[(&str, &str)] = &[
     ("presenter", "press enter"),
     ("star dictation", "start dictation"),
     ("stuck dictation", "start dictation"),
+    ("capsule dictation", "cancel dictation"),
     // The short forms: one word for each command.
     ("enter", "press enter"),
     ("clear", "clear all text"),
@@ -250,6 +251,14 @@ mod tests {
         );
         assert_eq!(
             dictating().phrase_in("Cancel the quotation please."),
+            Some("cancel dictation".into())
+        );
+    }
+
+    #[test]
+    fn should_take_capsule_dictation_for_cancel_dictation() {
+        assert_eq!(
+            dictating().phrase_in("Capsule dictation."),
             Some("cancel dictation".into())
         );
     }

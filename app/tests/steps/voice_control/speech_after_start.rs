@@ -10,7 +10,7 @@ use cucumber::{then, when};
 
 use voicepuncher::core::application::PipelineInput;
 use voicepuncher::core::domain::{
-    CommandPlacement, ConfirmationTiming, ReportTiming, SpottingEvent,
+    CommandPlacement, ConfirmationTiming, ReportTiming, SpottingEvent, VoiceCommand,
 };
 
 use super::{
@@ -27,6 +27,8 @@ const SHORT_PAUSE: Duration = Duration::from_millis(500);
 const REPORTED_AFTER: Duration = Duration::from_millis(300);
 /// How long after the next words began the service asks the check that hears the command.
 const CHECK_ASKED_AFTER: Duration = Duration::from_millis(100);
+/// How long the user takes to say "please".
+const POLITE_WORD_LENGTH: Duration = Duration::from_millis(300);
 /// How long the speech recognition service takes to confirm a command.
 pub(super) const CONFIRMATION_TIME: Duration = Duration::from_millis(150);
 
@@ -112,6 +114,46 @@ fn says_command_and_sentence(
     let run = run(world);
     run.start_when();
     run.say_command_then_sentence(&said, &which)?;
+    run.end_started_dictation()
+}
+
+#[when(
+    expr = "the user says {string} and a sentence without a pause, the command recognized before {string} was heard, and later ends the dictation"
+)]
+fn says_command_polite_word_and_sentence(
+    world: &mut IntegrationWorld,
+    said: String,
+    polite: String,
+) -> Result<()> {
+    let command = said
+        .strip_suffix(&polite)
+        .map(str::trim_end)
+        .with_context(|| format!("{said:?} does not end with {polite:?}"))?;
+    let run = run(world);
+    run.start_when();
+    let start = Instant::now();
+    let end = start + COMMAND_LENGTH;
+    run.command_end = Some(end);
+    run.speak(command, start);
+    run.speak(&polite, end + NO_PAUSE);
+    run.speak(SENTENCE, end + NO_PAUSE + POLITE_WORD_LENGTH);
+    run.send(PipelineInput::Spotting(SpottingEvent::SpeechStarted(start)))?;
+    // The check heard the command alone and answered before "please" was heard.
+    sleep_until(end + NO_PAUSE + REPORTED_AFTER);
+    run.send(PipelineInput::Spotting(SpottingEvent::CommandsSaid {
+        commands: vec![VoiceCommand::from_phrase(command).context("no command")?],
+        start,
+        end,
+        placement: CommandPlacement::Head,
+        timing: Some(ReportTiming {
+            words_ended: end,
+            confirmation: Some(ConfirmationTiming {
+                asked_at: end,
+                took: CONFIRMATION_TIME,
+            }),
+            arrived_at: Instant::now(),
+        }),
+    }))?;
     run.end_started_dictation()
 }
 
