@@ -10,10 +10,11 @@ pub enum Tab {
     Paste,
     Archive,
     Logging,
+    Services,
 }
 
 impl Tab {
-    pub const ALL: [Tab; 7] = [
+    pub const ALL: [Tab; 8] = [
         Tab::General,
         Tab::Dictation,
         Tab::Refinement,
@@ -21,6 +22,7 @@ impl Tab {
         Tab::Paste,
         Tab::Archive,
         Tab::Logging,
+        Tab::Services,
     ];
 
     pub fn title(self) -> &'static str {
@@ -32,6 +34,7 @@ impl Tab {
             Tab::Paste => "Paste",
             Tab::Archive => "Archive",
             Tab::Logging => "Logging",
+            Tab::Services => "Services",
         }
     }
 
@@ -45,6 +48,7 @@ impl Tab {
             Tab::Paste => "doc.on.clipboard",
             Tab::Archive => "archivebox",
             Tab::Logging => "doc.text",
+            Tab::Services => "server.rack",
         }
     }
 }

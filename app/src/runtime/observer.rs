@@ -1,6 +1,7 @@
 //! The runtime state and who is told about it.
 
 use std::fmt;
+use std::path::PathBuf;
 
 use crate::core::domain::{HotKey, Permission, RecordingMode};
 
@@ -23,6 +24,12 @@ pub enum RuntimeState {
     WaitingForPermissions {
         missing: Vec<Permission>,
         revoked: Vec<Permission>,
+    },
+    /// No service starts until every model file the configuration needs is in `folder`;
+    /// `missing` are not there yet.
+    WaitingForModels {
+        folder: PathBuf,
+        missing: Vec<&'static str>,
     },
     Stopped,
     Failed(String),
@@ -49,6 +56,12 @@ impl fmt::Display for RuntimeState {
                 let names: Vec<&str> = missing.iter().map(|p| p.name()).collect();
                 write!(f, "waiting for permissions: {}", names.join(", "))
             }
+            RuntimeState::WaitingForModels { folder, missing } => write!(
+                f,
+                "waiting for models in {}: {}",
+                folder.display(),
+                missing.join(", ")
+            ),
             RuntimeState::Stopped => write!(f, "stopped"),
             RuntimeState::Failed(reason) => write!(f, "failed: {reason}"),
         }

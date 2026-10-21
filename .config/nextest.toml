@@ -32,6 +32,14 @@ pasteboard = { max-threads = 1 }
 [[profile.default.overrides]]
 filter = 'binary(engine_it) | binary(placed_commands_it)'
 test-group = "command-spotting-engine"
+# Started first (speed-up-smoke-and-test): the group's 6 threads hold about 85 s of model work, which bounds
+# `just test` when it starts after the quick tests
+priority = 50
+
+# The longest single tests start right after the model tests, so none of them starts last
+[[profile.default.overrides]]
+filter = 'test(should_log_a_copy_hung_with_the_time_waited_only_past_twice_its_time_limit) | binary(commandspotting_reconnect_it) | binary(commandspotting_client_it) | binary(server_it)'
+priority = 40
 
 [[profile.default.overrides]]
 filter = 'binary(textpasting_macos_it)'
@@ -50,7 +58,8 @@ test-group = "command-spotting-models"
 # stay captured; their output is printed whole per test, as `-- --nocapture` showed it
 
 # The smoke set, one profile per capability (the justfile's e2e_smoke_stages): the four selections make up the
-# @smoke scenarios. Service binaries: default 2 min a test (voice_forms_it 34 s measured)
+# @smoke scenarios. Each part runs its service binaries and its harness in one nextest call, side by side, the
+# harness captured like the binaries (_e2e-smoke-part). Service binaries: default 2 min a test (voice_forms_it 34 s measured)
 
 # @smoke of speech recognition, file transcription and every capability without a part of its own (the dictation archive), 30 s measured: 2 min
 [profile.e2e-smoke-speech]

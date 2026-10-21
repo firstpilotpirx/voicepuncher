@@ -377,6 +377,36 @@ fn should_point_at_the_permissions_window_while_waiting_for_permissions() {
 }
 
 #[test]
+fn should_show_the_waiting_icon_while_waiting_for_models() {
+    assert_eq!(state(None, waiting_for_models()).icon(), IconState::Waiting);
+}
+
+#[test]
+fn should_point_at_the_download_window_while_waiting_for_models() {
+    assert_eq!(
+        state(None, waiting_for_models()).status_line(),
+        "Waiting for models — open Download models…"
+    );
+}
+
+#[test]
+fn should_offer_download_models_right_under_permissions() {
+    let permissions = MENU
+        .iter()
+        .position(|entry| *entry == MenuEntry::Permissions)
+        .expect("the menu has Permissions…");
+    assert_eq!(MENU.get(permissions + 1), Some(&MenuEntry::DownloadModels));
+    assert_eq!(MenuEntry::DownloadModels.title(), Some("Download models…"));
+}
+
+fn waiting_for_models() -> Option<RuntimeState> {
+    Some(RuntimeState::WaitingForModels {
+        folder: "/Users/me/Library/Application Support/voicepuncher/models".into(),
+        missing: vec!["ggml-large-v3-turbo-q5_0.bin"],
+    })
+}
+
+#[test]
 fn should_offer_permissions_right_under_the_status_line() {
     let status = MENU
         .iter()

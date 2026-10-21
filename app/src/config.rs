@@ -377,6 +377,26 @@ impl Default for ServicesCfg {
     }
 }
 
+/// The configuration file a first launch writes: every option at its default, each with a
+/// comment saying what it means.
+pub const DEFAULT_FILE: &str = include_str!("config/default.toml");
+
+/// Whether [`ensure_exists`] wrote the configuration file or found one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileOutcome {
+    Created,
+    Existed,
+}
+
+/// Writes [`DEFAULT_FILE`] at `path` when nothing is there; an existing file is never touched.
+pub fn ensure_exists(path: &Path) -> Result<FileOutcome> {
+    if path.exists() {
+        return Ok(FileOutcome::Existed);
+    }
+    document::ConfigDocument::parse(DEFAULT_FILE)?.save(path)?;
+    Ok(FileOutcome::Created)
+}
+
 pub fn load(path: &Path) -> Result<Config> {
     let raw = std::fs::read_to_string(path)
         .with_context(|| format!("read config: {}", path.display()))?;
@@ -413,6 +433,86 @@ fn ensure_copies(key: &str, copies: u32) -> Result<()> {
         anyhow::bail!(
             "{key} = {copies}: set 1 to {MAX_SERVICE_COPIES}, the most copies its clients look for"
         )
+    }
+}
+
+#[cfg(test)]
+mod default_file_tests {
+    use super::*;
+
+    /// Options the default file leaves to the app: the long refinement texts keep improving
+    /// with it, and the retired key is only tolerated.
+    const LEFT_OUT: [(&str, &str); 3] = [
+        ("refinement", "system_prompt"),
+        ("refinement", "examples"),
+        ("audio", "debug_save_wav"),
+    ];
+
+    #[test]
+    fn should_hold_the_defaults_in_the_default_file() {
+        // Given / When
+        let cfg = parse(DEFAULT_FILE, "the default file").unwrap();
+        // Then
+        assert_eq!(
+            toml::Value::try_from(&cfg).unwrap(),
+            toml::Value::try_from(Config::default()).unwrap()
+        );
+    }
+
+    #[test]
+    fn should_set_every_option_with_a_comment_above_it_in_the_default_file() {
+        // Given
+        let defaults = toml::Value::try_from(Config::default()).unwrap();
+        let document = DEFAULT_FILE.parse::<toml_edit::DocumentMut>().unwrap();
+        // When
+        let mut missing = Vec::new();
+        for (section, keys) in defaults.as_table().unwrap() {
+            for key in keys.as_table().unwrap().keys() {
+                if LEFT_OUT.contains(&(section.as_str(), key.as_str())) {
+                    continue;
+                }
+                let commented = document
+                    .get(section)
+                    .and_then(|table| table.as_table())
+                    .and_then(|table| table.key(key))
+                    .and_then(|key| key.leaf_decor().prefix())
+                    .and_then(|prefix| prefix.as_str())
+                    .is_some_and(|prefix| prefix.trim_start().starts_with('#'));
+                if !commented {
+                    missing.push(format!("{section}.{key}"));
+                }
+            }
+        }
+        // Then
+        assert!(missing.is_empty(), "not set with a comment: {missing:?}");
+    }
+
+    #[test]
+    fn should_write_the_default_file_when_there_is_none() {
+        // Given
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("nested/config.toml");
+        // When
+        let outcome = ensure_exists(&path).unwrap();
+        // Then
+        assert_eq!(outcome, FileOutcome::Created);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), DEFAULT_FILE);
+    }
+
+    #[test]
+    fn should_keep_an_existing_file() {
+        // Given
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("config.toml");
+        std::fs::write(&path, "[hotkey]\nkey = \"F13\"\n").unwrap();
+        // When
+        let outcome = ensure_exists(&path).unwrap();
+        // Then
+        assert_eq!(outcome, FileOutcome::Existed);
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "[hotkey]\nkey = \"F13\"\n"
+        );
     }
 }
 

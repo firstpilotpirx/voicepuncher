@@ -113,7 +113,8 @@ impl ServicesView for View {
     }
 }
 
-struct SystemClock;
+/// The clock of the process: real time and real pauses.
+pub struct SystemClock;
 
 impl Clock for SystemClock {
     fn now(&self) -> Instant {

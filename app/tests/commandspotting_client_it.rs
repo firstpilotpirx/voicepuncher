@@ -11,8 +11,8 @@ use tungstenite::{Message, WebSocket};
 use voicepuncher::adapters::secondary::commandspotting::websocket::client::SpottingClient;
 
 /// How late the stub service answers each audio message: more than the client's silence
-/// limit, which counts only a service that answers nothing at all.
-const LATE_EVENTS: Duration = Duration::from_secs(12);
+/// limit (5 s), which counts only a service that answers nothing at all.
+const LATE_EVENTS: Duration = Duration::from_secs(6);
 const QUICK_EVENTS: Duration = Duration::from_millis(200);
 const FRAMES: usize = 3;
 /// 100 ms of 16 kHz audio, as the app sends it.

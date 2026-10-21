@@ -56,10 +56,10 @@ Gates: none (the user's choice for the batch). Open points of the proposal settl
 | Download models while every model is present (menu-bar-presence) | unit tests in `menubar/macos/mapping/tests.rs` and `modeldownload/macos/mapping.rs`; manual run |
 | A launch with the dictation model missing | component `model_download.feature`; window: manual run |
 | A launch with every model present shows no window | component `model_download.feature` |
-| A file of the wrong size is missing | adapter integration `modelstore_fs_it.rs` |
-| A model named by its variable counts as present | adapter integration `modelstore_fs_it.rs` |
+| A file of the wrong size is missing | adapter integration `modelfetch_fs_it.rs` |
+| A model named by its variable counts as present | adapter integration `modelfetch_fs_it.rs` |
 | Every missing file is downloaded and placed | component `model_download.feature`; unit tests in `model_download.rs` |
-| The keyword spotting archive is extracted | adapter integration `modelstore_fs_it.rs`; unit test in `model_download.rs` |
+| The keyword spotting archive is extracted | adapter integration `modelfetch_fs_it.rs`; unit test in `model_download.rs` |
 | Cancel and download again | component `model_download.feature`; adapter integration `modelfetch_http_it.rs` (Range) |
 | A server that ignores the resume | adapter integration `modelfetch_http_it.rs`; unit test in `model_download.rs` |
 | A corrupted part is downloaded again | component `model_download.feature` |

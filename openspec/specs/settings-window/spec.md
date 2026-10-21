@@ -6,7 +6,7 @@ A settings window lets the user see and change every option of the app without a
 ## Requirements
 
 ### Requirement: One settings window opens from the menu
-Choosing Settings in the menu SHALL show the settings window with its tabs (General, Dictation, Refinement, Sounds, Paste, Archive, Logging) and bring it to the front; choosing Settings again while the window exists SHALL bring the same window to the front instead of opening a second one.
+Choosing Settings in the menu SHALL show the settings window with its tabs (General, Dictation, Refinement, Sounds, Paste, Archive, Logging, Services) and bring it to the front; choosing Settings again while the window exists SHALL bring the same window to the front instead of opening a second one.
 
 #### Scenario: Settings opens the window
 - **GIVEN** the app runs
@@ -170,3 +170,39 @@ Each sound choice SHALL have a play button that plays the chosen system sound at
 - **WHEN** the user picks a system sound for the stop sound and presses its play button
 - **THEN** that sound plays
 - **AND** the configuration file is unchanged
+
+### Requirement: The Services tab holds the models and the services
+The settings window SHALL have a Services tab, after Logging, holding the options of the `[services]` section and a Models row reading how many needed model files are present out of how many, with Download models… (which opens the Download window) and Show in Finder. Saving a new models folder SHALL apply as every other option, and the runtime SHALL check the models again in that folder.
+
+#### Scenario: The Services tab shows the models
+- **GIVEN** every needed model file is in the models folder
+- **WHEN** the user opens the Services tab
+- **THEN** it shows the models folder and reads that every model is present
+- **AND** it offers Download models… and Show in Finder
+
+#### Scenario: A new models folder is checked
+- **GIVEN** the runtime is Ready
+- **WHEN** the user picks an empty models folder in the Services tab and saves
+- **THEN** the runtime waits for models and the Download window lists the files as Missing
+
+### Requirement: A first launch creates the configuration file with the defaults
+When the configuration file does not exist at launch, the app SHALL write it from a built-in default file before it reads its configuration, log that it created the file, and go on with those defaults; the default file SHALL set every option the settings window shows to its default value with a comment above it saying what the option means, and SHALL parse to the same configuration as an empty file. An existing configuration file SHALL never be replaced at launch.
+
+#### Scenario: A first launch writes the default file
+- **GIVEN** no configuration file exists
+- **WHEN** the app starts
+- **THEN** the configuration file exists with the default file's text
+- **AND** the log says the file was created with the defaults
+
+#### Scenario: The default file holds the defaults
+- **WHEN** the default file is read as a configuration
+- **THEN** it equals the configuration of an empty file
+
+#### Scenario: The default file names every option
+- **WHEN** the options of the default file are compared with the options the configuration accepts
+- **THEN** every option the settings window shows is set in the default file, with a comment above it
+
+#### Scenario: An existing file is kept
+- **GIVEN** a configuration file the user edited
+- **WHEN** the app starts
+- **THEN** the file is unchanged

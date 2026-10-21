@@ -1,6 +1,6 @@
 [package]
 name = "voicepuncher"
-version = "0.33.0"
+version = "0.35.0"
 edition = "2021"
 rust-version = "1.88"
 
@@ -24,9 +24,8 @@ dirs = "5"
 clap = { version = "4", features = ["derive"] }
 
 env_logger = "0.11"
-dialoguer = "0.11"
-console = "0.15"
 ureq = { version = "2", features = ["tls"] }
+sha2 = "=0.11.1"
 url = "2"
 serde_json = "1"
 tungstenite = "=0.30.0"

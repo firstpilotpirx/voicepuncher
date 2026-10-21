@@ -6,7 +6,7 @@
 flowchart LR
     USER["User\n(developer / power user\non Apple Silicon Mac)"]
 
-    subgraph vp["voicepuncher (CLI process)"]
+    subgraph vp["voicepuncher (menu bar app)"]
         direction TB
         CORE["Pipeline + Permissions gate\n(core logic)"]
     end
@@ -31,7 +31,7 @@ flowchart LR
     MODELFS -- "llama.cpp model\n(Qwen2.5-3B-Instruct-Q4_K_M.gguf)" --> vp
 ```
 
-voicepuncher is a single OS process with no server side of its own. It reads audio from CoreAudio, sends it to a speech recognition service on the same machine (loopback only), runs text refinement in-process on Apple Silicon Metal, and delivers the result by writing to the system clipboard and synthesizing a Cmd+V keystroke. The three macOS TCC permissions are granted to the app bundle, or, when the bare binary runs from a terminal, to that terminal — macOS attributes them to the responsible parent application; the Permissions window names which one.
+voicepuncher is a single OS process with no server side of its own: a menu bar application the user drives through its menu and windows (Permissions, Download, Settings); the terminal is only for developers and file mode. It reads audio from CoreAudio, sends it to a speech recognition service on the same machine (loopback only), runs text refinement in-process on Apple Silicon Metal, and delivers the result by writing to the system clipboard and synthesizing a Cmd+V keystroke. The three macOS TCC permissions are granted to the app bundle, or, when the bare binary runs from a terminal, to that terminal — macOS attributes them to the responsible parent application; the Permissions window names which one.
 
 ## External Systems
 
@@ -42,6 +42,7 @@ voicepuncher is a single OS process with no server side of its own. It reads aud
 | `rdev` global key listener | macOS → voicepuncher | Raw keyboard events delivered as `PttSignal::Pressed` / `PttSignal::Released` when the configured hotkey changes state |
 | Speech recognition service (`whisper-server`, started by the app in hotkey mode or with `just start-model-servers`) | voicepuncher ↔ service over loopback HTTP | One `POST /v1/audio/transcriptions` per recording or live chunk (16 kHz mono WAV); returns the raw transcript. Checked for reachability at startup |
 | Local service processes (`whisper-server`, `llama-server`, `voicepuncher-command-spotting`) | voicepuncher → macOS | With `[services] manage` on: started as child processes, their output in `~/.voicepuncher/logs/<binary>-<port>.log`, checked over loopback HTTP, asked to end (SIGTERM, then SIGKILL after 5 s) when the app quits |
+| Model hosts (`huggingface.co`, `github.com` and their CDNs) | voicepuncher → internet, HTTPS | Only when the user clicks Download (or runs `--download-models`): one GET per missing model file at its pinned address, with `Range` to resume a part; `VOICEPUNCHER_MODEL_MIRROR` replaces the hosts |
 | Local model files (`~/.voicepuncher/models/`) | file system → voicepuncher | Qwen2.5 GGUF binary, loaded once at startup and kept resident in RAM (the Whisper model is loaded by the speech recognition service) |
 | NSPasteboard (macOS clipboard) | voicepuncher → macOS | `CleanedText` written as a plain-text clipboard entry via `arboard` |
 | CGEventPost (macOS event injection) | voicepuncher → macOS | Synthetic Cmd+V key-down/key-up pair injected into the global event stream to trigger paste in the frontmost application |

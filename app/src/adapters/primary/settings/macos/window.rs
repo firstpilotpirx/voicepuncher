@@ -17,6 +17,7 @@ use super::form::Form;
 use super::layout::tabs;
 use super::login::LoginSwitch;
 use super::login_row::LoginRow;
+use super::models_row::{ModelsPanel, ModelsRow};
 use super::session::SettingsSession;
 use super::table::FIELDS;
 use super::target::FormTarget;
@@ -32,6 +33,7 @@ pub struct SettingsWindow {
     opener: SessionOpener,
     logs_dir: PathBuf,
     login_item: Arc<dyn LoginItem>,
+    models: Option<Rc<dyn ModelsPanel>>,
     shown: RefCell<Option<Rc<Form>>>,
 }
 
@@ -41,8 +43,15 @@ impl SettingsWindow {
             opener,
             logs_dir,
             login_item,
+            models: None,
             shown: RefCell::new(None),
         }
+    }
+
+    /// The Services tab shows the models of `panel`; without one it shows no Models row.
+    pub fn with_models(mut self, panel: Rc<dyn ModelsPanel>) -> Self {
+        self.models = Some(panel);
+        self
     }
 
     /// Brings the window to the front, building it first when it is not open.
@@ -59,7 +68,13 @@ impl SettingsWindow {
             return Ok(form);
         }
         let login = LoginSwitch::new(Arc::clone(&self.login_item));
-        let form = build(mtm, (self.opener)()?, self.logs_dir.clone(), login);
+        let form = build(
+            mtm,
+            (self.opener)()?,
+            self.logs_dir.clone(),
+            login,
+            self.models.clone(),
+        );
         self.shown.replace(Some(Rc::clone(&form)));
         Ok(form)
     }
@@ -80,6 +95,7 @@ fn build(
     session: SettingsSession,
     logs_dir: PathBuf,
     login: LoginSwitch,
+    models: Option<Rc<dyn ModelsPanel>>,
 ) -> Rc<Form> {
     let target = FormTarget::new(mtm);
     let parts = Parts {
@@ -101,7 +117,8 @@ fn build(
         })
         .collect();
     let login = LoginRow::new(&parts, login);
-    let (controller, tab_views) = tabs(&parts, &controls, &notes, &login);
+    let models = ModelsRow::new(&parts, models);
+    let (controller, tab_views) = tabs(&parts, &controls, &notes, &login, &models);
     let window = NSWindow::windowWithContentViewController(&controller);
     window.setTitle(&NSString::from_str(TITLE));
     window.setToolbarStyle(NSWindowToolbarStyle::Preference);
@@ -116,6 +133,7 @@ fn build(
         session: RefCell::new(session),
         controls,
         login,
+        models,
         tabs: tab_views,
         logs_dir,
     });

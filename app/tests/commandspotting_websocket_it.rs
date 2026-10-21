@@ -214,13 +214,41 @@ fn recognized_from_microphone(
     recognized
 }
 
+/// As many apps as `should_serve_several_apps_listening_at_once` proves the service serves at
+/// once.
+const APPS_AT_ONCE: usize = 3;
+
+/// `hear` for each case, each on a connection of its own, at most [`APPS_AT_ONCE`] at the same
+/// time, the results in the order of the cases: the cases of one test wait out their real-time
+/// pauses together instead of one after another.
+fn each_at_once<C: Copy + Send, R: Send>(cases: &[C], hear: impl Fn(C) -> R + Sync) -> Vec<R> {
+    cases
+        .chunks(APPS_AT_ONCE)
+        .flat_map(|chunk| {
+            let hear = &hear;
+            std::thread::scope(|scope| {
+                let handles: Vec<_> = chunk
+                    .iter()
+                    .map(|&case| scope.spawn(move || hear(case)))
+                    .collect();
+                handles
+                    .into_iter()
+                    .map(|h| h.join().unwrap())
+                    .collect::<Vec<_>>()
+            })
+        })
+        .collect()
+}
+
 #[test]
 fn should_recognize_each_command_streamed_from_a_48_khz_microphone() {
     let Some(url) = service_url() else { return };
-    for command in VoiceCommand::ALL {
-        // When
-        let recognized = recognized_from_microphone(&url, command.phrase(), listened_for(command));
-        // Then
+    // When
+    let recognized = each_at_once(&VoiceCommand::ALL, |command| {
+        recognized_from_microphone(&url, command.phrase(), listened_for(command))
+    });
+    // Then
+    for (command, recognized) in VoiceCommand::ALL.into_iter().zip(recognized) {
         assert_eq!(recognized, [command], "spoken: {:?}", command.phrase());
     }
 }
@@ -328,23 +356,27 @@ fn should_recognize_commands_after_long_listening_with_the_phrase_set_switched_b
 #[test]
 fn should_take_a_command_phrase_that_ends_the_utterance() {
     let Some(url) = service_url() else { return };
-    for (sentence, command) in [
+    let cases = [
         ("now start dictation", VoiceCommand::StartDictation),
         ("I think we should press enter", VoiceCommand::PressEnter),
         ("and then clear all text", VoiceCommand::ClearAllText),
-    ] {
-        // Given
-        let mut listening = Listening::start(&url, &VoiceCommand::STANDBY);
-        // When
-        listening.say_after(BETWEEN_COMMANDS_SECS, sentence);
-        // Then
-        assert_eq!(
-            listening.next_command(),
-            Some(command),
-            "said: {sentence:?}"
-        );
-        listening.stream.stop();
+    ];
+    // Given listening, when a sentence ends with a command
+    let heard = each_at_once(&cases, |(sentence, _)| heard_after_a_pause(&url, sentence));
+    // Then
+    for ((sentence, command), heard) in cases.into_iter().zip(heard) {
+        assert_eq!(heard, Some(command), "said: {sentence:?}");
     }
+}
+
+/// The first command recognized when `sentence` is said after a pause in standby, each on a
+/// listening session of its own.
+fn heard_after_a_pause(url: &str, sentence: &str) -> Option<VoiceCommand> {
+    let mut listening = Listening::start(url, &VoiceCommand::STANDBY);
+    listening.say_after(BETWEEN_COMMANDS_SECS, sentence);
+    let heard = listening.next_command();
+    listening.stream.stop();
+    heard
 }
 
 /// The pause a quick user leaves between two commands.
@@ -450,21 +482,19 @@ fn should_keep_a_live_service_that_hears_nothing_for_a_while() {
 #[test]
 fn should_start_a_dictation_with_start_opening_the_utterance() {
     let Some(url) = service_url() else { return };
-    for sentence in [
+    let sentences = [
         "start dictation again",
         "start dictation for the next message",
-    ] {
-        // Given
-        let mut listening = Listening::start(&url, &VoiceCommand::STANDBY);
-        // When
-        listening.say_after(BETWEEN_COMMANDS_SECS, sentence);
-        // Then
+    ];
+    // Given listening, when a sentence opens with "start dictation"
+    let heard = each_at_once(&sentences, |sentence| heard_after_a_pause(&url, sentence));
+    // Then
+    for (sentence, heard) in sentences.into_iter().zip(heard) {
         assert_eq!(
-            listening.next_command(),
+            heard,
             Some(VoiceCommand::StartDictation),
             "said: {sentence:?}"
         );
-        listening.stream.stop();
     }
 }
 
@@ -473,16 +503,14 @@ fn should_ignore_a_command_phrase_with_more_speech_after_it() {
     let Some(url) = service_url() else { return };
     // A single short word right after a command ("press enter now") is within the margin
     // quiet speech needs and still passes: a known limit of the pause rule.
-    for sentence in [
+    let sentences = [
         "press enter when you are ready",
         "clear all text in the morning please",
-    ] {
-        // Given
-        let mut listening = Listening::start(&url, &VoiceCommand::STANDBY);
-        // When
-        listening.say_after(BETWEEN_COMMANDS_SECS, sentence);
-        // Then
-        assert_eq!(listening.next_command(), None, "said: {sentence:?}");
-        listening.stream.stop();
+    ];
+    // Given listening, when a command phrase is followed by more speech
+    let heard = each_at_once(&sentences, |sentence| heard_after_a_pause(&url, sentence));
+    // Then
+    for (sentence, heard) in sentences.into_iter().zip(heard) {
+        assert_eq!(heard, None, "said: {sentence:?}");
     }
 }

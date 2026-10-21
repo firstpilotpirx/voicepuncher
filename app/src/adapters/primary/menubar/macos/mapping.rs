@@ -161,6 +161,9 @@ impl StatusItemState {
             Some(RuntimeState::WaitingForPermissions { .. }) => {
                 "Waiting for permissions — open Permissions…".into()
             }
+            Some(RuntimeState::WaitingForModels { .. }) => {
+                "Waiting for models — open Download models…".into()
+            }
             Some(RuntimeState::Restarting) => "Restarting…".into(),
             Some(RuntimeState::StartingServices { ready, total }) => {
                 format!("Starting services… ({ready} of {total} ready)")
@@ -226,6 +229,8 @@ pub enum MenuEntry {
     TitleLine,
     StatusLine,
     Permissions,
+    /// Opens the Download window; hidden when the app leaves the services to the scripts.
+    DownloadModels,
     /// The submenu of the local services; hidden when the app leaves them to the scripts.
     Services,
     Separator,
@@ -235,10 +240,11 @@ pub enum MenuEntry {
 }
 
 /// The menu, the same in every state.
-pub const MENU: [MenuEntry; 9] = [
+pub const MENU: [MenuEntry; 10] = [
     MenuEntry::TitleLine,
     MenuEntry::StatusLine,
     MenuEntry::Permissions,
+    MenuEntry::DownloadModels,
     MenuEntry::Services,
     MenuEntry::Separator,
     MenuEntry::Settings,
@@ -252,6 +258,7 @@ impl MenuEntry {
     pub fn title(self) -> Option<&'static str> {
         match self {
             MenuEntry::Permissions => Some("Permissions…"),
+            MenuEntry::DownloadModels => Some("Download models…"),
             MenuEntry::Services => Some("Services"),
             MenuEntry::Settings => Some("Settings…"),
             MenuEntry::Logs => Some("Open Logs Folder"),

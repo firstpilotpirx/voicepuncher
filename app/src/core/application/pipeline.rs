@@ -514,7 +514,7 @@ impl Pipeline {
         };
         self.close_trace(outcome, &stages);
         pasted?;
-        eprintln!("{} {}", console::style("▸").dim(), cleaned.as_str());
+        eprintln!("▸ {}", cleaned.as_str());
         Ok(())
     }
 
@@ -548,7 +548,7 @@ impl Pipeline {
         );
         match &insertion {
             Ok(Insertion::Pasted | Insertion::PastedAfterWait) => {
-                eprintln!("{} {}", console::style("▸").dim(), cleaned.as_str())
+                eprintln!("▸ {}", cleaned.as_str())
             }
             Ok(Insertion::LeftInClipboard(_)) => {}
             Err(e) => {

@@ -16,6 +16,7 @@ use super::control::FieldControl;
 use super::field::Tab;
 use super::login::SWITCH_LABEL;
 use super::login_row::LoginRow;
+use super::models_row::{ModelsRow, MODELS_LABEL};
 use super::target::actions;
 
 const MARGIN: f64 = 20.0;
@@ -59,6 +60,7 @@ pub fn tabs(
     controls: &[FieldControl],
     notes: &[(usize, String)],
     login: &LoginRow,
+    models: &ModelsRow,
 ) -> (Retained<NSTabViewController>, Vec<TabViews>) {
     let controller = NSTabViewController::new(parts.mtm);
     controller.setTabStyle(NSTabViewControllerTabStyle::Toolbar);
@@ -68,7 +70,8 @@ pub fn tabs(
         .enumerate()
         .map(|(place, tab)| {
             let page = NSViewController::new(parts.mtm);
-            let (view, views) = tab_view(parts, &page, place as isize, controls, notes, login);
+            let (view, views) =
+                tab_view(parts, &page, place as isize, controls, notes, login, models);
             page.setView(&view);
             views.fit();
             let item = NSTabViewItem::tabViewItemWithViewController(&page);
@@ -92,6 +95,7 @@ fn tab_view(
     controls: &[FieldControl],
     notes: &[(usize, String)],
     login: &LoginRow,
+    models: &ModelsRow,
 ) -> (Retained<NSView>, TabViews) {
     let tab = Tab::ALL[place as usize];
     let grid = NSGridView::new(parts.mtm);
@@ -109,6 +113,9 @@ fn tab_view(
     if tab == Tab::General {
         add_row(parts.mtm, &grid, Some(SWITCH_LABEL), &login.view);
         add_row(parts.mtm, &grid, None, &login.note);
+    }
+    if tab == Tab::Services && models.panel.is_some() {
+        add_row(parts.mtm, &grid, Some(MODELS_LABEL), &models.view);
     }
     if controls
         .iter()

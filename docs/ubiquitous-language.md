@@ -80,7 +80,7 @@
 
 ### Runtime state
 - **Type:** Value (enum, outside `core/`)
-- **Definition:** What the `Runtime` reports to its observers: `Starting`, `Ready` (with the hotkey and whether voice control is on), `Restarting`, `Stopped`, `Failed` (with the reason). A new observer is told the current state at once.
+- **Definition:** What the `Runtime` reports to its observers: `Starting`, `Ready` (with the hotkey and whether voice control is on), `Restarting`, `Starting services`, `Waiting for permissions`, `Waiting for models` (with the models folder and the needed files), `Stopped`, `Failed` (with the reason). A new observer is told the current state at once.
 - **Code:** `app/src/runtime/observer.rs`
 - **Synonyms to AVOID:** "status", "health"
 
@@ -121,11 +121,15 @@
 - **Variants:** `Toggle` (default), `Hold`
 - **Synonyms to AVOID:** "TriggerMode", "CaptureMode"
 
-### SetupWizard
-- **Type:** Primary Adapter (interactive CLI wizard)
-- **Definition:** Runs on first launch (or when `--setup` is passed) to ask for the local service addresses, language, hotkey, recording mode and sounds, and writes the initial config file. Downloads nothing. Lives in `adapters/primary/setup/cli/`. Not a Use Case — it contains user interaction logic, not domain logic.
-- **Code:** `app/src/adapters/primary/setup/cli/mod.rs`
-- **Synonyms to AVOID:** "Installer", "Bootstrapper", "Onboarding"
+### Default configuration file
+- **Type:** Configuration (embedded text)
+- **Definition:** The configuration file a *First launch* writes when none exists: every option the settings window shows, at its default, with a comment above it. It parses to the same configuration as an empty file; the long refinement instruction and examples are left to the app. Replaces the retired *SetupWizard*, which asked for the options in a terminal.
+- **Code:** `app/src/config/default.toml`, `config::ensure_exists`
+- **Synonyms to AVOID:** "config template", "setup wizard", "example config"
+
+### First launch
+- **Definition:** The app's first start for a user: it writes the *Default configuration file*, the *Permissions window* asks for the permissions, the *Download window* fetches the models, the local services start, and the menu bar shows Ready. Nothing is asked in a terminal.
+- **Synonyms to AVOID:** "setup", "onboarding", "installation"
 
 ### VisualIndicator
 - **Type:** Driven Port (trait in `core/application/`)
@@ -221,6 +225,30 @@
 - **Definition:** The step a dictation is in between the end of its recording and the paste, as the overlay shows it with an icon and an English label of its own, and an indeterminate spinner beside the label: **speech recognition** — a breathing ear, "Recognizing", no text window — from the stop until the transcript is ready (with live chunks, the transcription still running after the stop), then **text refinement** — breathing sparkles, "Refining text", and the raw transcript being refined, dimmed, in the text window — from its start until the corrected text is ready. With text refinement off only speech recognition is shown.
 - **Code:** `VisualIndicator::show_recognizing_speech`, `VisualIndicator::show_refining_text` (handed the raw transcript); `Pipeline::without_text_refinement_stage`
 - **Synonyms to AVOID:** "phase", "step" (alone), "processing" (alone — names both stages)
+
+### Model catalog
+- **Type:** Value (domain data)
+- **Definition:** The six model files the local services load — the dictation and commands Whisper models, the Whisper voice activity model, the text refinement model, the voice control voice activity model and the keyword spotting archive — each with its pinned download address, sha256, size, purpose and the part of the app that needs it (dictation always, voice control, refinement). The one source of the files `just models` and the *Download window* fetch.
+- **Code:** `app/src/core/domain/model_catalog.rs` (`CATALOG`, `ModelFile`, `ModelNeeds`)
+- **Synonyms to AVOID:** "model list", "manifest"
+
+### Models folder
+- **Type:** Domain concept
+- **Definition:** Where the model files live: `[services] models_dir`, `~/.voicepuncher/models` by default. A catalog file is *present* there (or in `~/.voicepuncher/models`, `~/.voicepuncher`) with its catalog size, or when its variable names an existing path; downloads write `NAME.part` files there.
+- **Code:** `ServicesCfg::models_dir`; `app/src/adapters/secondary/modelfetch/fs/`
+- **Synonyms to AVOID:** "model cache", "model dir"
+
+### Model download
+- **Type:** Use Case (Application Service)
+- **Definition:** Checks which needed catalog files are present and fetches the missing ones one at a time: resumed from their part, hashed while they stream, placed only when the sha256 matches (downloaded once more on a mismatch), the archive extracted; connection failures are retried after 2, 4 and 8 s, and nothing starts when the free space is short. The *Download window* and `--download-models` run it; the runtime waits for models (state *Waiting for models*) before it starts any service. The app's only use of the internet.
+- **Code:** `app/src/core/application/model_download.rs` (`ModelDownload`); ports `ModelStore`, `PartSink`, `ModelFetcher`, `DiskSpace`, `Clock`
+- **Synonyms to AVOID:** "installer", "updater", "sync"
+
+### Download window
+- **Type:** Primary adapter (window)
+- **Definition:** The window that lists the needed model files with their purpose, size and status, the total progress and the free space, with Download (Cancel while it runs), Retry, Open Folder, Quit and Done. It opens when the runtime waits for models, and from the menu's Download models…
+- **Code:** `app/src/adapters/primary/modeldownload/macos/`
+- **Synonyms to AVOID:** "installer", "setup window"
 
 ### Service runtime
 - **Type:** Use Case (Application Service)

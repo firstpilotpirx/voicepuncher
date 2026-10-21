@@ -62,6 +62,10 @@ impl FakeServices {
         self.inner.lock().unwrap().statuses.contains_key(&port)
     }
 
+    pub(super) fn any_required(&self) -> bool {
+        !self.inner.lock().unwrap().statuses.is_empty()
+    }
+
     fn states(&self) -> Vec<ServiceState> {
         let inner = self.inner.lock().unwrap();
         inner

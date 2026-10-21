@@ -35,8 +35,10 @@ const DOT_INSET: f64 = 2.0;
 /// The places of the two text lines at the top of the menu.
 const TITLE_LINE: isize = 0;
 const STATUS_LINE: isize = 1;
-/// The place of the Services submenu, right after Permissions….
-const SERVICES: isize = 3;
+/// The place of Download models…, right after Permissions….
+const DOWNLOAD_MODELS: isize = 3;
+/// The place of the Services submenu, right after Download models….
+const SERVICES: isize = 4;
 const SETTINGS_KEY: &str = ",";
 const QUIT_KEY: &str = "q";
 const NO_KEY: &str = "";
@@ -235,6 +237,11 @@ fn build_menu(mtm: MainThreadMarker, target: &MenuTarget) -> Retained<NSMenu> {
             MenuEntry::TitleLine | MenuEntry::StatusLine => text_line(mtm),
             MenuEntry::Separator => NSMenuItem::separatorItem(mtm),
             MenuEntry::Permissions => chosen(mtm, target, entry, sel!(permissions:), NO_KEY),
+            MenuEntry::DownloadModels => {
+                let item = chosen(mtm, target, entry, sel!(downloadModels:), NO_KEY);
+                item.setHidden(true);
+                item
+            }
             MenuEntry::Services => services_item(mtm, entry),
             MenuEntry::Settings => chosen(mtm, target, entry, sel!(settings:), SETTINGS_KEY),
             MenuEntry::Logs => chosen(mtm, target, entry, sel!(openLogs:), NO_KEY),
@@ -326,6 +333,11 @@ define_class!(
             self.act(|actions| actions.open_permissions());
         }
 
+        #[unsafe(method(downloadModels:))]
+        fn download_models(&self, _sender: Option<&AnyObject>) {
+            self.act(|actions| actions.open_download_models());
+        }
+
         #[unsafe(method(settings:))]
         fn settings(&self, _sender: Option<&AnyObject>) {
             self.act(|actions| actions.open_settings());
@@ -378,6 +390,15 @@ impl MenuTarget {
         }
         if let Some(item) = menu.itemAtIndex(STATUS_LINE) {
             item.setTitle(&NSString::from_str(&model.status_line));
+        }
+        if let Some(item) = menu.itemAtIndex(DOWNLOAD_MODELS) {
+            let managed = self
+                .ivars()
+                .actions
+                .borrow()
+                .as_deref()
+                .is_some_and(|actions| actions.services().is_some());
+            item.setHidden(!managed);
         }
         if let Some(item) = menu.itemAtIndex(SERVICES) {
             self.refresh_services(&item);

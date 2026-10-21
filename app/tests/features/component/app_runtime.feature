@@ -106,6 +106,28 @@ Feature: app-runtime
       Then the observer is told Starting services with 0 of 2, then 1 of 2, then Ready
       And the dictation pipeline runs
 
+  Rule: The runtime waits for models
+
+    Scenario: Start with a model missing
+      Given an observer registered before the runtime starts
+      And every permission is granted and the dictation model is missing
+      When the runtime starts
+      Then the observer is told Waiting for models
+      And no service is started and no dictation pipeline runs
+
+    Scenario: The last model arrives while waiting
+      Given the runtime is Waiting for models
+      When the missing file is placed in the models folder
+      Then the services are started
+      And the observer is told Starting services and then Ready once the models are present
+
+  Rule: A reload to missing models waits for them
+
+    Scenario: A reload to an empty models folder
+      Given the runtime is Ready with every model present
+      When the runtime reloads a configuration whose models folder is empty
+      Then the pipeline ends and the observer is told Waiting for models
+
   Rule: A service that cannot start fails the runtime
 
     Scenario: A service that cannot start fails the runtime without ending it

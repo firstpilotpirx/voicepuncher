@@ -81,39 +81,35 @@ pub const FIELDS: &[Field] = &[
     field(
         "services",
         "manage",
-        Tab::General,
+        Tab::Services,
         "Start the local services",
         Control::Switch,
-    )
-    .advanced(),
+    ),
     field(
         "services",
         "dictation_copies",
-        Tab::General,
+        Tab::Services,
         "Dictation service copies",
         number(1, 4, ""),
-    )
-    .advanced(),
+    ),
     field(
         "services",
         "command_copies",
-        Tab::General,
+        Tab::Services,
         "Command service copies",
         number(1, 4, ""),
-    )
-    .advanced(),
+    ),
     field(
         "services",
         "models_dir",
-        Tab::General,
+        Tab::Services,
         "Models folder",
         Control::Folder,
-    )
-    .advanced(),
+    ),
     field(
         "services",
         "commands_url",
-        Tab::General,
+        Tab::Services,
         "Command speech recognition service",
         Control::Address(Scheme::Http),
     )

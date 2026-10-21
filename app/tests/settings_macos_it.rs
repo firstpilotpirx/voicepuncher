@@ -18,6 +18,7 @@ use toml::Value;
 use voicepuncher::adapters::primary::settings::macos::field::Choices;
 use voicepuncher::adapters::primary::settings::macos::form::Form;
 use voicepuncher::adapters::primary::settings::macos::login::UNAVAILABLE_NOTE;
+use voicepuncher::adapters::primary::settings::macos::models_row::ModelsPanel;
 use voicepuncher::adapters::primary::settings::macos::session::{
     ApplyStatus, ConfigApplier, SessionParts, SettingsSession, StatusListener,
 };
@@ -64,6 +65,10 @@ const TESTS: &[Test] = &[
     (
         "should_register_the_login_item_when_the_switch_turns_on_without_a_save",
         should_register_the_login_item_when_the_switch_turns_on_without_a_save,
+    ),
+    (
+        "should_count_the_models_and_open_the_download_window_from_the_services_tab",
+        should_count_the_models_and_open_the_download_window_from_the_services_tab,
     ),
 ];
 
@@ -207,7 +212,7 @@ fn should_build_a_control_for_every_option_and_close() {
     let (_window, form) = open_form(folder.path(), &AppliedConfigs::default());
     // Then
     assert_eq!(form.controls.len(), FIELDS.len());
-    assert_eq!(form.tabs.len(), 7);
+    assert_eq!(form.tabs.len(), 8);
     let hotkey = control_of(&form, "hotkey", "key").read();
     assert_eq!(hotkey, Value::String("RightCommand".to_owned()));
     form.window.close();
@@ -378,5 +383,44 @@ fn should_draw_every_tab() {
         let path = dir.join(format!("{}.png", tab.tab.title().to_lowercase()));
         std::fs::write(&path, png.to_vec()).unwrap();
     }
+    form.window.close();
+}
+
+/// Four of six model files present; counts the times the Download window was asked for.
+#[derive(Default)]
+struct FourOfSix(std::cell::Cell<usize>);
+
+impl ModelsPanel for FourOfSix {
+    fn count(&self) -> (usize, usize) {
+        (4, 6)
+    }
+
+    fn folder(&self) -> PathBuf {
+        PathBuf::from("/nowhere")
+    }
+
+    fn open_download(&self) {
+        self.0.set(self.0.get() + 1);
+    }
+}
+
+fn should_count_the_models_and_open_the_download_window_from_the_services_tab() {
+    // Given
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::write(folder.path().join("config.toml"), RIGHT_COMMAND).unwrap();
+    let mtm = main_thread();
+    let _app = NSApplication::sharedApplication(mtm);
+    let panel = Rc::new(FourOfSix::default());
+    let window = window_over(folder.path(), &AppliedConfigs::default()).with_models(panel.clone());
+    let form = window.prepare(mtm).expect("the window builds");
+    // When
+    form.handle(Event::DownloadModels);
+    // Then
+    assert_eq!(
+        form.models.line.stringValue().to_string(),
+        "4 of 6 present — 2 missing"
+    );
+    assert!(!form.models.view.isHidden());
+    assert_eq!(panel.0.get(), 1);
     form.window.close();
 }

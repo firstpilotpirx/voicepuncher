@@ -1,7 +1,7 @@
 //! How a Gherkin harness (`harness = false`) reads its command line. cargo-nextest finds and
 //! runs tests through libtest's arguments; the harness answers them as one test named
 //! [`TEST_NAME`], the whole scenario run, so nextest's time limit applies to it; the slice and
-//! component harness answers them with one test per feature file ([`read_feature_harness_call`]).
+//! component harness answers them with one test per rule ([`read_rule_harness_call`]).
 //! Every other command line is cucumber's own, as `cargo test --test <harness> -- --name …`
 //! passes it.
 
@@ -84,37 +84,108 @@ pub fn concurrent_scenarios(var: Result<String, std::env::VarError>) -> Result<u
     }
 }
 
-/// What a harness that shows one test per feature file was asked to do.
+/// One test the slice and component harness shows nextest: the scenarios of one rule of a
+/// feature file, or the scenarios outside any rule.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FeatureCall {
+pub struct RuleTest {
+    /// The test's name: the feature file's path below the features folder without `.feature`,
+    /// then `/` and the rule's [`rule_slug`] for a rule.
+    pub name: String,
+    /// The feature file's path below the features folder without `.feature`.
+    pub feature: String,
+    /// The rule's name as the file writes it; `None` for the scenarios outside any rule.
+    pub rule: Option<String>,
+}
+
+impl RuleTest {
+    /// Whether a scenario of the test's feature file in the rule named `rule` (`None` outside
+    /// any rule) belongs to this test.
+    pub fn takes(&self, rule: Option<&str>) -> bool {
+        self.rule.as_deref().map(str::trim) == rule.map(str::trim)
+    }
+}
+
+/// A rule's name as a test name: lowercase letters and digits, every other run of characters
+/// one `_`, so nextest filters and `just rerun-failed` take it unquoted.
+pub fn rule_slug(rule: &str) -> String {
+    rule.split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>()
+        .join("_")
+}
+
+/// The tests of the feature file `feature` whose text is `text`: one per rule, plus one named
+/// by the file for the scenarios outside any rule when it has any (every scenario of a file
+/// without rules).
+pub fn rule_tests(feature: &str, text: &str) -> Vec<RuleTest> {
+    let mut rules: Vec<String> = Vec::new();
+    let mut outside = false;
+    for line in text.lines().map(str::trim_start) {
+        if let Some(rule) = line.strip_prefix("Rule:") {
+            rules.push(rule.trim().to_string());
+        } else if rules.is_empty()
+            && SCENARIO_KEYWORDS
+                .iter()
+                .any(|keyword| line.starts_with(keyword))
+        {
+            outside = true;
+        }
+    }
+    let file_test = (outside || rules.is_empty()).then(|| RuleTest {
+        name: feature.to_string(),
+        feature: feature.to_string(),
+        rule: None,
+    });
+    file_test
+        .into_iter()
+        .chain(rules.into_iter().map(|rule| RuleTest {
+            name: format!("{feature}/{}", rule_slug(&rule)),
+            feature: feature.to_string(),
+            rule: Some(rule),
+        }))
+        .collect()
+}
+
+/// The keywords that open a scenario in a feature file.
+const SCENARIO_KEYWORDS: [&str; 4] = [
+    "Scenario:",
+    "Scenario Outline:",
+    "Scenario Template:",
+    "Example:",
+];
+
+/// What a harness that shows one test per rule was asked to do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RuleCall {
     /// nextest lists the tests: print each line on stdout, nothing else, and exit 0.
     Listing(Vec<String>),
-    /// Run the scenarios of one feature file (all of them when `None`) with these cucumber
+    /// Run the scenarios of one test (every scenario when `None`) with these cucumber
     /// arguments (without the program name).
     Run {
-        feature: Option<String>,
+        test: Option<RuleTest>,
         cucumber: Vec<String>,
     },
 }
 
-/// Reads the arguments of a harness that shows nextest one test per feature file, named by the
-/// file's path below the features folder without `.feature`, so nextest runs the files in
-/// parallel processes; every other command line runs every feature file.
-pub fn read_feature_harness_call(args: &[String], features: &[String]) -> FeatureCall {
+/// Reads the arguments of a harness that shows nextest one test per rule ([`rule_tests`]), so
+/// nextest runs the rules in parallel processes; every other command line runs every feature
+/// file.
+pub fn read_rule_harness_call(args: &[String], tests: &[RuleTest]) -> RuleCall {
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
     match words.as_slice() {
         ["--list", "--format", "terse"] => {
-            FeatureCall::Listing(features.iter().map(|f| format!("{f}: test")).collect())
+            RuleCall::Listing(tests.iter().map(|t| format!("{}: test", t.name)).collect())
         }
-        ["--list", "--format", "terse", "--ignored"] => FeatureCall::Listing(vec![]),
-        ["--exact", name, "--nocapture", ..] if features.iter().any(|f| f == name) => {
-            FeatureCall::Run {
-                feature: Some(name.to_string()),
+        ["--list", "--format", "terse", "--ignored"] => RuleCall::Listing(vec![]),
+        ["--exact", name, "--nocapture", ..] if tests.iter().any(|t| t.name == *name) => {
+            RuleCall::Run {
+                test: tests.iter().find(|t| t.name == *name).cloned(),
                 cucumber: args[3..].to_vec(),
             }
         }
-        _ => FeatureCall::Run {
-            feature: None,
+        _ => RuleCall::Run {
+            test: None,
             cucumber: args.to_vec(),
         },
     }
@@ -144,22 +215,35 @@ pub fn feature_names(root: &std::path::Path) -> Vec<String> {
     names
 }
 
-/// The feature file to run (all when `None`) and the cucumber command line of this process,
+/// The tests of every feature file below `root` ([`rule_tests`]), in the order of
+/// [`feature_names`].
+pub fn harness_tests(root: &std::path::Path) -> Vec<RuleTest> {
+    feature_names(root)
+        .into_iter()
+        .flat_map(|feature| {
+            let text = std::fs::read_to_string(root.join(format!("{feature}.feature")))
+                .unwrap_or_default();
+            rule_tests(&feature, &text)
+        })
+        .collect()
+}
+
+/// The test to run (every scenario when `None`) and the cucumber command line of this process,
 /// program name first, or `None` when nextest only lists the tests: the listing is then printed
 /// on stdout and the harness exits with 0.
-pub fn feature_command_line(features: &[String]) -> Option<(Option<String>, Vec<String>)> {
+pub fn rule_command_line(tests: &[RuleTest]) -> Option<(Option<RuleTest>, Vec<String>)> {
     let mut args = std::env::args();
     let program = args.next().unwrap_or_default();
     let rest: Vec<String> = args.collect();
-    match read_feature_harness_call(&rest, features) {
-        FeatureCall::Listing(lines) => {
+    match read_rule_harness_call(&rest, tests) {
+        RuleCall::Listing(lines) => {
             for line in lines {
                 println!("{line}");
             }
             None
         }
-        FeatureCall::Run { feature, cucumber } => {
-            Some((feature, std::iter::once(program).chain(cucumber).collect()))
+        RuleCall::Run { test, cucumber } => {
+            Some((test, std::iter::once(program).chain(cucumber).collect()))
         }
     }
 }
@@ -242,47 +326,62 @@ mod tests {
         }
     }
 
-    fn features() -> Vec<String> {
-        args(&["component/voice_control", "slice/text_insertion"])
+    fn rule_test(name: &str, feature: &str, rule: Option<&str>) -> RuleTest {
+        RuleTest {
+            name: name.to_string(),
+            feature: feature.to_string(),
+            rule: rule.map(str::to_string),
+        }
+    }
+
+    fn tests() -> Vec<RuleTest> {
+        vec![
+            rule_test(
+                "component/voice_control/press_enter_presses_return",
+                "component/voice_control",
+                Some("\"press enter\" presses Return"),
+            ),
+            rule_test("slice/text_insertion", "slice/text_insertion", None),
+        ]
     }
 
     #[test]
-    fn should_list_one_test_per_feature_file_when_nextest_lists_the_tests() {
+    fn should_list_one_test_per_rule_when_nextest_lists_the_tests() {
         assert_eq!(
-            read_feature_harness_call(&args(&["--list", "--format", "terse"]), &features()),
-            FeatureCall::Listing(args(&[
-                "component/voice_control: test",
+            read_rule_harness_call(&args(&["--list", "--format", "terse"]), &tests()),
+            RuleCall::Listing(args(&[
+                "component/voice_control/press_enter_presses_return: test",
                 "slice/text_insertion: test"
             ]))
         );
     }
 
     #[test]
-    fn should_list_no_feature_when_nextest_lists_the_ignored_tests() {
+    fn should_list_no_rule_when_nextest_lists_the_ignored_tests() {
         assert_eq!(
-            read_feature_harness_call(
+            read_rule_harness_call(
                 &args(&["--list", "--format", "terse", "--ignored"]),
-                &features()
+                &tests()
             ),
-            FeatureCall::Listing(vec![])
+            RuleCall::Listing(vec![])
         );
     }
 
     #[test]
-    fn should_run_only_the_feature_file_a_test_names() {
+    fn should_run_only_the_rule_a_test_names() {
         assert_eq!(
-            read_feature_harness_call(
+            read_rule_harness_call(
                 &args(&[
                     "--exact",
-                    "slice/text_insertion",
+                    "component/voice_control/press_enter_presses_return",
                     "--nocapture",
                     "--tags",
                     "@x"
                 ]),
-                &features()
+                &tests()
             ),
-            FeatureCall::Run {
-                feature: Some("slice/text_insertion".to_string()),
+            RuleCall::Run {
+                test: Some(tests()[0].clone()),
                 cucumber: args(&["--tags", "@x"]),
             }
         );
@@ -296,13 +395,67 @@ mod tests {
             args(&["--exact", "component/unknown", "--nocapture"]),
         ] {
             assert_eq!(
-                read_feature_harness_call(&other, &features()),
-                FeatureCall::Run {
-                    feature: None,
+                read_rule_harness_call(&other, &tests()),
+                RuleCall::Run {
+                    test: None,
                     cucumber: other.clone(),
                 }
             );
         }
+    }
+
+    #[test]
+    fn should_name_a_rule_by_its_lowercase_words_joined_by_underscores() {
+        assert_eq!(
+            rule_slug("  \"press enter\" during a dictation pastes and sends "),
+            "press_enter_during_a_dictation_pastes_and_sends"
+        );
+        assert_eq!(
+            rule_slug("An utterance ends after 0.3 s of silence"),
+            "an_utterance_ends_after_0_3_s_of_silence"
+        );
+    }
+
+    #[test]
+    fn should_show_one_test_per_rule_of_a_feature_file() {
+        let text = "Feature: voice_control\n\n  Background:\n    Given x\n\n  Rule: \"press enter\" presses Return\n\n    Scenario: a\n      Given x\n\n  Rule: Each state accepts its own commands\n\n    Scenario Outline: b\n      Given x\n\n      Examples:\n        | a |\n";
+        assert_eq!(
+            rule_tests("component/voice_control", text),
+            vec![
+                tests()[0].clone(),
+                rule_test(
+                    "component/voice_control/each_state_accepts_its_own_commands",
+                    "component/voice_control",
+                    Some("Each state accepts its own commands"),
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn should_keep_the_scenarios_outside_any_rule_under_the_file_name() {
+        let text = "Feature: f\n\n  Scenario: outside\n    Given x\n\n  Rule: A rule\n\n    Example: inside\n      Given x\n";
+        assert_eq!(
+            rule_tests("slice/f", text),
+            vec![
+                rule_test("slice/f", "slice/f", None),
+                rule_test("slice/f/a_rule", "slice/f", Some("A rule")),
+            ]
+        );
+        assert_eq!(
+            rule_tests("slice/g", "Feature: g\n\n  Scenario: only\n    Given x\n"),
+            vec![rule_test("slice/g", "slice/g", None)]
+        );
+    }
+
+    #[test]
+    fn should_take_only_the_scenarios_of_its_own_rule() {
+        let [rule, outside] = [tests()[0].clone(), tests()[1].clone()];
+        assert!(rule.takes(Some("\"press enter\" presses Return")));
+        assert!(!rule.takes(Some("Each state accepts its own commands")));
+        assert!(!rule.takes(None));
+        assert!(outside.takes(None));
+        assert!(!outside.takes(Some("A rule")));
     }
 
     #[test]
@@ -315,7 +468,10 @@ mod tests {
         std::fs::write(root.join("component/notes.md"), "").unwrap();
         let names = feature_names(&root);
         std::fs::remove_dir_all(&root).unwrap();
-        assert_eq!(names, features());
+        assert_eq!(
+            names,
+            args(&["component/voice_control", "slice/text_insertion"])
+        );
     }
 
     #[test]

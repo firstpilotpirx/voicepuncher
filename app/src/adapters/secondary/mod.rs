@@ -6,6 +6,7 @@ pub mod keypressing;
 pub mod localservices;
 pub mod logging;
 pub mod loginitem;
+pub mod modelfetch;
 pub mod permissions;
 pub mod recording;
 pub mod soundplaying;

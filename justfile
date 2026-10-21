@@ -64,7 +64,9 @@ full_check_model_stages := "e2e-smoke-voice e2e-regression e2e-resilience e2e-sm
 voice_smoke_binaries := "placed_commands_it voice_forms_it voice_samples_it commandspotting_websocket_it"
 # The app's service binaries of the smoke set
 e2e_smoke_binaries := "transcription_openai_it textrefinement_openai_it commandspotting_websocket_it voice_samples_it voice_forms_it"
-e2e_smoke_tests := "-p voicepuncher " + prepend("--test ", e2e_smoke_binaries)
+# Every test binary of the smoke parts in one cargo selection: each part's one nextest call builds exactly what
+# _build-e2e built before the machine lock, and picks its own binaries with a filter (_smoke-part-filter)
+smoke_parts_tests := "-p voicepuncher -p voicepuncher-command-spotting -p voicepuncher-e2e-test " + prepend("--test ", e2e_smoke_binaries + " placed_commands_it cucumber_e2e")
 e2e_seams_tests := "-p voicepuncher --test chunked_transcription_it"
 placed_commands_tests := "-p voicepuncher-command-spotting --test placed_commands_it"
 cucumber_e2e_tests := "-p voicepuncher-e2e-test --test cucumber_e2e"
@@ -958,7 +960,7 @@ _stage-journal-append:
 # recipes' nextest runs build them
 _build-e2e: _require-nextest
     cargo build --release {{command_spotting_build}}
-    cargo nextest run {{e2e_smoke_tests}} --no-run
+    cargo nextest run {{smoke_parts_tests}} --no-run
     cargo nextest run {{e2e_seams_tests}} --no-run
     cargo nextest run {{placed_commands_tests}} --no-run
     cargo nextest run {{cucumber_e2e_tests}} --no-run
@@ -1196,9 +1198,12 @@ _e2e-smoke-refinement: (_e2e-smoke-part "e2e-smoke-refinement" "textrefinement_o
 _e2e-smoke-voice: (_e2e-smoke-part "e2e-smoke-voice" voice_smoke_binaries)
 _e2e-smoke-services: (_e2e-smoke-part "e2e-smoke-services")
 
-# One nextest run per test binary, one after another as cargo test ran them, so the services see the load of one
-# binary's tests at a time; the first failing binary ends the part. placed_commands_it is the command spotting
-# service's binary, every other one the app's; then the part's Gherkin scenarios stream (--no-capture)
+# One nextest call for the part's service binaries and its Gherkin scenarios, so the binaries run beside the
+# harness instead of before it (speed-up-smoke-and-test); the command-spotting-models test group still keeps the
+# binaries that drive the shared command spotting service to one test at a time, and the harness keeps its own
+# scenario concurrency. nextest runs nothing in parallel under --no-capture, so the harness's output is captured
+# and printed whole when it ends (the profiles' success-output). placed_commands_it is the command spotting
+# service's binary, every other one the app's
 _e2e-smoke-part profile binaries="": _require-nextest _require-models _build
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1206,12 +1211,23 @@ _e2e-smoke-part profile binaries="": _require-nextest _require-models _build
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
     export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
+    filter=$({{just_executable()}} --justfile {{quote(justfile())}} _smoke-part-filter "{{binaries}}")
+    cargo nextest run --profile {{profile}} {{smoke_parts_tests}} -E "$filter" ${VOICEPUNCHER_RERUN_FILTER:+--no-tests=pass} {{fail_fast}}
+
+# The nextest filter of one smoke part: its service binaries and the E2E harness, narrowed to a rerun's selection
+# when there is one (a second -E would widen it: nextest joins several with "or")
+_smoke-part-filter binaries="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    filter=""
     for binary in {{binaries}}; do
-        package=voicepuncher
-        [[ "$binary" != placed_commands_it ]] || package=voicepuncher-command-spotting
-        cargo nextest run --profile {{profile}} -p "$package" --test "$binary" {{rerun_filter}} {{fail_fast}}
+        filter+="binary(=$binary) | "
     done
-    cargo nextest run --profile {{profile}} {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
+    filter+="binary(=cucumber_e2e)"
+    if [[ -n "${VOICEPUNCHER_RERUN_FILTER:-}" ]]; then
+        filter="($filter) & ($VOICEPUNCHER_RERUN_FILTER)"
+    fi
+    printf '%s\n' "$filter"
 
 # The voice control scenarios beyond the smoke set (@regression), run by full-check right after e2e-smoke so it still runs the whole set
 e2e-regression:
@@ -1616,6 +1632,15 @@ _test-lock-phases:
     [[ "{{voice_smoke_binaries}}" == "placed_commands_it voice_forms_it "* ]] \
         || { echo "✗ the voice control part does not run placed_commands_it and voice_forms_it first: {{voice_smoke_binaries}}" >&2; exit 1; }
     echo "  ✓ the voice control part runs its most failing binaries first"
+    part() { {{just_executable()}} --justfile {{quote(justfile())}} _smoke-part-filter "$@"; }
+    want='binary(=placed_commands_it) | binary(=voice_forms_it) | binary(=cucumber_e2e)'
+    [[ $(VOICEPUNCHER_RERUN_FILTER= part "placed_commands_it voice_forms_it") == "$want" ]] \
+        || { echo "✗ a smoke part does not select its binaries and the harness in one call: $(part "placed_commands_it voice_forms_it")" >&2; exit 1; }
+    [[ $(VOICEPUNCHER_RERUN_FILTER= part "") == 'binary(=cucumber_e2e)' ]] \
+        || { echo "✗ a smoke part without binaries does not select the harness alone: $(part "")" >&2; exit 1; }
+    [[ $(VOICEPUNCHER_RERUN_FILTER='test(=x)' part "voice_forms_it") == '(binary(=voice_forms_it) | binary(=cucumber_e2e)) & (test(=x))' ]] \
+        || { echo "✗ a rerun's filter widens a smoke part instead of narrowing it" >&2; exit 1; }
+    echo "  ✓ a smoke part runs its binaries beside the harness in one call, narrowed by a rerun"
     expect "a light first stage runs its phase first" $'light e2e-resilience\nheavy e2e-seams' e2e-resilience e2e-seams
     expect "an unknown stage is heavy" "heavy e2e-something-new" e2e-something-new
     expect "only light stages give one phase" "light e2e-regression" e2e-regression
@@ -2274,40 +2299,12 @@ stop-model-servers *services:
 models refinement="yes":
     #!/usr/bin/env bash
     set -euo pipefail
-    dir=~/.voicepuncher/models
-    mkdir -p "$dir"
-    # fetch <url> <file> [sha256]: a file already present is skipped without hashing; with a sha256, the
-    # download is moved into place only when it matches, else it is removed and the recipe fails
-    fetch() {
-        [[ -f "$dir/$2" ]] && { echo "✓ $2 already present"; return; }
-        echo "↓ $2"
-        curl -fL --progress-bar -o "$dir/$2.download" "$1"
-        if [[ -n "${3:-}" ]]; then
-            local got
-            got=$(shasum -a 256 "$dir/$2.download" | cut -d' ' -f1)
-            if [[ "$got" != "$3" ]]; then
-                rm -f "$dir/$2.download"
-                echo "✗ $2: sha256 $got, expected $3 — download removed" >&2
-                exit 1
-            fi
-        fi
-        mv "$dir/$2.download" "$dir/$2"
-    }
-    # The Whisper models of the two speech recognition services, pinned to one revision and checked
-    whisper=https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1
-    fetch "$whisper/{{dictation_model_file}}" {{dictation_model_file}} 394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2
-    fetch "$whisper/{{command_model_file}}" {{command_model_file}} 1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b
-    fetch https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin ggml-silero-v5.1.2.bin
-    # The text refinement model, pinned to one revision and checked; skipped by `just run` without `--llm`
-    [[ "{{refinement}}" == no ]] || fetch https://huggingface.co/bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF/resolve/ae44f08e1392f39c0e474af10c3ff8355c8b6688/{{refinement_model_file}} {{refinement_model_file}} 2fde00ce69dd4899c70d020845e2638353015bba0fdf161b3eb965f2bca4464e
-    fetch https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx silero_vad.onnx
-    kws=sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01
-    if [[ -d "$dir/$kws" ]]; then
-        echo "✓ $kws already present"
-    else
-        fetch "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/$kws.tar.bz2" "$kws.tar.bz2"
-        tar -xjf "$dir/$kws.tar.bz2" -C "$dir" && rm "$dir/$kws.tar.bz2"
-    fi
+    # The app's own download: every file of its model catalog, pinned and checked by sha256,
+    # resumed from a part left by an interrupted run; the refinement model is skipped with no
+    cargo build --release -p voicepuncher
+    args=(--download-models --models-dir ~/.voicepuncher/models)
+    [[ "{{refinement}}" == no ]] && args+=(--no-llm)
+    target/release/voicepuncher "${args[@]}"
 
 # Download benchmark corpus — idempotent, ~500 MB, one-time setup
 corpus max_samples="50":

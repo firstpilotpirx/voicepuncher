@@ -31,7 +31,7 @@ fn row_shows(world: &mut IntegrationWorld, name: &str, words: &str) -> Result<()
 }
 
 #[given("Microphone, Accessibility and Input Monitoring are granted")]
-fn all_granted(world: &mut IntegrationWorld) {
+pub(crate) fn all_granted(world: &mut IntegrationWorld) {
     for permission in Permission::ALL {
         run(world)
             .permissions()

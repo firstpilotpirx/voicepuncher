@@ -11,63 +11,84 @@ use crate::core::domain::HotKey;
     about = "Push-to-talk voice→text for macOS Apple Silicon. Fully offline: talks only to local services."
 )]
 pub struct Cli {
-    #[arg(long)]
+    #[arg(
+        long,
+        value_name = "FILE",
+        help = "The configuration file (default ~/.voicepuncher/config.toml; written with the defaults when missing)"
+    )]
     pub config: Option<PathBuf>,
 
-    #[arg(long, value_parser = clap::value_parser!(HotKey))]
+    #[arg(
+        long,
+        value_parser = clap::value_parser!(HotKey),
+        help = "The recording hotkey; overrides the configuration for this run"
+    )]
     pub hotkey: Option<HotKey>,
 
     #[arg(
         long,
         value_name = "URL",
-        help = "Speech recognition service address (overrides [transcription].base_url)"
+        help = "Speech recognition service address; overrides the configuration for this run ([transcription].base_url)"
     )]
     pub transcription_url: Option<String>,
 
     #[arg(
         long,
         value_name = "URL",
-        help = "Text refinement service address (overrides [refinement].base_url)"
+        help = "Text refinement service address; overrides the configuration for this run ([refinement].base_url)"
     )]
     pub refinement_url: Option<String>,
 
     #[arg(
         long,
         value_name = "DIR",
-        help = "Keep each dictation in this folder (turns the dictation archive on, also in file mode)"
+        help = "Keep each dictation in this folder, also in file mode; overrides the configuration for this run ([archive])"
     )]
     pub archive_dir: Option<PathBuf>,
 
-    #[arg(long, help = "Keep no dictation archive (wins over --archive-dir)")]
+    #[arg(
+        long,
+        help = "Keep no dictation archive (wins over --archive-dir); overrides the configuration for this run"
+    )]
     pub no_archive: bool,
 
     #[arg(
         long,
         value_name = "FILE",
-        help = "Transcribe a WAV file and print to stdout (no hotkey)"
+        help = "File mode: transcribe a WAV file and print the text to stdout (no hotkey, no windows)"
     )]
     pub input_file: Option<PathBuf>,
 
-    #[arg(long, help = "Re-run the setup wizard even if config already exists")]
-    pub setup: bool,
-
     #[arg(
         long,
-        help = "Skip text refinement (the default; wins over --llm and [refinement].enabled)"
+        help = "Skip text refinement (wins over --llm); overrides the configuration for this run"
     )]
     pub no_llm: bool,
 
     #[arg(
         long,
-        help = "Refine each transcript through the text refinement service (overrides [refinement].enabled)"
+        help = "Refine each transcript through the text refinement service; overrides the configuration for this run"
     )]
     pub llm: bool,
 
     #[arg(
         long,
-        help = "Voice control: listen for spoken commands from the start, alongside the push-to-talk hotkey"
+        help = "Listen for spoken commands from the start, beside the hotkey; overrides the configuration for this run"
     )]
     pub voice_control: bool,
+
+    #[arg(
+        long,
+        help = "Download the missing model files without a window and exit (0 when every file is present)"
+    )]
+    pub download_models: bool,
+
+    #[arg(
+        long,
+        value_name = "DIR",
+        help = "The models folder of --download-models; overrides the configuration for this run ([services].models_dir)"
+    )]
+    pub models_dir: Option<PathBuf>,
 }
 
 impl Cli {
@@ -140,10 +161,11 @@ mod tests {
             archive_dir: Some(PathBuf::from("/tmp/dictations")),
             no_archive: false,
             input_file: None,
-            setup: false,
             no_llm: false,
             llm: false,
             voice_control: false,
+            download_models: false,
+            models_dir: None,
         };
         let mut cfg = Config::default();
         // When

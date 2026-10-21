@@ -48,7 +48,7 @@ voicepuncher --input-file <path> [--config <path>] [--whisper-model <path>] [--l
 ```
 
 `--input-file` is mutually exclusive with normal (hotkey) mode.
-No `--setup` wizard runs in file mode.
+Nothing is asked in a terminal; a missing configuration file is written with the defaults.
 
 ### Supported audio formats
 

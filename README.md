@@ -1,37 +1,253 @@
 # voicepuncher
 
-## Overview
+A menu bar app for macOS on Apple Silicon that turns speech into text: press a hotkey, speak, and the text is pasted at the cursor. Everything runs on your Mac: speech recognition (whisper.cpp), optional text cleanup (llama.cpp) and voice commands run as local services the app starts itself, on the Metal GPU. Nothing you say leaves the machine; the only network use is the one-time download of the models (see [Privacy](#privacy)). Optional [voice control](#voice-control) works hands-free: spoken commands start and stop a dictation and press Enter.
 
-Push-to-talk voice-to-text CLI for macOS Apple Silicon. Hold a hotkey, speak, release — cleaned text is pasted at the cursor. Fully offline: local whisper.cpp `whisper-server`s for transcription (large-v3-turbo for dictation, small for confirming voice commands) and a local llama.cpp `llama-server` (Qwen3-4B-Instruct-2507) for cleanup, all running on Metal. Nothing leaves the machine — the app talks only to services on `127.0.0.1`. Optional [voice control](#voice-control) works hands-free: spoken commands start and stop a dictation and press Enter.
+## Requirements
 
-## Hardware requirements
-
-- Apple Silicon Mac (Metal required — no Intel support)
+- Apple Silicon Mac (Metal required — no Intel support), macOS 15 or later
 - 16 GB RAM minimum (all models load resident, ~6 GB working set combined: six whisper-server copies ≈ 4.3 GB, text refinement ≈ 1 GB)
-
-## macOS permissions
-
-Three TCC permissions are required. With one missing, the app does not exit: it opens the **Permissions** window, one row per permission with its status (Granted, Not granted, Not asked yet) and its remedy — **Request…** shows the system prompt, **Open System Settings** opens the exact pane below. The app checks again by itself and starts dictation as soon as the last one is granted, without a restart; a permission revoked while it runs stops dictation within 5 s and reopens the window. The menu bar item's **Permissions…** opens the window at any time.
-
-Installed from the disk image, the panes list the app as **voicepuncher** with its icon; an update signed with the same certificate keeps them. Run from source (`cargo run`, `just run`), macOS attributes the permissions to the terminal app you launch it from (e.g. iTerm2, Terminal, Warp): grant them to that app, which the window names.
-
-| Permission | Location |
-|---|---|
-| Microphone | System Settings → Privacy & Security → Microphone |
-| Accessibility | System Settings → Privacy & Security → Accessibility |
-| Input Monitoring | System Settings → Privacy & Security → Input Monitoring |
+- ≈ 2.1 GB of free disk space for the models (≈ 4.6 GB with text refinement)
 
 ## Install
 
-### From the disk image
-
 1. Download `voicepuncher-vX.Y.Z.dmg` from the [latest release](https://github.com/firstpilotpirx/voicepuncher/releases/latest) (check it against the `.sha256` beside it: `shasum -a 256 -c voicepuncher-vX.Y.Z.dmg.sha256`).
 2. Open it and drag **voicepuncher** onto **Applications**.
-3. Open voicepuncher from Applications. macOS says it cannot verify the app: voicepuncher is signed with the project's own certificate, not an Apple Developer ID, and is not notarized. Click **Done**, open **System Settings → Privacy & Security**, scroll to the message about voicepuncher and click **Open Anyway**, then confirm. Needed once per version; macOS 15 and later no longer offer right-click → Open for this.
-4. Grant Microphone, Accessibility and Input Monitoring when asked; the panes list **voicepuncher**.
-5. Once it is ready the first time, voicepuncher asks once whether to start at login: **Start at Login** adds it to **System Settings → General → Login Items**, **Not Now** adds nothing. Either answer is remembered (`[app] launch_at_login_asked` in the configuration file, kept by the app). Change it later with the switch in **Settings → General** or in Login Items. A launch at login logs `launched at login`.
+3. Open voicepuncher from Applications. macOS shows a dialog saying it cannot verify that voicepuncher is free of malware, with the buttons **Move to Trash** and **Done**: voicepuncher is signed with the project's own certificate, not an Apple Developer ID, and is not notarized. Click **Done**, open **System Settings → Privacy & Security**, scroll to the message about voicepuncher and click **Open Anyway**, then confirm with your password. Needed once per version; macOS 15 and later no longer offer right-click → Open for this.
 
-The app has no Dock icon and no window in this version: it runs in the background. Quit it in Activity Monitor or with `pkill voicepuncher`. It carries its own engines — whisper.cpp 1.9.5 for speech recognition, llama.cpp b11669 for text refinement and the command spotting service — and starts them itself, so nothing else is installed: no Homebrew, nothing on `$PATH`. It still needs the [models](#models) in `~/.voicepuncher/models/`. The engines add about 65 MB to the bundle (whisper 10 MB, llama 28 MB, command spotting 27 MB). Its log names each engine it runs and where it came from, e.g. `whisper-server 1.9.5 from the bundle`.
+The app carries its own engines — whisper.cpp 1.9.5 for speech recognition, llama.cpp b11669 for text refinement and the command spotting service — so nothing else is installed: no Homebrew, no terminal.
+
+## First launch
+
+Nothing is asked in a terminal. The first launch goes through these steps, each in a window of its own, and remembers them:
+
+1. **Settings file.** The app writes `~/.voicepuncher/config.toml` with every option at its default and a comment explaining it (hotkey Right Option, recording mode Toggle, language detected automatically, text refinement off). Change the options in the [Settings](#settings) window; delete the file to get the defaults back at the next launch.
+2. **Permissions.** The **Permissions** window lists the three permissions the app needs, each with its status (Granted, Not granted, Not asked yet) and its remedy — **Request…** shows the system prompt, **Open System Settings** opens the exact pane. The app checks again by itself and goes on as soon as the last one is granted, without a restart; a permission revoked while it runs stops dictation within 5 s and reopens the window. **Permissions…** in the menu opens the window at any time. The panes list the app as **voicepuncher** with its icon; an update signed with the same certificate keeps them.
+
+   | Permission | Why | Location |
+   |---|---|---|
+   | Microphone | to record your speech | System Settings → Privacy & Security → Microphone |
+   | Accessibility | to paste the text into the focused app (it presses ⌘V) | System Settings → Privacy & Security → Accessibility |
+   | Input Monitoring | to notice the hotkey in every app | System Settings → Privacy & Security → Input Monitoring |
+
+3. **Models.** With a [model](#models) missing, the **Download speech models** window opens and the menu shows "Waiting for models — open Download models…". It lists each needed file with its size and status, the free space and the folder. **Download** fetches the missing files one after another (≈ 2.1 GB, ≈ 4.6 GB with text refinement), with each file's progress, the total, the rate and the time left; **Cancel** keeps what came, and the next **Download** goes on from there; **Retry** follows a failure. Once every file is present, **Done** closes the window and the services start. **Download models…** in the menu and in **Settings → Services** opens the window again.
+4. **Services.** The app starts its local services (the menu shows "Starting services… (N of M ready)"); when all answer, the menu bar icon becomes a microphone and the menu says "Ready — hold Right Option to dictate".
+5. **Login item.** Once it is ready the first time, voicepuncher asks once whether to start at login: **Start at Login** adds it to **System Settings → General → Login Items**, **Not Now** adds nothing. Either answer is remembered (`[app] launch_at_login_asked` in the configuration file, kept by the app). Change it later with the switch in **Settings → General** or in Login Items. A launch at login logs `launched at login`.
+
+## Using
+
+**Menu bar.** The app lives in the menu bar, without a Dock icon. The icon shows what it does: an hourglass while it starts, a microphone when ready, an ear when voice control listens, a microphone with a red dot while recording, a moving waveform while it recognizes and refines the text, a keyboard while the text waits for a text field, a warning triangle with a failure. Click it for the menu:
+
+- the version and the state in words ("Ready — hold Right Option to dictate");
+- `Settings…` (⌘,) opens the [settings window](#settings);
+- `Open Logs Folder` shows `~/.voicepuncher/logs/` in Finder;
+- `Quit voicepuncher` (⌘Q) cancels a recording in progress and quits.
+
+**Hotkey** (`[hotkey] key`, default `RightOption`):
+
+- `recording_mode = "Toggle"`: press to start a dictation, press again to stop — the text is pasted at the cursor.
+- `recording_mode = "Hold"`: hold while speaking, release to paste.
+- `Escape` during a dictation cancels it; presses shorter than `min_press_ms` (200 ms) are ignored.
+
+**Voice** (Settings → General → Voice control). The app listens all the time; the hotkey keeps working.
+
+| Say | When | Does |
+|---|---|---|
+| `start` / `start dictation` | no dictation | starts a dictation |
+| `stop` / `stop dictation` | dictating | stops and pastes |
+| `cancel` / `cancel dictation` | dictating | drops the dictation |
+| `restart` / `restart dictation` | dictating | drops it and starts again |
+| `enter` / `press enter` | any time | presses Return; while dictating: stops, pastes, then Return |
+| `clear` / `clear text` / `clear all text` | no dictation | Cmd+A, Delete |
+| `paste` / `paste text` | no dictation | Cmd+V: pastes what the clipboard holds |
+
+A command works when it is:
+
+- said on its own, with a short pause (0.3 s) around it;
+- the last words of a phrase: "…and that is all, stop";
+- `start` at the beginning: "start, the meeting moved to Friday";
+- doubled anywhere, no pause needed: "stop stop", "enter enter";
+- a chain of 2–3 commands: "stop enter", "stop clear enter", "stop enter start", "paste enter".
+
+Any command may end with "please". The same words inside a sentence ("we should stop the server") do nothing. Details: [Voice control](#voice-control).
+
+**Example.** Press `RightOption`, say "hello world uh I think the API is fine", press it again; with text refinement on, `Hello world, I think the API is fine.` is pasted at the cursor.
+
+### Voice control
+
+Hands-free dictation, off by default. Turn it on with **Voice control** in Settings → General, or in the configuration file:
+
+```toml
+[voice_control]
+enabled = true
+```
+
+Push-to-talk keeps working as without voice control: the hotkey starts and stops a dictation, Escape cancels it, the overlay and sounds are the same. **Listening** starts with the app (sound `Tink`) and stays on until the app quits; the microphone stays open and seven English commands take effect:
+
+| Say | While | Effect |
+|---|---|---|
+| `start dictation` or `start` | listening, no dictation | starts a dictation (start sound, overlay) |
+| `stop dictation` or `stop` | dictating | ends it; the text is pasted without the command |
+| `cancel dictation` or `cancel` | dictating | discards it; nothing is pasted |
+| `restart dictation` or `restart` | dictating | discards it and starts a new dictation at once |
+| `press enter` or `enter` | listening | presses Return in the focused app; during a dictation it first ends it and pastes the text, like "stop enter" |
+| `clear all text`, `clear text` or `clear` | listening, no dictation | presses Cmd+A, then Delete, in the focused app |
+| `paste text` or `paste` | listening, no dictation | presses Cmd+V in the focused app, which pastes what the clipboard holds; the clipboard stays as it is |
+
+Every command may end with "please" ("press enter please"). A pause of 0.3 s ends an utterance, also after a quiet word and when more speech follows the pause at once ("restart", a short breath, the next sentence). A command counts:
+
+- **on its own**, with a pause before and after it;
+- **at the end of an utterance**, right after other speech: "…and that is all, stop" ends the dictation and pastes the speech before it; the same words inside a sentence ("we should stop the server") are ignored;
+- **"start" at the start of an utterance**: "start, the meeting moved to Friday" starts a dictation that begins with "the meeting…";
+- **doubled anywhere**, with no pause around it: "start start", "stop stop", "cancel cancel", "restart restart", "enter enter", "clear clear", "paste paste"; after "stop stop" the words said after it are dropped;
+- **as a chain** of two or three commands in a row, anywhere: "stop enter" pastes and sends, "stop clear", "cancel clear", "paste enter" pastes the clipboard and sends, "stop enter start" pastes, sends and starts the next dictation; "start" can only come last.
+
+A command repeated within one utterance ("press enter, press enter") counts once.
+
+A dictation started by voice begins where the command's words end, not when the command is recognized a moment later. What you say right after "start", "start start", a chain ending in "start" or "restart" is kept from its first word: the app takes it from the sound it hears all the time while listening.
+
+A command said in the other state is ignored. `press enter` said right after `stop dictation` waits until the text is pasted. The hotkey and the voice commands drive the same dictation: "stop dictation" ends one the hotkey started, and the hotkey ends one "start dictation" started. `press enter`, `clear all text`, `paste text` and `restart dictation` each play a sound of their own (`Morse`, `Purr`, `Frog`, `Hero`) and show their sign on the overlay for about a second (`⏎ ENTER`, `⌫ CLEAR`, `⎘ PASTE`, `↻ RESTART`); a restart plays only its own sound, not the cancel and start sounds. The sounds are `[sounds]` settings (`enter_sound`, `clear_sound`, `paste_sound`, `restart_sound`; `command_sound` still sets the enter sound).
+
+**Careful with `clear all text`:** it selects everything in the focused app before deleting — meant for a chat input, it erases a whole document in an editor.
+
+### Text refinement
+
+The text refinement service **normalizes** the dictation: punctuation, capitals, misrecognized words, technical terms in their usual spelling (`докер` → `Docker`). Filler sounds (`э-э`, `эм`, `um`, `uh`) are removed by the app before the transcript is sent. Meaning and language stay as dictated; the transcript is data, so a dictated "переведи это на английский" is pasted as that sentence, not translated.
+
+The app pastes the service's answer only when it is still the dictation: the same writing system and at least half of the transcript's Cyrillic and half of its Latin words. Otherwise — a translation, an answer to a dictated question, a rewrite — it logs `refinement answer rejected (…)` and pastes the raw transcript.
+
+The default instruction comes with seven example turns (`[refinement].examples`, each `{ transcript, normalized }`; `examples = []` sends none). A `system_prompt` set in your config replaces the default instruction — delete it to get the current one.
+
+**Speech language:** keep `[transcription].language = "auto"` (the default) when you dictate in more than one language. A fixed language makes the speech recognition service write speech in another language as text in the fixed one: with `language = "ru"`, 29 of 40 English corpus samples came out as Russian, mostly garbled.
+
+**Your languages:** `[transcription].languages` (default `["ru", "en"]`) lists the languages you speak. With `language = "auto"` the app asks the service which language it heard; when that is none of yours — whisper sometimes takes a short Russian phrase for Korean — it sends the recording again with the first of your languages fixed, uses that transcript and logs `transcript detected as …, not one of … — requesting again in …`. Accepted codes: `ru`, `en`, `uk`, `be`, `kk`, `de`, `fr`, `es`, `it`, `pt`, `nl`, `pl`, `cs`, `tr`, `zh`, `ja`, `ko`; any other code stops the app at startup.
+
+### Dictation archive
+
+Every dictation that reached speech recognition is kept in `~/.voicepuncher/history/`, one folder per dictation, named after its start time in UTC (`2026-10-19T08-15-02.431Z/`). Each folder holds:
+
+- `audio.wav` — the whole recording, 16 kHz mono 16-bit, so you can replay it or transcribe it again.
+- `entry.json` — what happened to it:
+
+| Field | Meaning |
+|---|---|
+| `format` | Layout version of `entry.json` (now `1`) |
+| `started_at` | Start of the recording, UTC |
+| `start` | How it started: `hotkey_held`, `hotkey_toggled`, `voice` or `recording_file` |
+| `audio` | The audio file and its length in ms |
+| `chunks` | Text of each chunk as speech recognition returned it |
+| `raw_transcript` | The joined transcript before refinement |
+| `pasted_text` | The text that was pasted (or printed, in file mode) |
+| `refinement` | `refined`, `off` or `fell_back` (service failed, raw text pasted) |
+| `outcome` | `pasted`, `left_in_clipboard`, `paste_failed`, `speech_recognition_failed`, `no_text` or `only_command_words` |
+| `lost_chunks` | Chunks speech recognition could not transcribe |
+| `timings_ms` | Time of each stage after the recording stopped |
+| `dictation_model`, `refinement_model`, `app_version` | What produced the text |
+
+Settings (Settings → Archive, or `~/.voicepuncher/config.toml`):
+
+```toml
+[archive]
+enabled = true                     # false: keep nothing
+dir = "~/.voicepuncher/history"    # where the entries go
+max_size_mb = 2048                 # beyond this, the oldest entries are removed first
+```
+
+`--archive-dir <DIR>` and `--no-archive` override them for one run. File mode (`--input-file`) archives only with `--archive-dir`, so tests and benchmarks never write into your archive.
+
+**Privacy:** the archive holds the audio and text of everything you dictated. It stays on this machine: it is never sent anywhere and never committed. Delete the folder, or set `enabled = false`, to get rid of it.
+
+## Settings
+
+`Settings…` in the menu (⌘,) opens the settings window: a toolbar tab per section and a system control for every option of `~/.voicepuncher/config.toml` (or the file `--config` names). Rarely changed options sit under `Show advanced`.
+
+- **Save** checks every value first: a value out of range or a service address that is not on this Mac is refused, outlined in red and named in the status line, and the file stays unchanged. Otherwise only the changed keys are written; comments, order and the examples you did not touch stay as they are. A missing file is created.
+- The saved settings apply without a relaunch: the status line says `Saved and applied.`, or that they apply after the current dictation, or why the running app could not use them (the file keeps the values).
+- **Revert** drops the unsaved edits; closing the window with unsaved edits asks Save, Don't Save or Cancel.
+- An option this run's command line overrides (`--hotkey`, `--no-llm`, …) shows the file's value with a note under it naming the value the run uses.
+- **Start at login** (General) is not a configuration key: it adds or removes the app in **System Settings → General → Login Items** at once, without Save, and shows the system's state each time the window comes to the front. A login item waiting for approval shows a note and a button to that pane; outside an installed app (run from a build folder) the switch is disabled.
+
+| Tab | Option | Control | Key |
+|---|---|---|---|
+| General | Hotkey | pop-up | `hotkey.key` |
+| General | Recording mode | two radio buttons | `hotkey.recording_mode` |
+| General | Minimum press | number, ms | `hotkey.min_press_ms` |
+| General | Microphone | pop-up: System default and the Mac's input devices | `audio.input_device` |
+| General | Longest recording | number, s | `audio.max_recording_seconds` |
+| General | Voice control | switch | `voice_control.enabled` |
+| General | Start at login | switch, acts at once | none: the system's login items |
+| General (advanced) | Voice control service | text | `voice_control.url` |
+| Dictation | Language | pop-up: Detect automatically and the speech recognition service's languages | `transcription.language` |
+| Dictation | Languages to expect | text, comma-separated codes | `transcription.languages` |
+| Dictation | Prompt | text view | `transcription.prompt` |
+| Dictation | Temperature | slider | `transcription.temperature` |
+| Dictation | Timeout | number, s | `transcription.timeout_secs` |
+| Dictation (advanced) | Chunk threshold, Chunk overlap, VAD lookback | numbers, s | `transcription.chunk_threshold_secs, chunk_overlap_secs, vad_lookback_secs` |
+| Dictation (advanced) | Model name | text | `transcription.model` |
+| Dictation (advanced) | Service address | text | `transcription.base_url` |
+| Refinement | Refine text with the language model | switch | `refinement.enabled` |
+| Refinement | Model | text | `refinement.model` |
+| Refinement | System prompt | text view | `refinement.system_prompt` |
+| Refinement | Examples | table with + and − | `[[refinement.examples]]` |
+| Refinement | Temperature | slider | `refinement.temperature` |
+| Refinement | Max tokens | number | `refinement.max_tokens` |
+| Refinement | Timeout | number, s | `refinement.timeout_secs` |
+| Refinement (advanced) | Service address, API key | text | `refinement.base_url, api_key` |
+| Sounds | Start, Stop, Cancel, Listening on, Listening off, Enter, Clear, Paste, Restart | pop-up of the 14 system sounds and None, ▶ plays it | `sounds.*_sound` |
+| Paste | Clipboard restore delay | number, ms | `paste.clipboard_restore_delay_ms` |
+| Paste | Wait for a text field | number, s | `paste.focus_wait_seconds` |
+| Archive | Keep every dictation | switch | `archive.enabled` |
+| Archive | Folder | path, Choose… and Show in Finder | `archive.dir` |
+| Archive | Size limit | number, MB | `archive.max_size_mb` |
+| Logging | Level | pop-up; Open Logs Folder beside it | `logging.level` |
+
+The configuration file `~/.voicepuncher/config.toml` holds the same options with a comment on each; the window keeps your own comments when it saves. An edit made in a text editor applies after **Save** in the window, a relaunch, or the hang-up signal ([Developer](#reload-the-configuration-without-a-restart)).
+
+## Logs
+
+In hotkey mode the app writes its log to `~/.voicepuncher/logs/voicepuncher.log`, beside the services' logs, whether it was started from a terminal or not. The first line of every launch names the version, process id, config file, macOS version and architecture (`voicepuncher 0.27.0 starting (pid 1234, config /Users/me/.voicepuncher/config.toml, macOS 27.0.1, aarch64)`); a panic on any thread is logged with its message, place and thread before the app ends. Started from a terminal (developers), the app also prints every line there; started without one (from the Finder, by launchd, or with the error output redirected), the file is the only output. `[logging] level` filters both.
+
+The last dictation, with the launch header above it:
+
+```bash
+tail -n 200 ~/.voicepuncher/logs/voicepuncher.log
+```
+
+When the file would pass 10 MB, it is renamed `voicepuncher.log.1` (older ones move up to `.5`, the oldest is deleted) and a new file starts; no line is split between two files. File mode (`--input-file`) logs to the error output only and never touches the logs folder.
+
+**Open Logs Folder** in the menu (and beside the level in Settings → Logging) shows the folder in Finder. Each local service writes its own log beside it (`whisper-server-<port>.log`, `llama-server-8080.log`, `voicepuncher-command-spotting-8082.log`); **Services → Open Log** in the menu opens one.
+
+**In a bug report**, paste the last 200 lines of `voicepuncher.log` (above) — they start with the launch header naming the version and macOS — and say what you did and what you expected. Add the log of a service when the menu shows it Failed.
+
+## Uninstall
+
+1. Quit voicepuncher (menu → **Quit voicepuncher**); it stops the services it started.
+2. Remove it from **System Settings → General → Login Items** if you let it start at login.
+3. Drag `/Applications/voicepuncher.app` to the Trash.
+4. To remove the models, settings, archive and logs too, delete the folder `~/.voicepuncher` (`rm -rf ~/.voicepuncher`).
+5. Optionally remove voicepuncher from the three Privacy & Security panes of [First launch](#first-launch).
+
+## Privacy
+
+The model download is the app's only network use, and only when the user clicks **Download** (or runs `--download-models` / `just models`). It contacts `huggingface.co` and `github.com` (and the CDNs they redirect to) over HTTPS, at pinned addresses, and sends nothing but the requests for the files. `VOICEPUNCHER_MODEL_MIRROR` points every address at another host. Dictation, refinement and voice control never leave `127.0.0.1`.
+
+Your dictations stay on this machine: the [dictation archive](#dictation-archive) keeps their audio and text in `~/.voicepuncher/history/`, never sent anywhere.
+
+## Licenses
+
+The bundle carries the license of every engine and library it bundles in `Contents/Resources/licenses/`:
+
+| Component | License | File |
+|---|---|---|
+| whisper.cpp | MIT | `whisper.cpp-LICENSE` |
+| ggml | MIT | `ggml-LICENSE` |
+| llama.cpp | MIT | `llama.cpp-LICENSE` |
+| LLVM OpenMP runtime (`libomp`) | Apache-2.0 with LLVM exceptions | `libomp-LICENSE` |
+| sherpa-onnx | Apache-2.0 | `sherpa-onnx-LICENSE` |
+| ONNX Runtime (linked into the command spotting service) | MIT | `onnxruntime-LICENSE` |
+
+## Developer
+
+Everything below is for working on voicepuncher from a checkout. The terminal is for development and [file mode](#file-mode-single-wav--stdout); the app itself needs none.
 
 ### From source
 
@@ -49,6 +265,17 @@ Binary: `target/release/voicepuncher`
 
 `just bundle` builds the application bundle `dist/voicepuncher.app` from it, with the engines `just engines` stages (below) (try it as installed: `open dist/voicepuncher.app`), and `just dmg` the disk image `dist/voicepuncher-vX.Y.Z.dmg` with its `.sha256`. Both sign with the certificate named by `VOICEPUNCHER_SIGNING_IDENTITY` (see [Release checklist](#release-checklist)); with the variable unset they sign ad-hoc and say so: such a bundle is a new application to macOS on every build, so it asks for the permissions again.
 
+Run from source (`cargo run`, `just run`), macOS attributes the permissions to the terminal app you launch it from (e.g. iTerm2, Terminal, Warp): grant them to that app, which the Permissions window names.
+
+```bash
+just start-model-servers                 # optional: the services by hand, with [services] manage = false
+cargo run --release -p voicepuncher      # the app, with its menu bar icon and windows
+```
+
+### Run everything in one command
+
+`just run` does everything in one command: downloads missing models, restarts the local services (the command spotting service is rebuilt from the checkout; each service is started again if it crashes while the app runs), builds the app and starts it with voice control; the hotkey records as push-to-talk too. Extra arguments go to the app. Text refinement stays off, and its model and the text refinement service (llama-server) are neither downloaded nor started, unless the arguments hold `--llm`: `just run --llm`. With `[refinement] enabled = true` in the config, pass `--llm` to `just run` as well, or the app exits because no text refinement service runs. Restarting reloads the models, so it takes a few seconds more than `just start-model-servers` followed by `cargo run --release -p voicepuncher`. It is also how an existing setup picks up a new model: after an update that changed one, `just run` downloads it and restarts the services on it.
+
 ### Engines
 
 The bundle carries the engines `app/packaging/engines.lock` pins, by version and by the sha256 of every file; none is built from source. `just engines` stages them into `app/packaging/engines/` (gitignored; `just bundle` runs it):
@@ -63,6 +290,7 @@ Each folder holds the program, every library it loads and a `VERSION` file. `jus
 
 **Bumping an engine:** install the new version (`brew upgrade whisper.cpp`, or a new release tag), write its version, sources and sha256 values into `engines.lock` (`shasum -a 256` of each file; the reason in the commit), run `just engines`, then `just full-check` — its `e2e-bundle` stage runs the bundled engines on the models and fails when one no longer uses the Metal GPU.
 
+### Local services
 
 voicepuncher runs no model itself. It sends each recording to the **speech recognition service for dictation** (OpenAI Audio Transcriptions API) and each raw transcript to a **text refinement service** (OpenAI Chat Completions API), both on this machine, and pastes what comes back. The supported services are whisper.cpp `whisper-server` and llama.cpp `llama-server`. With voice control on, the [command spotting service](#command-spotting-voice-control) confirms utterances with a **speech recognition service for commands** of its own, so the larger dictation model never slows down a voice command; the app never talks to that one.
 
@@ -113,7 +341,7 @@ whisper-server 1.9.5 accepts `-nf` (no temperature fallback) but ignores it: eve
 
 **English terms in Russian dictation:** without a prompt, "oh-my-zsh, zsh и Powerlevel10k" spoken in Russian came out as "а май ZSH, ZSH и по-ирлевелтинке"; with the prompt "В терминале у меня zsh с oh-my-zsh и темой Powerlevel10k, пакеты ставлю через Homebrew и npm." the terms came out as written. There is no default prompt: a Russian prompt also pushes English dictation toward Russian (a short English phrase after a voice command came out as "Кофе машине на 3rd floor", and a long English recording got invented Russian text). Set such a prompt only if you dictate mostly in Russian, and name the terms you use.
 
-The app checks both services at startup and exits with code 2 if one is not reachable, or if the text refinement service offers several models and none matches `[refinement].model`. Only addresses on this machine are accepted (`localhost`, `127.0.0.0/8`, `[::1]`). Text refinement is off by default: the raw transcript is pasted and the text refinement service is neither checked nor used. Turn it on with `--llm` or `[refinement] enabled = true`; `--no-llm` turns it off and wins over both. If refinement fails during a recording (service stopped, timeout, cut-off or too short answer), the raw transcript is pasted.
+With `[services] manage = false` the app checks both services at startup and exits with code 2 if one is not reachable, or if the text refinement service offers several models and none matches `[refinement].model`. Only addresses on this machine are accepted (`localhost`, `127.0.0.0/8`, `[::1]`). Text refinement is off by default: the raw transcript is pasted and the text refinement service is neither checked nor used. Turn it on with `--llm` or `[refinement] enabled = true`; `--no-llm` turns it off and wins over both. If refinement fails during a recording (service stopped, timeout, cut-off or too short answer), the raw transcript is pasted.
 
 ### Command spotting (voice control)
 
@@ -123,21 +351,9 @@ With [voice control](#voice-control) on, the app also needs the **command spotti
 
 **Tracing a session.** Every log line names its thread (`[time LEVEL thread target]`). In the app, `command spotting: session=<n>` follows one connection to the command spotting service (connect, loss with its cause, each reconnect attempt, back with the replayed seconds), `request=<n>` one speech recognition request with each failed attempt, and `voice control: listening → away` / `away → listening again` the state changes. In the command spotting service log, `conn=<n>` follows one app connection over its threads `conn-<n>-io`, `conn-<n>-proc` and `conn-<n>-confirm`, `job=<conn>.<n>` one confirmation (asked, answered in N ms or given up, what it decided), `lag=` audio that waited for processing, and a `stats conn=<n>` line every 30 s. `RUST_LOG=debug` adds every confirmation asked and every skipped check.
 
-### Text refinement
+### Models
 
-The text refinement service **normalizes** the dictation: punctuation, capitals, misrecognized words, technical terms in their usual spelling (`докер` → `Docker`). Filler sounds (`э-э`, `эм`, `um`, `uh`) are removed by the app before the transcript is sent. Meaning and language stay as dictated; the transcript is data, so a dictated "переведи это на английский" is pasted as that sentence, not translated.
-
-The app pastes the service's answer only when it is still the dictation: the same writing system and at least half of the transcript's Cyrillic and half of its Latin words. Otherwise — a translation, an answer to a dictated question, a rewrite — it logs `refinement answer rejected (…)` and pastes the raw transcript.
-
-The default instruction comes with seven example turns (`[refinement].examples`, each `{ transcript, normalized }`; `examples = []` sends none). A `system_prompt` set in your config replaces the default instruction — delete it to get the current one.
-
-**Speech language:** keep `[transcription].language = "auto"` (the default) when you dictate in more than one language. A fixed language makes the speech recognition service write speech in another language as text in the fixed one: with `language = "ru"`, 29 of 40 English corpus samples came out as Russian, mostly garbled.
-
-**Your languages:** `[transcription].languages` (default `["ru", "en"]`) lists the languages you speak. With `language = "auto"` the app asks the service which language it heard; when that is none of yours — whisper sometimes takes a short Russian phrase for Korean — it sends the recording again with the first of your languages fixed, uses that transcript and logs `transcript detected as …, not one of … — requesting again in …`. Accepted codes: `ru`, `en`, `uk`, `be`, `kk`, `de`, `fr`, `es`, `it`, `pt`, `nl`, `pl`, `cs`, `tr`, `zh`, `ja`, `ko`; any other code stops the app at startup.
-
-## Models
-
-`just models` downloads every model the services need into `~/.voicepuncher/models/` (≈ 2.1 GB the first time) and skips a file already there:
+The app downloads every model its configuration needs into the models folder (`[services] models_dir`, default `~/.voicepuncher/models/`) at its first launch, in the Download window (see [First launch](#first-launch)); a file already there, in `~/.voicepuncher/` or named by its variable (`VOICEPUNCHER_WHISPER_MODEL` and the others) counts as present. Without a window, `voicepuncher --download-models [--models-dir DIR] [--no-llm]` does the same in a terminal, one line per file, and exits 0 when every file is present, else 1. `just models` builds the app and runs it so (≈ 2.1 GB the first time; `just models no` skips the text refinement model):
 
 | Model | Used by | File | Source |
 |---|---|---|---|
@@ -147,101 +363,55 @@ The default instruction comes with seven example turns (`[refinement].examples`,
 | Qwen3-4B-Instruct-2507 Q4_K_M (≈ 2.5 GB) | text refinement service | `Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf` | https://huggingface.co/bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF, pinned revision, sha256 checked |
 | keyword spotting + Silero VAD | command spotting service | `sherpa-onnx-kws-*`, `silero_vad.onnx` | https://github.com/k2-fsa/sherpa-onnx |
 
-A pinned download whose sha256 does not match is removed, and `just models` fails naming both hashes, so a cut or altered file never lands. The turbo q5_0 file is the measured one: WER 0.077 against small's 0.116 on the fixed 100 corpus recordings, and every chunk-seam case under difficult recording conditions within the bar.
+Each file is downloaded into `NAME.part` beside it and resumed from there after a cancel, a cut connection or a quit; a part whose sha256 does not match is downloaded again once, and then the file fails, so a cut or altered file never lands. A lost connection is retried after 2, 4 and 8 s; a download that does not fit in the free space does not start. The turbo q5_0 file is the measured one: WER 0.077 against small's 0.116 on the fixed 100 corpus recordings, and every chunk-seam case under difficult recording conditions within the bar.
 
-## Quick start
+### Command line
 
-```bash
-cp app/config.example.toml ~/.voicepuncher/config.toml
-just run
+Every flag is for development, tests and file mode; each one that changes a setting overrides the configuration for this run only. `voicepuncher --help` lists them.
+
+```
+--config <FILE>           The configuration file [default: ~/.voicepuncher/config.toml; written with the defaults when missing]
+--hotkey <KEY>            The recording hotkey
+--transcription-url <URL> Speech recognition service address (loopback only)
+--refinement-url <URL>    Text refinement service address (loopback only)
+--archive-dir <DIR>       Keep each dictation in this folder (also archives a file run with --input-file)
+--no-archive              Keep no dictation archive (wins over --archive-dir)
+--input-file <FILE>       File mode: transcribe a WAV file and print the text to stdout
+--no-llm                  Skip text refinement (wins over --llm)
+--llm                     Refine each transcript through the text refinement service
+--voice-control           Listen for spoken commands from the start, beside the hotkey
+--download-models         Download the missing model files without a window and exit
+--models-dir <DIR>        The models folder of --download-models
+-h, --help                Print help
+-V, --version             Print version
 ```
 
-`just run` does everything in one command: downloads missing models, restarts the local services (the command spotting service is rebuilt from the checkout; each service is started again if it crashes while the app runs), builds the app and starts it with voice control; the hotkey records as push-to-talk too. Extra arguments go to the app. Text refinement stays off, and its model and the text refinement service (llama-server) are neither downloaded nor started, unless the arguments hold `--llm`: `just run --llm`. With `[refinement] enabled = true` in the config, pass `--llm` to `just run` as well, or the app exits because no text refinement service runs. Restarting reloads the models, so it takes a few seconds more than `just start-model-servers` followed by `cargo run --release -p voicepuncher`. It is also how an existing setup picks up a new model: after an update that changed one, `just run` downloads it and restarts the services on it.
+The terminal setup wizard and `--setup` are gone: to start over with the defaults, delete the configuration file; the next launch writes it again.
 
-Default hotkey is `RightOption`.
+### Exit codes
 
-## How to use
+| Code | When |
+|---|---|
+| 0 | Quit from the menu, SIGTERM or SIGINT; `--download-models` with every file present |
+| 1 | File mode: the recording cannot be read or transcribed; `--download-models` with a file missing |
+| 2 | A command line the app does not accept; a configuration file it cannot read; file mode: a service that does not answer; with `[services] manage = false`, a service that does not answer at startup |
 
-**Menu bar.** The app lives in the menu bar, without a Dock icon. The icon shows what it does: an hourglass while it starts, a microphone when ready, an ear when voice control listens, a microphone with a red dot while recording, a moving waveform while it recognizes and refines the text, a keyboard while the text waits for a text field, a warning triangle with a failure. Click it for the menu:
+With the services the app manages (the default), a missing permission, model or service never ends the process: the Permissions window, the Download window and the menu show it.
 
-- the version and the state in words ("Ready — hold Right Option to dictate");
-- `Settings…` (⌘,) opens the [settings window](#settings);
-- `Open Logs Folder` shows `~/.voicepuncher/logs/` in Finder;
-- `Quit voicepuncher` (⌘Q) cancels a recording in progress and quits.
+### File mode (single WAV → stdout)
 
-**Hotkey** (`[hotkey] key`, default `RightOption`):
+Feed a pre-recorded WAV instead of using the hotkey. Output goes to stdout — useful for scripting and E2E tests.
 
-- `recording_mode = "Toggle"`: press to start a dictation, press again to stop — the text is pasted at the cursor.
-- `recording_mode = "Hold"`: hold while speaking, release to paste.
-- `Escape` during a dictation cancels it; presses shorter than `min_press_ms` (200 ms) are ignored.
+```bash
+just start-model-servers
+./target/release/voicepuncher --input-file recording.wav
+```
 
-**Voice** (`--voice-control`; `just run` turns it on). The app listens all the time; the hotkey keeps working.
+WAV must be 16 kHz, mono, 16-bit PCM.
 
-| Say | When | Does |
-|---|---|---|
-| `start` / `start dictation` | no dictation | starts a dictation |
-| `stop` / `stop dictation` | dictating | stops and pastes |
-| `cancel` / `cancel dictation` | dictating | drops the dictation |
-| `restart` / `restart dictation` | dictating | drops it and starts again |
-| `enter` / `press enter` | any time | presses Return; while dictating: stops, pastes, then Return |
-| `clear` / `clear text` / `clear all text` | no dictation | Cmd+A, Delete |
-| `paste` / `paste text` | no dictation | Cmd+V: pastes what the clipboard holds |
+A file run is not archived unless you add `--archive-dir <DIR>`: then that folder gets one entry for the run, marked `recording_file`.
 
-A command works when it is:
-
-- said on its own, with a short pause (0.3 s) around it;
-- the last words of a phrase: "…and that is all, stop";
-- `start` at the beginning: "start, the meeting moved to Friday";
-- doubled anywhere, no pause needed: "stop stop", "enter enter";
-- a chain of 2–3 commands: "stop enter", "stop clear enter", "stop enter start", "paste enter".
-
-Any command may end with "please". The same words inside a sentence ("we should stop the server") do nothing. Details: [Voice control](#voice-control).
-
-## Settings
-
-`Settings…` in the menu (⌘,) opens the settings window: a toolbar tab per section and a system control for every option of `~/.voicepuncher/config.toml` (or the file `--config` names). Rarely changed options sit under `Show advanced`.
-
-- **Save** checks every value first: a value out of range or a service address that is not on this Mac is refused, outlined in red and named in the status line, and the file stays unchanged. Otherwise only the changed keys are written; comments, order and the examples you did not touch stay as they are. A missing file is created.
-- The saved settings apply without a relaunch: the status line says `Saved and applied.`, or that they apply after the current dictation, or why the running app could not use them (the file keeps the values).
-- **Revert** drops the unsaved edits; closing the window with unsaved edits asks Save, Don't Save or Cancel.
-- An option this run's command line overrides (`--hotkey`, `--no-llm`, …) shows the file's value with a note under it naming the value the run uses.
-- **Start at login** (General) is not a configuration key: it adds or removes the app in **System Settings → General → Login Items** at once, without Save, and shows the system's state each time the window comes to the front. A login item waiting for approval shows a note and a button to that pane; outside an installed app (run from a build folder) the switch is disabled.
-
-| Tab | Option | Control | Key |
-|---|---|---|---|
-| General | Hotkey | pop-up | `hotkey.key` |
-| General | Recording mode | two radio buttons | `hotkey.recording_mode` |
-| General | Minimum press | number, ms | `hotkey.min_press_ms` |
-| General | Microphone | pop-up: System default and the Mac's input devices | `audio.input_device` |
-| General | Longest recording | number, s | `audio.max_recording_seconds` |
-| General | Voice control | switch | `voice_control.enabled` |
-| General | Start at login | switch, acts at once | none: the system's login items |
-| General (advanced) | Voice control service | text | `voice_control.url` |
-| Dictation | Language | pop-up: Detect automatically and the speech recognition service's languages | `transcription.language` |
-| Dictation | Languages to expect | text, comma-separated codes | `transcription.languages` |
-| Dictation | Prompt | text view | `transcription.prompt` |
-| Dictation | Temperature | slider | `transcription.temperature` |
-| Dictation | Timeout | number, s | `transcription.timeout_secs` |
-| Dictation (advanced) | Chunk threshold, Chunk overlap, VAD lookback | numbers, s | `transcription.chunk_threshold_secs, chunk_overlap_secs, vad_lookback_secs` |
-| Dictation (advanced) | Model name | text | `transcription.model` |
-| Dictation (advanced) | Service address | text | `transcription.base_url` |
-| Refinement | Refine text with the language model | switch | `refinement.enabled` |
-| Refinement | Model | text | `refinement.model` |
-| Refinement | System prompt | text view | `refinement.system_prompt` |
-| Refinement | Examples | table with + and − | `[[refinement.examples]]` |
-| Refinement | Temperature | slider | `refinement.temperature` |
-| Refinement | Max tokens | number | `refinement.max_tokens` |
-| Refinement | Timeout | number, s | `refinement.timeout_secs` |
-| Refinement (advanced) | Service address, API key | text | `refinement.base_url, api_key` |
-| Sounds | Start, Stop, Cancel, Listening on, Listening off, Enter, Clear, Paste, Restart | pop-up of the 14 system sounds and None, ▶ plays it | `sounds.*_sound` |
-| Paste | Clipboard restore delay | number, ms | `paste.clipboard_restore_delay_ms` |
-| Paste | Wait for a text field | number, s | `paste.focus_wait_seconds` |
-| Archive | Keep every dictation | switch | `archive.enabled` |
-| Archive | Folder | path, Choose… and Show in Finder | `archive.dir` |
-| Archive | Size limit | number, MB | `archive.max_size_mb` |
-| Logging | Level | pop-up; Open Logs Folder beside it | `logging.level` |
-
-## Reload the configuration without a restart
+### Reload the configuration without a restart
 
 Edit `~/.voicepuncher/config.toml` (or the file `--config` names), then send the running app the hang-up signal:
 
@@ -251,75 +421,7 @@ kill -HUP "$(pgrep -x voicepuncher)"
 
 The app reads the file again, applies the command line options over it, and restarts its pipeline inside the same process: the log shows `runtime: reloading configuration`, `runtime: restarting` and `runtime: ready (hotkey …)`. A dictation in progress finishes and pastes first. A file that does not load or validate is rejected: the log names the reason (`runtime: configuration rejected: …`) and the app keeps its settings.
 
-## Voice control
-
-Hands-free dictation, off by default. Turn it on with `--voice-control` or in the config:
-
-```toml
-[voice_control]
-enabled = true
-```
-
-Push-to-talk keeps working as without voice control: the hotkey starts and stops a dictation, Escape cancels it, the overlay and sounds are the same. **Listening** starts with the app (sound `Tink`) and stays on until the app quits; the microphone stays open and seven English commands take effect:
-
-| Say | While | Effect |
-|---|---|---|
-| `start dictation` or `start` | listening, no dictation | starts a dictation (start sound, overlay) |
-| `stop dictation` or `stop` | dictating | ends it; the text is pasted without the command |
-| `cancel dictation` or `cancel` | dictating | discards it; nothing is pasted |
-| `restart dictation` or `restart` | dictating | discards it and starts a new dictation at once |
-| `press enter` or `enter` | listening | presses Return in the focused app; during a dictation it first ends it and pastes the text, like "stop enter" |
-| `clear all text`, `clear text` or `clear` | listening, no dictation | presses Cmd+A, then Delete, in the focused app |
-| `paste text` or `paste` | listening, no dictation | presses Cmd+V in the focused app, which pastes what the clipboard holds; the clipboard stays as it is |
-
-Every command may end with "please" ("press enter please"). A pause of 0.3 s ends an utterance, also after a quiet word and when more speech follows the pause at once ("restart", a short breath, the next sentence). A command counts:
-
-- **on its own**, with a pause before and after it;
-- **at the end of an utterance**, right after other speech: "…and that is all, stop" ends the dictation and pastes the speech before it; the same words inside a sentence ("we should stop the server") are ignored;
-- **"start" at the start of an utterance**: "start, the meeting moved to Friday" starts a dictation that begins with "the meeting…";
-- **doubled anywhere**, with no pause around it: "start start", "stop stop", "cancel cancel", "restart restart", "enter enter", "clear clear", "paste paste"; after "stop stop" the words said after it are dropped;
-- **as a chain** of two or three commands in a row, anywhere: "stop enter" pastes and sends, "stop clear", "cancel clear", "paste enter" pastes the clipboard and sends, "stop enter start" pastes, sends and starts the next dictation; "start" can only come last.
-
-A command repeated within one utterance ("press enter, press enter") counts once.
-
-A dictation started by voice begins where the command's words end, not when the command is recognized a moment later. What you say right after "start", "start start", a chain ending in "start" or "restart" is kept from its first word: the app takes it from the sound it hears all the time while listening.
-
-A command said in the other state is ignored. `press enter` said right after `stop dictation` waits until the text is pasted. The hotkey and the voice commands drive the same dictation: "stop dictation" ends one the hotkey started, and the hotkey ends one "start dictation" started. `press enter`, `clear all text`, `paste text` and `restart dictation` each play a sound of their own (`Morse`, `Purr`, `Frog`, `Hero`) and show their sign on the overlay for about a second (`⏎ ENTER`, `⌫ CLEAR`, `⎘ PASTE`, `↻ RESTART`); a restart plays only its own sound, not the cancel and start sounds. The sounds are `[sounds]` settings (`enter_sound`, `clear_sound`, `paste_sound`, `restart_sound`; `command_sound` still sets the enter sound).
-
-**Careful with `clear all text`:** it selects everything in the focused app before deleting — meant for a chat input, it erases a whole document in an editor.
-
-## Usage example
-
-Hold `RightOption`, say "hello world uh I think the API is fine", release.
-
-Result pasted at cursor: `Hello world, I think the API is fine.`
-
-## CLI options
-
-```
---config <PATH>           Config file path  [default: ~/.voicepuncher/config.toml]
---setup                   Re-run the setup wizard even if config already exists
---hotkey <KEY>            Override [hotkey].key
---transcription-url <URL> Override [transcription].base_url (speech recognition service, loopback only)
---refinement-url <URL>    Override [refinement].base_url (text refinement service, loopback only)
---llm                     Turn text refinement on (overrides [refinement].enabled; off by default)
---no-llm                  Skip text refinement; paste the raw transcript (the default; wins over --llm)
---voice-control           Voice control: spoken commands drive dictation alongside the hotkey
---archive-dir <DIR>       Keep each dictation in this folder (also archives a file run with --input-file)
---no-archive              Keep no dictation archive (wins over --archive-dir)
--v                        Verbose logging
--vv                       Trace logging
-```
-
-## Exit codes
-
-| Code | Meaning |
-|---|---|
-| 0 | Clean shutdown (SIGTERM / SIGINT) |
-| 1 | Runtime crash (hotkey listener died) |
-| 2 | Startup misconfiguration (bad or outdated config, a local service not reachable, configured model not offered); a missing permission opens the Permissions window instead |
-
-## Upgrading from the in-process Whisper engine
+### Upgrading from the in-process Whisper engine
 
 The `[whisper]` config section and `--whisper-model` are gone. A config that still has `[whisper]` makes the app exit with a message naming each key's replacement. Rename the section and move the decoder settings to the service:
 
@@ -335,7 +437,7 @@ chunk_threshold_secs = 15                  chunk_threshold_secs = 15
 
 `beam_size`, `patience`, `entropy_thold`, `logprob_thold`, `no_speech_thold` and `flash_attn` are now `whisper-server` launch flags; `temperature_inc` has no flag (whisper-server 1.9.5 ignores `-nf` and keeps its own temperature fallback). New keys: `model` (sent as-is), `temperature`, `timeout_secs` (per request, default 60). Then run `just start-model-servers`.
 
-## Upgrading from the in-process LLM
+### Upgrading from the in-process LLM
 
 The `[llm]` config section and `--llm-model` are gone (use `--refinement-url`). A config that still has `[llm]` makes the app exit with a message naming each key's replacement:
 
@@ -351,83 +453,7 @@ temperature = 0.0                          temperature = 0.0
 
 New keys: `model` (default `local`; `llama-server` accepts any name), `api_key` (sent as a bearer token when not empty), `timeout_secs` (per request, default 30). Then run `just start-model-servers`.
 
-## Minimum press time
-
-Recordings shorter than `min_press_ms` (default 200 ms) are silently dropped. This prevents accidental pastes from brief key touches.
-
-## File mode (single WAV → stdout)
-
-Feed a pre-recorded WAV instead of using the hotkey. Output goes to stdout — useful for scripting and E2E tests.
-
-```bash
-just start-model-servers
-./target/release/voicepuncher --input-file recording.wav
-```
-
-WAV must be 16 kHz, mono, 16-bit PCM.
-
-A file run is not archived unless you add `--archive-dir <DIR>`: then that folder gets one entry for the run, marked `recording_file`.
-
-## Dictation archive
-
-Every dictation that reached speech recognition is kept in `~/.voicepuncher/history/`, one folder per dictation, named after its start time in UTC (`2026-10-19T08-15-02.431Z/`). Each folder holds:
-
-- `audio.wav` — the whole recording, 16 kHz mono 16-bit, so you can replay it or transcribe it again.
-- `entry.json` — what happened to it:
-
-| Field | Meaning |
-|---|---|
-| `format` | Layout version of `entry.json` (now `1`) |
-| `started_at` | Start of the recording, UTC |
-| `start` | How it started: `hotkey_held`, `hotkey_toggled`, `voice` or `recording_file` |
-| `audio` | The audio file and its length in ms |
-| `chunks` | Text of each chunk as speech recognition returned it |
-| `raw_transcript` | The joined transcript before refinement |
-| `pasted_text` | The text that was pasted (or printed, in file mode) |
-| `refinement` | `refined`, `off` or `fell_back` (service failed, raw text pasted) |
-| `outcome` | `pasted`, `left_in_clipboard`, `paste_failed`, `speech_recognition_failed`, `no_text` or `only_command_words` |
-| `lost_chunks` | Chunks speech recognition could not transcribe |
-| `timings_ms` | Time of each stage after the recording stopped |
-| `dictation_model`, `refinement_model`, `app_version` | What produced the text |
-
-Settings (`~/.voicepuncher/config.toml`):
-
-```toml
-[archive]
-enabled = true                     # false: keep nothing
-dir = "~/.voicepuncher/history"    # where the entries go
-max_size_mb = 2048                 # beyond this, the oldest entries are removed first
-```
-
-`--archive-dir <DIR>` and `--no-archive` override them for one run. File mode (`--input-file`) archives only with `--archive-dir`, so tests and benchmarks never write into your archive.
-
-**Privacy:** the archive holds the audio and text of everything you dictated. It stays on this machine: it is never sent anywhere and never committed. Delete the folder, or set `enabled = false`, to get rid of it.
-
-## Logs
-
-In hotkey mode the app writes its log to `~/.voicepuncher/logs/voicepuncher.log`, beside the services' logs, whether it was started from a terminal or not. The first line of every launch names the version, process id, config file, macOS version and architecture (`voicepuncher 0.27.0 starting (pid 1234, config /Users/me/.voicepuncher/config.toml, macOS 27.0.1, aarch64)`); a panic on any thread is logged with its message, place and thread before the app ends. Started from a terminal, the app also prints every line there, as before; started without one (from the Finder, by launchd, or with the error output redirected), the file is the only output. `[logging] level` filters both.
-
-The last dictation, with the launch header above it:
-
-```bash
-tail -n 200 ~/.voicepuncher/logs/voicepuncher.log
-```
-
-When the file would pass 10 MB, it is renamed `voicepuncher.log.1` (older ones move up to `.5`, the oldest is deleted) and a new file starts; no line is split between two files. File mode (`--input-file`) logs to the error output only and never touches the logs folder.
-
-## Licenses
-
-The bundle carries the license of every engine and library it bundles in `Contents/Resources/licenses/`:
-
-| Component | License | File |
-|---|---|---|
-| whisper.cpp | MIT | `whisper.cpp-LICENSE` |
-| ggml | MIT | `ggml-LICENSE` |
-| llama.cpp | MIT | `llama.cpp-LICENSE` |
-| LLVM OpenMP runtime (`libomp`) | Apache-2.0 with LLVM exceptions | `libomp-LICENSE` |
-| sherpa-onnx | Apache-2.0 | `sherpa-onnx-LICENSE` |
-| ONNX Runtime (linked into the command spotting service) | MIT | `onnxruntime-LICENSE` |
-
+### Tests
 
 All checks run through [`just`](https://github.com/casey/just) (`brew install just`). `just` with no arguments lists every recipe.
 

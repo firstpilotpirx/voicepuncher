@@ -1,0 +1,124 @@
+# voicepuncher settings.
+#
+# The app wrote this file with the defaults at its first launch. Change the options in the
+# Settings window (menu bar icon → Settings…); it keeps these comments. Delete the file to
+# get the defaults back at the next launch.
+
+[hotkey]
+# The key that starts and stops a recording: RightOption, RightControl, RightShift,
+# RightCommand, LeftOption, LeftControl, Fn, CapsLock, CmdE or F13 to F19.
+key = "RightOption"
+# A press shorter than this, in milliseconds, records nothing.
+min_press_ms = 200
+# Toggle: press once to start and again to stop. Hold: record while the key is held.
+recording_mode = "Toggle"
+
+[audio]
+# The microphone: "default" follows the Mac's input device, or the name of a device.
+input_device = "default"
+# A recording stops by itself after this many seconds.
+max_recording_seconds = 600
+
+[transcription]
+# Address of the speech recognition service for dictation; it must be on this Mac.
+base_url = "http://127.0.0.1:8081/v1"
+# Model name sent with every request; the local service ignores it.
+model = "whisper-1"
+# Spoken language code (ru, en, …), or auto to let the service detect it.
+language = "auto"
+# The languages you speak; with auto, a transcript in another language is asked again in
+# the first of them.
+languages = ["ru", "en"]
+# Words and style that bias recognition, such as domain terms; empty for none.
+prompt = ""
+# Sampling temperature of recognition; 0.0 picks the likeliest words.
+temperature = 0.0
+# Seconds one transcription request may take, upload and recognition included.
+timeout_secs = 60
+# A recording longer than this many seconds is transcribed in chunks while you speak.
+chunk_threshold_secs = 30
+# Seconds two neighbouring chunks share, so no word is cut in half.
+chunk_overlap_secs = 2
+# Seconds before a chunk's end searched for a pause to cut at.
+vad_lookback_secs = 5
+
+[refinement]
+# Turn on to clean each transcript with the local text refinement service.
+# The instruction and examples it sends are built into the app (system_prompt and examples
+# here override them).
+enabled = false
+# Address of the text refinement service; it must be on this Mac.
+base_url = "http://127.0.0.1:8080/v1"
+# Model name sent with every request; the local service ignores it.
+model = "local"
+# Sent as a bearer token when not empty.
+api_key = ""
+# Sampling temperature of refinement; 0.0 keeps it predictable.
+temperature = 0.0
+# Upper bound for the cleaned text's length, in tokens.
+max_tokens = 512
+# Seconds one refinement request may take.
+timeout_secs = 30
+
+[paste]
+# Milliseconds before the clipboard gets its previous content back after a paste.
+clipboard_restore_delay_ms = 120
+# Seconds the text waits for a text field to get focus before it is dropped.
+focus_wait_seconds = 300
+
+[sounds]
+# macOS system sound names (Glass, Pop, Basso, Tink, Bottle, Morse, Purr, Frog, Hero, …),
+# or an empty string for silence.
+# A recording starts.
+start_sound = "Glass"
+# A recording stops.
+stop_sound = "Pop"
+# A recording is cancelled.
+cancel_sound = "Basso"
+# Voice control starts listening.
+listening_on_sound = "Tink"
+# Voice control stops listening.
+listening_off_sound = "Bottle"
+# Voice control pressed Enter.
+enter_sound = "Morse"
+# Voice control cleared all text.
+clear_sound = "Purr"
+# Voice control pasted the text.
+paste_sound = "Frog"
+# Voice control started the dictation over.
+restart_sound = "Hero"
+
+[voice_control]
+# Listen for spoken commands from the start, beside the hotkey.
+enabled = false
+# Address of the command spotting service; it must be on this Mac.
+url = "ws://127.0.0.1:8082"
+
+[archive]
+# Keep every dictation's audio and texts.
+enabled = true
+# The folder the dictations are kept in.
+dir = "~/.voicepuncher/history"
+# The oldest dictations are removed once the folder holds more megabytes than this.
+max_size_mb = 2048
+
+[logging]
+# How much the log in ~/.voicepuncher/logs says: error, warn, info, debug or trace.
+level = "info"
+
+[services]
+# The app starts the local services itself; turn off to run them yourself
+# (just start-model-servers).
+manage = true
+# Copies of the speech recognition service for dictation, 1 to 4.
+dictation_copies = 3
+# Copies of the speech recognition service for commands, 1 to 4.
+command_copies = 3
+# The folder the models are downloaded to.
+models_dir = "~/.voicepuncher/models"
+# Address of the speech recognition service for commands; it must be on this Mac.
+commands_url = "http://127.0.0.1:8085/v1"
+
+[app]
+# Set by the app once it asked whether to start at login; it asks only once.
+launch_at_login_asked = false

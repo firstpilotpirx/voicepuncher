@@ -34,6 +34,7 @@ pub struct IntegrationWorld {
     pub logging: Option<steps::app_logging::LoggingRun>,
     pub settings: Option<steps::settings_window::SettingsRun>,
     pub login: Option<steps::launch_at_login::LoginRun>,
+    pub models: Option<steps::model_download::DownloadRun>,
 }
 
 /// Runs the scenarios the command line selects (a rerun's names instead, when
@@ -44,14 +45,14 @@ pub struct IntegrationWorld {
 /// it instead of the filter, and the gates with it. `scenario_filter::split` takes it out of the
 /// options and into the one filter that requires both.
 fn main() {
-    // One nextest test per feature file, so nextest runs the files in parallel processes; any
-    // other command line is cucumber's own and runs every file
-    let features = harness_args::feature_names(Path::new(FEATURES));
-    let Some((feature, command_line)) = harness_args::feature_command_line(&features) else {
+    // One nextest test per rule, so nextest runs the rules in parallel processes and no long
+    // feature file bounds the run; any other command line is cucumber's own and runs every file
+    let tests = harness_args::harness_tests(Path::new(FEATURES));
+    let Some((test, command_line)) = harness_args::rule_command_line(&tests) else {
         return;
     };
-    let path = match feature {
-        Some(name) => format!("{FEATURES}/{name}.feature"),
+    let path = match &test {
+        Some(test) => format!("{FEATURES}/{}.feature", test.feature),
         None => FEATURES.to_string(),
     };
     let gates = vec![
@@ -71,7 +72,9 @@ fn main() {
             .fail_on_skipped()
             .with_cli(opts)
             .filter_run_and_exit(path, move |feature, rule, scenario| {
-                filter.runs(feature, rule, scenario)
+                test.as_ref()
+                    .is_none_or(|test| test.takes(rule.map(|r| r.name.as_str())))
+                    && filter.runs(feature, rule, scenario)
             }),
     );
 }

@@ -19,6 +19,7 @@ use super::files::{collapse_home, reveal};
 use super::layout::TabViews;
 use super::login::refusal_text;
 use super::login_row::{open_login_items, LoginRow};
+use super::models_row::ModelsRow;
 use super::session::{status_text, ApplyStatus, SettingsSession};
 use super::target::{Event, EventHandler, FormTarget};
 use crate::adapters::main_queue::dispatch_to_main;
@@ -42,6 +43,7 @@ pub struct Form {
     pub session: RefCell<SettingsSession>,
     pub controls: Vec<FieldControl>,
     pub login: LoginRow,
+    pub models: ModelsRow,
     pub tabs: Vec<TabViews>,
     pub logs_dir: PathBuf,
 }
@@ -152,13 +154,28 @@ impl Form {
             Event::RemoveExample => self.with_examples(|table| table.remove_selected()),
             Event::ToggleAdvanced(place) => self.toggle_advanced(place),
             Event::Save => {
-                self.save();
+                if self.save() {
+                    self.models.refresh();
+                }
             }
             Event::Revert => self.revert(),
             Event::OpenLogs => reveal(&self.logs_dir),
             Event::LoginToggled => self.login_toggled(),
             Event::OpenLoginItems => open_login_items(),
-            Event::BecameKey => self.login.refresh(),
+            Event::DownloadModels => {
+                if let Some(panel) = &self.models.panel {
+                    panel.open_download();
+                }
+            }
+            Event::ShowModels => {
+                if let Some(panel) = &self.models.panel {
+                    reveal(&panel.folder());
+                }
+            }
+            Event::BecameKey => {
+                self.login.refresh();
+                self.models.refresh();
+            }
         }
     }
 

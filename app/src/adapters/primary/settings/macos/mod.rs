@@ -10,6 +10,7 @@ pub mod form;
 pub mod layout;
 pub mod login;
 pub mod login_row;
+pub mod models_row;
 pub mod overrides;
 pub mod session;
 pub mod table;

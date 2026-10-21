@@ -3,6 +3,7 @@
 
 pub mod activity;
 pub mod assembler;
+pub mod models;
 pub mod observer;
 pub mod overlay;
 pub mod permissions;
@@ -31,6 +32,7 @@ use services::SERVICES_POLL;
 
 pub use activity::ActivityRegister;
 pub use assembler::PipelineAssembler;
+pub use models::{CatalogModels, ModelsGate};
 pub use observer::{LogObserver, Observers, RuntimeObserver, RuntimeState};
 pub use overlay::SharedVisualIndicator;
 pub use permissions::PermissionsWatch;
@@ -38,6 +40,8 @@ pub use report::{ReloadListener, ReloadReport};
 pub use router::SignalRouter;
 pub use services::{LocalServices, ManagedServices, ServicesView};
 
+/// How often the runtime looks for the model files it waits for.
+const MODELS_POLL: Duration = Duration::from_secs(1);
 /// How often a restart checks whether the dictation in progress has ended.
 const IDLE_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
@@ -47,6 +51,7 @@ pub struct Runtime {
     listener: Option<Box<dyn HotkeyListener>>,
     permissions: Option<PermissionsWatch>,
     services: Option<Box<dyn LocalServices>>,
+    models: Option<Box<dyn ModelsGate>>,
     observers: Arc<Mutex<Observers>>,
     commands: Option<Sender<Command>>,
     thread: Option<JoinHandle<()>>,
@@ -64,6 +69,7 @@ impl Runtime {
             listener: Some(listener),
             permissions: None,
             services: None,
+            models: None,
             observers: Arc::default(),
             commands: None,
             thread: None,
@@ -81,6 +87,13 @@ impl Runtime {
     /// they answer; without them the runtime only connects to the services.
     pub fn with_services(mut self, services: Box<dyn LocalServices>) -> Self {
         self.services = Some(services);
+        self
+    }
+
+    /// Starts no service and no pipeline while a model file the configuration needs is
+    /// missing; without a gate the models are not checked.
+    pub fn with_models(mut self, models: Box<dyn ModelsGate>) -> Self {
+        self.models = Some(models);
         self
     }
 
@@ -110,6 +123,7 @@ impl Runtime {
             config,
             self.permissions.take().map(Watched::start),
             self.services.take(),
+            self.models.take(),
         );
         if let Some(state) = supervisor.gate() {
             self.change(state);
@@ -290,6 +304,9 @@ struct Supervisor {
     listener: Option<Box<dyn HotkeyListener>>,
     permissions: Option<Watched>,
     services: Option<Box<dyn LocalServices>>,
+    models: Option<Box<dyn ModelsGate>>,
+    /// The services were told what the configuration needs; not while models are missing.
+    services_required: bool,
     /// A pipeline that failed to start is not started again by a permission check.
     failed: bool,
     observers: Arc<Mutex<Observers>>,
@@ -307,16 +324,16 @@ impl Supervisor {
         observers: Arc<Mutex<Observers>>,
         config: Config,
         permissions: Option<Watched>,
-        mut services: Option<Box<dyn LocalServices>>,
+        services: Option<Box<dyn LocalServices>>,
+        models: Option<Box<dyn ModelsGate>>,
     ) -> Self {
-        if let Some(services) = &mut services {
-            services.require(&config);
-        }
-        Self {
+        let mut supervisor = Self {
             assembler,
             listener: Some(listener),
             permissions,
             services,
+            models,
+            services_required: false,
             failed: false,
             observers,
             router: SignalRouter::new(),
@@ -324,14 +341,42 @@ impl Supervisor {
             activity: ActivityRegister::default(),
             pipeline: None,
             config,
-        }
+        };
+        supervisor.models_missing();
+        supervisor
     }
 
-    /// What keeps the pipeline from starting: a missing permission, then a needed service
-    /// that failed or does not answer yet; none when it may start.
-    fn gate(&self) -> Option<RuntimeState> {
+    /// Waiting for models when a file the configuration needs is missing; otherwise the
+    /// services are told what it needs, once.
+    fn models_missing(&mut self) -> Option<RuntimeState> {
+        if let Some(models) = &self.models {
+            let missing = models.missing(&self.config);
+            if !missing.is_empty() {
+                self.services_required = false;
+                return Some(RuntimeState::WaitingForModels {
+                    folder: models.folder(&self.config),
+                    missing,
+                });
+            }
+        }
+        if !self.services_required {
+            if let Some(services) = &mut self.services {
+                services.require(&self.config);
+            }
+            self.services_required = true;
+        }
+        None
+    }
+
+    /// What keeps the pipeline from starting: a missing permission, then a missing model
+    /// file, then a needed service that failed or does not answer yet; none when it may start.
+    fn gate(&mut self) -> Option<RuntimeState> {
+        let models = self.models_missing();
         if let Some(watched) = self.permissions.as_ref().filter(|w| !w.all_granted()) {
             return Some(watched.waiting());
+        }
+        if models.is_some() {
+            return models;
         }
         let progress = self.services.as_ref()?.progress();
         if let Some(reason) = progress.failed {
@@ -363,7 +408,8 @@ impl Supervisor {
         let pipeline_runs = self.pipeline.is_some();
         let permissions = self.permissions.as_ref().map(|w| w.interval(pipeline_runs));
         let services = (self.services.is_some() && !pipeline_runs).then_some(SERVICES_POLL);
-        let Some(interval) = permissions.into_iter().chain(services).min() else {
+        let models = (self.models.is_some() && !pipeline_runs).then_some(MODELS_POLL);
+        let Some(interval) = permissions.into_iter().chain(services).chain(models).min() else {
             return Some(commands.recv().unwrap_or(Command::Stop));
         };
         match commands.recv_timeout(interval) {
@@ -449,11 +495,21 @@ impl Supervisor {
         commands: &Receiver<Command>,
         pending: &mut std::collections::VecDeque<Command>,
     ) -> Wait {
-        if let Some(services) = &mut self.services {
-            services.require(&config);
+        let models_missing = self
+            .models
+            .as_ref()
+            .is_some_and(|models| !models.missing(&config).is_empty());
+        if !models_missing {
+            if let Some(services) = &mut self.services {
+                services.require(&config);
+            }
+            self.services_required = true;
         }
         if self.pipeline.is_none() {
             return self.keep_for_later(config);
+        }
+        if models_missing {
+            return self.wait_for_models(config, listener, commands, pending);
         }
         self.change(RuntimeState::Restarting);
         match self.wait_for_services(commands, pending) {
@@ -515,6 +571,31 @@ impl Supervisor {
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
             }
         }
+    }
+
+    /// Ends the pipeline once no dictation is in progress and waits for the models `config`
+    /// needs; the services are told what it needs once they are present.
+    fn wait_for_models(
+        &mut self,
+        config: Config,
+        listener: &mut Option<ReloadListener>,
+        commands: &Receiver<Command>,
+        pending: &mut std::collections::VecDeque<Command>,
+    ) -> Wait {
+        self.change(RuntimeState::Restarting);
+        if let Wait::Stopped = self.wait_for_idle(listener, commands, pending) {
+            return Wait::Stopped;
+        }
+        if let Some(old) = self.pipeline.take() {
+            old.shut_down();
+        }
+        self.binding.rebind(config.hotkey.key);
+        self.config = config;
+        if let Some(state) = self.models_missing() {
+            self.change(state);
+        }
+        tell(listener, ReloadReport::Applied);
+        Wait::Idle
     }
 
     /// Without a pipeline, the configuration waits for the next start.
@@ -803,5 +884,141 @@ mod tests {
         runtime.observe(Box::new(Recorded(Arc::clone(&seen))));
         // Then
         assert_eq!(*seen.lock().unwrap(), vec![ready(HotKey::F13)]);
+    }
+    /// The model files still missing, shared with the test.
+    #[derive(Clone, Default)]
+    struct FakeModels(Arc<Mutex<Vec<&'static str>>>);
+
+    impl FakeModels {
+        fn missing_now(&self, files: &[&'static str]) {
+            *self.0.lock().unwrap() = files.to_vec();
+        }
+    }
+
+    impl ModelsGate for FakeModels {
+        fn folder(&self, _config: &Config) -> std::path::PathBuf {
+            "/models".into()
+        }
+
+        fn missing(&self, _config: &Config) -> Vec<&'static str> {
+            self.0.lock().unwrap().clone()
+        }
+    }
+
+    /// Services that answer as soon as they are required; how often they were.
+    #[derive(Clone, Default)]
+    /// Counts the requires; ready from the second look after the first require.
+    struct FakeServices(Arc<Mutex<usize>>, Arc<Mutex<usize>>);
+
+    impl LocalServices for FakeServices {
+        fn require(&mut self, _config: &Config) {
+            *self.0.lock().unwrap() += 1;
+        }
+
+        fn progress(&self) -> crate::core::domain::ServicesProgress {
+            let required = *self.0.lock().unwrap() > 0;
+            let mut looks = self.1.lock().unwrap();
+            if required {
+                *looks += 1;
+            }
+            crate::core::domain::ServicesProgress {
+                ready: usize::from(*looks > 1),
+                total: 1,
+                failed: None,
+            }
+        }
+
+        fn stop(&mut self) {}
+    }
+
+    fn waiting_for(files: &[&'static str]) -> RuntimeState {
+        RuntimeState::WaitingForModels {
+            folder: "/models".into(),
+            missing: files.to_vec(),
+        }
+    }
+
+    fn wait_for_state(seen: &Mutex<Vec<RuntimeState>>, state: &RuntimeState) {
+        let deadline = Instant::now() + REACTION;
+        while seen.lock().unwrap().last() != Some(state) {
+            assert!(
+                Instant::now() < deadline,
+                "seen: {:?}",
+                seen.lock().unwrap()
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn should_wait_for_models_without_requiring_a_service() {
+        // Given
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let models = FakeModels::default();
+        models.missing_now(&["ggml-large-v3-turbo-q5_0.bin"]);
+        let services = FakeServices::default();
+        let mut runtime = Runtime::new(Box::new(IdleAssembler), listener())
+            .with_services(Box::new(services.clone()))
+            .with_models(Box::new(models));
+        runtime.observe(Box::new(Recorded(Arc::clone(&seen))));
+        // When
+        runtime.start(with_hotkey(HotKey::F13)).unwrap();
+        // Then
+        assert_eq!(
+            *seen.lock().unwrap(),
+            vec![waiting_for(&["ggml-large-v3-turbo-q5_0.bin"])]
+        );
+        assert_eq!(*services.0.lock().unwrap(), 0);
+    }
+
+    #[test]
+    fn should_start_the_services_and_the_pipeline_once_the_models_are_present() {
+        // Given
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let models = FakeModels::default();
+        models.missing_now(&["ggml-large-v3-turbo-q5_0.bin"]);
+        let services = FakeServices::default();
+        let mut runtime = Runtime::new(Box::new(IdleAssembler), listener())
+            .with_services(Box::new(services.clone()))
+            .with_models(Box::new(models.clone()));
+        runtime.observe(Box::new(Recorded(Arc::clone(&seen))));
+        runtime.start(with_hotkey(HotKey::F13)).unwrap();
+        // When
+        models.missing_now(&[]);
+        wait_for_state(&seen, &ready(HotKey::F13));
+        // Then
+        assert_eq!(*services.0.lock().unwrap(), 1);
+        assert_eq!(
+            *seen.lock().unwrap(),
+            vec![
+                waiting_for(&["ggml-large-v3-turbo-q5_0.bin"]),
+                RuntimeState::StartingServices { ready: 0, total: 1 },
+                RuntimeState::Starting,
+                ready(HotKey::F13),
+            ]
+        );
+    }
+
+    #[test]
+    fn should_end_the_pipeline_and_wait_when_a_reload_needs_missing_models() {
+        // Given
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let models = FakeModels::default();
+        let mut runtime = Runtime::new(Box::new(IdleAssembler), listener())
+            .with_services(Box::new(FakeServices::default()))
+            .with_models(Box::new(models.clone()));
+        runtime.observe(Box::new(Recorded(Arc::clone(&seen))));
+        runtime.start(with_hotkey(HotKey::F13)).unwrap();
+        wait_for_state(&seen, &ready(HotKey::F13));
+        seen.lock().unwrap().clear();
+        // When
+        models.missing_now(&["ggml-small.bin"]);
+        runtime.reload(with_hotkey(HotKey::F19)).unwrap();
+        wait_for_state(&seen, &waiting_for(&["ggml-small.bin"]));
+        // Then
+        assert_eq!(
+            *seen.lock().unwrap(),
+            vec![RuntimeState::Restarting, waiting_for(&["ggml-small.bin"]),]
+        );
     }
 }

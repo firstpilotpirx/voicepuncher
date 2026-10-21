@@ -25,6 +25,9 @@ pub trait MenuActions {
     fn open_logs(&self);
     fn open_permissions(&self);
 
+    /// Brings the Download window to the front.
+    fn open_download_models(&self) {}
+
     /// The local services and their states; none when the app leaves them to the scripts.
     fn services(&self) -> Option<Vec<ServiceStatus>> {
         None
@@ -53,6 +56,10 @@ impl<T: MenuActions + ?Sized> MenuActions for std::rc::Rc<T> {
 
     fn open_permissions(&self) {
         (**self).open_permissions();
+    }
+
+    fn open_download_models(&self) {
+        (**self).open_download_models();
     }
 
     fn services(&self) -> Option<Vec<ServiceStatus>> {
@@ -92,6 +99,7 @@ pub struct MacosMenuActions {
     logs_dir: PathBuf,
     end_process: Box<dyn Fn(i32)>,
     open_permissions: Box<dyn Fn()>,
+    open_download_models: Box<dyn Fn()>,
     services: Option<std::sync::Arc<dyn ServicesView>>,
 }
 
@@ -119,6 +127,7 @@ impl MacosMenuActions {
             logs_dir,
             end_process,
             open_permissions: Box::new(|| log::warn!("menu: no Permissions window")),
+            open_download_models: Box::new(|| log::warn!("menu: no Download window")),
             services: None,
         }
     }
@@ -126,6 +135,12 @@ impl MacosMenuActions {
     /// The Services submenu lists and restarts `services`.
     pub fn with_services(mut self, services: std::sync::Arc<dyn ServicesView>) -> Self {
         self.services = Some(services);
+        self
+    }
+
+    /// Download models… calls `open`.
+    pub fn with_download_window(mut self, open: Box<dyn Fn()>) -> Self {
+        self.open_download_models = open;
         self
     }
 
@@ -151,6 +166,10 @@ impl MenuActions for MacosMenuActions {
 
     fn open_permissions(&self) {
         (self.open_permissions)();
+    }
+
+    fn open_download_models(&self) {
+        (self.open_download_models)();
     }
 
     fn open_logs(&self) {

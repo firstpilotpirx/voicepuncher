@@ -569,11 +569,12 @@ fn r12_only_the_runtime_assembles_the_hotkey_pipeline() {
 /// The menu bar item drives the runtime (Quit) and observes it, and the Permissions window
 /// observes it; no other adapter knows it.
 #[test]
-fn r13_only_the_menu_bar_and_permissions_window_import_the_runtime() {
+fn r13_only_the_menu_bar_and_the_permissions_and_download_windows_import_the_runtime() {
     let mut violations: Vec<String> = Vec::new();
     for path in rust_files("src/adapters") {
         if path.starts_with("src/adapters/primary/menubar")
             || path.starts_with("src/adapters/primary/permissions")
+            || path.starts_with("src/adapters/primary/modeldownload")
         {
             continue;
         }
@@ -590,7 +591,7 @@ fn r13_only_the_menu_bar_and_permissions_window_import_the_runtime() {
     }
     assert!(
         violations.is_empty(),
-        "R13 violations: an adapter other than the menu bar and the Permissions window imports the runtime\n{}",
+        "R13 violations: an adapter other than the menu bar and the Permissions and Download windows imports the runtime\n{}",
         violations.join("\n")
     );
 }

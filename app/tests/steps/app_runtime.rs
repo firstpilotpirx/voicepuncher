@@ -31,6 +31,7 @@ use voicepuncher::runtime::{
 
 use crate::IntegrationWorld;
 
+pub(crate) mod models;
 mod services;
 
 const DICTATED: &str = "Meeting moved to Friday.";
@@ -86,6 +87,7 @@ pub struct RuntimeRun {
     rejection_log: Vec<String>,
     permissions: Permissions,
     services: Option<services::FakeServices>,
+    models: Option<models::ModelsFolder>,
 }
 
 impl std::fmt::Debug for RuntimeRun {
@@ -112,6 +114,7 @@ impl Default for RuntimeRun {
             rejection_log: Vec::new(),
             permissions: Permissions::default(),
             services: None,
+            models: None,
         }
     }
 }
@@ -159,6 +162,9 @@ impl RuntimeRun {
             });
         if let Some(services) = &self.services {
             runtime = runtime.with_services(Box::new(services.clone()));
+        }
+        if let Some(models) = &self.models {
+            runtime = runtime.with_models(models.gate());
         }
         runtime.observe(Box::new(RecordingObserver(Arc::clone(&self.events))));
         let mut runtime = runtime;
@@ -308,7 +314,7 @@ impl RuntimeRun {
         })
     }
 
-    fn state_becomes(&self, wanted: impl Fn(&RuntimeState) -> bool) -> Result<()> {
+    pub(crate) fn state_becomes(&self, wanted: impl Fn(&RuntimeState) -> bool) -> Result<()> {
         let deadline = Instant::now() + REACTION;
         loop {
             if self.last_state().as_ref().is_some_and(&wanted) {

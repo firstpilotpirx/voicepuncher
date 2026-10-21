@@ -26,6 +26,8 @@ pub enum Event {
     OpenLogs,
     LoginToggled,
     OpenLoginItems,
+    DownloadModels,
+    ShowModels,
     /// The window came to the front: what the system keeps may have changed meanwhile.
     BecameKey,
 }
@@ -129,6 +131,16 @@ define_class!(
         fn open_login_items(&self, _sender: Option<&AnyObject>) {
             self.send(Event::OpenLoginItems);
         }
+
+        #[unsafe(method(downloadModels:))]
+        fn download_models(&self, _sender: Option<&AnyObject>) {
+            self.send(Event::DownloadModels);
+        }
+
+        #[unsafe(method(showModels:))]
+        fn show_models(&self, _sender: Option<&AnyObject>) {
+            self.send(Event::ShowModels);
+        }
     }
 );
 
@@ -206,6 +218,12 @@ pub mod actions {
     }
     pub fn open_login_items() -> Sel {
         sel!(openLoginItems:)
+    }
+    pub fn download_models() -> Sel {
+        sel!(downloadModels:)
+    }
+    pub fn show_models() -> Sel {
+        sel!(showModels:)
     }
 }
 

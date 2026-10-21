@@ -28,7 +28,7 @@ Stacked on `model-download` (`kit stack`): its Download window and models gate c
 
 - [A developer used `--setup` to reset the config] → delete the file; the next launch recreates it (README § Developer says so).
 - [The template drifts from `config.rs`] → two tests: parses to the defaults; every key present.
-- [An exit path for permissions or services survives in `main.rs`] → the acceptance bar greps for `exit(2)` outside file mode and the component scenario "the terminal asks nothing" runs the runtime with every dependency missing.
+- [An exit path for permissions or services survives in `main.rs`] → the acceptance bar greps for `exit(2)` outside file mode and the remaining `exit(2)` paths in hotkey mode are start failures (services start, signal setup, runtime start) and `[services] manage = false`, not a missing dependency; `cli_it.rs` proves a first launch asks nothing.
 
 ## Test levels
 
