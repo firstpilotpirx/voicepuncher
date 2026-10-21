@@ -17,6 +17,8 @@ use toml::Value;
 use super::control::{two_decimals, FieldControl, Widget};
 use super::files::{collapse_home, reveal};
 use super::layout::TabViews;
+use super::login::refusal_text;
+use super::login_row::{open_login_items, LoginRow};
 use super::session::{status_text, ApplyStatus, SettingsSession};
 use super::target::{Event, EventHandler, FormTarget};
 use crate::adapters::main_queue::dispatch_to_main;
@@ -39,6 +41,7 @@ pub struct Form {
     pub target: Retained<FormTarget>,
     pub session: RefCell<SettingsSession>,
     pub controls: Vec<FieldControl>,
+    pub login: LoginRow,
     pub tabs: Vec<TabViews>,
     pub logs_dir: PathBuf,
 }
@@ -153,6 +156,16 @@ impl Form {
             }
             Event::Revert => self.revert(),
             Event::OpenLogs => reveal(&self.logs_dir),
+            Event::LoginToggled => self.login_toggled(),
+            Event::OpenLoginItems => open_login_items(),
+            Event::BecameKey => self.login.refresh(),
+        }
+    }
+
+    fn login_toggled(&self) {
+        match self.login.turned() {
+            Some(reason) => self.say(&refusal_text(&reason), true),
+            None => self.say("", false),
         }
     }
 

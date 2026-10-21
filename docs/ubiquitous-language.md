@@ -204,6 +204,12 @@
 - **Code:** `SettingsSession` (without its controls) in `app/src/adapters/primary/settings/macos/session.rs`; the field table in `table.rs`; `RuntimeApplier` in `app/src/adapters/primary/menubar/macos/applier.rs`
 - **Synonyms to AVOID:** "preferences pane", "config editor", "options dialog"
 
+### Login item
+- **Type:** Port (`LoginItem`) and secondary adapter (macOS)
+- **Definition:** The entry in System Settings → General → Login Items that starts the installed app when the user logs in. Its status is the system's: not registered, enabled, waiting for the user's approval, or unavailable (the app does not run from an installed bundle). The `Settings window` switch registers or unregisters it at once, without Save; the app offers it once, after its first Ready, and records that it asked in `[app] launch_at_login_asked`, a key no control edits.
+- **Code:** `LoginItem` in `app/src/core/application/login_item.rs`; `MacOsLoginItem` and the launch origin in `app/src/adapters/secondary/loginitem/macos/`; `LoginSwitch` and `LoginOffer` in `app/src/adapters/primary/settings/macos/login.rs`
+- **Synonyms to AVOID:** "autostart", "launch agent", "startup item"
+
 ### Field validation
 - **Type:** Primary adapter rule (settings window)
 - **Definition:** The check a value entered in the `Settings window` must pass before Save writes anything: a number or slider within its range, a service address on this Mac (loopback, the right scheme), a folder that exists or can be created, known language codes. A refused value marks its field, the window names the reason (the allowed range, "must be on this Mac"), and neither the file nor the running app changes.
@@ -216,9 +222,33 @@
 - **Code:** `VisualIndicator::show_recognizing_speech`, `VisualIndicator::show_refining_text` (handed the raw transcript); `Pipeline::without_text_refinement_stage`
 - **Synonyms to AVOID:** "phase", "step" (alone), "processing" (alone — names both stages)
 
+### Service runtime
+- **Type:** Use Case (Application Service)
+- **Definition:** The part of the app that starts, *adopts*, watches, restarts and stops the local services a configuration needs — the *speech recognition services* (as their *copies*), the *text refinement service* and the *command spotting service* — when the app manages them (`[services] manage`, on by default). It counts the needed services ready, which the runtime waits for before it starts the pipeline, and lists each with its *service state* in the menu. File mode and `manage = false` start nothing.
+- **Code:** `app/src/core/application/local_services/` (`ServiceRuntime`, `Services`, `Supervision`); ports `ServiceLauncher`, `ServiceProcess`, `ServiceProbe`, `Clock`
+- **Synonyms to AVOID:** "service manager", "daemon", "supervisor" (the runtime thread's name), "launcher" (the port that starts one process)
+
+### Owned service
+- **Type:** Domain concept
+- **Definition:** A local service the *service runtime* started: restarted when it exits or stops answering, Failed after five starts in a row that never answered, stopped at quit.
+- **Code:** `ServiceStatus::owned`
+- **Synonyms to AVOID:** "managed service", "child"
+
+### Adopted service
+- **Type:** Domain concept
+- **Definition:** A local service that already answered on its port when the *service runtime* looked (kept warm by `just start-model-servers`, or another app instance): counted ready and watched, never started or stopped by the app; when it stops answering it is *stopped outside the app* and waited for.
+- **Code:** `ServiceState::Adopted`, `ServiceState::StoppedOutside`
+- **Synonyms to AVOID:** "external service", "foreign service"
+
+### Service state
+- **Type:** Value Object (enum)
+- **Definition:** What a supervised local service is doing: Pending, Starting, Ready, Restarting (with the try), Failed (with the reason and the log file), Adopted, Stopped outside the app, Stopped. Ready and Adopted count ready for dictation.
+- **Code:** `app/src/core/domain/local_service.rs` (`ServiceState`, `ServiceStatus`, `ServicesProgress`, `ServiceSpec`, `ServiceKind`)
+- **Synonyms to AVOID:** "health", "status code"
+
 ### Speech recognition service
 - **Type:** External system (outside the app process)
-- **Definition:** A process on the same machine that turns audio into a `RawTranscript` over the OpenAI Audio Transcriptions API — whisper.cpp `whisper-server` is the supported one. The service scripts run two: the *speech recognition service for dictation* and the *speech recognition service for commands*. The user starts them (normally with `just start-model-servers`); the app only connects to the one for dictation, checks it is reachable at startup, and rejects any address that is not loopback.
+- **Definition:** A process on the same machine that turns audio into a `RawTranscript` over the OpenAI Audio Transcriptions API — whisper.cpp `whisper-server` is the supported one. The service scripts run two: the *speech recognition service for dictation* and the *speech recognition service for commands*. The *service runtime* starts them in hotkey mode, or the user with `just start-model-servers`; the app connects to the one for dictation, checks it is reachable at startup, and rejects any address that is not loopback.
 - **Code:** `app/src/adapters/secondary/transcription/openai/` — `OpenAiTranscriber`; config section `[transcription]` (`app/src/config/transcription.rs`)
 - **Synonyms to AVOID:** "STT server", "Whisper server" (names one implementation), "backend", "engine"
 
@@ -234,7 +264,7 @@
 
 ### Copy
 - **Type:** External system (one process of a *speech recognition service*)
-- **Definition:** One `whisper-server` process of a *speech recognition service*; it transcribes one request at a time. With several copies, copy *n* listens on the service's port + 10000 + *n* (− 10000 when that would pass the last port; at most 8 copies) and nothing listens on the service's own port; a single copy listens on the service's own port. A client finds the copies from the service's address alone.
+- **Definition:** One `whisper-server` process of a *speech recognition service*; it transcribes one request at a time. With several copies, copy *n* listens on the service's port + 10000 + *n* (− 10000 when that would pass the last port; at most 4 copies) and nothing listens on the service's own port; a single copy listens on the service's own port. A client finds the copies from the service's address alone.
 - **Code:** `copy-pool/src/address.rs` — `ServiceAddress::copy_ports`
 - **Synonyms to AVOID:** "instance", "backend", "replica", "worker"
 

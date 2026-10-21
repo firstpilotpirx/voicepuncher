@@ -35,6 +35,8 @@ use voicepuncher::runtime::{
 
 use crate::IntegrationWorld;
 
+mod services;
+
 const DICTATED: &str = "Meeting moved to Friday.";
 const SILENT_SERVICE_ERROR: &str =
     "speech recognition service is not reachable at http://127.0.0.1:8081";
@@ -89,6 +91,10 @@ pub struct MenuBarRun {
     settings_opens: Arc<Mutex<usize>>,
     /// How many icons were drawn before the scenario's action.
     drawn_before: usize,
+    /// The services the menu's actions show.
+    services_view: Option<Arc<services::ViewDouble>>,
+    /// The Services submenu as the user opened it.
+    service_menu: Option<services::ServiceMenu>,
 }
 
 /// What the stand-ins read and the scenario sets.
@@ -133,6 +139,8 @@ impl Default for MenuBarRun {
             actions: None,
             settings_opens: Arc::default(),
             drawn_before: 0,
+            services_view: None,
+            service_menu: None,
         }
     }
 }

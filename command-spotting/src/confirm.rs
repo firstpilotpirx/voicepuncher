@@ -23,6 +23,12 @@ const LANGUAGE: &str = "en";
 /// seconds; a retry at 0.55 still took up to 3 s, since it got stuck as well.
 const TEMPERATURE_STEP: &str = "0";
 
+/// The longest a copy may decode a confirmation once it was sent: an ordinary one is answered
+/// in at most 0.3 s, while speech that gets stuck repeating decodes whisper's whole 219-token
+/// limit for 1.7–1.8 s and is never a command. Closing the connection stops the copy's
+/// decoding at once (fast-confirmation-of-repeating-russian-speech, design.md).
+const DECODING_BUDGET: Duration = Duration::from_secs(1);
+
 /// The last seconds of a connection's audio, by absolute sample position.
 pub struct RecentAudio {
     samples: VecDeque<f32>,
@@ -134,7 +140,8 @@ impl UtteranceTranscriber {
     }
 
     /// What was said in `samples` (16 kHz mono), with each word's times; the wait for a
-    /// free copy and for its answer together never pass `deadline`.
+    /// free copy and for its answer together never pass `deadline`. A copy still decoding
+    /// after `DECODING_BUDGET` is cut short, and nothing was heard.
     pub fn transcribe(
         &self,
         samples: &[f32],
@@ -149,9 +156,22 @@ impl UtteranceTranscriber {
         })?;
         let port = lease.port();
         let left = deadline.saturating_sub(started.elapsed());
-        let ran = lease.run(left, move |url| post(url, &body, left));
+        let budget = DECODING_BUDGET.min(left);
+        let ran = lease.run(left, move |url| post(url, &body, budget));
         match ran {
-            Ran::Answered(answer) => heard_from(&answer?),
+            Ran::Answered(Ok(Posted::Answer(answer))) => heard_from(&answer),
+            Ran::Answered(Ok(Posted::TimedOut(url))) if budget < left => {
+                log::warn!(
+                    "confirmation cut short after {}ms on copy {url}: still decoding, nothing heard",
+                    budget.as_millis()
+                );
+                Ok(Heard::default())
+            }
+            Ran::Answered(Ok(Posted::TimedOut(url))) => bail!(
+                "speech recognition copy {url} sent no answer in {} ms",
+                deadline.as_millis()
+            ),
+            Ran::Answered(Err(e)) => Err(e),
             Ran::GaveUp => bail!(
                 "speech recognition copy {port} sent no answer in {} ms",
                 deadline.as_millis()
@@ -160,8 +180,15 @@ impl UtteranceTranscriber {
     }
 }
 
+/// What a copy sent back for a request.
+enum Posted {
+    Answer(String),
+    /// No answer within the request's time; the connection is closed, which stops the copy.
+    TimedOut(String),
+}
+
 /// Posts `body` to the copy at `url` and reads the whole answer, within `timeout`.
-fn post(url: &str, body: &[u8], timeout: Duration) -> (Result<String>, Finish) {
+fn post(url: &str, body: &[u8], timeout: Duration) -> (Result<Posted>, Finish) {
     let endpoint = format!("{}/audio/transcriptions", url.trim_end_matches('/'));
     let sent = ureq::post(&endpoint)
         .timeout(timeout)
@@ -171,10 +198,19 @@ fn post(url: &str, body: &[u8], timeout: Duration) -> (Result<String>, Finish) {
         )
         .send_bytes(body);
     match sent {
-        Ok(response) => (
-            response.into_string().map_err(anyhow::Error::from),
-            Finish::Answered,
-        ),
+        Ok(response) => match response.into_string() {
+            Ok(answer) => (Ok(Posted::Answer(answer)), Finish::Answered),
+            Err(e) if is_timeout(&e) => (Ok(Posted::TimedOut(url.to_owned())), Finish::Answered),
+            Err(e) => (Err(e.into()), Finish::Answered),
+        },
+        Err(ureq::Error::Transport(t))
+            if t.kind() == ureq::ErrorKind::Io
+                && std::error::Error::source(&t)
+                    .and_then(|e| e.downcast_ref::<std::io::Error>())
+                    .is_some_and(is_timeout) =>
+        {
+            (Ok(Posted::TimedOut(url.to_owned())), Finish::Answered)
+        }
         Err(error) => {
             let refused = matches!(
                 &error,
@@ -190,6 +226,13 @@ fn post(url: &str, body: &[u8], timeout: Duration) -> (Result<String>, Finish) {
             (Err(error), finish)
         }
     }
+}
+
+fn is_timeout(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+    )
 }
 
 impl Hear for UtteranceTranscriber {
@@ -251,6 +294,11 @@ mod tests {
 
     /// A fake copy on its own port: answers every request with `answer` and counts them.
     fn spawn_copy(answer: &'static str) -> (String, Arc<AtomicUsize>) {
+        spawn_slow_copy(answer, Duration::ZERO)
+    }
+
+    /// A fake copy that decodes each request for `decoding` before it answers.
+    fn spawn_slow_copy(answer: &'static str, decoding: Duration) -> (String, Arc<AtomicUsize>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}/v1", listener.local_addr().unwrap());
         let requests = Arc::new(AtomicUsize::new(0));
@@ -279,11 +327,13 @@ mod tests {
                     }
                 }
                 reader.read_exact(&mut vec![0u8; length]).unwrap();
+                thread::sleep(decoding);
                 let reply = format!(
                     "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
                     answer.len()
                 );
-                stream.write_all(reply.as_bytes()).unwrap();
+                // The client may have closed the connection while the copy decoded.
+                let _ = stream.write_all(reply.as_bytes());
             }
         });
         (url, requests)
@@ -336,6 +386,37 @@ mod tests {
         // Then
         assert_eq!(heard.text, " press enter");
         assert_eq!(requests.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn should_cut_a_confirmation_short_when_its_copy_decodes_past_the_budget() {
+        // Given
+        let lines = crate::test_log::captured();
+        let (url, requests) = spawn_slow_copy(PRESS_ENTER, Duration::from_millis(1_500));
+        let transcriber = UtteranceTranscriber::new(&url).unwrap();
+        // When
+        let started = Instant::now();
+        let heard = transcriber
+            .transcribe(&[0.0; 1_600], SAMPLE_RATE, Duration::from_secs(3))
+            .unwrap();
+        let took = started.elapsed();
+        // Then
+        assert_eq!(heard, Heard::default());
+        assert!(
+            took >= Duration::from_millis(900) && took < Duration::from_millis(1_400),
+            "took {took:?}"
+        );
+        let cut = lines.containing("confirmation cut short");
+        assert!(cut.iter().any(|line| line.contains(&url)), "{cut:?}");
+        assert_eq!(requests.load(Ordering::SeqCst), 1);
+        let next = Instant::now();
+        let lease = CopyPool::shared(&url).unwrap().lease(DEADLINE).unwrap();
+        assert!(
+            next.elapsed() < Duration::from_millis(50),
+            "{:?}",
+            next.elapsed()
+        );
+        drop(lease);
     }
 
     #[test]

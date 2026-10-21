@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use anyhow::{ensure, Result};
 
-use voicepuncher::adapters::primary::settings::macos::table::{FIELDS, RETIRED};
+use voicepuncher::adapters::primary::settings::macos::table::{FIELDS, KEPT, RETIRED};
 use voicepuncher::config::Config;
 
 pub const RIGHT_COMMAND: &str = "[hotkey]\nkey = \"RightCommand\"\n";
@@ -59,12 +59,17 @@ pub const WITH_EXAMPLES: &str = concat!(
     "normalized = \"Meeting moved to Friday.\"\n",
 );
 
-/// Every key the configuration accepts, except the retired ones, has exactly one field.
+/// Every key the configuration accepts, except the retired ones and the app's own records,
+/// has exactly one field.
 pub fn every_key_has_one_field() -> Result<()> {
     let toml::Value::Table(sections) = toml::Value::try_from(Config::default())? else {
         anyhow::bail!("the configuration is not a table");
     };
-    let retired: BTreeSet<String> = RETIRED.iter().map(|(s, k)| format!("{s}.{k}")).collect();
+    let retired: BTreeSet<String> = RETIRED
+        .iter()
+        .chain(KEPT)
+        .map(|(s, k)| format!("{s}.{k}"))
+        .collect();
     let keys: BTreeSet<String> = sections
         .iter()
         .flat_map(|(section, keys)| {
@@ -81,5 +86,20 @@ pub fn every_key_has_one_field() -> Result<()> {
         "a key has two fields: {paths:?}"
     );
     ensure!(fields == keys, "fields {fields:?}, keys {keys:?}");
+    Ok(())
+}
+
+/// No field edits the app's own records, such as whether the login question was asked.
+pub fn no_field_edits_the_app_s_records() -> Result<()> {
+    let edited: Vec<String> = FIELDS
+        .iter()
+        .map(|field| field.path())
+        .filter(|path| KEPT.iter().any(|(s, k)| *path == format!("{s}.{k}")))
+        .collect();
+    ensure!(
+        edited.is_empty(),
+        "fields edit the app's records: {edited:?}"
+    );
+    ensure!(KEPT.contains(&("app", "launch_at_login_asked")), "{KEPT:?}");
     Ok(())
 }

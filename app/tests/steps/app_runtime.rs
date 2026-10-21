@@ -31,6 +31,8 @@ use voicepuncher::runtime::{
 
 use crate::IntegrationWorld;
 
+mod services;
+
 const DICTATED: &str = "Meeting moved to Friday.";
 const FIRST_HOTKEY: HotKey = HotKey::RightOption;
 const SECOND_HOTKEY: HotKey = HotKey::F19;
@@ -62,6 +64,7 @@ enum Event {
     PipelineDropped(Generation),
     Notice(Generation, String),
     State(RuntimeState),
+    ServicesStopped,
 }
 
 type Events = Arc<Mutex<Vec<Event>>>;
@@ -82,6 +85,7 @@ pub struct RuntimeRun {
     process: u32,
     rejection_log: Vec<String>,
     permissions: Permissions,
+    services: Option<services::FakeServices>,
 }
 
 impl std::fmt::Debug for RuntimeRun {
@@ -107,6 +111,7 @@ impl Default for RuntimeRun {
             process: std::process::id(),
             rejection_log: Vec::new(),
             permissions: Permissions::default(),
+            services: None,
         }
     }
 }
@@ -146,12 +151,15 @@ impl RuntimeRun {
 
     fn start(&mut self) {
         let assembler = self.assembler();
-        let runtime = Runtime::new(Box::new(assembler), Box::new(self.keyboard.clone()))
+        let mut runtime = Runtime::new(Box::new(assembler), Box::new(self.keyboard.clone()))
             .with_permissions(PermissionsWatch {
                 gate: self.permissions.gate(),
                 while_ready: PERMISSIONS_CHECK,
                 while_waiting: PERMISSIONS_CHECK,
             });
+        if let Some(services) = &self.services {
+            runtime = runtime.with_services(Box::new(services.clone()));
+        }
         runtime.observe(Box::new(RecordingObserver(Arc::clone(&self.events))));
         let mut runtime = runtime;
         self.started = Some(runtime.start(self.config.clone()));

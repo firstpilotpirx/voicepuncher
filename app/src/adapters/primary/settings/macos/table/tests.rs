@@ -19,7 +19,11 @@ fn configuration_keys() -> BTreeSet<String> {
 #[test]
 fn should_give_every_live_configuration_key_exactly_one_field() {
     // Given
-    let retired: BTreeSet<String> = RETIRED.iter().map(|(s, k)| format!("{s}.{k}")).collect();
+    let retired: BTreeSet<String> = RETIRED
+        .iter()
+        .chain(KEPT)
+        .map(|(s, k)| format!("{s}.{k}"))
+        .collect();
     let expected: BTreeSet<String> = configuration_keys().difference(&retired).cloned().collect();
     // When
     let paths: Vec<String> = FIELDS.iter().map(|field| field.path()).collect();
@@ -41,4 +45,18 @@ fn should_name_only_keys_the_configuration_has_as_retired() {
         .collect();
     // Then
     assert!(unknown.is_empty(), "{unknown:?}");
+}
+
+#[test]
+fn should_give_the_app_s_own_record_of_the_login_question_no_field() {
+    // Given
+    let keys = configuration_keys();
+    // When
+    let edited = FIELDS
+        .iter()
+        .any(|field| field.path() == "app.launch_at_login_asked");
+    // Then
+    assert!(keys.contains("app.launch_at_login_asked"));
+    assert!(KEPT.contains(&("app", "launch_at_login_asked")));
+    assert!(!edited);
 }

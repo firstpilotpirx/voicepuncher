@@ -78,16 +78,24 @@ pub(super) fn apply_recording_state(
     commands_unavailable: bool,
 ) {
     let columns = visible_columns(commands_unavailable);
-    for ws in &windows {
-        ws.draw(
-            RECORDING_LOOK,
-            GlassTint::Clear,
-            commands_unavailable,
-            columns,
-        );
+    let sliding = !reduce_motion();
+    {
+        let wave = feed.wave.lock().unwrap();
+        for ws in &windows {
+            ws.draw(
+                RECORDING_LOOK,
+                GlassTint::Clear,
+                commands_unavailable,
+                columns,
+            );
+            // WHY: the first tick comes a frame later; the record sign never shows beside an empty strip
+            ws.pill
+                .waveform
+                .draw(&wave, wave.elapsed(), columns, sliding);
+        }
     }
     schedule_heartbeat(windows.clone(), turn.clone());
-    schedule_waveform_tick(windows, turn, feed, columns, !reduce_motion());
+    schedule_waveform_tick(windows, turn, feed, columns, sliding);
 }
 
 /// The stage's breathing icon, its label and the spinner; no text window.

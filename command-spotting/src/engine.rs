@@ -25,7 +25,7 @@ mod pause;
 mod queued;
 mod spotted;
 
-use confirming::{AskedJob, JobContext, Rehear};
+use confirming::{AskedJob, EarlyRehears, HalfPauseHearing, JobContext, Rehear};
 use pause::PauseWatch;
 use queued::CheckQueue;
 use spotted::{SpottedChecks, CHECKED_WHEN_SPOTTED};
@@ -171,6 +171,9 @@ impl Engine {
             checks: CheckQueue::default(),
             heard_triggers: Vec::new(),
             misheard: None,
+            early: EarlyRehears::default(),
+            half_pause: None,
+            stand_ins: HashMap::new(),
             utterances: HashMap::new(),
             current: None,
             next_utterance: 0,
@@ -182,7 +185,7 @@ impl Engine {
             vad_pending: Vec::new(),
             orderer: EventOrderer::default(),
             recent: RecentAudio::new(samples_in(RECENT_AUDIO_SECS)),
-            matcher: PhraseMatcher::new(&[]),
+            matcher: Arc::new(PhraseMatcher::new(&[])),
             vad_fed: 0,
             vad_offset: 0,
             last_segment_end: 0,
@@ -210,6 +213,14 @@ pub struct Session<'a> {
     /// The last short segment whose first hearing held no command, with its job: a trigger
     /// the spotter reports in it only after that answer has it heard again.
     misheard: Option<(u64, Rehear)>,
+    /// The second hearings asked beside a short segment's first one.
+    early: EarlyRehears,
+    /// The hearing of a short utterance in standby asked at half its pause; it stands for the
+    /// utterance's segment when that same quiet run closes it.
+    half_pause: Option<HalfPauseHearing>,
+    /// Segment jobs a hearing at half the pause stands for, with where the segment's own clip
+    /// starts: an answer holding no command alone has the segment heard whole instead.
+    stand_ins: HashMap<u64, usize>,
     /// The utterances with confirmations still to apply, and the one heard now.
     utterances: HashMap<u64, Running>,
     current: Option<u64>,
@@ -225,7 +236,8 @@ pub struct Session<'a> {
     vad_pending: Vec<f32>,
     orderer: EventOrderer,
     recent: RecentAudio,
-    matcher: PhraseMatcher,
+    /// Shared with every job asked under it, so a late answer knows the phrases of its state.
+    matcher: Arc<PhraseMatcher>,
     /// Samples fed to the voice activity detector so far.
     vad_fed: usize,
     /// Samples fed before its last reset: its segment positions count from there.
@@ -264,7 +276,7 @@ impl Session<'_> {
         self.triggers = keywords::select_triggers(&self.engine.keywords, phrases)
             .filter(|_| self.engine.hear.is_some())
             .map(|lines| self.engine.spotter.create_stream_with_keywords(&lines));
-        self.matcher = PhraseMatcher::new(phrases);
+        self.matcher = Arc::new(PhraseMatcher::new(phrases));
         Ok(())
     }
 
@@ -308,6 +320,7 @@ impl Session<'_> {
                 );
                 self.spotted_checks.spotted(samples_in(trigger.end));
                 self.hear_misheard_again(&trigger);
+                self.hear_pending_again(&trigger);
                 self.heard_triggers.push(trigger);
             }
         }
@@ -341,12 +354,17 @@ impl Session<'_> {
         self.vad_fed += windows * SILERO_WINDOW;
         self.vad_pending.drain(..windows * SILERO_WINDOW);
         let mut events = self.take_segments(None);
-        if let Some(quiet_from) = self.pause.hear(samples, self.vad.detected()) {
+        let pause = self.pause.hear(samples, self.vad.detected());
+        self.drop_broken_half_pause_hearing();
+        if let Some(quiet_from) = pause {
             // WHY: after a quiet word the detector holds speech up to 0.55 s into the pause,
             // so a short pause before more speech would never end the utterance.
             self.vad.flush();
             events.extend(self.take_segments(Some(quiet_from)));
             self.pause.forget();
+        }
+        if let Some(quiet_from) = self.pause.take_half_pause() {
+            self.hear_at_half_pause(quiet_from, self.samples_seen + samples.len());
         }
         events
     }

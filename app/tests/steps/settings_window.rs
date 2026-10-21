@@ -357,6 +357,16 @@ fn every_option_has_a_control(_world: &mut IntegrationWorld) -> Result<()> {
     files::every_key_has_one_field()
 }
 
+#[when("the controls of the settings window are listed")]
+fn list_controls(_world: &mut IntegrationWorld) {
+    // the Then step reads the field table
+}
+
+#[then("none of them edits whether the login question was asked")]
+fn no_control_for_the_login_question(_world: &mut IntegrationWorld) -> Result<()> {
+    files::no_field_edits_the_app_s_records()
+}
+
 #[then("the microphone choice offers the system default and both devices by name")]
 fn microphone_choice(world: &mut IntegrationWorld) -> Result<()> {
     let offered = settings(world).session()?.options(Choices::Microphones);

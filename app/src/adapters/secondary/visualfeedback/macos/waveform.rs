@@ -37,6 +37,11 @@ impl LevelWave {
         }
     }
 
+    /// How long ago the recording started.
+    pub(super) fn elapsed(&self) -> Duration {
+        self.origin.elapsed()
+    }
+
     /// Takes the microphone level heard now and returns the moment it was heard.
     pub(super) fn record(&mut self, level: AudioLevel) -> Duration {
         let at = self.origin.elapsed();

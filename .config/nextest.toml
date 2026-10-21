@@ -49,14 +49,44 @@ test-group = "command-spotting-models"
 # (e2e-test/src/harness_args.rs), whose `run-extra-args` are cucumber's command line. The service binaries
 # stay captured; their output is printed whole per test, as `-- --nocapture` showed it
 
-# Service binaries: default 2 min a test (voice_forms_it 34 s measured); @smoke run ≈ 190 s: 7 min
-[profile.e2e-smoke]
+# The smoke set, one profile per capability (the justfile's e2e_smoke_stages): the four selections make up the
+# @smoke scenarios. Service binaries: default 2 min a test (voice_forms_it 34 s measured)
+
+# @smoke of speech recognition, file transcription and every capability without a part of its own (the dictation archive), 30 s measured: 2 min
+[profile.e2e-smoke-speech]
 success-output = "immediate"
 
-[[profile.e2e-smoke.overrides]]
+[[profile.e2e-smoke-speech.overrides]]
 filter = 'binary(cucumber_e2e)'
-run-extra-args = ["--tags", "@smoke and not @wip"]
-slow-timeout = { period = "60s", terminate-after = 7 }
+run-extra-args = ["--tags", "@smoke and not @text_refinement and not @voice_control and not @local_services and not @wip"]
+slow-timeout = { period = "60s", terminate-after = 2 }
+
+# @smoke of text refinement, 11 s measured: 2 min
+[profile.e2e-smoke-refinement]
+success-output = "immediate"
+
+[[profile.e2e-smoke-refinement.overrides]]
+filter = 'binary(cucumber_e2e)'
+run-extra-args = ["--tags", "@smoke and @text_refinement and not @wip"]
+slow-timeout = { period = "60s", terminate-after = 2 }
+
+# @smoke of voice control, 136 s measured: 5 min
+[profile.e2e-smoke-voice]
+success-output = "immediate"
+
+[[profile.e2e-smoke-voice.overrides]]
+filter = 'binary(cucumber_e2e)'
+run-extra-args = ["--tags", "@smoke and @voice_control and not @wip"]
+slow-timeout = { period = "60s", terminate-after = 5 }
+
+# @smoke of local services, 83 s measured: 3 min
+[profile.e2e-smoke-services]
+success-output = "immediate"
+
+[[profile.e2e-smoke-services.overrides]]
+filter = 'binary(cucumber_e2e)'
+run-extra-args = ["--tags", "@smoke and @local_services and not @wip"]
+slow-timeout = { period = "60s", terminate-after = 3 }
 
 # @regression, the voice control scenarios beyond the smoke set, 23 s measured: default 2 min
 [profile.e2e-regression]

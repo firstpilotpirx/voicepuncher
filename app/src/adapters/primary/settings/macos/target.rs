@@ -7,7 +7,7 @@ use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Sel};
 use objc2::{define_class, msg_send, sel, DefinedClass, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{NSControl, NSWindow, NSWindowDelegate};
-use objc2_foundation::{NSObject, NSObjectProtocol};
+use objc2_foundation::{NSNotification, NSObject, NSObjectProtocol};
 
 /// What the user did; the number is the tag of the control: the field's place in the
 /// field table, or the tab's place in the toolbar.
@@ -24,6 +24,10 @@ pub enum Event {
     Save,
     Revert,
     OpenLogs,
+    LoginToggled,
+    OpenLoginItems,
+    /// The window came to the front: what the system keeps may have changed meanwhile.
+    BecameKey,
 }
 
 /// Handles the events and answers whether the window may close.
@@ -52,6 +56,11 @@ define_class!(
                 .handler
                 .get()
                 .is_none_or(|handler| handler.should_close())
+        }
+
+        #[unsafe(method(windowDidBecomeKey:))]
+        fn window_did_become_key(&self, _notification: &NSNotification) {
+            self.send(Event::BecameKey);
         }
     }
 
@@ -109,6 +118,16 @@ define_class!(
         #[unsafe(method(openLogs:))]
         fn open_logs(&self, _sender: Option<&AnyObject>) {
             self.send(Event::OpenLogs);
+        }
+
+        #[unsafe(method(loginToggled:))]
+        fn login_toggled(&self, _sender: Option<&AnyObject>) {
+            self.send(Event::LoginToggled);
+        }
+
+        #[unsafe(method(openLoginItems:))]
+        fn open_login_items(&self, _sender: Option<&AnyObject>) {
+            self.send(Event::OpenLoginItems);
         }
     }
 );
@@ -181,6 +200,12 @@ pub mod actions {
     }
     pub fn open_logs() -> Sel {
         sel!(openLogs:)
+    }
+    pub fn login_toggled() -> Sel {
+        sel!(loginToggled:)
+    }
+    pub fn open_login_items() -> Sel {
+        sel!(openLoginItems:)
     }
 }
 

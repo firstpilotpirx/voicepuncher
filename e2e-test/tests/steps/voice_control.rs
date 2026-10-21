@@ -126,6 +126,11 @@ fn voice_control_on(world: &mut E2eWorld) {
     world.voice_control = true;
 }
 
+#[given("the app leaves its services to the service scripts")]
+fn services_left_to_scripts(world: &mut E2eWorld) {
+    world.manage_services = false;
+}
+
 #[given("the command spotting service is not running")]
 fn service_not_running(world: &mut E2eWorld) -> Result<()> {
     let free_port = TcpListener::bind("127.0.0.1:0")?.local_addr()?.port();
@@ -349,8 +354,8 @@ async fn app_starts(world: &mut E2eWorld) -> Result<()> {
         std::fs::write(
             &config,
             format!(
-                "[voice_control]\nenabled = {}\nurl = \"{url}\"\n",
-                world.voice_control
+                "[voice_control]\nenabled = {}\nurl = \"{url}\"\n\n[services]\nmanage = {}\n",
+                world.voice_control, world.manage_services
             ),
         )?;
         // A home of its own: hotkey mode logs to its log file, never to the user's

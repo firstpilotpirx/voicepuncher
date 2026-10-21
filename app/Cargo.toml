@@ -1,6 +1,6 @@
 [package]
 name = "voicepuncher"
-version = "0.31.2"
+version = "0.32.0"
 edition = "2021"
 rust-version = "1.88"
 
@@ -31,6 +31,7 @@ url = "2"
 serde_json = "1"
 tungstenite = "=0.30.0"
 signal-hook = "=0.4.5"
+libc = "=0.2.186"
 voicepuncher-copy-pool = { path = "../copy-pool" }
 
 core-foundation = "0.10"
@@ -104,6 +105,7 @@ objc2-app-kit = { version = "0.3", features = [
     "NSWorkspace",
 ] }
 objc2-core-foundation = "0.3"
+objc2-service-management = { version = "=0.3.2", default-features = false, features = ["std", "SMAppService", "objc2", "objc2-foundation"] }
 objc2-core-graphics = { version = "0.3", features = ["CGColor", "CGPath"] }
 objc2-quartz-core = { version = "0.3", features = [
     "CAAnimation",
@@ -115,7 +117,6 @@ objc2-quartz-core = { version = "0.3", features = [
 ] }
 
 [dev-dependencies]
-libc = "=0.2.186"
 mockall = "0.13"
 tempfile = "3"
 walkdir = "2"

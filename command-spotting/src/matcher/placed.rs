@@ -190,23 +190,34 @@ impl PhraseMatcher {
         })
     }
 
-    /// "start dictation" or "start" opening `words`, with more speech after it.
+    /// "start dictation" or "start" opening `words`, with more speech after it or closed by
+    /// "please".
     pub fn start_at_head(&self, words: &[&str]) -> Option<Found> {
         let tokens = tokens(words);
         let (phrase, used) = command_at(&tokens, 0)?;
         // "start stop" ends the dictation it would start: no dictation at all.
         let command_follows = command_at(&tokens, used).is_some();
-        (phrase == START
-            && self.accepted().contains(&START)
-            && used < tokens.len()
-            && !command_follows)
-            .then(|| Found {
+        // "please" closes the command: nothing has to follow it.
+        let closed = used < tokens.len() || tokens[used - 1].text == super::POLITE_WORD;
+        (phrase == START && self.accepted().contains(&START) && closed && !command_follows).then(
+            || Found {
                 commands: vec![START.to_owned()],
                 spans: vec![(tokens[0].at, tokens[used - 1].at)],
                 first: tokens[0].at,
                 last: tokens[used - 1].at,
                 placement: Placement::Head,
-            })
+            },
+        )
+    }
+
+    /// Whether `found` is a start closed by "please" with nothing after it in `words`.
+    pub fn start_closed_by_please(&self, words: &[&str], found: &Found) -> bool {
+        let tokens = tokens(words);
+        found.placement == Placement::Head
+            && found.commands == [START]
+            && tokens
+                .last()
+                .is_some_and(|t| t.at == found.last && t.text == super::POLITE_WORD)
     }
 
     /// A doubled short form or a chain of two or three commands anywhere in `words`.
@@ -381,10 +392,21 @@ mod tests {
     }
 
     #[test]
+    fn should_find_start_closed_by_please_with_nothing_after_it() {
+        assert_eq!(
+            standby().start_at_head(&words("Start please.")),
+            found(&[("start dictation", 0, 1)], Placement::Head)
+        );
+        assert_eq!(
+            standby().start_at_head(&words("Start dictation, please.")),
+            found(&[("start dictation", 0, 2)], Placement::Head)
+        );
+    }
+
+    #[test]
     fn should_not_find_start_without_speech_after_it_or_other_commands_at_the_head() {
         for text in [
             "Start.",
-            "start please",
             "enter the building on the left",
             "clear the table",
             "starting tomorrow we meet",

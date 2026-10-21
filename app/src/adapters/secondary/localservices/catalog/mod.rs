@@ -1,0 +1,488 @@
+//! Which local services a configuration needs and how each is started: the programs, models,
+//! ports and arguments of the service scripts (`justfile`), found on this machine.
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+use voicepuncher_copy_pool::ServiceAddress;
+
+use crate::adapters::secondary::logging::file::logs_dir;
+use crate::config::Config;
+use crate::core::application::{ProbeAnswer, ServiceProbe};
+use crate::core::domain::{ServiceKind, ServiceSpec};
+
+const WHISPER: &str = "whisper-server";
+const LLAMA: &str = "llama-server";
+const COMMAND_SPOTTING: &str = "voicepuncher-command-spotting";
+const DICTATION_MODEL: &str = "ggml-large-v3-turbo-q5_0.bin";
+const COMMAND_MODEL: &str = "ggml-small.bin";
+const REFINEMENT_MODEL: &str = "Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
+const WHISPER_VAD_PREFIX: &str = "ggml-silero-";
+const KWS_VAD_MODEL: &str = "silero_vad.onnx";
+const KWS_MODEL_DIR_PREFIX: &str = "sherpa-onnx-kws-";
+const RUN_SCRIPTS_HINT: &str = "run 'just models'";
+
+/// What the services are looked up on: the home folder, the environment, `$PATH`, the
+/// folder of the running program and its processor cores.
+#[derive(Debug, Clone, Default)]
+pub struct Machine {
+    pub home: PathBuf,
+    pub env: HashMap<String, String>,
+    pub path: Vec<PathBuf>,
+    pub app_dir: Option<PathBuf>,
+    pub cores: usize,
+}
+
+impl Machine {
+    pub fn current() -> Self {
+        Self {
+            home: dirs::home_dir().unwrap_or_default(),
+            env: std::env::vars().collect(),
+            path: std::env::var_os("PATH")
+                .map(|path| std::env::split_paths(&path).collect())
+                .unwrap_or_default(),
+            app_dir: std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(Path::to_path_buf)),
+            cores: std::thread::available_parallelism().map_or(1, usize::from),
+        }
+    }
+
+    fn var(&self, name: &str) -> Option<PathBuf> {
+        self.env
+            .get(name)
+            .filter(|value| !value.trim().is_empty())
+            .map(PathBuf::from)
+    }
+}
+
+/// The optional services the configuration turns on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Needs {
+    pub refinement: bool,
+    pub voice_control: bool,
+}
+
+impl Needs {
+    /// Text refinement only when it is on (`--llm` or `[refinement] enabled`, never with `--no-llm`).
+    pub fn of(cfg: &Config) -> Self {
+        Self {
+            refinement: cfg.refinement.enabled,
+            voice_control: cfg.voice_control.enabled,
+        }
+    }
+}
+
+/// Every service process the configuration needs, in start order: the speech recognition
+/// service for commands before the command spotting service, which asks it. A speech
+/// recognition service that already runs as other copies than configured is taken as it runs.
+pub fn needed(
+    cfg: &Config,
+    needs: Needs,
+    machine: &Machine,
+    probe: &dyn ServiceProbe,
+) -> Vec<ServiceSpec> {
+    let lookup = Lookup::new(cfg, machine);
+    let mut specs = lookup.whisper(
+        ServiceKind::Dictation,
+        &cfg.transcription.base_url,
+        cfg.services.dictation_copies,
+        probe,
+    );
+    if needs.voice_control {
+        specs.extend(lookup.whisper(
+            ServiceKind::Commands,
+            &cfg.services.commands_url,
+            cfg.services.command_copies,
+            probe,
+        ));
+        specs.extend(lookup.command_spotting(&cfg.voice_control.url, &cfg.services.commands_url));
+    }
+    if needs.refinement {
+        specs.extend(lookup.llama(&cfg.refinement.base_url));
+    }
+    specs
+}
+
+/// The ports of the copies of a speech recognition service: one copy on the service's own
+/// port, several on the first ports its clients look at.
+pub fn copy_ports(address: &ServiceAddress, copies: u32) -> Vec<u16> {
+    if copies <= 1 {
+        return vec![address.port()];
+    }
+    address
+        .copy_ports()
+        .into_iter()
+        .take(copies as usize)
+        .collect()
+}
+
+/// `cores / copies`, at least one.
+pub fn threads(cores: usize, copies: usize) -> usize {
+    (cores / copies.max(1)).max(1)
+}
+
+struct Lookup<'a> {
+    machine: &'a Machine,
+    model_dirs: Vec<PathBuf>,
+}
+
+/// Something looked for and not found: what, and the hint to get it.
+type Missing = String;
+
+impl<'a> Lookup<'a> {
+    fn new(cfg: &Config, machine: &'a Machine) -> Self {
+        let voicepuncher = machine.home.join(".voicepuncher");
+        let mut model_dirs = vec![cfg.services.resolved_models_dir(&machine.home)];
+        for dir in [voicepuncher.join("models"), voicepuncher] {
+            if !model_dirs.contains(&dir) {
+                model_dirs.push(dir);
+            }
+        }
+        Self {
+            machine,
+            model_dirs,
+        }
+    }
+
+    fn whisper(
+        &self,
+        kind: ServiceKind,
+        url: &str,
+        copies: u32,
+        probe: &dyn ServiceProbe,
+    ) -> Vec<ServiceSpec> {
+        let Ok(address) = ServiceAddress::parse(url) else {
+            return Vec::new();
+        };
+        let (model_var, model_file) = match kind {
+            ServiceKind::Commands => ("VOICEPUNCHER_COMMAND_WHISPER_MODEL", COMMAND_MODEL),
+            _ => ("VOICEPUNCHER_WHISPER_MODEL", DICTATION_MODEL),
+        };
+        let program = self.engine(
+            WHISPER,
+            "VOICEPUNCHER_WHISPER_BINARY",
+            "brew install whisper-cpp",
+        );
+        let model = self.model(model_var, model_file);
+        let vad = self.newest_vad();
+        let ports =
+            running_copies(kind, &address, probe).unwrap_or_else(|| copy_ports(&address, copies));
+        let threads = threads(self.machine.cores, ports.len());
+        ports
+            .iter()
+            .enumerate()
+            .map(|(index, &port)| {
+                let label = if ports.len() == 1 {
+                    kind.name().to_string()
+                } else {
+                    format!("{}: copy {} of {}", kind.name(), index + 1, ports.len())
+                };
+                let args = whisper_args(&shown(&model), port, threads, &shown(&vad));
+                let problem = first_problem([&program, &model, &vad]);
+                self.spec(kind, label, &program, args, port, WHISPER, problem, false)
+            })
+            .collect()
+    }
+
+    fn llama(&self, url: &str) -> Option<ServiceSpec> {
+        let port = ServiceAddress::parse(url).ok()?.port();
+        let program = self.engine(LLAMA, "VOICEPUNCHER_LLAMA_BINARY", "brew install llama.cpp");
+        let model = self.model("VOICEPUNCHER_LLM_MODEL", REFINEMENT_MODEL);
+        let args = llama_args(&shown(&model), port);
+        let problem = first_problem([&program, &model]);
+        Some(self.spec(
+            ServiceKind::Refinement,
+            ServiceKind::Refinement.name().into(),
+            &program,
+            args,
+            port,
+            LLAMA,
+            problem,
+            true,
+        ))
+    }
+
+    fn command_spotting(&self, url: &str, commands_url: &str) -> Option<ServiceSpec> {
+        let port = ServiceAddress::parse(url).ok()?.port();
+        let program = self.command_spotting_program();
+        let model_dir = self.kws_model_dir();
+        let vad = self.model("VOICEPUNCHER_KWS_VAD_MODEL", KWS_VAD_MODEL);
+        let args = command_spotting_args(port, &shown(&model_dir), &shown(&vad), commands_url);
+        let problem = first_problem([&program, &model_dir, &vad]);
+        Some(self.spec(
+            ServiceKind::CommandSpotting,
+            ServiceKind::CommandSpotting.name().into(),
+            &program,
+            args,
+            port,
+            COMMAND_SPOTTING,
+            problem,
+            true,
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn spec(
+        &self,
+        kind: ServiceKind,
+        label: String,
+        program: &Result<PathBuf, Missing>,
+        args: Vec<String>,
+        port: u16,
+        binary: &str,
+        problem: Option<String>,
+        health_checked: bool,
+    ) -> ServiceSpec {
+        ServiceSpec {
+            kind,
+            label,
+            program: program.clone().unwrap_or_else(|_| PathBuf::from(binary)),
+            args,
+            port,
+            log_file: logs_dir(&self.machine.home).join(format!("{binary}-{port}.log")),
+            health_checked,
+            problem,
+        }
+    }
+
+    /// The environment's path, the engine in the app bundle, then `$PATH`.
+    fn engine(&self, name: &str, var: &str, install: &str) -> Result<PathBuf, Missing> {
+        if let Some(path) = self.machine.var(var) {
+            return existing(path, var);
+        }
+        let bundled = self
+            .machine
+            .app_dir
+            .iter()
+            .map(|dir| dir.join("engines").join(name).join(name));
+        let on_path = self.machine.path.iter().map(|dir| dir.join(name));
+        bundled
+            .chain(on_path)
+            .find(|candidate| candidate.is_file())
+            .ok_or_else(|| {
+                format!("{name} not found in the app or on $PATH — {install} or set {var}")
+            })
+    }
+
+    /// The command spotting service: the environment's path, the bundle, `$PATH`, then the
+    /// build next to the running program (`target/release`, `target/debug`).
+    fn command_spotting_program(&self) -> Result<PathBuf, Missing> {
+        let var = "VOICEPUNCHER_KWS_BINARY";
+        let hint = "build it with 'cargo build --release -p voicepuncher-command-spotting'";
+        self.engine(COMMAND_SPOTTING, var, hint).or_else(|missing| {
+            let app_dir = self.machine.app_dir.as_ref().ok_or(missing.clone())?;
+            [
+                app_dir.join(COMMAND_SPOTTING),
+                app_dir.join("../release").join(COMMAND_SPOTTING),
+            ]
+            .into_iter()
+            .find(|candidate| candidate.is_file())
+            .ok_or(missing)
+        })
+    }
+
+    /// The environment's path, else `file` in the models folder, then in `~/.voicepuncher/`.
+    fn model(&self, var: &str, file: &str) -> Result<PathBuf, Missing> {
+        if let Some(path) = self.machine.var(var) {
+            return existing(path, var);
+        }
+        self.model_dirs
+            .iter()
+            .map(|dir| dir.join(file))
+            .find(|candidate| candidate.exists())
+            .ok_or_else(|| self.not_found(file, var))
+    }
+
+    /// The newest `ggml-silero-*.bin`, as the `justfile` picks it.
+    fn newest_vad(&self) -> Result<PathBuf, Missing> {
+        let var = "VOICEPUNCHER_VAD_MODEL";
+        if let Some(path) = self.machine.var(var) {
+            return existing(path, var);
+        }
+        self.entries(|path| {
+            path.is_file()
+                && file_name_starts(path, WHISPER_VAD_PREFIX)
+                && has_extension(path, "bin")
+        })
+        .into_iter()
+        .max_by_key(|path| path.metadata().and_then(|meta| meta.modified()).ok())
+        .ok_or_else(|| self.not_found(&format!("{WHISPER_VAD_PREFIX}*.bin"), var))
+    }
+
+    fn kws_model_dir(&self) -> Result<PathBuf, Missing> {
+        let var = "VOICEPUNCHER_KWS_MODEL_DIR";
+        if let Some(path) = self.machine.var(var) {
+            return existing(path, var);
+        }
+        let mut found =
+            self.entries(|path| path.is_dir() && file_name_starts(path, KWS_MODEL_DIR_PREFIX));
+        found.sort();
+        found
+            .into_iter()
+            .next()
+            .ok_or_else(|| self.not_found(&format!("{KWS_MODEL_DIR_PREFIX}*"), var))
+    }
+
+    fn entries(&self, keep: impl Fn(&Path) -> bool) -> Vec<PathBuf> {
+        self.model_dirs
+            .iter()
+            .filter_map(|dir| std::fs::read_dir(dir).ok())
+            .flatten()
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| keep(path))
+            .collect()
+    }
+
+    fn not_found(&self, file: &str, var: &str) -> Missing {
+        let dirs: Vec<String> = self
+            .model_dirs
+            .iter()
+            .map(|dir| dir.display().to_string())
+            .collect();
+        format!(
+            "model {file} not found in {} — {RUN_SCRIPTS_HINT} or set {var}",
+            dirs.join(", ")
+        )
+    }
+}
+
+/// The ports a speech recognition service already answers on, its own or its copies', when
+/// any does: the service scripts may run it as other copies than this configuration.
+fn running_copies(
+    kind: ServiceKind,
+    address: &ServiceAddress,
+    probe: &dyn ServiceProbe,
+) -> Option<Vec<u16>> {
+    let mut ports = vec![address.port()];
+    ports.extend(address.copy_ports());
+    let answering: Vec<u16> = ports
+        .into_iter()
+        .filter(|&port| {
+            let spec = ServiceSpec {
+                kind,
+                label: String::new(),
+                program: PathBuf::new(),
+                args: Vec::new(),
+                port,
+                log_file: PathBuf::new(),
+                health_checked: false,
+                problem: None,
+            };
+            probe.answer(&spec) == ProbeAnswer::Ready
+        })
+        .collect();
+    (!answering.is_empty()).then_some(answering)
+}
+
+/// The `justfile`'s `whisper_args`, without the program.
+pub fn whisper_args(model: &str, port: u16, threads: usize, vad: &str) -> Vec<String> {
+    let port = port.to_string();
+    let threads = threads.to_string();
+    [
+        "-m",
+        model,
+        "--host",
+        "127.0.0.1",
+        "--port",
+        &port,
+        "--inference-path",
+        "/v1/audio/transcriptions",
+        "-l",
+        "auto",
+        "-t",
+        &threads,
+        "-bo",
+        "1",
+        "-nf",
+        "-sns",
+        "-mc",
+        "0",
+        "--vad",
+        "-vm",
+        vad,
+        "-vsd",
+        "2000",
+        "-vp",
+        "500",
+        "-nlp",
+    ]
+    .map(String::from)
+    .to_vec()
+}
+
+/// The `justfile`'s `llama-server` line, without the program: one slot, so a request gets
+/// the whole context.
+pub fn llama_args(model: &str, port: u16) -> Vec<String> {
+    let port = port.to_string();
+    [
+        "-m",
+        model,
+        "--host",
+        "127.0.0.1",
+        "--port",
+        &port,
+        "-c",
+        "4096",
+        "-np",
+        "1",
+    ]
+    .map(String::from)
+    .to_vec()
+}
+
+/// The `justfile`'s command spotting service line, without the program.
+pub fn command_spotting_args(
+    port: u16,
+    model_dir: &str,
+    vad: &str,
+    commands_url: &str,
+) -> Vec<String> {
+    let port = port.to_string();
+    [
+        "--port",
+        &port,
+        "--model-dir",
+        model_dir,
+        "--vad-model",
+        vad,
+        "--transcription-url",
+        commands_url,
+    ]
+    .map(String::from)
+    .to_vec()
+}
+
+fn existing(path: PathBuf, var: &str) -> Result<PathBuf, Missing> {
+    if path.exists() {
+        Ok(path)
+    } else {
+        Err(format!("{} not found (set by {var})", path.display()))
+    }
+}
+
+fn shown(found: &Result<PathBuf, Missing>) -> String {
+    found
+        .as_ref()
+        .map(|path| path.display().to_string())
+        .unwrap_or_default()
+}
+
+fn first_problem<const N: usize>(found: [&Result<PathBuf, Missing>; N]) -> Option<String> {
+    found
+        .into_iter()
+        .find_map(|item| item.as_ref().err().cloned())
+}
+
+fn file_name_starts(path: &Path, prefix: &str) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with(prefix))
+}
+
+fn has_extension(path: &Path, extension: &str) -> bool {
+    path.extension().is_some_and(|found| found == extension)
+}
+
+#[cfg(test)]
+mod tests;

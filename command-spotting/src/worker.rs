@@ -79,11 +79,13 @@ pub struct Answer {
     pub heard: Option<Heard>,
 }
 
-/// A connection's two confirmation threads: one for the checks of a running utterance, one
-/// for everything else, so a segment's confirmation never waits behind a hung check.
+/// A connection's three confirmation threads: one for the checks of a running utterance, one
+/// for second hearings, one for everything else, so a segment's confirmation never waits
+/// behind a hung check and a second hearing asked at once never waits behind a segment's.
 pub struct ConfirmationWorker {
     jobs: Sender<Job>,
     checks: Sender<Job>,
+    rehears: Sender<Job>,
     answers: Receiver<Answer>,
 }
 
@@ -98,10 +100,17 @@ impl ConfirmationWorker {
             deadline,
             answer_tx.clone(),
         )?;
-        let checks = spawn(format!("conn-{conn}-check"), hear, deadline, answer_tx)?;
+        let checks = spawn(
+            format!("conn-{conn}-check"),
+            hear.clone(),
+            deadline,
+            answer_tx.clone(),
+        )?;
+        let rehears = spawn(format!("conn-{conn}-rehear"), hear, deadline, answer_tx)?;
         Ok(Self {
             jobs,
             checks,
+            rehears,
             answers,
         })
     }
@@ -115,6 +124,8 @@ impl ConfirmationWorker {
         );
         let queue = if job.kind.is_check() {
             &self.checks
+        } else if job.kind == JobKind::Rehear {
+            &self.rehears
         } else {
             &self.jobs
         };
@@ -320,6 +331,27 @@ mod tests {
         // When
         worker.submit(check);
         worker.submit(job(2, JobKind::Segment));
+        let first = worker.next_answer(WAIT);
+        drop(release);
+        // Then
+        assert_eq!(first.map(|a| a.id.n), Some(2));
+    }
+
+    #[test]
+    fn should_answer_a_second_hearing_while_a_segment_hangs() {
+        // Given
+        let (release, released) = mpsc::channel();
+        let hear = Arc::new(HangingCheck {
+            released: std::sync::Mutex::new(released),
+        });
+        let worker = ConfirmationWorker::start(1, hear, DEADLINE).unwrap();
+        let segment = Job {
+            audio: vec![CHECK_SAMPLE; 1_600],
+            ..job(1, JobKind::Segment)
+        };
+        // When
+        worker.submit(segment);
+        worker.submit(job(2, JobKind::Rehear));
         let first = worker.next_answer(WAIT);
         drop(release);
         // Then

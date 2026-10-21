@@ -383,6 +383,18 @@ Feature: voice-control
       When someone says "start" and stays silent
       Then the start cue comes within 0.7 s of the end of "start"
 
+    Scenario: Start please followed by the dictation at once gives its cue at once
+      Given the command spotting service is running
+      And listening is on for a whole session
+      When someone says "start please" and a sentence without a pause
+      Then the start cue comes within 0.7 s of the end of "start please", while the sentence is still being said
+
+    Scenario: Start please said on its own gives its cue at once
+      Given the command spotting service is running
+      And listening is on for a whole session
+      When someone says "start please" and stays silent
+      Then the start cue comes within 0.7 s of the end of "start please"
+
     # Not met yet: the early checks hear the synthesized "Enter" as "and a" (change hear-enter-before-start)
     @wip
     Scenario: A chain ending in start gives its cue at once
@@ -556,6 +568,7 @@ Feature: voice-control
     @smoke
     Scenario: The app refuses to start without the command spotting service
       Given voice control is turned on
+      And the app leaves its services to the service scripts
       And the command spotting service is not running
       When the app starts
       Then the app exits with an error that names the command spotting service and how to start it

@@ -8,6 +8,7 @@ pub mod overlay;
 pub mod permissions;
 pub mod report;
 pub mod router;
+pub mod services;
 pub mod signals;
 pub mod wiring;
 
@@ -26,6 +27,7 @@ use crate::core::application::{
 use crate::core::domain::{HotkeyBinding, Permission, PttSignal};
 
 use permissions::{Verdict, Watched};
+use services::SERVICES_POLL;
 
 pub use activity::ActivityRegister;
 pub use assembler::PipelineAssembler;
@@ -34,6 +36,7 @@ pub use overlay::SharedVisualIndicator;
 pub use permissions::PermissionsWatch;
 pub use report::{ReloadListener, ReloadReport};
 pub use router::SignalRouter;
+pub use services::{LocalServices, ManagedServices, ServicesView};
 
 /// How often a restart checks whether the dictation in progress has ended.
 const IDLE_POLL_INTERVAL: Duration = Duration::from_millis(20);
@@ -43,6 +46,7 @@ pub struct Runtime {
     assembler: Option<Box<dyn PipelineAssembler>>,
     listener: Option<Box<dyn HotkeyListener>>,
     permissions: Option<PermissionsWatch>,
+    services: Option<Box<dyn LocalServices>>,
     observers: Arc<Mutex<Observers>>,
     commands: Option<Sender<Command>>,
     thread: Option<JoinHandle<()>>,
@@ -59,6 +63,7 @@ impl Runtime {
             assembler: Some(assembler),
             listener: Some(listener),
             permissions: None,
+            services: None,
             observers: Arc::default(),
             commands: None,
             thread: None,
@@ -69,6 +74,13 @@ impl Runtime {
     /// revoked; without a watch the permissions are not checked.
     pub fn with_permissions(mut self, watch: PermissionsWatch) -> Self {
         self.permissions = Some(watch);
+        self
+    }
+
+    /// Starts the local services each configuration needs and starts a pipeline only once
+    /// they answer; without them the runtime only connects to the services.
+    pub fn with_services(mut self, services: Box<dyn LocalServices>) -> Self {
+        self.services = Some(services);
         self
     }
 
@@ -83,8 +95,9 @@ impl Runtime {
     }
 
     /// Starts the pipeline from `config` and returns once it runs, or with the reason it
-    /// cannot; the state is then Ready or Failed. With a permission missing it returns at
-    /// once in the state Waiting for permissions, and starts the pipeline once all are granted.
+    /// cannot; the state is then Ready or Failed. With a permission missing or a needed local
+    /// service not ready it returns at once in the state Waiting for permissions or Starting
+    /// services, and starts the pipeline once all are granted and every service answers.
     pub fn start(&mut self, config: Config) -> Result<()> {
         let (Some(assembler), Some(listener)) = (self.assembler.take(), self.listener.take())
         else {
@@ -96,9 +109,10 @@ impl Runtime {
             Arc::clone(&self.observers),
             config,
             self.permissions.take().map(Watched::start),
+            self.services.take(),
         );
-        if supervisor.waits_for_permissions() {
-            self.change(supervisor.waiting());
+        if let Some(state) = supervisor.gate() {
+            self.change(state);
         } else {
             self.change(RuntimeState::Starting);
             if let Err(e) = supervisor.open() {
@@ -275,6 +289,7 @@ struct Supervisor {
     /// Spawned with the first pipeline, so it needs Input Monitoring only from then on.
     listener: Option<Box<dyn HotkeyListener>>,
     permissions: Option<Watched>,
+    services: Option<Box<dyn LocalServices>>,
     /// A pipeline that failed to start is not started again by a permission check.
     failed: bool,
     observers: Arc<Mutex<Observers>>,
@@ -292,11 +307,16 @@ impl Supervisor {
         observers: Arc<Mutex<Observers>>,
         config: Config,
         permissions: Option<Watched>,
+        mut services: Option<Box<dyn LocalServices>>,
     ) -> Self {
+        if let Some(services) = &mut services {
+            services.require(&config);
+        }
         Self {
             assembler,
             listener: Some(listener),
             permissions,
+            services,
             failed: false,
             observers,
             router: SignalRouter::new(),
@@ -307,16 +327,20 @@ impl Supervisor {
         }
     }
 
-    fn waits_for_permissions(&self) -> bool {
-        self.permissions
-            .as_ref()
-            .is_some_and(|watched| !watched.all_granted())
-    }
-
-    fn waiting(&self) -> RuntimeState {
-        self.permissions
-            .as_ref()
-            .map_or(RuntimeState::Starting, Watched::waiting)
+    /// What keeps the pipeline from starting: a missing permission, then a needed service
+    /// that failed or does not answer yet; none when it may start.
+    fn gate(&self) -> Option<RuntimeState> {
+        if let Some(watched) = self.permissions.as_ref().filter(|w| !w.all_granted()) {
+            return Some(watched.waiting());
+        }
+        let progress = self.services.as_ref()?.progress();
+        if let Some(reason) = progress.failed {
+            return Some(RuntimeState::Failed(reason));
+        }
+        (!progress.all_ready()).then_some(RuntimeState::StartingServices {
+            ready: progress.ready,
+            total: progress.total,
+        })
     }
 
     /// Starts a pipeline from the configuration, and the hotkey listener with the first one.
@@ -334,41 +358,48 @@ impl Supervisor {
         Ok(())
     }
 
-    /// The next command; none when the permissions are due for a check first.
+    /// The next command; none when the permissions or the services are due for a check first.
     fn next_command(&self, commands: &Receiver<Command>) -> Option<Command> {
-        let Some(watched) = &self.permissions else {
+        let pipeline_runs = self.pipeline.is_some();
+        let permissions = self.permissions.as_ref().map(|w| w.interval(pipeline_runs));
+        let services = (self.services.is_some() && !pipeline_runs).then_some(SERVICES_POLL);
+        let Some(interval) = permissions.into_iter().chain(services).min() else {
             return Some(commands.recv().unwrap_or(Command::Stop));
         };
-        match commands.recv_timeout(watched.interval(self.pipeline.is_some())) {
+        match commands.recv_timeout(interval) {
             Ok(command) => Some(command),
             Err(mpsc::RecvTimeoutError::Timeout) => None,
             Err(mpsc::RecvTimeoutError::Disconnected) => Some(Command::Stop),
         }
     }
 
-    fn check_permissions(&mut self) {
+    /// Closes the pipeline when a permission is revoked, and starts it once every permission
+    /// is granted and every needed service answers.
+    fn check_gates(&mut self) {
         let pipeline_runs = self.pipeline.is_some();
-        let Some(watched) = &mut self.permissions else {
-            return;
-        };
-        match watched.check(pipeline_runs) {
-            Verdict::Unchanged => {}
-            Verdict::StillWaiting(state) => self.change(state),
-            Verdict::Close(state) => {
-                self.close(&state);
-                self.change(state);
-            }
-            Verdict::Open if !self.failed => {
-                self.change(RuntimeState::Starting);
-                match self.open() {
-                    Ok(()) => self.change(self.ready()),
-                    Err(e) => {
-                        self.failed = true;
-                        self.change(RuntimeState::Failed(format!("{e:#}")));
-                    }
+        if let Some(watched) = &mut self.permissions {
+            match watched.check(pipeline_runs) {
+                Verdict::StillWaiting(state) => self.change_to_new(state),
+                Verdict::Close(state) => {
+                    self.close(&state);
+                    self.change(state);
                 }
+                Verdict::Unchanged | Verdict::Open => {}
             }
-            Verdict::Open => {}
+        }
+        if self.pipeline.is_some() || self.failed {
+            return;
+        }
+        if let Some(state) = self.gate() {
+            return self.change_to_new(state);
+        }
+        self.change(RuntimeState::Starting);
+        match self.open() {
+            Ok(()) => self.change(self.ready()),
+            Err(e) => {
+                self.failed = true;
+                self.change(RuntimeState::Failed(format!("{e:#}")));
+            }
         }
     }
 
@@ -394,7 +425,7 @@ impl Supervisor {
                 None => match self.next_command(&commands) {
                     Some(command) => command,
                     None => {
-                        self.check_permissions();
+                        self.check_gates();
                         continue;
                     }
                 },
@@ -418,10 +449,17 @@ impl Supervisor {
         commands: &Receiver<Command>,
         pending: &mut std::collections::VecDeque<Command>,
     ) -> Wait {
+        if let Some(services) = &mut self.services {
+            services.require(&config);
+        }
         if self.pipeline.is_none() {
             return self.keep_for_later(config);
         }
         self.change(RuntimeState::Restarting);
+        match self.wait_for_services(commands, pending) {
+            Wait::Idle => {}
+            Wait::Stopped => return Wait::Stopped,
+        }
         let next = match Next::assemble(self.assembler.as_mut(), &config) {
             Ok(next) => next,
             Err(e) => {
@@ -445,6 +483,38 @@ impl Supervisor {
         self.change(self.ready());
         tell(listener, ReloadReport::Applied);
         Wait::Idle
+    }
+
+    /// Waits until every service the new configuration needs answers; with one failed, the
+    /// running pipeline keeps its settings until a later reload.
+    fn wait_for_services(
+        &mut self,
+        commands: &Receiver<Command>,
+        pending: &mut std::collections::VecDeque<Command>,
+    ) -> Wait {
+        let Some(services) = &self.services else {
+            return Wait::Idle;
+        };
+        loop {
+            let progress = services.progress();
+            if progress.all_ready() || progress.failed.is_some() {
+                if let Some(reason) = progress.failed {
+                    log::warn!("runtime: a needed service failed: {reason}");
+                }
+                return Wait::Idle;
+            }
+            self.change_to_new(RuntimeState::StartingServices {
+                ready: progress.ready,
+                total: progress.total,
+            });
+            match commands.recv_timeout(SERVICES_POLL) {
+                Ok(Command::Stop) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return Wait::Stopped
+                }
+                Ok(reload) => pending.push_back(reload),
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+            }
+        }
     }
 
     /// Without a pipeline, the configuration waits for the next start.
@@ -496,6 +566,9 @@ impl Supervisor {
         if let Some(running) = self.pipeline.take() {
             running.shut_down();
         }
+        if let Some(services) = &mut self.services {
+            services.stop();
+        }
         lock(&self.observers).change(RuntimeState::Stopped);
     }
 
@@ -509,6 +582,14 @@ impl Supervisor {
 
     fn change(&self, state: RuntimeState) {
         lock(&self.observers).change(state);
+    }
+
+    /// Tells the observers of `state` unless it is the current one.
+    fn change_to_new(&self, state: RuntimeState) {
+        let mut observers = lock(&self.observers);
+        if observers.current() != Some(&state) {
+            observers.change(state);
+        }
     }
 }
 

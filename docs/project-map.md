@@ -27,14 +27,16 @@
 | `app/src/core/application/text_paster.rs` | Port | `TextPaster` trait |
 | `app/src/core/application/sound_player.rs` | Port | `SoundPlayer` trait |
 | `app/src/core/application/permission_probe.rs` | Port | `PermissionProbe` trait |
-| `app/src/runtime/` | Composition | `Runtime` — starts, reloads and stops the pipeline in place; `SignalRouter`, `SharedVisualIndicator`, `RuntimeState` and observers, the activity register, `PipelineAssembler` with the real `WiringAssembler`, the hang-up signal thread |
+| `app/src/core/application/local_services/` | Application | `ServiceRuntime` and `Services` — start, adopt, check, restart and stop the local services on a 100 ms tick (`Supervision` per service); ports `ServiceLauncher`, `ServiceProcess`, `ServiceProbe`, `Clock` |
+| `app/src/core/domain/local_service.rs` | Domain | `ServiceKind`, `ServiceSpec`, `ServiceState`, `ServiceStatus`, `ServicesProgress` |
+| `app/src/runtime/` | Composition | `Runtime` — starts, reloads and stops the pipeline in place; `SignalRouter`, `SharedVisualIndicator`, `RuntimeState` and observers, the activity register, `PipelineAssembler` with the real `WiringAssembler`, the hang-up signal thread; `ManagedServices` behind the `LocalServices` port, which the runtime waits for before it starts a pipeline; the termination signal thread that stops them |
 | `app/src/core/application/pipeline_activity.rs` | Port | `PipelineActivitySink` trait — the pipeline publishes `Idle` / `Recording` / `Processing` |
 | `app/src/adapters/primary/cli/` | Primary adapter | `Cli` — `clap`-based argument parser |
 | `app/src/adapters/primary/ptt/rdev/` | Primary adapter | `RdevHotkeyListener` — captures hotkey events via `rdev` |
 | `app/src/adapters/primary/setup/cli/` | Primary adapter | `SetupWizard` — interactive first-run configuration wizard |
 | `app/src/adapters/primary/permissions/macos/` | Primary adapter | `PermissionsWindow` — the Permissions window (rows, badges, Request…, Open System Settings, Quit, Continue); `mapping.rs` holds what it shows |
-| `app/src/adapters/primary/menubar/macos/` | Primary adapter | `MacosStatusItem` — the menu bar icon and its menu (Settings, Open Logs Folder, Quit); `StatusItemCell` fed by the overlay decorator and the runtime observer; `MacosMenuActions`; `RuntimeApplier` applies saved settings through the runtime's `Reloader` |
-| `app/src/adapters/primary/settings/macos/` | Primary adapter | The settings window: the field table (`table.rs`, a tab, label and control per configuration key), `validate`, value conversions, override notes, the GUI-free `SettingsSession` (edit, save, revert, apply through the `ConfigApplier` port) and the AppKit window (`window.rs`, `form.rs`, `layout.rs`, `build.rs`) |
+| `app/src/adapters/primary/menubar/macos/` | Primary adapter | `MacosStatusItem` — the menu bar icon and its menu (Settings, Open Logs Folder, Services with Restart and Open Log, Quit); `StatusItemCell` fed by the overlay decorator and the runtime observer; `MacosMenuActions`; `RuntimeApplier` applies saved settings through the runtime's `Reloader`; `LoginOfferObserver` asks once, at the first Ready, whether to start at login |
+| `app/src/adapters/primary/settings/macos/` | Primary adapter | The settings window: the field table (`table.rs`, a tab, label and control per configuration key), `validate`, value conversions, override notes, the GUI-free `SettingsSession` (edit, save, revert, apply through the `ConfigApplier` port) and the AppKit window (`window.rs`, `form.rs`, `layout.rs`, `build.rs`); `login.rs` and `login_row.rs`: the login switch and the one-time offer |
 | `app/src/adapters/main_queue.rs` | Adapter helper | Work dispatched to the main queue, shared by the overlay and the status item |
 | `app/src/adapters/secondary/recording/cpal/` | Secondary adapter | `CpalAudioRecorder` — records microphone via `cpal` |
 | `app/src/adapters/secondary/recording/filesystem/` | Secondary adapter | `FileSystemAudioRecorder` — reads WAV file (file mode + E2E) |
@@ -45,6 +47,9 @@
 | `app/src/adapters/secondary/textpasting/stdio/` | Secondary adapter | `StdioTextPaster` — writes text to stdout (file mode / E2E) |
 | `app/src/adapters/secondary/soundplaying/macos/` | Secondary adapter | `MacosSoundPlayer` — plays start/stop sounds via macOS `afplay` |
 | `app/src/adapters/secondary/logging/file/` | Secondary adapter | `RotatingFileWriter`, `TeeWriter` — the app's log file `~/.voicepuncher/logs/voicepuncher.log`, size-rotated and teed to a terminal; the launch header and the panic hook |
+| `app/src/adapters/secondary/localservices/process/` | Secondary adapter | `ProcessLauncher` — starts a service as a child process in its own process group, its output in a rotating log file; `HttpProbe` — asks a service's port and `/health` whether it is ready |
+| `app/src/adapters/secondary/localservices/catalog/` | Secondary adapter | `needed` — the services a configuration needs, with the `justfile`'s commands, copy ports, thread split, engine and model lookup |
+| `app/src/adapters/secondary/loginitem/macos/` | Secondary adapter | `MacOsLoginItem` — the app's login item through `SMAppService`, unavailable outside an installed bundle; `launch` logs a launch by the login item |
 | `app/src/adapters/secondary/permissions/macos/` | Secondary adapter | `MacOsPermissionProbe` — macOS TCC status, requests, deep links and the responsible app |
 | `app/src/config.rs`, `app/src/config/` | Config | TOML config loading with `serde`; `Config` is the root struct; `[transcription]` and `[whisper]` migration error in `config/transcription.rs`, `[refinement]` and `[llm]` migration error in `config/refinement.rs`, loopback check in `config/loopback.rs`; `config/document.rs` — `ConfigDocument`, the file as `toml_edit` keeps it, so a Save changes only the edited keys |
 | `app/src/main.rs` | Composition root | Wires adapters + use cases into a runnable; no business logic |

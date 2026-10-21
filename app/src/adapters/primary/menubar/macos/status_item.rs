@@ -21,8 +21,8 @@ use crate::adapters::main_queue::{dispatch_to_main, dispatch_to_main_after};
 use super::actions::MenuActions;
 use super::indicator::{StatusItemCell, StatusItemSurface};
 use super::mapping::{
-    IconPicture, IconState, MenuEntry, FALLBACK_SYMBOL, MENU, PROCESSING_FRAMES,
-    STILL_PROCESSING_FRAME,
+    offers_restart, service_line, IconPicture, IconState, MenuEntry, FALLBACK_SYMBOL, MENU,
+    OPEN_SERVICE_LOG, PROCESSING_FRAMES, RESTART_SERVICE, STILL_PROCESSING_FRAME,
 };
 
 /// The symbols' point size in the menu bar.
@@ -35,6 +35,8 @@ const DOT_INSET: f64 = 2.0;
 /// The places of the two text lines at the top of the menu.
 const TITLE_LINE: isize = 0;
 const STATUS_LINE: isize = 1;
+/// The place of the Services submenu, right after Permissions….
+const SERVICES: isize = 3;
 const SETTINGS_KEY: &str = ",";
 const QUIT_KEY: &str = "q";
 const NO_KEY: &str = "";
@@ -233,6 +235,7 @@ fn build_menu(mtm: MainThreadMarker, target: &MenuTarget) -> Retained<NSMenu> {
             MenuEntry::TitleLine | MenuEntry::StatusLine => text_line(mtm),
             MenuEntry::Separator => NSMenuItem::separatorItem(mtm),
             MenuEntry::Permissions => chosen(mtm, target, entry, sel!(permissions:), NO_KEY),
+            MenuEntry::Services => services_item(mtm, entry),
             MenuEntry::Settings => chosen(mtm, target, entry, sel!(settings:), SETTINGS_KEY),
             MenuEntry::Logs => chosen(mtm, target, entry, sel!(openLogs:), NO_KEY),
             MenuEntry::Quit => chosen(mtm, target, entry, sel!(quit:), QUIT_KEY),
@@ -250,6 +253,17 @@ fn chosen(
     key: &str,
 ) -> Retained<NSMenuItem> {
     action_item(mtm, target, entry.title().unwrap_or_default(), action, key)
+}
+
+/// The Services item with an empty submenu, filled each time the menu opens.
+fn services_item(mtm: MainThreadMarker, entry: MenuEntry) -> Retained<NSMenuItem> {
+    let item = NSMenuItem::new(mtm);
+    item.setTitle(&NSString::from_str(entry.title().unwrap_or_default()));
+    let submenu = NSMenu::new(mtm);
+    submenu.setAutoenablesItems(false);
+    item.setSubmenu(Some(&submenu));
+    item.setHidden(true);
+    item
 }
 
 /// A line of text that cannot be chosen.
@@ -278,6 +292,11 @@ fn action_item(
     // SAFETY: the target lives as long as the status item that owns the menu.
     unsafe { item.setTarget(Some(target as &AnyObject)) };
     item
+}
+
+/// The port a service's menu item carries in its tag.
+fn port_of(item: &NSMenuItem) -> Option<u16> {
+    u16::try_from(item.tag()).ok()
 }
 
 pub struct MenuTargetIvars {
@@ -321,6 +340,20 @@ define_class!(
         fn quit(&self, _sender: Option<&AnyObject>) {
             self.act(|actions| actions.quit());
         }
+
+        #[unsafe(method(restartService:))]
+        fn restart_service(&self, sender: Option<&NSMenuItem>) {
+            if let Some(port) = sender.and_then(port_of) {
+                self.act(|actions| actions.restart_service(port));
+            }
+        }
+
+        #[unsafe(method(openServiceLog:))]
+        fn open_service_log(&self, sender: Option<&NSMenuItem>) {
+            if let Some(port) = sender.and_then(port_of) {
+                self.act(|actions| actions.open_service_log(port));
+            }
+        }
     }
 );
 
@@ -346,6 +379,56 @@ impl MenuTarget {
         if let Some(item) = menu.itemAtIndex(STATUS_LINE) {
             item.setTitle(&NSString::from_str(&model.status_line));
         }
+        if let Some(item) = menu.itemAtIndex(SERVICES) {
+            self.refresh_services(&item);
+        }
+    }
+
+    /// Lists every service with its state, each with Restart (for one the app started) and
+    /// Open Log; hidden when the app leaves the services to the scripts.
+    fn refresh_services(&self, item: &NSMenuItem) {
+        let mtm = self.mtm();
+        let statuses = self
+            .ivars()
+            .actions
+            .borrow()
+            .as_deref()
+            .and_then(|actions| actions.services());
+        item.setHidden(statuses.is_none());
+        let Some(submenu) = item.submenu() else {
+            return;
+        };
+        submenu.removeAllItems();
+        for status in statuses.unwrap_or_default() {
+            let line = NSMenuItem::new(mtm);
+            line.setTitle(&NSString::from_str(&service_line(&status)));
+            let choices = NSMenu::new(mtm);
+            choices.setAutoenablesItems(false);
+            if offers_restart(&status) {
+                choices.addItem(&self.service_choice(
+                    RESTART_SERVICE,
+                    sel!(restartService:),
+                    status.port,
+                ));
+            }
+            choices.addItem(&self.service_choice(
+                OPEN_SERVICE_LOG,
+                sel!(openServiceLog:),
+                status.port,
+            ));
+            line.setSubmenu(Some(&choices));
+            submenu.addItem(&line);
+        }
+    }
+
+    fn service_choice(&self, title: &str, action: Sel, port: u16) -> Retained<NSMenuItem> {
+        let item = action_item(self.mtm(), self, title, action, NO_KEY);
+        item.setTag(isize::try_from(port).unwrap_or_default());
+        item
+    }
+
+    fn mtm(&self) -> MainThreadMarker {
+        MainThreadMarker::from(self)
     }
 
     fn act(&self, action: impl FnOnce(&dyn MenuActions)) {

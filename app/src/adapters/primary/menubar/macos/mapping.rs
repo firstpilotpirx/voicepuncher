@@ -1,7 +1,7 @@
 //! What the status item shows, as pure functions of what it was told: the stage of the
 //! dictation the overlay shows, the runtime state and the voice control signs.
 
-use crate::core::domain::{HotKey, RecordingMode};
+use crate::core::domain::{HotKey, RecordingMode, ServiceStatus};
 use crate::runtime::RuntimeState;
 
 /// The stage of a dictation, as the overlay shows it.
@@ -162,6 +162,9 @@ impl StatusItemState {
                 "Waiting for permissions — open Permissions…".into()
             }
             Some(RuntimeState::Restarting) => "Restarting…".into(),
+            Some(RuntimeState::StartingServices { ready, total }) => {
+                format!("Starting services… ({ready} of {total} ready)")
+            }
             Some(RuntimeState::Stopped) => "Quitting…".into(),
             Some(RuntimeState::Failed(reason)) => format!("Failed: {reason}"),
             Some(RuntimeState::Ready {
@@ -223,6 +226,8 @@ pub enum MenuEntry {
     TitleLine,
     StatusLine,
     Permissions,
+    /// The submenu of the local services; hidden when the app leaves them to the scripts.
+    Services,
     Separator,
     Settings,
     Logs,
@@ -230,10 +235,11 @@ pub enum MenuEntry {
 }
 
 /// The menu, the same in every state.
-pub const MENU: [MenuEntry; 8] = [
+pub const MENU: [MenuEntry; 9] = [
     MenuEntry::TitleLine,
     MenuEntry::StatusLine,
     MenuEntry::Permissions,
+    MenuEntry::Services,
     MenuEntry::Separator,
     MenuEntry::Settings,
     MenuEntry::Logs,
@@ -246,12 +252,35 @@ impl MenuEntry {
     pub fn title(self) -> Option<&'static str> {
         match self {
             MenuEntry::Permissions => Some("Permissions…"),
+            MenuEntry::Services => Some("Services"),
             MenuEntry::Settings => Some("Settings…"),
             MenuEntry::Logs => Some("Open Logs Folder"),
             MenuEntry::Quit => Some("Quit voicepuncher"),
             _ => None,
         }
     }
+}
+
+/// A line of the Services submenu: the service and its state in words.
+pub fn service_line(status: &ServiceStatus) -> String {
+    format!("{} — {}", capitalized(&status.label), status.state)
+}
+
+/// The items of one service's submenu.
+pub const RESTART_SERVICE: &str = "Restart";
+pub const OPEN_SERVICE_LOG: &str = "Open Log";
+
+/// The Services submenu offers Restart only for a service the app started.
+pub fn offers_restart(status: &ServiceStatus) -> bool {
+    status.owned
+}
+
+fn capitalized(text: &str) -> String {
+    let mut chars = text.chars();
+    chars
+        .next()
+        .map(|first| first.to_uppercase().chain(chars).collect())
+        .unwrap_or_default()
 }
 
 /// The menu's first line: the app's name and version.

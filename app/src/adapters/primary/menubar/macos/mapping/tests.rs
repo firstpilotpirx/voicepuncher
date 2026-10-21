@@ -385,3 +385,61 @@ fn should_offer_permissions_right_under_the_status_line() {
     assert_eq!(MENU.get(status + 1), Some(&MenuEntry::Permissions));
     assert_eq!(MenuEntry::Permissions.title(), Some("Permissions…"));
 }
+
+#[test]
+fn should_count_the_services_ready_while_they_start() {
+    // Given
+    let starting = state(
+        None,
+        Some(RuntimeState::StartingServices { ready: 2, total: 5 }),
+    );
+    // When / Then
+    assert_eq!(starting.icon(), IconState::Waiting);
+    assert_eq!(starting.status_line(), "Starting services… (2 of 5 ready)");
+}
+
+#[test]
+fn should_show_a_service_that_cannot_start_as_failed() {
+    let failed = state(
+        None,
+        Some(RuntimeState::Failed(
+            "text refinement service: model missing".into(),
+        )),
+    );
+    assert_eq!(failed.icon(), IconState::Failed);
+    assert_eq!(
+        failed.status_line(),
+        "Failed: text refinement service: model missing"
+    );
+}
+
+fn service(label: &str, state: crate::core::domain::ServiceState, owned: bool) -> ServiceStatus {
+    ServiceStatus {
+        kind: crate::core::domain::ServiceKind::Dictation,
+        label: label.into(),
+        port: 18082,
+        state,
+        owned,
+        log_file: std::path::PathBuf::from("/logs/whisper-server-18082.log"),
+    }
+}
+
+#[test]
+fn should_list_a_service_with_its_state_in_words_and_restart_only_owned_ones() {
+    use crate::core::domain::ServiceState;
+    // Given
+    let copy = service(
+        "speech recognition service for dictation: copy 1 of 3",
+        ServiceState::Ready,
+        true,
+    );
+    let adopted = service("text refinement service", ServiceState::Adopted, false);
+    // When / Then
+    assert_eq!(
+        service_line(&copy),
+        "Speech recognition service for dictation: copy 1 of 3 — Ready"
+    );
+    assert_eq!(service_line(&adopted), "Text refinement service — Adopted");
+    assert!(offers_restart(&copy));
+    assert!(!offers_restart(&adopted));
+}

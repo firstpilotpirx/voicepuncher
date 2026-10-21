@@ -17,6 +17,10 @@ Feature: settings-window
       When the options the configuration file accepts are compared with the settings controls
       Then every option has exactly one control
 
+    Scenario: The app's own record has no control
+      When the controls of the settings window are listed
+      Then none of them edits whether the login question was asked
+
     Scenario: The microphone choice lists the Mac's input devices
       Given the Mac has two input devices
       When the user opens the settings

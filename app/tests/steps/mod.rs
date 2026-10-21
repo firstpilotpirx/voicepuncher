@@ -3,6 +3,7 @@ pub mod app_runtime;
 pub mod dictation_archive;
 pub mod dictation_pointer;
 pub mod failure_notices;
+pub mod launch_at_login;
 pub mod live_transcript;
 pub mod menu_bar_presence;
 pub mod permissions_gate;

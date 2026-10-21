@@ -135,3 +135,24 @@ Feature: menu-bar-presence
       Given the runtime is ready and no dictation runs
       When the user chooses Settings in the menu
       Then the settings window opens in front
+
+  Rule: The menu shows the services starting
+
+    Scenario: Services still loading at launch
+      Given the runtime starts its services and 2 of 5 are ready
+      When the user opens the menu
+      Then the status item shows the waiting icon
+      And the status line reads "Starting services… (2 of 5 ready)"
+
+  Rule: The menu lists the services
+
+    Scenario: The services are listed with their states
+      Given the app started the speech recognition service for dictation and adopted the text refinement service
+      When the user opens the Services submenu
+      Then it lists the dictation copies as Ready and the text refinement service as Adopted
+      And Restart is offered for the dictation copies only
+
+    Scenario: Restart from the menu
+      Given the app started the text refinement service and it is Failed
+      When the user chooses Restart for it
+      Then the app starts it again

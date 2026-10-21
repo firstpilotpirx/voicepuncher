@@ -1,0 +1,180 @@
+//! Test doubles of the service ports: a clock that moves when told, a launcher that records
+//! its spawns, processes that exit when told and a probe answering what it is told.
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use anyhow::{bail, Result};
+
+use crate::core::domain::{ServiceKind, ServiceSpec};
+
+use super::{Clock, ProbeAnswer, ServiceLauncher, ServiceProbe, ServiceProcess};
+
+#[derive(Clone)]
+pub struct FakeClock(Arc<Mutex<Instant>>);
+
+impl FakeClock {
+    pub fn new() -> Self {
+        Self(Arc::new(Mutex::new(Instant::now())))
+    }
+
+    pub fn advance(&self, by: Duration) {
+        *self.0.lock().unwrap() += by;
+    }
+}
+
+impl Clock for FakeClock {
+    fn now(&self) -> Instant {
+        *self.0.lock().unwrap()
+    }
+
+    fn sleep(&self, pause: Duration) {
+        self.advance(pause);
+    }
+}
+
+/// What happened to one spawned process.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct ProcessLife {
+    pub port: u16,
+    pub exit: Option<String>,
+    pub terminated: bool,
+    pub killed: bool,
+    /// Ends when asked to; a stubborn one only when killed.
+    pub stubborn: bool,
+}
+
+/// Every process spawned, in order, shared by the launcher and its processes.
+#[derive(Clone, Default)]
+pub struct Spawns(Arc<Mutex<Vec<ProcessLife>>>, Arc<Mutex<Vec<u16>>>);
+
+impl Spawns {
+    pub fn all(&self) -> Vec<ProcessLife> {
+        self.0.lock().unwrap().clone()
+    }
+
+    pub fn count(&self) -> usize {
+        self.0.lock().unwrap().len()
+    }
+
+    /// The ports of the processes asked to end, in the order they were asked.
+    pub fn stop_order(&self) -> Vec<u16> {
+        self.1.lock().unwrap().clone()
+    }
+
+    /// Makes the last process exit with `code`.
+    pub fn exit_last(&self, code: &str) {
+        if let Some(life) = self.0.lock().unwrap().last_mut() {
+            life.exit = Some(code.into());
+        }
+    }
+}
+
+pub struct FakeLauncher {
+    pub spawns: Spawns,
+    pub refuse: bool,
+    pub stubborn: bool,
+}
+
+impl FakeLauncher {
+    pub fn new(spawns: &Spawns) -> Self {
+        Self {
+            spawns: spawns.clone(),
+            refuse: false,
+            stubborn: false,
+        }
+    }
+}
+
+impl ServiceLauncher for FakeLauncher {
+    fn spawn(&self, spec: &ServiceSpec) -> Result<Box<dyn ServiceProcess>> {
+        if self.refuse {
+            bail!("no such program");
+        }
+        let mut all = self.spawns.0.lock().unwrap();
+        all.push(ProcessLife {
+            port: spec.port,
+            stubborn: self.stubborn,
+            ..ProcessLife::default()
+        });
+        Ok(Box::new(FakeProcess {
+            spawns: self.spawns.clone(),
+            index: all.len() - 1,
+        }))
+    }
+}
+
+struct FakeProcess {
+    spawns: Spawns,
+    index: usize,
+}
+
+impl FakeProcess {
+    fn with<T>(&self, f: impl FnOnce(&mut ProcessLife) -> T) -> T {
+        f(&mut self.spawns.0.lock().unwrap()[self.index])
+    }
+}
+
+impl ServiceProcess for FakeProcess {
+    fn id(&self) -> u32 {
+        self.index as u32 + 1
+    }
+
+    fn exited(&mut self) -> Option<String> {
+        self.with(|life| life.exit.clone())
+    }
+
+    fn terminate(&mut self) {
+        let port = self.with(|life| life.port);
+        self.spawns.1.lock().unwrap().push(port);
+        self.with(|life| {
+            life.terminated = true;
+            if !life.stubborn {
+                life.exit = Some("signal 15".into());
+            }
+        });
+    }
+
+    fn kill(&mut self) {
+        self.with(|life| {
+            life.killed = true;
+            life.exit = Some("signal 9".into());
+        });
+    }
+}
+
+/// Answers per port what it was told; Closed by default.
+#[derive(Clone, Default)]
+pub struct FakeProbe(Arc<Mutex<HashMap<u16, ProbeAnswer>>>);
+
+impl FakeProbe {
+    pub fn set(&self, port: u16, answer: ProbeAnswer) {
+        self.0.lock().unwrap().insert(port, answer);
+    }
+}
+
+impl ServiceProbe for FakeProbe {
+    fn answer(&self, spec: &ServiceSpec) -> ProbeAnswer {
+        *self
+            .0
+            .lock()
+            .unwrap()
+            .get(&spec.port)
+            .unwrap_or(&ProbeAnswer::Closed)
+    }
+}
+
+pub fn spec(kind: ServiceKind, port: u16) -> ServiceSpec {
+    ServiceSpec {
+        kind,
+        label: format!("{} {port}", kind.name()),
+        program: PathBuf::from("engine"),
+        args: Vec::new(),
+        port,
+        log_file: PathBuf::from(format!("/logs/engine-{port}.log")),
+        health_checked: true,
+        problem: None,
+    }
+}

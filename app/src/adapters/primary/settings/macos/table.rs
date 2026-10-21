@@ -5,6 +5,9 @@ use super::field::{field, Choices, Control, Field, Scheme, Tab};
 /// Options the loader still accepts so old files load, and the app ignores: no control.
 pub const RETIRED: &[(&str, &str)] = &[("audio", "debug_save_wav")];
 
+/// Keys the app writes itself and shows no control for.
+pub const KEPT: &[(&str, &str)] = &[("app", "launch_at_login_asked")];
+
 const MS: &str = "ms";
 const SECONDS: &str = "s";
 const MEGABYTES: &str = "MB";
@@ -73,6 +76,46 @@ pub const FIELDS: &[Field] = &[
         Tab::General,
         "Voice control service",
         Control::Address(Scheme::WebSocket),
+    )
+    .advanced(),
+    field(
+        "services",
+        "manage",
+        Tab::General,
+        "Start the local services",
+        Control::Switch,
+    )
+    .advanced(),
+    field(
+        "services",
+        "dictation_copies",
+        Tab::General,
+        "Dictation service copies",
+        number(1, 4, ""),
+    )
+    .advanced(),
+    field(
+        "services",
+        "command_copies",
+        Tab::General,
+        "Command service copies",
+        number(1, 4, ""),
+    )
+    .advanced(),
+    field(
+        "services",
+        "models_dir",
+        Tab::General,
+        "Models folder",
+        Control::Folder,
+    )
+    .advanced(),
+    field(
+        "services",
+        "commands_url",
+        Tab::General,
+        "Command speech recognition service",
+        Control::Address(Scheme::Http),
     )
     .advanced(),
     field(

@@ -181,6 +181,14 @@ fn pump_run_loop(secs: f64) {
     run_loop.runUntilDate(&deadline);
 }
 
+/// Runs the main run loop in short steps until `condition` holds or `limit` passes.
+fn pump_until(limit: Duration, condition: impl Fn() -> bool) {
+    let deadline = std::time::Instant::now() + limit;
+    while !condition() && std::time::Instant::now() < deadline {
+        pump_run_loop(PUMP_STEP_SECS);
+    }
+}
+
 fn should_implement_visual_indicator_trait() {
     implements_visual_indicator::<MacosVisualIndicator>();
 }
@@ -369,7 +377,8 @@ fn pill_size(overlay: &MacosVisualIndicator, moment: &str) -> (f64, f64) {
 fn should_show_the_record_sign_and_waveform_without_a_label() {
     let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
     overlay.show_recording();
-    pump_run_loop(DRAWN_SECS);
+    // WHY: read in the frame the record sign appears, before the waveform's first tick
+    pump_until(DRAWN_LIMIT, || overlay.first_shows_recording());
     assert!(overlay.first_shows_recording(), "no record sign");
     assert_eq!(
         overlay.first_label_value(),
@@ -553,6 +562,10 @@ fn show_recognizing_speech_rebuilds_unconditionally() {
 const SHORT_NOTICE: Duration = Duration::from_millis(600);
 /// Long enough for the main queue to draw what was asked.
 const DRAWN_SECS: f64 = 0.2;
+/// The longest a busy machine may take to draw what was asked.
+const DRAWN_LIMIT: Duration = Duration::from_secs(2);
+/// Shorter than the waveform's 16 ms tick, so a step ends before the tick redraws.
+const PUMP_STEP_SECS: f64 = 0.001;
 
 const NOTICE: FailureNotice = FailureNotice::DictationLost(FailingPart::SpeechRecognition);
 

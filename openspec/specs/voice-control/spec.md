@@ -555,10 +555,11 @@ When a voice command starts a dictation ("start dictation" or "start" said on it
 - **THEN** the whole sentence, its first words included, is pasted into the focused app without "start"
 
 ### Requirement: Voice control needs the command spotting service to start
-With voice control on, the system SHALL refuse to start, with a message naming the command spotting service and how to start it, when that service does not answer.
+With voice control on and the services left to the service scripts, the system SHALL refuse to start, with a message naming the command spotting service and how to start it, when that service does not answer. When the app manages its services, it starts the command spotting service instead and waits for it.
 
 #### Scenario: The app refuses to start without the command spotting service
 - **GIVEN** voice control is turned on
+- **AND** the app leaves its services to the service scripts
 - **AND** the command spotting service is not running
 - **WHEN** the app starts
 - **THEN** the app exits with an error that names the command spotting service and how to start it
@@ -693,7 +694,7 @@ A recording started and ended by the hotkey SHALL play the sounds and show the o
 - **AND** the overlay shows the recording, then processing, then the Pasted sign, then hides, with no command sign
 
 ### Requirement: A voice start gives its start cue within 0.7 s
-When a voice command starts a dictation from standby, or "restart" starts one over, the system SHALL play the sound that start plays (the restart sound for "restart") as soon as the command is confirmed, within 0.7 s of the end of the command's words in at least 9 of 10 starts, with the services otherwise idle; the overlay's recording sign and the recording follow once the microphone opens. In the scenarios below "the start cue" means that sound. This holds for "start" alone, opening or ending an utterance, or doubled, and every form of "restart".
+When a voice command starts a dictation from standby, or "restart" starts one over, the system SHALL play the sound that start plays (the restart sound for "restart") as soon as the command is confirmed, within 0.7 s of the end of the command's words in at least 9 of 10 starts, with the services otherwise idle; the overlay's recording sign and the recording follow once the microphone opens. In the scenarios below "the start cue" means that sound. This holds for "start" alone, opening or ending an utterance, or doubled, with "please" after it, and every form of "restart", also when the first hearing of a quiet "restart" takes it for another word.
 
 #### Scenario: Start start followed by the dictation at once gives its cue at once
 - **GIVEN** listening is on
@@ -741,6 +742,24 @@ When a voice command starts a dictation from standby, or "restart" starts one ov
 - **GIVEN** listening is on
 - **AND** no dictation runs
 - **WHEN** the user says a sentence with "start" inside it, ordinary speech, a short Russian phrase or "start stop"
+- **THEN** no dictation starts
+
+#### Scenario: Start please followed by the dictation at once gives its cue at once
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** the user says "start please" and a sentence without a pause
+- **THEN** the start cue comes within 0.7 s of the end of "start please", while the sentence is still being said
+
+#### Scenario: Start please said on its own gives its cue at once
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** the user says "start please" and stays silent
+- **THEN** the start cue comes within 0.7 s of the end of "start please"
+
+#### Scenario: A brief dip inside the command words starts nothing early
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** the user says "start" and "stop" with a gap between them shorter than a pause
 - **THEN** no dictation starts
 
 ### Requirement: Every voice start logs how long its start cue took
@@ -792,7 +811,7 @@ When the command spotting service has been away for 5 seconds while listening, t
 - **AND** once the service is back, the overlay hides
 
 ### Requirement: A command is carried out once however fast its confirmation comes back
-The command spotting service SHALL carry out every command said exactly once, whether the speech recognition service for commands answers its confirmations at once or slowly within its time limit; a check that falls due while another is still waiting SHALL wait its turn and hear the same audio it would have heard on time, never be skipped.
+The command spotting service SHALL carry out every command said exactly once, as the command it was said as, whether the speech recognition service for commands answers its confirmations at once or slowly within its time limit; a check that falls due while another is still waiting SHALL wait its turn and hear the same audio it would have heard on time, never be skipped. A confirmation SHALL be read against the commands that were listened for when its words were heard together with those listened for when it comes back, the closest command winning, so a switch to the commands of another state before the confirmation comes back never turns the command said into another one; a command the app's current state does not accept is then ignored, as any command said in the wrong state is.
 
 #### Scenario: A command is carried out once while confirmations come back slowly
 - **GIVEN** listening is on and a dictation runs
@@ -804,6 +823,20 @@ The command spotting service SHALL carry out every command said exactly once, wh
 - **GIVEN** listening is on and a dictation runs
 - **WHEN** the user says "stop enter start" once while confirmations come back at once and once while each takes 2 seconds
 - **THEN** both times the dictation ends, its text is pasted, Return is pressed and a new dictation starts, each exactly once
+
+#### Scenario: A start confirmed after the dictation began stays a start
+- **GIVEN** listening is on and no dictation runs
+- **AND** the speech recognition service for commands takes 2 seconds to answer each confirmation
+- **AND** a dictation is started by the hotkey right after the user said "start dictation", before its confirmation comes back
+- **WHEN** the confirmation of "start dictation" comes back
+- **THEN** it is taken as "start dictation"
+- **AND** the dictation is not restarted
+
+#### Scenario: A start said right after a slowly confirmed stop stays a start
+- **GIVEN** listening is on and a dictation runs
+- **AND** the speech recognition service for commands takes 2.5 seconds to answer each confirmation
+- **WHEN** the user says "stop dictation" and then, before its confirmation comes back, "start"
+- **THEN** the dictation ends and a new dictation starts
 
 ### Requirement: "paste text" pastes the clipboard
 While listening and no dictation runs, the system SHALL press Cmd+V in the focused app when the user says "paste text", so the focused app pastes whatever the clipboard holds at its cursor. The command SHALL leave the clipboard as it is. It SHALL then play the paste sound and show the paste sign on the overlay. With an empty clipboard the focused app pastes nothing, and the command still confirms itself.

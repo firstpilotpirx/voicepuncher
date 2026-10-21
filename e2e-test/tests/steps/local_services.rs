@@ -13,6 +13,7 @@ use voicepuncher_copy_pool::ServiceAddress;
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
+mod app;
 mod confirmations;
 mod copies;
 mod hangs;
@@ -81,6 +82,8 @@ pub struct ScenarioServices {
     hung: Option<u32>,
     /// How long the command spotting service's log was before a step streamed speech.
     log_before_speech: Option<u64>,
+    /// The app that started its services itself.
+    app: Option<app::LaunchedApp>,
 }
 
 impl ScenarioServices {
@@ -115,6 +118,7 @@ impl ScenarioServices {
             paused: Vec::new(),
             hung: None,
             log_before_speech: None,
+            app: None,
         })
     }
 

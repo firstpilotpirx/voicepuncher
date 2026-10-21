@@ -4,6 +4,7 @@
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use anyhow::Result;
 use objc2::runtime::ProtocolObject;
@@ -14,9 +15,12 @@ use objc2_foundation::NSString;
 use super::build::{control, Parts};
 use super::form::Form;
 use super::layout::tabs;
+use super::login::LoginSwitch;
+use super::login_row::LoginRow;
 use super::session::SettingsSession;
 use super::table::FIELDS;
 use super::target::FormTarget;
+use crate::core::application::LoginItem;
 
 const TITLE: &str = "voicepuncher Settings";
 
@@ -27,14 +31,16 @@ pub type SessionOpener = Box<dyn Fn() -> Result<SettingsSession>>;
 pub struct SettingsWindow {
     opener: SessionOpener,
     logs_dir: PathBuf,
+    login_item: Arc<dyn LoginItem>,
     shown: RefCell<Option<Rc<Form>>>,
 }
 
 impl SettingsWindow {
-    pub fn new(opener: SessionOpener, logs_dir: PathBuf) -> Self {
+    pub fn new(opener: SessionOpener, logs_dir: PathBuf, login_item: Arc<dyn LoginItem>) -> Self {
         Self {
             opener,
             logs_dir,
+            login_item,
             shown: RefCell::new(None),
         }
     }
@@ -52,7 +58,8 @@ impl SettingsWindow {
         if let Some(form) = self.form().filter(|form| form.window.isVisible()) {
             return Ok(form);
         }
-        let form = build(mtm, (self.opener)()?, self.logs_dir.clone());
+        let login = LoginSwitch::new(Arc::clone(&self.login_item));
+        let form = build(mtm, (self.opener)()?, self.logs_dir.clone(), login);
         self.shown.replace(Some(Rc::clone(&form)));
         Ok(form)
     }
@@ -68,7 +75,12 @@ impl SettingsWindow {
     }
 }
 
-fn build(mtm: MainThreadMarker, session: SettingsSession, logs_dir: PathBuf) -> Rc<Form> {
+fn build(
+    mtm: MainThreadMarker,
+    session: SettingsSession,
+    logs_dir: PathBuf,
+    login: LoginSwitch,
+) -> Rc<Form> {
     let target = FormTarget::new(mtm);
     let parts = Parts {
         mtm,
@@ -88,7 +100,8 @@ fn build(mtm: MainThreadMarker, session: SettingsSession, logs_dir: PathBuf) -> 
             Some((place, note.note))
         })
         .collect();
-    let (controller, tab_views) = tabs(&parts, &controls, &notes);
+    let login = LoginRow::new(&parts, login);
+    let (controller, tab_views) = tabs(&parts, &controls, &notes, &login);
     let window = NSWindow::windowWithContentViewController(&controller);
     window.setTitle(&NSString::from_str(TITLE));
     window.setToolbarStyle(NSWindowToolbarStyle::Preference);
@@ -102,6 +115,7 @@ fn build(mtm: MainThreadMarker, session: SettingsSession, logs_dir: PathBuf) -> 
         target,
         session: RefCell::new(session),
         controls,
+        login,
         tabs: tab_views,
         logs_dir,
     });

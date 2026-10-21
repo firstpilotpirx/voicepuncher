@@ -8,6 +8,8 @@ pub mod field;
 pub mod files;
 pub mod form;
 pub mod layout;
+pub mod login;
+pub mod login_row;
 pub mod overrides;
 pub mod session;
 pub mod table;

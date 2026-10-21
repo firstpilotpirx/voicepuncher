@@ -37,6 +37,8 @@ pub struct E2eWorld {
     pub app_log: String,
     pub elapsed: Option<Duration>,
     pub voice_control: bool,
+    /// The app under test starts its services itself; off leaves them to the service scripts.
+    pub manage_services: bool,
     pub command_spotting_url: Option<String>,
     pub recognized: Vec<voicepuncher::core::domain::VoiceCommand>,
     pub listened_before_secs: f32,

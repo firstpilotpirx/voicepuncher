@@ -6,9 +6,11 @@ use voicepuncher::adapters::primary::cli::Cli;
 use voicepuncher::adapters::primary::menubar::macos::actions::{MacosMenuActions, MenuActions};
 use voicepuncher::adapters::primary::menubar::macos::applier::RuntimeApplier;
 use voicepuncher::adapters::primary::menubar::macos::indicator::StatusItemCell;
+use voicepuncher::adapters::primary::menubar::macos::login_offer::LoginOfferObserver;
 use voicepuncher::adapters::primary::menubar::macos::status_item::MacosStatusItem;
 use voicepuncher::adapters::primary::permissions::macos::{self as permissions, PermissionsWindow};
 use voicepuncher::adapters::primary::ptt::rdev::RdevHotkeyListener;
+use voicepuncher::adapters::primary::settings::macos::login::LoginOffer;
 use voicepuncher::adapters::primary::settings::macos::session::{SessionParts, SettingsSession};
 use voicepuncher::adapters::primary::settings::macos::window::SettingsWindow;
 use voicepuncher::adapters::primary::setup::cli::SetupWizard;
@@ -17,6 +19,8 @@ use voicepuncher::adapters::secondary::logging::file::{
     install_panic_hook, launch_header, logs_dir, terminal_stderr, RotatingFileWriter, TeeWriter,
     KEPT_BACKUPS, LOG_FILE_NAME, MAX_LOG_BYTES,
 };
+use voicepuncher::adapters::secondary::loginitem::macos::launch;
+use voicepuncher::adapters::secondary::loginitem::macos::MacOsLoginItem;
 use voicepuncher::adapters::secondary::permissions::macos::MacOsPermissionProbe;
 use voicepuncher::adapters::secondary::recording::cpal::devices::CpalInputDevices;
 use voicepuncher::adapters::secondary::recording::filesystem::FileSystemAudioRecorder;
@@ -32,11 +36,11 @@ use voicepuncher::adapters::secondary::visualfeedback::pointer_sign::{
 use voicepuncher::config::Config;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
 use voicepuncher::core::application::visual_indicator::VisualIndicator;
-use voicepuncher::core::application::{PermissionsGate, TextRefiner};
+use voicepuncher::core::application::{LoginItem, PermissionsGate, TextRefiner};
 use voicepuncher::core::domain::FailureNotice;
 use voicepuncher::runtime::wiring::{self, WiringAssembler};
 use voicepuncher::runtime::{
-    signals, LogObserver, PermissionsWatch, Runtime, SharedVisualIndicator,
+    signals, LogObserver, ManagedServices, PermissionsWatch, Runtime, SharedVisualIndicator,
 };
 
 struct NoopVisualIndicator;
@@ -102,8 +106,15 @@ fn main() {
         return;
     }
 
-    // a missing service ends the launch at once, before the app waits for any permission
-    if config.voice_control.enabled {
+    // the app starts the services itself and waits for them; when it leaves them to the
+    // scripts, a missing service ends the launch at once, before the app waits for any permission
+    let services = config.services.manage.then(|| {
+        ManagedServices::start().unwrap_or_else(|e| {
+            log::error!("services: {e:#}");
+            std::process::exit(2);
+        })
+    });
+    if services.is_none() && config.voice_control.enabled {
         if let Err(e) =
             SpottingClient::connect(&config.voice_control.url, std::time::Instant::now())
         {
@@ -114,6 +125,7 @@ fn main() {
 
     let mtm = MainThreadMarker::new().expect("main must run on the main thread");
     let app = NSApplication::sharedApplication(mtm);
+    launch::log_launch_origin(mtm);
     let status_item = MacosStatusItem::install(mtm);
     let status_cell = StatusItemCell::new(Box::new(status_item.icon()), FAILURE_NOTICE_LIFETIME);
     status_item.connect(status_cell.clone());
@@ -129,8 +141,23 @@ fn main() {
     // a missing permission makes the runtime wait for it, not the process exit
     let mut runtime = Runtime::new(Box::new(assembler), Box::new(RdevHotkeyListener::new()))
         .with_permissions(PermissionsWatch::new(gate));
+    let mut services_view = None;
+    if let Some(services) = services {
+        services_view = Some(services.view());
+        signals::stop_on_termination(services.stopper()).unwrap_or_else(|e| {
+            log::error!("{e:#}");
+            std::process::exit(2);
+        });
+        runtime = runtime.with_services(Box::new(services));
+    }
     runtime.observe(Box::new(LogObserver));
     runtime.observe(Box::new(status_cell.observer()));
+    let login_item: std::sync::Arc<dyn LoginItem> =
+        std::sync::Arc::new(MacOsLoginItem::of_this_process());
+    runtime.observe(Box::new(LoginOfferObserver::new(LoginOffer::new(
+        std::sync::Arc::clone(&login_item),
+        config_path.clone(),
+    ))));
     runtime.observe(Box::new(permissions_window.observer()));
     if runtime.start(config).is_err() {
         // the log observer logged the reason with the state Failed
@@ -139,7 +166,7 @@ fn main() {
     let reloader = runtime
         .reloader()
         .expect("the runtime runs after its start");
-    let settings = settings_window(&config_path, &cli, &reloader);
+    let settings = settings_window(&config_path, &cli, &reloader, &login_item);
     signals::reload_on_hang_up(
         config_path.clone(),
         Box::new(move |cfg| cli.overlay(cfg)),
@@ -150,10 +177,12 @@ fn main() {
         std::process::exit(2);
     });
     // Quit in the menu stops the runtime and ends the process; run() never returns.
-    let actions = std::rc::Rc::new(
-        MacosMenuActions::new(runtime, Box::new(settings), logs_folder())
-            .with_permissions_window(Box::new(permissions::bring_to_front)),
-    );
+    let mut actions = MacosMenuActions::new(runtime, Box::new(settings), logs_folder())
+        .with_permissions_window(Box::new(permissions::bring_to_front));
+    if let Some(view) = services_view {
+        actions = actions.with_services(view);
+    }
+    let actions = std::rc::Rc::new(actions);
     status_item.set_actions(Box::new(std::rc::Rc::clone(&actions)));
     permissions_window.set_quit(Box::new(move || actions.quit()));
 
@@ -166,6 +195,7 @@ fn settings_window(
     config_path: &std::path::Path,
     cli: &Cli,
     reloader: &voicepuncher::runtime::Reloader,
+    login_item: &std::sync::Arc<dyn LoginItem>,
 ) -> SettingsWindow {
     let (config_path, cli, reloader) = (config_path.to_path_buf(), cli.clone(), reloader.clone());
     let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
@@ -178,7 +208,11 @@ fn settings_window(
         };
         SettingsSession::open(&config_path, &home, parts)
     };
-    SettingsWindow::new(Box::new(opener), logs_folder())
+    SettingsWindow::new(
+        Box::new(opener),
+        logs_folder(),
+        std::sync::Arc::clone(login_item),
+    )
 }
 
 /// The folder the services' logs live in: `~/.voicepuncher/logs`.

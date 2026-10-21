@@ -13,6 +13,11 @@ pub enum RuntimeState {
         voice_control: bool,
     },
     Restarting,
+    /// No pipeline runs until every needed local service answers; `ready` of `total` do.
+    StartingServices {
+        ready: usize,
+        total: usize,
+    },
     /// No pipeline runs until every permission is granted; `revoked` were taken away while
     /// the pipeline ran.
     WaitingForPermissions {
@@ -37,6 +42,9 @@ impl fmt::Display for RuntimeState {
                 if *voice_control { "on" } else { "off" }
             ),
             RuntimeState::Restarting => write!(f, "restarting"),
+            RuntimeState::StartingServices { ready, total } => {
+                write!(f, "starting services ({ready} of {total} ready)")
+            }
             RuntimeState::WaitingForPermissions { missing, .. } => {
                 let names: Vec<&str> = missing.iter().map(|p| p.name()).collect();
                 write!(f, "waiting for permissions: {}", names.join(", "))

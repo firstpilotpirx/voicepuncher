@@ -14,6 +14,8 @@ use objc2_foundation::{NSArray, NSEdgeInsets, NSString};
 use super::build::{button, stack, width, Parts};
 use super::control::FieldControl;
 use super::field::Tab;
+use super::login::SWITCH_LABEL;
+use super::login_row::LoginRow;
 use super::target::actions;
 
 const MARGIN: f64 = 20.0;
@@ -56,6 +58,7 @@ pub fn tabs(
     parts: &Parts,
     controls: &[FieldControl],
     notes: &[(usize, String)],
+    login: &LoginRow,
 ) -> (Retained<NSTabViewController>, Vec<TabViews>) {
     let controller = NSTabViewController::new(parts.mtm);
     controller.setTabStyle(NSTabViewControllerTabStyle::Toolbar);
@@ -65,7 +68,7 @@ pub fn tabs(
         .enumerate()
         .map(|(place, tab)| {
             let page = NSViewController::new(parts.mtm);
-            let (view, views) = tab_view(parts, &page, place as isize, controls, notes);
+            let (view, views) = tab_view(parts, &page, place as isize, controls, notes, login);
             page.setView(&view);
             views.fit();
             let item = NSTabViewItem::tabViewItemWithViewController(&page);
@@ -88,6 +91,7 @@ fn tab_view(
     place: isize,
     controls: &[FieldControl],
     notes: &[(usize, String)],
+    login: &LoginRow,
 ) -> (Retained<NSView>, TabViews) {
     let tab = Tab::ALL[place as usize];
     let grid = NSGridView::new(parts.mtm);
@@ -102,6 +106,10 @@ fn tab_view(
         notes: Vec::new(),
     };
     add_rows(parts, &grid, &mut views, controls, notes, false);
+    if tab == Tab::General {
+        add_row(parts.mtm, &grid, Some(SWITCH_LABEL), &login.view);
+        add_row(parts.mtm, &grid, None, &login.note);
+    }
     if controls
         .iter()
         .any(|c| c.field.tab == tab && c.field.advanced)

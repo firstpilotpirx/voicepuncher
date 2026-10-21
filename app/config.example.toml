@@ -80,3 +80,18 @@ max_size_mb = 2048
 
 [logging]
 level = "info"
+
+[services]
+# In hotkey mode the app starts the local services it needs and stops them at quit; a service
+# that already answers (started by `just start-model-servers`) is used and left running.
+# false: the app starts nothing and expects the services from `just start-model-servers`.
+manage = true
+dictation_copies = 3   # whisper-server copies of the speech recognition service for dictation, 1 to 4
+command_copies = 3     # the same for the speech recognition service for commands
+models_dir = "~/.voicepuncher/models"
+commands_url = "http://127.0.0.1:8085/v1"   # the speech recognition service for commands
+
+[app]
+# Kept by the app, not a setting: whether it already asked to start at login. Start at login
+# itself is System Settings → General → Login Items (or the switch in Settings → General).
+launch_at_login_asked = false

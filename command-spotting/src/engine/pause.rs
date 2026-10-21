@@ -21,15 +21,25 @@ const FLOOR_FRAMES: usize = 300;
 const EDGE_FRAMES: usize = 2;
 /// Quieter than this, an utterance has had no speech yet to measure a pause against.
 const NO_SPEECH_RMS: f32 = 1e-4;
+/// A quiet run this long is a gap between words: 30 ms.
+const GAP_FRAMES: usize = 3;
+/// How far back the gaps between words are kept: 5 s.
+const GAP_MEMORY_SAMPLES: usize = 80_000;
 
 /// The loudness of the utterance heard now, and how long it has been quiet.
 pub(super) struct PauseWatch {
     min_quiet_frames: usize,
+    /// Half the minimum silence: a short utterance may be heard from here on.
+    half_quiet_frames: usize,
+    /// The quiet run heard now was reported at its half.
+    half_told: bool,
     loudest: f32,
     /// Loudness of the last frames heard, for the noise floor.
     recent: VecDeque<f32>,
     quiet_frames: usize,
     quiet_from: usize,
+    /// Where the gaps between words of the last seconds began, oldest first.
+    gaps: VecDeque<usize>,
     pending: Vec<f32>,
     /// Sample position of the first sample in `pending`.
     position: usize,
@@ -38,14 +48,18 @@ pub(super) struct PauseWatch {
 impl PauseWatch {
     /// Watches for a quiet run of `min_silence_samples`.
     pub(super) fn new(min_silence_samples: usize) -> Self {
+        let min_quiet_frames = (min_silence_samples / FRAME_SAMPLES)
+            .saturating_sub(EDGE_FRAMES)
+            .max(1);
         Self {
-            min_quiet_frames: (min_silence_samples / FRAME_SAMPLES)
-                .saturating_sub(EDGE_FRAMES)
-                .max(1),
+            min_quiet_frames,
+            half_quiet_frames: (min_quiet_frames / 2).max(1),
+            half_told: false,
             loudest: 0.0,
             recent: VecDeque::with_capacity(FLOOR_FRAMES),
             quiet_frames: 0,
             quiet_from: 0,
+            gaps: VecDeque::new(),
             pending: Vec::new(),
             position: 0,
         }
@@ -75,16 +89,27 @@ impl PauseWatch {
                     self.quiet_from = at;
                 }
                 self.quiet_frames += 1;
+                if self.quiet_frames == GAP_FRAMES.min(self.min_quiet_frames) {
+                    self.gaps.push_back(self.quiet_from);
+                }
                 if self.quiet_frames >= self.min_quiet_frames && pause.is_none() {
                     pause = Some(self.quiet_from);
                 }
             } else {
                 self.loudest = self.loudest.max(loudness);
                 self.quiet_frames = 0;
+                self.half_told = false;
             }
         }
         self.pending.drain(..frames * FRAME_SAMPLES);
         self.position += frames * FRAME_SAMPLES;
+        while self
+            .gaps
+            .front()
+            .is_some_and(|&gap| gap + GAP_MEMORY_SAMPLES < self.position)
+        {
+            self.gaps.pop_front();
+        }
         pause
     }
 
@@ -95,10 +120,35 @@ impl PauseWatch {
         (self.loudest * QUIET_FRACTION).max(near_floor)
     }
 
+    /// Where the quiet run began, once, when it has lasted half the minimum silence.
+    pub(super) fn take_half_pause(&mut self) -> Option<usize> {
+        if self.half_told || self.quiet_frames < self.half_quiet_frames {
+            return None;
+        }
+        self.half_told = true;
+        Some(self.quiet_from)
+    }
+
+    /// Where the quiet run heard now began; none while the last frame was louder.
+    pub(super) fn quiet_run_from(&self) -> Option<usize> {
+        (self.quiet_frames > 0).then_some(self.quiet_from)
+    }
+
+    /// Where the first gap between words at or after sample `at` began, of the last seconds.
+    pub(super) fn gap_after(&self, at: usize) -> Option<usize> {
+        self.gaps.iter().copied().find(|&gap| gap >= at)
+    }
+
+    /// The sample position up to which the stream was heard.
+    pub(super) fn heard_until(&self) -> usize {
+        self.position
+    }
+
     /// Starts over for the next utterance.
     pub(super) fn forget(&mut self) {
         self.loudest = 0.0;
         self.quiet_frames = 0;
+        self.half_told = false;
     }
 
     fn is_quiet(&self, loudness: f32) -> bool {
@@ -194,6 +244,26 @@ mod tests {
     }
 
     #[test]
+    fn should_report_half_the_minimum_silence_once_and_forget_it_on_a_louder_frame() {
+        // Given
+        let mut watch = PauseWatch::new(MIN_SILENCE_SAMPLES);
+        watch.hear(&tone(20, 0.01), true);
+        watch.hear(&tone(13, 0.0), true);
+        assert_eq!(watch.take_half_pause(), None);
+        // When the quiet run reaches half the minimum silence
+        watch.hear(&tone(1, 0.0), true);
+        // Then it is reported once
+        assert_eq!(watch.take_half_pause(), Some(20 * FRAME_SAMPLES));
+        assert_eq!(watch.take_half_pause(), None);
+        assert_eq!(watch.quiet_run_from(), Some(20 * FRAME_SAMPLES));
+        // And a louder frame starts a new run, reported again at its half
+        watch.hear(&tone(1, 0.01), true);
+        assert_eq!(watch.quiet_run_from(), None);
+        watch.hear(&tone(14, 0.0), true);
+        assert_eq!(watch.take_half_pause(), Some(35 * FRAME_SAMPLES));
+    }
+
+    #[test]
     fn should_find_no_pause_before_any_speech() {
         // Given
         let mut watch = PauseWatch::new(MIN_SILENCE_SAMPLES);
@@ -233,5 +303,33 @@ mod tests {
         let at = first_sound(&after_end, 0.01);
         // Then
         assert_eq!(at, after_end.len());
+    }
+
+    #[test]
+    fn should_remember_where_a_gap_between_words_began_after_speech_went_on() {
+        // Given
+        let mut watch = PauseWatch::new(MIN_SILENCE_SAMPLES);
+        watch.hear(&tone(20, 0.01), true);
+        watch.hear(&tone(5, 0.001), true);
+        // When
+        watch.hear(&tone(20, 0.01), true);
+        // Then
+        assert_eq!(
+            watch.gap_after(10 * FRAME_SAMPLES),
+            Some(20 * FRAME_SAMPLES)
+        );
+        assert_eq!(watch.quiet_run_from(), None);
+    }
+
+    #[test]
+    fn should_take_no_gap_from_a_dip_shorter_than_a_gap_between_words() {
+        // Given
+        let mut watch = PauseWatch::new(MIN_SILENCE_SAMPLES);
+        watch.hear(&tone(20, 0.01), true);
+        watch.hear(&tone(2, 0.001), true);
+        // When
+        watch.hear(&tone(20, 0.01), true);
+        // Then
+        assert_eq!(watch.gap_after(0), None);
     }
 }

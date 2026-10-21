@@ -96,3 +96,47 @@ Feature: app-runtime
       When Accessibility is revoked
       Then the pipeline ends
       And the observer is told Waiting for permissions naming Accessibility
+
+  Rule: The runtime waits for the services it manages
+
+    Scenario: The pipeline starts once the services are ready
+      Given an observer registered before the runtime starts
+      And every permission is granted and two needed services are not ready yet
+      When the runtime starts and the services become ready one after the other
+      Then the observer is told Starting services with 0 of 2, then 1 of 2, then Ready
+      And the dictation pipeline runs
+
+  Rule: A service that cannot start fails the runtime
+
+    Scenario: A service that cannot start fails the runtime without ending it
+      Given the runtime waits for its services
+      When a needed service is marked Failed
+      Then the runtime state is Failed naming that service
+      And no dictation pipeline runs and the process keeps running
+
+    Scenario: A retried service brings the runtime back
+      Given the runtime is Failed because a service could not start
+      When the service is retried and becomes ready
+      Then the observer is told Starting services and then Ready
+
+  Rule: A service lost while Ready keeps the pipeline
+
+    Scenario: A service lost while Ready keeps the pipeline
+      Given the runtime is Ready with services it started
+      When one of them stops answering
+      Then the runtime state stays Ready and the pipeline keeps running
+
+  Rule: A reload starts the services it needs
+
+    Scenario: Turning voice control on starts the command services
+      Given the runtime is Ready with voice control off and services it started
+      When the runtime reloads a configuration with voice control on
+      Then the services voice control needs are started
+      And the runtime becomes Ready with voice control on once they are ready
+
+  Rule: Stopping the runtime stops its services
+
+    Scenario: Stopping the runtime stops its services
+      Given the runtime is Ready with services it started
+      When the runtime stops
+      Then the services it started are stopped

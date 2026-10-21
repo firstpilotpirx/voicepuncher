@@ -3,13 +3,17 @@
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use anyhow::{bail, Context, Result};
 
 use objc2::MainThreadMarker;
 use objc2_app_kit::NSWorkspace;
-use objc2_foundation::NSString;
+use objc2_foundation::{NSString, NSURL};
 
 use crate::adapters::primary::settings::macos::window::SettingsWindow;
-use crate::runtime::Runtime;
+use crate::core::domain::ServiceStatus;
+use crate::runtime::{Runtime, ServicesView};
 
 /// The process's exit code after Quit.
 pub const QUIT_EXIT_CODE: i32 = 0;
@@ -20,6 +24,17 @@ pub trait MenuActions {
     fn open_settings(&self);
     fn open_logs(&self);
     fn open_permissions(&self);
+
+    /// The local services and their states; none when the app leaves them to the scripts.
+    fn services(&self) -> Option<Vec<ServiceStatus>> {
+        None
+    }
+
+    /// Starts the service on `port` again, or retries it after it failed.
+    fn restart_service(&self, _port: u16) {}
+
+    /// Shows the log file of the service on `port`.
+    fn open_service_log(&self, _port: u16) {}
 }
 
 /// The same actions, shared by the menu and the Permissions window.
@@ -38,6 +53,18 @@ impl<T: MenuActions + ?Sized> MenuActions for std::rc::Rc<T> {
 
     fn open_permissions(&self) {
         (**self).open_permissions();
+    }
+
+    fn services(&self) -> Option<Vec<ServiceStatus>> {
+        (**self).services()
+    }
+
+    fn restart_service(&self, port: u16) {
+        (**self).restart_service(port);
+    }
+
+    fn open_service_log(&self, port: u16) {
+        (**self).open_service_log(port);
     }
 }
 
@@ -65,6 +92,7 @@ pub struct MacosMenuActions {
     logs_dir: PathBuf,
     end_process: Box<dyn Fn(i32)>,
     open_permissions: Box<dyn Fn()>,
+    services: Option<std::sync::Arc<dyn ServicesView>>,
 }
 
 impl MacosMenuActions {
@@ -91,7 +119,14 @@ impl MacosMenuActions {
             logs_dir,
             end_process,
             open_permissions: Box::new(|| log::warn!("menu: no Permissions window")),
+            services: None,
         }
+    }
+
+    /// The Services submenu lists and restarts `services`.
+    pub fn with_services(mut self, services: std::sync::Arc<dyn ServicesView>) -> Self {
+        self.services = Some(services);
+        self
     }
 
     /// Permissions… calls `open`.
@@ -123,6 +158,32 @@ impl MenuActions for MacosMenuActions {
             log::warn!("menu: logs folder {} not shown", self.logs_dir.display());
         }
     }
+
+    fn services(&self) -> Option<Vec<ServiceStatus>> {
+        self.services.as_ref().map(|services| services.statuses())
+    }
+
+    fn restart_service(&self, port: u16) {
+        if let Some(services) = &self.services {
+            log::info!("menu: restart of the service on port {port}");
+            services.restart(port);
+        }
+    }
+
+    fn open_service_log(&self, port: u16) {
+        let log_file = self
+            .services()
+            .unwrap_or_default()
+            .into_iter()
+            .find(|status| status.port == port)
+            .map(|status| status.log_file);
+        let Some(log_file) = log_file else {
+            return;
+        };
+        if let Err(e) = open_in_text_editor(&log_file) {
+            log::warn!("menu: service log not opened: {e:#}");
+        }
+    }
 }
 
 /// Creates `folder` when it does not exist yet.
@@ -138,4 +199,28 @@ pub fn show_in_file_browser(folder: &Path) -> bool {
     }
     let path = NSString::from_str(&folder.to_string_lossy());
     NSWorkspace::sharedWorkspace().selectFile_inFileViewerRootedAtPath(Some(&path), &path)
+}
+
+const OPEN_COMMAND: &str = "open";
+const PLAIN_TEXT_EDITOR_FLAG: &str = "-t";
+
+/// Opens `file` in the editor the system uses for it, or the plain text editor when none is set.
+pub fn open_in_text_editor(file: &Path) -> Result<()> {
+    let path = NSString::from_str(&file.to_string_lossy());
+    let url = NSURL::fileURLWithPath(&path);
+    if NSWorkspace::sharedWorkspace().openURL(&url) {
+        return Ok(());
+    }
+    let status = Command::new(OPEN_COMMAND)
+        .arg(PLAIN_TEXT_EDITOR_FLAG)
+        .arg(file)
+        .status()
+        .with_context(|| format!("cannot run {OPEN_COMMAND}"))?;
+    if !status.success() {
+        bail!(
+            "{} not opened in the plain text editor: {status}",
+            file.display()
+        );
+    }
+    Ok(())
 }

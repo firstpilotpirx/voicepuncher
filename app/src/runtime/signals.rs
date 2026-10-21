@@ -1,10 +1,11 @@
-//! The hang-up signal reloads the configuration file the runtime was started with.
+//! The hang-up signal reloads the configuration file the runtime was started with; a
+//! termination or interrupt signal stops the local services the app started and ends it.
 
 use std::path::PathBuf;
 use std::thread::JoinHandle;
 
 use anyhow::{Context, Result};
-use signal_hook::consts::SIGHUP;
+use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
 use signal_hook::iterator::Signals;
 
 use crate::config::{self, Config};
@@ -42,4 +43,23 @@ pub fn reload_on_hang_up(
             }
         })
         .context("failed to spawn signals thread")
+}
+
+/// The exit code after a termination or interrupt signal.
+pub const TERMINATED_EXIT_CODE: i32 = 0;
+
+/// On the first termination or interrupt signal, runs `stop` and ends the process.
+pub fn stop_on_termination(stop: Box<dyn FnOnce() + Send>) -> Result<JoinHandle<()>> {
+    let mut signals =
+        Signals::new([SIGTERM, SIGINT]).context("failed to handle the termination signals")?;
+    std::thread::Builder::new()
+        .name("termination".into())
+        .spawn(move || {
+            if let Some(signal) = signals.forever().next() {
+                log::info!("runtime: signal {signal}: stopping the services the app started");
+                stop();
+                std::process::exit(TERMINATED_EXIT_CODE);
+            }
+        })
+        .context("failed to spawn the termination thread")
 }

@@ -17,6 +17,7 @@ use objc2_foundation::{NSDictionary, NSString};
 use toml::Value;
 use voicepuncher::adapters::primary::settings::macos::field::Choices;
 use voicepuncher::adapters::primary::settings::macos::form::Form;
+use voicepuncher::adapters::primary::settings::macos::login::UNAVAILABLE_NOTE;
 use voicepuncher::adapters::primary::settings::macos::session::{
     ApplyStatus, ConfigApplier, SessionParts, SettingsSession, StatusListener,
 };
@@ -24,8 +25,9 @@ use voicepuncher::adapters::primary::settings::macos::table::{find, FIELDS};
 use voicepuncher::adapters::primary::settings::macos::target::Event;
 use voicepuncher::adapters::primary::settings::macos::values::options;
 use voicepuncher::adapters::primary::settings::macos::window::SettingsWindow;
+use voicepuncher::adapters::secondary::loginitem::macos::MacOsLoginItem;
 use voicepuncher::config::Config;
-use voicepuncher::core::application::InputDevices;
+use voicepuncher::core::application::{InputDevices, LoginItem, LoginItemStatus};
 
 type Test = (&'static str, fn());
 
@@ -55,6 +57,14 @@ const TESTS: &[Test] = &[
         should_play_a_sound_without_changing_the_file,
     ),
     ("should_draw_every_tab", should_draw_every_tab),
+    (
+        "should_show_the_login_switch_disabled_outside_an_installed_app",
+        should_show_the_login_switch_disabled_outside_an_installed_app,
+    ),
+    (
+        "should_register_the_login_item_when_the_switch_turns_on_without_a_save",
+        should_register_the_login_item_when_the_switch_turns_on_without_a_save,
+    ),
 ];
 
 /// The configuration file every window test starts from.
@@ -106,8 +116,40 @@ impl InputDevices for NoMicrophones {
     }
 }
 
+/// A login item that only remembers whether it is registered.
+#[derive(Default)]
+struct RememberedLoginItem(Mutex<bool>);
+
+impl LoginItem for RememberedLoginItem {
+    fn status(&self) -> LoginItemStatus {
+        if *self.0.lock().unwrap() {
+            LoginItemStatus::Enabled
+        } else {
+            LoginItemStatus::NotRegistered
+        }
+    }
+
+    fn register(&self) -> Result<(), String> {
+        *self.0.lock().unwrap() = true;
+        Ok(())
+    }
+
+    fn unregister(&self) -> Result<(), String> {
+        *self.0.lock().unwrap() = false;
+        Ok(())
+    }
+}
+
 /// A settings window over `file` in a temporary folder.
 fn window_over(folder: &Path, applied: &AppliedConfigs) -> SettingsWindow {
+    window_with_login_item(folder, applied, Arc::new(MacOsLoginItem::of_this_process()))
+}
+
+fn window_with_login_item(
+    folder: &Path,
+    applied: &AppliedConfigs,
+    login_item: Arc<dyn LoginItem>,
+) -> SettingsWindow {
     let config = folder.join("config.toml");
     let home = folder.to_path_buf();
     let applied = applied.clone();
@@ -119,7 +161,7 @@ fn window_over(folder: &Path, applied: &AppliedConfigs) -> SettingsWindow {
         };
         SettingsSession::open(&config, &home, parts)
     };
-    SettingsWindow::new(Box::new(opener), folder.join("logs"))
+    SettingsWindow::new(Box::new(opener), folder.join("logs"), login_item)
 }
 
 fn open_form(folder: &Path, applied: &AppliedConfigs) -> (SettingsWindow, Rc<Form>) {
@@ -229,6 +271,43 @@ fn should_play_a_sound_without_changing_the_file() {
     assert!(applied.0.lock().unwrap().is_empty());
     assert_eq!(form.status_line(), "");
     form.handle(Event::Revert);
+    form.window.close();
+}
+
+fn should_show_the_login_switch_disabled_outside_an_installed_app() {
+    // Given
+    let folder = tempfile::tempdir().unwrap();
+    // When
+    let (_window, form) = open_form(folder.path(), &AppliedConfigs::default());
+    // Then
+    assert!(!form.login.control.isEnabled());
+    assert_eq!(form.login.note.stringValue().to_string(), UNAVAILABLE_NOTE);
+    assert!(form.login.open_settings.isHidden());
+    form.window.close();
+}
+
+fn should_register_the_login_item_when_the_switch_turns_on_without_a_save() {
+    // Given
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::write(folder.path().join("config.toml"), RIGHT_COMMAND).unwrap();
+    let applied = AppliedConfigs::default();
+    let item = Arc::new(RememberedLoginItem::default());
+    let mtm = main_thread();
+    let _app = NSApplication::sharedApplication(mtm);
+    let window = window_with_login_item(folder.path(), &applied, item.clone());
+    let form = window.prepare(mtm).expect("the window builds");
+    // When
+    form.login
+        .control
+        .setState(objc2_app_kit::NSControlStateValueOn);
+    form.handle(Event::LoginToggled);
+    // Then
+    assert_eq!(item.status(), LoginItemStatus::Enabled);
+    assert!(form.login.is_on());
+    let file = std::fs::read_to_string(folder.path().join("config.toml")).unwrap();
+    assert_eq!(file, RIGHT_COMMAND);
+    assert!(applied.0.lock().unwrap().is_empty());
+    assert!(form.should_close(), "closing asked about unsaved edits");
     form.window.close();
 }
 

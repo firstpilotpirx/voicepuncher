@@ -867,14 +867,23 @@ const DICTATING_PHRASES: [&str; 4] = [
 
 /// Hears each answer in turn, one per clip, and nothing once they run out; counts the clips.
 struct HearsInTurn {
-    answers: Mutex<std::collections::VecDeque<&'static str>>,
+    /// The answer to the segment's clip, which starts with the pre-roll.
+    first: Mutex<Option<&'static str>>,
+    /// The answers to the steady clips, in turn: a second hearing may be asked beside the
+    /// first one, so the order of the requests says nothing.
+    again: Mutex<std::collections::VecDeque<&'static str>>,
     clips: Mutex<usize>,
 }
 
+/// The steady clip starts 0.25 s before its first sound; a segment's clip starts with the
+/// pre-roll of 0.8 s before the detected speech.
+const STEADY_LEAD_MAX_SECS: f32 = 0.45;
 impl HearsInTurn {
     fn new(answers: &[&'static str]) -> Arc<Self> {
+        let (first, again) = answers.split_first().expect("an answer");
         Arc::new(Self {
-            answers: Mutex::new(answers.iter().copied().collect()),
+            first: Mutex::new(Some(*first)),
+            again: Mutex::new(again.iter().copied().collect()),
             clips: Mutex::new(0),
         })
     }
@@ -885,9 +894,19 @@ impl HearsInTurn {
 }
 
 impl Hear for HearsInTurn {
-    fn hear(&self, _: &[f32], _: Duration) -> anyhow::Result<Heard> {
+    fn hear(&self, clip: &[f32], _: Duration) -> anyhow::Result<Heard> {
         *self.clips.lock().unwrap() += 1;
-        let text = self.answers.lock().unwrap().pop_front().unwrap_or("");
+        let onset = clip
+            .iter()
+            .position(|s| s.abs() > SILENCE_LEVEL)
+            .unwrap_or(0);
+        let steady = (onset as f32) < STEADY_LEAD_MAX_SECS * SAMPLE_RATE as f32;
+        let text = if steady {
+            self.again.lock().unwrap().pop_front()
+        } else {
+            self.first.lock().unwrap().take()
+        }
+        .unwrap_or("");
         let words: Vec<&str> = text.split_whitespace().collect();
         Ok(Heard {
             text: text.to_owned(),
@@ -969,15 +988,20 @@ fn should_take_no_command_when_the_second_hearing_of_a_near_miss_says_it_again()
 }
 
 #[test]
-fn should_not_hear_start_again_when_restart_is_not_selected() {
+fn should_take_no_restart_from_a_second_hearing_when_restart_is_not_selected() {
     let Some(_shared) = engine() else { return };
     // Given
     let standby = ["start dictation", "press enter", "clear all text"];
     let hear = HearsInTurn::new(&["Let's start.", "Restart."]);
     // When
-    heard_alone(hear.clone(), &standby, "Let's start");
+    let events = heard_alone(hear, &standby, "Let's start");
     // Then
-    assert_eq!(hear.clips(), 1);
+    assert!(
+        !reported_phrases(&events)
+            .iter()
+            .any(|p| p == "restart dictation"),
+        "{events:?}"
+    );
 }
 
 /// Hears exactly the words of the stream that a clip holds, with their times in the clip: a

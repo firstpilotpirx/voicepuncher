@@ -1,6 +1,8 @@
 //! The confirmations of a session: what each asks the speech recognition service, and what
 //! its answer makes of the utterance once it arrives.
 
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Instant;
 
 use crate::confirm::{Heard, TimedWord};
@@ -9,6 +11,8 @@ use crate::matcher::{Found, PhraseMatcher, Placement};
 use crate::orderer::{Segment, Spotted};
 use crate::protocol::{ServerEvent, Timing};
 use crate::worker::{Answer, Job, JobId, JobKind};
+
+use super::STARTED_EARLY;
 
 use super::clip::steady_clip;
 use super::pause::first_sound;
@@ -26,6 +30,8 @@ const TAIL_CHECK_SECS: f32 = 1.5;
 /// How many deadlines `settle` waits for one answer: a segment's confirmation may be tried
 /// twice, and each attempt may take its deadline.
 const SETTLE_DEADLINES: u32 = 3;
+/// Speech heard this long after a clip that ends in "please" is no longer the word's rest.
+const CUT_WORD_SECS: f32 = 0.25;
 
 /// What a confirmation asked for, kept until its answer is applied.
 pub(super) enum JobContext {
@@ -61,6 +67,10 @@ pub(super) enum JobContext {
         utterance: u64,
         from: usize,
     },
+    /// A short utterance in standby heard at half its pause, before its segment closed.
+    HalfPause {
+        utterance: u64,
+    },
     /// A short segment heard as a near miss of `phrase`, heard again through a clip whose
     /// first sample stands for stream position `origin`.
     Rehear {
@@ -76,6 +86,8 @@ pub(super) struct AskedJob {
     context: JobContext,
     asked_at: usize,
     asked: Instant,
+    /// The phrases listened for when the job was asked.
+    matcher: Arc<PhraseMatcher>,
 }
 
 impl AskedJob {
@@ -187,6 +199,7 @@ impl Session<'_> {
                 context,
                 asked_at: self.samples_seen,
                 asked: Instant::now(),
+                matcher: Arc::clone(&self.matcher),
             },
         );
         Some(n)
@@ -291,11 +304,21 @@ impl Session<'_> {
             r.next_window = usize::MAX;
         });
         let short = end - start <= self.engine.max_command_samples;
-        let from = if short {
+        // The same quiet run closes it: what was heard at its half stands for it, when that
+        // is a command alone or not in yet.
+        let half_pause = self.half_pause.take().filter(|h| {
+            short
+                && match &h.answer {
+                    None => true,
+                    Some(heard) => heard.as_ref().is_some_and(|h| self.said_alone(h)),
+                }
+        });
+        let own_from = if short {
             self.pre_rolled(start)
         } else {
             end.saturating_sub(samples_in(WINDOW_SECS))
         };
+        let from = half_pause.as_ref().map_or(own_from, |h| h.from);
         let post_roll = self.recent.between(end, end + samples_in(POST_ROLL_SECS));
         let to = end + first_sound(&post_roll, quiet_level);
         let segment = SegmentSpan {
@@ -307,17 +330,42 @@ impl Session<'_> {
             quiet_level,
             tail_check: by_pause && end - start > samples_in(FIRST_WINDOW_SECS),
         };
-        match self.ask(
-            JobKind::Segment,
-            from,
-            to,
-            JobContext::Segment { utterance, segment },
-        ) {
-            Some(job) => {
-                self.outbox.hold(job, events);
-                Vec::new()
+        let context = JobContext::Segment { utterance, segment };
+        let again = context.rehear(String::new()).filter(|_| short);
+        let (job, heard) = match half_pause {
+            Some(HalfPauseHearing {
+                job, answer: None, ..
+            }) => {
+                log::debug!("job={job} heard at half the pause stands for its segment");
+                if let Some(asked) = self.jobs.get_mut(&job) {
+                    asked.context = context;
+                }
+                self.stand_ins.insert(job, own_from);
+                (Some(job), None)
             }
-            None => self.outbox.send(events),
+            Some(HalfPauseHearing {
+                answer: Some(heard),
+                ..
+            }) => (self.reserve(JobKind::Segment, context), heard),
+            None => (self.ask(JobKind::Segment, from, to, context), None),
+        };
+        let Some(job) = job else {
+            return self.outbox.send(events);
+        };
+        self.outbox.hold(job, events);
+        if let Some(again) = again {
+            self.hear_early_when_triggered(job, again);
+        }
+        match heard {
+            // Heard at half the pause: the answer is in already.
+            Some(heard) => self.apply(Answer {
+                id: JobId {
+                    conn: self.conn,
+                    n: job,
+                },
+                heard: Some(heard),
+            }),
+            None => Vec::new(),
         }
     }
 
@@ -343,15 +391,128 @@ impl Session<'_> {
         }
     }
 
+    /// Hears a short utterance of standby at half its pause, whose quiet run began at
+    /// `quiet_from`, from its pre-roll to `now`.
+    pub(super) fn hear_at_half_pause(&mut self, quiet_from: usize, now: usize) {
+        if self.half_pause.is_some() || !self.matcher.selects(STARTED_EARLY) {
+            return;
+        }
+        let Some((utterance, start)) = self
+            .current
+            .and_then(|id| self.utterances.get(&id).map(|r| (id, r.start)))
+        else {
+            return;
+        };
+        if quiet_from.saturating_sub(start) > self.engine.max_command_samples {
+            return;
+        }
+        let from = self.pre_rolled(start);
+        if let Some(job) = self.ask(
+            JobKind::Segment,
+            from,
+            now,
+            JobContext::HalfPause { utterance },
+        ) {
+            self.half_pause = Some(HalfPauseHearing {
+                job,
+                quiet_from,
+                from,
+                answer: None,
+            });
+        }
+    }
+
+    /// Drops the hearing at half the pause once a louder frame broke its quiet run: the
+    /// utterance goes on, and its segment is heard whole.
+    pub(super) fn drop_broken_half_pause_hearing(&mut self) {
+        let quiet_run = self.pause.quiet_run_from();
+        if let Some(dropped) = self.half_pause.take_if(|h| quiet_run != Some(h.quiet_from)) {
+            log::debug!(
+                "job={} heard at half the pause: dropped, the utterance goes on",
+                dropped.job
+            );
+        }
+    }
+
     fn apply(&mut self, answer: Answer) -> Vec<ServerEvent> {
         let n = answer.id.n;
         self.checks.answered(n);
         let Some(asked) = self.jobs.remove(&n) else {
             return Vec::new();
         };
+        let asked = match self.hear_whole_instead(n, &answer, asked) {
+            Ok(asked) => asked,
+            Err(events) => return events,
+        };
+        // An answer that comes back after the phrases changed reads with both sets: the
+        // words were said under the job's phrases, or are said now under the current ones.
+        let reading = if Arc::ptr_eq(&asked.matcher, &self.matcher) {
+            Arc::clone(&self.matcher)
+        } else {
+            Arc::new(asked.matcher.combined_with(&self.matcher))
+        };
+        let current = std::mem::replace(&mut self.matcher, reading);
+        let events = self.apply_answer(answer, asked);
+        self.matcher = current;
+        events
+    }
+
+    /// Whether `heard` says a selected phrase alone: a hearing at half the pause that heard
+    /// anything else may have heard its clip cut short wrong ("okay, paste" as "okay, based").
+    fn said_alone(&self, heard: &Heard) -> bool {
+        self.matcher.phrase_in(&heard.text).is_some()
+    }
+
+    /// Has the segment of job `n`, which a hearing at half the pause stood for, heard whole
+    /// through its own clip when `answer` holds no phrase alone; the job is then resolved, and
+    /// its events wait for that hearing. Else gives `asked` back.
+    fn hear_whole_instead(
+        &mut self,
+        n: u64,
+        answer: &Answer,
+        asked: AskedJob,
+    ) -> Result<AskedJob, Vec<ServerEvent>> {
+        let Some(own_from) = self.stand_ins.remove(&n) else {
+            return Ok(asked);
+        };
+        let (Some(heard), JobContext::Segment { utterance, segment }) =
+            (&answer.heard, &asked.context)
+        else {
+            return Ok(asked);
+        };
+        if self.said_alone(heard) {
+            return Ok(asked);
+        }
+        let (utterance, segment) = (
+            *utterance,
+            SegmentSpan {
+                from: own_from,
+                ..*segment
+            },
+        );
+        let to = segment.to;
+        let context = JobContext::Segment { utterance, segment };
+        let Some(whole) = self.ask(JobKind::Segment, own_from, to, context) else {
+            return Ok(asked);
+        };
+        log::debug!("job={n} heard at half the pause held no command alone: job {whole} hears the segment whole");
+        self.outbox.transfer(n, whole);
+        self.early.retarget(n, whole);
+        self.mark(utterance, |r| r.jobs -= 1);
+        Err(self.outbox.resolve(n, false, Vec::new()))
+    }
+
+    /// Applies `answer` to the job it answers, reading it with `self.matcher`.
+    fn apply_answer(&mut self, answer: Answer, asked: AskedJob) -> Vec<ServerEvent> {
+        let n = answer.id.n;
         let timing = asked.timing();
         let asked_at = asked.asked_at;
         let context = asked.context;
+        if matches!(context, JobContext::HalfPause { .. }) {
+            if let Some(half_pause) = self.half_pause.as_mut().filter(|h| h.job == n) {
+                half_pause.answer = Some(answer.heard.clone());
+            }
+        }
         let utterance = context.utterance();
         let is_check = context.is_check();
         let tail = context.tail_check();
@@ -366,7 +527,9 @@ impl Session<'_> {
             JobContext::Segment { segment, .. } if segment.short => context.rehear(String::new()),
             _ => None,
         };
-        let rehear = near_miss.and_then(|phrase| context.rehear(phrase));
+        let mut rehear = near_miss.and_then(|phrase| context.rehear(phrase));
+        let is_segment = matches!(context, JobContext::Segment { .. });
+        let is_rehear = matches!(context, JobContext::Rehear { .. });
         let stale = is_check && utterance.is_some_and(|u| self.segment_answered(u));
         if let JobContext::Segment { utterance, .. } = &context {
             self.mark(*utterance, |r| r.segment_answered = true);
@@ -375,20 +538,42 @@ impl Session<'_> {
         if stale {
             log::debug!("job={} answered after its segment: dropped", answer.id);
         }
-        let events: Vec<ServerEvent> = match heard {
+        let mut events: Vec<ServerEvent> = match heard {
             Some(heard) => self.apply_heard(heard, context, asked_at),
             None => Vec::new(),
         }
         .into_iter()
         .map(|event| timed(event, timing))
         .collect();
-        let heard_again = match rehear {
-            Some(rehear) if events.is_empty() => self.hear_again(n, rehear),
-            _ => false,
-        };
+        if is_rehear {
+            events = self.early.rehear_answered(n, events);
+        }
+        let mut heard_early = false;
+        let mut early_pending = false;
+        if is_segment {
+            self.early.pending.retain(|(job, _)| *job != n);
+            if let Some(early) = self.early.segment_answered(n, !events.is_empty()) {
+                heard_early = true;
+                rehear = None;
+                match early {
+                    EarlyAnswer::Heard(heard) => events = heard,
+                    EarlyAnswer::Pending(again) => {
+                        // The segment's events wait for the second hearing's answer.
+                        self.outbox.transfer(n, again);
+                        early_pending = true;
+                    }
+                    EarlyAnswer::Dropped => {}
+                }
+            }
+        }
+        let heard_again = early_pending
+            || match rehear {
+                Some(rehear) if events.is_empty() => self.hear_again(n, rehear),
+                _ => false,
+            };
         if short_segment.is_some() {
             self.misheard = short_segment
-                .filter(|_| events.is_empty() && !heard_again)
+                .filter(|_| events.is_empty() && !heard_again && !heard_early)
                 .map(|segment| (n, segment));
         }
         if let (true, false, Some((utterance, from, to))) = (events.is_empty(), heard_again, tail) {
@@ -438,14 +623,14 @@ impl Session<'_> {
                 utterance,
                 from,
                 early: false,
-            } => self.place(&heard, from, utterance, head_command),
+            } => self.place(&heard, from, utterance, asked_at, head_command),
             // "start" heard alone may be cut off before the word after it, as the first
             // spotted check may hear it: "start stop" starts nothing.
             JobContext::Head {
                 utterance,
                 from,
                 early: true,
-            } => self.place(&heard, from, utterance, |m, w| {
+            } => self.place(&heard, from, utterance, asked_at, |m, w| {
                 spotted_command(m, w, true, Round::First)
             }),
             JobContext::Spotted {
@@ -455,7 +640,7 @@ impl Session<'_> {
                 round,
                 said_end,
             } => {
-                let found = self.place(&heard, from, utterance, |m, w| {
+                let found = self.place(&heard, from, utterance, asked_at, |m, w| {
                     spotted_command(m, w, at_head, round)
                 });
                 // The first check may come before the command ends: "start" alone at the
@@ -467,7 +652,7 @@ impl Session<'_> {
                 found
             }
             JobContext::Window { utterance, from } => {
-                let found = self.place(&heard, from, utterance, |m, w| m.anywhere(w));
+                let found = self.place(&heard, from, utterance, usize::MAX, |m, w| m.anywhere(w));
                 self.mark(utterance, |r| r.last_window = Some((heard, from)));
                 found
             }
@@ -475,9 +660,11 @@ impl Session<'_> {
                 self.apply_segment(heard, utterance, segment)
             }
             JobContext::Unheld { spotted, from } => self.apply_unheld(&heard, spotted, from),
+            // Its answer waits for the segment it may stand for.
+            JobContext::HalfPause { .. } => None,
             JobContext::Tail { utterance, from } => self
-                .place(&heard, from, utterance, |m, w| m.anywhere(w))
-                .or_else(|| self.place(&heard, from, utterance, |m, w| m.at_end(w))),
+                .place(&heard, from, utterance, usize::MAX, |m, w| m.anywhere(w))
+                .or_else(|| self.place(&heard, from, utterance, usize::MAX, |m, w| m.at_end(w))),
             JobContext::Rehear {
                 bounds,
                 origin,
@@ -516,9 +703,59 @@ impl Session<'_> {
         self.hear_again(job, Rehear { phrase, ..segment });
     }
 
+    /// Hears the short segment of job `job`, still being heard, again at once when a trigger
+    /// already lies in it; else when one is spotted in it before its answer comes back.
+    fn hear_early_when_triggered(&mut self, job: u64, segment: Rehear) {
+        match self.trigger_heard_in(segment.bounds) {
+            Some(phrase) => self.hear_early(job, Rehear { phrase, ..segment }),
+            None => self.early.pending.push((job, segment)),
+        }
+    }
+
+    /// Hears a short segment still being heard again at once when `trigger` lies in it.
+    pub(super) fn hear_pending_again(&mut self, trigger: &Spotted) {
+        let Some(phrase) =
+            keywords::served_by(&trigger.phrase).filter(|phrase| self.matcher.selects(phrase))
+        else {
+            return;
+        };
+        let Some(at) = self.early.pending.iter().position(|(_, segment)| {
+            trigger.start < segment.bounds.end && trigger.end > segment.bounds.start
+        }) else {
+            return;
+        };
+        let (job, segment) = self.early.pending.remove(at);
+        let phrase = phrase.to_owned();
+        self.hear_early(job, Rehear { phrase, ..segment });
+    }
+
+    /// Asks the second hearing of the segment of job `job` beside its first one.
+    fn hear_early(&mut self, job: u64, rehear: Rehear) {
+        if let Some(again) = self.ask_rehear(rehear) {
+            log::debug!(
+                "conn={} job {job} heard again at once by job {again}",
+                self.conn
+            );
+            self.early
+                .asked
+                .insert(again, Early::Waiting { segment: job });
+        }
+    }
+
     /// Hears a short segment heard as a near miss again, through its steady clip; the
     /// segment's events wait for that answer. False when it cannot be asked.
     fn hear_again(&mut self, job: u64, rehear: Rehear) -> bool {
+        match self.ask_rehear(rehear) {
+            Some(again) => {
+                self.outbox.transfer(job, again);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Asks the second hearing of a short segment, through its steady clip.
+    fn ask_rehear(&mut self, rehear: Rehear) -> Option<u64> {
         let Rehear {
             utterance,
             bounds,
@@ -542,13 +779,7 @@ impl Session<'_> {
             origin,
             phrase,
         };
-        match self.ask_clip(JobKind::Rehear, clip.samples, origin, to, context) {
-            Some(again) => {
-                self.outbox.transfer(job, again);
-                true
-            }
-            None => false,
-        }
+        self.ask_clip(JobKind::Rehear, clip.samples, origin, to, context)
     }
 
     /// The near-missed command, when the second hearing says it as a whole.
@@ -613,8 +844,8 @@ impl Session<'_> {
             .utterances
             .get_mut(&utterance)
             .and_then(|r| r.last_window.take());
-        self.place(&heard, from, utterance, |m, w| m.anywhere(w))
-            .or_else(|| self.place(&heard, from, utterance, |m, w| m.at_end(w)))
+        self.place(&heard, from, utterance, usize::MAX, |m, w| m.anywhere(w))
+            .or_else(|| self.place(&heard, from, utterance, usize::MAX, |m, w| m.at_end(w)))
             .or_else(|| self.tail_heard_while_running(last_window, end, utterance))
     }
 
@@ -651,11 +882,30 @@ impl Session<'_> {
         heard: &Heard,
         from: usize,
         utterance: u64,
+        clip_end: usize,
         find: impl Fn(&PhraseMatcher, &[&str]) -> Option<Found>,
     ) -> Option<ServerEvent> {
-        let found = find(&self.matcher, &heard.word_texts())?;
+        let words = heard.word_texts();
+        let found = find(&self.matcher, &words)?;
         let at =
             |word: usize, time: fn(&TimedWord) -> f32| from + samples_in(time(&heard.words[word]));
+        // A start closed by "please" with nothing after it ends where the speech did: a clip
+        // cut while "please" is still said times the word too soon, and the rest of it would
+        // open the dictation. Without a gap after the word yet, it waits for a later hearing
+        // while the speech may still be the word's; speech going on longer than that is the
+        // dictation, said at once.
+        let speech_end = if self.matcher.start_closed_by_please(&words, &found) {
+            let middle = (at(found.last, |w| w.start) + at(found.last, |w| w.end)) / 2;
+            let went_on = clip_end != usize::MAX
+                && self.pause.heard_until() >= clip_end.saturating_add(samples_in(CUT_WORD_SECS));
+            match self.pause.gap_after(middle) {
+                Some(gap) => Some(gap),
+                None if clip_end == usize::MAX || went_on => None,
+                None => return None,
+            }
+        } else {
+            None
+        };
         let reported_until = self
             .utterances
             .get(&utterance)
@@ -672,7 +922,7 @@ impl Session<'_> {
             0
         };
         let start = at(found.spans[kept].0, |w| w.start);
-        let end = at(found.last, |w| w.end);
+        let end = at(found.last, |w| w.end).max(speech_end.unwrap_or(0));
         if let Some(running) = self.utterances.get_mut(&utterance) {
             running.reported_until = end;
         }
@@ -697,7 +947,7 @@ impl Session<'_> {
         utterance: u64,
     ) -> Option<ServerEvent> {
         let (heard, from) = last_window?;
-        let event = self.place(&heard, from, utterance, |m, w| m.at_end(w))?;
+        let event = self.place(&heard, from, utterance, usize::MAX, |m, w| m.at_end(w))?;
         match event {
             ServerEvent::Command { end: said_end, .. }
                 if said_end >= seconds(end.saturating_sub(samples_in(TAIL_SLACK_SECS))) =>
@@ -706,6 +956,105 @@ impl Session<'_> {
             }
             _ => None,
         }
+    }
+}
+
+/// The hearing of a short utterance asked at half its pause.
+pub(super) struct HalfPauseHearing {
+    job: u64,
+    /// Where the quiet run began: only this run closing the utterance keeps the hearing.
+    quiet_from: usize,
+    /// Where its audio starts.
+    from: usize,
+    /// What was heard, once answered.
+    answer: Option<Option<Heard>>,
+}
+
+/// The second hearings of short segments asked beside their first hearing, so a trigger in a
+/// short segment costs one hearing's time, not two in a row.
+#[derive(Default)]
+pub(super) struct EarlyRehears {
+    /// Short segments whose first hearing is pending, by job: a trigger spotted in one has it
+    /// heard again at once.
+    pending: Vec<(u64, Rehear)>,
+    /// The second hearings asked early, by job.
+    asked: HashMap<u64, Early>,
+}
+
+/// A second hearing asked beside its segment's first one.
+enum Early {
+    /// Neither hearing answered yet, or only this one is pending.
+    Waiting { segment: u64 },
+    /// It answered first, with these events; they stand when the first hearing holds none.
+    Answered {
+        segment: u64,
+        events: Vec<ServerEvent>,
+    },
+    /// The first hearing held a command: its answer is dropped.
+    Dropped,
+}
+
+/// What a segment's first hearing makes of the second one asked beside it.
+enum EarlyAnswer {
+    /// Its answer came first: these events stand for the segment.
+    Heard(Vec<ServerEvent>),
+    /// It is still pending, as job `.0`: the segment waits for it.
+    Pending(u64),
+    /// The first hearing held a command: the second one is dropped.
+    Dropped,
+}
+
+impl EarlyRehears {
+    /// The second hearings of segment job `from` belong to segment job `to` now.
+    fn retarget(&mut self, from: u64, to: u64) {
+        for (job, _) in &mut self.pending {
+            if *job == from {
+                *job = to;
+            }
+        }
+        for early in self.asked.values_mut() {
+            if let Early::Waiting { segment } | Early::Answered { segment, .. } = early {
+                if *segment == from {
+                    *segment = to;
+                }
+            }
+        }
+    }
+
+    /// The events the answer of second hearing `job` sends now: none while its segment's
+    /// first hearing is pending, or when that one held a command.
+    fn rehear_answered(&mut self, job: u64, events: Vec<ServerEvent>) -> Vec<ServerEvent> {
+        match self.asked.remove(&job) {
+            Some(Early::Waiting { segment }) => {
+                self.asked.insert(job, Early::Answered { segment, events });
+                Vec::new()
+            }
+            Some(Early::Dropped) => Vec::new(),
+            Some(answered @ Early::Answered { .. }) => {
+                self.asked.insert(job, answered);
+                Vec::new()
+            }
+            None => events,
+        }
+    }
+
+    /// The second hearing of segment job `segment`, now that its first one answered, with or
+    /// without a command; none when it has none.
+    fn segment_answered(&mut self, segment: u64, held_command: bool) -> Option<EarlyAnswer> {
+        let (&job, _) = self.asked.iter().find(|(_, early)| match early {
+            Early::Waiting { segment: s } | Early::Answered { segment: s, .. } => *s == segment,
+            Early::Dropped => false,
+        })?;
+        let early = self.asked.remove(&job)?;
+        Some(match (early, held_command) {
+            (Early::Answered { .. }, true) => EarlyAnswer::Dropped,
+            (Early::Answered { events, .. }, false) => EarlyAnswer::Heard(events),
+            (_, true) => {
+                self.asked.insert(job, Early::Dropped);
+                EarlyAnswer::Dropped
+            }
+            (_, false) => EarlyAnswer::Pending(job),
+        })
     }
 }
 
@@ -727,6 +1076,7 @@ impl JobContext {
             | JobContext::Spotted { utterance, .. }
             | JobContext::Segment { utterance, .. }
             | JobContext::Tail { utterance, .. }
+            | JobContext::HalfPause { utterance }
             | JobContext::Rehear { utterance, .. } => Some(*utterance),
             JobContext::Unheld { .. } => None,
         }
@@ -895,6 +1245,22 @@ mod tests {
         let found = spotted_command(&standby(), &said, true, Round::First);
         // Then
         assert_eq!(found, None);
+    }
+
+    #[test]
+    fn should_take_start_please_heard_alone_by_the_first_spotted_check() {
+        // Given the first check of a spotted "start" heard a start closed by "please" and
+        // nothing after it
+        for said in ["Start please.", "Start dictation, please."] {
+            // When
+            let found = spotted_command(&standby(), &words(said), true, Round::First);
+            // Then
+            assert_eq!(
+                found.map(|f| f.commands),
+                Some(vec!["start dictation".to_owned()]),
+                "{said}"
+            );
+        }
     }
 
     #[test]

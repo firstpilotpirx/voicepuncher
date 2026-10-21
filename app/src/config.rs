@@ -35,6 +35,19 @@ pub struct Config {
     pub archive: ArchiveCfg,
     #[serde(default)]
     pub logging: LoggingCfg,
+    #[serde(default)]
+    pub services: ServicesCfg,
+    #[serde(default)]
+    pub app: AppCfg,
+}
+
+/// What the app records about itself; the settings window shows no control for it.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AppCfg {
+    /// Whether the app already asked to start at login; it asks only once.
+    #[serde(default)]
+    pub launch_at_login_asked: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -305,6 +318,65 @@ impl Default for LoggingCfg {
     }
 }
 
+/// The local services the app starts and watches itself, unless `manage` is off.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ServicesCfg {
+    #[serde(default = "ServicesCfg::default_manage")]
+    pub manage: bool,
+    #[serde(default = "ServicesCfg::default_copies")]
+    pub dictation_copies: u32,
+    #[serde(default = "ServicesCfg::default_copies")]
+    pub command_copies: u32,
+    #[serde(default = "ServicesCfg::default_models_dir")]
+    pub models_dir: PathBuf,
+    /// The speech recognition service for commands, which the command spotting service asks.
+    #[serde(default = "ServicesCfg::default_commands_url")]
+    pub commands_url: String,
+}
+
+/// The most copies of a speech recognition service: its clients look on four ports.
+pub const MAX_SERVICE_COPIES: u32 = 4;
+const DEFAULT_MODELS_DIR: &str = "~/.voicepuncher/models";
+
+impl ServicesCfg {
+    fn default_manage() -> bool {
+        true
+    }
+
+    fn default_copies() -> u32 {
+        3
+    }
+
+    fn default_models_dir() -> PathBuf {
+        PathBuf::from(DEFAULT_MODELS_DIR)
+    }
+
+    fn default_commands_url() -> String {
+        "http://127.0.0.1:8085/v1".into()
+    }
+
+    /// The models folder with a leading `~` replaced by `home`.
+    pub fn resolved_models_dir(&self, home: &Path) -> PathBuf {
+        match self.models_dir.strip_prefix(HOME_DIR_PREFIX) {
+            Ok(rest) => home.join(rest),
+            Err(_) => self.models_dir.clone(),
+        }
+    }
+}
+
+impl Default for ServicesCfg {
+    fn default() -> Self {
+        Self {
+            manage: Self::default_manage(),
+            dictation_copies: Self::default_copies(),
+            command_copies: Self::default_copies(),
+            models_dir: Self::default_models_dir(),
+            commands_url: Self::default_commands_url(),
+        }
+    }
+}
+
 pub fn load(path: &Path) -> Result<Config> {
     let raw = std::fs::read_to_string(path)
         .with_context(|| format!("read config: {}", path.display()))?;
@@ -328,11 +400,32 @@ pub fn parse(raw: &str, origin: &str) -> Result<Config> {
 pub fn validate(cfg: &Config) -> Result<()> {
     ensure_loopback("transcription.base_url", &cfg.transcription.base_url)?;
     ensure_loopback("refinement.base_url", &cfg.refinement.base_url)?;
-    ensure_loopback_websocket("voice_control.url", &cfg.voice_control.url)
+    ensure_loopback_websocket("voice_control.url", &cfg.voice_control.url)?;
+    ensure_loopback("services.commands_url", &cfg.services.commands_url)?;
+    ensure_copies("services.dictation_copies", cfg.services.dictation_copies)?;
+    ensure_copies("services.command_copies", cfg.services.command_copies)
+}
+
+fn ensure_copies(key: &str, copies: u32) -> Result<()> {
+    if (1..=MAX_SERVICE_COPIES).contains(&copies) {
+        Ok(())
+    } else {
+        anyhow::bail!(
+            "{key} = {copies}: set 1 to {MAX_SERVICE_COPIES}, the most copies its clients look for"
+        )
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn should_not_record_the_login_question_as_asked_by_default() {
+        // Given / When
+        let cfg = Config::default();
+        // Then
+        assert!(!cfg.app.launch_at_login_asked);
+    }
+
     use super::*;
     use std::io::Write;
 
@@ -682,5 +775,71 @@ mod tests {
     #[test]
     fn should_accept_default_service_addresses() {
         assert!(validate(&Config::default()).is_ok());
+    }
+
+    #[test]
+    fn should_manage_three_copies_of_each_speech_recognition_service_by_default() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(f, "[hotkey]\nkey = \"F13\"").unwrap();
+        // When
+        let cfg = load(f.path()).unwrap();
+        // Then
+        assert!(cfg.services.manage);
+        assert_eq!(
+            (cfg.services.dictation_copies, cfg.services.command_copies),
+            (3, 3)
+        );
+        assert_eq!(
+            cfg.services.models_dir,
+            PathBuf::from("~/.voicepuncher/models")
+        );
+        assert_eq!(cfg.services.commands_url, "http://127.0.0.1:8085/v1");
+    }
+
+    #[test]
+    fn should_leave_the_services_to_the_scripts_when_told() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(f, "[services]\nmanage = false\ndictation_copies = 1").unwrap();
+        // When
+        let cfg = load(f.path()).unwrap();
+        // Then
+        assert!(!cfg.services.manage);
+        assert_eq!(cfg.services.dictation_copies, 1);
+    }
+
+    #[test]
+    fn should_reject_more_copies_than_the_pool_looks_for() {
+        for copies in [0, 5] {
+            // Given
+            let mut f = tempfile::NamedTempFile::new().unwrap();
+            writeln!(f, "[services]\ncommand_copies = {copies}").unwrap();
+            // When
+            let message = format!("{:#}", load(f.path()).unwrap_err());
+            // Then
+            assert!(message.contains("services.command_copies"), "{message}");
+            assert!(message.contains("1 to 4"), "{message}");
+        }
+    }
+
+    #[test]
+    fn should_reject_a_speech_recognition_service_for_commands_on_another_machine() {
+        // Given
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(f, "[services]\ncommands_url = \"http://10.0.0.2:8085/v1\"").unwrap();
+        // When
+        let message = format!("{:#}", load(f.path()).unwrap_err());
+        // Then
+        assert!(message.contains("services.commands_url"), "{message}");
+    }
+
+    #[test]
+    fn should_find_the_models_folder_under_home() {
+        let services = ServicesCfg::default();
+        assert_eq!(
+            services.resolved_models_dir(Path::new("/Users/me")),
+            PathBuf::from("/Users/me/.voicepuncher/models")
+        );
     }
 }

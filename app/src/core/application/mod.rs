@@ -9,6 +9,8 @@ pub mod hotkey_listener;
 pub mod input_devices;
 pub mod key_presser;
 pub mod live_transcript_view;
+pub mod local_services;
+pub mod login_item;
 pub mod permission_probe;
 pub mod permissions_gate;
 pub mod pipeline;
@@ -36,6 +38,11 @@ pub use hotkey_listener::HotkeyListener;
 pub use input_devices::InputDevices;
 pub use key_presser::KeyPresser;
 pub use live_transcript_view::LiveTranscriptView;
+pub use local_services::{
+    Clock, ProbeAnswer, ServiceLauncher, ServiceProbe, ServiceProcess, ServiceRuntime, Services,
+    TICK,
+};
+pub use login_item::{LoginItem, LoginItemStatus};
 pub use permission_probe::PermissionProbe;
 pub use permissions_gate::{PermissionReport, PermissionsGate};
 pub use pipeline_activity::{NoActivitySink, PipelineActivity, PipelineActivitySink};

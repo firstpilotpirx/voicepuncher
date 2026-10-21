@@ -62,6 +62,17 @@ impl PhraseMatcher {
         }
     }
 
+    /// Selects the phrases of `self` and of `other`, each once, `self`'s first.
+    pub fn combined_with(&self, other: &PhraseMatcher) -> Self {
+        let mut phrases = self.phrases.clone();
+        for phrase in other.selected() {
+            if !phrases.contains(phrase) {
+                phrases.push(phrase.clone());
+            }
+        }
+        Self { phrases }
+    }
+
     /// The command phrase the whole `transcript` says, if it says one of the selected. A
     /// transcript of several sentences counts when every sentence says the same phrase.
     pub fn phrase_in(&self, transcript: &str) -> Option<String> {
@@ -193,6 +204,47 @@ mod tests {
             "restart dictation".into(),
             "press enter".into(),
         ])
+    }
+
+    #[test]
+    fn should_take_a_start_said_in_standby_as_a_start_once_combined_with_the_dictating_phrases() {
+        // Given the standby phrases combined with those of a running dictation
+        let combined = standby().combined_with(&dictating());
+        // When
+        let phrase = combined.phrase_in("Start dictation.");
+        // Then
+        assert_eq!(phrase, Some("start dictation".into()));
+    }
+
+    #[test]
+    fn should_take_a_start_said_while_dictating_as_a_start_once_combined_with_standby() {
+        // Given the phrases of a running dictation combined with the standby ones
+        let combined = dictating().combined_with(&standby());
+        // When
+        let phrase = combined.phrase_in("Start.");
+        // Then
+        assert_eq!(phrase, Some("start dictation".into()));
+    }
+
+    #[test]
+    fn should_select_the_phrases_of_both_sets_each_once() {
+        // Given
+        let combined = dictating().combined_with(&standby());
+        // When
+        let selected = combined.selected();
+        // Then
+        assert_eq!(
+            selected,
+            [
+                "stop dictation",
+                "cancel dictation",
+                "restart dictation",
+                "press enter",
+                "start dictation",
+                "clear all text",
+                "paste text",
+            ]
+        );
     }
 
     #[test]

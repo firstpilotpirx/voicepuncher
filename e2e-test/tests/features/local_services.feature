@@ -139,3 +139,12 @@ Feature: local-services
       Given voice control runs and the speech recognition service for commands is otherwise idle
       When the user says Russian counting and filler words and then "press enter"
       Then the command spotting service reports "press enter"
+
+  @smoke @serial
+  Rule: The app starts the services it needs
+
+    Scenario: A real launch leaves no service behind at quit
+      Given no local service runs on the chosen ports and the models are on disk
+      When the app launches, its services become ready and the app is told to end
+      Then each started service answered on its port while the app ran
+      And no process of them is left after the app ended
