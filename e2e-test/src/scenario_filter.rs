@@ -13,6 +13,8 @@ const VOICE_SAMPLES_TAG: &str = "voice_samples";
 const REAL_KEYBOARD_VARIABLE: &str = "VOICEPUNCHER_REAL_KEYBOARD_IT";
 const REAL_KEYBOARD_TAG: &str = "real_keyboard";
 const WIP_TAG: &str = "wip";
+/// The scenario names a rerun selects, one per line (`just rerun-failed`).
+pub const RERUN_VARIABLE: &str = "VOICEPUNCHER_RERUN_SCENARIOS";
 
 /// A tag whose scenarios run only while the gate is open.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,6 +87,8 @@ pub enum Selection {
     Name(Regex),
     /// `--tags` or `CUCUMBER_FILTER_TAGS`: the merged tags satisfy the expression.
     Tags(TagOperation),
+    /// A rerun: the scenario name is one of these, whole.
+    Names(Vec<String>),
 }
 
 impl Selection {
@@ -93,6 +97,7 @@ impl Selection {
             Self::Everything => true,
             Self::Name(name) => name.is_match(&scenario.name),
             Self::Tags(expression) => expression.eval(tags.iter().copied()),
+            Self::Names(names) => names.contains(&scenario.name),
         }
     }
 }
@@ -109,6 +114,17 @@ impl ScenarioFilter {
     pub fn runs(&self, feature: &Feature, rule: Option<&Rule>, scenario: &Scenario) -> bool {
         let tags = merged_tags(feature, rule, scenario);
         self.selection.selects(scenario, &tags) && self.gates.iter().all(|g| g.admits(&tags))
+    }
+
+    /// A rerun's names, when given, replace the command line's selection; the gates still hold.
+    pub fn rerun_only(self, names: Option<Vec<String>>) -> Self {
+        match names {
+            Some(names) => Self {
+                selection: Selection::Names(names),
+                ..self
+            },
+            None => self,
+        }
     }
 
     /// The `GATED:` lines of the closed gates, for the harness to print once.
@@ -156,6 +172,19 @@ where
         custom,
     };
     (opts, ScenarioFilter { selection, gates })
+}
+
+/// The scenario names of a rerun from the value of [`RERUN_VARIABLE`] (`std::env::var`): its
+/// non-empty lines, or `None` when it is unset or holds none.
+pub fn rerun_names(value: Result<String, std::env::VarError>) -> Option<Vec<String>> {
+    let names: Vec<String> = value
+        .ok()?
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect();
+    (!names.is_empty()).then_some(names)
 }
 
 /// Whether the scenario carries `tag` (without `@`) on itself, its rule or its feature, Examples

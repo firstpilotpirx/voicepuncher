@@ -4,7 +4,7 @@
 
 ### 1. The failures come from the stage journal
 
-`_stages` already appends every run of `test`, `check`, `full-check` and the E2E recipes to the stage journal, with each stage's result and `failed_tests`: nextest's `<package>::<binary> <test>` names and `scenario: <name>` for each Gherkin scenario with a failed step. A run stops at its first failed stage, so a failed run has one failed stage. `just rerun-failed` reads the journal's last record of this worktree: when it failed, it takes that stage and its failed tests; when it passed, it prints that there is nothing to rerun and exits 0. No new file: the record is already written, survives `cargo clean` and holds the stage the tests belong to.
+`_stages` already appends every run of `test`, `check`, `full-check` and the E2E recipes to the stage journal, with each stage's result and `failed_tests`: nextest's `<package>::<binary> <test>` names and `scenario: <name>` for each Gherkin scenario with a failed step. A run stops at its first failed stage, so a failed run has one failed stage. `just rerun-failed` reads the journal's last record of this worktree: when it failed, it takes that stage and its failed tests; when it passed, it prints that there is nothing to rerun and exits 0. A record that ended before its first stage (a lock wait given up or interrupted, a failed setup) tested nothing and is passed over for the one before it. No new file: the record is already written, survives `cargo clean` and holds the stage the tests belong to.
 
 *Alternatives:* `target/last-failures.txt` written by each recipe (a second record of the same facts, and the stage would be missing).
 
@@ -21,11 +21,11 @@ A failed stage with no named test (fmt, lint, build, or a harness that hung with
 
 ### 3. Names given by hand, and proof that each one ran
 
-`just rerun-failed <name>...` takes names in the journal's form instead of the record's (the stage still comes from the record). With `NEXTEST_SUCCESS_OUTPUT=immediate` the rerun's output shows every test and scenario that ran; `rerun-failed` copies it and fails, naming each one, when a name never appears as a passed or failed test or as a run scenario. So a mistyped or renamed test cannot pass by running nothing.
+`just rerun-failed <name>...` takes names in the journal's form instead of the record's (the stage still comes from the record: its failed stage, or after a passed run of one stage that stage). With `NEXTEST_SUCCESS_OUTPUT=immediate` the rerun's output shows every test and scenario that ran; `rerun-failed` copies it and fails, naming each one, when a name never appears as a passed or failed test or as a run scenario. So a mistyped or renamed test cannot pass by running nothing.
 
 ### 4. The rule lives in AGENTS.md; the kit is unchanged
 
-The rerun depends on this project's recipes, journal and harnesses, so the recipe stays here. AGENTS.md § How to verify a change gains the rule: after a failure, fix, then `just rerun-failed` until it passes, then the failed stage's recipe (or the check) once whole; a rerun never counts as the change's passing check. `kit verify` and `kit land` look for `check` and `full-check` runs, so a `rerun-failed` run counts for nothing there. A reusable rule for agent-kit is not filed: the kit's verify already reruns whole checks by design.
+The rerun depends on this project's recipes, journal and harnesses, so the recipe stays here. AGENTS.md § How to verify a change gains the rule: after a failure, fix, then `just rerun-failed` until it passes, then the failed stage's recipe (or the check) once whole; a rerun never counts as the change's passing check. `kit land` accepts only a check that `kit verify` recorded on the commit, so a `rerun-failed` run counts for nothing there. A reusable rule for agent-kit is not filed: the kit's verify already reruns whole checks by design.
 
 ## Test levels
 

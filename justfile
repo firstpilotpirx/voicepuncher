@@ -61,6 +61,9 @@ cucumber_e2e_tests := "-p voicepuncher-e2e-test --test cucumber_e2e"
 # What `test` runs: every test target of the workspace but the E2E harness (one cargo call cannot pick targets
 # per package; a binary the filter excludes is not even listed)
 test_selection := "--workspace -E 'not binary_id(voicepuncher-e2e-test::cucumber_e2e)'"
+# A rerun's selection (just rerun-failed): added to every nextest call of the E2E recipes, whose calls may each
+# hold none of the failed tests; _test narrows its own selection with it
+rerun_filter := '${VOICEPUNCHER_RERUN_FILTER:+-E "$VOICEPUNCHER_RERUN_FILTER" --no-tests=pass}'
 
 # nextest prints captured test output unindented, so libtest's `test … FAILED` and `thread '…' panicked at
 # <file:line:col>:` lines start at column 0, where `kit run` finds the failed tests and their locations
@@ -578,15 +581,100 @@ _lint:
 test:
     @VOICEPUNCHER_STAGES_RECIPE=test {{just_executable()}} _stages test
 
+# The rerun takes the worktree's last record of the stage journal that ran a stage, its failed stage and its failed tests (or the
+# names given, in the journal's form: `<package>::<binary> <test>`, `scenario: <name>`), and runs that one stage
+# with them alone — same build, services, test ports, machine lock and time limits — then fails naming any of
+# them that never ran. Journaled as `rerun-failed`, never the change's passing check
+# After a failure: rerun only the failed tests and scenarios of the last run, in their stage; once green, run the stage's recipe or the check whole once
+[positional-arguments]
+rerun-failed *names:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    plan=$(mktemp) log=$(mktemp)
+    trap 'rm -f "$plan" "$log"' EXIT
+    STAGES_WORKTREE={{quote(justfile_directory())}} perl -MJSON::PP -e '
+        my ($journal, $worktree, @names) = ($ENV{VOICEPUNCHER_STAGE_JOURNAL}, $ENV{STAGES_WORKTREE}, @ARGV);
+        my $last;
+        if (open my $fh, "<", $journal) {
+            while (<$fh>) {
+                my $run = eval { decode_json($_) } or next;
+                next unless ($run->{worktree} // "") eq $worktree;
+                # A run that ended before its first stage (a lock wait given up or interrupted, a failed setup)
+                # tested nothing: the run before it still holds the failures
+                next if $run->{result} ne "passed" && !grep { $_->{result} ne "skipped" } @{ $run->{stages} };
+                $last = $run;
+            }
+        }
+        die "✗ no run of this worktree in the stage journal ($journal)\n" unless $last;
+        my $what = "the last run ($last->{recipe}, $last->{started})";
+        die "✗ $what was interrupted: run its recipe again\n" if $last->{result} eq "interrupted";
+        my @stages = @{ $last->{stages} };
+        my $stage;
+        if ($last->{result} eq "passed") {
+            unless (@names) { print "● nothing to rerun: $what passed\n"; exit }
+            # Names given after a passed run: the stage is the one of that run, when it ran only one
+            die "✗ $what passed and ran several stages: run the recipe of the stage your names belong to first\n" if @stages != 1;
+            $stage = $stages[0]{name};
+        } else {
+            ($stage) = map { $_->{name} } grep { $_->{result} eq "failed" } @stages;
+        }
+        @names = @{ $last->{failed_tests} } unless @names;
+        my (@tests, @scenarios, $harness);
+        for my $name (@names) {
+            if ($name =~ /^scenario:\s*(.+)$/) { push @scenarios, $1; next }
+            my ($binary, $test) = $name =~ /^(\S+)\s+(.+)$/ or die "✗ \"$name\" is neither `<package>::<binary> <test>` nor `scenario: <name>`\n";
+            $harness = 1 if $binary =~ /::cucumber_(?:integration|e2e)$/;
+            push @tests, "(binary_id(=$binary) & test(=$test))";
+        }
+        # Scenarios named by hand, without their harness test: every harness test of the stage runs, each only them
+        push @tests, "binary(=cucumber_integration)", "binary(=cucumber_e2e)" if @scenarios && !$harness;
+        print "run $stage\n";
+        print "filter ", join(" | ", @tests), "\n";
+        print "scenario $_\n" for @scenarios;
+        print "name $_\n" for @names;
+        printf "● rerun of %s: stage %s, %s\n", $what, $stage, @names ? scalar(@names) . " test(s)" : "no named test, so the whole stage";
+    ' -- "$@" >"$plan"
+    grep -v '^\(run\|filter\|scenario\|name\) ' "$plan" || true
+    stage=$(sed -n 's/^run //p' "$plan")
+    [[ -n "$stage" ]] || exit 0
+    filter=$(sed -n 's/^filter //p' "$plan")
+    scenarios=$(sed -n 's/^scenario //p' "$plan")
+    status=0
+    VOICEPUNCHER_STAGES_RECIPE=rerun-failed VOICEPUNCHER_RERUN_FILTER="$filter" VOICEPUNCHER_RERUN_SCENARIOS="$scenarios" \
+        NEXTEST_SUCCESS_OUTPUT=immediate {{just_executable()}} --justfile {{quote(justfile())}} _stages "$stage" \
+        > >(tee "$log") 2> >(tee -a "$log" >&2) || status=$?
+    wait
+    # Every name must have run: nextest's result line of the test, or the scenario's line in the harness output
+    missing=$(sed -n 's/^name //p' "$plan" | RERUN_LOG="$log" perl -ne '
+        BEGIN { open my $fh, "<", $ENV{RERUN_LOG} or die; local $/; ($log = <$fh>) =~ s/\e\[[0-9;]*[A-Za-z]//g }
+        chomp; my $name = $_;
+        my $seen = $name =~ /^scenario:\s*(.+)$/
+            ? $log =~ /^\s*(?:Scenario|Scenario Outline|Example):\s*\Q$1\E\s*$/m
+            : $log =~ /^\s*(?:PASS|FAIL|FLAKY|TIMEOUT|SIG\w+|ABORT)\s+\[[^\]]*\]\s+(?:\(\s*\d+\/\d+\)\s+)?\Q$name\E\s*$/m;
+        print "  $name\n" unless $seen;
+    ')
+    if [[ -n "$missing" ]]; then
+        printf '✗ never ran in this rerun:\n%s\n' "$missing" >&2
+        [[ $status -ne 0 ]] || status=1
+    fi
+    exit "$status"
+
 # One nextest run over the workspace's test targets (libs, bins, integration tests and the slice/component
 # harness; no doctests, as before) except the E2E harness, whose suites are the E2E recipes'. nextest runs up
 # to one test per core over all binaries, each test in a process of its own in its package directory, with
 # the limits of .config/nextest.toml: a test over its limit is stopped and reported TIMEOUT, and the run ends
 # listing the failed, timed-out and slow tests after its `Summary` line. The build runs at the utility QoS
-# clamp; the tests keep the default QoS (clamped timers fire late under load)
+# clamp; the tests keep the default QoS (clamped timers fire late under load). A rerun (VOICEPUNCHER_RERUN_FILTER)
+# runs only the tests of that selection within it
 _test: _require-nextest
-    taskpolicy -c utility cargo nextest run {{test_selection}} --no-run
-    cargo nextest run {{test_selection}}
+    #!/usr/bin/env bash
+    set -euo pipefail
+    selection=({{test_selection}})
+    if [[ -n "${VOICEPUNCHER_RERUN_FILTER:-}" ]]; then
+        selection=(--workspace -E "not binary_id(voicepuncher-e2e-test::cucumber_e2e) & ($VOICEPUNCHER_RERUN_FILTER)" --no-tests=pass)
+    fi
+    taskpolicy -c utility cargo nextest run "${selection[@]}" --no-run
+    cargo nextest run "${selection[@]}"
 
 # Run the app for real use with one command: download missing models, restart the four services (the command spotting service is rebuilt), build and start the app with voice control; extra arguments go to the app (`just run --no-llm`)
 run *args: models
@@ -620,10 +708,10 @@ _e2e-smoke: _require-nextest _require-models _build
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
     export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
     for binary in {{e2e_smoke_binaries}}; do
-        cargo nextest run --profile e2e-smoke -p voicepuncher --test "$binary"
+        cargo nextest run --profile e2e-smoke -p voicepuncher --test "$binary" {{rerun_filter}}
     done
-    cargo nextest run --profile e2e-smoke {{placed_commands_tests}}
-    cargo nextest run --profile e2e-smoke {{cucumber_e2e_tests}} --no-capture
+    cargo nextest run --profile e2e-smoke {{placed_commands_tests}} {{rerun_filter}}
+    cargo nextest run --profile e2e-smoke {{cucumber_e2e_tests}} --no-capture {{rerun_filter}}
 
 # The voice control scenarios beyond the smoke set (@regression), run by full-check right after e2e-smoke so it still runs the whole set
 e2e-regression:
@@ -636,7 +724,7 @@ _e2e-regression: _require-nextest _require-models _build
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
     export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
-    cargo nextest run --profile e2e-regression {{cucumber_e2e_tests}} --no-capture
+    cargo nextest run --profile e2e-regression {{cucumber_e2e_tests}} --no-capture {{rerun_filter}}
 
 # WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 %, and no command in 10 recordings of ordinary speech (~1 min)
 e2e-quick:
@@ -648,7 +736,7 @@ _e2e-quick: _require-nextest _require-models _require-corpus _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" VOICEPUNCHER_BENCH_LIMIT=10 \
-        cargo nextest run --profile e2e-quick {{cucumber_e2e_tests}} --no-capture
+        cargo nextest run --profile e2e-quick {{cucumber_e2e_tests}} --no-capture {{rerun_filter}}
 
 # Text refinement on the live services: dictated commands, normalization, evaluation per category (@refinement) (~30 s)
 refine-eval:
@@ -660,14 +748,14 @@ _refine-eval: _require-nextest _require-models _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" \
-        cargo nextest run --profile refine-eval {{cucumber_e2e_tests}} --no-capture
+        cargo nextest run --profile refine-eval {{cucumber_e2e_tests}} --no-capture {{rerun_filter}}
 
 # Outages: services that hang, die and come back while voice control runs (@resilience), each scenario on service ports of its own, so the shared services are never touched (~4 min)
 e2e-resilience:
     @VOICEPUNCHER_STAGES_RECIPE=e2e-resilience {{just_executable()}} _stages e2e-resilience
 
 _e2e-resilience: _require-nextest _require-models _build
-    cargo nextest run --profile e2e-resilience {{cucumber_e2e_tests}} --no-capture
+    cargo nextest run --profile e2e-resilience {{cucumber_e2e_tests}} --no-capture {{rerun_filter}}
 
 # Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words; and the start cue of each voice start, timed from the end of the command's words (~4 min)
 e2e-seams:
@@ -681,8 +769,8 @@ _e2e-seams: _require-nextest _require-models _build
     # The command spotting services for the voice start timing scenarios (@seams)
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
     export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
-    cargo nextest run --profile e2e-seams {{e2e_seams_tests}}
-    cargo nextest run --profile e2e-seams {{cucumber_e2e_tests}} --no-capture
+    cargo nextest run --profile e2e-seams {{e2e_seams_tests}} {{rerun_filter}}
+    cargo nextest run --profile e2e-seams {{cucumber_e2e_tests}} --no-capture {{rerun_filter}}
 
 # WER accuracy on a fixed sample of 100 recordings (50 per language), two at a time — fails if mean WER > 30 %, and no command in 20 recordings of ordinary speech (~3 min)
 e2e-bench:
@@ -694,7 +782,7 @@ _e2e-bench: _require-nextest _require-models _require-corpus _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" \
-        cargo nextest run --profile e2e-bench {{cucumber_e2e_tests}} --no-capture
+        cargo nextest run --profile e2e-bench {{cucumber_e2e_tests}} --no-capture {{rerun_filter}}
 
 # Manual: @real_keyboard scenarios drive the real hotkey + paste — needs Accessibility and Input Monitoring for the terminal, a GUI session, hands off the keyboard
 test-real-keyboard:

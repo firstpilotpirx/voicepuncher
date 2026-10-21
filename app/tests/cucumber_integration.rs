@@ -33,7 +33,8 @@ pub struct IntegrationWorld {
     pub logging: Option<steps::app_logging::LoggingRun>,
 }
 
-/// Runs the scenarios the command line selects that the gates admit: `@wip` never,
+/// Runs the scenarios the command line selects (a rerun's names instead, when
+/// `VOICEPUNCHER_RERUN_SCENARIOS` holds any) that the gates admit: `@wip` never,
 /// `@real_keyboard` only with `VOICEPUNCHER_REAL_KEYBOARD_IT` set.
 ///
 /// cucumber never gets the selection (`--name`, `--tags`, `CUCUMBER_FILTER_TAGS`): it would apply
@@ -56,6 +57,9 @@ fn main() {
     ];
     let (opts, filter) =
         scenario_filter::split(Opts::<_, _, _, Empty>::parse_from(command_line), gates);
+    let filter = filter.rerun_only(scenario_filter::rerun_names(std::env::var(
+        scenario_filter::RERUN_VARIABLE,
+    )));
     for line in filter.gated_lines() {
         eprintln!("{line}");
     }

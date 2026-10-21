@@ -63,11 +63,20 @@ fn open_gates() -> Vec<Gate> {
 
 /// The names of the fixture scenarios that ran, sorted, under this cucumber command line.
 fn scenarios_run(command_line: &[&str], gates: Vec<Gate>) -> Vec<String> {
+    scenarios_rerun(command_line, gates, None)
+}
+
+/// The names of the fixture scenarios that ran, sorted, under this command line and the rerun
+/// names `rerun` (the value of the rerun variable, `None` when unset).
+fn scenarios_rerun(command_line: &[&str], gates: Vec<Gate>, rerun: Option<&str>) -> Vec<String> {
     let dir = tempfile::tempdir().expect("temp dir");
     std::fs::write(dir.path().join("gates.feature"), FIXTURE).expect("fixture feature");
     let program = std::iter::once("harness");
     let opts = Opts::<_, _, _, Empty>::parse_from(program.chain(command_line.iter().copied()));
     let (opts, filter) = split(opts, gates);
+    let filter = filter.rerun_only(rerun_names(
+        rerun.map(str::to_string).ok_or(VarError::NotPresent),
+    ));
     let names = Arc::new(Mutex::new(Vec::new()));
     let recorded = Arc::clone(&names);
     futures::executor::block_on(
@@ -153,6 +162,58 @@ fn should_run_what_the_closed_gates_admit_without_a_selection() -> Result<(), St
 #[test]
 fn should_leave_out_the_ungated_scenario_when_the_selection_misses_it() -> Result<(), String> {
     expect_runs(&["--name", "keyboard"], open_gates(), &[REAL_KEYBOARD])
+}
+
+/// Like `expect_runs`, with the rerun variable set to `rerun`.
+fn expect_reruns(
+    command_line: &[&str],
+    gates: Vec<Gate>,
+    rerun: &str,
+    expected: &[&str],
+) -> Result<(), String> {
+    let ran = scenarios_rerun(command_line, gates, Some(rerun));
+    if ran == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "under {command_line:?} with rerun {rerun:?} ran {ran:?}, expected {expected:?}"
+        ))
+    }
+}
+
+#[test]
+fn should_run_exactly_the_rerun_names_instead_of_the_tags() -> Result<(), String> {
+    expect_reruns(
+        &["--tags", "@real_keyboard"],
+        open_gates(),
+        &format!("{UNGATED}\n{VOICE_SAMPLES}\n"),
+        &[UNGATED, VOICE_SAMPLES],
+    )
+}
+
+#[test]
+fn should_match_a_rerun_name_whole_not_as_a_part() -> Result<(), String> {
+    expect_reruns(&[], open_gates(), "fixture", &[])
+}
+
+#[test]
+fn should_hold_back_a_rerun_name_its_closed_gate_holds() -> Result<(), String> {
+    expect_reruns(
+        &[],
+        closed_gates(),
+        &format!("{REAL_KEYBOARD}\n{UNGATED}"),
+        &[UNGATED],
+    )
+}
+
+#[test]
+fn should_keep_the_command_line_selection_when_the_rerun_variable_is_empty() -> Result<(), String> {
+    expect_reruns(
+        &["--tags", "@real_keyboard"],
+        open_gates(),
+        "\n",
+        &[REAL_KEYBOARD],
+    )
 }
 
 #[test]
