@@ -10,10 +10,11 @@ Each failure blocks a merge and costs a full check of about 1.5 hours with the l
 
 ## What Changes
 
-- Requests that wait for a busy copy of a speech recognition service start in the order they arrived, in every run; the scenario no longer fails by chance.
+- A request that waits for a busy copy keeps its place in the queue when its wait for a copy runs out and it tries again; today it leaves the queue for a short pause and comes back last, so a later request takes the copy that frees in that pause.
+- The scenario checks the order in which the waiting requests start on a copy, as its promise says, not the order in which they are answered (two copies answer at slightly different speeds).
 
 Current stage: PoC. Target stage: PoC.
-Scope: whether the order breaks in the service (HAProxy queueing to the copies) or in the scenario (how it tells "arrived" and "answered" apart, e.g. a second request that arrives before the first reaches HAProxy, or a shorter clip answered sooner), and fixing the one that is wrong.
+Scope: the client's queue for the copies (`copy-pool/` and the transcription client) and the scenario's order check; both were wrong.
 Acceptance bar: the scenario passes 5 `just e2e-smoke` runs in a row; its promise (arrival order, one request per copy) stays as it is.
 Out of scope: the number of copies; other `local_services` scenarios.
 
@@ -25,15 +26,10 @@ Out of scope: the number of copies; other `local_services` scenarios.
 
 ## Impact
 
-- the HAProxy configuration of the speech recognition services in `justfile`
+- `copy-pool/` (the queue for the copies) and `app/src/adapters/secondary/transcription/openai/`
 - `e2e-test/tests/features/local_services.feature` and its steps in `e2e-test/tests/steps/local_services/`
-
-## Open points
-
-- Whether the service or the test is wrong is not known yet; proposed: read the HAProxy log of a failing run first, in design.
-- Target version: proposed 0.27.2, the PATCH above 0.27.1.
 
 ## Release
 
 SemVer: PATCH — bug fix in request ordering or its test.
-Target version: 0.27.2.
+Target version: 0.30.1.
