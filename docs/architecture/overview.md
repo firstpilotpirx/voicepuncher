@@ -97,6 +97,7 @@ Signals received while the pipeline is in any non-Idle state (except `Recording`
 | Audio playback | macOS `NSSound` / `AVAudioPlayer` | Start/stop beeps via macOS native sound API |
 | Permission probe | `core-foundation` (`AXIsProcessTrusted`) | Checks Accessibility TCC before first key capture |
 | Config | `serde` + `toml` | TOML config file at `~/.voicepuncher/config.toml` |
+| Logging | `log` + `env_logger` with `Target::Pipe` into an own size-rotating file writer (10 MB × 5) teed to a terminal | One logger and its line format for terminal and file; the rotation is ~60 lines, smaller than adopting `tracing`, `log4rs` or `flexi_logger` |
 | CLI args | `clap` | Derive-based arg parser; overlays on top of TOML config |
 | Packaging | `just` recipes on macOS tools (`plutil`, `iconutil`, `codesign`, `hdiutil`) + `create-dmg` 1.3.0 for the disk image window | A bundle is three files in a fixed tree; `create-dmg` scripts the Finder layout. No packaging crate: `cargo-packager` always signs with the hardened runtime, which blocks the microphone and the key listener without entitlements |
 | Signing | self-signed code-signing certificate (`VOICEPUNCHER_SIGNING_IDENTITY`), no Developer ID, no notarization | The designated requirement names the certificate, so updates keep the TCC permissions; ad-hoc signatures change identity every build. Gatekeeper needs one "Open Anyway" per version |

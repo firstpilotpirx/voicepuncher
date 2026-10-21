@@ -11,6 +11,10 @@ use voicepuncher::adapters::secondary::archiving::filesystem::{
 use voicepuncher::adapters::secondary::commandspotting::websocket::WebSocketCommandSpotter;
 use voicepuncher::adapters::secondary::focus::macos::MacOsFocusProbe;
 use voicepuncher::adapters::secondary::keypressing::macos::MacOsKeyPresser;
+use voicepuncher::adapters::secondary::logging::file::{
+    install_panic_hook, launch_header, logs_dir, terminal_stderr, RotatingFileWriter, TeeWriter,
+    KEPT_BACKUPS, LOG_FILE_NAME, MAX_LOG_BYTES,
+};
 use voicepuncher::adapters::secondary::permissions::macos::MacOsPermissionProbe;
 use voicepuncher::adapters::secondary::recording::cpal::CpalAudioRecorder;
 use voicepuncher::adapters::secondary::recording::filesystem::FileSystemAudioRecorder;
@@ -46,6 +50,7 @@ impl VisualIndicator for NoopVisualIndicator {
 }
 
 fn main() {
+    install_panic_hook();
     let cli = Cli::parse();
 
     let config_path = cli.config.clone().unwrap_or_else(|| {
@@ -73,16 +78,17 @@ fn main() {
         std::process::exit(2);
     });
 
-    env_logger::Builder::new()
-        .filter_level(
-            config
-                .logging
-                .level
-                .parse()
-                .unwrap_or(log::LevelFilter::Info),
-        )
-        .format(log_line)
-        .init();
+    let level = config
+        .logging
+        .level
+        .parse()
+        .unwrap_or(log::LevelFilter::Info);
+    if input_file.is_some() {
+        init_stderr_logger(level);
+    } else {
+        init_file_logger(level);
+    }
+    log::info!("{}", launch_header(&config_path));
     if config.audio.debug_save_wav {
         log::warn!(
             "[audio] debug_save_wav is retired: the dictation archive ([archive]) now keeps \
@@ -307,6 +313,34 @@ fn chunking_cfg(cfg: &TranscriptionCfg) -> ChunkingCfg {
         chunk_overlap_secs: cfg.chunk_overlap_secs,
         vad_lookback_secs: cfg.vad_lookback_secs,
     }
+}
+
+/// File mode is a command line tool: its log goes to the error output only.
+fn init_stderr_logger(level: log::LevelFilter) {
+    env_logger::Builder::new()
+        .filter_level(level)
+        .format(log_line)
+        .init();
+}
+
+/// Hotkey mode: the log file in the logs folder, plus the terminal when there is one; the
+/// error output alone when the file cannot be opened.
+fn init_file_logger(level: log::LevelFilter) {
+    let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    let path = logs_dir(&home).join(LOG_FILE_NAME);
+    let file = match RotatingFileWriter::open(&path, MAX_LOG_BYTES, KEPT_BACKUPS) {
+        Ok(file) => file,
+        Err(e) => {
+            eprintln!("log file {} cannot be opened: {e}", path.display());
+            return init_stderr_logger(level);
+        }
+    };
+    let tee = TeeWriter::new(file, terminal_stderr());
+    env_logger::Builder::new()
+        .filter_level(level)
+        .format(log_line)
+        .target(env_logger::Target::Pipe(Box::new(tee)))
+        .init();
 }
 
 /// One log line with the thread that wrote it, so a session traces across the pipeline,

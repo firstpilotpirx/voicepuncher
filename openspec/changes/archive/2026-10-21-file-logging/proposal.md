@@ -6,7 +6,7 @@ The app logs to stderr through `env_logger` with the line format `[time LEVEL th
 
 - In hotkey mode the app writes its log to `~/.voicepuncher/logs/voicepuncher.log`, always, with today's line format. When stderr is a terminal (`cargo run`, `cargo watch`), the same lines also go to stderr, as today; when it is not (launched from the Finder, by launchd, or with stderr redirected), the file is the only output. File mode (`--input-file`) keeps logging to stderr only: it is a command line tool whose stdout is the transcript.
 - The file rotates by size: when it passes 10 MB the app renames it to `voicepuncher.log.1` (shifting `.1` to `.2` … up to `.5`, deleting the oldest) and starts a new file; rotation is done by the app on write, no external tool. Services' logs rotate the same way once `local-services-runtime` writes them; this change exposes the rotating writer for it.
-- Every launch starts with a header line: `voicepuncher 0.28.0 starting (pid 1234, config /Users/me/.voicepuncher/config.toml, macOS 27.0.1, arm64)`, so a pasted log tells which version and config produced it.
+- Every launch starts with a header line: `voicepuncher 0.27.0 starting (pid 1234, config /Users/me/.voicepuncher/config.toml, macOS 27.0.1, arm64)`, so a pasted log tells which version and config produced it.
 - A panic is logged before the process dies (`panic: MESSAGE at FILE:LINE` with the thread name) through a panic hook installed before anything else; every `std::process::exit` path in `main.rs` and the runtime logs its reason first (they already log through `log::error!`, which now reaches the file).
 - `[logging] level` keeps its meaning (the filter for both outputs). No new config key; the folder is fixed (`~/.voicepuncher/logs/`), created when missing. The log line format is unchanged, so the E2E harness and the user's reading habits hold.
 - README § Logs: where the log is, how to read the last dictation (`tail -n 200`), rotation; AGENTS.md § How to verify a change: the user pastes the tail of `~/.voicepuncher/logs/voicepuncher.log` when the app was not started from a terminal. The glossary gets "Log file" and "Log rotation".
@@ -50,7 +50,7 @@ Pitfalls: `env_logger` takes the pipe target only before `init`, so the file mus
 
 - new `app/src/adapters/secondary/logging/file/mod.rs`, `app/src/adapters/secondary/mod.rs`
 - `app/src/main.rs` (logger target, header, panic hook, log folder function)
-- new `app/tests/logging_file_it.rs` (writer rotation with a temp dir; a binary run in file mode writes no log file), unit tests in the writer
+- new `app/tests/logging_file_it.rs` (writer rotation with a temp dir), new `app/tests/features/component/app_logging.feature` (the binary in hotkey and file mode, rotation with a small limit), unit tests in the writer
 - `README.md`, `AGENTS.md`, `docs/ubiquitous-language.md`, `docs/architecture/overview.md`, `docs/project-map.md`; agent-kit tech matrix (separate PR)
 - Checks: `just test` after every edit; `just check` after the last group; `just full-check` before the merge (build input); manual check by the user: launch from a terminal and from the Finder (`open target/release/voicepuncher` is not a bundle — use `nohup target/release/voicepuncher >/dev/null 2>&1 &` to simulate no terminal), dictate once, paste the tail of the file.
 
@@ -63,4 +63,4 @@ Pitfalls: `env_logger` takes the pipe target only before `init`, so the file mus
 ## Release
 
 SemVer: MINOR — a new capability (the log file); pre-1.0.
-Target version: 0.28.0 (corrected at merge with `kit version-check`).
+Target version: 0.27.0 (corrected at merge with `kit version-check`).

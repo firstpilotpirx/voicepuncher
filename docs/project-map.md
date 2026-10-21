@@ -38,6 +38,7 @@
 | `app/src/adapters/secondary/textpasting/macos/` | Secondary adapter | `MacOsTextPaster` — pastes text via `arboard` + `CGEventPost` |
 | `app/src/adapters/secondary/textpasting/stdio/` | Secondary adapter | `StdioTextPaster` — writes text to stdout (file mode / E2E) |
 | `app/src/adapters/secondary/soundplaying/macos/` | Secondary adapter | `MacosSoundPlayer` — plays start/stop sounds via macOS `afplay` |
+| `app/src/adapters/secondary/logging/file/` | Secondary adapter | `RotatingFileWriter`, `TeeWriter` — the app's log file `~/.voicepuncher/logs/voicepuncher.log`, size-rotated and teed to a terminal; the launch header and the panic hook |
 | `app/src/adapters/secondary/permissions/macos/` | Secondary adapter | `MacOsPermissionProbe` — probes macOS TCC permissions |
 | `app/src/config.rs`, `app/src/config/` | Config | TOML config loading with `serde`; `Config` is the root struct; `[transcription]` and `[whisper]` migration error in `config/transcription.rs`, `[refinement]` and `[llm]` migration error in `config/refinement.rs`, loopback check in `config/loopback.rs` |
 | `app/src/main.rs` | Composition root | Wires adapters + use cases into a runnable; no business logic |

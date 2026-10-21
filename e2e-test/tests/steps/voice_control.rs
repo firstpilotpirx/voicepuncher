@@ -7,6 +7,7 @@ use std::process::Command;
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 
+use voicepuncher::adapters::secondary::logging::file::{logs_dir, LOG_FILE_NAME};
 use voicepuncher::core::domain::VoiceCommand;
 use voicepuncher_e2e_test::speech::read_wav;
 use voicepuncher_e2e_test::voice_commands::{
@@ -352,13 +353,18 @@ async fn app_starts(world: &mut E2eWorld) -> Result<()> {
                 world.voice_control
             ),
         )?;
+        // A home of its own: hotkey mode logs to its log file, never to the user's
+        let home = world.workdir()?.to_path_buf();
         let output = Command::new(sut_bin())
             .arg("--config")
             .arg(&config)
+            .env("HOME", &home)
             .output()
             .context("failed to spawn the app")?;
         world.exit_status = Some(output.status);
         world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        world.app_log =
+            std::fs::read_to_string(logs_dir(&home).join(LOG_FILE_NAME)).unwrap_or_default();
         Ok(())
     })
     .await
@@ -401,13 +407,13 @@ fn refuses_to_start(world: &mut E2eWorld) -> Result<()> {
     let status = world.exit_status.context("the app did not run")?;
     if status.code() != Some(STARTUP_FAILURE_EXIT_CODE) {
         bail!(
-            "exit status {status}, expected {STARTUP_FAILURE_EXIT_CODE}; stderr: {}",
-            world.stderr
+            "exit status {status}, expected {STARTUP_FAILURE_EXIT_CODE}; log: {}",
+            world.app_log
         );
     }
     for expected in ["command spotting service", "just start-model-servers"] {
-        if !world.stderr.contains(expected) {
-            bail!("stderr does not name {expected:?}: {}", world.stderr);
+        if !world.app_log.contains(expected) {
+            bail!("the log does not name {expected:?}: {}", world.app_log);
         }
     }
     Ok(())

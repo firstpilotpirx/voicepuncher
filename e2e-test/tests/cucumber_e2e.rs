@@ -33,6 +33,8 @@ pub struct E2eWorld {
     pub refinement_report: Option<voicepuncher_e2e_test::refinement_eval::Report>,
     pub stdout: String,
     pub stderr: String,
+    /// The log file of a hotkey-mode run, which logs nothing to a piped error output
+    pub app_log: String,
     pub elapsed: Option<Duration>,
     pub voice_control: bool,
     pub command_spotting_url: Option<String>,

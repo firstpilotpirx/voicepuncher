@@ -1,6 +1,6 @@
 [package]
 name = "voicepuncher"
-version = "0.26.0"
+version = "0.27.0"
 edition = "2021"
 rust-version = "1.88"
 
@@ -34,7 +34,7 @@ voicepuncher-copy-pool = { path = "../copy-pool" }
 core-foundation = "0.10"
 core-graphics = "0.25"
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSDate", "NSNotification", "NSRunLoop", "NSString", "NSValue"] }
+objc2-foundation = { version = "0.3", features = ["NSDate", "NSNotification", "NSProcessInfo", "NSRunLoop", "NSString", "NSValue"] }
 objc2-app-kit = { version = "0.3", features = [
     "NSAccessibility",
     "NSApplication",

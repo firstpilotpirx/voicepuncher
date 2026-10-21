@@ -255,6 +255,18 @@
 - **Code:** `app/src/core/application/dictation_archive.rs`
 - **Synonyms to AVOID:** "record", "history item", "log entry"
 
+### Log file
+- **Type:** Adapter output (no port: logging goes through the `log` facade)
+- **Definition:** `~/.voicepuncher/logs/voicepuncher.log`, where the app in hotkey mode writes every log line of a session, starting with a launch header (version, process id, config path, macOS version, architecture); a terminal, when there is one, gets the same lines. File mode never writes it.
+- **Code:** `app/src/adapters/secondary/logging/file/`
+- **Synonyms to AVOID:** "dictation archive" (that keeps dictations, not log lines), "history"
+
+### Log rotation
+- **Type:** Behavior of the *log file* writer
+- **Definition:** Before a write would take the *log file* past 10 MB, it is renamed `.1`, earlier backups move one number up to `.5`, the oldest is deleted and a new file starts; a line is never split between files.
+- **Code:** `app/src/adapters/secondary/logging/file/rotating.rs` — `RotatingFileWriter`
+- **Synonyms to AVOID:** "log cleanup", "truncation"
+
 ### HotkeyListener / AudioRecorder / Transcriber / TextRefiner / TextPaster / FocusProbe
 - **Type:** Driving / Driven Ports (traits in `core/application/`)
 - **Code:** `app/src/core/application/{hotkey_listener,audio_recorder,transcriber,text_refiner,text_paster,focus_probe}.rs`
@@ -287,6 +299,7 @@
 | `passthrough` | no technology: hands the input on unchanged | `adapters/secondary/textrefinement/passthrough/` — `PassthroughTextRefiner` |
 | `macos` | macOS native APIs (`CGEventPost` via `enigo`, `NSPasteboard` via `arboard`, `AXIsProcessTrusted` via `core-foundation`) | `adapters/secondary/textpasting/macos/`, `adapters/secondary/soundplaying/macos/`, `adapters/secondary/permissions/macos/` |
 | `filesystem` | WAV file I/O via `hound` | `adapters/secondary/recording/filesystem/` — `FileSystemAudioRecorder` |
+| `file` | a plain file on disk via `std::fs`, size-rotated | `adapters/secondary/logging/file/` — `RotatingFileWriter`, `TeeWriter` |
 | `stdio` | stdout via `println!` | `adapters/secondary/textpasting/stdio/` — `StdioTextPaster` |
 | `cli` | interactive terminal UI via `dialoguer` + `console` | `adapters/primary/setup/cli/` — `SetupWizard` |
 

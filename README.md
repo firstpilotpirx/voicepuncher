@@ -312,6 +312,18 @@ max_size_mb = 2048                 # beyond this, the oldest entries are removed
 
 **Privacy:** the archive holds the audio and text of everything you dictated. It stays on this machine: it is never sent anywhere and never committed. Delete the folder, or set `enabled = false`, to get rid of it.
 
+## Logs
+
+In hotkey mode the app writes its log to `~/.voicepuncher/logs/voicepuncher.log`, beside the services' logs, whether it was started from a terminal or not. The first line of every launch names the version, process id, config file, macOS version and architecture (`voicepuncher 0.27.0 starting (pid 1234, config /Users/me/.voicepuncher/config.toml, macOS 27.0.1, aarch64)`); a panic on any thread is logged with its message, place and thread before the app ends. Started from a terminal, the app also prints every line there, as before; started without one (from the Finder, by launchd, or with the error output redirected), the file is the only output. `[logging] level` filters both.
+
+The last dictation, with the launch header above it:
+
+```bash
+tail -n 200 ~/.voicepuncher/logs/voicepuncher.log
+```
+
+When the file would pass 10 MB, it is renamed `voicepuncher.log.1` (older ones move up to `.5`, the oldest is deleted) and a new file starts; no line is split between two files. File mode (`--input-file`) logs to the error output only and never touches the logs folder.
+
 ## Testing
 
 All checks run through [`just`](https://github.com/casey/just) (`brew install just`). `just` with no arguments lists every recipe.

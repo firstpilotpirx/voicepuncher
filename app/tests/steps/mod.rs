@@ -1,3 +1,4 @@
+pub mod app_logging;
 pub mod dictation_archive;
 pub mod dictation_pointer;
 pub mod failure_notices;

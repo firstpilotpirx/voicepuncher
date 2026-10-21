@@ -24,6 +24,7 @@ The rotating writer implements `std::io::Write`, is `Send`, and survives rotatio
 
 ## Risks / Trade-offs
 
+- [The log file cannot be opened (a read-only home)] → hotkey mode warns on the error output and logs there instead, terminal or not: a log in the wrong place beats no log. Untested: it needs a filesystem that refuses the open.
 - [The writer's size counter drifts from the file (another process appends)] → nothing else writes this file; the counter is initialised from the file length at open.
 - [A full disk makes writes fail] → write errors are swallowed after one stderr warning; the app keeps dictating.
 - [Logging from the panic hook while the logger is poisoned] → `log` is lock-free at the call site; `env_logger`'s writer mutex is not held during a panic in app code.
@@ -32,14 +33,14 @@ The rotating writer implements `std::io::Write`, is `Send`, and survives rotatio
 
 | Scenario | Level |
 |---|---|
-| A session's lines are in the log file | adapter integration `logging_file_it.rs` (the binary in hotkey mode with a temp HOME and a dead service port exits 2; the file holds the header and the error) |
-| A later session appends to the same file | adapter integration `logging_file_it.rs` (two writer instances on one file; the second continues the count) |
-| Started from a terminal | adapter integration `logging_file_it.rs` (the binary under `/usr/bin/script -q`: the pty shows the header) |
-| Started without a terminal | adapter integration `logging_file_it.rs` (the binary with stderr piped: nothing arrives on it) |
-| Transcribing a file leaves no log file | adapter integration `logging_file_it.rs` (the binary in file mode with a temp HOME) |
-| The limit is reached | unit tests in `logging/file/mod.rs` |
-| Backups shift and the oldest goes | unit tests in `logging/file/mod.rs` |
-| A session continues on an existing file | unit tests in `logging/file/mod.rs` (reopen counts the existing length) |
-| The header line | adapter integration `logging_file_it.rs` (same hotkey run; the first line's fields) |
-| A worker thread panics | unit test in `logging/file/mod.rs` (a child thread panic and a capturing logger) |
+| A session's lines are in the log file | component `app_logging.feature` (the binary in hotkey mode with a temp HOME and a dead service port exits 2; the file holds the header and the error in the terminal line format) |
+| A later session appends to the same file | component `app_logging.feature` (two runs of the binary on one HOME); adapter integration `logging_file_it.rs` (two writer instances on one file; the second continues the count) |
+| Started from a terminal | component `app_logging.feature` (the binary under `/usr/bin/script -q`: the pty shows the file's lines) |
+| Started without a terminal | component `app_logging.feature` (the binary with stderr piped: nothing arrives on it) |
+| Transcribing a file leaves no log file | component `app_logging.feature` (the binary in file mode with a temp HOME; the header first on the error output) |
+| The limit is reached | component `app_logging.feature` (the writer with a 100-byte limit); unit tests in `logging/file/rotating.rs` |
+| Backups shift and the oldest goes | component `app_logging.feature` (the writer with a 100-byte limit); unit tests in `logging/file/rotating.rs` |
+| A session continues on an existing file | component `app_logging.feature` (a second writer on the same file); unit tests in `logging/file/rotating.rs` |
+| The header line | component `app_logging.feature` (the first line's fields of a hotkey run); unit test in `logging/file/header.rs` |
+| A worker thread panics | unit test in `logging/file/panic_hook.rs` (a child thread panic and a capturing logger; a panic cannot be caused in the binary from outside) |
 | A real session's log from a Finder-like launch | manual check by the user |

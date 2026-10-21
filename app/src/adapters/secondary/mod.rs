@@ -3,6 +3,7 @@ pub mod commandspotting;
 pub mod focus;
 pub mod http;
 pub mod keypressing;
+pub mod logging;
 pub mod permissions;
 pub mod recording;
 pub mod soundplaying;
