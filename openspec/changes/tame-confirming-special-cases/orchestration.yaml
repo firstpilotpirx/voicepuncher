@@ -1,0 +1,3 @@
+depends_on:
+  - change: command-spotting-stall-handling
+    why: both rewrite confirming.rs, worker.rs and engine.rs
