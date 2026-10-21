@@ -26,13 +26,9 @@ Out of scope: making stages faster (`speed-up-tests`), reusing passed stages (`r
 
 ## Open points
 
-- Which stages count as light: proposed — decided by measured GPU load, starting with the voice control part of `e2e-smoke` and `e2e-resilience`.
-- Whether `e2e-smoke` must split into a voice control stage and the rest to make this work: proposed — yes, if `speed-up-tests` has not already split it.
-- Two named locks versus one lock with two slots: proposed — two named locks (light, heavy), so two heavy stages never overlap.
-- Ports for two runs at once: proposed — a second fixed set of test ports for the light lock.
-- Target version: proposed no release — tooling only.
+- Which stages count as light, whether the smoke set splits, named locks or slots, ports: settled in design decisions 1–6 (the smoke set is already split by reuse-passed-check-stages).
 
 ## Release
 
 SemVer: no release — test tooling only; no behavior change.
-Target version: 0.18.0.
+Target version: unchanged.
