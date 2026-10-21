@@ -62,4 +62,4 @@ Pitfalls: never call `register` from a test or from `cargo test` binaries — it
 ## Release
 
 SemVer: MINOR — a new capability; pre-1.0.
-Target version: 0.35.0 (corrected at merge with `kit version-check`).
+Target version: 0.31.0 (corrected at merge with `kit version-check`).
