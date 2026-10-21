@@ -20,6 +20,8 @@ See proposal.md — Why. `app/tests/textpasting_macos_it.rs` writes the real gen
 
 **D5 — The lock's own test is the Red test.** The cross-checkout race needs two runs at once and fails only sometimes, so the Red test proves the cause instead: while one handle holds the lock at a temporary path, a second handle does not get it within 200 ms and gets it within 2 s after the first is dropped. It fails against a helper that opens the file without locking it. The race itself is checked once by hand (task 2.4): two processes running the pasteboard tests in a loop at the same time.
 
+**D6 — Wait for the restored items, not for the pasted text to go.** Verifying the lock found a second cause of the empty restored clipboard: the restore clears the pasteboard and then writes the saved items, and the two restore tests stopped waiting as soon as the pasted text was gone, so under load (load average 63–155, single process) they read the empty pasteboard in between — 3 of 40 single-process rounds and 5 of 40 two-process rounds failed with the lock alone. The two tests now poll until every copied item is back within the same `RESTORE_DEADLINE`, then assert as before; a restore that never comes still fails. Rejected: changing the restore to write without clearing first (app code, out of scope, and `writeObjects` needs a cleared pasteboard). Its Red step is a check by reading the code: the gap is too short to force without changing the app.
+
 ## Risks / Trade-offs
 
 - [A run waits for another checkout's pasteboard tests] → a few seconds at most; the tests are short and serialized only among themselves.

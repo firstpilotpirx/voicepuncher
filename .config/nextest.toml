@@ -25,7 +25,8 @@ command-spotting-models = { max-threads = 1 }
 # its own, so several run at once (6: 49–53 s for `just test` over three runs, against 52–74 s with 4
 # and 93 s with 2)
 command-spotting-engine = { max-threads = 6 }
-# The tests that write the real general pasteboard run one at a time: they share that one pasteboard
+# The tests that write the real general pasteboard run one at a time: they share that one pasteboard. Runs
+# of other checkouts are kept apart by the pasteboard file lock the tests take (app/tests/support)
 pasteboard = { max-threads = 1 }
 
 [[profile.default.overrides]]

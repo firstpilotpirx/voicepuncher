@@ -1,7 +1,8 @@
 //! The macOS paster on the real general pasteboard: whatever the user had copied is back after the paste.
 //! The paste keystroke is replaced by one that sends nothing, so no Accessibility permission is needed.
-//! Each test saves the user's pasteboard first and puts it back when it ends; nextest runs this binary's
-//! tests one at a time (`.config/nextest.toml`, test group `pasteboard`).
+//! Each test takes the machine-wide pasteboard lock first, so runs from parallel checkouts take turns, then
+//! saves the user's pasteboard and puts it back when it ends, before the lock is released; nextest runs this
+//! binary's tests one at a time (`.config/nextest.toml`, test group `pasteboard`).
 
 use std::time::{Duration, Instant};
 
@@ -12,6 +13,9 @@ use objc2_foundation::{NSArray, NSData, NSString};
 use voicepuncher::adapters::secondary::textpasting::macos::MacOsTextPaster;
 use voicepuncher::core::application::TextPaster;
 use voicepuncher::core::domain::CleanedText;
+
+mod support;
+use support::pasteboard_lock::PasteboardLock;
 
 const RESTORE_DELAY_MS: u64 = 50;
 const RESTORE_DEADLINE: Duration = Duration::from_secs(2);
@@ -115,16 +119,26 @@ fn wait_until_pasted_text_is_gone() {
     }
 }
 
+/// Waits until every copied item is back: the restore clears the pasteboard before it writes the items, so
+/// the pasted text being gone alone may still show the empty pasteboard between the two.
+fn wait_until_restored(copied: &[PasteboardItemTypes]) {
+    let deadline = Instant::now() + RESTORE_DEADLINE;
+    while !every_type_is_back(copied, &read_items()) && Instant::now() < deadline {
+        std::thread::sleep(POLL_INTERVAL);
+    }
+}
+
 #[test]
 fn should_bring_back_a_copied_screenshot_after_the_paste() {
     // Given
+    let _pasteboard_lock = PasteboardLock::take();
     let _user_pasteboard = SavedUserPasteboard::save();
     let screenshot: Vec<PasteboardItemTypes> =
         vec![vec![(PNG_TYPE.to_owned(), SCREENSHOT_BYTES.to_vec())]];
     write_items(&screenshot);
     // When
     paste_without_keystroke(RESTORE_DELAY_MS);
-    wait_until_pasted_text_is_gone();
+    wait_until_restored(&screenshot);
     // Then
     assert_every_type_is_back(&screenshot);
 }
@@ -132,6 +146,7 @@ fn should_bring_back_a_copied_screenshot_after_the_paste() {
 #[test]
 fn should_bring_back_copied_text_with_every_type_after_the_paste() {
     // Given
+    let _pasteboard_lock = PasteboardLock::take();
     let _user_pasteboard = SavedUserPasteboard::save();
     let rich_text: Vec<PasteboardItemTypes> = vec![vec![
         (PLAIN_TEXT_TYPE.to_owned(), b"copied text".to_vec()),
@@ -140,7 +155,7 @@ fn should_bring_back_copied_text_with_every_type_after_the_paste() {
     write_items(&rich_text);
     // When
     paste_without_keystroke(RESTORE_DELAY_MS);
-    wait_until_pasted_text_is_gone();
+    wait_until_restored(&rich_text);
     // Then
     assert_every_type_is_back(&rich_text);
 }
@@ -159,9 +174,22 @@ fn assert_every_type_is_back(copied: &[PasteboardItemTypes]) {
     }
 }
 
+fn every_type_is_back(copied: &[PasteboardItemTypes], restored: &[PasteboardItemTypes]) -> bool {
+    restored.len() == copied.len()
+        && copied
+            .iter()
+            .zip(restored)
+            .all(|(copied_item, restored_item)| {
+                copied_item
+                    .iter()
+                    .all(|copied_type| restored_item.contains(copied_type))
+            })
+}
+
 #[test]
 fn should_leave_an_empty_clipboard_empty_after_the_paste() {
     // Given
+    let _pasteboard_lock = PasteboardLock::take();
     let _user_pasteboard = SavedUserPasteboard::save();
     write_items(&[]);
     // When
@@ -176,6 +204,7 @@ fn should_not_overwrite_a_copy_made_after_the_paste() {
     // Given
     const SLOW_RESTORE_DELAY_MS: u64 = 300;
     const AFTER_RESTORE_WINDOW: Duration = Duration::from_millis(3 * SLOW_RESTORE_DELAY_MS);
+    let _pasteboard_lock = PasteboardLock::take();
     let _user_pasteboard = SavedUserPasteboard::save();
     write_items(&[vec![(
         PLAIN_TEXT_TYPE.to_owned(),
@@ -191,4 +220,32 @@ fn should_not_overwrite_a_copy_made_after_the_paste() {
     std::thread::sleep(AFTER_RESTORE_WINDOW);
     // Then
     assert_eq!(read_items(), copied_after);
+}
+
+#[test]
+fn should_make_a_second_run_wait_while_another_holds_the_pasteboard() {
+    // Given
+    const NOT_TAKEN_FOR: Duration = Duration::from_millis(200);
+    const TAKEN_WITHIN: Duration = Duration::from_secs(2);
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pasteboard.lock");
+    let first_run = PasteboardLock::take_at(&path);
+    let (taken_tx, taken_rx) = std::sync::mpsc::channel::<()>();
+    let second_path = path.clone();
+    let second_run = std::thread::spawn(move || {
+        let _lock = PasteboardLock::take_at(&second_path);
+        taken_tx.send(()).unwrap();
+    });
+    // When
+    let taken_while_held = taken_rx.recv_timeout(NOT_TAKEN_FOR).is_ok();
+    drop(first_run);
+    // Then
+    assert!(
+        !taken_while_held,
+        "the second run took the pasteboard lock while the first held it"
+    );
+    taken_rx
+        .recv_timeout(TAKEN_WITHIN)
+        .expect("the second run must take the lock once the first drops it");
+    second_run.join().unwrap();
 }

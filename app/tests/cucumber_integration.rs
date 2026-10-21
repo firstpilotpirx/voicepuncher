@@ -1,6 +1,7 @@
 //! Harness entry point for the slice and component `.feature` files: World and main() only.
 
 mod steps;
+mod support;
 
 use std::path::Path;
 use std::sync::mpsc::Receiver;

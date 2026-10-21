@@ -5,6 +5,7 @@ Two tests in `app/tests/textpasting_macos_it.rs` — `should_bring_back_copied_t
 ## What Changes
 
 - The pasteboard tests hold a machine-wide lock while they touch the pasteboard, so runs from parallel checkouts take turns instead of overwriting each other's clipboard.
+- The two tests that check the restored clipboard wait until the copied items are back, not only until the pasted text is gone: the restore clears the pasteboard before writing the items, so a loaded machine let them read the empty pasteboard in between (found while verifying the lock).
 
 Current stage: PoC. Target stage: PoC.
 Scope: the tests that read or write the system pasteboard, and the lock they take.
