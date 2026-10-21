@@ -69,6 +69,7 @@ impl Pipeline {
             }
             PipelineInput::SpottingBack => self.regain_spotting(),
             PipelineInput::Shutdown => self.shut_down(),
+            PipelineInput::PermissionRevoked(permission) => self.shut_down_revoked(permission),
         }
     }
 

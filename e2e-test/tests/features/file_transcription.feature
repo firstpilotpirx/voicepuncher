@@ -10,6 +10,7 @@ Feature: file-transcription
       Given a recording of silence lasting <seconds> seconds
       When the user transcribes the recording file <refinement> refinement
       Then the app does not exit with a startup failure
+      And no permission is checked
 
       Examples:
         | seconds | refinement |

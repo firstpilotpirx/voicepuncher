@@ -297,6 +297,8 @@ pub struct PipelineLog {
     pub errors: Mutex<Vec<String>>,
     pub warnings: Mutex<Vec<(ThreadId, String)>>,
     pub voice_starts: Mutex<Vec<(ThreadId, String)>>,
+    /// Every line that reports the permissions.
+    pub permissions: Mutex<Vec<String>>,
 }
 
 impl log::Log for PipelineLog {
@@ -314,6 +316,9 @@ impl log::Log for PipelineLog {
             }
             log::Level::Info => {
                 let line = record.args().to_string();
+                if line.starts_with("permissions: ") {
+                    self.permissions.lock().unwrap().push(line.clone());
+                }
                 if line.starts_with(VOICE_START_LINE) {
                     let thread = std::thread::current().id();
                     self.voice_starts.lock().unwrap().push((thread, line));

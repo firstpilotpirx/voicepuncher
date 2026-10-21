@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use crate::core::domain::{HotKey, RecordingMode};
+use crate::core::domain::{HotKey, Permission, RecordingMode};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeState {
@@ -13,6 +13,12 @@ pub enum RuntimeState {
         voice_control: bool,
     },
     Restarting,
+    /// No pipeline runs until every permission is granted; `revoked` were taken away while
+    /// the pipeline ran.
+    WaitingForPermissions {
+        missing: Vec<Permission>,
+        revoked: Vec<Permission>,
+    },
     Stopped,
     Failed(String),
 }
@@ -31,6 +37,10 @@ impl fmt::Display for RuntimeState {
                 if *voice_control { "on" } else { "off" }
             ),
             RuntimeState::Restarting => write!(f, "restarting"),
+            RuntimeState::WaitingForPermissions { missing, .. } => {
+                let names: Vec<&str> = missing.iter().map(|p| p.name()).collect();
+                write!(f, "waiting for permissions: {}", names.join(", "))
+            }
             RuntimeState::Stopped => write!(f, "stopped"),
             RuntimeState::Failed(reason) => write!(f, "failed: {reason}"),
         }
@@ -162,6 +172,18 @@ mod tests {
         // Then
         assert!(seen.lock().unwrap().is_empty());
         assert_eq!(observers.current(), None);
+    }
+
+    #[test]
+    fn should_describe_the_wait_with_the_missing_permissions() {
+        let state = RuntimeState::WaitingForPermissions {
+            missing: vec![Permission::Accessibility, Permission::InputMonitoring],
+            revoked: vec![],
+        };
+        assert_eq!(
+            state.to_string(),
+            "waiting for permissions: Accessibility, Input Monitoring"
+        );
     }
 
     #[test]

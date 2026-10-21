@@ -8,9 +8,9 @@ Call the `Artifact` tool with `action: "quickstart"` and `intent: "design"`, fol
 
 ## 1. The window
 
-- Title bar: `Permissions`. Size 460×360 pt, not resizable. Standard window chrome, light and dark appearance.
+- Title bar: `Permissions`. Size 460×390 pt, not resizable. Standard window chrome, light and dark appearance.
 - Heading (bold 15 pt): `voicepuncher needs three permissions`. Subheading (secondary label, 13 pt): `Grant each one below. voicepuncher checks again by itself; no restart is needed.`
-- Three rows, 20 pt margins, 12 pt between rows, each row: a 28 pt SF Symbol in a 36×36 pt rounded tile (symbols `mic`, `accessibility`, `keyboard`; tile tint system blue), then two lines of text (name in 13 pt medium: `Microphone`, `Accessibility`, `Input Monitoring`; why in 12 pt secondary: `to hear your dictation`, `to paste the text into the app you are typing in`, `to notice the hotkey in any app`), then at the right a status badge and a button stacked or side by side (the design decides; keep the button 110 pt wide).
+- Three rows, 20 pt margins, 12 pt between rows, each row: a 28 pt SF Symbol in a 36×36 pt rounded tile (symbols `mic`, `accessibility`, `keyboard`; tile tint system blue), then two lines of text (name in 13 pt medium: `Microphone`, `Accessibility`, `Input Monitoring`; why in 12 pt secondary: `to hear your dictation`, `to paste the text into the app you are typing in`, `to notice the hotkey in any app`), then at the right a status badge and a button stacked or side by side (stacked: badge above button; the button 140 pt wide, so `Open System Settings` fits on one line; the why line wraps to a second line when it is long).
 - Status badges: `Granted` (green dot + text), `Not granted` (red dot), `Not asked yet` (grey dot), `Checking…` (small spinner).
 - Buttons per status: `Request…` (Not asked yet), `Open System Settings` (Not granted), none when Granted (badge only).
 - Developer case (unbundled): a line under the heading in the warning colour: `voicepuncher runs from iTerm2 — grant the permissions to iTerm2.`

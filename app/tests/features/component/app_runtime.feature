@@ -75,3 +75,24 @@ Feature: app-runtime
       When the runtime stops
       Then the recording is cancelled and nothing is pasted
       And the runtime state is Stopped
+
+  Rule: The runtime waits for permissions
+
+    Scenario: Start with a permission missing
+      Given an observer registered before the runtime starts
+      And Input Monitoring is not granted
+      When the runtime starts
+      Then the observer is told Waiting for permissions naming Input Monitoring
+      And no dictation pipeline runs
+
+    Scenario: The gate opens while waiting
+      Given the runtime is Waiting for permissions
+      When the last missing permission is granted
+      Then the observer is told Starting and then Ready
+      And the dictation pipeline runs
+
+    Scenario: A revocation while Ready
+      Given the runtime is Ready
+      When Accessibility is revoked
+      Then the pipeline ends
+      And the observer is told Waiting for permissions naming Accessibility

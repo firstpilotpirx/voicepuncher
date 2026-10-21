@@ -1,33 +1,49 @@
-use anyhow::{anyhow, Result};
-use cpal::traits::{DeviceTrait, HostTrait};
+//! The permissions on macOS: status calls that open no device, the system's requests, and the
+//! System Settings pages.
+
+mod responsible_app;
+
+use std::ffi::c_void;
+
+use block2::RcBlock;
+use core_foundation::base::TCFType;
+use core_foundation::boolean::CFBoolean;
+use core_foundation::dictionary::CFDictionary;
+use core_foundation::string::{CFString, CFStringRef};
+use objc2::runtime::{AnyClass, Bool};
+use objc2::{class, msg_send};
+use objc2_foundation::{NSBundle, NSString};
 
 use crate::core::application::permission_probe::PermissionProbe;
-
-type CGEventTapProxy = *mut std::ffi::c_void;
-type CGEventRef = *mut std::ffi::c_void;
-type CFMachPortRef = *mut std::ffi::c_void;
+use crate::core::domain::{Permission, PermissionStatus};
 
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {
-    fn AXIsProcessTrustedWithOptions(options: *const std::ffi::c_void) -> bool;
-    fn CGEventTapCreate(
-        tap: std::ffi::c_uint,
-        place: std::ffi::c_uint,
-        options: std::ffi::c_uint,
-        eventsOfInterest: u64,
-        callback: Option<
-            unsafe extern "C" fn(
-                CGEventTapProxy,
-                std::ffi::c_uint,
-                CGEventRef,
-                *mut std::ffi::c_void,
-            ) -> CGEventRef,
-        >,
-        userInfo: *mut std::ffi::c_void,
-    ) -> CFMachPortRef;
-    fn CFMachPortInvalidate(port: CFMachPortRef);
-    fn CFRelease(cf: *const std::ffi::c_void);
+    fn AXIsProcessTrustedWithOptions(options: *const c_void) -> bool;
+    static kAXTrustedCheckOptionPrompt: CFStringRef;
 }
+
+#[link(name = "IOKit", kind = "framework")]
+extern "C" {
+    fn IOHIDCheckAccess(request: u32) -> u32;
+    fn IOHIDRequestAccess(request: u32) -> bool;
+}
+
+#[link(name = "AVFoundation", kind = "framework")]
+extern "C" {
+    static AVMediaTypeAudio: &'static NSString;
+}
+
+/// `kIOHIDRequestTypeListenEvent`: Input Monitoring.
+const IOHID_REQUEST_LISTEN_EVENT: u32 = 1;
+/// `kIOHIDAccessTypeGranted`, `kIOHIDAccessTypeDenied`; anything else is unknown.
+const IOHID_ACCESS_GRANTED: u32 = 0;
+const IOHID_ACCESS_DENIED: u32 = 1;
+/// `AVAuthorizationStatus`: NotDetermined 0, Restricted 1, Denied 2, Authorized 3.
+const AV_AUTHORIZATION_NOT_DETERMINED: isize = 0;
+const AV_AUTHORIZATION_AUTHORIZED: isize = 3;
+
+const PRIVACY_SETTINGS: &str = "x-apple.systempreferences:com.apple.preference.security";
 
 /// Whether macOS trusts this process for accessibility, so the events it posts arrive.
 pub fn process_is_trusted_for_accessibility() -> bool {
@@ -35,6 +51,7 @@ pub fn process_is_trusted_for_accessibility() -> bool {
     unsafe { AXIsProcessTrustedWithOptions(std::ptr::null()) }
 }
 
+#[derive(Default)]
 pub struct MacOsPermissionProbe;
 
 impl MacOsPermissionProbe {
@@ -43,88 +60,105 @@ impl MacOsPermissionProbe {
     }
 }
 
-impl Default for MacOsPermissionProbe {
-    fn default() -> Self {
-        Self::new()
+impl PermissionProbe for MacOsPermissionProbe {
+    fn status(&self, permission: Permission) -> PermissionStatus {
+        match permission {
+            Permission::Microphone => microphone_status(),
+            Permission::Accessibility => accessibility_status(),
+            Permission::InputMonitoring => input_monitoring_status(),
+        }
+    }
+
+    fn request(&self, permission: Permission) {
+        match permission {
+            Permission::Microphone => request_microphone(),
+            Permission::Accessibility => request_accessibility(),
+            Permission::InputMonitoring => {
+                // SAFETY: a plain C call; the answer shows in a later status call.
+                unsafe { IOHIDRequestAccess(IOHID_REQUEST_LISTEN_EVENT) };
+            }
+        }
+    }
+
+    fn settings_url(&self, permission: Permission) -> String {
+        format!("{PRIVACY_SETTINGS}?{}", settings_anchor(permission))
+    }
+
+    fn responsible_app(&self) -> Option<String> {
+        if runs_from_bundle() {
+            return None;
+        }
+        Some(responsible_app::parent_application())
     }
 }
 
-impl PermissionProbe for MacOsPermissionProbe {
-    fn check_microphone(&self) -> Result<()> {
-        let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .ok_or_else(|| anyhow!("no default input device"))?;
-        let config = device.default_input_config()?;
-        let stream = device.build_input_stream(
-            &config.config(),
-            |_data: &[f32], _: &cpal::InputCallbackInfo| {},
-            |_err| {},
-            None,
-        );
-        match stream {
-            Ok(_stream) => Ok(()),
-            Err(e) => Err(anyhow::Error::from(e)),
-        }
+/// The anchor of a permission's page in Privacy & Security.
+pub fn settings_anchor(permission: Permission) -> &'static str {
+    match permission {
+        Permission::Microphone => "Privacy_Microphone",
+        Permission::Accessibility => "Privacy_Accessibility",
+        Permission::InputMonitoring => "Privacy_ListenEvent",
     }
+}
 
-    fn check_accessibility(&self) -> Result<()> {
-        if !process_is_trusted_for_accessibility() {
-            return Err(anyhow!("Accessibility permission not granted"));
-        }
-        Ok(())
+fn capture_device() -> &'static AnyClass {
+    class!(AVCaptureDevice)
+}
+
+fn microphone_status() -> PermissionStatus {
+    // SAFETY: `authorizationStatusForMediaType:` takes a media type constant and returns an
+    // `NSInteger`; it opens no device.
+    let status: isize =
+        unsafe { msg_send![capture_device(), authorizationStatusForMediaType: AVMediaTypeAudio] };
+    match status {
+        AV_AUTHORIZATION_AUTHORIZED => PermissionStatus::Granted,
+        AV_AUTHORIZATION_NOT_DETERMINED => PermissionStatus::NotDetermined,
+        _ => PermissionStatus::Denied,
     }
+}
 
-    fn check_input_monitoring(&self) -> Result<()> {
-        const K_CG_HID_EVENT_TAP: std::ffi::c_uint = 0;
-        const K_CG_HEAD_INSERT_EVENT_TAP: std::ffi::c_uint = 0;
-        const K_CG_EVENT_TAP_OPTION_DEFAULT: std::ffi::c_uint = 0;
-        const K_CG_EVENT_KEY_DOWN: std::ffi::c_uint = 10;
-
-        unsafe extern "C" fn dummy_callback(
-            _proxy: CGEventTapProxy,
-            _event_type: std::ffi::c_uint,
-            _event: CGEventRef,
-            _user_info: *mut std::ffi::c_void,
-        ) -> CGEventRef {
-            _event
-        }
-
-        let tap = unsafe {
-            CGEventTapCreate(
-                K_CG_HID_EVENT_TAP,
-                K_CG_HEAD_INSERT_EVENT_TAP,
-                K_CG_EVENT_TAP_OPTION_DEFAULT,
-                1u64 << K_CG_EVENT_KEY_DOWN,
-                Some(dummy_callback),
-                std::ptr::null_mut(),
-            )
-        };
-
-        if tap.is_null() {
-            return Err(anyhow!("Input Monitoring permission not granted"));
-        }
-
-        unsafe {
-            CFMachPortInvalidate(tap);
-            CFRelease(tap as *const std::ffi::c_void);
-        }
-
-        Ok(())
+fn request_microphone() {
+    // WHY: the answer arrives on an arbitrary thread; the status poll picks it up.
+    let completion = RcBlock::new(|_granted: Bool| {});
+    // SAFETY: the block is copied by AVFoundation and lives until it has run.
+    unsafe {
+        let _: () = msg_send![
+            capture_device(),
+            requestAccessForMediaType: AVMediaTypeAudio,
+            completionHandler: &*completion
+        ];
     }
+}
 
-    fn parent_process_name(&self) -> Result<String> {
-        let Ok(output) = std::process::Command::new("sh")
-            .args(["-c", "ps -o comm= -p $PPID"])
-            .output()
-        else {
-            return Ok("unknown".into());
-        };
-        let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        Ok(if name.is_empty() {
-            "unknown".into()
-        } else {
-            name
-        })
+fn accessibility_status() -> PermissionStatus {
+    if process_is_trusted_for_accessibility() {
+        PermissionStatus::Granted
+    } else {
+        // WHY: macOS tells no "never asked" for Accessibility; a request is always offered
+        // through System Settings, so the status is Not granted
+        PermissionStatus::Denied
     }
+}
+
+fn request_accessibility() {
+    // SAFETY: the key is a CFString constant of ApplicationServices; the dictionary lives
+    // across the call.
+    let prompt = unsafe { CFString::wrap_under_get_rule(kAXTrustedCheckOptionPrompt) };
+    let options = CFDictionary::from_CFType_pairs(&[(prompt, CFBoolean::true_value())]);
+    // SAFETY: a valid options dictionary; the call shows the system dialog once per process.
+    unsafe { AXIsProcessTrustedWithOptions(options.as_concrete_TypeRef().cast()) };
+}
+
+fn input_monitoring_status() -> PermissionStatus {
+    // SAFETY: a plain C call that only reads the TCC database.
+    match unsafe { IOHIDCheckAccess(IOHID_REQUEST_LISTEN_EVENT) } {
+        IOHID_ACCESS_GRANTED => PermissionStatus::Granted,
+        IOHID_ACCESS_DENIED => PermissionStatus::Denied,
+        _ => PermissionStatus::NotDetermined,
+    }
+}
+
+/// A bundle has an identifier; a bare binary run from a terminal has none.
+fn runs_from_bundle() -> bool {
+    NSBundle::mainBundle().bundleIdentifier().is_some()
 }

@@ -3,15 +3,18 @@ use objc2::MainThreadMarker;
 use objc2_app_kit::NSApplication;
 
 use voicepuncher::adapters::primary::cli::Cli;
-use voicepuncher::adapters::primary::menubar::macos::actions::MacosMenuActions;
+use voicepuncher::adapters::primary::menubar::macos::actions::{MacosMenuActions, MenuActions};
 use voicepuncher::adapters::primary::menubar::macos::indicator::StatusItemCell;
 use voicepuncher::adapters::primary::menubar::macos::status_item::MacosStatusItem;
+use voicepuncher::adapters::primary::permissions::macos::{self as permissions, PermissionsWindow};
 use voicepuncher::adapters::primary::ptt::rdev::RdevHotkeyListener;
 use voicepuncher::adapters::primary::setup::cli::SetupWizard;
+use voicepuncher::adapters::secondary::commandspotting::websocket::client::SpottingClient;
 use voicepuncher::adapters::secondary::logging::file::{
     install_panic_hook, launch_header, logs_dir, terminal_stderr, RotatingFileWriter, TeeWriter,
     KEPT_BACKUPS, LOG_FILE_NAME, MAX_LOG_BYTES,
 };
+use voicepuncher::adapters::secondary::permissions::macos::MacOsPermissionProbe;
 use voicepuncher::adapters::secondary::recording::filesystem::FileSystemAudioRecorder;
 use voicepuncher::adapters::secondary::soundplaying::macos::MacosSoundPlayer;
 use voicepuncher::adapters::secondary::textpasting::stdio::StdioTextPaster;
@@ -25,10 +28,12 @@ use voicepuncher::adapters::secondary::visualfeedback::pointer_sign::{
 use voicepuncher::config::Config;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
 use voicepuncher::core::application::visual_indicator::VisualIndicator;
-use voicepuncher::core::application::TextRefiner;
+use voicepuncher::core::application::{PermissionsGate, TextRefiner};
 use voicepuncher::core::domain::FailureNotice;
 use voicepuncher::runtime::wiring::{self, WiringAssembler};
-use voicepuncher::runtime::{signals, LogObserver, Runtime, SharedVisualIndicator};
+use voicepuncher::runtime::{
+    signals, LogObserver, PermissionsWatch, Runtime, SharedVisualIndicator,
+};
 
 struct NoopVisualIndicator;
 
@@ -94,6 +99,16 @@ fn main() {
         return;
     }
 
+    // a missing service ends the launch at once, before the app waits for any permission
+    if config.voice_control.enabled {
+        if let Err(e) =
+            SpottingClient::connect(&config.voice_control.url, std::time::Instant::now())
+        {
+            log::error!("{e:#}");
+            std::process::exit(2);
+        }
+    }
+
     let mtm = MainThreadMarker::new().expect("main must run on the main thread");
     let app = NSApplication::sharedApplication(mtm);
     let status_item = MacosStatusItem::install(mtm);
@@ -106,9 +121,14 @@ fn main() {
             MacosPointerSign::initialize(mtm),
         ))));
     let assembler = WiringAssembler::new(no_llm, overlay, level_register);
-    let mut runtime = Runtime::new(Box::new(assembler), Box::new(RdevHotkeyListener::new()));
+    let gate = std::sync::Arc::new(PermissionsGate::new(Box::new(MacOsPermissionProbe)));
+    let permissions_window = PermissionsWindow::install(mtm, std::sync::Arc::clone(&gate));
+    // a missing permission makes the runtime wait for it, not the process exit
+    let mut runtime = Runtime::new(Box::new(assembler), Box::new(RdevHotkeyListener::new()))
+        .with_permissions(PermissionsWatch::new(gate));
     runtime.observe(Box::new(LogObserver));
     runtime.observe(Box::new(status_cell.observer()));
+    runtime.observe(Box::new(permissions_window.observer()));
     if runtime.start(config).is_err() {
         // the log observer logged the reason with the state Failed
         std::process::exit(2);
@@ -126,11 +146,12 @@ fn main() {
         std::process::exit(2);
     });
     // Quit in the menu stops the runtime and ends the process; run() never returns.
-    status_item.set_actions(Box::new(MacosMenuActions::new(
-        runtime,
-        config_path,
-        logs_folder(),
-    )));
+    let actions = std::rc::Rc::new(
+        MacosMenuActions::new(runtime, config_path, logs_folder())
+            .with_permissions_window(Box::new(permissions::bring_to_front)),
+    );
+    status_item.set_actions(Box::new(std::rc::Rc::clone(&actions)));
+    permissions_window.set_quit(Box::new(move || actions.quit()));
 
     app.run();
 }

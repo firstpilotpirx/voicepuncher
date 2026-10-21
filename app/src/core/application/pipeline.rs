@@ -24,7 +24,7 @@ use crate::core::application::{
 
 use crate::core::domain::{
     without_leading_command, without_trailing_command, AudioBuffer16k, CleanedText, FailingPart,
-    FailureNotice, PttSignal, RawTranscript, RecordingMode, VoiceCommand,
+    FailureNotice, Permission, PttSignal, RawTranscript, RecordingMode, VoiceCommand,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -193,10 +193,13 @@ impl Pipeline {
                     .recv()
                     .map_err(|_| anyhow::anyhow!("pipeline input channel closed"))?,
             };
-            if input == PipelineInput::Shutdown {
-                return self.shut_down();
+            match input {
+                PipelineInput::Shutdown => return self.shut_down(),
+                PipelineInput::PermissionRevoked(permission) => {
+                    return self.shut_down_revoked(permission)
+                }
+                other => self.handle(other)?,
             }
-            self.handle(input)?;
         }
     }
 
@@ -218,6 +221,7 @@ impl Pipeline {
         match input {
             PipelineInput::Hotkey(signal) => self.step(signal),
             PipelineInput::Shutdown => self.shut_down(),
+            PipelineInput::PermissionRevoked(permission) => self.shut_down_revoked(permission),
             other => {
                 log::warn!("ignoring {other:?}: voice control is off");
                 Ok(())
@@ -241,6 +245,18 @@ impl Pipeline {
         }
         self.turn_listening_off();
         self.publish_activity();
+        Ok(())
+    }
+
+    /// Ends this pipeline as a shutdown does; a recording in progress ends with a notice
+    /// naming the revoked permission.
+    fn shut_down_revoked(&mut self, permission: Permission) -> anyhow::Result<()> {
+        let was_recording = self.is_recording();
+        self.shut_down()?;
+        if was_recording {
+            self.visual_indicator
+                .show_failure_notice(&FailureNotice::PermissionRevoked(permission));
+        }
         Ok(())
     }
 
@@ -1047,6 +1063,65 @@ mod tests {
         // Then — the channel is still open, so only the shutdown ended the loop
         assert!(result.is_ok());
         drop(inputs);
+    }
+
+    #[test]
+    fn should_cancel_the_recording_with_a_notice_naming_a_revoked_permission() {
+        // Given
+        let mut recorder = MockAudioRecorder::new();
+        recorder.expect_start().once().returning(|| Ok(()));
+        recorder
+            .expect_start_live_chunks()
+            .times(..)
+            .returning(|_| Ok(None));
+        recorder
+            .expect_flush_live_chunks()
+            .times(..)
+            .return_const(());
+        recorder
+            .expect_stop()
+            .once()
+            .returning(|| Ok(one_second_audio()));
+        let mut sounds = MockSoundPlayer::new();
+        sounds.expect_play_start().once().return_const(());
+        sounds.expect_play_cancel().once().return_const(());
+        let mut indicator = MockVisualIndicator::new();
+        indicator.expect_show_recording().return_const(());
+        indicator.expect_hide().times(..).return_const(());
+        indicator
+            .expect_show_failure_notice()
+            .withf(|notice| *notice == FailureNotice::PermissionRevoked(Permission::Microphone))
+            .once()
+            .return_const(());
+        indicator
+            .expect_live_transcript_view()
+            .times(..)
+            .returning(|| Box::new(HiddenLiveTranscript));
+        let mut pipeline = Pipeline::new(
+            Box::new(recorder),
+            Box::new(MockTranscriber::new()),
+            Box::new(MockTextRefiner::new()),
+            Box::new(MockTextPaster::new()),
+            Box::new(sounds),
+            Box::new(indicator),
+            PipelineConfig {
+                min_press_ms: 0,
+                recording_mode: RecordingMode::Toggle,
+                chunking: ChunkingCfg::default(),
+            },
+        );
+        let (inputs, rx) = mpsc::channel::<PipelineInput>();
+        inputs
+            .send(PipelineInput::Hotkey(PttSignal::Pressed))
+            .unwrap();
+        inputs
+            .send(PipelineInput::PermissionRevoked(Permission::Microphone))
+            .unwrap();
+        // When
+        let result = pipeline.run(rx);
+        // Then
+        assert!(result.is_ok());
+        assert!(matches!(pipeline.state, PipelineState::Idle));
     }
 
     #[test]

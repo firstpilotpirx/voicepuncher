@@ -1,4 +1,5 @@
 use super::*;
+use crate::core::domain::Permission;
 
 fn ready(mode: RecordingMode, voice_control: bool) -> Option<RuntimeState> {
     Some(RuntimeState::Ready {
@@ -350,4 +351,37 @@ fn should_keep_commands_unavailable_while_the_runtime_stays_ready() {
     shown.runtime_changed(ready(RecordingMode::Hold, true).unwrap());
     // Then
     assert!(shown.commands_unavailable);
+}
+
+fn waiting_for_accessibility() -> Option<RuntimeState> {
+    Some(RuntimeState::WaitingForPermissions {
+        missing: vec![Permission::Accessibility],
+        revoked: vec![],
+    })
+}
+
+#[test]
+fn should_show_the_waiting_icon_while_waiting_for_permissions() {
+    assert_eq!(
+        state(None, waiting_for_accessibility()).icon(),
+        IconState::Waiting
+    );
+}
+
+#[test]
+fn should_point_at_the_permissions_window_while_waiting_for_permissions() {
+    assert_eq!(
+        state(None, waiting_for_accessibility()).status_line(),
+        "Waiting for permissions — open Permissions…"
+    );
+}
+
+#[test]
+fn should_offer_permissions_right_under_the_status_line() {
+    let status = MENU
+        .iter()
+        .position(|entry| *entry == MenuEntry::StatusLine)
+        .expect("the menu has a status line");
+    assert_eq!(MENU.get(status + 1), Some(&MenuEntry::Permissions));
+    assert_eq!(MenuEntry::Permissions.title(), Some("Permissions…"));
 }

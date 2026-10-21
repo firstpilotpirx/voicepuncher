@@ -27,7 +27,8 @@ fn gravity(notice: FailureNotice) -> Gravity {
         FailureNotice::DictationLost(_) => Gravity::Lost,
         FailureNotice::RecordingNotStarted
         | FailureNotice::CommandFailed(..)
-        | FailureNotice::VoiceCommandsUnavailable => Gravity::ShownAtOnce,
+        | FailureNotice::VoiceCommandsUnavailable
+        | FailureNotice::PermissionRevoked(_) => Gravity::ShownAtOnce,
     }
 }
 

@@ -1,3 +1,4 @@
+use super::permission::Permission;
 use super::voice_command::VoiceCommand;
 
 /// The part whose failure an action the user started ran into.
@@ -67,6 +68,8 @@ pub enum FailureNotice {
     RecordingNotStarted,
     CommandFailed(VoiceCommand, Option<FailingPart>),
     VoiceCommandsUnavailable,
+    /// The runtime cancelled the dictation because the user revoked the permission.
+    PermissionRevoked(Permission),
 }
 
 impl FailureNotice {
@@ -78,6 +81,7 @@ impl FailureNotice {
             FailureNotice::NotPasted(part) | FailureNotice::CommandFailed(_, part) => part,
             FailureNotice::RecordingNotStarted => Some(FailingPart::Microphone),
             FailureNotice::VoiceCommandsUnavailable => Some(FailingPart::CommandSpotting),
+            FailureNotice::PermissionRevoked(_) => None,
         }
     }
 
@@ -87,6 +91,9 @@ impl FailureNotice {
         match (self.part(), self) {
             (Some(part), _) => format!("{loss}: {}", part.cause()),
             (None, FailureNotice::NotPasted(_)) => format!("{loss}: pasting failed"),
+            (None, FailureNotice::PermissionRevoked(permission)) => {
+                format!("{loss}: {permission} permission was revoked")
+            }
             (None, _) => loss,
         }
     }
@@ -108,6 +115,7 @@ impl FailureNotice {
                 return format!("\"{}\" failed", command.phrase())
             }
             FailureNotice::VoiceCommandsUnavailable => "Voice commands unavailable",
+            FailureNotice::PermissionRevoked(_) => "Dictation cancelled",
         };
         loss.to_owned()
     }
@@ -127,6 +135,7 @@ mod tests {
 
     fn every_notice() -> Vec<FailureNotice> {
         let mut notices: Vec<FailureNotice> = vec![
+            FailureNotice::PermissionRevoked(Permission::InputMonitoring),
             FailureNotice::NotPasted(None),
             FailureNotice::RecordingNotStarted,
             FailureNotice::VoiceCommandsUnavailable,
@@ -144,6 +153,15 @@ mod tests {
             }
         }
         notices
+    }
+
+    #[test]
+    fn should_name_the_revoked_permission() {
+        let notice = FailureNotice::PermissionRevoked(Permission::Microphone);
+        assert_eq!(
+            notice.message(),
+            "Dictation cancelled: Microphone permission was revoked"
+        );
     }
 
     #[test]

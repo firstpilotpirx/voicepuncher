@@ -1,4 +1,4 @@
-use crate::core::domain::{PttSignal, SpottingEvent};
+use crate::core::domain::{Permission, PttSignal, SpottingEvent};
 
 /// Everything the pipeline reacts to, in one ordered stream.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,4 +14,7 @@ pub enum PipelineInput {
     SpottingBack,
     /// The runtime ends this pipeline: a recording in progress is cancelled, listening stops.
     Shutdown,
+    /// The runtime ends this pipeline because `Permission` was revoked: as a shutdown, and
+    /// a recording in progress ends with a failure notice naming the permission.
+    PermissionRevoked(Permission),
 }

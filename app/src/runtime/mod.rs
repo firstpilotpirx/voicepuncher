@@ -5,6 +5,7 @@ pub mod activity;
 pub mod assembler;
 pub mod observer;
 pub mod overlay;
+pub mod permissions;
 pub mod router;
 pub mod signals;
 pub mod wiring;
@@ -21,12 +22,15 @@ use crate::core::application::pipeline::Pipeline;
 use crate::core::application::{
     HotkeyListener, PipelineActivity, PipelineActivitySink, PipelineInput,
 };
-use crate::core::domain::{HotkeyBinding, PttSignal};
+use crate::core::domain::{HotkeyBinding, Permission, PttSignal};
+
+use permissions::{Verdict, Watched};
 
 pub use activity::ActivityRegister;
 pub use assembler::PipelineAssembler;
 pub use observer::{LogObserver, Observers, RuntimeObserver, RuntimeState};
 pub use overlay::SharedVisualIndicator;
+pub use permissions::PermissionsWatch;
 pub use router::SignalRouter;
 
 /// How often a restart checks whether the dictation in progress has ended.
@@ -36,6 +40,7 @@ const IDLE_POLL_INTERVAL: Duration = Duration::from_millis(20);
 pub struct Runtime {
     assembler: Option<Box<dyn PipelineAssembler>>,
     listener: Option<Box<dyn HotkeyListener>>,
+    permissions: Option<PermissionsWatch>,
     observers: Arc<Mutex<Observers>>,
     commands: Option<Sender<Command>>,
     thread: Option<JoinHandle<()>>,
@@ -51,10 +56,18 @@ impl Runtime {
         Self {
             assembler: Some(assembler),
             listener: Some(listener),
+            permissions: None,
             observers: Arc::default(),
             commands: None,
             thread: None,
         }
+    }
+
+    /// Starts the pipeline only while every permission is granted, and stops it when one is
+    /// revoked; without a watch the permissions are not checked.
+    pub fn with_permissions(mut self, watch: PermissionsWatch) -> Self {
+        self.permissions = Some(watch);
+        self
     }
 
     /// Tells `observer` of every state change from now on, and of the current state at once.
@@ -68,42 +81,30 @@ impl Runtime {
     }
 
     /// Starts the pipeline from `config` and returns once it runs, or with the reason it
-    /// cannot; the state is then Ready or Failed.
+    /// cannot; the state is then Ready or Failed. With a permission missing it returns at
+    /// once in the state Waiting for permissions, and starts the pipeline once all are granted.
     pub fn start(&mut self, config: Config) -> Result<()> {
-        let (Some(mut assembler), Some(listener)) = (self.assembler.take(), self.listener.take())
+        let (Some(assembler), Some(listener)) = (self.assembler.take(), self.listener.take())
         else {
             bail!("the runtime was started already");
         };
-        self.change(RuntimeState::Starting);
-        let started = (|| {
-            let activity = ActivityRegister::default();
-            let pipeline = Next::assemble(assembler.as_mut(), &config)?.launch(&activity);
-            let router = SignalRouter::new();
-            router.route_to(pipeline.inputs.clone());
-            let binding = HotkeyBinding::new(config.hotkey.key);
-            let (hotkey_tx, hotkey_rx) = mpsc::channel::<PttSignal>();
-            listener
-                .spawn(binding.clone(), hotkey_tx)
-                .context("failed to spawn hotkey listener")?;
-            router.spawn_forwarding(hotkey_rx);
-            Ok(Supervisor {
-                assembler,
-                observers: Arc::clone(&self.observers),
-                router,
-                binding,
-                activity,
-                pipeline: Some(pipeline),
-                config,
-            })
-        })();
-        let supervisor = match started {
-            Ok(supervisor) => supervisor,
-            Err(e) => {
+        let mut supervisor = Supervisor::new(
+            assembler,
+            listener,
+            Arc::clone(&self.observers),
+            config,
+            self.permissions.take().map(Watched::start),
+        );
+        if supervisor.waits_for_permissions() {
+            self.change(supervisor.waiting());
+        } else {
+            self.change(RuntimeState::Starting);
+            if let Err(e) = supervisor.open() {
                 self.change(RuntimeState::Failed(format!("{e:#}")));
                 return Err(e);
             }
-        };
-        self.change(supervisor.ready());
+            self.change(supervisor.ready());
+        }
         let (commands_tx, commands_rx) = mpsc::channel();
         let thread = std::thread::Builder::new()
             .name("runtime".into())
@@ -227,7 +228,16 @@ struct Running {
 impl Running {
     /// Ends the pipeline and waits until its parts are gone.
     fn shut_down(self) {
-        let _ = self.inputs.send(PipelineInput::Shutdown);
+        self.end_with(PipelineInput::Shutdown);
+    }
+
+    /// Ends the pipeline because `permission` was revoked.
+    fn revoke(self, permission: Permission) {
+        self.end_with(PipelineInput::PermissionRevoked(permission));
+    }
+
+    fn end_with(self, last_input: PipelineInput) {
+        let _ = self.inputs.send(last_input);
         if self.thread.join().is_err() {
             log::error!("runtime: the pipeline thread panicked");
         }
@@ -243,6 +253,11 @@ enum Wait {
 /// The runtime thread: every reload and the stop run here, one after the other.
 struct Supervisor {
     assembler: Box<dyn PipelineAssembler>,
+    /// Spawned with the first pipeline, so it needs Input Monitoring only from then on.
+    listener: Option<Box<dyn HotkeyListener>>,
+    permissions: Option<Watched>,
+    /// A pipeline that failed to start is not started again by a permission check.
+    failed: bool,
     observers: Arc<Mutex<Observers>>,
     router: SignalRouter,
     binding: HotkeyBinding,
@@ -252,12 +267,118 @@ struct Supervisor {
 }
 
 impl Supervisor {
+    fn new(
+        assembler: Box<dyn PipelineAssembler>,
+        listener: Box<dyn HotkeyListener>,
+        observers: Arc<Mutex<Observers>>,
+        config: Config,
+        permissions: Option<Watched>,
+    ) -> Self {
+        Self {
+            assembler,
+            listener: Some(listener),
+            permissions,
+            failed: false,
+            observers,
+            router: SignalRouter::new(),
+            binding: HotkeyBinding::new(config.hotkey.key),
+            activity: ActivityRegister::default(),
+            pipeline: None,
+            config,
+        }
+    }
+
+    fn waits_for_permissions(&self) -> bool {
+        self.permissions
+            .as_ref()
+            .is_some_and(|watched| !watched.all_granted())
+    }
+
+    fn waiting(&self) -> RuntimeState {
+        self.permissions
+            .as_ref()
+            .map_or(RuntimeState::Starting, Watched::waiting)
+    }
+
+    /// Starts a pipeline from the configuration, and the hotkey listener with the first one.
+    fn open(&mut self) -> Result<()> {
+        let running = Next::assemble(self.assembler.as_mut(), &self.config)?.launch(&self.activity);
+        self.router.route_to(running.inputs.clone());
+        self.pipeline = Some(running);
+        if let Some(listener) = self.listener.take() {
+            let (hotkey_tx, hotkey_rx) = mpsc::channel::<PttSignal>();
+            listener
+                .spawn(self.binding.clone(), hotkey_tx)
+                .context("failed to spawn hotkey listener")?;
+            self.router.spawn_forwarding(hotkey_rx);
+        }
+        Ok(())
+    }
+
+    /// The next command; none when the permissions are due for a check first.
+    fn next_command(&self, commands: &Receiver<Command>) -> Option<Command> {
+        let Some(watched) = &self.permissions else {
+            return Some(commands.recv().unwrap_or(Command::Stop));
+        };
+        match commands.recv_timeout(watched.interval(self.pipeline.is_some())) {
+            Ok(command) => Some(command),
+            Err(mpsc::RecvTimeoutError::Timeout) => None,
+            Err(mpsc::RecvTimeoutError::Disconnected) => Some(Command::Stop),
+        }
+    }
+
+    fn check_permissions(&mut self) {
+        let pipeline_runs = self.pipeline.is_some();
+        let Some(watched) = &mut self.permissions else {
+            return;
+        };
+        match watched.check(pipeline_runs) {
+            Verdict::Unchanged => {}
+            Verdict::StillWaiting(state) => self.change(state),
+            Verdict::Close(state) => {
+                self.close(&state);
+                self.change(state);
+            }
+            Verdict::Open if !self.failed => {
+                self.change(RuntimeState::Starting);
+                match self.open() {
+                    Ok(()) => self.change(self.ready()),
+                    Err(e) => {
+                        self.failed = true;
+                        self.change(RuntimeState::Failed(format!("{e:#}")));
+                    }
+                }
+            }
+            Verdict::Open => {}
+        }
+    }
+
+    /// Ends the pipeline for a revoked permission: a recording in progress is cancelled.
+    fn close(&mut self, waiting: &RuntimeState) {
+        self.router.detach();
+        let Some(running) = self.pipeline.take() else {
+            return;
+        };
+        match waiting {
+            RuntimeState::WaitingForPermissions { revoked, .. } if !revoked.is_empty() => {
+                running.revoke(revoked[0]);
+            }
+            _ => running.shut_down(),
+        }
+    }
+
     fn serve(mut self, commands: Receiver<Command>) {
         let mut pending = std::collections::VecDeque::new();
         loop {
             let command = match pending.pop_front() {
                 Some(command) => command,
-                None => commands.recv().unwrap_or(Command::Stop),
+                None => match self.next_command(&commands) {
+                    Some(command) => command,
+                    None => {
+                        self.check_permissions();
+                        continue;
+                    }
+                },
             };
             match command {
                 Command::Reload(config) => {
@@ -276,6 +397,9 @@ impl Supervisor {
         commands: &Receiver<Command>,
         pending: &mut std::collections::VecDeque<Command>,
     ) -> Wait {
+        if self.pipeline.is_none() {
+            return self.keep_for_later(config);
+        }
         self.change(RuntimeState::Restarting);
         let next = match Next::assemble(self.assembler.as_mut(), &config) {
             Ok(next) => next,
@@ -297,6 +421,14 @@ impl Supervisor {
         self.router.route_to(running.inputs.clone());
         self.pipeline = Some(running);
         self.change(self.ready());
+        Wait::Idle
+    }
+
+    /// Without a pipeline, the configuration waits for the next start.
+    fn keep_for_later(&mut self, config: Config) -> Wait {
+        self.binding.rebind(config.hotkey.key);
+        self.config = config;
+        log::info!("runtime: configuration kept for when the pipeline starts");
         Wait::Idle
     }
 

@@ -3,6 +3,7 @@
 //! hotkey binding the runtime holds, and an observer records every runtime state in the same
 //! ordered log.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -17,13 +18,16 @@ use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
 use voicepuncher::core::application::{
     AudioRecorder, ChunkingCfg, CommandSpotter, FocusProbe, FocusWaitCfg, HotkeyListener,
-    KeyPresser, PipelineInput, SoundPlayer, TextPaster, Transcriber, VisualIndicator,
+    KeyPresser, PermissionProbe, PermissionsGate, PipelineInput, SoundPlayer, TextPaster,
+    Transcriber, VisualIndicator,
 };
 use voicepuncher::core::domain::{
-    AudioBuffer16k, CleanedText, FailureNotice, FocusedElement, HotKey, HotkeyBinding, PttSignal,
-    RawTranscript, RecordingMode, VoiceCommand,
+    AudioBuffer16k, CleanedText, FailureNotice, FocusedElement, HotKey, HotkeyBinding, Permission,
+    PermissionStatus, PttSignal, RawTranscript, RecordingMode, VoiceCommand,
 };
-use voicepuncher::runtime::{PipelineAssembler, Runtime, RuntimeObserver, RuntimeState};
+use voicepuncher::runtime::{
+    PermissionsWatch, PipelineAssembler, Runtime, RuntimeObserver, RuntimeState,
+};
 
 use crate::IntegrationWorld;
 
@@ -40,6 +44,8 @@ const FOCUS_POLL: Duration = Duration::from_millis(10);
 const REACTION: Duration = Duration::from_secs(2);
 /// How long a scenario watches for something that must not happen.
 const SETTLE: Duration = Duration::from_millis(300);
+/// How often the runtime checks the permissions in these scenarios.
+const PERMISSIONS_CHECK: Duration = Duration::from_millis(20);
 
 type Generation = usize;
 
@@ -52,6 +58,7 @@ enum Event {
     ListeningOn(Generation),
     ListeningOff(Generation),
     PipelineDropped(Generation),
+    Notice(Generation, String),
     State(RuntimeState),
 }
 
@@ -72,6 +79,7 @@ pub struct RuntimeRun {
     started: Option<Result<()>>,
     process: u32,
     rejection_log: Vec<String>,
+    permissions: Permissions,
 }
 
 impl std::fmt::Debug for RuntimeRun {
@@ -96,6 +104,7 @@ impl Default for RuntimeRun {
             started: None,
             process: std::process::id(),
             rejection_log: Vec::new(),
+            permissions: Permissions::default(),
         }
     }
 }
@@ -122,17 +131,110 @@ impl RuntimeRun {
     }
 
     fn start(&mut self) {
-        let assembler = StandInAssembler {
-            events: Arc::clone(&self.events),
-            services_answer: Arc::clone(&self.services_answer),
-            text_field_focused: Arc::clone(&self.text_field_focused),
-            generation: 0,
-        };
-        let runtime = Runtime::new(Box::new(assembler), Box::new(self.keyboard.clone()));
+        let assembler = self.assembler();
+        let runtime = Runtime::new(Box::new(assembler), Box::new(self.keyboard.clone()))
+            .with_permissions(PermissionsWatch {
+                gate: self.permissions.gate(),
+                while_ready: PERMISSIONS_CHECK,
+                while_waiting: PERMISSIONS_CHECK,
+            });
         runtime.observe(Box::new(RecordingObserver(Arc::clone(&self.events))));
         let mut runtime = runtime;
         self.started = Some(runtime.start(self.config.clone()));
         self.runtime = Some(runtime);
+    }
+
+    pub(crate) fn permissions(&self) -> &Permissions {
+        &self.permissions
+    }
+
+    pub(crate) fn launch(&mut self) {
+        self.start();
+    }
+
+    pub(crate) fn start_waiting(&mut self) -> Result<()> {
+        self.start();
+        self.state_becomes(|s| matches!(s, RuntimeState::WaitingForPermissions { .. }))
+    }
+
+    /// The start returned, and the process still runs it.
+    pub(crate) fn started_ok(&mut self) -> Result<()> {
+        self.started.take().context("the runtime was not started")?
+    }
+
+    pub(crate) fn assembled(&self, generation: Generation) -> Result<()> {
+        self.wait_for(|e| matches!(e, Event::Assembled(g, _) if *g == generation))?;
+        self.state_becomes(|s| matches!(s, RuntimeState::Ready { .. }))
+    }
+
+    pub(crate) fn same_process(&self) -> bool {
+        self.process == std::process::id()
+    }
+
+    pub(crate) fn ever_waited_for_permissions(&self) -> bool {
+        self.count(|e| matches!(e, Event::State(RuntimeState::WaitingForPermissions { .. }))) > 0
+    }
+
+    pub(crate) fn waits_for(&self, missing: &[Permission], revoked: &[Permission]) -> Result<()> {
+        self.state_becomes(|s| {
+            *s == RuntimeState::WaitingForPermissions {
+                missing: missing.to_vec(),
+                revoked: revoked.to_vec(),
+            }
+        })
+    }
+
+    pub(crate) fn pipeline_dropped(&self, generation: Generation) -> Result<()> {
+        self.wait_for(|e| *e == Event::PipelineDropped(generation))?;
+        Ok(())
+    }
+
+    pub(crate) fn cancelled_and_nothing_pasted(&self) -> Result<()> {
+        self.wait_for(|e| *e == Event::CancelPlayed(1))?;
+        std::thread::sleep(SETTLE);
+        if self.count(|e| matches!(e, Event::Pasted(_))) > 0 {
+            bail!("text was pasted: {:?}", self.events());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn notice(&self, generation: Generation) -> Result<String> {
+        match self.wait_for(|e| matches!(e, Event::Notice(g, _) if *g == generation))? {
+            Event::Notice(_, message) => Ok(message),
+            _ => unreachable!("filtered above"),
+        }
+    }
+
+    pub(crate) fn no_pipeline_runs(&self) -> Result<()> {
+        if self.recordings_after(FIRST_HOTKEY) != 0 || self.latest_generation().is_some() {
+            bail!("a pipeline runs: {:?}", self.events());
+        }
+        Ok(())
+    }
+
+    /// Transcribes a recording through a pipeline of the same stand-ins, as file mode does.
+    pub(crate) fn transcribe_file(&self) -> Result<()> {
+        let (inputs, _) = std::sync::mpsc::channel();
+        let mut pipeline = self.assembler().assemble(&self.config, inputs)?;
+        pipeline.run_once(AudioBuffer16k::new(vec![
+            1_000i16;
+            AudioBuffer16k::SAMPLE_RATE_HZ
+                as usize
+        ]))
+    }
+
+    pub(crate) fn printed(&self) -> Result<()> {
+        self.wait_for(|e| matches!(e, Event::Pasted(_)))?;
+        Ok(())
+    }
+
+    fn assembler(&self) -> StandInAssembler {
+        StandInAssembler {
+            events: Arc::clone(&self.events),
+            services_answer: Arc::clone(&self.services_answer),
+            text_field_focused: Arc::clone(&self.text_field_focused),
+            generation: 0,
+        }
     }
 
     fn start_ready(&mut self) -> Result<()> {
@@ -227,7 +329,7 @@ impl RuntimeRun {
     }
 }
 
-fn run(world: &mut IntegrationWorld) -> &mut RuntimeRun {
+pub(crate) fn run(world: &mut IntegrationWorld) -> &mut RuntimeRun {
     world.runtime.get_or_insert_with(RuntimeRun::default)
 }
 
@@ -266,7 +368,11 @@ fn runtime_ready_with_voice_control(world: &mut IntegrationWorld) -> Result<()> 
 
 #[given("a recording is in progress")]
 fn recording_in_progress(world: &mut IntegrationWorld) -> Result<()> {
-    run(world).start_recording()?;
+    let run = run(world);
+    if run.runtime.is_none() {
+        run.start_ready()?;
+    }
+    run.start_recording()?;
     Ok(())
 }
 
@@ -373,11 +479,7 @@ fn failed_naming_service(world: &mut IntegrationWorld) -> Result<()> {
 
 #[then("no dictation pipeline runs")]
 fn no_pipeline(world: &mut IntegrationWorld) -> Result<()> {
-    let run = run(world);
-    if run.recordings_after(FIRST_HOTKEY) != 0 || run.latest_generation().is_some() {
-        bail!("a pipeline runs: {:?}", run.events());
-    }
-    Ok(())
+    run(world).no_pipeline_runs()
 }
 
 #[then("the runtime state is Ready again")]
@@ -566,13 +668,84 @@ fn state_stopped(world: &mut IntegrationWorld) -> Result<()> {
 
 #[then("the recording is cancelled and nothing is pasted")]
 fn recording_cancelled(world: &mut IntegrationWorld) -> Result<()> {
+    run(world).cancelled_and_nothing_pasted()
+}
+
+#[given("an observer registered before the runtime starts")]
+fn observer_registered(world: &mut IntegrationWorld) {
+    // every run registers its recording observer before it starts the runtime
+    run(world);
+}
+
+#[given("Input Monitoring is not granted")]
+fn input_monitoring_not_granted(world: &mut IntegrationWorld) {
+    run(world)
+        .permissions
+        .set(Permission::InputMonitoring, PermissionStatus::Denied);
+}
+
+#[then("the observer is told Waiting for permissions naming Input Monitoring")]
+fn told_waiting_input_monitoring(world: &mut IntegrationWorld) -> Result<()> {
+    run(world).waits_for(&[Permission::InputMonitoring], &[])
+}
+
+#[given("the runtime is Waiting for permissions")]
+fn runtime_waiting(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
-    run.wait_for(|e| *e == Event::CancelPlayed(1))?;
-    std::thread::sleep(SETTLE);
-    if run.count(|e| matches!(e, Event::Pasted(_))) > 0 {
-        bail!("text was pasted: {:?}", run.events());
+    run.permissions
+        .set(Permission::Accessibility, PermissionStatus::Denied);
+    run.start_waiting()
+}
+
+#[when("the last missing permission is granted")]
+fn last_missing_granted(world: &mut IntegrationWorld) {
+    run(world)
+        .permissions
+        .set(Permission::Accessibility, PermissionStatus::Granted);
+}
+
+#[then("the observer is told Starting and then Ready")]
+fn told_starting_then_ready(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.state_becomes(|s| matches!(s, RuntimeState::Ready { .. }))?;
+    let waiting =
+        run.position(|e| matches!(e, Event::State(RuntimeState::WaitingForPermissions { .. })))?;
+    let states: Vec<_> = run.events()[waiting + 1..]
+        .iter()
+        .filter_map(|e| match e {
+            Event::State(state) => Some(state.clone()),
+            _ => None,
+        })
+        .collect();
+    if !matches!(
+        states.as_slice(),
+        [RuntimeState::Starting, RuntimeState::Ready { .. }]
+    ) {
+        bail!("expected Starting and then Ready, got {states:?}");
     }
     Ok(())
+}
+
+#[then("the dictation pipeline runs")]
+fn pipeline_runs(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    run.assembled(1)?;
+    if run.recordings_after(FIRST_HOTKEY) != 1 {
+        bail!("the hotkey started no recording: {:?}", run.events());
+    }
+    Ok(())
+}
+
+#[when("Accessibility is revoked")]
+fn accessibility_revoked(world: &mut IntegrationWorld) {
+    run(world)
+        .permissions
+        .set(Permission::Accessibility, PermissionStatus::Denied);
+}
+
+#[then("the observer is told Waiting for permissions naming Accessibility")]
+fn told_waiting_accessibility(world: &mut IntegrationWorld) -> Result<()> {
+    run(world).waits_for(&[Permission::Accessibility], &[Permission::Accessibility])
 }
 
 /// Builds every pipeline from stand-ins that log under the pipeline's generation.
@@ -604,7 +777,7 @@ impl PipelineAssembler for StandInAssembler {
             Box::new(PassthroughTextRefiner),
             Box::new(StandInPaster(part())),
             Box::new(StandInSounds(part())),
-            Box::new(QuietOverlay),
+            Box::new(NoticeOverlay(part())),
             PipelineConfig {
                 min_press_ms: config.hotkey.min_press_ms,
                 recording_mode: config.hotkey.recording_mode,
@@ -702,16 +875,22 @@ impl SoundPlayer for StandInSounds {
     }
 }
 
-struct QuietOverlay;
+/// Shows nothing; a failure notice goes to the log.
+struct NoticeOverlay(Part);
 
-impl VisualIndicator for QuietOverlay {
+impl VisualIndicator for NoticeOverlay {
     fn show_recording(&self) {}
     fn show_recognizing_speech(&self) {}
     fn show_refining_text(&self) {}
     fn show_waiting_for_focus(&self) {}
     fn show_pasted(&self) {}
     fn hide(&self) {}
-    fn show_failure_notice(&self, _notice: &FailureNotice) {}
+    fn show_failure_notice(&self, notice: &FailureNotice) {
+        push(
+            &self.0.events,
+            Event::Notice(self.0.generation, notice.message()),
+        );
+    }
 }
 
 struct ScriptedFocus(Arc<Mutex<bool>>);
@@ -803,5 +982,65 @@ impl HotkeyListener for FakeKeyboard {
     ) -> Result<JoinHandle<()>> {
         *self.wired.lock().unwrap() = Some((binding, tx));
         Ok(std::thread::spawn(|| {}))
+    }
+}
+
+type Statuses = Arc<Mutex<[PermissionStatus; 3]>>;
+
+/// The permissions as System Settings holds them, which the scenario changes, and how often
+/// the runtime asked.
+#[derive(Clone)]
+pub(crate) struct Permissions {
+    statuses: Statuses,
+    checks: Arc<AtomicUsize>,
+}
+
+impl Default for Permissions {
+    fn default() -> Self {
+        Self {
+            statuses: Arc::new(Mutex::new([PermissionStatus::Granted; 3])),
+            checks: Arc::default(),
+        }
+    }
+}
+
+impl Permissions {
+    pub(crate) fn set(&self, permission: Permission, status: PermissionStatus) {
+        self.statuses.lock().unwrap()[index(permission)] = status;
+    }
+
+    pub(crate) fn checks(&self) -> usize {
+        self.checks.load(Ordering::SeqCst)
+    }
+
+    /// A gate over the scenario's permissions, as the window asks it.
+    pub(crate) fn gate(&self) -> Arc<PermissionsGate> {
+        Arc::new(PermissionsGate::new(Box::new(ScriptedProbe(self.clone()))))
+    }
+}
+
+fn index(permission: Permission) -> usize {
+    Permission::ALL
+        .iter()
+        .position(|p| *p == permission)
+        .expect("every permission is in ALL")
+}
+
+struct ScriptedProbe(Permissions);
+
+impl PermissionProbe for ScriptedProbe {
+    fn status(&self, permission: Permission) -> PermissionStatus {
+        self.0.checks.fetch_add(1, Ordering::SeqCst);
+        self.0.statuses.lock().unwrap()[index(permission)]
+    }
+
+    fn request(&self, _permission: Permission) {}
+
+    fn settings_url(&self, permission: Permission) -> String {
+        format!("settings:{permission}")
+    }
+
+    fn responsible_app(&self) -> Option<String> {
+        None
     }
 }

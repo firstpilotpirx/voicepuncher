@@ -16,6 +16,7 @@ flowchart TB
         RDEV["RdevHotkeyListener\n(rdev crate)"]
         WIZARD["SetupWizard\n(first-run config)"]
         CLI["Cli\n(clap)"]
+        PERMWIN["PermissionsWindow\n(AppKit)"]
     end
 
     subgraph runtime["runtime (composition)"]
@@ -26,7 +27,7 @@ flowchart TB
 
     subgraph app["core/application"]
         PIPELINE["Pipeline\n(use case)"]
-        PREFLIGHT["Preflight\n(use case)"]
+        GATE["PermissionsGate\n(use case)"]
         PORTS["Ports\n(traits: AudioRecorder,\nTranscriber, TextRefiner,\nTextPaster, HotkeyListener,\nSoundPlayer, PermissionProbe)"]
     end
 
@@ -40,7 +41,7 @@ flowchart TB
         LLAMA["LlamaCppTextRefiner\n(llama-cpp-2 FFI)"]
         PASTER["MacOsTextPaster\n(arboard + CGEventPost)"]
         SOUND["MacosSoundPlayer\n(macOS audio)"]
-        PROBE["MacOsPermissionProbe\n(AXIsProcessTrusted + cpal)"]
+        PROBE["MacOsPermissionProbe\n(AVFoundation + AX + IOHID)"]
         FSREC["FileSystemAudioRecorder\n(hound, WAV I/O)"]
         STDIO["StdioTextPaster\n(stdout)"]
     end
@@ -61,9 +62,11 @@ flowchart TB
     RUNTIME -->|assembles| WIRING
     WIRING -->|builds| PIPELINE
     RUNTIME -->|Shutdown| PIPELINE
-    WIZARD --> PREFLIGHT
+    RUNTIME -->|asks| GATE
+    PERMWIN -->|request · settings| GATE
+    RUNTIME -->|state| PERMWIN
     PIPELINE --> PORTS
-    PREFLIGHT --> PORTS
+    GATE --> PORTS
     PORTS -.implements.-> CPAL
     PORTS -.implements.-> WHISPER
     PORTS -.implements.-> LLAMA
@@ -73,10 +76,10 @@ flowchart TB
     PORTS -.implements.-> FSREC
     PORTS -.implements.-> STDIO
     PIPELINE --> domain
-    PREFLIGHT --> domain
+    GATE --> domain
 ```
 
-The domain ring contains only pure Rust value objects with zero external dependencies. The application ring holds the two use cases (`Pipeline`, `Preflight`) and the port traits. All technology — audio, inference, clipboard, hotkey — lives exclusively in adapters and never crosses into `core/`. The `runtime` module beside them composes the adapters into a pipeline: it starts one at launch, replaces it on a reload (the hang-up signal) once the dictation in progress ends, and ends it on a stop; the hotkey listener and the overlay live once per process, and the signal router points the listener at the pipeline that runs.
+The domain ring contains only pure Rust value objects with zero external dependencies. The application ring holds the two use cases (`Pipeline`, `PermissionsGate`) and the port traits. All technology — audio, inference, clipboard, hotkey — lives exclusively in adapters and never crosses into `core/`. The `runtime` module beside them composes the adapters into a pipeline: it starts one at launch, replaces it on a reload (the hang-up signal) once the dictation in progress ends, and ends it on a stop; the hotkey listener and the overlay live once per process, and the signal router points the listener at the pipeline that runs. The runtime asks the permissions gate before it starts a pipeline: with a permission missing it waits in the state Waiting for permissions (the Permissions window opens on it) and starts the pipeline once all are granted; while Ready it asks again every 5 s and stops the pipeline when one is revoked.
 
 ## Pipeline State Machine
 
@@ -106,7 +109,7 @@ Signals received while the pipeline is in any non-Idle state (except `Recording`
 | Text refinement | `llama-cpp-2` (llama.cpp FFI) | Runs Qwen2.5-3B-Instruct locally; Metal acceleration |
 | Clipboard paste | `arboard` + `CGEventPost` | `arboard` writes to NSPasteboard; `CGEventPost` sends Cmd+V |
 | Audio playback | macOS `NSSound` / `AVAudioPlayer` | Start/stop beeps via macOS native sound API |
-| Permission probe | `core-foundation` (`AXIsProcessTrusted`) | Checks Accessibility TCC before first key capture |
+| Permission probe | AVFoundation authorization status and request (`objc2`, `block2`), `AXIsProcessTrustedWithOptions`, `IOHIDCheckAccess` / `IOHIDRequestAccess` | Three-valued status (granted, not granted, not asked yet) without opening a device; the system prompt on request; System Settings deep links per pane |
 | Config | `serde` + `toml` | TOML config file at `~/.voicepuncher/config.toml` |
 | Logging | `log` + `env_logger` with `Target::Pipe` into an own size-rotating file writer (10 MB × 5) teed to a terminal | One logger and its line format for terminal and file; the rotation is ~60 lines, smaller than adopting `tracing`, `log4rs` or `flexi_logger` |
 | CLI args | `clap` | Derive-based arg parser; overlays on top of TOML config |

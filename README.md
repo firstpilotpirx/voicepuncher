@@ -11,7 +11,9 @@ Push-to-talk voice-to-text CLI for macOS Apple Silicon. Hold a hotkey, speak, re
 
 ## macOS permissions
 
-Three TCC permissions are required. Installed from the disk image, the app asks for them itself and the panes list it as **voicepuncher** with its icon; an update signed with the same certificate keeps them. Run from source (`cargo run`, `just run`), grant each to the terminal app you launch it from (e.g. iTerm2, Terminal, Warp); the app name appears in the error message on first run.
+Three TCC permissions are required. With one missing, the app does not exit: it opens the **Permissions** window, one row per permission with its status (Granted, Not granted, Not asked yet) and its remedy — **Request…** shows the system prompt, **Open System Settings** opens the exact pane below. The app checks again by itself and starts dictation as soon as the last one is granted, without a restart; a permission revoked while it runs stops dictation within 5 s and reopens the window. The menu bar item's **Permissions…** opens the window at any time.
+
+Installed from the disk image, the panes list the app as **voicepuncher** with its icon; an update signed with the same certificate keeps them. Run from source (`cargo run`, `just run`), macOS attributes the permissions to the terminal app you launch it from (e.g. iTerm2, Terminal, Warp): grant them to that app, which the window names.
 
 | Permission | Location |
 |---|---|
@@ -243,7 +245,7 @@ Result pasted at cursor: `Hello world, I think the API is fine.`
 |---|---|
 | 0 | Clean shutdown (SIGTERM / SIGINT) |
 | 1 | Runtime crash (hotkey listener died) |
-| 2 | Startup misconfiguration (bad or outdated config, a local service not reachable, configured model not offered, permission denied) |
+| 2 | Startup misconfiguration (bad or outdated config, a local service not reachable, configured model not offered); a missing permission opens the Permissions window instead |
 
 ## Upgrading from the in-process Whisper engine
 
@@ -372,6 +374,7 @@ Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke`, `e2e-qui
 1. `just full-check` passes (on `origin/main` itself it runs the 100 recordings).
 2. Manual run (required before merging a change to hotkey, recording, overlay, paste or permissions) — `cargo run --release -p voicepuncher`, then check:
    - [ ] Short phrase: press, speak, release → text is pasted.
+   - [ ] Permissions: remove each permission for the terminal in System Settings (`tccutil reset Microphone`, `Accessibility`, `ListenEvent` for its bundle id), launch → the Permissions window names the terminal; Request… shows the system prompt and the row shows Checking…; Open System Settings opens the right pane; the log shows `permissions: …` at each change; dictation starts once the last one is granted. Revoke Accessibility while it runs → within 5 s the window reopens with `Accessibility was revoked — dictation stopped`; grant it again → dictation works. Compare the window in light and dark with `openspec/changes/archive/*-permissions-gate-window/mockups/states/`.
    - [ ] Long dictation (> 30 s, crosses a chunk boundary) → no repeated or missing words at the seam.
    - [ ] Mixed Russian + English ("задеплой в Docker") → each language kept as spoken, terms in Latin script.
    - [ ] Same with `--no-llm` → the raw transcript is pasted.

@@ -1,5 +1,5 @@
 //! The status item in the macOS menu bar: the icon the state cell picks, and the menu with the
-//! title line, the status line, Settings, Open Logs Folder and Quit.
+//! title line, the status line, Permissions…, Settings, Open Logs Folder and Quit.
 
 use std::cell::{OnceCell, RefCell};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -21,7 +21,8 @@ use crate::adapters::main_queue::{dispatch_to_main, dispatch_to_main_after};
 use super::actions::MenuActions;
 use super::indicator::{StatusItemCell, StatusItemSurface};
 use super::mapping::{
-    IconPicture, IconState, FALLBACK_SYMBOL, PROCESSING_FRAMES, STILL_PROCESSING_FRAME,
+    IconPicture, IconState, MenuEntry, FALLBACK_SYMBOL, MENU, PROCESSING_FRAMES,
+    STILL_PROCESSING_FRAME,
 };
 
 /// The symbols' point size in the menu bar.
@@ -34,10 +35,7 @@ const DOT_INSET: f64 = 2.0;
 /// The places of the two text lines at the top of the menu.
 const TITLE_LINE: isize = 0;
 const STATUS_LINE: isize = 1;
-const SETTINGS_TITLE: &str = "Settings…";
 const SETTINGS_KEY: &str = ",";
-const LOGS_TITLE: &str = "Open Logs Folder";
-const QUIT_TITLE: &str = "Quit voicepuncher";
 const QUIT_KEY: &str = "q";
 const NO_KEY: &str = "";
 
@@ -230,26 +228,28 @@ fn build_menu(mtm: MainThreadMarker, target: &MenuTarget) -> Retained<NSMenu> {
     let menu = NSMenu::new(mtm);
     menu.setAutoenablesItems(false);
     menu.setDelegate(Some(ProtocolObject::from_ref(target)));
-    menu.addItem(&text_line(mtm));
-    menu.addItem(&text_line(mtm));
-    menu.addItem(&NSMenuItem::separatorItem(mtm));
-    menu.addItem(&action_item(
-        mtm,
-        target,
-        SETTINGS_TITLE,
-        sel!(settings:),
-        SETTINGS_KEY,
-    ));
-    menu.addItem(&action_item(
-        mtm,
-        target,
-        LOGS_TITLE,
-        sel!(openLogs:),
-        NO_KEY,
-    ));
-    menu.addItem(&NSMenuItem::separatorItem(mtm));
-    menu.addItem(&action_item(mtm, target, QUIT_TITLE, sel!(quit:), QUIT_KEY));
+    for entry in MENU {
+        let item = match entry {
+            MenuEntry::TitleLine | MenuEntry::StatusLine => text_line(mtm),
+            MenuEntry::Separator => NSMenuItem::separatorItem(mtm),
+            MenuEntry::Permissions => chosen(mtm, target, entry, sel!(permissions:), NO_KEY),
+            MenuEntry::Settings => chosen(mtm, target, entry, sel!(settings:), SETTINGS_KEY),
+            MenuEntry::Logs => chosen(mtm, target, entry, sel!(openLogs:), NO_KEY),
+            MenuEntry::Quit => chosen(mtm, target, entry, sel!(quit:), QUIT_KEY),
+        };
+        menu.addItem(&item);
+    }
     menu
+}
+
+fn chosen(
+    mtm: MainThreadMarker,
+    target: &MenuTarget,
+    entry: MenuEntry,
+    action: Sel,
+    key: &str,
+) -> Retained<NSMenuItem> {
+    action_item(mtm, target, entry.title().unwrap_or_default(), action, key)
 }
 
 /// A line of text that cannot be chosen.
@@ -302,6 +302,11 @@ define_class!(
     }
 
     impl MenuTarget {
+        #[unsafe(method(permissions:))]
+        fn permissions(&self, _sender: Option<&AnyObject>) {
+            self.act(|actions| actions.open_permissions());
+        }
+
         #[unsafe(method(settings:))]
         fn settings(&self, _sender: Option<&AnyObject>) {
             self.act(|actions| actions.open_settings());

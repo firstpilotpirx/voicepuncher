@@ -10,7 +10,7 @@
 
 **D2 — Status APIs that do not touch devices.** `AVCaptureDevice.authorizationStatus` instead of opening a cpal stream (which prompted as a side effect and lit the microphone indicator); `IOHIDCheckAccess` instead of creating an event tap (which could not report NotDetermined). Requests are explicit and separate.
 
-**D3 — IOHID through `extern "C"`, AVFoundation through `objc2-av-foundation`.** Two C functions need no crate (the code base already declares `AXIsProcessTrustedWithOptions` this way); the AVFoundation call needs Objective-C messaging and a block, which the objc2 family provides; both are pinned exactly.
+**D3 — IOHID through `extern "C"`, AVFoundation through `objc2` messaging and `block2`.** Two C functions need no crate (the code base already declares `AXIsProcessTrustedWithOptions` this way); the two AVFoundation class methods are sent with `msg_send!` on `AVCaptureDevice` and the `AVMediaTypeAudio` constant declared as an extern static, the completion block made with `block2` (pinned exactly, already in the lock file through `objc2`). `objc2-av-foundation` was rejected: a whole framework binding for two calls.
 
 **D4 — Polling, not notifications.** macOS offers no public notification for TCC changes; three cheap calls every 5 s while running (2 s while waiting) are invisible in CPU and catch revocation within the acceptance bar.
 

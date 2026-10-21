@@ -11,7 +11,6 @@ use crate::adapters::secondary::archiving::filesystem::{ArchiveSetup, FileSystem
 use crate::adapters::secondary::commandspotting::websocket::WebSocketCommandSpotter;
 use crate::adapters::secondary::focus::macos::MacOsFocusProbe;
 use crate::adapters::secondary::keypressing::macos::MacOsKeyPresser;
-use crate::adapters::secondary::permissions::macos::MacOsPermissionProbe;
 use crate::adapters::secondary::recording::cpal::CpalAudioRecorder;
 use crate::adapters::secondary::soundplaying::macos::MacosSoundPlayer;
 use crate::adapters::secondary::textpasting::macos::MacOsTextPaster;
@@ -20,7 +19,6 @@ use crate::adapters::secondary::textrefinement::passthrough::PassthroughTextRefi
 use crate::adapters::secondary::transcription::openai::OpenAiTranscriber;
 use crate::config::{Config, TranscriptionCfg};
 use crate::core::application::pipeline::{Pipeline, PipelineConfig};
-use crate::core::application::preflight::Preflight;
 use crate::core::application::{
     ChunkingCfg, CommandSpotter, FocusWaitCfg, PipelineInput, TextRefiner,
 };
@@ -35,7 +33,6 @@ pub struct WiringAssembler {
     no_llm: bool,
     overlay: SharedVisualIndicator,
     level_register: Arc<AtomicU32>,
-    permissions_checked: bool,
 }
 
 impl WiringAssembler {
@@ -48,7 +45,6 @@ impl WiringAssembler {
             no_llm,
             overlay,
             level_register,
-            permissions_checked: false,
         }
     }
 }
@@ -60,12 +56,6 @@ impl PipelineAssembler for WiringAssembler {
             .enabled
             .then(|| connect_command_spotter(config, inputs))
             .transpose()?;
-        // once per process, after the command spotting service and before the others, as
-        // the app always checked: a missing service is named before a missing permission
-        if !self.permissions_checked {
-            Preflight::run(&MacOsPermissionProbe::new())?;
-            self.permissions_checked = true;
-        }
         let transcriber = connect_transcriber(config)?;
         let refiner = connect_refiner(config, self.no_llm)?;
         let mut pipeline = Pipeline::new(

@@ -48,15 +48,27 @@
 - **States:** `Idle`, `Recording`, `Transcribing`, `Refining`, `Pasting`
 - **Synonyms to AVOID:** "controller", "engine", "manager"
 
-### Preflight
-- **Type:** Use Case (Application Service)
-- **Definition:** Startup gate that verifies the host environment grants the three permissions the app needs (Microphone, Accessibility, Input Monitoring) before the `Pipeline` is constructed. Calls a `PermissionProbe` and produces a single fail-fast error with the parent process name in its message.
-- **Code:** `app/src/core/application/preflight.rs`
-- **Synonyms to AVOID:** "permission check", "bootstrap", "startup hook"
+### Permissions gate
+
+- **Definition:** Lets dictation by hotkey run only while the three permissions the app needs — Microphone, Accessibility, Input Monitoring — are granted. The runtime asks it before it starts the pipeline and every few seconds after; while one is missing the runtime waits for permissions and the Permissions window shows which. Replaces the retired *Preflight*, which exited the app on the first missing permission. File mode never asks it.
+- **Code:** `app/src/core/application/permissions_gate.rs` (`PermissionsGate`, `PermissionReport`)
+- **Synonyms to AVOID:** "preflight", "permission check", "bootstrap"
+
+### Permission status
+
+- **Definition:** What the system says about one permission: Granted; Not granted (denied, revoked or restricted: the user grants it in System Settings); Not asked yet (a request shows the system prompt). Read without opening a device.
+- **Code:** `app/src/core/domain/permission.rs` (`Permission`, `PermissionStatus`)
+- **Synonyms to AVOID:** "authorization", "TCC state"
+
+### Permissions window
+
+- **Definition:** The window that shows one row per permission with its status and its remedy — Request… or Open System Settings on the exact page — and names the application to grant to when the app runs as a bare binary from a terminal. It opens by itself while the runtime waits for permissions and from the menu at any time.
+- **Code:** `app/src/adapters/primary/permissions/macos/`
+- **Synonyms to AVOID:** "setup dialog", "onboarding"
 
 ### PermissionProbe
 - **Type:** Driven Port (trait in `core/application/`)
-- **Definition:** Abstracts macOS-specific permission probing (`AXIsProcessTrusted`, opening the default `cpal` input device, parent process discovery via `ps`) so `Preflight` stays platform-agnostic.
+- **Definition:** The port the *permissions gate* reads and requests the permissions through: the status of each, the system request, the System Settings page, and the application macOS attributes the permissions to when the app is not bundled. The macOS adapter uses status calls that open no device (AVFoundation, `AXIsProcessTrustedWithOptions`, `IOHIDCheckAccess`).
 - **Code:** `app/src/core/application/permission_probe.rs`
 - **Synonyms to AVOID:** "PermissionChecker", "PermissionService"
 

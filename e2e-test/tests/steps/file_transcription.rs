@@ -99,6 +99,14 @@ fn no_startup_failure(world: &mut E2eWorld) -> Result<()> {
     Ok(())
 }
 
+#[then("no permission is checked")]
+fn no_permission_checked(world: &mut E2eWorld) -> Result<()> {
+    if let Some(line) = world.stderr.lines().find(|l| l.contains("permissions:")) {
+        bail!("file mode checked the permissions: {line}");
+    }
+    Ok(())
+}
+
 #[then("the mean word error rate is below 30 %")]
 fn mean_wer_below_bar(world: &mut E2eWorld) -> Result<()> {
     let rates = &world.word_error_rates;

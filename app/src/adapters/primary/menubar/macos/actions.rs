@@ -1,4 +1,5 @@
-//! What the menu's items do: quit the app, open the settings, show the logs folder.
+//! What the menu's items do: quit the app, open the settings, show the logs folder, bring
+//! the Permissions window to the front.
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -21,6 +22,26 @@ pub trait MenuActions {
     fn quit(&self);
     fn open_settings(&self);
     fn open_logs(&self);
+    fn open_permissions(&self);
+}
+
+/// The same actions, shared by the menu and the Permissions window.
+impl<T: MenuActions + ?Sized> MenuActions for std::rc::Rc<T> {
+    fn quit(&self) {
+        (**self).quit();
+    }
+
+    fn open_settings(&self) {
+        (**self).open_settings();
+    }
+
+    fn open_logs(&self) {
+        (**self).open_logs();
+    }
+
+    fn open_permissions(&self) {
+        (**self).open_permissions();
+    }
 }
 
 /// The actions of the app: Quit owns the runtime it stops.
@@ -29,6 +50,7 @@ pub struct MacosMenuActions {
     config_path: PathBuf,
     logs_dir: PathBuf,
     end_process: Box<dyn Fn(i32)>,
+    open_permissions: Box<dyn Fn()>,
 }
 
 impl MacosMenuActions {
@@ -54,7 +76,14 @@ impl MacosMenuActions {
             config_path,
             logs_dir,
             end_process,
+            open_permissions: Box::new(|| log::warn!("menu: no Permissions window")),
         }
+    }
+
+    /// Permissions… calls `open`.
+    pub fn with_permissions_window(mut self, open: Box<dyn Fn()>) -> Self {
+        self.open_permissions = open;
+        self
     }
 }
 
@@ -71,6 +100,10 @@ impl MenuActions for MacosMenuActions {
         if let Err(e) = open_in_text_editor(&self.config_path) {
             log::warn!("menu: settings not opened: {e:#}");
         }
+    }
+
+    fn open_permissions(&self) {
+        (self.open_permissions)();
     }
 
     fn open_logs(&self) {

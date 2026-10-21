@@ -19,7 +19,7 @@
 |---|---|---|
 | `app/src/core/domain/` | Domain | Value objects: `AudioBuffer16k`, `RawTranscript`, `CleanedText`, `HotKey`, `PttSignal`, `RecordingMode` |
 | `app/src/core/application/pipeline.rs` | Application | `Pipeline` use case — orchestrates one full PTT cycle, holds the state machine |
-| `app/src/core/application/preflight.rs` | Application | `Preflight` use case — startup permission gate |
+| `app/src/core/application/permissions_gate.rs` | Application | `PermissionsGate` use case and `PermissionReport` — the three permissions, their statuses, requests and System Settings links |
 | `app/src/core/application/audio_recorder.rs` | Port | `AudioRecorder` trait |
 | `app/src/core/application/hotkey_listener.rs` | Port | `HotkeyListener` trait |
 | `app/src/core/application/transcriber.rs` | Port | `Transcriber` trait |
@@ -32,6 +32,7 @@
 | `app/src/adapters/primary/cli/` | Primary adapter | `Cli` — `clap`-based argument parser |
 | `app/src/adapters/primary/ptt/rdev/` | Primary adapter | `RdevHotkeyListener` — captures hotkey events via `rdev` |
 | `app/src/adapters/primary/setup/cli/` | Primary adapter | `SetupWizard` — interactive first-run configuration wizard |
+| `app/src/adapters/primary/permissions/macos/` | Primary adapter | `PermissionsWindow` — the Permissions window (rows, badges, Request…, Open System Settings, Quit, Continue); `mapping.rs` holds what it shows |
 | `app/src/adapters/primary/menubar/macos/` | Primary adapter | `MacosStatusItem` — the menu bar icon and its menu (Settings, Open Logs Folder, Quit); `StatusItemCell` fed by the overlay decorator and the runtime observer; `MacosMenuActions` |
 | `app/src/adapters/main_queue.rs` | Adapter helper | Work dispatched to the main queue, shared by the overlay and the status item |
 | `app/src/adapters/secondary/recording/cpal/` | Secondary adapter | `CpalAudioRecorder` — records microphone via `cpal` |
@@ -43,7 +44,7 @@
 | `app/src/adapters/secondary/textpasting/stdio/` | Secondary adapter | `StdioTextPaster` — writes text to stdout (file mode / E2E) |
 | `app/src/adapters/secondary/soundplaying/macos/` | Secondary adapter | `MacosSoundPlayer` — plays start/stop sounds via macOS `afplay` |
 | `app/src/adapters/secondary/logging/file/` | Secondary adapter | `RotatingFileWriter`, `TeeWriter` — the app's log file `~/.voicepuncher/logs/voicepuncher.log`, size-rotated and teed to a terminal; the launch header and the panic hook |
-| `app/src/adapters/secondary/permissions/macos/` | Secondary adapter | `MacOsPermissionProbe` — probes macOS TCC permissions |
+| `app/src/adapters/secondary/permissions/macos/` | Secondary adapter | `MacOsPermissionProbe` — macOS TCC status, requests, deep links and the responsible app |
 | `app/src/config.rs`, `app/src/config/` | Config | TOML config loading with `serde`; `Config` is the root struct; `[transcription]` and `[whisper]` migration error in `config/transcription.rs`, `[refinement]` and `[llm]` migration error in `config/refinement.rs`, loopback check in `config/loopback.rs` |
 | `app/src/main.rs` | Composition root | Wires adapters + use cases into a runnable; no business logic |
 | `app/packaging/` | Packaging | Sources of the application bundle: `Info.plist` template (version filled in by `just bundle`), `icons/` (`icon-1024.png` and `voicepuncher.iconset/`, turned into `.icns` by `iconutil`), `dmg-background.png`; checked by `app/tests/packaging_it.rs` |

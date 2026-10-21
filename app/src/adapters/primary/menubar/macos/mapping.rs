@@ -158,6 +158,9 @@ impl StatusItemState {
     fn standby_line(&self) -> String {
         match &self.runtime {
             None | Some(RuntimeState::Starting) => "Starting…".into(),
+            Some(RuntimeState::WaitingForPermissions { .. }) => {
+                "Waiting for permissions — open Permissions…".into()
+            }
             Some(RuntimeState::Restarting) => "Restarting…".into(),
             Some(RuntimeState::Stopped) => "Quitting…".into(),
             Some(RuntimeState::Failed(reason)) => format!("Failed: {reason}"),
@@ -210,6 +213,43 @@ impl IconState {
             template: !recording,
             red_dot: recording,
             animated: self == IconState::Processing,
+        }
+    }
+}
+
+/// An entry of the menu, top to bottom.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuEntry {
+    TitleLine,
+    StatusLine,
+    Permissions,
+    Separator,
+    Settings,
+    Logs,
+    Quit,
+}
+
+/// The menu, the same in every state.
+pub const MENU: [MenuEntry; 8] = [
+    MenuEntry::TitleLine,
+    MenuEntry::StatusLine,
+    MenuEntry::Permissions,
+    MenuEntry::Separator,
+    MenuEntry::Settings,
+    MenuEntry::Logs,
+    MenuEntry::Separator,
+    MenuEntry::Quit,
+];
+
+impl MenuEntry {
+    /// The words of a chosen item; none for the lines and separators.
+    pub fn title(self) -> Option<&'static str> {
+        match self {
+            MenuEntry::Permissions => Some("Permissions…"),
+            MenuEntry::Settings => Some("Settings…"),
+            MenuEntry::Logs => Some("Open Logs Folder"),
+            MenuEntry::Quit => Some("Quit voicepuncher"),
+            _ => None,
         }
     }
 }
