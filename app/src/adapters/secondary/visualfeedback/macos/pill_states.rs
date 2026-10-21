@@ -8,13 +8,13 @@ use std::time::Instant;
 use crate::core::domain::level_history::{CAPACITY_BESIDE_SIGN, FULL_CAPACITY};
 use crate::core::domain::AudioLevel;
 
-use super::main_queue::dispatch_to_main_after;
 use super::motion::reduce_motion;
 use super::pill_content::{state_sign, GlassTint, PillKind, SignLook, PASTED_SIGN};
 use super::pill_view::PillLook;
 use super::waveform::LevelWave;
 use super::window_set::WindowSet;
 use super::OverlayState;
+use crate::adapters::main_queue::dispatch_to_main_after;
 
 pub(super) type Windows = Vec<Arc<WindowSet>>;
 

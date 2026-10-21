@@ -2,12 +2,16 @@
 
 use std::fmt;
 
-use crate::core::domain::HotKey;
+use crate::core::domain::{HotKey, RecordingMode};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeState {
     Starting,
-    Ready { hotkey: HotKey, voice_control: bool },
+    Ready {
+        hotkey: HotKey,
+        recording_mode: RecordingMode,
+        voice_control: bool,
+    },
     Restarting,
     Stopped,
     Failed(String),
@@ -20,6 +24,7 @@ impl fmt::Display for RuntimeState {
             RuntimeState::Ready {
                 hotkey,
                 voice_control,
+                ..
             } => write!(
                 f,
                 "ready (hotkey {hotkey}, voice control {})",
@@ -104,6 +109,7 @@ mod tests {
     fn ready() -> RuntimeState {
         RuntimeState::Ready {
             hotkey: HotKey::RightOption,
+            recording_mode: RecordingMode::Toggle,
             voice_control: false,
         }
     }
@@ -163,6 +169,7 @@ mod tests {
         // Given
         let state = RuntimeState::Ready {
             hotkey: HotKey::F19,
+            recording_mode: RecordingMode::Hold,
             voice_control: true,
         };
         // When

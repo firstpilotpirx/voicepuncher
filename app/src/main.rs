@@ -3,6 +3,9 @@ use objc2::MainThreadMarker;
 use objc2_app_kit::NSApplication;
 
 use voicepuncher::adapters::primary::cli::Cli;
+use voicepuncher::adapters::primary::menubar::macos::actions::MacosMenuActions;
+use voicepuncher::adapters::primary::menubar::macos::indicator::StatusItemCell;
+use voicepuncher::adapters::primary::menubar::macos::status_item::MacosStatusItem;
 use voicepuncher::adapters::primary::ptt::rdev::RdevHotkeyListener;
 use voicepuncher::adapters::primary::setup::cli::SetupWizard;
 use voicepuncher::adapters::secondary::logging::file::{
@@ -16,7 +19,9 @@ use voicepuncher::adapters::secondary::transcription::openai::OpenAiTranscriber;
 use voicepuncher::adapters::secondary::visualfeedback::macos::{
     MacosPointerSign, MacosVisualIndicator,
 };
-use voicepuncher::adapters::secondary::visualfeedback::pointer_sign::PointerSignIndicator;
+use voicepuncher::adapters::secondary::visualfeedback::pointer_sign::{
+    PointerSignIndicator, FAILURE_NOTICE_LIFETIME,
+};
 use voicepuncher::config::Config;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
 use voicepuncher::core::application::visual_indicator::VisualIndicator;
@@ -90,14 +95,20 @@ fn main() {
     }
 
     let mtm = MainThreadMarker::new().expect("main must run on the main thread");
+    let app = NSApplication::sharedApplication(mtm);
+    let status_item = MacosStatusItem::install(mtm);
+    let status_cell = StatusItemCell::new(Box::new(status_item.icon()), FAILURE_NOTICE_LIFETIME);
+    status_item.connect(status_cell.clone());
     let level_register = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
-    let overlay = SharedVisualIndicator::new(Box::new(PointerSignIndicator::new(
-        MacosVisualIndicator::initialize(mtm, std::sync::Arc::clone(&level_register)),
-        MacosPointerSign::initialize(mtm),
-    )));
+    let overlay =
+        SharedVisualIndicator::new(Box::new(status_cell.indicator(PointerSignIndicator::new(
+            MacosVisualIndicator::initialize(mtm, std::sync::Arc::clone(&level_register)),
+            MacosPointerSign::initialize(mtm),
+        ))));
     let assembler = WiringAssembler::new(no_llm, overlay, level_register);
     let mut runtime = Runtime::new(Box::new(assembler), Box::new(RdevHotkeyListener::new()));
     runtime.observe(Box::new(LogObserver));
+    runtime.observe(Box::new(status_cell.observer()));
     if runtime.start(config).is_err() {
         // the log observer logged the reason with the state Failed
         std::process::exit(2);
@@ -105,16 +116,28 @@ fn main() {
     let reloader = runtime
         .reloader()
         .expect("the runtime runs after its start");
-    signals::reload_on_hang_up(config_path, Box::new(move |cfg| cli.overlay(cfg)), reloader)
-        .unwrap_or_else(|e| {
-            log::error!("{e:#}");
-            std::process::exit(2);
-        });
+    signals::reload_on_hang_up(
+        config_path.clone(),
+        Box::new(move |cfg| cli.overlay(cfg)),
+        reloader,
+    )
+    .unwrap_or_else(|e| {
+        log::error!("{e:#}");
+        std::process::exit(2);
+    });
+    // Quit in the menu stops the runtime and ends the process; run() never returns.
+    status_item.set_actions(Box::new(MacosMenuActions::new(
+        runtime,
+        config_path,
+        logs_folder(),
+    )));
 
-    let app = NSApplication::sharedApplication(mtm);
     app.run();
+}
 
-    runtime.stop();
+/// The folder the services' logs live in: `~/.voicepuncher/logs`.
+fn logs_folder() -> std::path::PathBuf {
+    logs_dir(&dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(".")))
 }
 
 /// Transcribes one WAV file and prints the text; archives it only when a folder was named.

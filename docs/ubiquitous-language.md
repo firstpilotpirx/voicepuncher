@@ -162,6 +162,24 @@
 - **Code:** `VisualIndicator::show_pasted`
 - **Synonyms to AVOID:** "success toast", "done sign", "confirmation" (alone — also names the second hearing of a command)
 
+### Status item
+- **Type:** Adapter concept (primary adapter, the macOS menu bar)
+- **Definition:** The app's icon in the menu bar, from launch to quit: its only presence once it has no Dock icon. Its picture is the current `Icon state`; clicking it opens the menu: the app's name and version, the `Status line`, Settings…, Open Logs Folder and Quit voicepuncher. Quit stops the `Runtime` (a recording in progress is cancelled with the cancel sound) and ends the process with exit code 0. It learns the dictation from the overlay signals it decorates and the runtime from the runtime states it observes.
+- **Code:** `app/src/adapters/primary/menubar/macos/` (`MacosStatusItem`, `StatusItemCell`, `StatusItemIndicator`, `StatusItemObserver`, `MacosMenuActions`)
+- **Synonyms to AVOID:** "tray icon", "menu bar extra", "status bar" (the whole bar), "overlay" (the pill)
+
+### Icon state
+- **Type:** Value (enum `IconState`, adapter)
+- **Definition:** What the `Status item` shows, picked from the dictation stage, the `Runtime state` and the voice control signs in one place: waiting (starting or restarting), ready, listening (voice control on), commands unavailable, recording, processing, waiting for focus, warning (while a `Failure notice` shows) and failed. A dictation outranks the commands-unavailable sign, which outranks listening, which outranks ready; a runtime state shows only while no dictation runs; a `Command sign` changes nothing. Each is an SF Symbol: a template image in the menu bar's ink, the recording one a filled microphone with a red dot, the processing one a waveform stepping every 400 ms (still under Reduce Motion).
+- **Code:** `app/src/adapters/primary/menubar/macos/mapping.rs`
+- **Synonyms to AVOID:** "status", "badge", "icon" (alone)
+
+### Status line
+- **Type:** Adapter concept (the menu's second line)
+- **Definition:** The `Icon state` in plain words, set when the menu opens: "Ready — hold Right Option to dictate" (or "press" in Toggle mode), "Recording — release Right Option to stop", "Recognizing speech…", "Refining text…", "Waiting for a text field…", "Voice control: listening", "Starting…", "Restarting…", "Failed: " with the reason. Hotkeys are named as a person reads them ("Right Option", "Cmd+E").
+- **Code:** `StatusItemState::status_line`, `hotkey_name` in `app/src/adapters/primary/menubar/macos/mapping.rs`
+- **Synonyms to AVOID:** "tooltip", "subtitle", "status" (alone)
+
 ### Processing stage
 - **Type:** Domain concept (overlay state)
 - **Definition:** The step a dictation is in between the end of its recording and the paste, as the overlay shows it with an icon and an English label of its own, and an indeterminate spinner beside the label: **speech recognition** — a breathing ear, "Recognizing", no text window — from the stop until the transcript is ready (with live chunks, the transcription still running after the stop), then **text refinement** — breathing sparkles, "Refining text", and the raw transcript being refined, dimmed, in the text window — from its start until the corrected text is ready. With text refinement off only speech recognition is shown.

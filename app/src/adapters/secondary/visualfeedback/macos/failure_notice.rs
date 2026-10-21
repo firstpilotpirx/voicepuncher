@@ -3,12 +3,12 @@ use std::sync::{Arc, Mutex};
 
 use crate::core::domain::FailureNotice;
 
-use super::main_queue::dispatch_to_main_after;
 use super::pill_content::{glass_tint, state_sign, PillKind};
 use super::pill_states::apply_hidden_state;
 use super::pill_view::PillLook;
 use super::window_set::WindowSet;
 use super::OverlayState;
+use crate::adapters::main_queue::dispatch_to_main_after;
 
 /// When a shown notice hides: `duration_ms` after it is drawn, unless a later signal moved the
 /// pulse generation first.

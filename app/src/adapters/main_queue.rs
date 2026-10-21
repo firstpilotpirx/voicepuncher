@@ -1,4 +1,4 @@
-//! Work handed to the main queue, where AppKit draws.
+//! Work handed to the main queue, where AppKit draws: the overlay and the status item.
 
 use std::ffi::c_void;
 
@@ -34,13 +34,13 @@ fn into_context<F: FnOnce() + Send + 'static>(work: F) -> *mut c_void {
 }
 
 /// Runs `work` on the main queue as soon as it gets there.
-pub(super) fn dispatch_to_main<F: FnOnce() + Send + 'static>(work: F) {
+pub(crate) fn dispatch_to_main<F: FnOnce() + Send + 'static>(work: F) {
     // SAFETY: the context is a leaked `Box<MainQueueWork>` that `trampoline` takes back once.
     unsafe { dispatch_async_f(main_queue(), into_context(work), trampoline) }
 }
 
 /// Runs `work` on the main queue `delay_ms` from now.
-pub(super) fn dispatch_to_main_after<F: FnOnce() + Send + 'static>(delay_ms: i64, work: F) {
+pub(crate) fn dispatch_to_main_after<F: FnOnce() + Send + 'static>(delay_ms: i64, work: F) {
     // SAFETY: as in `dispatch_to_main`; `dispatch_time` only reads its arguments.
     unsafe {
         let when = dispatch_time(DISPATCH_TIME_NOW, delay_ms * NANOS_PER_MILLI);

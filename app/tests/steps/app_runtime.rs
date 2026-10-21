@@ -352,6 +352,7 @@ fn ready_voice_control_off(world: &mut IntegrationWorld) -> Result<()> {
     run(world).state_becomes(|s| {
         *s == RuntimeState::Ready {
             hotkey: FIRST_HOTKEY,
+            recording_mode: RecordingMode::Toggle,
             voice_control: false,
         }
     })

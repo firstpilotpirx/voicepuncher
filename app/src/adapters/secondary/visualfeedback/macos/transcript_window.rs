@@ -10,8 +10,8 @@ use objc2_app_kit::{NSColor, NSFont, NSLineBreakMode, NSTextField, NSWindow};
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 
 use super::glass::{GlassFinish, GlassPanel, ShadowStyle, SHADOW_MARGIN};
-use super::main_queue::dispatch_to_main_after;
 use super::motion::reduce_motion;
+use crate::adapters::main_queue::dispatch_to_main_after;
 
 const WIDTH: f64 = 480.0;
 /// Space between the bottom of the pill and the top of the text window.

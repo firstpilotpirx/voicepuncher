@@ -345,6 +345,7 @@ impl Supervisor {
     fn ready(&self) -> RuntimeState {
         RuntimeState::Ready {
             hotkey: self.config.hotkey.key,
+            recording_mode: self.config.hotkey.recording_mode,
             voice_control: self.config.voice_control.enabled,
         }
     }
@@ -421,6 +422,7 @@ mod tests {
     fn ready(hotkey: HotKey) -> RuntimeState {
         RuntimeState::Ready {
             hotkey,
+            recording_mode: RecordingMode::Toggle,
             voice_control: false,
         }
     }
@@ -455,6 +457,24 @@ mod tests {
                 RuntimeState::Stopped,
             ]
         );
+    }
+
+    #[test]
+    fn should_tell_the_recording_mode_of_the_configuration_when_ready() {
+        // Given
+        let mut runtime = Runtime::new(Box::new(IdleAssembler), listener());
+        let mut config = with_hotkey(HotKey::F13);
+        config.hotkey.recording_mode = RecordingMode::Hold;
+        // When
+        runtime.start(config).unwrap();
+        // Then
+        assert!(matches!(
+            runtime.state(),
+            Some(RuntimeState::Ready {
+                recording_mode: RecordingMode::Hold,
+                ..
+            })
+        ));
     }
 
     #[test]

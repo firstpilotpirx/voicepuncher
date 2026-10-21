@@ -21,6 +21,7 @@ use voicepuncher::core::application::{
 };
 use voicepuncher::core::domain::{
     AudioBuffer16k, CleanedText, FailureNotice, HotKey, HotkeyBinding, PttSignal, RawTranscript,
+    RecordingMode,
 };
 use voicepuncher::runtime::signals;
 use voicepuncher::runtime::{PipelineAssembler, Runtime, RuntimeObserver, RuntimeState};
@@ -67,6 +68,7 @@ fn should_keep_the_settings_when_the_edited_file_does_not_load() {
         states.lock().unwrap().last(),
         Some(&RuntimeState::Ready {
             hotkey: HotKey::F13,
+            recording_mode: RecordingMode::Toggle,
             voice_control: false
         })
     );
@@ -92,6 +94,7 @@ fn should_keep_the_settings_when_the_edited_file_does_not_validate() {
         states.lock().unwrap().last(),
         Some(&RuntimeState::Ready {
             hotkey: HotKey::F13,
+            recording_mode: RecordingMode::Toggle,
             voice_control: false
         })
     );

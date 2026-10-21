@@ -1,12 +1,12 @@
-# Spec Delta
+# menu-bar-presence Specification
 
 ## Purpose
 The application's presence in the macOS menu bar: a status item whose icon shows what the app is doing, and a menu that tells the state in words and gives Settings, the logs folder and Quit, so the app is visible, understandable and quittable without a terminal.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: The menu bar shows the app from launch
-From launch until it quits, the app SHALL show a status item in the system menu bar. While the runtime starts or restarts the icon SHALL be the waiting icon (an hourglass); once the runtime is ready and no dictation runs, the ready icon (a microphone outline); once the runtime failed, the failed icon (a filled warning triangle). The icon SHALL follow the light and the dark menu bar appearance.
+From launch until it quits, the app SHALL show a status item in the system menu bar. While the runtime starts or restarts the icon SHALL be the waiting icon (an hourglass); once the runtime is ready and no dictation runs, the ready icon (a microphone outline); once the runtime failed, the failed icon (a filled warning triangle) until the app exits, as it does when a local service does not answer at launch. The icon SHALL follow the light and the dark menu bar appearance.
 
 #### Scenario: The status item appears while the app starts
 - **GIVEN** the app was just launched and its runtime is still starting
@@ -23,10 +23,10 @@ From launch until it quits, the app SHALL show a status item in the system menu 
 - **WHEN** the runtime restarts with a new configuration and becomes ready again
 - **THEN** the status item shows the waiting icon during the restart and the ready icon afterwards
 
-#### Scenario: A failed runtime shows the failed icon
+#### Scenario: A failed runtime shows the failed icon until the app exits
 - **GIVEN** the runtime is starting
 - **WHEN** the runtime fails because a local service does not answer
-- **THEN** the status item shows the failed icon
+- **THEN** the status item shows the failed icon and the app exits as before
 
 ### Requirement: The icon mirrors the dictation
 While the runtime is ready, the icon SHALL mirror the stage of the dictation as the overlay shows it: recording — a filled microphone with a red dot; recognizing speech and refining text — a waveform; waiting for a text field — a keyboard; pasted — the ready icon again; a failure notice — a warning triangle for as long as the notice shows, then the ready icon. A command sign SHALL leave the icon as it is.

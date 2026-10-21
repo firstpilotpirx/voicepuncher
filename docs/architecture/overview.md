@@ -110,6 +110,7 @@ Signals received while the pipeline is in any non-Idle state (except `Recording`
 | Config | `serde` + `toml` | TOML config file at `~/.voicepuncher/config.toml` |
 | Logging | `log` + `env_logger` with `Target::Pipe` into an own size-rotating file writer (10 MB × 5) teed to a terminal | One logger and its line format for terminal and file; the rotation is ~60 lines, smaller than adopting `tracing`, `log4rs` or `flexi_logger` |
 | CLI args | `clap` | Derive-based arg parser; overlays on top of TOML config |
+| GUI toolkit, menu bar item | AppKit through `objc2-app-kit` (`NSStatusItem`, `NSMenu`, SF Symbols) | Native look in the light and the dark menu bar, no runtime beyond the system, the same bindings the overlay uses; rejected: Tauri (a web view and a second runtime), egui and iced (no native menu bar item), SwiftUI (a second language and build) |
 | Packaging | `just` recipes on macOS tools (`plutil`, `iconutil`, `codesign`, `hdiutil`) + `create-dmg` 1.3.0 for the disk image window | A bundle is three files in a fixed tree; `create-dmg` scripts the Finder layout. No packaging crate: `cargo-packager` always signs with the hardened runtime, which blocks the microphone and the key listener without entitlements |
 | Signing | self-signed code-signing certificate (`VOICEPUNCHER_SIGNING_IDENTITY`), no Developer ID, no notarization | The designated requirement names the certificate, so updates keep the TCC permissions; ad-hoc signatures change identity every build. Gatekeeper needs one "Open Anyway" per version |
 

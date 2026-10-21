@@ -133,6 +133,13 @@ Default hotkey is `RightOption`.
 
 ## How to use
 
+**Menu bar.** The app lives in the menu bar, without a Dock icon. The icon shows what it does: an hourglass while it starts, a microphone when ready, an ear when voice control listens, a microphone with a red dot while recording, a moving waveform while it recognizes and refines the text, a keyboard while the text waits for a text field, a warning triangle with a failure. Click it for the menu:
+
+- the version and the state in words ("Ready — hold Right Option to dictate");
+- `Settings…` (⌘,) opens `~/.voicepuncher/config.toml` in the text editor;
+- `Open Logs Folder` shows `~/.voicepuncher/logs/` in Finder;
+- `Quit voicepuncher` (⌘Q) cancels a recording in progress and quits.
+
 **Hotkey** (`[hotkey] key`, default `RightOption`):
 
 - `recording_mode = "Toggle"`: press to start a dictation, press again to stop — the text is pasted at the cursor.

@@ -1,7 +1,6 @@
 mod failure_notice;
 mod glass;
 mod live_text;
-mod main_queue;
 mod motion;
 mod pill_content;
 mod pill_states;
@@ -26,9 +25,9 @@ use objc2_foundation::{NSPoint, NSRect, NSSize};
 use crate::core::application::{AudioLevelSource, LiveTranscriptView, VisualIndicator};
 use crate::core::domain::{AudioLevel, FailureNotice, VoiceCommand};
 
+use crate::adapters::main_queue::{dispatch_to_main, dispatch_to_main_after};
 use failure_notice::{show_notice, NoticeTimer};
 use live_text::LiveTranscriptText;
-use main_queue::{dispatch_to_main, dispatch_to_main_after};
 use pill_content::{command_sign, state_after_sign};
 use pill_states::{
     apply_command_sign, apply_hidden_state, apply_pasted_sign, apply_processing_state,

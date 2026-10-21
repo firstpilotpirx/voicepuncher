@@ -565,3 +565,29 @@ fn r12_only_the_runtime_assembles_the_hotkey_pipeline() {
         violations.join("\n")
     );
 }
+
+/// The menu bar item drives the runtime (Quit) and observes it; no other adapter knows it.
+#[test]
+fn r13_only_the_menu_bar_adapter_imports_the_runtime() {
+    let mut violations: Vec<String> = Vec::new();
+    for path in rust_files("src/adapters") {
+        if path.starts_with("src/adapters/primary/menubar") {
+            continue;
+        }
+        for (line_no, line) in read_lines(&path).iter().enumerate() {
+            if line.contains("crate::runtime") {
+                violations.push(format!(
+                    "{}:{}: {}",
+                    path.display(),
+                    line_no + 1,
+                    line.trim()
+                ));
+            }
+        }
+    }
+    assert!(
+        violations.is_empty(),
+        "R13 violations: an adapter other than the menu bar imports the runtime\n{}",
+        violations.join("\n")
+    );
+}
