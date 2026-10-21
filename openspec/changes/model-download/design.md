@@ -16,9 +16,25 @@
 
 **D5 — `/usr/bin/tar` for the archive.** macOS ships bsdtar with bzip2; spawning it avoids two crates for one file; the exit code and the resulting folder are checked.
 
-**D6 — Presence by name and size at launch, full hash on demand.** Hashing 3.3 GB at every launch would cost seconds; the Services tab's `Check files` does it when asked.
+**D6 — Presence by name and size at launch, full hash on demand.** Hashing 3.3 GB at every launch would cost seconds; a placed file was verified when it was downloaded.
 
 **D7 — The runtime gates the services on models, as it gates on permissions.** `WaitingForModels` precedes `StartingServices`; the window is a primary adapter observing the use case and the runtime; `AllPresent` triggers the services start without a relaunch.
+
+**D8 — The gate asks for the files the configuration needs.** The dictation model and the whisper voice activity model always; the commands model, `silero_vad.onnx` and the keyword spotting folder only with voice control on; the Qwen model only with refinement on. The window lists those files; `--download-models` takes every catalog file (the Qwen model left out with `--no-llm`, which `just models no` passes). A refinement-off user is never asked for 2.5 GB they do not use.
+
+**D9 — Presence matches how the services find the models.** A file is present in the models folder, `~/.voicepuncher/models` or `~/.voicepuncher` (the folders the service catalog searches) with the catalog size, or when the variable the service catalog reads for it (`VOICEPUNCHER_WHISPER_MODEL`, `VOICEPUNCHER_VAD_MODEL`, `VOICEPUNCHER_COMMAND_WHISPER_MODEL`, `VOICEPUNCHER_LLM_MODEL`, `VOICEPUNCHER_KWS_VAD_MODEL`, `VOICEPUNCHER_KWS_MODEL_DIR`) names an existing path — so E2E runs, which name every model by variable in a home of their own, never wait for models. Downloads always go to the models folder.
+
+**D10 — The window: text statuses and one total bar.** Rows are drawn as the Permissions window draws its rows (frames, rebuilt from a `WindowModel` on every event), the Status column is text (`Downloading 42 %`), one determinate bar shows the total. Per-row bars were the alternative; text keeps the row model a pure mapping that unit tests cover.
+
+**D11 — The Services tab holds fields and the models row; service states stay in the menu.** The `[services]` options move from General's advanced part to the Services tab; the tab adds the Models row (`N of M present`, `Download models…`, `Show in Finder`). The per-service state list with Restart already lives in the menu's Services submenu, so the tab does not repeat it; the on-demand `Check files` hash is left out (presence by size is the check). Copies stay 1–4, the limit the configuration already validates.
+
+**D12 — A test mirror.** `VOICEPUNCHER_MODEL_MIRROR` (empty by default, read only by `--download-models` and the window's fetcher) replaces each pinned address with `<mirror>/<file>`, so the CLI test points the download at a local port without touching the real hosts; the catalog addresses stay pinned. The retry pauses come from the use case's `Clock`, so unit tests run without waiting.
+
+**D13 — Mockups without a gate.** The change ran without a proposal gate (the user chose none); `mockups/design-spec.md` is the reference the window and tab follow, and no PNG set is drawn.
+
+## Decisions taken at start
+
+Gates: none (the user's choice for the batch). Open points of the proposal settled: `just models` delegates to the binary (D2); text statuses with one total bar (D10); no full hash at launch and no `Check files` button (D6, D11); sequential downloads (D4). The agent-kit tech matrix note (model distribution) is out of this repository and left to a separate agent-kit change.
 
 ## Risks / Trade-offs
 
@@ -31,12 +47,31 @@
 
 | Scenario | Level |
 |---|---|
-| Catalog matches the `justfile` (until it delegates); sizes and purposes present | unit test in `model_catalog.rs` |
-| Check report, retry schedule, mismatch re-download, cancel, AllPresent | unit tests in `model_download.rs` (fake ports, fake clock) |
-| Full download, resume from a part, 200-on-resume restart, checksum mismatch, redirect keeps Range | adapter integration `modelfetch_http_it.rs` (local server thread) |
-| Part files, atomic rename, extraction, free space | adapter integration `modelstore_fs_it.rs` |
-| Missing models listed before download; progress; resume; mismatch; no internet; not enough space; services start when the last file is present | component `model_download.feature` (mock fetcher, fake store, runtime with mocks) |
-| Headless `--download-models` exit codes and output | CLI integration test against the local server |
-| Models folder change in the Services tab re-checks | component `settings_window.feature` (new scenario) |
-| Status texts, sizes, rates, ETA | unit tests in `modeldownload/macos/mapping.rs` |
+| Start with a model missing (app-runtime) | unit test in `runtime/mod.rs`; component `model_download.feature` |
+| The last model arrives while waiting (app-runtime) | unit test in `runtime/mod.rs`; component `model_download.feature` |
+| A reload to an empty models folder (app-runtime) | unit test in `runtime/mod.rs` |
+| The pipeline starts once the services are ready (app-runtime) | existing unit tests in `runtime/mod.rs` and component `app_runtime.feature`; unchanged |
+| The refinement model is not on disk (local-services) | existing unit test in `localservices/catalog/tests.rs` |
+| A missing model at launch (menu-bar-presence) | unit test in `menubar/macos/mapping/tests.rs` |
+| Download models while every model is present (menu-bar-presence) | unit tests in `menubar/macos/mapping/tests.rs` and `modeldownload/macos/mapping.rs`; manual run |
+| A launch with the dictation model missing | component `model_download.feature`; window: manual run |
+| A launch with every model present shows no window | component `model_download.feature` |
+| A file of the wrong size is missing | adapter integration `modelstore_fs_it.rs` |
+| A model named by its variable counts as present | adapter integration `modelstore_fs_it.rs` |
+| Every missing file is downloaded and placed | component `model_download.feature`; unit tests in `model_download.rs` |
+| The keyword spotting archive is extracted | adapter integration `modelstore_fs_it.rs`; unit test in `model_download.rs` |
+| Cancel and download again | component `model_download.feature`; adapter integration `modelfetch_http_it.rs` (Range) |
+| A server that ignores the resume | adapter integration `modelfetch_http_it.rs`; unit test in `model_download.rs` |
+| A corrupted part is downloaded again | component `model_download.feature` |
+| A file that never matches is reported | component `model_download.feature` |
+| No connection | component `model_download.feature` (fake clock); adapter integration `modelfetch_http_it.rs` (refused port) |
+| A disk that is too full | component `model_download.feature`; unit test of the red line in `modeldownload/macos/mapping.rs` |
+| The last file arrives | component `model_download.feature`; Done: unit test in `modeldownload/macos/mapping.rs` |
+| A headless run with every file present | CLI integration `cli_it.rs` |
+| A headless download that fails | CLI integration `cli_it.rs` |
+| The Services tab shows the models | unit tests in `settings/macos` (field table, models line); manual run |
+| A new models folder is checked | unit test in `runtime/mod.rs` (reload to an empty folder); manual run |
+| Settings opens the window | manual run |
+| Settings chosen again reuses the window | manual run; existing `settings_macos_it.rs` |
+| Status texts, sizes, rates, time left | unit tests in `modeldownload/macos/mapping.rs` |
 | First launch on an empty folder; cancel and resume; `just models` | manual run by the user |

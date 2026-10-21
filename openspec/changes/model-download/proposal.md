@@ -76,4 +76,4 @@ Pitfalls: Hugging Face answers a `resolve` URL with a redirect to a CDN — ureq
 ## Release
 
 SemVer: MINOR — a new capability (download inside the app) and modified capabilities; pre-1.0.
-Target version: 0.33.0 (corrected at merge with `kit version-check`).
+Target version: 0.34.0 (corrected at merge with `kit version-check`).
