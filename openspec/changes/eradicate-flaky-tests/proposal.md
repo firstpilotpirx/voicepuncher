@@ -39,9 +39,7 @@ Out of scope: the lock queue itself (its wait limit, batch landing, how many ses
 
 ### Modified Capabilities
 
-- `voice-control`: the scenarios about start cues, hands-free sessions and the service required at start become deterministic; their expected timings are stated.
-- `local-services`: "Requests wait their turn when every copy is busy" becomes deterministic.
-- `test-infrastructure` (or the capability the checks live under): which tests need the machine alone and run under the lock, and which run beside other work.
+- `voice-control`: the commands carried out depend only on what was said and how late each confirmation comes back in the speech, never on the machine's load.
 
 ## Impact
 
@@ -56,9 +54,9 @@ Out of scope: the lock queue itself (its wait limit, batch landing, how many ses
 - Related filed changes: `steady-synthesized-hands-free-session`, `steady-overlay-waveform-test`, `ordered-wait-for-busy-copies`, `speed-up-short-start-cue` (its cue scenarios), `fast-confirmation-of-repeating-russian-speech`. Proposed: this change supersedes the test-stability parts of `steady-synthesized-hands-free-session` and `steady-overlay-waveform-test` (they are archived into it), and depends on `ordered-wait-for-busy-copies`, `speed-up-short-start-cue` and `fast-confirmation-of-repeating-russian-speech` for the scenarios whose product behavior those changes define — to settle in `design.md` after reading each proposal; `orchestration.yaml` to be updated then.
 - Whether the E2E flakes under the lock come from the user's own services sharing the GPU (`whisper-server` 8081, `llama-server` 8080, command spotting 8082) — proposed: measure with the user's services stopped and running, and if they do, the lock holder also pauses or waits out the user's services, or the scenarios' bounds account for it.
 - Whether `placed_commands_it` needs the machine alone or only a bound derived from the machine's load — proposed: measure both; prefer a load-independent bound.
-- Target version: proposed 0.30.1 (PATCH) — the user did not name a version.
+- Target version: 0.32.1 (PATCH), the next above `main`.
 
 ## Release
 
 SemVer: PATCH — bug fixes in tests and possibly in the product; no new capability.
-Target version: 0.30.1.
+Target version: 0.32.1.
