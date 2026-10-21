@@ -10,6 +10,7 @@ Most confirmations of that speech take about 0.1–0.25 s, but a few take 1.7–
 ## What Changes
 
 - Every confirmation of Russian speech that makes the speech recognition service for commands repeat itself is answered well under 2 seconds, with margin, in every run.
+- A confirmation the speech recognition service for commands has not answered within 1 second of being sent is cut short: the utterance counts as no command, and the copy is free for the next confirmation at once.
 
 Current stage: PoC. Target stage: PoC.
 Scope: why some confirmations of Russian counting and filler words take 1.7–2 s in the command spotting service and the speech recognition service for commands (whisper repeating itself on Russian filler, its token limit, the copies behind HAProxy), and making them fast.
@@ -27,13 +28,7 @@ Out of scope: loosening the 2 s bar; the dictation path; other resilience scenar
 - `command-spotting/` (confirmation requests), the speech recognition service for commands and its start recipe in `justfile`
 - `e2e-test/tests/features/local_services.feature`, `e2e-test/tests/steps/local_services/confirmations.rs`
 
-## Open points
-
-- Where the 1.7–2 s goes (decoding of repeated tokens, waiting for a busy copy, retries) is not measured yet; proposed: measure with debug logs first, in design.
-- Capability: proposed `local-services`; it may be `voice-control` if the fix lives in the command spotting engine.
-- Target version: proposed 0.26.2, the PATCH above 0.26.1.
-
 ## Release
 
 SemVer: PATCH — bug fix in confirmation latency.
-Target version: 0.26.2.
+Target version: 0.30.1.
