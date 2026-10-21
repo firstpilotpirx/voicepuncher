@@ -151,28 +151,68 @@ impl CopyPool {
     /// As [`CopyPool::lease`], preferring a copy whose port is not in `tried`, so a
     /// new attempt of a request goes to another copy whenever one is free.
     pub fn lease_avoiding(&self, wait: Duration, tried: &[u16]) -> Result<Lease, PoolError> {
+        self.place().lease_avoiding(wait, tried)
+    }
+
+    /// A place in the queue for a copy, for one request that may wait more than once.
+    pub fn place(&self) -> Place {
+        Place {
+            inner: self.inner.clone(),
+            ticket: None,
+        }
+    }
+}
+
+/// A request's place in the queue for a copy: taken at its first wait, kept when a wait
+/// runs out, given up once a copy is leased or the place is dropped.
+pub struct Place {
+    inner: Arc<Inner>,
+    ticket: Option<u64>,
+}
+
+impl Place {
+    /// A free copy, after waiting at most `wait` for one, first come first served,
+    /// preferring a copy whose port is not in `tried`; when the wait runs out the place
+    /// stays in the queue for the next wait. Fails at once when no copy takes requests.
+    pub fn lease_avoiding(&mut self, wait: Duration, tried: &[u16]) -> Result<Lease, PoolError> {
         let deadline = Instant::now() + wait;
         let mut state = self.inner.lock();
-        let ticket = state.enqueue();
+        let ticket = *self.ticket.get_or_insert_with(|| state.enqueue());
         loop {
             let now = Instant::now();
             if let Some(index) = state.take_turn(ticket, now, tried) {
+                self.ticket = None;
                 self.inner.changed.notify_all();
-                return Ok(self.lease_of(index, state.port(index)));
+                return Ok(self.inner.lease_of(index, state.port(index)));
             }
-            if now >= deadline || !state.has_copies() {
+            if !state.has_copies() {
                 state.leave_queue(ticket);
+                self.ticket = None;
                 self.inner.changed.notify_all();
-                return Err(self.no_copy(state.has_copies(), wait));
+                return Err(self.inner.no_copy(false, wait));
+            }
+            if now >= deadline {
+                return Err(self.inner.no_copy(true, wait));
             }
             state = unpoisoned(self.inner.changed.wait_timeout(state, deadline - now)).0;
         }
     }
+}
 
-    fn lease_of(&self, index: usize, port: u16) -> Lease {
-        let url = self.inner.address.with_port(port);
+impl Drop for Place {
+    fn drop(&mut self) {
+        if let Some(ticket) = self.ticket.take() {
+            self.inner.lock().leave_queue(ticket);
+            self.inner.changed.notify_all();
+        }
+    }
+}
+
+impl Inner {
+    fn lease_of(self: &Arc<Self>, index: usize, port: u16) -> Lease {
+        let url = self.address.with_port(port);
         Lease {
-            inner: self.inner.clone(),
+            inner: self.clone(),
             index,
             port,
             url,
@@ -181,16 +221,14 @@ impl CopyPool {
     }
 
     fn no_copy(&self, has_copies: bool, waited: Duration) -> PoolError {
-        let address = self.inner.address.to_string();
+        let address = self.address.to_string();
         if has_copies {
             PoolError::NoFreeCopy { address, waited }
         } else {
             PoolError::NoCopies { address }
         }
     }
-}
 
-impl Inner {
     fn lock(&self) -> MutexGuard<'_, State> {
         unpoisoned(self.state.lock())
     }

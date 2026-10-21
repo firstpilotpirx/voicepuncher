@@ -7,5 +7,5 @@ mod pool;
 mod probe;
 
 pub use address::{AddressError, ServiceAddress, MAX_COPIES};
-pub use pool::{CopyPool, CopyState, Finish, Lease, PoolError, Ran};
+pub use pool::{CopyPool, CopyState, Finish, Lease, Place, PoolError, Ran};
 pub use probe::{Probe, TcpProbe};

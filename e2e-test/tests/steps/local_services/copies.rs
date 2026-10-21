@@ -40,6 +40,9 @@ const MORE_REQUESTS: usize = 2;
 const REQUESTS_WHILE_DOWN: usize = 4;
 /// Between two requests sent "one after another", so they reach the queue in that order.
 const BETWEEN_REQUESTS: Duration = Duration::from_millis(200);
+/// Silence added to each request sent after the first, so the copies' logs tell them apart
+/// by the length of their audio: a tenth of a second.
+const PADDING_SAMPLES: usize = 1_600;
 /// What a copy logs for every request it transcribes.
 const TRANSCRIBED_LOG_LINE: &str = "whisper_vad: detected";
 const SHORT_UTTERANCE: &str = "press enter";
@@ -50,8 +53,9 @@ const SHORT_UTTERANCE: &str = "press enter";
 pub struct PoolRun {
     long: Vec<JoinHandle<Result<Instant>>>,
     more: Vec<JoinHandle<Result<Instant>>>,
-    /// When each of the `more` requests reached a copy, from the copies' logs.
-    reached: Option<JoinHandle<Vec<Instant>>>,
+    /// When each of the `more` requests reached a copy, with the length of its audio, from
+    /// the copies' logs, in the order seen.
+    reached: Option<JoinHandle<Vec<(Instant, usize)>>>,
     unanswered: Option<Vec<String>>,
     copy_killed: Option<Instant>,
     taken: Option<TakenPort>,
@@ -520,19 +524,24 @@ async fn more_requests(world: &mut E2eWorld) -> Result<()> {
         let speech = short_speech()?;
         let ports = services.copy_ports.clone();
         services.pool.reached = Some(std::thread::spawn(move || {
+            let mut seen = requests_taken_by_copy(&ports);
             let mut reached = Vec::new();
             let started = Instant::now();
             while reached.len() < MORE_REQUESTS && started.elapsed() < REACHED_WITHIN {
-                if requests_taken(&ports) > BUSY_REQUESTS + reached.len() {
-                    reached.push(Instant::now());
-                    continue;
+                let now = requests_taken_by_copy(&ports);
+                for (taken, before) in now.iter().zip(&seen) {
+                    let new = taken.iter().skip(before.len());
+                    reached.extend(new.map(|samples| (Instant::now(), *samples)));
                 }
+                seen = now;
                 std::thread::sleep(LOG_POLL);
             }
             reached
         }));
-        for _ in 0..MORE_REQUESTS {
-            let (url, speech) = (url.clone(), speech.clone());
+        for n in 0..MORE_REQUESTS {
+            let url = url.clone();
+            let mut speech = speech.clone();
+            speech.resize(speech.len() + n * PADDING_SAMPLES, 0);
             services.pool.more.push(std::thread::spawn(move || {
                 let text = transcribe(&url, speech)?;
                 ensure!(!text.is_empty(), "a request got an empty transcript");
@@ -584,7 +593,7 @@ async fn waited_their_turn(world: &mut E2eWorld) -> Result<()> {
         // answered, or an earlier waiting one
         let mut freed: Vec<Instant> = long.iter().chain(&more).copied().collect();
         freed.sort();
-        for (n, at) in reached.iter().enumerate() {
+        for (n, (at, _)) in reached.iter().enumerate() {
             ensure!(
                 *at >= freed[n],
                 "request {} reached a copy {:?} before a copy was free for it: a copy took two requests at once",
@@ -592,9 +601,16 @@ async fn waited_their_turn(world: &mut E2eWorld) -> Result<()> {
                 freed[n] - *at
             );
         }
+        // Each request after the first carries more audio than the one before it
+        let mut by_arrival = reached.clone();
+        by_arrival.sort_by_key(|(_, samples)| *samples);
         ensure!(
-            more.windows(2).all(|pair| pair[0] <= pair[1]),
-            "the second request was answered before the first one"
+            by_arrival.windows(2).all(|pair| pair[0].1 < pair[1].1),
+            "the copies' logs do not tell the waiting requests apart by their audio: {reached:?}"
+        );
+        ensure!(
+            by_arrival.windows(2).all(|pair| pair[0].0 <= pair[1].0),
+            "the second request started on a copy before the first one"
         );
         let taken = requests_taken(&services.copy_ports);
         ensure!(
@@ -685,6 +701,28 @@ async fn third_request_gives_up(world: &mut E2eWorld) -> Result<()> {
         Ok(())
     })
     .await
+}
+
+/// The length in samples of the audio of every request each copy took, in the order taken.
+fn requests_taken_by_copy(ports: &[u16]) -> Vec<Vec<usize>> {
+    ports
+        .iter()
+        .map(|port| {
+            std::fs::read_to_string(
+                services_dir("logs").join(format!("{SPEECH_RECOGNITION}-{port}.log")),
+            )
+            .unwrap_or_default()
+            .split(REQUEST_LOG_LINE)
+            .skip(1)
+            .map(|line| {
+                line.split_once("' (")
+                    .and_then(|(_, rest)| rest.split(' ').next())
+                    .and_then(|samples| samples.parse().ok())
+                    .unwrap_or_default()
+            })
+            .collect()
+        })
+        .collect()
 }
 
 /// How many requests the copies on `ports` took so far, from their logs.

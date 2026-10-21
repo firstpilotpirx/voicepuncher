@@ -3,7 +3,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
-use voicepuncher_copy_pool::{CopyPool, Finish, PoolError, Ran};
+use voicepuncher_copy_pool::{CopyPool, Finish, Place, PoolError, Ran};
 
 use crate::adapters::secondary::http::failure::Failure;
 use crate::config::TranscriptionCfg;
@@ -52,6 +52,8 @@ struct AttemptFailure {
     /// What the service did, for the log.
     what: String,
     error: String,
+    /// Only the wait for a free copy ran out: the request still holds its place in the queue.
+    waiting: bool,
 }
 
 impl AttemptFailure {
@@ -61,6 +63,7 @@ impl AttemptFailure {
             failure,
             what: failure.describe(),
             error: error.to_string(),
+            waiting: false,
         }
     }
 
@@ -73,6 +76,7 @@ impl AttemptFailure {
             failure,
             what: what.to_owned(),
             error: error.to_string(),
+            waiting: matches!(error, PoolError::NoFreeCopy { .. }),
         }
     }
 }
@@ -141,14 +145,16 @@ impl OpenAiTranscriber {
 
     /// Posts `body`, again after a refused or dropped connection, a timeout or an error
     /// answer, as often as each allows, each time to a copy not tried yet when one is
-    /// free; every failed attempt is logged with how long it took.
+    /// free; every failed attempt is logged with how long it took. A request whose wait
+    /// for a free copy ran out asks again at once and keeps its place in the queue.
     fn post_with_retries(&self, body: Arc<Vec<u8>>, deadline: Duration) -> Result<String> {
         let (mut dropped, mut slow, mut attempt) = (0usize, 0u32, 0u32);
         let mut tried: Vec<u16> = Vec::new();
+        let mut place = self.pool.place();
         loop {
             attempt += 1;
             let started = Instant::now();
-            let failed = match self.attempt(&body, deadline, attempt, &mut tried) {
+            let failed = match self.attempt(&body, deadline, attempt, &mut tried, &mut place) {
                 Ok(text) => return Ok(text),
                 Err(failed) => failed,
             };
@@ -159,7 +165,11 @@ impl OpenAiTranscriber {
                 }
                 Failure::TimedOut | Failure::Busy(_) if slow < SLOW_RETRIES => {
                     slow += 1;
-                    SLOW_RETRY_PAUSE
+                    if failed.waiting {
+                        Duration::ZERO
+                    } else {
+                        SLOW_RETRY_PAUSE
+                    }
                 }
                 _ => {
                     log::warn!(
@@ -191,17 +201,17 @@ impl OpenAiTranscriber {
         }
     }
 
-    /// One attempt on a free copy, waiting at most `deadline` for the copy and again for
-    /// its answer; a copy given up on stays held until it answered.
+    /// One attempt on a free copy, waiting at most `deadline` in `place` for the copy and
+    /// again for its answer; a copy given up on stays held until it answered.
     fn attempt(
         &self,
         body: &Arc<Vec<u8>>,
         deadline: Duration,
         attempt: u32,
         tried: &mut Vec<u16>,
+        place: &mut Place,
     ) -> Result<String, AttemptFailure> {
-        let lease = self
-            .pool
+        let lease = place
             .lease_avoiding(deadline, tried)
             .map_err(|e| AttemptFailure::of_pool(&e))?;
         let port = lease.port();
@@ -220,6 +230,7 @@ impl OpenAiTranscriber {
                 failure: Failure::TimedOut,
                 what: Failure::TimedOut.describe(),
                 error: format!("copy {port} sent no answer in {}ms", deadline.as_millis()),
+                waiting: false,
             }),
         }
     }
@@ -238,6 +249,7 @@ fn post(agent: &ureq::Agent, url: &str, body: &[u8]) -> (Result<String, AttemptF
                 failure: Failure::Other,
                 what: "sent an unreadable answer".to_owned(),
                 error: e.to_string(),
+                waiting: false,
             });
             (read, Finish::Answered)
         }

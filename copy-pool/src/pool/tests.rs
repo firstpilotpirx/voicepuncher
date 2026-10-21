@@ -150,6 +150,34 @@ fn should_serve_waiting_requests_first_come_first_served() {
 }
 
 #[test]
+fn should_keep_the_place_of_a_request_whose_wait_ran_out() {
+    let (pool, _) = pool_with(&[18082], 0);
+    let held = pool.lease(SHORT_WAIT).unwrap();
+    let mut first = pool.place();
+    assert!(matches!(
+        first.lease_avoiding(SHORT_WAIT, &[]),
+        Err(PoolError::NoFreeCopy { .. })
+    ));
+    held.finished();
+    assert!(
+        matches!(pool.lease(SHORT_WAIT), Err(PoolError::NoFreeCopy { .. })),
+        "a later request took the copy the first one waits for"
+    );
+    assert_eq!(first.lease_avoiding(SHORT_WAIT, &[]).unwrap().port(), 18082);
+}
+
+#[test]
+fn should_give_up_the_place_of_a_dropped_request() {
+    let (pool, _) = pool_with(&[18082], 0);
+    let held = pool.lease(SHORT_WAIT).unwrap();
+    let mut dropped = pool.place();
+    assert!(dropped.lease_avoiding(SHORT_WAIT, &[]).is_err());
+    drop(dropped);
+    held.finished();
+    assert_eq!(pool.lease(SHORT_WAIT).unwrap().port(), 18082);
+}
+
+#[test]
 fn should_give_the_answer_back_when_it_comes_in_time() {
     let (pool, _) = pool_with(&[18082], 0);
     let lease = pool.lease(SHORT_WAIT).unwrap();

@@ -32,4 +32,4 @@ Out of scope: the number of copies; other `local_services` scenarios.
 ## Release
 
 SemVer: PATCH — bug fix in request ordering or its test.
-Target version: 0.30.1.
+Target version: 0.31.2.

@@ -1137,3 +1137,80 @@ fn should_transcribe_a_chunk_by_another_copy_when_its_copy_is_killed() {
     );
     assert_eq!(other.requests(), 1);
 }
+
+/// A fake copy that answers every request at once and records the length of each body it
+/// got, in the order the requests reached it.
+fn spawn_recording_copy(listener: TcpListener) -> Arc<Mutex<Vec<usize>>> {
+    let bodies = Arc::new(Mutex::new(Vec::new()));
+    let recorded = Arc::clone(&bodies);
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let mut stream = stream.unwrap();
+            let reply = StubReply::ok(r#"{"text": "hello"}"#);
+            if let Some(request) = read_request(&mut stream, &reply) {
+                recorded.lock().unwrap().push(request.body.len());
+            }
+        }
+    });
+    bodies
+}
+
+/// The body length of a request for `samples` of audio.
+fn body_length(samples: usize) -> usize {
+    let (cfg, requests) = spawn_stub(StubReply::ok(r#"{"text": "hello"}"#));
+    let mut transcriber = OpenAiTranscriber::connect(cfg).unwrap();
+    transcriber
+        .transcribe(&AudioBuffer16k::new(vec![100i16; samples]))
+        .unwrap();
+    next_request(&requests).body.len()
+}
+
+#[test]
+fn should_transcribe_the_first_of_two_waiting_requests_first_when_its_wait_ran_out() {
+    // Given: the only copy busy for longer than a request waits for it, freed just after
+    // the first waiting request's wait ran out, while it would pause before asking again
+    const WAIT_SECS: u64 = 1;
+    const FIRST_ARRIVES: Duration = Duration::from_millis(100);
+    const SECOND_ARRIVES: Duration = Duration::from_millis(400);
+    const COPY_FREES: Duration = Duration::from_millis(1_200);
+    const FIRST_SAMPLES: usize = 8_000;
+    const SECOND_SAMPLES: usize = 16_000;
+    let (cfg, mut listeners) = free_copies(1);
+    let bodies = spawn_recording_copy(listeners.remove(0));
+    let cfg = TranscriptionCfg {
+        timeout_secs: WAIT_SECS,
+        ..cfg
+    };
+    let pool = voicepuncher_copy_pool::CopyPool::shared(&cfg.base_url).unwrap();
+    let busy = pool.lease(Duration::from_secs(WAIT_SECS)).unwrap();
+    let started = Instant::now();
+    // When
+    let requests: Vec<_> = [
+        (FIRST_ARRIVES, FIRST_SAMPLES),
+        (SECOND_ARRIVES, SECOND_SAMPLES),
+    ]
+    .into_iter()
+    .map(|(arrives, samples)| {
+        let cfg = cfg.clone();
+        thread::spawn(move || {
+            thread::sleep(arrives.saturating_sub(started.elapsed()));
+            let mut transcriber = OpenAiTranscriber::connect(cfg).unwrap();
+            transcriber
+                .transcribe(&AudioBuffer16k::new(vec![100i16; samples]))
+                .unwrap()
+        })
+    })
+    .collect();
+    thread::sleep(COPY_FREES.saturating_sub(started.elapsed()));
+    busy.finished();
+    for request in requests {
+        assert_eq!(request.join().unwrap().unwrap().as_str(), "hello");
+    }
+    // Then
+    let reached = bodies.lock().unwrap().clone();
+    assert_eq!(
+        reached,
+        [body_length(FIRST_SAMPLES), body_length(SECOND_SAMPLES)],
+        "the copy took the second request before the first one"
+    );
+}
