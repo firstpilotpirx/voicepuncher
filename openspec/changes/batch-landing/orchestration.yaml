@@ -1,0 +1,6 @@
+depends_on:
+  - change: reuse-passed-check-stages
+    why: names kit land
+  - change: eradicate-flaky-tests
+    why: a group of 4 with a 25 % pass rate is red almost always; the bisect would cost more than today
+priority: high
