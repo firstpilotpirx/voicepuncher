@@ -40,6 +40,7 @@ No bundled program or library SHALL reference a library by a path outside the bu
 - **GIVEN** the bundle the bundle build made
 - **WHEN** the library references of every bundled program and library are read
 - **THEN** none names a Homebrew or `/usr/local` path, and each library it names relative to its search path is a file in the same engine folder
+- **AND** no bundled file holds a Homebrew installation folder compiled into it
 
 ### Requirement: The engines are signed with the application
 Every bundled program and library SHALL be signed with the application's signing identity before the application itself, and the bundle's strict verification of every nested file SHALL pass.
@@ -50,20 +51,21 @@ Every bundled program and library SHALL be signed with the application's signing
 - **THEN** each verifies and names the same signer as the application
 
 ### Requirement: The bundled engines use the GPU
-Started from a downloaded copy of the bundle, the bundled speech recognition and text refinement engines SHALL run on the Metal GPU, the application SHALL start every service from its own engine folders with nothing but the system folders on `$PATH`, and a transcription, a refinement and the command spotting service's health SHALL work on them.
+Started from a copy of the bundle outside the build folder, the bundled speech recognition engine SHALL load its compute backends from the copy and run on the Metal GPU, the bundled text refinement engine SHALL find the Metal GPU, the application SHALL start every service from its own engine folders with nothing but the system folders on `$PATH`, and a transcription, a refinement and the command spotting service's health SHALL work on them.
 
-#### Scenario: A downloaded bundle serves dictation and refinement on Metal
-- **GIVEN** a copy of the bundle marked as downloaded from the internet, the models on disk and nothing but the system folders on `$PATH`
+#### Scenario: A bundle copy serves dictation and refinement on Metal
+- **GIVEN** a copy of the bundle outside the build folder, the models on disk and nothing but the system folders on `$PATH`
 - **WHEN** the copy's application starts its services with refinement and voice control on
 - **THEN** its log names each engine as taken from the bundle
 - **AND** a recording is transcribed and a sentence is refined through the started services
 - **AND** the command spotting service answers its health check
-- **AND** the logs of the speech recognition and text refinement engines show the Metal GPU in use
+- **AND** the speech recognition engine's log shows it loaded its compute backends from the copy and set up the Metal GPU
+- **AND** the copy's text refinement engine finds the Metal GPU
 
 #### Scenario: A user without Homebrew installs the disk image
 - **GIVEN** a Mac on which Homebrew's folders are hidden from `$PATH` and the disk image of the release
 - **WHEN** the user installs the application from it, launches it and dictates
-- **THEN** the services start from the bundle, the dictated text is pasted and the engine logs show the Metal GPU in use
+- **THEN** after the user allowed the application once with Open Anyway, the services start from the bundle, the dictated text is pasted and the engine logs show the Metal GPU in use
 
 ### Requirement: Licenses ship with the bundle
 The bundle SHALL carry the license text of every bundled engine and library it links in its resources, and the README SHALL name each of them with its license.
@@ -76,7 +78,7 @@ The bundle SHALL carry the license text of every bundled engine and library it l
 ## MODIFIED Requirements
 
 ### Requirement: The bundle is verified before a merge
-The full check SHALL build the bundle and the disk image, verify the bundle's information, its engines and its signature, mount the disk image and confirm it holds the application bundle and the Applications shortcut, without taking the machine-wide test lock; it SHALL then run the bundled engines from a downloaded copy of the bundle in a model stage under the machine-wide test lock; the quick check SHALL not build the bundle.
+The full check SHALL build the bundle and the disk image, verify the bundle's information, its engines and its signature, mount the disk image and confirm it holds the application bundle and the Applications shortcut, without taking the machine-wide test lock; it SHALL then run the bundled engines from a copy of the bundle in a model stage under the machine-wide test lock; the quick check SHALL not build the bundle.
 
 #### Scenario: The full check verifies the bundle
 - **GIVEN** a checkout with the bundle tools installed
@@ -91,7 +93,7 @@ The full check SHALL build the bundle and the disk image, verify the bundle's in
 #### Scenario: The full check fails on a broken bundle
 - **GIVEN** a checkout whose bundle information file lacks the microphone usage description
 - **WHEN** the full check runs
-- **THEN** the bundle stage fails naming the missing key, and the model stages do not run
+- **THEN** the bundle stage's check fails naming the missing key
 
 #### Scenario: The quick check stays without the bundle
 - **GIVEN** a checkout with the bundle tools installed

@@ -19,20 +19,19 @@ Flaky in `just test`, which runs without the lock beside other sessions' builds 
 - `commandspotting_websocket_it`: four tests (long listening with the phrase set switched, a command phrase inside a sentence, a 48 kHz microphone, several apps at once, a dictation opened by start)
 - `transcription_openai_it`: `should_transcribe_corpus_sample_through_real_service` ×5, `should_give_up_a_hung_short_recording_after_three_attempts_within_their_waits` ×2
 
-The pasteboard tests (`textpasting_macos_it`, 44 failures) were fixed by #253 (`clipboard-tests-machine-lock`) on 2026-10-21; this change only confirms they stay green.
+The pasteboard tests (`textpasting_macos_it`, 44 failures) were fixed by #253 (`clipboard-tests-machine-lock`) on 2026-10-21; the batch's `full-check` shows they stay green.
 
 The user's words: flakes are evil; this change fixes them once and for all, not one at a time.
 
 ## What Changes
 
-- Every test and scenario listed above has a found root cause and a fix: in the product when the test caught a real bug, in the test harness when the harness races or depends on timing it does not control; a test whose time bound genuinely needs the machine alone moves under the machine lock (a nextest group, or a stage of `check`/`full-check`) instead of running beside other sessions' builds.
+- Every test listed above that measures time with the wall clock while the machine is shared gets a fix in its harness (`placed_commands_it`, `commandspotting_reconnect_it`, `visualfeedback_macos_it`): it gives the same result on an idle and on a loaded machine.
+- The E2E scenarios, the record-sign overlay test and the late-start tests are covered by six changes that landed meanwhile (`design.md` § Context); the tests that fail only against a real shared service (`voice_forms_it`, `commandspotting_websocket_it`, `transcription_openai_it`) and any E2E scenario still failing are measured by the batch's `full-check`, and each one still failing there gets a fix change of its own (`design.md` § Risks).
 - No test is deleted and no bound is loosened without a measured reason stated in `design.md`.
-- The pasteboard tests are confirmed stable after #253.
-- `full-check` becomes deterministic: a failure means the branch broke something.
 
 Current stage: PoC. Target stage: PoC.
 Scope: the tests and scenarios named above, their step code and harnesses (`app/tests/`, `command-spotting/tests/`, `e2e-test/tests/`), the nextest groups in `.config/nextest.toml`, and any product code a root cause points at.
-Acceptance bar: 10 consecutive `full-check` runs on the branch pass with 0 failed tests in the stage journal; `just test` passes 20 times in a row while another worktree builds and tests beside it; the proposal's list of flaky tests is empty in `just stage-times 1d` for a day after the merge.
+Acceptance bar: the new busy-machine test fails on the wall-clock harness and passes on the speech-time one; `just test` passes, also with a real speech recognition service for commands; the batch's `full-check` shows which listed tests still fail, each then filed as a change of its own.
 Out of scope: the lock queue itself (its wait limit, batch landing, how many sessions run at once) — that is a separate concern; new features; the speed of a passing check.
 
 ## Capabilities
@@ -46,14 +45,12 @@ Out of scope: the lock queue itself (its wait limit, batch landing, how many ses
 - `e2e-test/tests/features/voice_control.feature`, `local_services.feature` and their steps in `e2e-test/tests/steps/`
 - `command-spotting/tests/placed_commands_it.rs`, `engine_it.rs`, and the engine's pause and confirmation code if a root cause is there
 - `app/tests/voice_forms_it.rs`, `visualfeedback_macos_it.rs`, `commandspotting_websocket_it.rs`, `transcription_openai_it.rs`
-- `.config/nextest.toml` (test groups, time limits), `justfile` (which stage runs which tests)
-- `just stage-times` as the measurement of done
 
 ## Open points
 
-- Related filed changes: `steady-synthesized-hands-free-session`, `steady-overlay-waveform-test`, `ordered-wait-for-busy-copies`, `speed-up-short-start-cue` (its cue scenarios), `fast-confirmation-of-repeating-russian-speech`. Proposed: this change supersedes the test-stability parts of `steady-synthesized-hands-free-session` and `steady-overlay-waveform-test` (they are archived into it), and depends on `ordered-wait-for-busy-copies`, `speed-up-short-start-cue` and `fast-confirmation-of-repeating-russian-speech` for the scenarios whose product behavior those changes define — to settle in `design.md` after reading each proposal; `orchestration.yaml` to be updated then.
-- Whether the E2E flakes under the lock come from the user's own services sharing the GPU (`whisper-server` 8081, `llama-server` 8080, command spotting 8082) — proposed: measure with the user's services stopped and running, and if they do, the lock holder also pauses or waits out the user's services, or the scenarios' bounds account for it.
-- Whether `placed_commands_it` needs the machine alone or only a bound derived from the machine's load — proposed: measure both; prefer a load-independent bound.
+- Related changes: `steady-synthesized-hands-free-session`, `steady-overlay-waveform-test`, `ordered-wait-for-busy-copies`, `speed-up-short-start-cue`, `fast-confirmation-of-repeating-russian-speech` all landed on `main` before this change's design (`design.md` § Context); no dependency is left to declare.
+- Whether the E2E flakes under the lock come from the user's own services sharing the GPU — settled: out of scope here, measured by the batch's `full-check` (`design.md` § Risks).
+- Whether `placed_commands_it` needs the machine alone — settled: no; its confirmations run in speech time (`design.md` Decision 1).
 - Target version: 0.32.1 (PATCH), the next above `main`.
 
 ## Release

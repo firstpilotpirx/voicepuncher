@@ -83,6 +83,9 @@ stage_passes := env_var_or_default("VOICEPUNCHER_STAGE_PASSES", home_directory()
 # private `_<name>` body under it, except `test` and `release`, which use no shared service, port or GPU (see
 # their comments). `check` and `full-check` take it only for their model stages (see _stages)
 machine_lock := env_var_or_default("MACHINE_LOCK", home_directory() / ".claude/bin/with-machine-lock")
+# How long a locked run waits for the lock before it gives up (exit 75): 6 h unless the caller sets it, so a run
+# queued behind several sessions' checks waits out the queue instead of giving up after an hour and running nothing
+export MACHINE_LOCK_WAIT := env_var_or_default("MACHINE_LOCK_WAIT", "21600")
 # The service ports of every run under the lock: apart from the defaults above, which the user's own services
 # hold, and from their copies 10000 above (18082–18089); these copies listen on 38082–38089, below the free
 # ports (49152+) the @local_services and @resilience steps take. A locked run starts every service it tests
@@ -124,7 +127,7 @@ check:
 # (see _stages). Incremental like `check`, no `cargo clean`: the clean build is `release`'s. Accuracy runs on 100
 # recordings when the branch changes the recognition path (recognition_paths), on main itself or when that cannot
 # be told, else on 10 (_accuracy-stage); VOICEPUNCHER_ACCURACY_SAMPLE=100 forces 100
-# FULL (~15.5–17.5 min), run before merging: code checks + E2E (the whole voice control set, seams and outages included) + accuracy on 100 or 10 samples + refinement evaluation
+# FULL (~15.5–17.5 min), run before merging: code checks + the bundle + E2E (the whole voice control set, seams, outages and the bundled engines included) + accuracy on 100 or 10 samples + refinement evaluation
 full-check: _require-models _require-corpus
     #!/usr/bin/env bash
     set -euo pipefail
@@ -139,7 +142,7 @@ full-check: _require-models _require-corpus
     accuracy="accuracy: $count recordings ($stage) — $reason"
     echo "● $accuracy"
     VOICEPUNCHER_STAGES_RECIPE=full-check VOICEPUNCHER_STAGES_ACCURACY="$accuracy" \
-        {{just_executable()}} _stages fmt lint test build bundle build-e2e {{e2e_smoke_stages}} e2e-regression e2e-seams e2e-resilience "$stage" refine-eval
+        {{just_executable()}} _stages fmt lint test build bundle build-e2e {{e2e_smoke_stages}} e2e-regression e2e-seams e2e-resilience e2e-bundle "$stage" refine-eval
     echo "✓ full-check passed — $accuracy; before a release also walk through README.md § Release checklist (manual run)"
 
 # Summary of the stage journal for the runs since a date (2026-10-01) or a span (7d): per recipe and stage the
@@ -347,7 +350,7 @@ stage_inputs := '''
     .claude/*                                          none
     .github/*                                          none
     *.md                                               none
-    app/packaging/*                                    code
+    app/packaging/*                                    e2e-bundle
     app/tests/architecture.rs                          code
     app/tests/cucumber_integration.rs                  code
     app/tests/features/*                               code
@@ -749,7 +752,7 @@ _class-lock class +command:
     shift
     machine_dir="${MACHINE_LOCK_DIR:-$HOME/.cache/machine-lock}"
     deadline="${MACHINE_LOCK_TIMEOUT:-3600}"
-    exec env MACHINE_LOCK_DIR="$machine_dir-voicepuncher-$class" MACHINE_LOCK_TIMEOUT="$(( ${MACHINE_LOCK_WAIT:-3600} + deadline ))" \
+    exec env MACHINE_LOCK_DIR="$machine_dir-voicepuncher-$class" MACHINE_LOCK_TIMEOUT="$(( MACHINE_LOCK_WAIT + deadline ))" \
         {{quote(machine_lock)}} env MACHINE_LOCK_DIR="$machine_dir" MACHINE_LOCK_TIMEOUT="$deadline" \
         {{quote(machine_lock)}} --shared "$@"
 
@@ -783,8 +786,10 @@ _model-stages +stages:
     trap 'exit 143' TERM
     trap 'exit 130' INT
     trap 'exit 129' HUP
-    # e2e-resilience starts services of its own on ports of its own: alone, it needs none of these
-    if [[ " {{stages}} " != " e2e-resilience " ]]; then
+    # e2e-resilience and e2e-bundle start services of their own on ports of their own: alone, they need none of these
+    own_services=1
+    for stage in {{stages}}; do [[ " e2e-resilience e2e-bundle " == *" $stage "* ]] || own_services=""; done
+    if [[ -z "$own_services" ]]; then
         # Set before the start: the markers of the services it starts exist before they do
         services=up
         {{just_executable()}} _start-model-servers-for-e2e
@@ -1129,6 +1134,18 @@ e2e-resilience:
 _e2e-resilience: _require-nextest _require-models _build
     cargo nextest run --profile e2e-resilience {{cucumber_e2e_tests}} --no-capture {{rerun_filter}}
 
+# The bundled engines: a copy of dist/voicepuncher.app launched outside the build folder with nothing but the system
+# folders on $PATH starts every service from its own engines, on ports of its own; a transcription, a refinement and
+# the command spotting service's health through them, and Metal in the engines' logs (@bundle_engines, ~1 min)
+bundle-smoke:
+    @VOICEPUNCHER_STAGES_RECIPE=bundle-smoke {{just_executable()}} _stages bundle e2e-bundle
+
+# Builds the bundle first (incremental: seconds after the bundle stage), so a reused bundle stage never leaves it a
+# missing or stale one; starts no shared service (_model-stages)
+_e2e-bundle: _require-nextest _require-models _require-corpus
+    {{just_executable()}} --justfile {{quote(justfile())}} bundle
+    cargo nextest run --profile e2e-bundle {{cucumber_e2e_tests}} --no-capture {{rerun_filter}}
+
 # Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words; and the start cue of each voice start, timed from the end of the command's words (~4 min)
 e2e-seams:
     @VOICEPUNCHER_STAGES_RECIPE=e2e-seams {{just_executable()}} _stages e2e-seams
@@ -1218,14 +1235,18 @@ app_version := shell("grep -m1 '^version = ' \"$1\" | cut -d '\"' -f2", justfile
 # The self-signed code-signing certificate of README § Release checklist; empty signs ad-hoc (no stable identity)
 signing_identity := env_var_or_default("VOICEPUNCHER_SIGNING_IDENTITY", "")
 
-# Build the signed application bundle into dist/voicepuncher.app (release build, no `cargo clean`): `open dist/voicepuncher.app`
-bundle: _require-signing-identity
+# Build the signed application bundle into dist/voicepuncher.app (release build, no `cargo clean`), with the pinned
+# engines in Contents/MacOS/engines/ and their licenses in Contents/Resources/licenses/: `open dist/voicepuncher.app`
+bundle: _require-signing-identity engines
     #!/usr/bin/env bash
     set -euo pipefail
     cargo build --release
     app={{quote(app_bundle)}}
-    rm -rf "$app" && mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+    engines={{quote(engines_dir)}}
+    rm -rf "$app" && mkdir -p "$app/Contents/MacOS/engines" "$app/Contents/Resources"
     cp target/release/voicepuncher "$app/Contents/MacOS/voicepuncher"
+    for engine in whisper llama command-spotting; do cp -R "$engines/$engine" "$app/Contents/MacOS/engines/"; done
+    cp -R "$engines/licenses" "$app/Contents/Resources/licenses"
     iconutil -c icns {{quote(packaging_dir / "icons/voicepuncher.iconset")}} -o "$app/Contents/Resources/voicepuncher.icns"
     cp {{quote(packaging_dir / "Info.plist")}} "$app/Contents/Info.plist"
     plutil -replace CFBundleShortVersionString -string {{quote(app_version)}} "$app/Contents/Info.plist"
@@ -1251,9 +1272,10 @@ dmg: _require-create-dmg bundle
     rm -rf "$stage"
     echo "✓ dmg $dist/$name.dmg"
 
-# Sign a bundle with the signing identity, or ad-hoc with a notice when none is named, then verify it strictly
-# and print its designated requirement (what the permission panes identify the app by). No hardened runtime: it
-# needs a Developer ID and entitlements, and without them it blocks the microphone and the key listener
+# Sign a bundle with the signing identity, or ad-hoc with a notice when none is named — every engine file first,
+# then the app (inside-out) — then verify it strictly and print its designated requirement (what the permission
+# panes identify the app by). No hardened runtime: it needs a Developer ID and entitlements, and without them it
+# blocks the microphone and the key listener
 _sign path:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1261,6 +1283,11 @@ _sign path:
     if [[ -z "$identity" ]]; then
         echo "● VOICEPUNCHER_SIGNING_IDENTITY is unset: signing ad-hoc — the bundle has no stable identity, so macOS asks for every permission again after each build (README § Release checklist)" >&2
         identity="-"
+    fi
+    if [[ -d {{quote(path)}}/Contents/MacOS/engines ]]; then
+        # Every file, VERSION too: a data file under Contents/MacOS is a nested component, signed in its extended attributes
+        find {{quote(path)}}/Contents/MacOS/engines -type f -print0 \
+            | xargs -0 codesign --force --sign "$identity" --timestamp=none
     fi
     codesign --force --sign "$identity" --timestamp=none {{quote(path)}}
     codesign --verify --deep --strict --verbose=2 {{quote(path)}}
@@ -1342,7 +1369,7 @@ _bundle: _require-nextest _require-create-dmg
 _check-bundle app dmg:
     #!/usr/bin/env bash
     set -euo pipefail
-    app={{quote(app)}}
+    app=$(cd {{quote(app)}} && pwd)
     plist="$app/Contents/Info.plist"
     dmg={{quote(dmg)}}
     plutil -lint "$plist"
@@ -1364,15 +1391,39 @@ _check-bundle app dmg:
     expect_key NSMicrophoneUsageDescription "voicepuncher records your voice while you hold the hotkey, to turn it into text on this Mac."
     [[ -f "$app/Contents/Resources/voicepuncher.icns" ]] || { echo "✗ bundle lacks Resources/voicepuncher.icns" >&2; exit 1; }
     codesign --verify --deep --strict "$app"
+    # The engines: one folder each with its program and VERSION, every reference inside its folder, each file
+    # signed by the app's signer, each engine running with nothing but the system folders on $PATH; the licenses
+    signer() { codesign -dvv "$1" 2>&1 | grep -E '^(Authority|TeamIdentifier)=|Signature=adhoc' || true; }
+    app_signer=$(signer "$app/Contents/MacOS/voicepuncher")
+    for engine in whisper:whisper-server:--help llama:llama-server:--version command-spotting:voicepuncher-command-spotting:--version; do
+        IFS=: read -r folder program flag <<< "$engine"
+        dir="$app/Contents/MacOS/engines/$folder"
+        [[ -x "$dir/$program" && -s "$dir/VERSION" ]] || { echo "✗ bundle lacks engines/$folder/$program or its VERSION" >&2; exit 1; }
+        for file in "$dir"/*; do
+            [[ "$(basename "$file")" == VERSION ]] && continue
+            while read -r ref; do
+                [[ "$ref" == /opt/homebrew/* || "$ref" == /usr/local/* ]] && { echo "✗ $file references $ref, outside the bundle" >&2; exit 1; }
+                [[ "$ref" == @rpath/* && ! -f "$dir/${ref#@rpath/}" ]] && { echo "✗ $file references $ref, which engines/$folder lacks" >&2; exit 1; }
+            done < <(otool -L "$file" | tail -n +2 | awk '{print $1}')
+            codesign --verify --strict "$file" 2>/dev/null || { echo "✗ $file: signature does not verify" >&2; exit 1; }
+            [[ "$(signer "$file")" == "$app_signer" ]] || { echo "✗ $file is not signed by the app's signer" >&2; exit 1; }
+        done
+        (cd / && env -i PATH=/usr/bin:/bin "$dir/$program" "$flag" >/dev/null 2>&1) \
+            || { echo "✗ engines/$folder/$program $flag fails with nothing but the system folders on \$PATH" >&2; exit 1; }
+    done
+    for license in whisper.cpp ggml llama.cpp libomp sherpa-onnx onnxruntime; do
+        [[ -s "$app/Contents/Resources/licenses/$license-LICENSE" ]] || { echo "✗ bundle lacks the license $license-LICENSE" >&2; exit 1; }
+    done
     mount=$(mktemp -d)
     hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$dmg" >/dev/null 2>&1
     trap 'hdiutil detach "$mount" -quiet 2>/dev/null || true; rmdir "$mount" 2>/dev/null || true' EXIT
     [[ -d "$mount/voicepuncher.app" ]] || { echo "✗ $dmg holds no voicepuncher.app" >&2; exit 1; }
     [[ -L "$mount/Applications" ]] || { echo "✗ $dmg holds no Applications shortcut" >&2; exit 1; }
-    echo "✓ bundle stage: $app signed and verified, $dmg holds the app and the Applications shortcut"
+    echo "✓ bundle stage: $app signed and verified with its engines and licenses, $dmg holds the app and the Applications shortcut"
 
-# Self-test of _class-lock, run by the `test` stage, on lock directories of its own: a light and a heavy run
-# overlap, two runs of one class take turns, and an exclusive run of the machine lock keeps both out
+# Self-test of _class-lock, run by the `test` stage, on lock directories of its own: the lock wait is 6 h unless
+# the caller sets it, a light and a heavy run overlap, two runs of one class take turns, and an exclusive run of
+# the machine lock keeps both out
 _test-class-locks:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1390,6 +1441,11 @@ _test-class-locks:
     # overlap <a> <b>: whether the two holds overlapped in time
     overlap() { perl -e 'my ($a0, $a1) = split " ", `cat $ARGV[0]`; my ($b0, $b1) = split " ", `cat $ARGV[1]`; exit(($a0 < $b1 && $b0 < $a1) ? 0 : 1)' "$dir/$1" "$dir/$2"; }
     fail() { echo "✗ $1" >&2; for f in "$dir"/[a-z]*; do [[ -f "$f" ]] && echo "  $(basename "$f"): $(cat "$f")" >&2; done; exit 1; }
+    wait_default=$(env -u MACHINE_LOCK_WAIT {{just_executable()}} --justfile {{quote(justfile())}} --evaluate MACHINE_LOCK_WAIT 2>/dev/null || true)
+    [[ "$wait_default" == 21600 ]] || fail "the lock wait defaults to '$wait_default', not 21600 s (6 h)"
+    wait_set=$(MACHINE_LOCK_WAIT=5 {{just_executable()}} --justfile {{quote(justfile())}} --evaluate MACHINE_LOCK_WAIT 2>/dev/null || true)
+    [[ "$wait_set" == 5 ]] || fail "a caller's lock wait 5 became '$wait_set'"
+    echo "  ✓ the lock wait is 6 h unless the caller sets it"
     hold light1 class light & hold heavy1 class heavy & wait
     overlap light1 heavy1 || fail "a light and a heavy run took turns"
     echo "  ✓ a light and a heavy run overlap"
@@ -1501,6 +1557,192 @@ _test-stage-keys:
     after=$(VOICEPUNCHER_STAGE_JOURNAL=/elsewhere VOICEPUNCHER_TEST_STT_PORT=1 keys)
     [[ "$after" == "$before" ]] || fail "a volatile variable changed a key"
     echo "  ✓ volatile variables change no key"
+
+# ── Engines ── the pinned engines the bundle carries (app/packaging/engines.lock) ─────────────
+
+engines_lock := env_var_or_default("VOICEPUNCHER_ENGINES_LOCK", packaging_dir / "engines.lock")
+# Where `engines` stages them (gitignored): one folder per engine, its libraries beside it, and the licenses
+engines_dir := packaging_dir / "engines"
+engine_cache := env_var_or_default("VOICEPUNCHER_ENGINE_CACHE", home_directory() / ".cache/voicepuncher/engines")
+
+# Stage the pinned engines of engines.lock into app/packaging/engines/, relocated and checked to run on their own
+engines: (_engines engines_lock engines_dir)
+
+# Stages the engines of a lock into a folder: checks every pinned version and checksum first and writes nothing
+# when one differs; then copies each engine's files, relocates them (every Homebrew path → @rpath, @loader_path the
+# only search path, ggml's compiled-in backend folder blanked so it loads its backends from its own folder), signs
+# them ad-hoc (the bundle signs them again), proves no reference leaves the folder and each engine runs with
+# nothing but the system folders on $PATH, and writes each folder's VERSION and the licenses. Whisper and llama
+# are kept when the folder was staged from the same lock; the command spotting service is rebuilt every time
+_engines lock out:
+    #!/usr/bin/env perl
+    use strict;
+    use warnings;
+    use Digest::SHA;
+    use File::Basename qw(basename dirname);
+    use File::Copy qw(copy);
+    use File::Path qw(make_path remove_tree);
+    use File::Temp qw(tempdir);
+    $| = 1;
+    my ($lock, $out) = ({{quote(lock)}}, {{quote(out)}});
+    my $root = {{quote(justfile_directory())}};
+    my $cache = {{quote(engine_cache)}};
+    my @engines = ("whisper", "llama", "command-spotting");
+    my (%t, $section);
+    open my $fh, "<", $lock or die "✗ engine lock $lock: $!\n";
+    while (<$fh>) {
+        next if /^\s*(#|$)/;
+        if (/^\[([^\]]+)\]/) { $section = $1; next }
+        die "✗ $lock line $.: not a key = \"value\" line\n" unless /^"?([^"=]+?)"?\s*=\s*"([^"]*)"/;
+        $t{$section}{$1} = $2;
+    }
+    my $sha = sub { my $d = Digest::SHA->new(256); $d->addfile($_[0]); $d->hexdigest };
+    my $run = sub { system(@_) == 0 or die "✗ @_ failed\n" };
+    my $capture = sub { my $cmd = join " ", map { "'$_'" } @_; my $o = `$cmd 2>&1`; $? == 0 or die "✗ @_ failed:\n$o"; $o };
+    my $lock_sha = $sha->($lock);
+    my $stamp = "$out/.lock-sha256";
+    my $kept = -f $stamp && do { open my $s, "<", $stamp; my $v = <$s> // ""; chomp $v; $v eq $lock_sha }
+        && !grep { !-d "$out/$_" } @engines;
+    my (@problems, %source);
+    my $cellar;
+    for my $engine ("whisper", "llama") {
+        my $e = $t{$engine} or die "✗ $lock has no [$engine]\n";
+        my $from = $t{"$engine.from"} or die "✗ $lock has no [$engine.from]\n";
+        my $sums = $t{"$engine.sha256"} || {};
+        my $base;
+        if ($e->{source} eq "homebrew") {
+            $cellar //= do { my $c = `brew --cellar 2>/dev/null`; chomp $c;
+                $c or die "✗ Homebrew is needed to stage the engines (developers only): https://brew.sh\n" };
+            my %formulae = %{ $t{"$engine.formulae"} || {} };
+            for my $formula (sort keys %formulae) {
+                next if -d "$cellar/$formula/$formulae{$formula}";
+                my @found = map { basename $_ } grep { -d } glob "$cellar/$formula/*";
+                push @problems, "$formula $formulae{$formula} is not installed (found: "
+                    . (@found ? join(", ", @found) : "none") . ") — engines.lock pins $formula $formulae{$formula}:"
+                    . " install that version or update the lock, and keep it with 'brew pin "
+                    . join(" ", sort keys %formulae) . "'";
+            }
+            $source{$engine} = sub { my ($formula, $path) = split m{/}, $_[0], 2; "$cellar/$formula/$formulae{$formula}/$path" };
+        } elsif ($e->{source} eq "github-release") {
+            my $dir = "$cache/$engine/$e->{version}";
+            my $archive = "$dir/$e->{asset}";
+            unless (-f $archive) {
+                make_path($dir);
+                print "→ downloading $e->{url}\n";
+                $run->("curl", "-sSL", "--fail", "-o", "$archive.part", $e->{url});
+                rename "$archive.part", $archive or die "✗ $archive: $!\n";
+            }
+            my $got = $sha->($archive);
+            if ($got ne $e->{asset_sha256}) {
+                push @problems, "$e->{asset}: sha256 is $got, engines.lock expects $e->{asset_sha256} ($archive;"
+                    . " delete it to download it again, or correct the lock)";
+                next;
+            }
+            $base = tempdir(CLEANUP => 1);
+            $run->("tar", "-xzf", $archive, "-C", $base);
+            $source{$engine} = sub { "$base/$_[0]" };
+        } else {
+            die "✗ [$engine] source '$e->{source}' is neither homebrew nor github-release\n";
+        }
+        next if @problems;
+        for my $file (sort keys %$from) {
+            my $path = $source{$engine}->($from->{$file});
+            unless (-f $path) { push @problems, "$engine: $path ($file) does not exist"; next }
+            my $got = $sha->($path);
+            my $want = $sums->{$file} // "";
+            push @problems, "$engine: $file ($path) has sha256 $got, engines.lock expects " . ($want || "none")
+                if $got ne $want;
+        }
+    }
+    if (@problems) {
+        print STDERR "✗ $_\n" for @problems;
+        print STDERR "✗ no engine staged: the engines are taken only as $lock pins them (README § Engines)\n";
+        exit 1;
+    }
+    make_path($out);
+    my $stage = tempdir("engines.XXXXXX", DIR => $out, CLEANUP => 1);
+    my @fresh = $kept ? ("command-spotting") : @engines;
+    for my $engine (grep { $_ ne "command-spotting" } @fresh) {
+        my $dir = "$stage/$engine";
+        make_path($dir);
+        my $from = $t{"$engine.from"};
+        for my $file (sort keys %$from) {
+            copy($source{$engine}->($from->{$file}), "$dir/$file") or die "✗ copy $file: $!\n";
+            chmod 0755, "$dir/$file";
+            system("xattr", "-c", "$dir/$file");
+        }
+        # The compiled-in folders of the formulae (ggml's GGML_BACKEND_DIR), so a backend is never loaded from them
+        my @blank = map { "$cellar/$_/" . $t{"$engine.formulae"}{$_} . "/libexec" } keys %{ $t{"$engine.formulae"} || {} };
+        for my $file (sort keys %$from) {
+            my $path = "$dir/$file";
+            my ($type) = $capture->("otool", "-hv", $path) =~ /\b(EXECUTE|DYLIB|BUNDLE)\b/ or die "✗ $path is no Mach-O file\n";
+            my @args;
+            for my $ref ($capture->("otool", "-L", $path) =~ /^\s+(\S+) \(/mg) {
+                push @args, "-change", $ref, "\@rpath/" . basename($ref) if $ref =~ m{^(/opt/homebrew|/usr/local)/};
+            }
+            push @args, "-id", "\@rpath/$file" if $type eq "DYLIB";
+            my @rpaths = $capture->("otool", "-l", $path) =~ /cmd LC_RPATH\n.*\n\s+path (\S+)/g;
+            push @args, map { ("-delete_rpath", $_) } grep { $_ ne "\@loader_path" } @rpaths;
+            push @args, "-add_rpath", "\@loader_path" unless grep { $_ eq "\@loader_path" } @rpaths;
+            $capture->("install_name_tool", @args, $path) if @args;
+            if (@blank) {
+                open my $in, "<:raw", $path or die "✗ $path: $!\n";
+                my $bytes = do { local $/; <$in> };
+                close $in;
+                my $count = 0;
+                for my $folder (@blank) { $count += $bytes =~ s/\Q$folder\E/"\0" x length($folder)/ge }
+                if ($count) { open my $o, ">:raw", $path or die "✗ $path: $!\n"; print $o $bytes; close $o }
+            }
+            $capture->("codesign", "--force", "--sign", "-", "--timestamp=none", $path);
+        }
+        open my $v, ">", "$dir/VERSION" or die; print $v "$t{$engine}{version}\n"; close $v;
+    }
+    my $spotting = $t{"command-spotting"} or die "✗ $lock has no [command-spotting]\n";
+    $run->("cargo", "build", "--quiet", "--release", "-p", $spotting->{package});
+    make_path("$stage/command-spotting");
+    copy("$root/target/release/$spotting->{program}", "$stage/command-spotting/$spotting->{program}") or die "✗ copy $spotting->{program}: $!\n";
+    chmod 0755, "$stage/command-spotting/$spotting->{program}";
+    my ($crate_version) = do { local $/; open my $c, "<", "$root/command-spotting/Cargo.toml" or die; <$c> } =~ /^version = "([^"]+)"/m;
+    open my $v, ">", "$stage/command-spotting/VERSION" or die; print $v "$crate_version\n"; close $v;
+    $t{"command-spotting"}{version} = $crate_version;
+    # Every reference stays in the engine's folder, and each engine runs with a clean environment
+    for my $engine (@fresh) {
+        my $dir = "$stage/$engine";
+        for my $path (grep { -f && !/VERSION$/ } glob "$dir/*") {
+            for my $ref ($capture->("otool", "-L", $path) =~ /^\s+(\S+) \(/mg) {
+                die "✗ $path references $ref, outside the bundle\n" if $ref =~ m{^(/opt/homebrew|/usr/local)/};
+                die "✗ $path references $ref, which $dir lacks\n" if $ref =~ m{^\@rpath/(.+)$} && !-f "$dir/$1";
+            }
+        }
+        my $program = $t{$engine}{program};
+        my $flag = $engine eq "whisper" ? "--help" : "--version";
+        my $said = `env -i PATH=/usr/bin:/bin '$dir/$program' $flag 2>&1`;
+        die "✗ $program $flag failed with nothing but the system folders on \$PATH:\n$said" if $?;
+    }
+    # The licenses of every bundled engine and library
+    make_path("$stage/licenses");
+    my %crates = do { local $/; open my $c, "<", "$root/Cargo.lock" or die; <$c> } =~ /name = "([^"]+)"\nversion = "([^"]+)"/g;
+    my $registry = (glob("$ENV{HOME}/.cargo/registry/src/*"))[0] // "";
+    for my $name (sort keys %{ $t{licenses} || {} }) {
+        my ($kind, $path) = split /:/, $t{licenses}{$name}, 2;
+        my $file = $kind eq "homebrew" ? do { my ($f, $p) = split m{/}, $path, 2; "$cellar/$f/" . $t{"whisper.formulae"}{$f} . "/$p" }
+            : $kind eq "llama" ? $source{llama} ? $source{llama}->($path) : "$out/licenses/$name"
+            : $kind eq "cargo" ? do { my ($c, $p) = split m{/}, $path, 2; "$registry/$c-$crates{$c}/$p" }
+            : "$root/$path";
+        copy($file, "$stage/licenses/$name") or die "✗ license $name ($file): $!\n";
+    }
+    for my $engine (@fresh, "licenses") {
+        remove_tree("$out/$engine");
+        rename "$stage/$engine", "$out/$engine" or die "✗ $out/$engine: $!\n";
+    }
+    open my $s, ">", $stamp or die; print $s "$lock_sha\n"; close $s;
+    printf "  %-17s %-10s %s\n", "engine", "version", "size";
+    for my $engine (@engines) {
+        my ($kb) = `du -sk '$out/$engine'` =~ /^(\d+)/;
+        my $version = do { open my $f, "<", "$out/$engine/VERSION" or die; my $l = <$f>; chomp $l; $l };
+        printf "  %-17s %-10s %.1f MB%s\n", $engine, $version, $kb / 1024, (grep { $_ eq $engine } @fresh) ? "" : " (kept)";
+    }
+    print "✓ engines staged in $out\n";
 
 # ── Services ── local processes the app talks to over loopback ────────────────
 

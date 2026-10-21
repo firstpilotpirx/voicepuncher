@@ -4,7 +4,7 @@
 
 use std::sync::atomic::AtomicU32;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use objc2::MainThreadMarker;
 use objc2_app_kit::NSApplication;
@@ -181,10 +181,17 @@ fn pump_run_loop(secs: f64) {
     run_loop.runUntilDate(&deadline);
 }
 
+/// Runs the main run loop in short steps until `moment`.
+fn pump_until_moment(moment: Instant) {
+    while Instant::now() < moment {
+        pump_run_loop(PUMP_STEP_SECS);
+    }
+}
+
 /// Runs the main run loop in short steps until `condition` holds or `limit` passes.
 fn pump_until(limit: Duration, condition: impl Fn() -> bool) {
-    let deadline = std::time::Instant::now() + limit;
-    while !condition() && std::time::Instant::now() < deadline {
+    let deadline = Instant::now() + limit;
+    while !condition() && Instant::now() < deadline {
         pump_run_loop(PUMP_STEP_SECS);
     }
 }
@@ -244,9 +251,11 @@ fn should_raise_waveform_columns_for_a_loud_level() {
     let level_register = Arc::new(AtomicU32::new(0.5f32.to_bits()));
     let indicator = MacosVisualIndicator::initialize(main_thread(), Arc::clone(&level_register));
 
-    // When — a few column periods of 200 ms pass
+    // When — column periods of 200 ms pass until the overlay is drawn
     indicator.show_recording();
-    pump_run_loop(0.4);
+    pump_until(DRAWN_LIMIT, || {
+        indicator.first_tallest_waveform_column() > DOT_HEIGHT
+    });
 
     // Then
     let tallest = indicator.first_tallest_waveform_column();
@@ -562,6 +571,8 @@ fn show_recognizing_speech_rebuilds_unconditionally() {
 const SHORT_NOTICE: Duration = Duration::from_millis(600);
 /// Long enough for the main queue to draw what was asked.
 const DRAWN_SECS: f64 = 0.2;
+/// `DRAWN_SECS` as a duration.
+const DRAWN_TIME: Duration = Duration::from_millis(200);
 /// The longest a busy machine may take to draw what was asked.
 const DRAWN_LIMIT: Duration = Duration::from_secs(2);
 /// Shorter than the waveform's 16 ms tick, so a step ends before the tick redraws.
@@ -657,29 +668,44 @@ fn should_hide_the_notice_after_its_time() {
     assert_eq!(overlay.first_text_window_value(), None);
 }
 
+/// A notice whose time leaves room to look between the first notice's end and the end of the
+/// one shown again.
+const NOTICE_SHOWN_AGAIN: Duration = Duration::from_millis(1_500);
+/// How many times the notice is shown again when the machine stalled past the moment to look.
+const LOOKS: usize = 5;
+
 fn should_restart_the_time_of_a_notice_shown_again() {
-    // Given
-    let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
-    let most_of_the_time = SHORT_NOTICE.as_secs_f64() * 2.0 / 3.0;
-    overlay.show_failure_notice(&NOTICE);
-    pump_run_loop(most_of_the_time);
-    // When
-    overlay.show_failure_notice(&NOTICE);
-    pump_run_loop(most_of_the_time);
-    // Then
-    assert!(
-        overlay.is_pill_visible(),
-        "the first notice's time no longer counts"
-    );
-    assert_eq!(
-        overlay.first_label_value().as_deref(),
-        Some(NOTICE.part_name())
-    );
-    pump_run_loop(most_of_the_time);
-    assert!(
-        !overlay.is_pill_visible(),
-        "the notice shown again hid after its own time"
-    );
+    for _ in 0..LOOKS {
+        // Given
+        let overlay = overlay_with_notice_lasting(NOTICE_SHOWN_AGAIN);
+        let shown_at = Instant::now();
+        overlay.show_failure_notice(&NOTICE);
+        pump_until_moment(shown_at + NOTICE_SHOWN_AGAIN * 2 / 3);
+        // When
+        let shown_again_at = Instant::now();
+        overlay.show_failure_notice(&NOTICE);
+        // Then — past the first notice's end, before the end of the one shown again
+        pump_until_moment(shown_at + NOTICE_SHOWN_AGAIN + DRAWN_TIME);
+        let (visible, label) = (overlay.is_pill_visible(), overlay.first_label_value());
+        if Instant::now() >= shown_again_at + NOTICE_SHOWN_AGAIN {
+            overlay.hide();
+            pump_run_loop(DRAWN_SECS);
+            continue;
+        }
+        assert!(visible, "the first notice's time no longer counts");
+        assert_eq!(label.as_deref(), Some(NOTICE.part_name()));
+        pump_until(
+            (shown_again_at + NOTICE_SHOWN_AGAIN + DRAWN_LIMIT)
+                .saturating_duration_since(Instant::now()),
+            || !overlay.is_pill_visible(),
+        );
+        assert!(
+            !overlay.is_pill_visible(),
+            "the notice shown again hid after its own time"
+        );
+        return;
+    }
+    panic!("the machine stalled past the moment to look {LOOKS} times");
 }
 
 fn should_keep_a_recording_started_after_a_notice() {

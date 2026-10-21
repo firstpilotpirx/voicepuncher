@@ -29,10 +29,12 @@ const FIRST_CONNECTION: Duration = Duration::from_millis(500);
 const BACK_WITHIN: Duration = Duration::from_secs(5);
 /// The long-outage test runs the client's reconnect pauses and replay this many times faster.
 const TIMINGS_SPEEDUP: u32 = 10;
-/// Nothing listens on the port for this long: past the replay and past the tenth failed
-/// attempt of the client running `TIMINGS_SPEEDUP` times faster (≈ 2.8 s), as a minute is
+/// Nothing listens on the port at least this long, past the replay of the client running
+/// `TIMINGS_SPEEDUP` times faster, and until it has failed its tenth attempt, as a minute is
 /// for the client at its own timings.
 const LONG_OUTAGE: Duration = Duration::from_millis(3_500);
+/// The client's tenth attempt fails well within this, however busy the machine.
+const TENTH_ATTEMPT_WITHIN: Duration = Duration::from_secs(60);
 /// A short outage: the stub refuses every connection for this long after it closed the first.
 const SHORT_OUTAGE: Duration = Duration::from_secs(3);
 /// An outage the replay on the return no longer hides: well past its 5 s.
@@ -55,14 +57,23 @@ struct Received {
 /// every connection in the `away_for` after that is dropped at once, and every later one is
 /// kept, what it receives recorded and its first audio answered with a speech start at 0 s.
 fn stub_service(listener: TcpListener, away_for: Duration) -> Arc<Mutex<Vec<Received>>> {
+    stub_service_back_at(listener, away_for).0
+}
+
+/// As `stub_service`, with the moment it answers again, set once the first connection came.
+fn stub_service_back_at(
+    listener: TcpListener,
+    away_for: Duration,
+) -> (Arc<Mutex<Vec<Received>>>, Arc<OnceLock<Instant>>) {
     let connections = Arc::new(Mutex::new(Vec::new()));
     let recorded = Arc::clone(&connections);
+    let back_at = Arc::new(OnceLock::new());
+    let answers_at = Arc::clone(&back_at);
     std::thread::spawn(move || {
-        let mut back_at: Option<Instant> = None;
         for (n, stream) in listener.incoming().flatten().enumerate() {
             if n == 0 {
-                back_at = Some(Instant::now() + FIRST_CONNECTION + away_for);
-            } else if back_at.is_some_and(|at| Instant::now() < at) {
+                let _ = answers_at.set(Instant::now() + FIRST_CONNECTION + away_for);
+            } else if answers_at.get().is_some_and(|at| Instant::now() < *at) {
                 drop(stream);
                 continue;
             }
@@ -70,7 +81,7 @@ fn stub_service(listener: TcpListener, away_for: Duration) -> Arc<Mutex<Vec<Rece
             std::thread::spawn(move || serve(stream, n, &connections));
         }
     });
-    connections
+    (connections, back_at)
 }
 
 fn serve(stream: TcpStream, n: usize, connections: &Mutex<Vec<Received>>) {
@@ -294,15 +305,19 @@ fn should_be_back_within_seconds_once_the_service_answers_after_a_long_outage() 
         &PipelineInput::SpottingLost,
         BACK_WITHIN,
     );
-    let outage_end = Instant::now() + LONG_OUTAGE;
+    let attempts = || logged(&format!("to reach {url} failed"));
+    let tenth_failed = || attempts().iter().any(|l| l.contains("attempt 10 "));
+    let away_since = Instant::now();
     let mut while_away = Vec::new();
-    while Instant::now() < outage_end {
+    while (away_since.elapsed() < LONG_OUTAGE || !tenth_failed())
+        && away_since.elapsed() < TENTH_ATTEMPT_WITHIN
+    {
         audio.send(microphone(0.0)).unwrap();
         if let Ok(input) = inputs.recv_timeout(Duration::from_millis(100)) {
             while_away.push(input);
         }
     }
-    // When the service answers on its port again
+    // When the service answers on its port again, once the client failed its tenth attempt
     let _connections = stub_service(TcpListener::bind(port_addr).unwrap(), Duration::ZERO);
     let started = Instant::now();
     let back = feed_until(
@@ -313,18 +328,19 @@ fn should_be_back_within_seconds_once_the_service_answers_after_a_long_outage() 
         BACK_WITHIN,
     );
     // Then
-    assert!(lost, "the loss was not reported");
+    let client_log = logged(&url);
+    assert!(lost, "the loss was not reported: {client_log:#?}");
     assert_eq!(
         while_away,
         [PipelineInput::SpottingStillAway],
-        "only the long outage comes while away"
+        "only the long outage comes while away: {client_log:#?}"
     );
     assert!(
         back,
-        "not back within {BACK_WITHIN:?}, waited {:?}",
+        "not back within {BACK_WITHIN:?}, waited {:?}: {client_log:#?}",
         started.elapsed()
     );
-    let attempts = logged(&format!("to reach {url} failed"));
+    let attempts = attempts();
     assert!(
         attempts.iter().any(|l| l.contains("attempt 1 ")),
         "{attempts:?}"
@@ -343,11 +359,12 @@ fn should_be_back_within_seconds_once_the_service_answers_after_a_long_outage() 
 #[test]
 fn should_report_once_that_the_service_is_still_away_past_the_replay() {
     // Given the service is away for longer than the replay reaches back
+    lines();
     let (listener, url) = free_listener();
-    let _connections = stub_service(listener, OUTAGE_PAST_REPLAY);
+    let (_connections, back_at) = stub_service_back_at(listener, OUTAGE_PAST_REPLAY);
     let (stream, audio, inputs) = start_stream(&url);
     // When
-    let outage = outage_inputs(&audio, &inputs, OUTAGE_PAST_REPLAY + BACK_WITHIN);
+    let outage = outage_inputs(&audio, &inputs, &back_at);
     // Then
     assert_eq!(
         outage,
@@ -355,7 +372,9 @@ fn should_report_once_that_the_service_is_still_away_past_the_replay() {
             PipelineInput::SpottingLost,
             PipelineInput::SpottingStillAway,
             PipelineInput::SpottingBack
-        ]
+        ],
+        "{:#?}",
+        logged(&url)
     );
     stream.stop();
 }
@@ -363,29 +382,37 @@ fn should_report_once_that_the_service_is_still_away_past_the_replay() {
 #[test]
 fn should_not_report_a_service_back_within_the_replay_as_still_away() {
     // Given the service is away for less than the replay reaches back
+    lines();
     let (listener, url) = free_listener();
-    let _connections = stub_service(listener, SHORT_OUTAGE);
+    let (_connections, back_at) = stub_service_back_at(listener, SHORT_OUTAGE);
     let (stream, audio, inputs) = start_stream(&url);
     // When
-    let outage = outage_inputs(&audio, &inputs, SHORT_OUTAGE + BACK_WITHIN);
+    let outage = outage_inputs(&audio, &inputs, &back_at);
     // Then
     assert_eq!(
         outage,
-        [PipelineInput::SpottingLost, PipelineInput::SpottingBack]
+        [PipelineInput::SpottingLost, PipelineInput::SpottingBack],
+        "{:#?}",
+        logged(&url)
     );
     stream.stop();
 }
 
 /// The inputs other than spotting events, feeding silence until the service is back, at
-/// most for `within`.
+/// most until `BACK_WITHIN` after the stub answers again (`back_at`).
 fn outage_inputs(
     audio: &Sender<Vec<f32>>,
     inputs: &Receiver<PipelineInput>,
-    within: Duration,
+    back_at: &OnceLock<Instant>,
 ) -> Vec<PipelineInput> {
-    let deadline = Instant::now() + within;
+    let started = Instant::now();
+    let waiting = || match back_at.get() {
+        Some(at) => Instant::now() < *at + BACK_WITHIN,
+        // The client has not connected yet: its first connection starts the outage.
+        None => started.elapsed() < BACK_WITHIN,
+    };
     let mut got = Vec::new();
-    while Instant::now() < deadline && got.last() != Some(&PipelineInput::SpottingBack) {
+    while waiting() && got.last() != Some(&PipelineInput::SpottingBack) {
         audio.send(microphone(0.0)).unwrap();
         match inputs.recv_timeout(Duration::from_millis(100)) {
             Ok(PipelineInput::Spotting(_)) | Err(_) => {}

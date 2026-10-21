@@ -2,6 +2,7 @@
 //! own, so a slow or hung request never holds up the audio that keeps arriving.
 
 use std::fmt;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -83,10 +84,27 @@ pub struct Answer {
 /// for second hearings, one for everything else, so a segment's confirmation never waits
 /// behind a hung check and a second hearing asked at once never waits behind a segment's.
 pub struct ConfirmationWorker {
-    jobs: Sender<Job>,
-    checks: Sender<Job>,
-    rehears: Sender<Job>,
+    jobs: Queue,
+    checks: Queue,
+    rehears: Queue,
     answers: Receiver<Answer>,
+    submitted: AtomicUsize,
+    taken: AtomicUsize,
+}
+
+/// One confirmation thread: its jobs and how many of them are not answered yet.
+struct Queue {
+    thread: String,
+    jobs: Sender<Job>,
+    unanswered: Arc<AtomicUsize>,
+}
+
+/// What the worker holds at a moment: by thread, the jobs sent to it and not answered yet;
+/// and the jobs whose answers were not taken yet, answered or not.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct WorkerLoad {
+    pub unanswered: Vec<(String, usize)>,
+    pub untaken: usize,
 }
 
 impl ConfirmationWorker {
@@ -112,6 +130,8 @@ impl ConfirmationWorker {
             checks,
             rehears,
             answers,
+            submitted: AtomicUsize::new(0),
+            taken: AtomicUsize::new(0),
         })
     }
 
@@ -129,17 +149,35 @@ impl ConfirmationWorker {
         } else {
             &self.jobs
         };
-        let _ = queue.send(job);
+        self.submitted.fetch_add(1, Ordering::SeqCst);
+        queue.unanswered.fetch_add(1, Ordering::SeqCst);
+        let _ = queue.jobs.send(job);
     }
 
     /// The answers that arrived so far, without waiting.
     pub fn answers(&self) -> Vec<Answer> {
-        self.answers.try_iter().collect()
+        let answers: Vec<Answer> = self.answers.try_iter().collect();
+        self.taken.fetch_add(answers.len(), Ordering::SeqCst);
+        answers
     }
 
     /// The next answer, waiting at most `wait`.
     pub fn next_answer(&self, wait: Duration) -> Option<Answer> {
-        self.answers.recv_timeout(wait).ok()
+        let answer = self.answers.recv_timeout(wait).ok();
+        self.taken
+            .fetch_add(usize::from(answer.is_some()), Ordering::SeqCst);
+        answer
+    }
+
+    /// The jobs not answered yet on each thread and the answers not taken yet.
+    pub fn load(&self) -> WorkerLoad {
+        WorkerLoad {
+            unanswered: [&self.jobs, &self.checks, &self.rehears]
+                .iter()
+                .map(|q| (q.thread.clone(), q.unanswered.load(Ordering::SeqCst)))
+                .collect(),
+            untaken: self.submitted.load(Ordering::SeqCst) - self.taken.load(Ordering::SeqCst),
+        }
     }
 }
 
@@ -149,16 +187,27 @@ fn spawn(
     hear: Arc<dyn Hear>,
     deadline: Duration,
     answers: Sender<Answer>,
-) -> std::io::Result<Sender<Job>> {
+) -> std::io::Result<Queue> {
     let (jobs, job_rx) = mpsc::channel::<Job>();
-    std::thread::Builder::new().name(name).spawn(move || {
-        for job in job_rx {
-            if answers.send(run(hear.as_ref(), &job, deadline)).is_err() {
-                return;
+    let unanswered = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&unanswered);
+    std::thread::Builder::new()
+        .name(name.clone())
+        .spawn(move || {
+            for job in job_rx {
+                let answer = run(hear.as_ref(), &job, deadline);
+                // WHY: before the send, so a taken answer is never still counted unanswered
+                counted.fetch_sub(1, Ordering::SeqCst);
+                if answers.send(answer).is_err() {
+                    return;
+                }
             }
-        }
-    })?;
-    Ok(jobs)
+        })?;
+    Ok(Queue {
+        thread: name,
+        jobs,
+        unanswered,
+    })
 }
 
 fn run(hear: &dyn Hear, job: &Job, deadline: Duration) -> Answer {
@@ -356,6 +405,32 @@ mod tests {
         drop(release);
         // Then
         assert_eq!(first.map(|a| a.id.n), Some(2));
+    }
+
+    #[test]
+    fn should_count_a_job_unanswered_on_its_thread_and_untaken_until_its_answer_is_taken() {
+        // Given a segment whose hearing hangs until released
+        let (release, released) = mpsc::channel();
+        let hear = Arc::new(HangingCheck {
+            released: std::sync::Mutex::new(released),
+        });
+        let worker = ConfirmationWorker::start(4, hear, DEADLINE).unwrap();
+        let segment = Job {
+            audio: vec![CHECK_SAMPLE; 1_600],
+            ..job_of(4, 1, JobKind::Segment)
+        };
+        // When
+        worker.submit(segment);
+        let held = worker.load();
+        drop(release);
+        let answer = worker.next_answer(WAIT);
+        // Then
+        assert!(answer.is_some());
+        assert_eq!(held.untaken, 1);
+        assert!(held.unanswered.contains(&("conn-4-confirm".to_owned(), 1)));
+        let after = worker.load();
+        assert_eq!(after.untaken, 0);
+        assert!(after.unanswered.iter().all(|(_, n)| *n == 0), "{after:?}");
     }
 
     use crate::test_log::captured;

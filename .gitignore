@@ -8,3 +8,4 @@ e2e-test/corpus/
 .worktrees/
 __pycache__/
 dist/
+app/packaging/engines/

@@ -150,7 +150,16 @@ success-output = "immediate"
 
 [[profile.bundle.overrides]]
 filter = 'binary(cucumber_e2e)'
-run-extra-args = ["--tags", "@bundle and not @wip"]
+run-extra-args = ["--tags", "@bundle and not @wip and not @bundle_engines"]
+
+# @bundle_engines, the e2e-bundle stage: the bundle copy's services started from its engines, 17 s measured: 2 min
+[profile.e2e-bundle]
+success-output = "immediate"
+
+[[profile.e2e-bundle.overrides]]
+filter = 'binary(cucumber_e2e)'
+run-extra-args = ["--tags", "@bundle_engines and not @wip"]
+slow-timeout = { period = "60s", terminate-after = 2 }
 
 # Manual: the @real_keyboard scenarios of the slice/component harness, not measured: default 2 min
 [profile.real-keyboard]

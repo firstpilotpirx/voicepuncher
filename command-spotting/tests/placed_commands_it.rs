@@ -5,14 +5,16 @@
 //! does.
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Duration;
 
 mod common;
 mod scripted_hearing;
+mod stream_clock;
 
 use scripted_hearing::{ScriptedHearing, ScriptedWord};
-use voicepuncher_command_spotting::confirm::{Hear, Heard, TimedWord};
+use stream_clock::{samples, Clocked, StreamClock};
+use voicepuncher_command_spotting::confirm::{Hear, Heard, TimedWord, UtteranceTranscriber};
 use voicepuncher_command_spotting::engine::{Engine, EngineCfg, Session, SAMPLE_RATE};
 use voicepuncher_command_spotting::protocol::{Placement, ServerEvent};
 
@@ -42,23 +44,72 @@ const SLOW_HEARING: Duration = Duration::from_secs(2);
 /// Between two words of a scripted sentence: no pause that would end the utterance.
 const WORD_GAP_SECS: f32 = 0.06;
 
-/// ONNX Runtime aborts when models load or run on several test threads at once.
-static ENGINE: OnceLock<Option<Mutex<Engine>>> = OnceLock::new();
+/// How long the speech recognition service for commands takes to answer, in the speech: a
+/// quick answer, however long the shared service really takes.
+const REAL_HEARING: Duration = Duration::from_millis(300);
+/// How long the shared service may take to answer for real: the speech waits for it.
+const REAL_DEADLINE: Duration = Duration::from_secs(60);
 
-fn engine() -> Option<MutexGuard<'static, Engine>> {
-    ENGINE
-        .get_or_init(|| load_engine().map(Mutex::new))
-        .as_ref()
-        .map(|engine| engine.lock().unwrap_or_else(|e| e.into_inner()))
+/// ONNX Runtime aborts when models load or run on several test threads at once.
+static ENGINE_RUNS: Mutex<()> = Mutex::new(());
+
+/// An engine whose confirmations come back on the clock of the speech fed to it; the only one
+/// loaded while it lives.
+struct ClockedEngine {
+    engine: Engine,
+    clock: Arc<StreamClock>,
+    _one_at_a_time: MutexGuard<'static, ()>,
 }
 
-fn load_engine() -> Option<Engine> {
+/// The engine `cfg` describes, hearing with `hearing`, each answer `delay` after it is asked
+/// in the speech, with `deadline` in place of the engine's when given.
+fn clocked_engine(
+    cfg: &EngineCfg,
+    hearing: Arc<dyn Hear>,
+    delay: Duration,
+    deadline: Option<Duration>,
+) -> ClockedEngine {
+    clocked_engine_on(Arc::default(), cfg, hearing, delay, deadline)
+}
+
+/// As `clocked_engine`, on `clock`.
+fn clocked_engine_on(
+    clock: Arc<StreamClock>,
+    cfg: &EngineCfg,
+    hearing: Arc<dyn Hear>,
+    delay: Duration,
+    deadline: Option<Duration>,
+) -> ClockedEngine {
+    let one_at_a_time = ENGINE_RUNS.lock().unwrap_or_else(|e| e.into_inner());
+    let engine = Engine::load(cfg)
+        .expect("models load")
+        .hearing(Arc::new(Clocked {
+            inner: hearing,
+            clock: Arc::clone(&clock),
+            delay,
+            deadline,
+        }));
+    ClockedEngine {
+        engine,
+        clock,
+        _one_at_a_time: one_at_a_time,
+    }
+}
+
+/// The engine confirming with the real speech recognition service for commands.
+fn engine() -> Option<ClockedEngine> {
     let Ok(transcription_url) = std::env::var("VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL") else {
         eprintln!("GATED: VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL not set, skipping");
         return None;
     };
-    let cfg = engine_cfg(Some(transcription_url))?;
-    Some(Engine::load(&cfg).expect("models load"))
+    let cfg = engine_cfg(None)?;
+    let hearing = UtteranceTranscriber::new(&transcription_url).expect("service address");
+    Some(clocked_engine(
+        &cfg,
+        Arc::new(hearing),
+        REAL_HEARING,
+        Some(REAL_DEADLINE),
+    ))
 }
 
 /// The engine config, confirming with the speech recognition service at `transcription_url`
@@ -105,8 +156,8 @@ fn silence(secs: f32) -> Vec<f32> {
 
 /// Every event the service reports for `audio`, with a pause before and after it, while
 /// it listens for `phrases`.
-fn heard(engine: &Engine, phrases: &[&str], audio: &[f32]) -> Vec<ServerEvent> {
-    let mut session = engine.session().unwrap();
+fn heard(engine: &ClockedEngine, phrases: &[&str], audio: &[f32]) -> Vec<ServerEvent> {
+    let mut session = engine.engine.session().unwrap();
     let phrases: Vec<String> = phrases.iter().map(|p| (*p).to_owned()).collect();
     session.listen_for(&phrases).unwrap();
     let stream: Vec<f32> = silence(PAUSE_SECS)
@@ -114,7 +165,7 @@ fn heard(engine: &Engine, phrases: &[&str], audio: &[f32]) -> Vec<ServerEvent> {
         .chain(audio.iter().copied())
         .chain(silence(PAUSE_SECS))
         .collect();
-    let events: Vec<ServerEvent> = fed(&mut session, &stream);
+    let events = fed_as_spoken(&mut session, &engine.clock, &stream);
     eprintln!("{events:?}");
     events
 }
@@ -145,17 +196,6 @@ fn phrases(events: &[ServerEvent]) -> Vec<String> {
 
 fn command(names: &[&str], placement: Placement) -> (Vec<String>, Placement) {
     (names.iter().map(|n| (*n).to_owned()).collect(), placement)
-}
-
-/// Every event the session reports for `audio` fed frame by frame, its confirmations
-/// included once they are answered.
-fn fed(session: &mut Session<'_>, audio: &[f32]) -> Vec<ServerEvent> {
-    let mut events: Vec<ServerEvent> = audio
-        .chunks(FRAME_SAMPLES)
-        .flat_map(|frame| session.accept(frame))
-        .collect();
-    events.extend(session.settle());
-    events
 }
 
 #[test]
@@ -256,9 +296,6 @@ fn should_hear_a_stop_after_a_short_breath_as_an_utterance_of_its_own() {
     );
 }
 
-/// ONNX Runtime aborts when models load or run on several test threads at once.
-static SCRIPTED_RUNS: Mutex<()> = Mutex::new(());
-
 /// `sentence` said word by word by `say`, between pauses, and where each word lies.
 fn scripted(sentence: &str) -> (Vec<f32>, Vec<ScriptedWord>) {
     scripted_utterances(&[sentence])
@@ -286,74 +323,84 @@ fn scripted_utterances(utterances: &[&str]) -> (Vec<f32>, Vec<ScriptedWord>) {
     (stream, script)
 }
 
-/// Every event for `sentence`, fed as fast as it is spoken, while the service listens for
-/// `phrases` and each confirmation takes `delay`.
+/// Every event for `sentence`, fed as it is spoken, while the service listens for `phrases`
+/// and each confirmation comes back `delay` later in the speech.
 fn heard_in_time(phrases: &[&str], sentence: &str, delay: Duration) -> Option<Vec<ServerEvent>> {
-    let _one_at_a_time = SCRIPTED_RUNS.lock().unwrap_or_else(|e| e.into_inner());
+    heard_in_time_by(phrases, sentence, delay, |hearing| Arc::new(hearing))
+}
+
+/// As `heard_in_time`, heard by what `hearing` makes of the scripted hearing of the sentence.
+fn heard_in_time_by(
+    phrases: &[&str],
+    sentence: &str,
+    delay: Duration,
+    hearing: impl FnOnce(ScriptedHearing) -> Arc<dyn Hear>,
+) -> Option<Vec<ServerEvent>> {
     let cfg = engine_cfg(None)?;
     let (stream, script) = scripted(sentence);
-    let hearing = ScriptedHearing {
+    let scripted = ScriptedHearing {
         stream: stream.clone(),
         script,
-        delay,
         completes_cut_words: false,
     };
-    let engine = Engine::load(&cfg)
-        .expect("models load")
-        .hearing(Arc::new(hearing));
-    let mut session = engine.session().unwrap();
+    let engine = clocked_engine(&cfg, hearing(scripted), delay, None);
+    let mut session = engine.engine.session().unwrap();
     let phrases: Vec<String> = phrases.iter().map(|p| (*p).to_owned()).collect();
     session.listen_for(&phrases).unwrap();
-    let events = fed_as_spoken(&mut session, &stream);
+    let events = fed_as_spoken(&mut session, &engine.clock, &stream);
     eprintln!("{events:?}");
     Some(events)
 }
 
-/// Every event the session reports for `audio` fed one frame per frame of time on a fixed
-/// schedule, its confirmations included once they are answered.
-fn fed_as_spoken(session: &mut Session<'_>, audio: &[f32]) -> Vec<ServerEvent> {
-    fed_as_spoken_while(session, audio, |_, _, _| {})
+/// Every event the session reports for `audio` fed frame by frame on `clock`, each
+/// confirmation coming back where its delay in the speech puts it, however busy the machine.
+fn fed_as_spoken(
+    session: &mut Session<'_>,
+    clock: &StreamClock,
+    audio: &[f32],
+) -> Vec<ServerEvent> {
+    fed_as_spoken_while(session, clock, audio, |_, _, _| {})
 }
 
 /// As `fed_as_spoken`, with `before_frame` called before each frame with the samples fed
 /// so far.
 fn fed_as_spoken_while(
     session: &mut Session<'_>,
+    clock: &StreamClock,
     audio: &[f32],
     before_frame: impl FnMut(&mut Session<'_>, usize, &[ServerEvent]),
 ) -> Vec<ServerEvent> {
-    fed_in_frames(session, audio, FRAME_SAMPLES, before_frame)
+    fed_in_frames(session, clock, audio, FRAME_SAMPLES, before_frame)
 }
 
-/// As `fed_as_spoken_while`, in frames of `frame_samples`.
+/// As `fed_as_spoken_while`, in frames of `frame_samples`; once the speech ends, every
+/// confirmation still held comes back.
 fn fed_in_frames(
     session: &mut Session<'_>,
+    clock: &StreamClock,
     audio: &[f32],
     frame_samples: usize,
     mut before_frame: impl FnMut(&mut Session<'_>, usize, &[ServerEvent]),
 ) -> Vec<ServerEvent> {
-    let frame_time = Duration::from_secs_f32(frame_samples as f32 / SAMPLE_RATE as f32);
-    let mut due = Instant::now();
     let mut events = Vec::new();
     for (n, frame) in audio.chunks(frame_samples).enumerate() {
-        before_frame(session, n * frame_samples, &events);
-        events.extend(session.accept(frame));
-        due += frame_time;
-        std::thread::sleep(due.saturating_duration_since(Instant::now()));
+        let fed = n * frame_samples;
+        before_frame(session, fed, &events);
+        events.extend(clock.feed(session, frame, fed));
     }
+    clock.release_all();
     events.extend(session.settle());
     events
 }
 
-/// Every event for `utterances` said in standby, fed as fast as they are spoken, with each
-/// confirmation taking `delay` and a word cut off by a clip heard whole as whisper hears it;
+/// Every event for `utterances` said in standby, fed as they are spoken, with each
+/// confirmation `delay` late in the speech and a word cut off by a clip heard whole as whisper hears it;
 /// the session moves to the phrases of a running dictation in the pause after the first
 /// utterance, before its confirmation comes back, as a dictation the hotkey starts moves it.
 fn heard_with_dictation_started_at_first_pause(
     utterances: &[&str],
     delay: Duration,
 ) -> Option<Vec<ServerEvent>> {
-    let _one_at_a_time = SCRIPTED_RUNS.lock().unwrap_or_else(|e| e.into_inner());
     let cfg = engine_cfg(None)?;
     let (stream, script) = scripted_utterances(utterances);
     let first_words = utterances[0].split_whitespace().count();
@@ -362,16 +409,13 @@ fn heard_with_dictation_started_at_first_pause(
     let hearing = ScriptedHearing {
         stream: stream.clone(),
         script,
-        delay,
         completes_cut_words: true,
     };
-    let engine = Engine::load(&cfg)
-        .expect("models load")
-        .hearing(Arc::new(hearing));
-    let mut session = engine.session().unwrap();
+    let engine = clocked_engine(&cfg, Arc::new(hearing), delay, None);
+    let mut session = engine.engine.session().unwrap();
     session.listen_for(&owned(&STANDBY)).unwrap();
     let mut dictating = false;
-    let events = fed_as_spoken_while(&mut session, &stream, |session, fed, _| {
+    let events = fed_as_spoken_while(&mut session, &engine.clock, &stream, |session, fed, _| {
         if !dictating && fed >= switch_at {
             dictating = true;
             session.listen_for(&owned(&DICTATING)).unwrap();
@@ -381,40 +425,37 @@ fn heard_with_dictation_started_at_first_pause(
     Some(events)
 }
 
-/// Every event for `utterances` said while dictating, fed as fast as they are spoken, with
-/// each confirmation taking `delay`; the session moves to the standby phrases once the stop
+/// Every event for `utterances` said while dictating, fed as they are spoken, with each
+/// confirmation `delay` late in the speech; the session moves to the standby phrases once the stop
 /// is reported, as the app does when the stop ends its dictation.
 fn heard_with_standby_once_stopped(
     utterances: &[&str],
     delay: Duration,
 ) -> Option<Vec<ServerEvent>> {
-    let _one_at_a_time = SCRIPTED_RUNS.lock().unwrap_or_else(|e| e.into_inner());
     let cfg = engine_cfg(None)?;
     let (mut stream, script) = scripted_utterances(utterances);
     // Silence after the last word, while the late confirmations come back.
-    stream.extend(vec![
-        0.0;
-        (2.0 * delay.as_secs_f32() * SAMPLE_RATE as f32)
-            as usize
-    ]);
+    stream.extend(vec![0.0; 2 * samples(delay)]);
     let hearing = ScriptedHearing {
         stream: stream.clone(),
         script,
-        delay,
         completes_cut_words: true,
     };
-    let engine = Engine::load(&cfg)
-        .expect("models load")
-        .hearing(Arc::new(hearing));
-    let mut session = engine.session().unwrap();
+    let engine = clocked_engine(&cfg, Arc::new(hearing), delay, None);
+    let mut session = engine.engine.session().unwrap();
     session.listen_for(&owned(&DICTATING)).unwrap();
     let mut stopped = false;
-    let events = fed_as_spoken_while(&mut session, &stream, |session, _, events| {
-        if !stopped && said(events).iter().any(|c| c == "stop dictation") {
-            stopped = true;
-            session.listen_for(&owned(&STANDBY)).unwrap();
-        }
-    });
+    let events = fed_as_spoken_while(
+        &mut session,
+        &engine.clock,
+        &stream,
+        |session, _, events| {
+            if !stopped && said(events).iter().any(|c| c == "stop dictation") {
+                stopped = true;
+                session.listen_for(&owned(&STANDBY)).unwrap();
+            }
+        },
+    );
     eprintln!("{events:?}");
     Some(events)
 }
@@ -485,6 +526,34 @@ fn should_carry_out_the_same_chain_when_confirmations_come_back_slowly() {
     assert_chain_carried_out(SLOW_HEARING);
 }
 
+/// How long a busy machine keeps the threads that hear waiting for the processor.
+const STARVED_FOR: Duration = Duration::from_millis(900);
+
+/// A hearing on a busy machine: `inner` hears only after waiting `STARVED_FOR`.
+struct Starved<H>(H);
+
+impl<H: Hear> Hear for Starved<H> {
+    fn hear(&self, clip: &[f32], deadline: Duration) -> anyhow::Result<Heard> {
+        std::thread::sleep(STARVED_FOR);
+        self.0.hear(clip, deadline)
+    }
+}
+
+#[test]
+fn should_carry_out_the_same_chain_on_a_busy_machine() {
+    // Given a dictation, each confirmation 2 s late, on a machine so busy that the threads
+    // that hear wait for the processor while the speech goes on
+    let listening: Vec<&str> = DICTATING.into_iter().chain(["start dictation"]).collect();
+    // When "stop enter start" is said
+    let Some(events) = heard_in_time_by(&listening, CHAIN_SENTENCE, SLOW_HEARING, |hearing| {
+        Arc::new(Starved(hearing))
+    }) else {
+        return;
+    };
+    // Then the chain is carried out as on an idle machine
+    assert_eq!(carried_out(&events), CHAIN, "{events:?}");
+}
+
 #[test]
 fn should_keep_a_start_confirmed_after_the_dictation_began_a_start() {
     let Some(events) = heard_with_dictation_started_at_first_pause(
@@ -530,7 +599,7 @@ fn should_keep_a_start_said_right_after_a_slowly_confirmed_stop_a_start() {
 }
 
 /// A hearing that answers each clip of a segment `first` and its steady clip `steady`, each
-/// `delay` after it is asked, and counts the steady clips.
+/// `delay` after it is asked in the speech, and counts the steady clips.
 struct HearsFirstThenSteady {
     first: &'static str,
     steady: &'static str,
@@ -544,7 +613,6 @@ const STEADY_LEAD_MAX_SECS: f32 = 0.45;
 
 impl Hear for HearsFirstThenSteady {
     fn hear(&self, clip: &[f32], _deadline: Duration) -> anyhow::Result<Heard> {
-        std::thread::sleep(self.delay);
         let onset = clip
             .iter()
             .position(|s| s.abs() > SILENCE_LEVEL)
@@ -570,7 +638,6 @@ impl Hear for HearsFirstThenSteady {
 /// The events of "restart" said alone in a dictation, heard by `hearing`, and how long after
 /// the end of the word the first phrase came out.
 fn restart_alone_heard_by(hearing: Arc<HearsFirstThenSteady>) -> Option<(Vec<ServerEvent>, f32)> {
-    let _one_at_a_time = SCRIPTED_RUNS.lock().unwrap_or_else(|e| e.into_inner());
     let cfg = engine_cfg(None)?;
     // The default voice, as the keyword spotter hears its "restart".
     let word = sound_only(common::spoken_by(None, "Restart"));
@@ -579,11 +646,12 @@ fn restart_alone_heard_by(hearing: Arc<HearsFirstThenSteady>) -> Option<(Vec<Ser
     let said_end = stream.len();
     // Long enough for two confirmations one after another to come back while it is fed.
     stream.extend(silence(3.0));
-    let engine = Engine::load(&cfg).expect("models load").hearing(hearing);
-    let mut session = engine.session().unwrap();
+    let delay = hearing.delay;
+    let engine = clocked_engine(&cfg, hearing, delay, None);
+    let mut session = engine.engine.session().unwrap();
     session.listen_for(&owned(&DICTATING)).unwrap();
     let mut first_phrase_at = None;
-    let events = fed_as_spoken_while(&mut session, &stream, |_, fed, events| {
+    let events = fed_as_spoken_while(&mut session, &engine.clock, &stream, |_, fed, events| {
         if first_phrase_at.is_none() && !phrases(events).is_empty() {
             first_phrase_at = Some(fed);
         }
@@ -641,26 +709,23 @@ fn should_report_a_restart_heard_at_first_once_and_drop_its_early_second_hearing
 /// 10 ms: frames this short time an event to within 10 ms.
 const FINE_FRAME_SAMPLES: usize = 160;
 
-/// A scripted hearing that notes when each clip is asked, and hears a word wrong in every
-/// clip asked before a moment.
+/// A scripted hearing that notes the sample of the speech at which each clip is asked, and
+/// hears a word wrong in every clip asked before a sample.
 struct NotedHearing {
     hearing: ScriptedHearing,
-    asked: Mutex<Vec<Instant>>,
-    /// A word and what it is heard as, in clips asked before the moment set.
+    clock: Arc<StreamClock>,
+    asked: Mutex<Vec<usize>>,
+    /// A word and what it is heard as, in clips asked before `heard_right_from`.
     mishears: Option<(&'static str, &'static str)>,
-    heard_right_from: Mutex<Option<Instant>>,
+    heard_right_from: usize,
 }
 
 impl Hear for NotedHearing {
     fn hear(&self, clip: &[f32], deadline: Duration) -> anyhow::Result<Heard> {
-        let asked = Instant::now();
+        let asked = self.clock.now();
         self.asked.lock().unwrap().push(asked);
         let mut heard = self.hearing.hear(clip, deadline)?;
-        let right_from = *self.heard_right_from.lock().unwrap();
-        if let Some((word, wrong)) = self
-            .mishears
-            .filter(|_| right_from.is_some_and(|t| asked < t))
-        {
+        if let Some((word, wrong)) = self.mishears.filter(|_| asked < self.heard_right_from) {
             for timed in &mut heard.words {
                 timed.text = timed.text.replace(word, wrong);
             }
@@ -684,8 +749,8 @@ struct FinelyHeard {
 }
 
 /// Every event for `words`, each said by `say` after the gap of seconds given with it and fed
-/// in 10 ms frames as fast as it is spoken, while the service listens for `phrases` and each
-/// confirmation takes `delay`.
+/// in 10 ms frames as it is spoken, while the service listens for `phrases` and each
+/// confirmation comes back `delay` later in the speech.
 fn heard_finely(phrases: &[&str], words: &[(f32, &str)], delay: Duration) -> Option<FinelyHeard> {
     heard_finely_misheard(phrases, words, delay, None)
 }
@@ -698,7 +763,6 @@ fn heard_finely_misheard(
     delay: Duration,
     mishears: Option<(&'static str, &'static str)>,
 ) -> Option<FinelyHeard> {
-    let _one_at_a_time = SCRIPTED_RUNS.lock().unwrap_or_else(|e| e.into_inner());
     let cfg = engine_cfg(None)?;
     let mut stream = silence(PAUSE_SECS);
     let mut script = Vec::new();
@@ -717,30 +781,32 @@ fn heard_finely_misheard(
         .map_or(0.0, |w| w.said.len() as f32 / SAMPLE_RATE as f32);
     // Long enough for the confirmations to come back while it is fed.
     stream.extend(silence(PAUSE_SECS + 2.0 * delay.as_secs_f32()));
+    let clock = Arc::new(StreamClock::default());
     let hearing = Arc::new(NotedHearing {
         hearing: ScriptedHearing {
             stream: stream.clone(),
             script,
-            delay,
             completes_cut_words: false,
         },
+        clock: Arc::clone(&clock),
         asked: Mutex::new(Vec::new()),
         mishears,
-        heard_right_from: Mutex::new(None),
+        heard_right_from: said_end + samples(Duration::from_secs_f32(MIN_SILENCE_SECS)),
     });
-    let engine = Engine::load(&cfg)
-        .expect("models load")
-        .hearing(Arc::clone(&hearing) as Arc<dyn Hear>);
-    let mut session = engine.session().unwrap();
+    let engine = clocked_engine_on(
+        clock,
+        &cfg,
+        Arc::clone(&hearing) as Arc<dyn Hear>,
+        delay,
+        None,
+    );
+    let mut session = engine.engine.session().unwrap();
     session.listen_for(&owned(phrases)).unwrap();
     let secs_after_end = |at: usize| (at as f32 - said_end as f32) / SAMPLE_RATE as f32;
     let mut said_at = None;
-    let fed_from = Instant::now();
-    let pause_closed = said_end as f32 / SAMPLE_RATE as f32 + MIN_SILENCE_SECS;
-    *hearing.heard_right_from.lock().unwrap() =
-        Some(fed_from + Duration::from_secs_f32(pause_closed));
     let events = fed_in_frames(
         &mut session,
+        &engine.clock,
         &stream,
         FINE_FRAME_SAMPLES,
         |_, fed, events| {
@@ -755,10 +821,7 @@ fn heard_finely_misheard(
         .lock()
         .unwrap()
         .iter()
-        .map(|asked| {
-            let at = asked.duration_since(fed_from).as_secs_f32() * SAMPLE_RATE as f32;
-            secs_after_end(at as usize)
-        })
+        .map(|&asked| secs_after_end(asked))
         .collect();
     Some(FinelyHeard {
         events,

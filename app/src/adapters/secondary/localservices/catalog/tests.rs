@@ -232,7 +232,7 @@ fn should_name_a_missing_engine_with_how_to_get_it() {
 fn should_find_an_engine_from_the_environment_then_the_bundle_then_the_path() {
     // Given
     let home = Home::complete();
-    let bundled = home.path().join("app/engines/llama-server/llama-server");
+    let bundled = home.path().join("app/engines/llama/llama-server");
     let chosen = home.path().join("elsewhere/llama-server");
     home.touch(&bundled);
     home.touch(&chosen);
@@ -254,6 +254,102 @@ fn should_find_an_engine_from_the_environment_then_the_bundle_then_the_path() {
     // Then
     assert_eq!(from_bundle, bundled);
     assert_eq!(from_env, chosen);
+}
+
+#[test]
+fn should_take_every_engine_from_its_folder_in_the_bundle_before_the_path() {
+    // Given
+    let home = Home::complete();
+    let engines = home.path().join("app/engines");
+    for (folder, program) in [
+        ("whisper", WHISPER),
+        ("llama", LLAMA),
+        ("command-spotting", COMMAND_SPOTTING),
+    ] {
+        home.touch(&engines.join(folder).join(program));
+    }
+    // When
+    let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
+    // Then
+    assert!(!specs.is_empty());
+    for spec in &specs {
+        assert!(
+            spec.program.starts_with(&engines),
+            "{} runs {}",
+            spec.label,
+            spec.program.display()
+        );
+    }
+}
+
+#[test]
+fn should_take_every_engine_from_the_path_outside_a_bundle() {
+    // Given
+    let home = Home::complete();
+    // When
+    let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
+    // Then
+    for spec in &specs {
+        assert_eq!(
+            spec.program.parent(),
+            Some(home.path().join("bin").as_path())
+        );
+    }
+}
+
+#[test]
+fn should_name_a_bundled_engine_with_the_version_of_its_folder() {
+    // Given
+    let home = Home::complete();
+    let program = home.path().join("app/engines/whisper").join(WHISPER);
+    home.touch(&program);
+    fs::write(program.with_file_name("VERSION"), "1.9.5\n").unwrap();
+    // When
+    let origin = engine_origin(&program, &home.machine());
+    // Then
+    assert_eq!(origin.to_string(), "whisper-server 1.9.5 from the bundle");
+}
+
+#[test]
+fn should_name_a_homebrew_engine_with_the_version_of_its_cellar_folder() {
+    // Given
+    let home = Home::complete();
+    let installed = home.path().join("Cellar/llama.cpp/0.7.0/bin").join(LLAMA);
+    home.touch(&installed);
+    let linked = home.path().join("bin").join(LLAMA);
+    fs::remove_file(&linked).unwrap();
+    std::os::unix::fs::symlink(&installed, &linked).unwrap();
+    // When
+    let origin = engine_origin(&linked, &home.machine());
+    // Then
+    assert_eq!(origin.to_string(), "llama-server 0.7.0 from $PATH");
+}
+
+#[test]
+fn should_name_an_engine_of_unknown_version_by_where_it_came_from() {
+    // Given
+    let home = Home::complete();
+    let chosen = home.path().join("elsewhere").join(LLAMA);
+    home.touch(&chosen);
+    let built = home.path().join("app").join(COMMAND_SPOTTING);
+    home.touch(&built);
+    let mut machine = home.machine();
+    machine.env.insert(
+        "VOICEPUNCHER_LLAMA_BINARY".into(),
+        chosen.display().to_string(),
+    );
+    // When
+    let from_env = engine_origin(&chosen, &machine);
+    let from_build = engine_origin(&built, &machine);
+    // Then
+    assert_eq!(
+        from_env.to_string(),
+        "llama-server (version unknown) from VOICEPUNCHER_LLAMA_BINARY"
+    );
+    assert_eq!(
+        from_build.to_string(),
+        "voicepuncher-command-spotting (version unknown) from the build folder"
+    );
 }
 
 #[test]

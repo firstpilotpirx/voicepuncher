@@ -74,9 +74,10 @@ impl LocalServices for ManagedServices {
         self.ports = specs.iter().map(|spec| spec.port).collect();
         for spec in &specs {
             log::info!(
-                "services: {} on port {} — {} {}",
+                "services: {} on port {} runs {} — {} {}",
                 spec.label,
                 spec.port,
+                catalog::engine_origin(&spec.program, &self.machine),
                 spec.program.display(),
                 spec.args.join(" ")
             );

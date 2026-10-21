@@ -1,7 +1,8 @@
 //! A speech recognition service for commands that knows the script of the stream: it finds
 //! each clip in the stream and hears the words whose middle lies in it (or, as whisper does,
-//! every word begun in it), after a set delay.
-//! Lets a test run the engine's confirmations at any latency without a running service.
+//! every word begun in it), at once.
+//! Lets a test run the engine's confirmations without a running service; the stream clock
+//! gives them their latency.
 
 use std::ops::Range;
 use std::time::Duration;
@@ -18,11 +19,10 @@ pub struct ScriptedWord {
     pub said: Range<usize>,
 }
 
-/// Hears the words of `script` in each clip of `stream`, `delay` after it is asked.
+/// Hears the words of `script` in each clip of `stream`.
 pub struct ScriptedHearing {
     pub stream: Vec<f32>,
     pub script: Vec<ScriptedWord>,
-    pub delay: Duration,
     /// Hears a word the clip's end cuts off whole, as whisper completes it ("start dicta…"
     /// heard as "start dictation"); else only the words whose middle lies in the clip.
     pub completes_cut_words: bool,
@@ -30,7 +30,6 @@ pub struct ScriptedHearing {
 
 impl Hear for ScriptedHearing {
     fn hear(&self, samples: &[f32], _deadline: Duration) -> anyhow::Result<Heard> {
-        std::thread::sleep(self.delay);
         Ok(self.heard_in(samples))
     }
 }

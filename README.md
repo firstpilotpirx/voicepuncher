@@ -31,11 +31,11 @@ Installed from the disk image, the panes list the app as **voicepuncher** with i
 4. Grant Microphone, Accessibility and Input Monitoring when asked; the panes list **voicepuncher**.
 5. Once it is ready the first time, voicepuncher asks once whether to start at login: **Start at Login** adds it to **System Settings → General → Login Items**, **Not Now** adds nothing. Either answer is remembered (`[app] launch_at_login_asked` in the configuration file, kept by the app). Change it later with the switch in **Settings → General** or in Login Items. A launch at login logs `launched at login`.
 
-The app has no Dock icon and no window in this version: it runs in the background. Quit it in Activity Monitor or with `pkill voicepuncher`. It still needs the local services (`just start-model-servers` from a checkout, below) until a later version bundles them.
+The app has no Dock icon and no window in this version: it runs in the background. Quit it in Activity Monitor or with `pkill voicepuncher`. It carries its own engines — whisper.cpp 1.9.5 for speech recognition, llama.cpp b11669 for text refinement and the command spotting service — and starts them itself, so nothing else is installed: no Homebrew, nothing on `$PATH`. It still needs the [models](#models) in `~/.voicepuncher/models/`. The engines add about 65 MB to the bundle (whisper 10 MB, llama 28 MB, command spotting 27 MB). Its log names each engine it runs and where it came from, e.g. `whisper-server 1.9.5 from the bundle`.
 
 ### From source
 
-Prerequisites: Rust ≥ 1.88, [`just`](https://github.com/casey/just), Homebrew `whisper-cpp` and `llama.cpp` (`just start-model-servers` offers to install them).
+Prerequisites: Rust ≥ 1.88, [`just`](https://github.com/casey/just), Homebrew `whisper.cpp` and `llama.cpp` (`just start-model-servers` offers to install them). Outside a bundle the app finds the engines on `$PATH` and logs their Homebrew version, e.g. `llama-server 0.7.0 from $PATH`.
 
 For the tests, also [cargo-nextest](https://nexte.st) 0.9.146: `cargo +stable install --locked cargo-nextest@0.9.146`. For the bundle and the disk image (`just bundle`, `just dmg`, the `bundle` stage of `full-check`), also `brew install create-dmg`.
 
@@ -47,9 +47,22 @@ cargo build --release
 
 Binary: `target/release/voicepuncher`
 
-`just bundle` builds the application bundle `dist/voicepuncher.app` from it (try it as installed: `open dist/voicepuncher.app`), and `just dmg` the disk image `dist/voicepuncher-vX.Y.Z.dmg` with its `.sha256`. Both sign with the certificate named by `VOICEPUNCHER_SIGNING_IDENTITY` (see [Release checklist](#release-checklist)); with the variable unset they sign ad-hoc and say so: such a bundle is a new application to macOS on every build, so it asks for the permissions again.
+`just bundle` builds the application bundle `dist/voicepuncher.app` from it, with the engines `just engines` stages (below) (try it as installed: `open dist/voicepuncher.app`), and `just dmg` the disk image `dist/voicepuncher-vX.Y.Z.dmg` with its `.sha256`. Both sign with the certificate named by `VOICEPUNCHER_SIGNING_IDENTITY` (see [Release checklist](#release-checklist)); with the variable unset they sign ad-hoc and say so: such a bundle is a new application to macOS on every build, so it asks for the permissions again.
 
-## Local services
+### Engines
+
+The bundle carries the engines `app/packaging/engines.lock` pins, by version and by the sha256 of every file; none is built from source. `just engines` stages them into `app/packaging/engines/` (gitignored; `just bundle` runs it):
+
+| Engine | Source | Folder in the bundle |
+|---|---|---|
+| speech recognition (`whisper-server`) | Homebrew `whisper.cpp` 1.9.5 with `ggml` 0.27.0 and `libomp` 23.1.3 | `Contents/MacOS/engines/whisper/` |
+| text refinement (`llama-server`) | llama.cpp release `b11669` (`llama-b11669-bin-macos-arm64.tar.gz`, downloaded once into `~/.cache/voicepuncher/engines/`, `VOICEPUNCHER_ENGINE_CACHE`) | `Contents/MacOS/engines/llama/` |
+| command spotting (`voicepuncher-command-spotting`) | this workspace, `cargo build --release` | `Contents/MacOS/engines/command-spotting/` |
+
+Each folder holds the program, every library it loads and a `VERSION` file. `just engines` refuses a Homebrew version or a checksum other than the lock's, naming what it found, and writes nothing then; keep the formulae with `brew pin whisper.cpp ggml libomp`. It relocates every file (each Homebrew path becomes `@rpath`, `@loader_path` the only search path, ggml's compiled-in backend folder blanked so the Metal and CPU backends load from the engine's own folder), signs it ad-hoc, and runs each engine with nothing but `/usr/bin:/bin` on `$PATH`; `just bundle` signs every file again with the signing identity, before the app. Whisper and llama are staged again only when the lock changed.
+
+**Bumping an engine:** install the new version (`brew upgrade whisper.cpp`, or a new release tag), write its version, sources and sha256 values into `engines.lock` (`shasum -a 256` of each file; the reason in the commit), run `just engines`, then `just full-check` — its `e2e-bundle` stage runs the bundled engines on the models and fails when one no longer uses the Metal GPU.
+
 
 voicepuncher runs no model itself. It sends each recording to the **speech recognition service for dictation** (OpenAI Audio Transcriptions API) and each raw transcript to a **text refinement service** (OpenAI Chat Completions API), both on this machine, and pastes what comes back. The supported services are whisper.cpp `whisper-server` and llama.cpp `llama-server`. With voice control on, the [command spotting service](#command-spotting-voice-control) confirms utterances with a **speech recognition service for commands** of its own, so the larger dictation model never slows down a voice command; the app never talks to that one.
 
@@ -402,7 +415,19 @@ tail -n 200 ~/.voicepuncher/logs/voicepuncher.log
 
 When the file would pass 10 MB, it is renamed `voicepuncher.log.1` (older ones move up to `.5`, the oldest is deleted) and a new file starts; no line is split between two files. File mode (`--input-file`) logs to the error output only and never touches the logs folder.
 
-## Testing
+## Licenses
+
+The bundle carries the license of every engine and library it bundles in `Contents/Resources/licenses/`:
+
+| Component | License | File |
+|---|---|---|
+| whisper.cpp | MIT | `whisper.cpp-LICENSE` |
+| ggml | MIT | `ggml-LICENSE` |
+| llama.cpp | MIT | `llama.cpp-LICENSE` |
+| LLVM OpenMP runtime (`libomp`) | Apache-2.0 with LLVM exceptions | `libomp-LICENSE` |
+| sherpa-onnx | Apache-2.0 | `sherpa-onnx-LICENSE` |
+| ONNX Runtime (linked into the command spotting service) | MIT | `onnxruntime-LICENSE` |
+
 
 All checks run through [`just`](https://github.com/casey/just) (`brew install just`). `just` with no arguments lists every recipe.
 
@@ -410,9 +435,9 @@ All checks run through [`just`](https://github.com/casey/just) (`brew install ju
 |---|---|---|---|
 | `just test` | unit + architecture + integration tests under cargo-nextest, each within its time limit | ~1 min | after every edit |
 | `just check` | fmt, clippy, `test`, release build, E2E smoke, WER accuracy on 10 samples, refinement evaluation | ~8.5 min (machine lock ≈ 7.3 min) | often while developing, before every commit you push |
-| `just full-check` | fmt, clippy, `test`, release build, the bundle (`bundle`: the disk image built and mounted, the bundle's Info.plist and signature checked, then the `app_distribution.feature` scenarios with the signing guards; no machine lock), E2E smoke, chunk seams, outages (`e2e-resilience`), WER accuracy on a fixed sample of 100 recordings (or 10, below), refinement evaluation | ~15.5–17.5 min (machine lock ≈ 14.5 min with 10 recordings, ≈ 16.3 min with 100) | before merging a branch and before every release |
+| `just full-check` | fmt, clippy, `test`, release build, the bundle (`bundle`: the disk image built and mounted, the bundle's Info.plist and signature checked, then the bundled engines checked, then the `app_distribution.feature` scenarios with the signing guards; no machine lock), E2E smoke, chunk seams, outages (`e2e-resilience`), the bundled engines (`e2e-bundle`: a copy of the bundle starts every service from its own engines on the Metal GPU), WER accuracy on a fixed sample of 100 recordings (or 10, below), refinement evaluation | ~15.5–17.5 min (machine lock ≈ 14.5 min with 10 recordings, ≈ 16.3 min with 100) | before merging a branch and before every release |
 
-Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke` (four stages, one per capability), `e2e-quick` (10 samples), `e2e-seams` (the seam sweep, plus Russian and English speech under 11 recording conditions, transcribed in chunks), `e2e-bench` (100 samples, two at a time), `e2e-resilience` (the `@resilience` scenarios: a speech recognition service paused while voice control runs, a command spotting service killed or paused and started again by the scripts, a request abandoned in the queue — each on service ports of its own, so the shared services are never touched), `e2e` (smoke + seams + 100 samples + refinement evaluation), `refine-eval` (the `@refinement` scenarios: dictated commands, normalization, and a per-category score of the 41 dictations in `e2e-test/refinement/eval_set.jsonl` against the live text refinement service, next to the raw-transcript baseline; fails when a dictated command is carried out or the language changes). The E2E recipes start every local service they test from the checkout's own code and models, on test ports of their own (28081 dictation, 28085 commands, 28080 text refinement, 28082 command spotting; `VOICEPUNCHER_TEST_STT_PORT` and siblings change them), and stop them afterwards, also when a test fails; your everyday services on the default ports are never reused, stopped or restarted. A service a killed run left on a test port is restarted; any other process holding one stops the run before it starts, naming that process. `check` and `full-check` start the services once for all their E2E stages and end with each stage's time. Speech synthesized with `say` is cached in `~/.cache/voicepuncher/speech/`; delete it to synthesize everything again.
+Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke` (four stages, one per capability), `e2e-quick` (10 samples), `e2e-seams` (the seam sweep, plus Russian and English speech under 11 recording conditions, transcribed in chunks), `e2e-bench` (100 samples, two at a time), `e2e-resilience` (the `@resilience` scenarios: a speech recognition service paused while voice control runs, a command spotting service killed or paused and started again by the scripts, a request abandoned in the queue — each on service ports of its own, so the shared services are never touched), `bundle-smoke` (the `bundle` stage, then `e2e-bundle`: a copy of the bundle launched outside `dist/` with nothing but `/usr/bin:/bin` on `$PATH` transcribes a recording, refines a sentence and answers the command spotting health check, and the engine logs show Metal), `e2e` (smoke + seams + 100 samples + refinement evaluation), `refine-eval` (the `@refinement` scenarios: dictated commands, normalization, and a per-category score of the 41 dictations in `e2e-test/refinement/eval_set.jsonl` against the live text refinement service, next to the raw-transcript baseline; fails when a dictated command is carried out or the language changes). The E2E recipes start every local service they test from the checkout's own code and models, on test ports of their own (28081 dictation, 28085 commands, 28080 text refinement, 28082 command spotting; `VOICEPUNCHER_TEST_STT_PORT` and siblings change them), and stop them afterwards, also when a test fails; your everyday services on the default ports are never reused, stopped or restarted. A service a killed run left on a test port is restarted; any other process holding one stops the run before it starts, naming that process. `check` and `full-check` start the services once for all their E2E stages and end with each stage's time. Speech synthesized with `say` is cached in `~/.cache/voicepuncher/speech/`; delete it to synthesize everything again.
 
 **Time limits.** Every Rust test runs under [cargo-nextest](https://nexte.st) 0.9.146 with a time limit, set in `.config/nextest.toml`: 2 min a test by default, and each E2E suite its own (one Gherkin harness run counts as one test, e.g. 7 min for the `@smoke` scenarios, 3 min for `e2e-quick`). A test still running at its limit is stopped and reported `TIMEOUT`, and the recipe fails at once instead of hanging. Without cargo-nextest 0.9.146 every test recipe stops with the install command above. `VOICEPUNCHER_HANG_PROBE=1 just test` and `VOICEPUNCHER_HANG_PROBE=1 just e2e-quick` arm two probes that hang on purpose, to see the limits work: they end with `TIMEOUT` after 2 and 3 min. Measured on Apple Silicon (10 cores): `just test` 67 s, `just check` ≈ 8.5 min.
 
@@ -454,6 +479,7 @@ Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke` (four sta
    - [ ] Drag it to Applications, open it: the Gatekeeper dialog, then Open Anyway in Privacy & Security starts it; no Dock icon appears and the menu bar keeps the frontmost app's menu. Grant the three permissions: each pane lists **voicepuncher** with its icon. Dictate once.
    - [ ] The identity survives an update: change anything, `just dmg` again, replace the app in Applications, open it → no permission prompt, dictation works. `codesign -d -r- /Applications/voicepuncher.app` names the certificate (`certificate leaf = H"…"`), the same for both builds.
    - [ ] After a release: download the DMG from the GitHub release (`xattr -p com.apple.quarantine` on it shows the quarantine flag), install it as above.
+   - [ ] Without Homebrew: quit every service (`just stop-model-servers`), launch the installed app from a shell with Homebrew's folders hidden — `env -i HOME="$HOME" PATH=/usr/bin:/bin /Applications/voicepuncher.app/Contents/MacOS/voicepuncher` — and dictate: the text is pasted, the log names each engine `from the bundle`, and `grep -l ggml_metal ~/.voicepuncher/logs/whisper-server-*.log ~/.voicepuncher/logs/llama-server-*.log` finds both engines on Metal. A downloaded copy runs nothing, not even an engine, before Open Anyway: macOS kills every program of a quarantined bundle that is not notarized.
 4. After the merge, on a clean checkout of `origin/main` with a bumped `version` in `app/Cargo.toml` and the signing identity set: `just release` — cleans `target/` and `dist/`, runs the tests and builds from scratch without the machine-wide lock, builds the signed bundle into `dist/voicepuncher-vX.Y.Z.dmg`, then tags `vX.Y.Z` and publishes a GitHub Release with the disk image and its `.sha256`, nothing else. In the main checkout, `target/release/voicepuncher` is gone until it finishes.
 
 ### Model comparison (not a release gate)

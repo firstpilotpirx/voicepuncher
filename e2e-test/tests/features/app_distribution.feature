@@ -85,6 +85,83 @@ Feature: app-distribution
       Then it produces a bundle whose signature verifies
       And it says the bundle is signed ad-hoc and has no stable identity
 
+  Rule: The bundle carries its engines
+
+    Scenario: Each engine runs on its own from the bundle
+      Given the bundle the bundle build made
+      When each bundled engine is run with nothing but the system folders on the path and no library path variable
+      Then each one answers with its usage or version and exits successfully
+
+    Scenario: The engine folders hold what the services need
+      Given the bundle the bundle build made
+      When its engine folders are listed
+      Then there is one folder for the speech recognition engine, one for the text refinement engine and one for the command spotting service
+      And each holds its program and a version file
+
+  Rule: The engines are pinned
+
+    Scenario: A different Homebrew version is refused
+      Given an engine lock that names a Homebrew formula version that is not installed
+      When the engines are staged
+      Then the staging fails naming the formula, the version the lock expects and the versions found
+      And it says how to pin the formula
+      And no engine folder is written
+
+    Scenario: A release archive with another checksum is refused
+      Given an engine lock whose release archive checksum differs from the archive's
+      When the engines are staged
+      Then the staging fails naming the archive, the checksum found and the checksum the lock expects
+      And no engine folder is written
+
+    Scenario: The pinned engines are staged
+      Given the engine lock of the checkout
+      When the engines are staged
+      Then each engine folder holds exactly the files the lock lists for it
+      And each engine's version file holds the lock's version
+
+  Rule: The engines are relocated
+
+    Scenario: No bundled file points outside the bundle
+      Given the bundle the bundle build made
+      When the library references of every bundled program and library are read
+      Then none names a Homebrew or /usr/local path
+      And each library it names relative to its search path is a file in the same engine folder
+      And no bundled file holds a Homebrew installation folder compiled into it
+
+  Rule: The engines are signed with the application
+
+    Scenario: Every bundled file carries the application's signature
+      Given the bundle the bundle build made
+      When the signature of every bundled program and library is read
+      Then each verifies and names the same signer as the application
+
+  Rule: The bundled engines use the GPU
+
+    # The e2e-bundle stage of full-check, under the machine-wide lock: the bundle's own engines on the models
+    @bundle_engines
+    Scenario: A bundle copy serves dictation and refinement on Metal
+      Given a copy of the bundle outside the build folder, the models on disk and nothing but the system folders on the path
+      When the copy's application starts its services with refinement and voice control on
+      Then its log names each engine as taken from the bundle
+      And a recording is transcribed and a sentence is refined through the started services
+      And the command spotting service answers its health check
+      And the speech recognition engine's log shows it loaded its compute backends from the copy and set up the Metal GPU
+      And the copy's text refinement engine finds the Metal GPU
+
+    # Manual (task 6.2): a downloaded disk image needs the user's Open Anyway before any of its programs runs
+    @wip
+    Scenario: A user without Homebrew installs the disk image
+      Given a Mac on which Homebrew's folders are hidden from the path and the disk image of the release
+      When the user installs the application from it, allows it with Open Anyway, launches it and dictates
+      Then the services start from the bundle, the dictated text is pasted and the engine logs show the Metal GPU in use
+
+  Rule: Licenses ship with the bundle
+
+    Scenario: The bundle holds the licenses
+      Given the bundle the bundle build made
+      When its licenses folder is listed
+      Then it holds the licenses of whisper.cpp, ggml, llama.cpp, the OpenMP runtime, sherpa-onnx and ONNX Runtime
+
   Rule: The first launch is documented
 
     # Manual: following the README needs a person, a downloaded release and Gatekeeper's first refusal
@@ -108,6 +185,11 @@ Feature: app-distribution
       Given a checkout with the bundle tools installed
       When the stages of the full check are listed
       Then a bundle stage comes before the stages that wait for the machine-wide lock
+
+    Scenario: The full check runs the bundled engines
+      Given a checkout with the bundle tools installed
+      When the stages of the full check are listed
+      Then a bundle engine stage comes after the bundle stage, among the stages that wait for the machine-wide lock
 
     Scenario: The full check fails on a broken bundle
       Given a bundle whose information file lacks the microphone usage description

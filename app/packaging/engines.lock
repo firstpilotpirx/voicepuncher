@@ -1,0 +1,93 @@
+# The engines the bundle carries: where each comes from, its version, and the sha256 of every file taken
+# from that source (before relocation). `just engines` takes nothing else and builds no engine from source.
+# Bump an engine: change its version here, run `just engines` (it names every file whose checksum differs),
+# write the new checksums here with the reason in the commit, then run `just full-check` (README § Engines).
+
+# whisper.cpp from Homebrew (whisper.cpp publishes no macOS server binary), with Homebrew's ggml, its
+# run-time backends (libexec/*.so) and the OpenMP runtime ggml-base links; `from` is <formula>/<path in
+# the formula's version folder of `brew --cellar`>
+[whisper]
+source = "homebrew"
+program = "whisper-server"
+version = "1.9.5"
+
+[whisper.formulae]
+"whisper.cpp" = "1.9.5"
+ggml = "0.27.0"
+libomp = "23.1.3"
+
+[whisper.from]
+"whisper-server" = "whisper.cpp/bin/whisper-server"
+"libwhisper.1.dylib" = "whisper.cpp/lib/libwhisper.1.dylib"
+"libggml.0.dylib" = "ggml/lib/libggml.0.dylib"
+"libggml-base.0.dylib" = "ggml/lib/libggml-base.0.dylib"
+"libggml-blas.so" = "ggml/libexec/libggml-blas.so"
+"libggml-cpu-apple_m1.so" = "ggml/libexec/libggml-cpu-apple_m1.so"
+"libggml-cpu-apple_m2_m3.so" = "ggml/libexec/libggml-cpu-apple_m2_m3.so"
+"libggml-cpu-apple_m4.so" = "ggml/libexec/libggml-cpu-apple_m4.so"
+"libggml-metal.so" = "ggml/libexec/libggml-metal.so"
+"libomp.dylib" = "libomp/lib/libomp.dylib"
+
+[whisper.sha256]
+"whisper-server" = "9d3bf58513018556ed0131af5519b1a13153a16eea6115dfa094b320559d8020"
+"libwhisper.1.dylib" = "5dfcabff79cf16304469bd2a66baeb150dabf1b143954045107412c33f6238e5"
+"libggml.0.dylib" = "2aa7468139eb0342b181d6385df537a7d3bded44f23da111b45b155cdb841bcb"
+"libggml-base.0.dylib" = "1afa353df329c3deef52c08818e65e42c6773c9db7159244322cc2cb6cf63da6"
+"libggml-blas.so" = "5af6f25b468109dab33da18517cb90cb29d4d87c46048f8efde5bc19dc5e4127"
+"libggml-cpu-apple_m1.so" = "6ad9d81a9c6de9935c4f268724c10ac4a11873a6ff4af121dab583713844ac71"
+"libggml-cpu-apple_m2_m3.so" = "a816fbe68d2195037441c4bcf5d9874930e5cdf0e12e6629e9b44fe19ff2bb37"
+"libggml-cpu-apple_m4.so" = "5bb732bfb80cb7db4094781e7976036a0e99e85cc5d67c99ba15b195ab8c298d"
+"libggml-metal.so" = "5725e308a8d6b1b58ba714d469ffd3a5de768677f9f9cbe3cfc29850cd3d12fb"
+"libomp.dylib" = "cb679440b0af57131274b6c0bcc11b8c18ef7ad45e2a6625ef57e90379fc2ae4"
+
+# llama.cpp's official release archive, the build Homebrew's llama.cpp 0.7.0 is (commit 620d2225c); `from`
+# is the path inside the archive
+[llama]
+source = "github-release"
+program = "llama-server"
+version = "b11669"
+url = "https://github.com/ggml-org/llama.cpp/releases/download/b11669/llama-b11669-bin-macos-arm64.tar.gz"
+asset = "llama-b11669-bin-macos-arm64.tar.gz"
+asset_sha256 = "dbed55493d72bc1ba2babc8770d669c2289b5bc4ee9fb2a4dfc158d45b7d13fd"
+
+[llama.from]
+"llama-server" = "llama-b11669/llama-server"
+"libllama-server-impl.dylib" = "llama-b11669/libllama-server-impl.dylib"
+"libllama-common.0.dylib" = "llama-b11669/libllama-common.0.dylib"
+"libmtmd.0.dylib" = "llama-b11669/libmtmd.0.dylib"
+"libllama.0.dylib" = "llama-b11669/libllama.0.dylib"
+"libggml.0.dylib" = "llama-b11669/libggml.0.dylib"
+"libggml-base.0.dylib" = "llama-b11669/libggml-base.0.dylib"
+"libggml-cpu.0.dylib" = "llama-b11669/libggml-cpu.0.dylib"
+"libggml-blas.0.dylib" = "llama-b11669/libggml-blas.0.dylib"
+"libggml-metal.0.dylib" = "llama-b11669/libggml-metal.0.dylib"
+"libggml-rpc.0.dylib" = "llama-b11669/libggml-rpc.0.dylib"
+
+[llama.sha256]
+"llama-server" = "981b460a278e9a0c880cef32d6fab42785a119084456b16845304cf38c32cf69"
+"libllama-server-impl.dylib" = "f1fb36acea8df4eefd90aafe30af16a1a87d7f8b45da3576a3d64100cf18a435"
+"libllama-common.0.dylib" = "725c24d32d0abd5fd6d2baf589d5294bfea90c072ed4db99cb62fe88d4ed7f42"
+"libmtmd.0.dylib" = "b59316a5d3ad780edfe98df05bf4a3f24fd17eb9cc4d5c53324d5ef6882465b2"
+"libllama.0.dylib" = "7d461aace0a3ace6d5733bde2ec2d03b54f00ef620a6f3bbedb735eb1cbb5035"
+"libggml.0.dylib" = "a97bc40525aea78834fdf28197b5b21f149b6d5ac2d3b615b95b86f775a69477"
+"libggml-base.0.dylib" = "35851d2f742b8bdda2ea9707ae4f9b8a8970d38b387ccdeb09fce518c64fda54"
+"libggml-cpu.0.dylib" = "f29b0322166bc9ea2a1f2482f9cd034959013228831f5bfd06aa770b75dd4d12"
+"libggml-blas.0.dylib" = "12aefdc8dd4873d69554dc85a0dd09fffef9828e1fc9ecf6b48913ef2106b33a"
+"libggml-metal.0.dylib" = "448d7eafb7906c4bbd445cac28fad15ae9311b4315461283742a2fb1af2a5653"
+"libggml-rpc.0.dylib" = "547ac08b705a96e82ddb9fcfc2529472f97f5da1957984b3a7652cd5875d452d"
+
+# This workspace's command spotting service (sherpa-onnx linked statically), from its release build
+[command-spotting]
+source = "workspace"
+program = "voicepuncher-command-spotting"
+package = "voicepuncher-command-spotting"
+
+# The license of every bundled engine and library: <engine section or homebrew formula or cargo crate or
+# repo>:<path>
+[licenses]
+"whisper.cpp-LICENSE" = "homebrew:whisper.cpp/LICENSE"
+"ggml-LICENSE" = "homebrew:ggml/LICENSE"
+"libomp-LICENSE" = "homebrew:libomp/LICENSE.TXT"
+"llama.cpp-LICENSE" = "llama:llama-b11669/LICENSE"
+"sherpa-onnx-LICENSE" = "cargo:sherpa-onnx-sys/LICENSE"
+"onnxruntime-LICENSE" = "repo:app/packaging/licenses/onnxruntime-LICENSE"

@@ -10,7 +10,7 @@ use crate::keywords;
 use crate::matcher::{Found, PhraseMatcher, Placement};
 use crate::orderer::{Segment, Spotted};
 use crate::protocol::{ServerEvent, Timing};
-use crate::worker::{Answer, Job, JobId, JobKind};
+use crate::worker::{Answer, ConfirmationWorker, Job, JobId, JobKind, WorkerLoad};
 
 use super::STARTED_EARLY;
 
@@ -149,6 +149,15 @@ impl Session<'_> {
         let mut events = self.take_answers();
         events.extend(self.outbox.sync(id));
         events
+    }
+
+    /// The confirmations on each thread of the worker not answered yet, and those whose
+    /// answers were not taken yet; nothing without a worker.
+    pub fn confirmation_load(&self) -> WorkerLoad {
+        self.worker
+            .as_ref()
+            .map(ConfirmationWorker::load)
+            .unwrap_or_default()
     }
 
     /// Confirmations asked for and not answered yet.

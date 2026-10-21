@@ -387,9 +387,27 @@
 
 ### Bundle
 - **Type:** Distribution artifact (not a domain object)
-- **Definition:** The macOS application `voicepuncher.app`: the release binary, its `Info.plist` (bundle identifier `io.github.firstpilotpirx.voicepuncher`, version from `app/Cargo.toml`, no Dock icon, microphone usage description) and the icon, signed as one unit. macOS grants Microphone, Accessibility and Input Monitoring to the bundle, by its signing identity, not to the terminal that started it.
+- **Definition:** The macOS application `voicepuncher.app`: the release binary, its engine folders, the licenses of its engines, its `Info.plist` (bundle identifier `io.github.firstpilotpirx.voicepuncher`, version from `app/Cargo.toml`, no Dock icon, microphone usage description) and the icon, signed as one unit. macOS grants Microphone, Accessibility and Input Monitoring to the bundle, by its signing identity, not to the terminal that started it.
 - **Code:** `app/packaging/` (sources), `just bundle` (builds `dist/voicepuncher.app`)
 - **Synonyms to AVOID:** "app package", "binary" (the binary is only one file of the bundle), "installer"
+
+### Engine
+- **Type:** Distribution artifact (not a domain object)
+- **Definition:** The program a local service runs: `whisper-server` (whisper.cpp) for both speech recognition services, `llama-server` (llama.cpp) for the text refinement service, `voicepuncher-command-spotting` for the command spotting service. A service is the running process on its port; the engine is the program and the libraries it loads. The app logs, per service, the engine it runs, its version and where it came from: the bundle, a program the environment names, `$PATH` or the build folder.
+- **Code:** `EngineOrigin`, `EngineSource`, `engine_origin` in `app/src/adapters/secondary/localservices/catalog/`
+- **Synonyms to AVOID:** "server" for the program (the service is the process), "backend" (ggml's compute backends are libraries an engine loads), "binary" alone
+
+### Engine folder
+- **Type:** Distribution artifact (not a domain object)
+- **Definition:** The folder of one engine inside the bundle — `Contents/MacOS/engines/whisper/`, `llama/` or `command-spotting/` — holding its program, every library it loads (relocated to `@rpath` + `@loader_path`) and a `VERSION` file; the app takes each engine from its folder before `$PATH`.
+- **Code:** `ENGINES_DIR`, `engine_folder` in the catalog; `just engines` stages them into `app/packaging/engines/`
+- **Synonyms to AVOID:** "Frameworks", "lib folder"
+
+### Engine lock
+- **Type:** Distribution artifact (not a domain object)
+- **Definition:** `app/packaging/engines.lock`: the source, version and sha256 of every file of every bundled engine, and the source of every license. `just engines` takes the engines only as it says, never builds one, and refuses any other version or checksum.
+- **Code:** `app/packaging/engines.lock`, `just engines` (`_engines`)
+- **Synonyms to AVOID:** "manifest", "versions file"
 
 ### Signing identity
 - **Type:** Distribution concept

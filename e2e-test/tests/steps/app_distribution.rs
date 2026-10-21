@@ -13,6 +13,10 @@ use cucumber::{given, then, when};
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
+mod bundle_launch;
+mod bundled;
+mod engines;
+
 const APP_NAME: &str = "voicepuncher";
 const BUNDLE_DIR: &str = "voicepuncher.app";
 const BUNDLE_IDENTIFIER: &str = "io.github.firstpilotpirx.voicepuncher";
@@ -51,6 +55,9 @@ pub struct DistributionRun {
     /// The folder a scenario's bundle build writes to.
     dist: Option<PathBuf>,
     stages: Vec<String>,
+    engines: engines::EngineRun,
+    bundled: bundled::BundledRead,
+    launch: bundle_launch::BundleLaunch,
 }
 
 /// A disk image attached read-only at a folder of the scenario, detached when dropped.
@@ -660,6 +667,33 @@ fn bundle_tools(_world: &mut E2eWorld) -> Result<()> {
 #[when("the stages of the full check are listed")]
 fn list_full_check(world: &mut E2eWorld) -> Result<()> {
     world.distribution.stages = recipe_stages("full-check")?;
+    Ok(())
+}
+
+/// The model stage of `full-check` that runs the bundle's own engines.
+const BUNDLE_ENGINE_STAGE: &str = "e2e-bundle";
+
+#[then(
+    "a bundle engine stage comes after the bundle stage, among the stages that wait for the machine-wide lock"
+)]
+fn bundle_engines_locked(world: &mut E2eWorld) -> Result<()> {
+    let stages = &world.distribution.stages;
+    let bundle = stages
+        .iter()
+        .position(|stage| stage == "bundle")
+        .with_context(|| format!("no bundle stage in {stages:?}"))?;
+    let engines = stages
+        .iter()
+        .position(|stage| stage == BUNDLE_ENGINE_STAGE)
+        .with_context(|| format!("no {BUNDLE_ENGINE_STAGE} stage in {stages:?}"))?;
+    ensure!(
+        engines > bundle,
+        "{BUNDLE_ENGINE_STAGE} runs before the bundle it needs: {stages:?}"
+    );
+    ensure!(
+        waits_for_the_lock(BUNDLE_ENGINE_STAGE),
+        "{BUNDLE_ENGINE_STAGE} does not wait for the machine-wide lock"
+    );
     Ok(())
 }
 
