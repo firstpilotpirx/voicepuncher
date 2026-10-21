@@ -4,7 +4,7 @@ The audit of 2026-10-22 (five independent reviews over 74 634 lines of Rust, 1 4
 
 ## What Changes
 
-- The budgets become checks: `clippy.toml` with `too-many-lines-threshold`, `too-many-arguments-threshold`, `excessive-nesting-threshold`, `cognitive-complexity-threshold`; `[workspace.lints.clippy]` turning `too_many_lines`, `too_many_arguments`, `excessive_nesting`, `cognitive_complexity` and `type_complexity` on as errors; file length and public-member count checked by a rule of `app/tests/architecture.rs` (code lines, as the kit defines them).
+- The budgets become checks: `clippy.toml` with `too-many-lines-threshold`, `too-many-arguments-threshold`, `excessive-nesting-threshold`, `cognitive-complexity-threshold`; `[workspace.lints.clippy]` turning `too_many_lines`, `too_many_arguments`, `excessive_nesting`, `cognitive_complexity` and `type_complexity` on as errors; function length and parameters (for the ratchet), file length, struct fields, public members and directory size measured by a new test target `app/tests/size_budgets.rs` (code lines, as the kit defines them).
 - Budgets for structure too: a struct with more than 12 fields and a module directory over a stated budget fail the same rule, so a `Pipeline` or a `Session` cannot grow silently.
 - A ratchet, not a big bang: the units over budget today are listed in one baseline file with their current measure; a check fails when a listed unit grows, when a new unit exceeds a budget, or when a listed unit shrinks under budget without leaving the list. Every change that touches a listed unit must shrink it (`AGENTS.md` § Workflow gets the rule, `/opsx:verify` checks it).
 - `AGENTS.md` § Architecture rules names the budgets and the baseline; `rustfmt.toml` sets `struct_lit_width`/`struct_variant_width` as `quality.md` requires so line counts measure complexity, not formatting.
@@ -23,9 +23,9 @@ Out of scope: shrinking the hubs; `justfile` size (its own change); tests under 
 
 ## Impact
 
-- `clippy.toml`, `rustfmt.toml`, `Cargo.toml` (`[workspace.lints]`), `app/tests/architecture.rs` (new rules R14–R16 and the baseline file `app/tests/size_baseline.toml`), `justfile` (`_lint`), `AGENTS.md`.
+- `clippy.toml`, `rustfmt.toml`, `Cargo.toml` (`[workspace.lints]`), `app/tests/size_budgets.rs` and the baseline file `app/tests/size_baseline.toml`, `#[expect(…, reason = "size baseline")]` on every listed function, `justfile` (`_lint`), `AGENTS.md`.
 
-## Open points
+## Open points (settled in design.md: the kit's numbers; tests under the budgets from the start, in the same baseline; 12 fields, 2 000 code lines per directory)
 
 - Thresholds: the kit's numbers (40 / 300 / 5 / 4 / 15 / 35) as the targets, or the project's own looser first step (60 / 600 / 6 / 5 / 20 / 35) with the kit's as the second ratchet? Proposed: the kit's numbers from the start, with the baseline carrying the gap — a looser number is a second baseline.
 - Whether the budgets apply to test code from the start (the kit says yes). Proposed: production first, tests in the baseline with a date.
