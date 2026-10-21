@@ -32,7 +32,7 @@ A needed service whose port already answers as that service SHALL be adopted: th
 - **AND** after the app quits both services still answer
 
 ### Requirement: An owned service that stops is started again
-A service the app started SHALL be started again when its process exits, after 1 second, the pause doubling with every exit in a row up to 30 seconds and falling back to 1 second after a run of 30 seconds or more; a service that once answered and then fails three checks of it in a row SHALL be killed and started again the same way.
+A service the app started SHALL be started again when its process exits, after 1 second, the pause doubling with every exit in a row up to 30 seconds and falling back to 1 second after a run of 30 seconds or more; a service with a health check (the text refinement and command spotting services; the whisper copies have none, as in the service scripts) that once answered and then fails three checks of it in a row SHALL be killed and started again the same way.
 
 #### Scenario: An owned service exits
 - **GIVEN** the app started the text refinement service and it is ready

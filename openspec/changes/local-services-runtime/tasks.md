@@ -32,10 +32,10 @@
 ## 5. E2E and docs
 
 - [x] 5.1 Red: E2E scenario "A real launch leaves no service behind at quit" in `e2e-test/tests/features/local_services.feature` with steps
-- [ ] 5.2 Green: make it pass on the test ports
-- [ ] 5.3 Docs: `README.md` § Local services, `AGENTS.md` § What this project is, `docs/architecture/overview.md`, `docs/architecture/context.md`, `docs/project-map.md`; `just test`; commit
+- [ ] 5.2 Green: make it pass on free ports of its own
+- [x] 5.3 Docs: `README.md` § Local services, `AGENTS.md` § What this project is, `docs/architecture/overview.md`, `docs/architecture/context.md`, `docs/project-map.md`; `just test`; commit
 
 ## 6. Release
 
-- [ ] 6.1 Bump `version` in `app/Cargo.toml` to 0.31.0; `just test`; commit
+- [x] 6.1 Bump `version` in `app/Cargo.toml` to 0.31.0; `just test`; commit
 - [ ] 6.2 Manual checks by the user (deferred for this run by the user's decision): cold launch with no services, warm launch after `just start-model-servers` (adopted, left running at quit), quit leaves no owned process, kill an owned llama-server during use

@@ -10,7 +10,7 @@ The `justfile` supervises the services with bash (`supervise`, `start_service`, 
 
 **D2 — Adopt or own, decided once per service at start.** A port that answers as the expected service is adopted, never started over and never stopped; three failed checks make it Stopped outside the app, and it is adopted again when it answers. This keeps `just start-model-servers` useful in development and avoids port fights with the scripts' supervisor.
 
-**D3 — The `justfile`'s numbers and arguments, guarded by a test.** Readiness 60 s, backoff 1 s doubling to 30 s (back to 1 s after a run of 30 s), 3 failed health checks every 5 s, engine arguments, thread split `cores / copies`. A unit test reads the `justfile`'s `whisper_args` and llama command lines and compares the flags, so the two cannot drift. Five starts in a row that never answered → Failed (the scripts stop at the first; the app retries a few times because a crash during the first Metal init is common).
+**D3 — The `justfile`'s numbers and arguments, guarded by a test.** Readiness 60 s, backoff 1 s doubling to 30 s (back to 1 s after a run of 30 s), 3 failed health checks every 5 s (llama and command spotting; the whisper copies have no health check, as in the `justfile`), engine arguments, thread split `cores / copies`. A unit test reads the `justfile`'s `whisper_args` and llama command lines and compares the flags, so the two cannot drift. Five starts in a row that never answered → Failed (the scripts stop at the first; the app retries a few times because a crash during the first Metal init is common).
 
 **D4 — The copies stay found from the address.** The runtime starts the copies on exactly the ports `copy-pool` looks at (`ServiceAddress::copy_ports`), one copy on the service's own port; the pool keeps discovering them, so the recognition path does not change and no copy list is handed over.
 
@@ -18,7 +18,7 @@ The `justfile` supervises the services with bash (`supervise`, `start_service`, 
 
 **D6 — `[services] manage` as the switch.** False keeps today's behaviour exactly (probe at launch, exit 2); E2E and developers who prefer the `justfile` set it. Default true.
 
-**D7 — Engines and models resolved in a fixed order.** Environment override, bundle `Contents/MacOS/engines/NAME/NAME`, `$PATH`, and for the command spotting service `target/{release,debug}/` next to the running binary. Models by the `justfile`'s file names in `[services] models_dir`, then `~/.voicepuncher/`; environment overrides win. A missing file → Failed with the path.
+**D7 — Engines and models resolved in a fixed order.** Environment override, bundle `Contents/MacOS/engines/NAME/NAME`, `$PATH`, and for the command spotting service `target/{release,debug}/` next to the running binary. Models by the `justfile`'s file names in `[services] models_dir`, then `~/.voicepuncher/`; environment overrides win. The command spotting service is started with `[services] commands_url`, the speech recognition service for commands (loopback only, like every service address). A missing file → Failed with the path.
 
 **D8 — Output piped into the rotating writer.** Both streams of a child go through two reader threads into one `RotatingFileWriter` per service (`BINARY-PORT.log`), so a full pipe never blocks an engine.
 
@@ -38,7 +38,7 @@ The `justfile` supervises the services with bash (`supervise`, `start_service`, 
 |---|---|
 | A cold launch starts the needed services | unit (`catalog`: needed services per configuration; `ServiceRuntime`) |
 | Voice control needs the command services | unit (`catalog`) |
-| A real launch leaves no service behind at quit | E2E `local_services.feature` (`@smoke`, test ports) |
+| A real launch leaves no service behind at quit | E2E `local_services.feature` (`@smoke`, free ports of its own) |
 | Services kept warm by the service scripts are adopted | unit (`supervision.rs`, `ServiceRuntime`: adopted, not stopped at stop); manual run |
 | An owned service exits | unit (`supervision.rs`, fake clock) |
 | The pause grows while a service keeps exiting | unit (`supervision.rs`) |
@@ -49,7 +49,7 @@ The `justfile` supervises the services with bash (`supervise`, `start_service`, 
 | A service that ignores the request to end is killed | unit (`ServiceRuntime`, fake clock); adapter integration `localservices_process_it.rs` (terminate, kill) |
 | The service scripts stop an adopted service | unit (`supervision.rs`) |
 | A started service writes its own log | adapter integration `localservices_process_it.rs` |
-| The app leaves the services alone | unit (`config.rs` default and `runtime/services.rs` `for_config`) |
+| The app leaves the services alone | unit (`config.rs` `manage = false`); E2E `voice_control.feature` (with `manage = false` the app starts no command spotting service and refuses to start) |
 | The refinement model is not on disk | unit (`catalog`) |
 | The pipeline starts once the services are ready | component `app_runtime.feature` (fake services) |
 | A service that cannot start fails the runtime without ending it | component `app_runtime.feature` |
