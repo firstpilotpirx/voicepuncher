@@ -18,7 +18,7 @@ export VOICEPUNCHER_COMMAND_WHISPER_MODEL := env_var_or_default("VOICEPUNCHER_CO
 export VOICEPUNCHER_VAD_MODEL := env_var_or_default("VOICEPUNCHER_VAD_MODEL", `find ~/.voicepuncher -maxdepth 2 -name 'ggml-silero-*.bin' -exec ls -t {} + 2>/dev/null | head -1 || true`)
 export VOICEPUNCHER_LLM_MODEL := env_var_or_default("VOICEPUNCHER_LLM_MODEL", shell(find_model, refinement_model_file))
 # Command spotting service (voice control): sherpa-onnx keyword spotting model directory and its Silero VAD
-export VOICEPUNCHER_KWS_MODEL_DIR := env_var_or_default("VOICEPUNCHER_KWS_MODEL_DIR", `find ~/.voicepuncher -maxdepth 2 -type d -name 'sherpa-onnx-kws-*' 2>/dev/null | head -1 || true`)
+export VOICEPUNCHER_KWS_MODEL_DIR := env_var_or_default("VOICEPUNCHER_KWS_MODEL_DIR", `find ~/.voicepuncher -maxdepth 2 -type d -name 'sherpa-onnx-kws-*' -exec ls -td {} + 2>/dev/null | head -1 || true`)
 # The user's own recorded voice commands (never committed): tests run on them when they exist
 export VOICEPUNCHER_VOICE_SAMPLES := env_var_or_default("VOICEPUNCHER_VOICE_SAMPLES", `test -d ~/.voicepuncher/voice-samples && echo ~/.voicepuncher/voice-samples || true`)
 export VOICEPUNCHER_KWS_VAD_MODEL := env_var_or_default("VOICEPUNCHER_KWS_VAD_MODEL", `find ~/.voicepuncher -maxdepth 2 -name 'silero_vad.onnx' 2>/dev/null | head -1 || true`)
@@ -97,7 +97,9 @@ stage_passes := env_var_or_default("VOICEPUNCHER_STAGE_PASSES", home_directory()
 # killed after its time limit. Every check, build, E2E, benchmark and real-keyboard recipe run on its own runs its
 # private `_<name>` body under it, except `test` and `release`, which use no shared service, port or GPU (see
 # their comments). `check` and `full-check` take it only for their model stages (see _stages)
-machine_lock := env_var_or_default("MACHINE_LOCK", home_directory() / ".claude/bin/with-machine-lock")
+# VOICEPUNCHER_NO_MACHINE_LOCK=1 (the hosted CI, which has no agent-kit) runs the recipes' bodies through plain
+# /usr/bin/env instead: no lock, no time limit; `test` then skips the lock's own self-test
+machine_lock := if env_var_or_default("VOICEPUNCHER_NO_MACHINE_LOCK", "") == "1" { "/usr/bin/env" } else { env_var_or_default("MACHINE_LOCK", home_directory() / ".claude/bin/with-machine-lock") }
 # How long a locked run waits for the lock before it gives up (exit 75): 6 h unless the caller sets it, so a run
 # queued behind several sessions' checks waits out the queue instead of giving up after an hour and running nothing
 export MACHINE_LOCK_WAIT := env_var_or_default("MACHINE_LOCK_WAIT", "21600")
@@ -1183,6 +1185,8 @@ _test: _require-nextest
     set -euo pipefail
     me=({{just_executable()}} --justfile {{quote(justfile())}})
     now() { perl -MTime::HiRes=time -e 'printf "%.1f", time'; }
+    # A model path the justfile did not find is exported empty; the tests skip a model only when its variable is unset
+    for name in $(compgen -e | grep '^VOICEPUNCHER_'); do [[ -n "${!name}" ]] || unset "$name"; done
     # A rerun runs only its failed tests over the workspace, not the self-tests, and neither reuses nor records
     if [[ -n "${VOICEPUNCHER_RERUN_FILTER:-}" ]]; then
         selection=(--workspace -E "not binary_id(voicepuncher-e2e-test::cucumber_e2e) & ($VOICEPUNCHER_RERUN_FILTER)" --no-tests=pass)
@@ -1224,7 +1228,11 @@ _test: _require-nextest
     if [[ -n "$self" ]]; then
         "${me[@]}" _test-stage-keys
         "${me[@]}" _test-lock-phases
-        "${me[@]}" _test-class-locks
+        if [[ "${VOICEPUNCHER_NO_MACHINE_LOCK:-}" == 1 ]]; then
+            echo "⊘ machine lock self-test skipped (VOICEPUNCHER_NO_MACHINE_LOCK=1)"
+        else
+            "${me[@]}" _test-class-locks
+        fi
     fi
     # The pass records of the parts that ran, when what they read held through the run
     [[ -n "$parts" ]] || exit 0
@@ -1748,6 +1756,12 @@ _test-lock-phases:
     expect "an unknown stage is heavy" "heavy e2e-something-new" e2e-something-new
     expect "only light stages give one phase" "light e2e-regression" e2e-regression
     expect "no stage, no phase" ""
+    lock() { {{just_executable()}} --justfile {{quote(justfile())}} --evaluate machine_lock; }
+    [[ $(VOICEPUNCHER_NO_MACHINE_LOCK=1 MACHINE_LOCK=/elsewhere lock) == /usr/bin/env ]] \
+        || { echo "✗ VOICEPUNCHER_NO_MACHINE_LOCK=1 does not run the recipes without the lock: $(VOICEPUNCHER_NO_MACHINE_LOCK=1 lock)" >&2; exit 1; }
+    [[ $(env -u VOICEPUNCHER_NO_MACHINE_LOCK -u MACHINE_LOCK {{just_executable()}} --justfile {{quote(justfile())}} --evaluate machine_lock) == */.claude/bin/with-machine-lock ]] \
+        || { echo "✗ the machine lock is not the agent-kit lock by default" >&2; exit 1; }
+    echo "  ✓ VOICEPUNCHER_NO_MACHINE_LOCK=1 runs the recipes without the lock (CI)"
 
 # The stage keys' expected behaviour (run by the `test` stage): in a scratch git repository laid out like this
 # one, a stage's key changes with a file it reads (tracked, untracked or deleted, committed or not) and with its

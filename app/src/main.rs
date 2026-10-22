@@ -117,12 +117,6 @@ fn main() {
             config_path.display()
         );
     }
-    if config.audio.debug_save_wav {
-        log::warn!(
-            "[audio] debug_save_wav is retired: the dictation archive ([archive]) now keeps \
-             every recording; remove the key from the config"
-        );
-    }
 
     if let Some(ref input_path) = input_file {
         run_file_mode(input_path, &config, archives_file_mode);

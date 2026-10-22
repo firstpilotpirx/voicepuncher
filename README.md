@@ -484,6 +484,7 @@ Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke` (four sta
 ### Release checklist
 
 1. `just full-check` passes (on `origin/main` itself it runs the 100 recordings).
+1. The hosted `ci` check (`.github/workflows/ci.yml`) is green on the release commit. Owner setup, once: in the repository's Settings → Branches, the protection rule of `main` requires the status check `ci`.
 2. Manual run (required before merging a change to hotkey, recording, overlay, paste or permissions) — `cargo run --release -p voicepuncher`, then check:
    - [ ] Short phrase: press, speak, release → text is pasted.
    - [ ] Local services: `just stop-model-servers`, launch → the menu shows "Starting services… (N of M ready)", then Ready; Services lists each as Ready with Restart; quit → `pgrep -fl whisper-server` and `pgrep -fl llama-server` find none. After `just start-model-servers`, launch → Services lists them as Adopted, and after quit they still run. Kill the owned `llama-server` while the app runs → it is Restarting, then Ready, and the next dictation is refined.

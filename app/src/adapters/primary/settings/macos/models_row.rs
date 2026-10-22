@@ -9,7 +9,7 @@ use objc2_app_kit::{NSTextField, NSView};
 use objc2_foundation::NSString;
 
 use super::build::{button, stack, Parts};
-use super::target::actions;
+use super::target::Action;
 
 pub const MODELS_LABEL: &str = "Models:";
 pub const DOWNLOAD_TITLE: &str = "Download models…";
@@ -43,8 +43,8 @@ pub struct ModelsRow {
 impl ModelsRow {
     pub fn new(parts: &Parts, panel: Option<Rc<dyn ModelsPanel>>) -> Self {
         let line = NSTextField::labelWithString(&NSString::new(), parts.mtm);
-        let download = button(parts, DOWNLOAD_TITLE, actions::download_models(), 0);
-        let show = button(parts, SHOW_TITLE, actions::show_models(), 0);
+        let download = button(parts, DOWNLOAD_TITLE, Action::DOWNLOAD_MODELS, 0);
+        let show = button(parts, SHOW_TITLE, Action::SHOW_MODELS, 0);
         let view = stack(
             parts.mtm,
             &[line.as_ref(), download.as_ref(), show.as_ref()],

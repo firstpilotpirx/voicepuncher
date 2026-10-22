@@ -42,7 +42,7 @@ fn should_take_a_running_whisper_server_on_the_service_port_as_the_service() {
     };
     let needs = Needs { refinement: false, voice_control: false };
     // When
-    let specs = needed(&cfg, needs, &machine, &HttpProbe);
+    let specs = needed(&cfg, needs, &machine, &HttpProbe::new());
     // Then
     let dictation: Vec<(ServiceKind, u16)> =
         specs.iter().map(|spec| (spec.kind, spec.port)).collect();

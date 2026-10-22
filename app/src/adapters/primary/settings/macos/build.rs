@@ -16,7 +16,7 @@ use super::control::{FieldControl, Widget};
 use super::examples::{ExamplesTable, TABLE_SIZE};
 use super::field::{Choices, Control, Field};
 use super::session::SettingsSession;
-use super::target::{actions, FormTarget};
+use super::target::{Action, FormTarget};
 
 const NUMBER_WIDTH: f64 = 80.0;
 const TEXT_WIDTH: f64 = 300.0;
@@ -60,7 +60,7 @@ pub fn control(parts: &Parts, field: &'static Field, tag: isize) -> FieldControl
     let control = FieldControl::new(field, view, outlined, widget);
     control.show(&parts.session.value(field));
     if let (Control::PopUp(Choices::Sounds), Widget::PopUp(..)) = (field.control, &control.widget) {
-        let play = button(parts, PLAY_TITLE, actions::play(), tag);
+        let play = button(parts, PLAY_TITLE, Action::PLAY, tag);
         return with_view_after(parts.mtm, control, &play);
     }
     control
@@ -74,7 +74,7 @@ fn view_of<T: AsRef<NSView>>(view: &T) -> Retained<NSView> {
 
 fn switch(parts: &Parts, tag: isize) -> Built {
     let switch = NSSwitch::new(parts.mtm);
-    parts.target.wire(&switch, actions::changed(), tag);
+    parts.target.wire(&switch, Action::CHANGED, tag);
     (view_of(&switch), view_of(&switch), Widget::Switch(switch))
 }
 
@@ -85,7 +85,7 @@ fn popup(parts: &Parts, choices: Choices, tag: isize) -> Built {
     for option in &options {
         popup.addItemWithTitle(&NSString::from_str(&option.title));
     }
-    parts.target.wire(&popup, actions::changed(), tag);
+    parts.target.wire(&popup, Action::CHANGED, tag);
     let widget = Widget::PopUp(popup.clone(), RefCell::new(options));
     (view_of(&popup), view_of(&popup), widget)
 }
@@ -105,7 +105,7 @@ fn radio(parts: &Parts, choices: Choices, tag: isize) -> Built {
                     parts.mtm,
                 )
             };
-            parts.target.wire(&button, actions::changed(), tag);
+            parts.target.wire(&button, Action::CHANGED, tag);
             (button, choice.value)
         })
         .collect();
@@ -117,11 +117,11 @@ fn radio(parts: &Parts, choices: Choices, tag: isize) -> Built {
 fn number(parts: &Parts, unit: &str, tag: isize) -> Built {
     let text = NSTextField::textFieldWithString(&NSString::new(), parts.mtm);
     width(&text, NUMBER_WIDTH);
-    parts.target.wire(&text, actions::changed(), tag);
+    parts.target.wire(&text, Action::CHANGED, tag);
     let stepper = NSStepper::new(parts.mtm);
     stepper.setMinValue(f64::MIN);
     stepper.setMaxValue(f64::MAX);
-    parts.target.wire(&stepper, actions::stepped(), tag);
+    parts.target.wire(&stepper, Action::STEPPED, tag);
     let unit = NSTextField::labelWithString(&NSString::from_str(unit), parts.mtm);
     let row = stack(parts.mtm, &[text.as_ref(), stepper.as_ref(), unit.as_ref()]);
     (
@@ -136,7 +136,7 @@ fn slider(parts: &Parts, min: f64, max: f64, tag: isize) -> Built {
     slider.setMinValue(min);
     slider.setMaxValue(max);
     width(&slider, SLIDER_WIDTH);
-    parts.target.wire(&slider, actions::changed(), tag);
+    parts.target.wire(&slider, Action::CHANGED, tag);
     let shown = NSTextField::labelWithString(&NSString::new(), parts.mtm);
     width(&shown, VALUE_WIDTH);
     let row = stack(parts.mtm, &[slider.as_ref(), shown.as_ref()]);
@@ -150,7 +150,7 @@ fn slider(parts: &Parts, min: f64, max: f64, tag: isize) -> Built {
 fn text(parts: &Parts, tag: isize, widget: fn(Retained<NSTextField>) -> Widget) -> Built {
     let text = NSTextField::textFieldWithString(&NSString::new(), parts.mtm);
     width(&text, TEXT_WIDTH);
-    parts.target.wire(&text, actions::changed(), tag);
+    parts.target.wire(&text, Action::CHANGED, tag);
     if matches!(widget(text.clone()), Widget::Languages(_)) {
         text.setPlaceholderString(Some(&NSString::from_str(LANGUAGES_PLACEHOLDER)));
     }
@@ -178,8 +178,8 @@ fn text_area(parts: &Parts, field: &Field) -> Built {
 fn folder(parts: &Parts, tag: isize) -> Built {
     let path = NSPathControl::new(parts.mtm);
     width(&path, PATH_WIDTH);
-    let choose = button(parts, CHOOSE_TITLE, actions::choose(), tag);
-    let reveal = button(parts, REVEAL_TITLE, actions::reveal(), tag);
+    let choose = button(parts, CHOOSE_TITLE, Action::CHOOSE, tag);
+    let reveal = button(parts, REVEAL_TITLE, Action::REVEAL, tag);
     let row = stack(
         parts.mtm,
         &[path.as_ref(), choose.as_ref(), reveal.as_ref()],
@@ -190,8 +190,8 @@ fn folder(parts: &Parts, tag: isize) -> Built {
 
 fn examples(parts: &Parts) -> Built {
     let table = ExamplesTable::new(parts.mtm);
-    let add = button(parts, ADD_TITLE, actions::add_example(), 0);
-    let remove = button(parts, REMOVE_TITLE, actions::remove_example(), 0);
+    let add = button(parts, ADD_TITLE, Action::ADD_EXAMPLE, 0);
+    let remove = button(parts, REMOVE_TITLE, Action::REMOVE_EXAMPLE, 0);
     let buttons = stack(parts.mtm, &[add.as_ref(), remove.as_ref()]);
     let column = stack(parts.mtm, &[table.scroll.as_ref(), buttons.as_ref()]);
     column.setOrientation(NSUserInterfaceLayoutOrientation::Vertical);
@@ -203,12 +203,7 @@ fn examples(parts: &Parts) -> Built {
 }
 
 /// A push button calling `action` with `tag`.
-pub fn button(
-    parts: &Parts,
-    title: &str,
-    action: objc2::runtime::Sel,
-    tag: isize,
-) -> Retained<NSButton> {
+pub fn button(parts: &Parts, title: &str, action: Action, tag: isize) -> Retained<NSButton> {
     // SAFETY: the target and action are set by `wire` right after.
     let button = unsafe {
         NSButton::buttonWithTitle_target_action(&NSString::from_str(title), None, None, parts.mtm)

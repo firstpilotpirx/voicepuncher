@@ -138,7 +138,7 @@ impl Supervision {
     }
 
     fn decide(&mut self, senses: &Senses) {
-        match senses.probe.answer(&self.spec) {
+        match senses.probe.answer(self.spec.kind, self.spec.port) {
             ProbeAnswer::Ready => {
                 log::info!(
                     "services: adopted {} at port {}",
@@ -187,7 +187,7 @@ impl Supervision {
         if let Some(exit) = self.exited() {
             return self.start_failed(senses.now, format!("exited ({exit})"));
         }
-        if senses.probe.answer(&self.spec) == ProbeAnswer::Ready {
+        if senses.probe.answer(self.spec.kind, self.spec.port) == ProbeAnswer::Ready {
             let took = senses.now.duration_since(self.since);
             log::info!(
                 "services: {} ready in {:.1} s",
@@ -230,7 +230,7 @@ impl Supervision {
             return;
         }
         self.next_at = senses.now + CHECK_INTERVAL;
-        if senses.probe.answer(&self.spec) == ProbeAnswer::Ready {
+        if senses.probe.answer(self.spec.kind, self.spec.port) == ProbeAnswer::Ready {
             self.failed_checks = 0;
             return;
         }
@@ -261,7 +261,7 @@ impl Supervision {
             return;
         }
         self.next_at = senses.now + CHECK_INTERVAL;
-        if senses.probe.answer(&self.spec) != ProbeAnswer::Closed {
+        if senses.probe.answer(self.spec.kind, self.spec.port) != ProbeAnswer::Closed {
             self.failed_checks = 0;
             return;
         }
@@ -280,7 +280,7 @@ impl Supervision {
             return;
         }
         self.next_at = senses.now + CHECK_INTERVAL;
-        if senses.probe.answer(&self.spec) == ProbeAnswer::Ready {
+        if senses.probe.answer(self.spec.kind, self.spec.port) == ProbeAnswer::Ready {
             log::info!("services: {} answers again — adopted", self.spec.label);
             self.failed_checks = 0;
             self.state = ServiceState::Adopted;

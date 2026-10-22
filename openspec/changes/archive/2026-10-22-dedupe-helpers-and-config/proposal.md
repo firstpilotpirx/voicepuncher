@@ -20,7 +20,7 @@ Out of scope: the overlay (`harden-overlay-thread-model`), the pipeline (`slim-p
 
 ### Modified Capabilities
 
-- `local-services`: the service command lines have one source.
+- `local-services`: the app and the service scripts start each service with the same command line, held equal by a test.
 
 ## Impact
 

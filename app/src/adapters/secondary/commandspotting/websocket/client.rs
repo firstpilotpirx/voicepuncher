@@ -9,11 +9,14 @@ use anyhow::{anyhow, bail, Context, Result};
 use serde::Deserialize;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Message, WebSocket};
-use voicepuncher_copy_pool::{ServiceAddress, COMMAND_SPOTTING_COPY_OFFSET};
 
 use crate::core::domain::{
     CommandPlacement, ConfirmationTiming, ReportTiming, SpottingEvent, VoiceCommand,
 };
+
+mod handshake;
+
+use handshake::handshake_any;
 
 /// How long a read waits for an event before the caller gets control back.
 const READ_WAIT: Duration = Duration::from_millis(10);
@@ -276,44 +279,6 @@ fn to_spotting_event(
         }
         ServiceEvent::Synced { .. } => return None,
     })
-}
-
-/// A WebSocket connection to the service's own port, else to its first copy that
-/// completes the handshake; the error of the own port when none does.
-fn handshake_any(url: &str) -> Result<WebSocket<MaybeTlsStream<TcpStream>>> {
-    let own = handshake(url);
-    if own.is_ok() {
-        return own;
-    }
-    let copies = ServiceAddress::parse(url)
-        .map(|address| {
-            let address = address.with_copy_offset(COMMAND_SPOTTING_COPY_OFFSET);
-            address
-                .copy_ports()
-                .into_iter()
-                .map(|port| address.with_port(port))
-                .collect()
-        })
-        .unwrap_or_else(|_| Vec::new());
-    copies
-        .iter()
-        .find_map(|copy| handshake(copy).ok())
-        .map_or(own, Ok)
-}
-
-/// A WebSocket connection to `url`, given up after `CONNECT_WAIT` at each step.
-fn handshake(url: &str) -> Result<WebSocket<MaybeTlsStream<TcpStream>>> {
-    let parsed = url::Url::parse(url)?;
-    let addrs = parsed.socket_addrs(|| None)?;
-    let addr = addrs
-        .first()
-        .ok_or_else(|| anyhow!("no address for {url}"))?;
-    let stream = TcpStream::connect_timeout(addr, CONNECT_WAIT)?;
-    stream.set_read_timeout(Some(CONNECT_WAIT))?;
-    stream.set_write_timeout(Some(CONNECT_WAIT))?;
-    let (socket, _) = tungstenite::client(url, MaybeTlsStream::Plain(stream))
-        .map_err(|e| anyhow!("WebSocket handshake: {e}"))?;
-    Ok(socket)
 }
 
 /// Fails when nothing answers at `url`.

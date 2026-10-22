@@ -246,6 +246,15 @@ pub const MENU: [MenuEntry; 10] = [
 ];
 
 impl MenuEntry {
+    /// The entry's index in [`MENU`], where the status item finds its menu item; a separator
+    /// gives its first place.
+    pub fn place(self) -> isize {
+        MENU.iter()
+            .position(|entry| *entry == self)
+            .and_then(|index| isize::try_from(index).ok())
+            .unwrap_or_default()
+    }
+
     /// The words of a chosen item; none for the lines and separators.
     pub fn title(self) -> Option<&'static str> {
         match self {
@@ -292,5 +301,7 @@ pub fn hotkey_name(key: HotKey) -> &'static str {
     key.human_name()
 }
 
+#[cfg(test)]
+mod place_tests;
 #[cfg(test)]
 mod tests;

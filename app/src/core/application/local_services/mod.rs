@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 
-use crate::core::domain::{ServiceSpec, ServiceStatus};
+use crate::core::domain::{ServiceKind, ServiceSpec, ServiceStatus};
 
 pub use supervision::{
     Senses, Supervision, CHECK_INTERVAL, FAILED_CHECKS, FAILED_STARTS, FIRST_PAUSE, LONGEST_PAUSE,
@@ -53,7 +53,7 @@ pub enum ProbeAnswer {
 
 /// Asks a service's port whether the service answers.
 pub trait ServiceProbe: Send + Sync {
-    fn answer(&self, spec: &ServiceSpec) -> ProbeAnswer;
+    fn answer(&self, kind: ServiceKind, port: u16) -> ProbeAnswer;
 }
 
 /// The time, and a pause; a test's clock moves on when it pauses.

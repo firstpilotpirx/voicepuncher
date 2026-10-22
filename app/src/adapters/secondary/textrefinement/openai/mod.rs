@@ -5,6 +5,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use serde::Deserialize;
 use voicepuncher_copy_pool::{CopyPool, PoolError, ServiceAddress, TEXT_REFINEMENT_COPY_OFFSET};
 
+use crate::adapters::secondary::http::agent;
 use crate::adapters::secondary::http::failure::Failure;
 use crate::config::RefinementCfg;
 use crate::core::application::text_refiner::TextRefiner;
@@ -66,9 +67,7 @@ impl OpenAiTextRefiner {
         let Some(copy) = copies.iter().find(|c| !c.busy).or_else(|| copies.first()) else {
             bail!("text refinement service is not reachable at {base_url} — {START_HINT}");
         };
-        let probe = ureq::AgentBuilder::new()
-            .timeout(STARTUP_CHECK_TIMEOUT)
-            .build();
+        let probe = agent::fresh_connections(STARTUP_CHECK_TIMEOUT);
         let offered = offered_models(
             &probe,
             &base_url,
@@ -84,15 +83,13 @@ impl OpenAiTextRefiner {
             );
         }
         let timeout = Duration::from_secs(cfg.timeout_secs);
-        Ok(
-            Self {
-                agent: request_agent(timeout),
-                pool,
-                cfg,
-                timeout,
-                recovery_wait: RECOVERY_WAIT,
-            },
-        )
+        Ok(Self {
+            agent: agent::fresh_connections(timeout),
+            pool,
+            cfg,
+            timeout,
+            recovery_wait: RECOVERY_WAIT,
+        })
     }
 
     /// The same refiner, waiting `wait` instead of [`RECOVERY_WAIT`] for a copy to come
@@ -262,18 +259,6 @@ impl OpenAiTextRefiner {
         }
         back
     }
-}
-
-/// Opens a new connection for every request: the service closes an idle connection
-/// after a few seconds, and after a pause of minutes the HTTP client fails a request
-/// on such a connection instead of reconnecting. A new loopback connection costs
-/// about 0.1 ms.
-fn request_agent(timeout: Duration) -> ureq::Agent {
-    ureq::AgentBuilder::new()
-        .timeout(timeout)
-        .max_idle_connections(0)
-        .max_idle_connections_per_host(0)
-        .build()
 }
 
 #[cfg(test)]

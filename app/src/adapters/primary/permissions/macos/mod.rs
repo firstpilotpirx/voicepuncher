@@ -11,15 +11,15 @@ use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Sel};
 use objc2::{define_class, msg_send, sel, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSApplication, NSApplicationDidBecomeActiveNotification, NSBackingStoreType, NSButton, NSColor,
-    NSFont, NSFontWeightMedium, NSImage, NSImageSymbolConfiguration, NSImageView,
-    NSProgressIndicator, NSProgressIndicatorStyle, NSTextAlignment, NSTextField, NSView, NSWindow,
-    NSWindowStyleMask, NSWorkspace,
+    NSApplication, NSApplicationDidBecomeActiveNotification, NSButton, NSColor, NSFont,
+    NSFontWeightMedium, NSImage, NSImageSymbolConfiguration, NSImageView, NSProgressIndicator,
+    NSProgressIndicatorStyle, NSView, NSWindow, NSWorkspace,
 };
 use objc2_foundation::{
     NSNotificationCenter, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSURL,
 };
 
+use crate::adapters::appkit::{self, label, wrapping};
 use crate::adapters::main_queue::{dispatch_to_main, dispatch_to_main_after};
 use crate::core::application::PermissionsGate;
 use crate::core::domain::Permission;
@@ -252,30 +252,14 @@ fn close() {
 }
 
 fn build_window(mtm: MainThreadMarker) -> Retained<NSWindow> {
-    let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(WIDTH, HEIGHT));
-    // SAFETY: a new titled window; it is not released on close, the state keeps it.
-    let window = unsafe {
-        NSWindow::initWithContentRect_styleMask_backing_defer(
-            mtm.alloc::<NSWindow>(),
-            frame,
-            NSWindowStyleMask::Titled | NSWindowStyleMask::Closable,
-            NSBackingStoreType::Buffered,
-            false,
-        )
-    };
-    // SAFETY: a Retained owns the window, so AppKit must not release it again on close.
-    unsafe { window.setReleasedWhenClosed(false) };
-    window.setTitle(&NSString::from_str(mapping::TITLE));
+    let window = appkit::titled_window(mtm, mapping::TITLE, WIDTH, HEIGHT);
     window.setLevel(FLOATING_LEVEL);
     window
 }
 
 /// Frame `height` high, `y` points below the content's top edge.
 fn below_top(x: f64, y: f64, width: f64, height: f64) -> NSRect {
-    NSRect::new(
-        NSPoint::new(x, HEIGHT - y - height),
-        NSSize::new(width, height),
-    )
+    appkit::below_top(HEIGHT, x, y, width, height)
 }
 
 #[expect(clippy::too_many_lines, reason = "size baseline")]
@@ -285,10 +269,10 @@ fn content(mtm: MainThreadMarker, target: &WindowTarget, model: &WindowModel) ->
         NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(WIDTH, HEIGHT)),
     );
     let text_width = WIDTH - 2.0 * MARGIN;
-    let heading = label(mtm, mapping::HEADING, NSFont::boldSystemFontOfSize(15.0));
+    let heading = label(mtm, mapping::HEADING, &NSFont::boldSystemFontOfSize(15.0));
     heading.setFrame(below_top(MARGIN, 14.0, text_width, 20.0));
     view.addSubview(&heading);
-    let sub = wrapping(mtm, mapping::SUBHEADING, NSFont::systemFontOfSize(13.0));
+    let sub = wrapping(mtm, mapping::SUBHEADING, &NSFont::systemFontOfSize(13.0));
     sub.setTextColor(Some(&NSColor::secondaryLabelColor()));
     sub.setFrame(below_top(MARGIN, 36.0, text_width, 34.0));
     view.addSubview(&sub);
@@ -304,7 +288,7 @@ fn content(mtm: MainThreadMarker, target: &WindowTarget, model: &WindowModel) ->
                 .map(|line| (line, NSColor::systemOrangeColor()))
         });
     if let Some((line, colour)) = note {
-        let note = label(mtm, line, medium(13.0));
+        let note = label(mtm, line, &medium(13.0));
         note.setTextColor(Some(&colour));
         note.setFrame(below_top(MARGIN, 74.0, text_width, 18.0));
         view.addSubview(&note);
@@ -362,10 +346,10 @@ fn add_row(
     view.addSubview(&tile);
     let text_x = MARGIN + TILE + 10.0;
     let text_width = WIDTH - MARGIN - STATUS_WIDTH - 10.0 - text_x;
-    let name = label(mtm, permission.name(), medium(13.0));
+    let name = label(mtm, permission.name(), &medium(13.0));
     name.setFrame(below_top(text_x, top + 2.0, text_width, 17.0));
     view.addSubview(&name);
-    let reason = wrapping(mtm, why(permission), NSFont::systemFontOfSize(12.0));
+    let reason = wrapping(mtm, why(permission), &NSFont::systemFontOfSize(12.0));
     reason.setTextColor(Some(&NSColor::secondaryLabelColor()));
     reason.setFrame(below_top(text_x, top + 19.0, text_width, 30.0));
     view.addSubview(&reason);
@@ -394,7 +378,7 @@ fn add_row(
 fn add_badge(mtm: MainThreadMarker, view: &NSView, shown: Shown, top: f64) {
     let (words, mark) = badge(shown);
     let right = WIDTH - MARGIN;
-    let text = label(mtm, words, NSFont::systemFontOfSize(11.0));
+    let text = label(mtm, words, &NSFont::systemFontOfSize(11.0));
     text.setTextColor(Some(&NSColor::secondaryLabelColor()));
     text.sizeToFit();
     let width = text.frame().size.width;
@@ -424,7 +408,7 @@ fn add_badge(mtm: MainThreadMarker, view: &NSView, shown: Shown, top: f64) {
                 BadgeMark::Red => NSColor::systemRedColor(),
                 _ => NSColor::systemGrayColor(),
             };
-            let dot = label(mtm, "●", NSFont::systemFontOfSize(9.0));
+            let dot = label(mtm, "●", &NSFont::systemFontOfSize(9.0));
             dot.setTextColor(Some(&colour));
             dot.setFrame(below_top(mark_x, y + 1.0, 12.0, 14.0));
             view.addSubview(&dot);
@@ -437,19 +421,7 @@ fn medium(size: f64) -> Retained<NSFont> {
     NSFont::systemFontOfSize_weight(size, unsafe { NSFontWeightMedium })
 }
 
-fn label(mtm: MainThreadMarker, text: &str, font: Retained<NSFont>) -> Retained<NSTextField> {
-    let field = NSTextField::labelWithString(&NSString::from_str(text), mtm);
-    field.setFont(Some(&font));
-    field.setAlignment(NSTextAlignment::Left);
-    field
-}
-
-fn wrapping(mtm: MainThreadMarker, text: &str, font: Retained<NSFont>) -> Retained<NSTextField> {
-    let field = NSTextField::wrappingLabelWithString(&NSString::from_str(text), mtm);
-    field.setFont(Some(&font));
-    field
-}
-
+/// A push button tagged `tag`, so the action knows which row sent it.
 fn push_button(
     mtm: MainThreadMarker,
     target: &WindowTarget,
@@ -457,15 +429,7 @@ fn push_button(
     action: Sel,
     tag: isize,
 ) -> Retained<NSButton> {
-    // SAFETY: `action` is a method of `target` taking the sender, as a button calls it.
-    let control = unsafe {
-        NSButton::buttonWithTitle_target_action(
-            &NSString::from_str(title),
-            Some(target as &AnyObject),
-            Some(action),
-            mtm,
-        )
-    };
+    let control = appkit::push_button(mtm, target, title, action);
     control.setTag(tag);
     control
 }

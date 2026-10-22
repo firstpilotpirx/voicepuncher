@@ -37,17 +37,17 @@ fn should_give_every_live_configuration_key_exactly_one_field() {
 }
 
 #[test]
-fn should_name_only_keys_the_configuration_has_as_retired() {
+fn should_name_only_keys_the_configuration_still_accepts_as_retired() {
     // Given
-    let keys = configuration_keys();
-    // When
-    let unknown: Vec<_> = RETIRED
+    let files = RETIRED
         .iter()
-        .map(|(section, key)| format!("{section}.{key}"))
-        .filter(|path| !keys.contains(path))
+        .map(|(section, key)| format!("[{section}]\n{key} = true\n"));
+    // When
+    let refused: Vec<_> = files
+        .filter(|file| crate::config::parse(file, "retired").is_err())
         .collect();
     // Then
-    assert!(unknown.is_empty(), "{unknown:?}");
+    assert!(refused.is_empty(), "{refused:?}");
 }
 
 #[test]

@@ -32,13 +32,6 @@ const FRAME_MS: i64 = 400;
 /// The red dot of the recording icon and its distance from the button's lower right corner.
 const DOT_DIAMETER: f64 = 6.0;
 const DOT_INSET: f64 = 2.0;
-/// The places of the two text lines at the top of the menu.
-const TITLE_LINE: isize = 0;
-const STATUS_LINE: isize = 1;
-/// The place of Download models…, right after Permissions….
-const DOWNLOAD_MODELS: isize = 3;
-/// The place of the Services submenu, right after Download models….
-const SERVICES: isize = 4;
 const SETTINGS_KEY: &str = ",";
 const QUIT_KEY: &str = "q";
 const NO_KEY: &str = "";
@@ -108,7 +101,7 @@ impl MacosStatusItem {
     /// The status line as the menu reads when it opens.
     pub fn status_line(&self, _mtm: MainThreadMarker) -> Option<String> {
         self.target.refresh(&self.menu);
-        let line = self.menu.itemAtIndex(STATUS_LINE)?;
+        let line = self.menu.itemAtIndex(MenuEntry::StatusLine.place())?;
         Some(line.title().to_string())
     }
 }
@@ -384,13 +377,13 @@ impl MenuTarget {
             return;
         };
         let model = cell.menu();
-        if let Some(item) = menu.itemAtIndex(TITLE_LINE) {
+        if let Some(item) = menu.itemAtIndex(MenuEntry::TitleLine.place()) {
             item.setTitle(&NSString::from_str(&model.title_line));
         }
-        if let Some(item) = menu.itemAtIndex(STATUS_LINE) {
+        if let Some(item) = menu.itemAtIndex(MenuEntry::StatusLine.place()) {
             item.setTitle(&NSString::from_str(&model.status_line));
         }
-        if let Some(item) = menu.itemAtIndex(DOWNLOAD_MODELS) {
+        if let Some(item) = menu.itemAtIndex(MenuEntry::DownloadModels.place()) {
             let managed = self
                 .ivars()
                 .actions
@@ -399,7 +392,7 @@ impl MenuTarget {
                 .is_some_and(|actions| actions.services().is_some());
             item.setHidden(!managed);
         }
-        if let Some(item) = menu.itemAtIndex(SERVICES) {
+        if let Some(item) = menu.itemAtIndex(MenuEntry::Services.place()) {
             self.refresh_services(&item);
         }
     }

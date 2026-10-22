@@ -2,10 +2,11 @@
 //! call on as an [`Event`].
 
 use std::cell::OnceCell;
+use std::ffi::CStr;
 
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Sel};
-use objc2::{define_class, msg_send, sel, DefinedClass, MainThreadMarker, MainThreadOnly};
+use objc2::{define_class, msg_send, DefinedClass, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{NSControl, NSWindow, NSWindowDelegate};
 use objc2_foundation::{NSNotification, NSObject, NSObjectProtocol};
 
@@ -69,27 +70,27 @@ define_class!(
     impl FormTarget {
         #[unsafe(method(changed:))]
         fn changed(&self, sender: Option<&AnyObject>) {
-            self.send(Event::Changed(tag(sender)));
+            self.send_tagged(Event::Changed, sender);
         }
 
         #[unsafe(method(stepped:))]
         fn stepped(&self, sender: Option<&AnyObject>) {
-            self.send(Event::Stepped(tag(sender)));
+            self.send_tagged(Event::Stepped, sender);
         }
 
         #[unsafe(method(play:))]
         fn play(&self, sender: Option<&AnyObject>) {
-            self.send(Event::Play(tag(sender)));
+            self.send_tagged(Event::Play, sender);
         }
 
         #[unsafe(method(choose:))]
         fn choose(&self, sender: Option<&AnyObject>) {
-            self.send(Event::Choose(tag(sender)));
+            self.send_tagged(Event::Choose, sender);
         }
 
         #[unsafe(method(reveal:))]
         fn reveal(&self, sender: Option<&AnyObject>) {
-            self.send(Event::Reveal(tag(sender)));
+            self.send_tagged(Event::Reveal, sender);
         }
 
         #[unsafe(method(addExample:))]
@@ -104,7 +105,7 @@ define_class!(
 
         #[unsafe(method(toggleAdvanced:))]
         fn toggle_advanced(&self, sender: Option<&AnyObject>) {
-            self.send(Event::ToggleAdvanced(tag(sender)));
+            self.send_tagged(Event::ToggleAdvanced, sender);
         }
 
         #[unsafe(method(save:))]
@@ -156,6 +157,13 @@ impl FormTarget {
         let _ = self.ivars().handler.set(handler);
     }
 
+    /// Sends the event of a control's tag; nothing for a sender that is no control.
+    fn send_tagged(&self, event: fn(isize) -> Event, sender: Option<&AnyObject>) {
+        if let Some(tag) = tag(sender) {
+            self.send(event(tag));
+        }
+    }
+
     fn send(&self, event: Event) {
         if let Some(handler) = self.ivars().handler.get() {
             handler.handle(event);
@@ -163,68 +171,58 @@ impl FormTarget {
     }
 
     /// Makes `control` call `action` of this target, tagged with `tag`.
-    pub fn wire(&self, control: &NSControl, action: Sel, tag: isize) {
+    pub fn wire(&self, control: &NSControl, action: Action, tag: isize) {
         // SAFETY: the target lives as long as the window that holds the control.
         unsafe { control.setTarget(Some(self as &AnyObject)) };
         // SAFETY: `action` is a method of this target taking the sender.
-        unsafe { control.setAction(Some(action)) };
+        unsafe { control.setAction(Some(action.selector())) };
         control.setTag(tag);
     }
 }
 
-/// The selectors of the target's methods, for [`FormTarget::wire`].
-pub mod actions {
-    use super::{sel, Sel};
+/// What a control asks the target to do: the name of one of the target's methods.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Action(&'static CStr);
 
-    pub fn changed() -> Sel {
-        sel!(changed:)
-    }
-    pub fn stepped() -> Sel {
-        sel!(stepped:)
-    }
-    pub fn play() -> Sel {
-        sel!(play:)
-    }
-    pub fn choose() -> Sel {
-        sel!(choose:)
-    }
-    pub fn reveal() -> Sel {
-        sel!(reveal:)
-    }
-    pub fn add_example() -> Sel {
-        sel!(addExample:)
-    }
-    pub fn remove_example() -> Sel {
-        sel!(removeExample:)
-    }
-    pub fn toggle_advanced() -> Sel {
-        sel!(toggleAdvanced:)
-    }
-    pub fn save() -> Sel {
-        sel!(save:)
-    }
-    pub fn revert() -> Sel {
-        sel!(revert:)
-    }
-    pub fn open_logs() -> Sel {
-        sel!(openLogs:)
-    }
-    pub fn login_toggled() -> Sel {
-        sel!(loginToggled:)
-    }
-    pub fn open_login_items() -> Sel {
-        sel!(openLoginItems:)
-    }
-    pub fn download_models() -> Sel {
-        sel!(downloadModels:)
-    }
-    pub fn show_models() -> Sel {
-        sel!(showModels:)
+impl Action {
+    pub const CHANGED: Self = Self(c"changed:");
+    pub const STEPPED: Self = Self(c"stepped:");
+    pub const PLAY: Self = Self(c"play:");
+    pub const CHOOSE: Self = Self(c"choose:");
+    pub const REVEAL: Self = Self(c"reveal:");
+    pub const ADD_EXAMPLE: Self = Self(c"addExample:");
+    pub const REMOVE_EXAMPLE: Self = Self(c"removeExample:");
+    pub const TOGGLE_ADVANCED: Self = Self(c"toggleAdvanced:");
+    pub const SAVE: Self = Self(c"save:");
+    pub const REVERT: Self = Self(c"revert:");
+    pub const OPEN_LOGS: Self = Self(c"openLogs:");
+    pub const LOGIN_TOGGLED: Self = Self(c"loginToggled:");
+    pub const OPEN_LOGIN_ITEMS: Self = Self(c"openLoginItems:");
+    pub const DOWNLOAD_MODELS: Self = Self(c"downloadModels:");
+    pub const SHOW_MODELS: Self = Self(c"showModels:");
+
+    /// The selector of the target's method for the action.
+    pub fn selector(self) -> Sel {
+        Sel::register(self.0)
     }
 }
 
-fn tag(sender: Option<&AnyObject>) -> isize {
+/// The tag of the control that sent an action; none for a sender that is no control.
+fn tag(sender: Option<&AnyObject>) -> Option<isize> {
     sender
         .and_then(|sender| sender.downcast_ref::<NSControl>())
-        .map_or(-1, NSControl::tag)
+        .map(NSControl::tag)
+}
+
+#[cfg(test)]
+mod tests {
+    use objc2::runtime::NSObject;
+
+    use super::*;
+
+    #[test]
+    fn should_give_no_tag_for_a_sender_that_is_no_control() {
+        let sender = NSObject::new();
+        assert_eq!((tag(Some(&sender)), tag(None)), (None, None));
+    }
 }

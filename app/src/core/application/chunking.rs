@@ -1,5 +1,3 @@
-use log;
-
 use crate::core::domain::AudioBuffer16k;
 
 #[derive(Debug, Clone, Copy)]

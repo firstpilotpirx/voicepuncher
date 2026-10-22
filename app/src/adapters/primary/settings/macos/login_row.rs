@@ -12,7 +12,7 @@ use super::build::{button, stack, Parts};
 use super::login::{
     LoginSwitch, LoginSwitchView, Turned, LOGIN_ITEMS_SETTINGS, OPEN_LOGIN_ITEMS_TITLE,
 };
-use super::target::actions;
+use super::target::Action;
 
 const NOTE_SIZE: f64 = 11.0;
 
@@ -29,13 +29,8 @@ pub struct LoginRow {
 impl LoginRow {
     pub fn new(parts: &Parts, switch: LoginSwitch) -> Self {
         let control = NSSwitch::new(parts.mtm);
-        parts.target.wire(&control, actions::login_toggled(), 0);
-        let open_settings = button(
-            parts,
-            OPEN_LOGIN_ITEMS_TITLE,
-            actions::open_login_items(),
-            0,
-        );
+        parts.target.wire(&control, Action::LOGIN_TOGGLED, 0);
+        let open_settings = button(parts, OPEN_LOGIN_ITEMS_TITLE, Action::OPEN_LOGIN_ITEMS, 0);
         let note = NSTextField::labelWithString(&NSString::new(), parts.mtm);
         note.setFont(Some(&NSFont::systemFontOfSize(NOTE_SIZE)));
         note.setTextColor(Some(&NSColor::secondaryLabelColor()));

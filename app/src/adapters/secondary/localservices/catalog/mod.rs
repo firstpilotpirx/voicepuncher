@@ -249,6 +249,15 @@ struct Lookup<'a> {
 /// Something looked for and not found: what, and the hint to get it.
 type Missing = String;
 
+/// What every copy of a service shares: its kind, its program and what keeps it from starting.
+struct Service {
+    kind: ServiceKind,
+    binary: &'static str,
+    program: Result<PathBuf, Missing>,
+    problem: Option<String>,
+    copies: u32,
+}
+
 impl<'a> Lookup<'a> {
     fn new(cfg: &Config, machine: &'a Machine) -> Self {
         let voicepuncher = machine.home.join(".voicepuncher");
@@ -282,16 +291,12 @@ impl<'a> Lookup<'a> {
         );
         let model = self.model(model_var, model_file);
         let vad = self.newest_vad();
-        let ports =
-            running_copies(kind, &address, probe).unwrap_or_else(|| copy_ports(&address, copies));
-        let threads = threads(self.machine.cores, ports.len());
-        labelled(kind, &ports)
-            .map(|(port, label)| {
-                let args = whisper_args(&shown(&model), port, threads, &shown(&vad));
-                let problem = first_problem([&program, &model, &vad]);
-                self.spec(kind, label, &program, args, port, WHISPER, problem, true)
-            })
-            .collect()
+        let problem = first_problem([&program, &model, &vad]);
+        let service = Service { kind, binary: WHISPER, program, problem, copies };
+        let cores = self.machine.cores;
+        self.copies(&service, &address, probe, |port, count| {
+            whisper_args(&shown(&model), port, threads(cores, count), &shown(&vad))
+        })
     }
 
     fn llama(&self, url: &str, copies: u32, probe: &dyn ServiceProbe) -> Vec<ServiceSpec> {
@@ -301,16 +306,12 @@ impl<'a> Lookup<'a> {
         let address = address.with_copy_offset(TEXT_REFINEMENT_COPY_OFFSET);
         let program = self.engine(LLAMA, "VOICEPUNCHER_LLAMA_BINARY", "brew install llama.cpp");
         let model = self.model("VOICEPUNCHER_LLM_MODEL", REFINEMENT_MODEL);
+        let problem = first_problem([&program, &model]);
         let kind = ServiceKind::Refinement;
-        let ports =
-            running_copies(kind, &address, probe).unwrap_or_else(|| copy_ports(&address, copies));
-        labelled(kind, &ports)
-            .map(|(port, label)| {
-                let args = llama_args(&shown(&model), port);
-                let problem = first_problem([&program, &model]);
-                self.spec(kind, label, &program, args, port, LLAMA, problem, true)
-            })
-            .collect()
+        let service = Service { kind, binary: LLAMA, program, problem, copies };
+        self.copies(&service, &address, probe, |port, _| {
+            llama_args(&shown(&model), port)
+        })
     }
 
     fn command_spotting(
@@ -327,49 +328,44 @@ impl<'a> Lookup<'a> {
         let program = self.command_spotting_program();
         let model_dir = self.kws_model_dir();
         let vad = self.model("VOICEPUNCHER_KWS_VAD_MODEL", KWS_VAD_MODEL);
+        let problem = first_problem([&program, &model_dir, &vad]);
         let kind = ServiceKind::CommandSpotting;
-        let ports =
-            running_copies(kind, &address, probe).unwrap_or_else(|| copy_ports(&address, copies));
-        labelled(kind, &ports)
-            .map(|(port, label)| {
-                let args =
-                    command_spotting_args(port, &shown(&model_dir), &shown(&vad), commands_url);
-                let problem = first_problem([&program, &model_dir, &vad]);
-                self.spec(
-                    kind,
-                    label,
-                    &program,
-                    args,
-                    port,
-                    COMMAND_SPOTTING,
-                    problem,
-                    true,
-                )
-            })
+        let service = Service { kind, binary: COMMAND_SPOTTING, program, problem, copies };
+        self.copies(&service, &address, probe, |port, _| {
+            command_spotting_args(port, &shown(&model_dir), &shown(&vad), commands_url)
+        })
+    }
+
+    /// One spec per copy of `service`: on the ports it already answers on, else on the
+    /// configured copies' ports; `args` takes a copy's port and the number of copies.
+    fn copies(
+        &self,
+        service: &Service,
+        address: &ServiceAddress,
+        probe: &dyn ServiceProbe,
+        args: impl Fn(u16, usize) -> Vec<String>,
+    ) -> Vec<ServiceSpec> {
+        let ports = running_copies(service.kind, address, probe)
+            .unwrap_or_else(|| copy_ports(address, service.copies));
+        labelled(service.kind, &ports)
+            .map(|(port, label)| self.spec(service, label, port, args(port, ports.len())))
             .collect()
     }
 
-    #[expect(clippy::too_many_arguments, reason = "size baseline")]
-    fn spec(
-        &self,
-        kind: ServiceKind,
-        label: String,
-        program: &Result<PathBuf, Missing>,
-        args: Vec<String>,
-        port: u16,
-        binary: &str,
-        problem: Option<String>,
-        health_checked: bool,
-    ) -> ServiceSpec {
+    fn spec(&self, service: &Service, label: String, port: u16, args: Vec<String>) -> ServiceSpec {
+        let binary = service.binary;
         ServiceSpec {
-            kind,
+            kind: service.kind,
             label,
-            program: program.clone().unwrap_or_else(|_| PathBuf::from(binary)),
+            program: service
+                .program
+                .clone()
+                .unwrap_or_else(|_| PathBuf::from(binary)),
             args,
             port,
             log_file: logs_dir(&self.machine.home).join(format!("{binary}-{port}.log")),
-            health_checked,
-            problem,
+            health_checked: true,
+            problem: service.problem.clone(),
         }
     }
 
@@ -427,27 +423,21 @@ impl<'a> Lookup<'a> {
         if let Some(path) = self.machine.var(var) {
             return existing(path, var);
         }
-        self.entries(|path| {
+        newest(self.entries(|path| {
             path.is_file()
                 && file_name_starts(path, WHISPER_VAD_PREFIX)
                 && has_extension(path, "bin")
-        })
-        .into_iter()
-        .max_by_key(|path| path.metadata().and_then(|meta| meta.modified()).ok())
+        }))
         .ok_or_else(|| self.not_found(&format!("{WHISPER_VAD_PREFIX}*.bin"), var))
     }
 
+    /// The newest `sherpa-onnx-kws-*` folder, as the `justfile` picks it.
     fn kws_model_dir(&self) -> Result<PathBuf, Missing> {
         let var = "VOICEPUNCHER_KWS_MODEL_DIR";
         if let Some(path) = self.machine.var(var) {
             return existing(path, var);
         }
-        let mut found =
-            self.entries(|path| path.is_dir() && file_name_starts(path, KWS_MODEL_DIR_PREFIX));
-        found.sort();
-        found
-            .into_iter()
-            .next()
+        newest(self.entries(|path| path.is_dir() && file_name_starts(path, KWS_MODEL_DIR_PREFIX)))
             .ok_or_else(|| self.not_found(&format!("{KWS_MODEL_DIR_PREFIX}*"), var))
     }
 
@@ -485,19 +475,7 @@ fn running_copies(
     ports.extend(address.copy_ports());
     let answering: Vec<u16> = ports
         .into_iter()
-        .filter(|&port| {
-            let spec = ServiceSpec {
-                kind,
-                label: String::new(),
-                program: PathBuf::new(),
-                args: Vec::new(),
-                port,
-                log_file: PathBuf::new(),
-                health_checked: false,
-                problem: None,
-            };
-            probe.answer(&spec) == ProbeAnswer::Ready
-        })
+        .filter(|&port| probe.answer(kind, port) == ProbeAnswer::Ready)
         .collect();
     (!answering.is_empty()).then_some(answering)
 }
@@ -599,6 +577,14 @@ fn first_problem<const N: usize>(found: [&Result<PathBuf, Missing>; N]) -> Optio
     found
         .into_iter()
         .find_map(|item| item.as_ref().err().cloned())
+}
+
+/// The most recently changed of `found`; of equally recent ones, the first by name.
+fn newest(found: Vec<PathBuf>) -> Option<PathBuf> {
+    found.into_iter().max_by_key(|path| {
+        let changed = path.metadata().and_then(|meta| meta.modified()).ok();
+        (changed, std::cmp::Reverse(path.clone()))
+    })
 }
 
 fn file_name_starts(path: &Path, prefix: &str) -> bool {

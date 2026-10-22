@@ -177,3 +177,10 @@ success-output = "immediate"
 [[profile.real-keyboard.overrides]]
 filter = 'binary(cucumber_integration)'
 run-extra-args = ["--tags", "@real_keyboard"]
+
+# The hosted CI (.github/workflows/ci.yml, NEXTEST_PROFILE=ci), which has no logged-in desktop and other `say`
+# voices than the owner's Mac: leaves out the overlay drawing test, which needs a running window server, and the
+# check that the synthesized speech is over 30 s, which holds only for the owner's voices. Inherits every limit
+# and override of the default profile; the default filter narrows any filter given on the command line
+[profile.ci]
+default-filter = 'not (binary(visualfeedback_macos_it) | test(=speech::tests::should_synthesize_speech_longer_than_the_chunk_threshold_in_every_condition))'

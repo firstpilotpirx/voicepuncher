@@ -1,0 +1,87 @@
+# The hosted floor every pull request has (AGENTS.md § How to verify a change): formatting, every static analyzer
+# and every unit, architecture and integration test — no model, no service, no GPU, no machine lock. The landing
+# queue's `just full-check` on the owner's Mac stays the merge gate for build inputs.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The recipes run their bodies without the agent-kit machine lock, which only the owner's Mac has
+  VOICEPUNCHER_NO_MACHINE_LOCK: "1"
+  # The nextest profile without the tests that need the owner's desktop session and voices (.config/nextest.toml)
+  NEXTEST_PROFILE: ci
+  CARGO_TERM_COLOR: always
+
+jobs:
+  ci:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      # The full history: `just lint` runs semver-checks against origin/main
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: Swatinem/rust-cache@v2.9.3
+        with:
+          cache-bin: "false"
+          cache-on-failure: "true"
+
+      - uses: taiki-e/install-action@v2.87.30
+        with:
+          tool: just@1.59.0,cargo-nextest@0.9.146
+
+      # The analyzers `just tools` installs, cached until a pinned version in the justfile moves
+      - name: Tool pins
+        id: pins
+        run: |
+          echo "key=$(grep -E '^[a-z_]+_version := ' justfile | shasum | cut -c1-16)" >>"$GITHUB_OUTPUT"
+          echo "NPM_CONFIG_PREFIX=$HOME/.npm-global" >>"$GITHUB_ENV"
+          echo "$HOME/.npm-global/bin" >>"$GITHUB_PATH"
+      - uses: actions/cache/restore@v6.1.0
+        id: tools
+        with:
+          key: tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.pins.outputs.key }}
+          path: |
+            ~/.cargo/bin/cargo-machete
+            ~/.cargo/bin/cargo-deny
+            ~/.cargo/bin/cargo-semver-checks
+            ~/.cargo/bin/typos
+            ~/.cargo/bin/rust-code-analysis-cli
+            ~/.npm-global
+            ~/perl5
+      - name: Install the analyzers
+        id: install
+        run: |
+          rustup toolchain install stable --profile minimal
+          brew install shellcheck
+          if [[ "${{ steps.tools.outputs.cache-hit }}" != true ]]; then just tools; fi
+      # Saved at once, so a failing check later in the run still keeps the analyzers for the next one
+      - uses: actions/cache/save@v6.1.0
+        if: steps.tools.outputs.cache-hit != 'true'
+        with:
+          key: ${{ steps.tools.outputs.cache-primary-key }}
+          path: |
+            ~/.cargo/bin/cargo-machete
+            ~/.cargo/bin/cargo-deny
+            ~/.cargo/bin/cargo-semver-checks
+            ~/.cargo/bin/typos
+            ~/.cargo/bin/rust-code-analysis-cli
+            ~/.npm-global
+            ~/perl5
+
+      - name: fmt
+        run: just fmt
+      - name: lint
+        if: (success() || failure()) && steps.install.outcome == 'success'
+        run: just lint
+      - name: test
+        if: (success() || failure()) && steps.install.outcome == 'success'
+        run: just test

@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 
 use crate::core::domain::{HotKey, RecordingMode};
@@ -15,240 +16,135 @@ pub use refinement::{RefinementCfg, RefinementExample};
 pub use transcription::TranscriptionCfg;
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct Config {
-    #[serde(default)]
     pub hotkey: HotkeyCfg,
-    #[serde(default)]
     pub audio: AudioCfg,
-    #[serde(default)]
     pub transcription: TranscriptionCfg,
-    #[serde(default)]
     pub refinement: RefinementCfg,
-    #[serde(default)]
     pub paste: PasteCfg,
-    #[serde(default)]
     pub sounds: SoundsCfg,
-    #[serde(default)]
     pub voice_control: VoiceControlCfg,
-    #[serde(default)]
     pub archive: ArchiveCfg,
-    #[serde(default)]
     pub logging: LoggingCfg,
-    #[serde(default)]
     pub services: ServicesCfg,
-    #[serde(default)]
     pub app: AppCfg,
 }
 
 /// What the app records about itself; the settings window shows no control for it.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct AppCfg {
     /// Whether the app already asked to start at login; it asks only once.
-    #[serde(default)]
     pub launch_at_login_asked: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct HotkeyCfg {
-    #[serde(default = "HotkeyCfg::default_key")]
     pub key: HotKey,
-    #[serde(default = "HotkeyCfg::default_min_press_ms")]
     pub min_press_ms: u64,
-    #[serde(default)]
     pub recording_mode: RecordingMode,
-}
-
-impl HotkeyCfg {
-    fn default_key() -> HotKey {
-        HotKey::RightOption
-    }
-    fn default_min_press_ms() -> u64 {
-        200
-    }
 }
 
 impl Default for HotkeyCfg {
     fn default() -> Self {
         Self {
-            key: Self::default_key(),
-            min_press_ms: Self::default_min_press_ms(),
+            key: HotKey::RightOption,
+            min_press_ms: 200,
             recording_mode: RecordingMode::default(),
         }
     }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct AudioCfg {
-    #[serde(default = "AudioCfg::default_input_device")]
     pub input_device: String,
-    /// Retired: the dictation archive replaced it. Still accepted so old configs load.
-    #[serde(default)]
-    pub debug_save_wav: bool,
-    #[serde(default = "AudioCfg::default_max_recording_seconds")]
     pub max_recording_seconds: u64,
-}
-
-impl AudioCfg {
-    fn default_input_device() -> String {
-        "default".into()
-    }
-    fn default_max_recording_seconds() -> u64 {
-        600
-    }
+    /// Retired: the dictation archive replaced it. Still accepted, and ignored, so old
+    /// configs load.
+    #[serde(skip_serializing)]
+    debug_save_wav: IgnoredAny,
 }
 
 impl Default for AudioCfg {
     fn default() -> Self {
         Self {
-            input_device: Self::default_input_device(),
-            debug_save_wav: false,
-            max_recording_seconds: Self::default_max_recording_seconds(),
+            input_device: "default".into(),
+            max_recording_seconds: 600,
+            debug_save_wav: IgnoredAny,
         }
     }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct PasteCfg {
-    #[serde(default = "PasteCfg::default_clipboard_restore_delay_ms")]
     pub clipboard_restore_delay_ms: u64,
-    #[serde(default = "PasteCfg::default_focus_wait_seconds")]
     pub focus_wait_seconds: u64,
-}
-
-impl PasteCfg {
-    fn default_clipboard_restore_delay_ms() -> u64 {
-        120
-    }
-    fn default_focus_wait_seconds() -> u64 {
-        300
-    }
 }
 
 impl Default for PasteCfg {
     fn default() -> Self {
-        Self {
-            clipboard_restore_delay_ms: Self::default_clipboard_restore_delay_ms(),
-            focus_wait_seconds: Self::default_focus_wait_seconds(),
-        }
+        Self { clipboard_restore_delay_ms: 120, focus_wait_seconds: 300 }
     }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct SoundsCfg {
-    #[serde(default = "SoundsCfg::default_start_sound")]
     pub start_sound: String,
-    #[serde(default = "SoundsCfg::default_stop_sound")]
     pub stop_sound: String,
-    #[serde(default = "SoundsCfg::default_cancel_sound")]
     pub cancel_sound: String,
-    #[serde(default = "SoundsCfg::default_listening_on_sound")]
     pub listening_on_sound: String,
-    #[serde(default = "SoundsCfg::default_listening_off_sound")]
     pub listening_off_sound: String,
     /// Voice control: "press enter" was carried out. `command_sound` is its former name.
-    #[serde(default = "SoundsCfg::default_enter_sound", alias = "command_sound")]
+    #[serde(alias = "command_sound")]
     pub enter_sound: String,
     /// Voice control: "clear all text" was carried out.
-    #[serde(default = "SoundsCfg::default_clear_sound")]
     pub clear_sound: String,
     /// Voice control: "paste text" was carried out.
-    #[serde(default = "SoundsCfg::default_paste_sound")]
     pub paste_sound: String,
     /// Voice control: "restart dictation" started the dictation over.
-    #[serde(default = "SoundsCfg::default_restart_sound")]
     pub restart_sound: String,
-}
-
-impl SoundsCfg {
-    fn default_start_sound() -> String {
-        "Glass".into()
-    }
-
-    fn default_stop_sound() -> String {
-        "Pop".into()
-    }
-
-    fn default_cancel_sound() -> String {
-        "Basso".into()
-    }
-
-    fn default_listening_on_sound() -> String {
-        "Tink".into()
-    }
-
-    fn default_listening_off_sound() -> String {
-        "Bottle".into()
-    }
-
-    fn default_enter_sound() -> String {
-        "Morse".into()
-    }
-
-    fn default_clear_sound() -> String {
-        "Purr".into()
-    }
-
-    fn default_paste_sound() -> String {
-        "Frog".into()
-    }
-
-    fn default_restart_sound() -> String {
-        "Hero".into()
-    }
 }
 
 impl Default for SoundsCfg {
     fn default() -> Self {
         Self {
-            start_sound: Self::default_start_sound(),
-            stop_sound: Self::default_stop_sound(),
-            cancel_sound: Self::default_cancel_sound(),
-            listening_on_sound: Self::default_listening_on_sound(),
-            listening_off_sound: Self::default_listening_off_sound(),
-            enter_sound: Self::default_enter_sound(),
-            clear_sound: Self::default_clear_sound(),
-            paste_sound: Self::default_paste_sound(),
-            restart_sound: Self::default_restart_sound(),
+            start_sound: "Glass".into(),
+            stop_sound: "Pop".into(),
+            cancel_sound: "Basso".into(),
+            listening_on_sound: "Tink".into(),
+            listening_off_sound: "Bottle".into(),
+            enter_sound: "Morse".into(),
+            clear_sound: "Purr".into(),
+            paste_sound: "Frog".into(),
+            restart_sound: "Hero".into(),
         }
     }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct VoiceControlCfg {
-    #[serde(default)]
     pub enabled: bool,
-    #[serde(default = "VoiceControlCfg::default_url")]
     pub url: String,
-}
-
-impl VoiceControlCfg {
-    fn default_url() -> String {
-        "ws://127.0.0.1:8082".into()
-    }
 }
 
 impl Default for VoiceControlCfg {
     fn default() -> Self {
-        Self { enabled: false, url: Self::default_url() }
+        Self { enabled: false, url: "ws://127.0.0.1:8082".into() }
     }
 }
 
 /// The dictation archive: where each dictation's audio and texts are kept, and how much.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct ArchiveCfg {
-    #[serde(default = "ArchiveCfg::default_enabled")]
     pub enabled: bool,
-    #[serde(default = "ArchiveCfg::default_dir")]
     pub dir: PathBuf,
-    #[serde(default = "ArchiveCfg::default_max_size_mb")]
     pub max_size_mb: u64,
 }
 
@@ -258,18 +154,6 @@ const BYTES_PER_MEGABYTE: u64 = 1024 * 1024;
 const HOME_DIR_PREFIX: &str = "~";
 
 impl ArchiveCfg {
-    fn default_enabled() -> bool {
-        true
-    }
-
-    fn default_dir() -> PathBuf {
-        PathBuf::from(DEFAULT_ARCHIVE_DIR)
-    }
-
-    fn default_max_size_mb() -> u64 {
-        DEFAULT_ARCHIVE_MAX_SIZE_MB
-    }
-
     /// The size limit of the archive in bytes.
     pub fn max_size_bytes(&self) -> u64 {
         self.max_size_mb.saturating_mul(BYTES_PER_MEGABYTE)
@@ -287,80 +171,49 @@ impl ArchiveCfg {
 impl Default for ArchiveCfg {
     fn default() -> Self {
         Self {
-            enabled: Self::default_enabled(),
-            dir: Self::default_dir(),
-            max_size_mb: Self::default_max_size_mb(),
+            enabled: true,
+            dir: PathBuf::from(DEFAULT_ARCHIVE_DIR),
+            max_size_mb: DEFAULT_ARCHIVE_MAX_SIZE_MB,
         }
     }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct LoggingCfg {
-    #[serde(default = "LoggingCfg::default_level")]
     pub level: String,
-}
-
-impl LoggingCfg {
-    fn default_level() -> String {
-        "info".into()
-    }
 }
 
 impl Default for LoggingCfg {
     fn default() -> Self {
-        Self { level: Self::default_level() }
+        Self { level: "info".into() }
     }
 }
 
 /// The local services the app starts and watches itself, unless `manage` is off.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct ServicesCfg {
-    #[serde(default = "ServicesCfg::default_manage")]
     pub manage: bool,
-    #[serde(default = "ServicesCfg::default_copies")]
     pub dictation_copies: u32,
-    #[serde(default = "ServicesCfg::default_copies")]
     pub command_copies: u32,
-    #[serde(default = "ServicesCfg::default_service_copies")]
     pub refinement_copies: u32,
-    #[serde(default = "ServicesCfg::default_service_copies")]
     pub command_spotting_copies: u32,
-    #[serde(default = "ServicesCfg::default_models_dir")]
     pub models_dir: PathBuf,
     /// The speech recognition service for commands, which the command spotting service asks.
-    #[serde(default = "ServicesCfg::default_commands_url")]
     pub commands_url: String,
 }
 
 /// The most copies of a service: its clients look on four ports.
 pub const MAX_SERVICE_COPIES: u32 = 4;
 const DEFAULT_MODELS_DIR: &str = "~/.voicepuncher/models";
+/// Copies of a speech recognition service.
+const DEFAULT_COPIES: u32 = 3;
+/// Two copies of a service that answers one request at a time: one takes over while the
+/// other is restarted.
+const DEFAULT_SERVICE_COPIES: u32 = 2;
 
 impl ServicesCfg {
-    fn default_manage() -> bool {
-        true
-    }
-
-    fn default_copies() -> u32 {
-        3
-    }
-
-    /// Two copies of a service that answers one request at a time: one takes over while
-    /// the other is restarted.
-    fn default_service_copies() -> u32 {
-        2
-    }
-
-    fn default_models_dir() -> PathBuf {
-        PathBuf::from(DEFAULT_MODELS_DIR)
-    }
-
-    fn default_commands_url() -> String {
-        "http://127.0.0.1:8085/v1".into()
-    }
-
     /// The models folder with a leading `~` replaced by `home`.
     pub fn resolved_models_dir(&self, home: &Path) -> PathBuf {
         match self.models_dir.strip_prefix(HOME_DIR_PREFIX) {
@@ -373,13 +226,13 @@ impl ServicesCfg {
 impl Default for ServicesCfg {
     fn default() -> Self {
         Self {
-            manage: Self::default_manage(),
-            dictation_copies: Self::default_copies(),
-            command_copies: Self::default_copies(),
-            refinement_copies: Self::default_service_copies(),
-            command_spotting_copies: Self::default_service_copies(),
-            models_dir: Self::default_models_dir(),
-            commands_url: Self::default_commands_url(),
+            manage: true,
+            dictation_copies: DEFAULT_COPIES,
+            command_copies: DEFAULT_COPIES,
+            refinement_copies: DEFAULT_SERVICE_COPIES,
+            command_spotting_copies: DEFAULT_SERVICE_COPIES,
+            models_dir: PathBuf::from(DEFAULT_MODELS_DIR),
+            commands_url: "http://127.0.0.1:8085/v1".into(),
         }
     }
 }
@@ -412,15 +265,24 @@ pub fn load(path: &Path) -> Result<Config> {
 
 /// The configuration `raw` holds, checked as a file is; `origin` names it in errors.
 pub fn parse(raw: &str, origin: &str) -> Result<Config> {
-    let table: toml::Table =
-        toml::from_str(raw).with_context(|| format!("parse config: {origin}"))?;
-    transcription::reject_removed_whisper_section(&table)
-        .and_then(|()| transcription::reject_removed_transcription_keys(&table))
-        .and_then(|()| refinement::reject_removed_llm_section(&table))
-        .with_context(|| format!("outdated config: {origin}"))?;
-    let cfg: Config = toml::from_str(raw).with_context(|| format!("parse config: {origin}"))?;
+    let cfg: Config = toml::from_str(raw).map_err(|error| explain(raw, error, origin))?;
     validate(&cfg).with_context(|| format!("invalid config: {origin}"))?;
     Ok(cfg)
+}
+
+/// Why `raw` is no configuration: the removed section or key it still sets, else `error`.
+/// Only a file that fails is parsed a second time, as a table.
+fn explain(raw: &str, error: toml::de::Error, origin: &str) -> anyhow::Error {
+    let removed = toml::from_str::<toml::Table>(raw).ok().and_then(|table| {
+        transcription::reject_removed_whisper_section(&table)
+            .and_then(|()| transcription::reject_removed_transcription_keys(&table))
+            .and_then(|()| refinement::reject_removed_llm_section(&table))
+            .err()
+    });
+    match removed {
+        Some(removed) => removed.context(format!("outdated config: {origin}")),
+        None => anyhow::Error::new(error).context(format!("parse config: {origin}")),
+    }
 }
 
 /// Checks rules that span the effective config; run again after CLI flags are overlaid.
@@ -719,17 +581,6 @@ mod tests {
         let dir = archive.resolved_dir(Path::new("/Users/someone"));
         // Then
         assert_eq!(dir, Path::new("/tmp/dictations"));
-    }
-
-    #[test]
-    fn should_still_accept_the_retired_debug_save_wav_key() {
-        // Given
-        let mut f = tempfile::NamedTempFile::new().unwrap();
-        writeln!(f, "[audio]\ndebug_save_wav = true").unwrap();
-        // When
-        let cfg = load(f.path()).unwrap();
-        // Then
-        assert!(cfg.audio.debug_save_wav);
     }
 
     #[test]

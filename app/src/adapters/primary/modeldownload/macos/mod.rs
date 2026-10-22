@@ -13,15 +13,15 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use objc2::rc::Retained;
-use objc2::runtime::{AnyObject, Sel};
+use objc2::runtime::AnyObject;
 use objc2::{define_class, msg_send, sel, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSApplication, NSBackingStoreType, NSButton, NSColor, NSFont, NSFontWeightMedium,
-    NSProgressIndicator, NSProgressIndicatorStyle, NSTextAlignment, NSTextField, NSView, NSWindow,
-    NSWindowStyleMask,
+    NSApplication, NSColor, NSFont, NSFontWeightMedium, NSProgressIndicator,
+    NSProgressIndicatorStyle, NSTextAlignment, NSView, NSWindow,
 };
 use objc2_foundation::{NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString};
 
+use crate::adapters::appkit::{self, label, push_button, wrapping};
 use crate::adapters::main_queue::dispatch_to_main;
 use crate::adapters::primary::menubar::macos::actions::show_in_file_browser;
 use crate::core::application::{DownloadEvent, ModelDownload};
@@ -282,29 +282,12 @@ fn close() {
 }
 
 fn build_window(mtm: MainThreadMarker) -> Retained<NSWindow> {
-    let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(WIDTH, HEIGHT));
-    // SAFETY: a new titled window; it is not released on close, the state keeps it.
-    let window = unsafe {
-        NSWindow::initWithContentRect_styleMask_backing_defer(
-            mtm.alloc::<NSWindow>(),
-            frame,
-            NSWindowStyleMask::Titled | NSWindowStyleMask::Closable,
-            NSBackingStoreType::Buffered,
-            false,
-        )
-    };
-    // SAFETY: a Retained owns the window, so AppKit must not release it again on close.
-    unsafe { window.setReleasedWhenClosed(false) };
-    window.setTitle(&NSString::from_str(mapping::TITLE));
-    window
+    appkit::titled_window(mtm, mapping::TITLE, WIDTH, HEIGHT)
 }
 
 /// Frame `height` high, `y` points below the content's top edge.
 fn below_top(x: f64, y: f64, width: f64, height: f64) -> NSRect {
-    NSRect::new(
-        NSPoint::new(x, HEIGHT - y - height),
-        NSSize::new(width, height),
-    )
+    appkit::below_top(HEIGHT, x, y, width, height)
 }
 
 #[expect(clippy::too_many_lines, reason = "size baseline")]
@@ -314,7 +297,7 @@ fn content(mtm: MainThreadMarker, target: &WindowTarget, model: &WindowModel) ->
         NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(WIDTH, HEIGHT)),
     );
     let text_width = WIDTH - 2.0 * MARGIN;
-    let intro = wrapping(mtm, &model.intro(), NSFont::systemFontOfSize(13.0));
+    let intro = wrapping(mtm, &model.intro(), &NSFont::systemFontOfSize(13.0));
     intro.setFrame(below_top(MARGIN, 14.0, text_width, 36.0));
     view.addSubview(&intro);
     for (index, row) in model.rows.iter().enumerate() {
@@ -323,18 +306,18 @@ fn content(mtm: MainThreadMarker, target: &WindowTarget, model: &WindowModel) ->
             mtm,
             row.name,
             // SAFETY: an immutable framework constant, set before any Rust code runs.
-            NSFont::monospacedSystemFontOfSize_weight(12.0, unsafe { NSFontWeightMedium }),
+            &NSFont::monospacedSystemFontOfSize_weight(12.0, unsafe { NSFontWeightMedium }),
         );
         name.setFrame(below_top(MARGIN, top, SIZE_X - MARGIN, 16.0));
         view.addSubview(&name);
-        let purpose = label(mtm, row.purpose, NSFont::systemFontOfSize(11.0));
+        let purpose = label(mtm, row.purpose, &NSFont::systemFontOfSize(11.0));
         purpose.setTextColor(Some(&NSColor::secondaryLabelColor()));
         purpose.setFrame(below_top(MARGIN, top + 17.0, SIZE_X - MARGIN, 15.0));
         view.addSubview(&purpose);
         let size = label(
             mtm,
             &human_size(row.size_bytes),
-            NSFont::systemFontOfSize(12.0),
+            &NSFont::systemFontOfSize(12.0),
         );
         size.setAlignment(NSTextAlignment::Right);
         size.setFrame(below_top(SIZE_X, top, SIZE_WIDTH, 16.0));
@@ -342,7 +325,7 @@ fn content(mtm: MainThreadMarker, target: &WindowTarget, model: &WindowModel) ->
         let status = wrapping(
             mtm,
             &status_text(&row.status),
-            NSFont::systemFontOfSize(11.0),
+            &NSFont::systemFontOfSize(11.0),
         );
         let colour = match row.status {
             mapping::RowStatus::Present => NSColor::systemGreenColor(),
@@ -364,12 +347,12 @@ fn content(mtm: MainThreadMarker, target: &WindowTarget, model: &WindowModel) ->
     bar.setMaxValue(1.0);
     bar.setDoubleValue(model.total_fraction());
     view.addSubview(&bar);
-    let total = label(mtm, &model.total_line(), NSFont::systemFontOfSize(12.0));
+    let total = label(mtm, &model.total_line(), &NSFont::systemFontOfSize(12.0));
     total.setTextColor(Some(&NSColor::secondaryLabelColor()));
     total.setFrame(below_top(MARGIN, below_table + 16.0, text_width, 16.0));
     view.addSubview(&total);
     let (space, red) = model.space_line();
-    let space = label(mtm, &space, NSFont::systemFontOfSize(12.0));
+    let space = label(mtm, &space, &NSFont::systemFontOfSize(12.0));
     if red {
         space.setTextColor(Some(&NSColor::systemRedColor()));
     }
@@ -412,36 +395,6 @@ fn content(mtm: MainThreadMarker, target: &WindowTarget, model: &WindowModel) ->
     ));
     view.addSubview(&download);
     view
-}
-
-fn label(mtm: MainThreadMarker, text: &str, font: Retained<NSFont>) -> Retained<NSTextField> {
-    let field = NSTextField::labelWithString(&NSString::from_str(text), mtm);
-    field.setFont(Some(&font));
-    field.setAlignment(NSTextAlignment::Left);
-    field
-}
-
-fn wrapping(mtm: MainThreadMarker, text: &str, font: Retained<NSFont>) -> Retained<NSTextField> {
-    let field = NSTextField::wrappingLabelWithString(&NSString::from_str(text), mtm);
-    field.setFont(Some(&font));
-    field
-}
-
-fn push_button(
-    mtm: MainThreadMarker,
-    target: &WindowTarget,
-    title: &str,
-    action: Sel,
-) -> Retained<NSButton> {
-    // SAFETY: `action` is a method of `target` taking the sender, as a button calls it.
-    unsafe {
-        NSButton::buttonWithTitle_target_action(
-            &NSString::from_str(title),
-            Some(target as &AnyObject),
-            Some(action),
-            mtm,
-        )
-    }
 }
 
 define_class!(

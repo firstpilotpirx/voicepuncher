@@ -50,7 +50,7 @@ impl ManagedServices {
     pub fn start_on(machine: Machine) -> Result<Self> {
         let services = Services::new(
             Box::new(ProcessLauncher),
-            Box::new(HttpProbe),
+            Box::new(HttpProbe::new()),
             Arc::new(SystemClock),
         );
         Ok(Self {
@@ -76,7 +76,7 @@ impl ManagedServices {
 impl LocalServices for ManagedServices {
     fn require(&mut self, config: &Config) {
         let needs = Needs::of(config);
-        let specs = catalog::needed(config, needs, &self.machine, &HttpProbe);
+        let specs = catalog::needed(config, needs, &self.machine, &HttpProbe::new());
         self.ports = specs.iter().map(|spec| spec.port).collect();
         for spec in &specs {
             log::info!(

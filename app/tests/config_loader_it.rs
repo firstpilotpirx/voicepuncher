@@ -156,12 +156,11 @@ fn should_load_with_only_hotkey_section() {
 fn should_load_a_config_with_the_retired_debug_save_wav_key() {
     // Given
     let toml_str = "[audio]\ndebug_save_wav = true\n";
-    let temp = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(temp.path(), toml_str).unwrap();
 
     // When
-    let cfg = load(temp.path()).unwrap();
+    let cfg = voicepuncher::config::parse(toml_str, "retired").unwrap();
 
     // Then
-    assert!(cfg.audio.debug_save_wav);
+    let audio = toml::to_string(&cfg.audio).unwrap();
+    assert!(!audio.contains("debug_save_wav"), "{audio}");
 }

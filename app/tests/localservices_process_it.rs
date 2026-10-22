@@ -146,13 +146,6 @@ fn server(respond: fn(&str) -> (u16, &'static str)) -> u16 {
     port
 }
 
-fn spec_on(kind: ServiceKind, port: u16) -> ServiceSpec {
-    let mut spec = shell("", Path::new("/tmp/unused.log"));
-    spec.kind = kind;
-    spec.port = port;
-    spec
-}
-
 fn free_port() -> u16 {
     TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -164,7 +157,7 @@ fn free_port() -> u16 {
 #[test]
 fn should_find_nothing_on_a_closed_port() {
     assert_eq!(
-        HttpProbe.answer(&spec_on(ServiceKind::Refinement, free_port())),
+        HttpProbe::new().answer(ServiceKind::Refinement, free_port()),
         ProbeAnswer::Closed
     );
 }
@@ -173,7 +166,7 @@ fn should_find_nothing_on_a_closed_port() {
 fn should_take_a_healthy_service_as_ready() {
     let port = server(|_| (200, "{\"status\":\"ok\"}"));
     assert_eq!(
-        HttpProbe.answer(&spec_on(ServiceKind::Refinement, port)),
+        HttpProbe::new().answer(ServiceKind::Refinement, port),
         ProbeAnswer::Ready
     );
 }
@@ -182,7 +175,7 @@ fn should_take_a_healthy_service_as_ready() {
 fn should_take_a_loading_service_as_busy() {
     let port = server(|_| (503, "{\"error\":\"Loading model\"}"));
     assert_eq!(
-        HttpProbe.answer(&spec_on(ServiceKind::Refinement, port)),
+        HttpProbe::new().answer(ServiceKind::Refinement, port),
         ProbeAnswer::Busy
     );
 }
@@ -194,7 +187,7 @@ fn should_take_a_whisper_server_as_a_speech_recognition_service() {
         _ => (200, "<title>Whisper.cpp Server</title>"),
     });
     assert_eq!(
-        HttpProbe.answer(&spec_on(ServiceKind::Dictation, port)),
+        HttpProbe::new().answer(ServiceKind::Dictation, port),
         ProbeAnswer::Ready
     );
 }
@@ -203,7 +196,7 @@ fn should_take_a_whisper_server_as_a_speech_recognition_service() {
 fn should_not_take_another_healthy_program_as_a_speech_recognition_service() {
     let port = server(|_| (200, "{\"status\":\"ok\"}"));
     assert_eq!(
-        HttpProbe.answer(&spec_on(ServiceKind::Commands, port)),
+        HttpProbe::new().answer(ServiceKind::Commands, port),
         ProbeAnswer::Busy
     );
 }

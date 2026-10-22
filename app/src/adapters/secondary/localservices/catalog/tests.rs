@@ -11,8 +11,8 @@ use crate::core::domain::{ServiceKind, ServiceSpec};
 struct Answering(Vec<u16>);
 
 impl ServiceProbe for Answering {
-    fn answer(&self, spec: &ServiceSpec) -> ProbeAnswer {
-        if self.0.contains(&spec.port) {
+    fn answer(&self, _kind: ServiceKind, port: u16) -> ProbeAnswer {
+        if self.0.contains(&port) {
             ProbeAnswer::Ready
         } else {
             ProbeAnswer::Closed
@@ -78,6 +78,8 @@ impl Home {
 fn kinds_and_ports(specs: &[ServiceSpec]) -> Vec<(ServiceKind, u16)> {
     specs.iter().map(|spec| (spec.kind, spec.port)).collect()
 }
+
+mod command_lines;
 
 const ALL: Needs = Needs { refinement: true, voice_control: true };
 
@@ -486,79 +488,25 @@ fn should_find_a_model_in_the_old_folder_and_prefer_the_environment() {
     assert_eq!(overridden, chosen.display().to_string());
 }
 
-/// The words of the `justfile` from `start` up to `end`, without line continuations.
-fn justfile_words(start: &str, end: &str) -> Vec<String> {
-    let justfile = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../justfile")).unwrap();
-    let from = justfile
-        .find(start)
-        .unwrap_or_else(|| panic!("no {start} in the justfile"));
-    let rest = &justfile[from + start.len()..];
-    let to = rest
-        .find(end)
-        .unwrap_or_else(|| panic!("no {end} after {start}"));
-    rest[..to]
-        .split_whitespace()
-        .filter(|word| *word != "\\")
-        .map(|word| word.trim_matches('"').to_string())
-        .collect()
-}
-
 #[test]
-fn should_start_whisper_with_the_arguments_of_the_justfile() {
+fn should_use_the_newest_of_two_keyword_spotting_models() {
     // Given
-    let words = justfile_words("whisper_cmd=(whisper-server", ")\n");
+    let home = Home::complete();
+    let older = home.models().join("sherpa-onnx-kws-zipformer");
+    let newer = home.models().join("sherpa-onnx-kws-zz-newer");
+    fs::create_dir_all(&newer).unwrap();
+    let past = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    fs::File::open(&older).unwrap().set_modified(past).unwrap();
     // When
-    let args = whisper_args("$1", 0, 0, "$VOICEPUNCHER_VAD_MODEL");
+    let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
     // Then
-    let expected: Vec<String> = words
-        .into_iter()
-        .map(|word| match word.as_str() {
-            "$2" => "0".into(),
-            "$3" => "0".into(),
-            _ => word,
-        })
-        .collect();
-    assert_eq!(args, expected);
-}
-
-#[test]
-fn should_start_llama_with_the_arguments_of_the_justfile() {
-    let words = justfile_words(
-        "\"http://127.0.0.1:{{llm_port}}/health\" llama-server",
-        "\n",
+    let spotting = specs
+        .iter()
+        .find(|spec| spec.kind == ServiceKind::CommandSpotting)
+        .unwrap();
+    assert!(
+        spotting.args.contains(&newer.display().to_string()),
+        "{:?}",
+        spotting.args
     );
-    let args = llama_args("$VOICEPUNCHER_LLM_MODEL", 0);
-    let expected: Vec<String> = words
-        .into_iter()
-        .map(|word| {
-            if word == "{{llm_port}}" {
-                "0".into()
-            } else {
-                word
-            }
-        })
-        .collect();
-    assert_eq!(args, expected);
-}
-
-#[test]
-fn should_start_the_command_spotting_service_with_the_arguments_of_the_justfile() {
-    let words = justfile_words("\"{{kws_binary}}\"", "${VOICEPUNCHER_KWS_SAVE_SPEECH_DIR");
-    let args = command_spotting_args(
-        0,
-        "$VOICEPUNCHER_KWS_MODEL_DIR",
-        "$VOICEPUNCHER_KWS_VAD_MODEL",
-        "{{command_stt_url}}",
-    );
-    let expected: Vec<String> = words
-        .into_iter()
-        .map(|word| {
-            if word == "{{kws_port}}" {
-                "0".into()
-            } else {
-                word
-            }
-        })
-        .collect();
-    assert_eq!(args, expected);
 }

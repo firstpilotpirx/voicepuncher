@@ -3,16 +3,11 @@
 
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 
+use crate::adapters::secondary::http::agent;
 use crate::core::application::{FetchError, ModelFetcher, PartSink};
 
-/// A model host that does not connect within this is taken as no connection.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
-/// A stream that sends nothing for this long is cut; a slow one is not.
-const READ_TIMEOUT: Duration = Duration::from_secs(30);
 const CHUNK: usize = 8 * 1024;
-const REDIRECTS: u32 = 8;
 
 /// Fetches with one agent; no overall time limit, so a slow link is no failure.
 pub struct HttpModelFetcher {
@@ -21,14 +16,7 @@ pub struct HttpModelFetcher {
 
 impl HttpModelFetcher {
     pub fn new() -> Self {
-        Self {
-            agent: ureq::AgentBuilder::new()
-                .timeout_connect(CONNECT_TIMEOUT)
-                .timeout_read(READ_TIMEOUT)
-                .redirects(REDIRECTS)
-                .user_agent(concat!("voicepuncher/", env!("CARGO_PKG_VERSION")))
-                .build(),
-        }
+        Self { agent: agent::downloads() }
     }
 }
 

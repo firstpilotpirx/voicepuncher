@@ -17,7 +17,7 @@ use super::field::Tab;
 use super::login::SWITCH_LABEL;
 use super::login_row::LoginRow;
 use super::models_row::{ModelsRow, MODELS_LABEL};
-use super::target::actions;
+use super::target::Action;
 
 const MARGIN: f64 = 20.0;
 const LABEL_COLUMN: f64 = 160.0;
@@ -135,7 +135,7 @@ fn tab_view(
             parts.mtm,
             &grid,
             None,
-            &button(parts, LOGS_TITLE, actions::open_logs(), 0),
+            &button(parts, LOGS_TITLE, Action::OPEN_LOGS, 0),
         );
     }
     let labels = grid.columnAtIndex(0);
@@ -208,7 +208,7 @@ fn note_label(mtm: MainThreadMarker, text: &str) -> Retained<NSTextField> {
 
 /// The triangle that shows the tab's advanced rows, with its title beside it.
 fn disclosure(parts: &Parts, place: isize) -> Retained<NSStackView> {
-    let triangle = button(parts, "", actions::toggle_advanced(), place);
+    let triangle = button(parts, "", Action::TOGGLE_ADVANCED, place);
     triangle.setButtonType(NSButtonType::PushOnPushOff);
     triangle.setBezelStyle(NSBezelStyle::Disclosure);
     let title = NSTextField::labelWithString(&NSString::from_str(ADVANCED_TITLE), parts.mtm);
@@ -217,8 +217,8 @@ fn disclosure(parts: &Parts, place: isize) -> Retained<NSStackView> {
 
 fn bottom_bar(parts: &Parts, status: &NSTextField) -> Retained<NSStackView> {
     status.setTextColor(Some(&NSColor::secondaryLabelColor()));
-    let revert = button(parts, REVERT_TITLE, actions::revert(), 0);
-    let save = button(parts, SAVE_TITLE, actions::save(), 0);
+    let revert = button(parts, REVERT_TITLE, Action::REVERT, 0);
+    let save = button(parts, SAVE_TITLE, Action::SAVE, 0);
     save.setKeyEquivalent(&NSString::from_str(RETURN_KEY));
     let bar = stack(parts.mtm, &[status.as_ref()]);
     bar.addView_inGravity(&revert, objc2_app_kit::NSStackViewGravity::Trailing);

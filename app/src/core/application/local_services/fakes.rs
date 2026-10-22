@@ -152,12 +152,12 @@ impl FakeProbe {
 }
 
 impl ServiceProbe for FakeProbe {
-    fn answer(&self, spec: &ServiceSpec) -> ProbeAnswer {
+    fn answer(&self, _kind: ServiceKind, port: u16) -> ProbeAnswer {
         *self
             .0
             .lock()
             .unwrap()
-            .get(&spec.port)
+            .get(&port)
             .unwrap_or(&ProbeAnswer::Closed)
     }
 }
