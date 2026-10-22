@@ -1,0 +1,13 @@
+prepared:
+  estimate: 2h
+  decisions:
+    - question: Run explore before the change starts?
+      answer: No
+    - question: What sets the new loudness mapping (dBFS range, noise floor)?
+      answer: Measure speech and silence levels in the user's recordings in ~/.voicepuncher/voice-samples/ and derive the range and noise floor from them
+    - question: Which border should the recording pill get?
+      answer: Thin light hairline (1 pt, white ~15 %) plus a soft shadow, like macOS system HUDs
+    - question: Column period of the level waveform (now 200 ms)?
+      answer: 100 ms, for sharper and more frequent spikes like ChatGPT's waveform
+    - question: How does the user approve the look, since the unattended run cannot show a mockup?
+      answer: No mockup and no stop; the user checks it in the app after the merge and files a fix if needed
