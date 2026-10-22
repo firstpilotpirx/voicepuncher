@@ -12,7 +12,7 @@ The disk image built from the assembled `main` after every dependency landed: th
 
 ### A clean first run in the user's own account
 
-A fresh macOS user account needs the user's admin password and an account creation Claude may not perform, so the run uses the user's account and makes it look new instead: it stops the user's running app and services (`just stop-model-servers`), moves `~/.voicepuncher` aside to `~/.voicepuncher.acceptance-backup` (moved, never deleted) and removes an installed `/Applications/voicepuncher.app` only after copying it aside the same way. At the end it quits the installed app, unregisters launch at login if the run switched it on, and moves everything back. Models are downloaded again by the installer, which is what the model download items check.
+A fresh macOS user account needs the user's admin password and an account creation Claude may not perform, so the run uses the user's account and makes it look new instead: it stops the services the scripts run (`just stop-model-servers`), moves `~/.voicepuncher/config.toml` and `~/.voicepuncher/history` aside (moved, never deleted) and copies an installed `/Applications/voicepuncher.app` aside. Models stay in place, because other checkouts' checks read them from `~/.voicepuncher/models`; the model download items run against an empty models folder chosen in the settings. At the end it quits the installed app, unregisters launch at login if the run switched it on, and moves everything back.
 
 ### Who does what
 
