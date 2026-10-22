@@ -1,0 +1,17 @@
+prepared:
+  estimate: 3h
+  decisions:
+    - question: Explore before the proposal?
+      answer: No
+    - question: How does the Permissions window see Accessibility switched on, and what does it show for a stale entry?
+      answer: Poll every second while the window is open; under "Not granted" after Open System Settings, a hint to remove the entry with − and add the app again with +
+    - question: What if IOHIDRequestAccess after a denial does not add the app to the Input Monitoring list?
+      answer: Open the Input Monitoring pane, reveal the bundle in Finder and hint to add it with +
+    - question: When is the start-at-login switch available?
+      answer: Always when running from a bundle (NotFound means registrable); show macOS's error when registration is refused
+    - question: Where to show that the app waits for a permission?
+      answer: Menu bar - a top item "Waiting for <permission>…" opening the Permissions window plus a different icon; Settings - a line naming the permission under the voice control switch
+    - question: Pane names in the Permissions window?
+      answer: By macOS version - "Device Control and Data Access" on macOS 27+, "Accessibility" before; README names both
+    - question: The manual run (stage 10) is impossible at night - what should the night run do?
+      answer: Merge and release after all automatic checks; the morning report lists what to check by hand
