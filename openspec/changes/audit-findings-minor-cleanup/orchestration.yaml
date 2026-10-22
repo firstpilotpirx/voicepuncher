@@ -1,3 +1,18 @@
 depends_on:
   - change: slim-pipeline-module
     why: touches voice_control.rs and runtime/mod.rs that change rewrites
+prepared:
+  estimate: 1h30m
+  decisions:
+    - question: Explore before the remaining artifacts?
+      answer: No
+    - question: Dependency pinning rule for the workspace?
+      answer: Exact =x.y.z everywhere, Cargo.lock as the second lock
+    - question: Keep the clippy pedantic item?
+      answer: Drop it; the clippy ratchet already enables pedantic
+    - question: Canonical git identity in .mailmap?
+      answer: firstpilotpirx <firstpilotpirx@gmail.com>; map firstpilotpirx@gmail.com and firstpilotpirx@gmail.com to it
+    - question: Fix the non-main-thread exit in runtime/mod.rs here?
+      answer: No, leave it to slim-pipeline-module
+    - question: How should copy-pool address.rs parse addresses?
+      answer: Use the url crate
