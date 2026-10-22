@@ -1,1 +1,12 @@
 priority: high
+prepared:
+  estimate: 1h30m
+  decisions:
+    - question: Explore before the rest of the artifacts?
+      answer: No
+    - question: How should the real-service tests feed the speech?
+      answer: In speech time, the mechanism eradicate-flaky-tests built for the scripted tests
+    - question: Which real-service tests of placed_commands.rs take the fix?
+      answer: Every real-service test of the file, including the three that failed on 2026-10-21
+    - question: How is stability proven?
+      answer: As the proposal's acceptance bar — the tests pass 20 times in a row beside another full-check holding the machine lock
