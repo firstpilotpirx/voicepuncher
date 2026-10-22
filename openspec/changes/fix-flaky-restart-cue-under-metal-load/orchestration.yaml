@@ -1,1 +1,14 @@
 priority: high
+prepared:
+  estimate: 3h
+  decisions:
+    - question: Run explore first?
+      answer: No.
+    - question: Where does the warm-up of the whisper copies live?
+      answer: In the service start (every copy decodes a real utterance before it counts ready), so check and the app's first dictation benefit too; not only in the cue tests.
+    - question: How deep is the warm-up?
+      answer: Measure first whether macOS caches the Metal shaders between copy starts, then pick the warm-up depth from that measurement.
+    - question: Treat the 2026-10-19 and 2026-10-20 failures as the same cause?
+      answer: Yes; verify with the 10-run series, no separate investigation.
+    - question: Release if the warm-up also goes into the app's own service start?
+      answer: Then PATCH 0.37.4; if the warm-up stays in the justfile only, no release.
