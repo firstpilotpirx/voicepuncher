@@ -1,4 +1,1 @@
-depends_on:
-  - change: fast-test-build
-    why: names stage_inputs
 priority: high
