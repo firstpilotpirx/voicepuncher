@@ -21,8 +21,7 @@ Out of scope: the app's speech recognition deadlines and retries; the command se
 
 ### Modified Capabilities
 
-- `speech-recognition`: the file-mode scenarios hold under a light-class run beside the stage.
-- `audio-recording`: the long-dictation recording test states the load it proves.
+- `speech-recognition`: the file-mode scenarios hold under a light-class run beside the stage; the requirement that a recording loses no audio under load (it lives in this capability) states how long the recording holds back audio and what a failed check of it reports.
 
 ## Impact
 
