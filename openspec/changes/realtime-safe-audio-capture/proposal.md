@@ -18,7 +18,8 @@ Out of scope: the chunking algorithm; the recorder port.
 
 ### Modified Capabilities
 
-- `speech-recognition`: an audio device error ends the dictation with a notice.
+- `speech-recognition`: a recording loses no audio under load, the audio sent to the service is exactly what was recorded, and an audio device error ends the dictation with a notice.
+- `failure-notices`: a microphone lost during a dictation is announced.
 
 ## Impact
 
@@ -27,7 +28,7 @@ Out of scope: the chunking algorithm; the recorder port.
 ## Open points
 
 - Ring buffer crate: `rtrb` (wait-free, used by audio projects) versus `ringbuf`; proposed: `rtrb`.
-- Whether the shared audio module lives in `copy-pool`'s neighbour crate or in `app/src/core/domain/audio` re-exported for the command spotting crate; proposed: a small `audio-capture` crate in the workspace, since `command-spotting` must not depend on `app`.
+- Where the shared audio module lives; resolved in design: `app/src/adapters/secondary/recording/cpal/` (`capture.rs`, `resampler.rs`), since both microphone users are in `app` and the command spotting capture already imports `recording/cpal/devices`; no new crate.
 
 ## Release
 
