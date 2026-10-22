@@ -1,0 +1,15 @@
+prepared:
+  estimate: 3h
+  decisions:
+    - question: Run explore before the proposal?
+      answer: No
+    - question: The journal holds no WER numbers to measure noise from; which margin?
+      answer: Record mean WER and refinement score in the journal from this change on; fixed margin for now (0.01 WER, 2 points of refinement score); the 1.5σ formula over the last 10 passing runs takes over once the journal holds 10 runs
+    - question: What happens when a run is clearly better than the baseline?
+      answer: The run passes and prints a hint to update the baseline (just accuracy-baseline)
+    - question: How is a new baseline accepted?
+      answer: A recipe just accuracy-baseline writes it from this checkout's last passing run, with its commit; a baseline that gets worse is reviewed in the PR like code
+    - question: Where is the trend of WER and refinement score shown?
+      answer: A section in just stage-times, no new recipe
+    - question: How is the acceptance bar (an injected 2-point WER loss fails) proven?
+      answer: A unit test of the gate logic (baseline + 0.02 fails), not a real model run with a worse prompt
