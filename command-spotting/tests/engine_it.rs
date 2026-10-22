@@ -172,7 +172,7 @@ fn segment_and_phrase(events: &[ServerEvent]) -> ((f32, f32), (f32, f32)) {
             ServerEvent::SpeechStart { t } => segment = Some((*t, f32::MAX)),
             ServerEvent::SpeechEnd { t } => segment = segment.map(|(s, _)| (s, *t)),
             ServerEvent::Phrase { start, end, .. } => phrase = Some((*start, *end)),
-            ServerEvent::Command { .. } | ServerEvent::Synced { .. } => {}
+            _ => {}
         }
     }
     (
@@ -271,7 +271,7 @@ fn phrases_in_segments(events: &[ServerEvent]) -> Vec<PhraseInSegment> {
                 last_segment = Some((start, *t));
                 found.extend(waiting.drain(..).map(|(p, span)| (p, (start, *t), span)));
             }
-            ServerEvent::Command { .. } | ServerEvent::Synced { .. } => {}
+            _ => {}
         }
     }
     found

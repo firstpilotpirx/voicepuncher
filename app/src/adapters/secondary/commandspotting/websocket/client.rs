@@ -6,13 +6,14 @@ use std::net::TcpStream;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
-use serde::Deserialize;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Message, WebSocket};
 
-use crate::core::domain::{
-    CommandPlacement, ConfirmationTiming, ReportTiming, SpottingEvent, VoiceCommand,
-};
+use crate::core::domain::{SpottingEvent, VoiceCommand};
+
+mod events;
+
+use events::{to_spotting_event, ServiceEvent};
 
 mod handshake;
 
@@ -31,49 +32,8 @@ const PING_EVERY: Duration = Duration::from_secs(1);
 /// service answers pings at once, however long its spotting takes.
 const SILENCE_LIMIT: Duration = Duration::from_secs(5);
 const SAMPLE_BYTES: usize = 4;
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "event", rename_all = "snake_case")]
-enum ServiceEvent {
-    SpeechStart {
-        t: f32,
-    },
-    SpeechEnd {
-        t: f32,
-    },
-    Phrase {
-        phrase: String,
-        start: f32,
-        end: f32,
-        timing: Option<Confirmation>,
-    },
-    Command {
-        commands: Vec<String>,
-        start: f32,
-        end: f32,
-        placement: Placement,
-        timing: Option<Confirmation>,
-    },
-    Synced {
-        id: u64,
-    },
-}
-
-/// The confirmation that heard a phrase or command: the service time it was asked at, and
-/// how long it took.
-#[derive(Debug, Deserialize)]
-struct Confirmation {
-    asked_at: f32,
-    took_ms: u64,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum Placement {
-    Tail,
-    Head,
-    Anywhere,
-}
+/// The version of the command spotting protocol the client speaks, said in its `hello`.
+const PROTOCOL_VERSION: u32 = 2;
 
 pub struct SpottingClient {
     socket: WebSocket<MaybeTlsStream<TcpStream>>,
@@ -90,7 +50,7 @@ impl SpottingClient {
     /// Connects to the service at its own port, else to the first of its copies that
     /// answers; `audio_start` is when the first sample to be sent was captured.
     pub fn connect(url: &str, audio_start: Instant) -> Result<Self> {
-        let socket = handshake_any(url).with_context(|| {
+        let mut socket = handshake_any(url).with_context(|| {
             format!(
                 "command spotting service not reachable at {url} — run 'just start-model-servers'"
             )
@@ -99,13 +59,15 @@ impl SpottingClient {
             stream.set_read_timeout(Some(READ_WAIT))?;
             stream.set_write_timeout(Some(WRITE_WAIT))?;
         }
+        let hello = serde_json::json!({ "type": "hello", "version": PROTOCOL_VERSION });
+        socket.send(Message::text(hello.to_string()))?;
         Ok(Self { socket, audio_start, unanswered_since: None, last_ping: None, answer_waits: 0 })
     }
 
     /// Spots the phrases of `commands` from now on.
     pub fn listen_for(&mut self, commands: &[VoiceCommand]) -> Result<()> {
         let phrases: Vec<&str> = commands.iter().map(|c| c.phrase()).collect();
-        let selection = serde_json::json!({ "phrases": phrases }).to_string();
+        let selection = serde_json::json!({ "type": "select", "phrases": phrases }).to_string();
         self.socket.send(Message::text(selection))?;
         Ok(())
     }
@@ -138,7 +100,7 @@ impl SpottingClient {
         let mut events = Vec::new();
         while let Some(message) = self.next_message()? {
             if let Message::Text(text) = message {
-                events.extend(self.parse(text.as_str()).and_then(Answer::event));
+                events.extend(self.parse(text.as_str())?.and_then(Answer::event));
             }
         }
         self.check_answering()?;
@@ -162,8 +124,9 @@ impl SpottingClient {
     pub fn events_for_sent_audio(&mut self, within: Duration) -> Result<Vec<SpottingEvent>> {
         self.answer_waits += 1;
         let id = self.answer_waits;
-        self.socket
-            .send(Message::text(serde_json::json!({ "sync": id }).to_string()))?;
+        self.socket.send(Message::text(
+            serde_json::json!({ "type": "sync", "id": id }).to_string(),
+        ))?;
         let deadline = Instant::now() + within;
         let mut events = Vec::new();
         loop {
@@ -175,7 +138,7 @@ impl SpottingClient {
             }
             self.keep_alive()?;
             if let Some(Message::Text(text)) = self.next_message()? {
-                match self.parse(text.as_str()) {
+                match self.parse(text.as_str())? {
                     Some(Answer::Synced(synced)) if synced == id => return Ok(events),
                     Some(answer) => events.extend(answer.event()),
                     None => {}
@@ -204,9 +167,16 @@ impl SpottingClient {
         }
     }
 
-    fn parse(&self, text: &str) -> Option<Answer> {
-        match serde_json::from_str::<ServiceEvent>(text) {
+    /// The service's message; an error when the service says the connection is to be left.
+    fn parse(&self, text: &str) -> Result<Option<Answer>> {
+        Ok(match serde_json::from_str::<ServiceEvent>(text) {
             Ok(ServiceEvent::Synced { id }) => Some(Answer::Synced(id)),
+            Ok(ServiceEvent::Stalled { waited_ms }) => {
+                bail!("the command spotting service stalled: a confirmation has run {waited_ms} ms")
+            }
+            Ok(ServiceEvent::Dropped { samples }) => {
+                bail!("the command spotting service dropped {samples} samples it could not keep up with")
+            }
             Ok(event) => {
                 to_spotting_event(event, self.audio_start, Instant::now()).map(Answer::Event)
             }
@@ -214,7 +184,7 @@ impl SpottingClient {
                 log::warn!("command spotting service sent an unknown event {text}: {e}");
                 None
             }
-        }
+        })
     }
 }
 
@@ -231,54 +201,6 @@ impl Answer {
             Self::Synced(_) => None,
         }
     }
-}
-
-/// A service event with its times, seconds since the first sample, as instants from
-/// `audio_start`, the moment that sample was captured; a phrase or command tells how its
-/// report came about, which reached the app at `arrived_at`.
-fn to_spotting_event(
-    event: ServiceEvent,
-    audio_start: Instant,
-    arrived_at: Instant,
-) -> Option<SpottingEvent> {
-    let at = |secs: f32| audio_start + Duration::from_secs_f32(secs.max(0.0));
-    let report = |end: f32, confirmation: Option<Confirmation>| {
-        Some(ReportTiming {
-            words_ended: at(end),
-            confirmation: confirmation.map(|c| ConfirmationTiming {
-                asked_at: at(c.asked_at),
-                took: Duration::from_millis(c.took_ms),
-            }),
-            arrived_at,
-        })
-    };
-    Some(match event {
-        ServiceEvent::SpeechStart { t } => SpottingEvent::SpeechStarted(at(t)),
-        ServiceEvent::SpeechEnd { t } => SpottingEvent::SpeechEnded(at(t)),
-        ServiceEvent::Phrase { phrase, start, end, timing } => SpottingEvent::PhraseSpotted {
-            phrase,
-            start: at(start),
-            end: at(end),
-            timing: report(end, timing),
-        },
-        ServiceEvent::Command { commands, start, end, placement, timing } => {
-            SpottingEvent::CommandsSaid {
-                commands: commands
-                    .iter()
-                    .filter_map(|phrase| VoiceCommand::from_phrase(phrase))
-                    .collect(),
-                start: at(start),
-                end: at(end),
-                placement: match placement {
-                    Placement::Tail => CommandPlacement::Tail,
-                    Placement::Head => CommandPlacement::Head,
-                    Placement::Anywhere => CommandPlacement::Anywhere,
-                },
-                timing: report(end, timing),
-            }
-        }
-        ServiceEvent::Synced { .. } => return None,
-    })
 }
 
 /// Fails when nothing answers at `url`.
@@ -302,111 +224,4 @@ fn is_timeout(e: &std::io::Error) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn should_read_service_times_as_instants_from_the_audio_start() {
-        // Given
-        let json = r#"{"event":"phrase","phrase":"press enter","start":1.5,"end":2.25}"#;
-        let event: ServiceEvent = serde_json::from_str(json).unwrap();
-        let audio_start = Instant::now();
-        // When
-        let converted = to_spotting_event(event, audio_start, audio_start);
-        // Then
-        assert_eq!(
-            converted.unwrap(),
-            SpottingEvent::PhraseSpotted {
-                phrase: "press enter".into(),
-                start: audio_start + Duration::from_millis(1500),
-                end: audio_start + Duration::from_millis(2250),
-                timing: Some(ReportTiming {
-                    words_ended: audio_start + Duration::from_millis(2250),
-                    confirmation: None,
-                    arrived_at: audio_start,
-                }),
-            }
-        );
-    }
-
-    #[test]
-    fn should_read_commands_said_without_a_pause() {
-        // Given
-        let json = r#"{"event":"command","commands":["stop dictation","press enter"],"start":4.0,"end":4.75,"placement":"anywhere"}"#;
-        let event: ServiceEvent = serde_json::from_str(json).unwrap();
-        let audio_start = Instant::now();
-        // When
-        let converted = to_spotting_event(event, audio_start, audio_start);
-        // Then
-        assert_eq!(
-            converted.unwrap(),
-            SpottingEvent::CommandsSaid {
-                commands: vec![VoiceCommand::StopDictation, VoiceCommand::PressEnter],
-                start: audio_start + Duration::from_secs(4),
-                end: audio_start + Duration::from_millis(4750),
-                placement: CommandPlacement::Anywhere,
-                timing: Some(ReportTiming {
-                    words_ended: audio_start + Duration::from_millis(4750),
-                    confirmation: None,
-                    arrived_at: audio_start,
-                }),
-            }
-        );
-    }
-
-    #[test]
-    fn should_read_the_timing_of_a_confirmed_command() {
-        // Given
-        let json = r#"{"event":"command","commands":["start dictation"],"start":4.0,"end":4.75,"placement":"head","timing":{"asked_at":5.0,"took_ms":250}}"#;
-        let event: ServiceEvent = serde_json::from_str(json).unwrap();
-        let audio_start = Instant::now();
-        let arrived_at = audio_start + Duration::from_secs(6);
-        // When
-        let converted = to_spotting_event(event, audio_start, arrived_at);
-        // Then
-        assert_eq!(
-            converted.unwrap(),
-            SpottingEvent::CommandsSaid {
-                commands: vec![VoiceCommand::StartDictation],
-                start: audio_start + Duration::from_secs(4),
-                end: audio_start + Duration::from_millis(4750),
-                placement: CommandPlacement::Head,
-                timing: Some(ReportTiming {
-                    words_ended: audio_start + Duration::from_millis(4750),
-                    confirmation: Some(ConfirmationTiming {
-                        asked_at: audio_start + Duration::from_secs(5),
-                        took: Duration::from_millis(250),
-                    }),
-                    arrived_at,
-                }),
-            }
-        );
-    }
-
-    #[test]
-    fn should_place_a_negative_service_time_at_the_audio_start() {
-        // Given
-        let event: ServiceEvent =
-            serde_json::from_str(r#"{"event":"speech_start","t":-0.1}"#).unwrap();
-        let audio_start = Instant::now();
-        // When
-        let converted = to_spotting_event(event, audio_start, audio_start);
-        // Then
-        assert_eq!(converted, Some(SpottingEvent::SpeechStarted(audio_start)));
-    }
-
-    #[test]
-    fn should_read_speech_bounds() {
-        let start: ServiceEvent =
-            serde_json::from_str(r#"{"event":"speech_start","t":3.0}"#).unwrap();
-        let end: ServiceEvent = serde_json::from_str(r#"{"event":"speech_end","t":4.5}"#).unwrap();
-        assert!(matches!(start, ServiceEvent::SpeechStart { t } if t == 3.0));
-        assert!(matches!(end, ServiceEvent::SpeechEnd { t } if t == 4.5));
-    }
-
-    #[test]
-    fn should_read_the_answer_to_a_sync() {
-        let synced: ServiceEvent = serde_json::from_str(r#"{"event":"synced","id":7}"#).unwrap();
-        assert!(matches!(synced, ServiceEvent::Synced { id: 7 }));
-    }
-}
+mod tests;

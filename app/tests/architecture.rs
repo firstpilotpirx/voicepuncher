@@ -240,7 +240,8 @@ fn r5_domain_vos_have_test_blocks() {
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or_default();
-        if stem == "mod" {
+        // A unit's `tests.rs` is the test block its `mod tests;` names.
+        if stem == "mod" || stem == "tests" {
             continue;
         }
         let content = fs::read_to_string(path).unwrap_or_default();

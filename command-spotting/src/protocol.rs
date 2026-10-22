@@ -10,14 +10,21 @@ pub struct PhraseSelection {
     pub phrases: Vec<String>,
 }
 
+/// The version of this protocol: the app says it in its first message, `hello`.
+pub const PROTOCOL_VERSION: u32 = 2;
+
 /// A text frame from the app.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(untagged)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum AppMessage {
+    /// The first message of every connection: the protocol version the app speaks.
+    Hello {
+        version: u32,
+    },
     Select(PhraseSelection),
     /// Asks for `synced` with this id once every event for the audio sent before it is out.
     Sync {
-        sync: u64,
+        id: u64,
     },
 }
 
@@ -49,6 +56,22 @@ pub enum ServerEvent {
         #[serde(skip_serializing_if = "Option::is_none")]
         timing: Option<Timing>,
     },
+    /// The speech segment `start..end` got no answer from the speech recognition service:
+    /// a command said in it is lost.
+    ConfirmationFailed {
+        start: f32,
+        end: f32,
+    },
+    /// A confirmation has run for `waited_ms`, past its attempts: the service hangs, and
+    /// the app is to move to another copy.
+    Stalled {
+        waited_ms: u64,
+    },
+    /// `samples` of audio did not fit the backlog and were dropped: the stream's clock is
+    /// broken, and the app is to connect again.
+    Dropped {
+        samples: u64,
+    },
     /// Every event for the audio sent before the sync with this id is out.
     Synced {
         id: u64,
@@ -65,131 +88,20 @@ pub struct Timing {
 
 const SAMPLE_BYTES: usize = 4;
 
-/// Binary frame from the app: 16 kHz mono `f32` little-endian samples.
-pub fn samples_from_bytes(bytes: &[u8]) -> Vec<f32> {
-    bytes
+/// Binary frame from the app: 16 kHz mono `f32` little-endian samples; a frame whose length
+/// is not a whole number of samples is refused, naming its length.
+pub fn samples_from_bytes(bytes: &[u8]) -> Result<Vec<f32>, String> {
+    if bytes.len() % SAMPLE_BYTES != 0 {
+        return Err(format!(
+            "an audio frame of {} bytes holds no whole number of {SAMPLE_BYTES}-byte samples",
+            bytes.len()
+        ));
+    }
+    Ok(bytes
         .chunks_exact(SAMPLE_BYTES)
         .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
-        .collect()
+        .collect())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn should_parse_a_phrase_selection() {
-        // When
-        let selection: PhraseSelection =
-            serde_json::from_str(r#"{"phrases": ["press enter", "clear all text"]}"#).unwrap();
-        // Then
-        assert_eq!(selection.phrases, ["press enter", "clear all text"]);
-    }
-
-    #[test]
-    fn should_parse_a_sync_request() {
-        // When
-        let message: AppMessage = serde_json::from_str(r#"{"sync": 7}"#).unwrap();
-        // Then
-        assert_eq!(message, AppMessage::Sync { sync: 7 });
-    }
-
-    #[test]
-    fn should_write_the_answer_to_a_sync() {
-        // When
-        let json = serde_json::to_string(&ServerEvent::Synced { id: 7 }).unwrap();
-        // Then
-        assert_eq!(json, r#"{"event":"synced","id":7}"#);
-    }
-
-    #[test]
-    fn should_write_events_with_their_kind() {
-        // Given
-        let phrase = ServerEvent::Phrase {
-            phrase: "press enter".into(),
-            start: 1.5,
-            end: 2.25,
-            timing: None,
-        };
-        // When
-        let json = serde_json::to_string(&phrase).unwrap();
-        // Then
-        assert_eq!(
-            json,
-            r#"{"event":"phrase","phrase":"press enter","start":1.5,"end":2.25}"#
-        );
-        assert_eq!(
-            serde_json::to_string(&ServerEvent::SpeechEnd { t: 3.0 }).unwrap(),
-            r#"{"event":"speech_end","t":3.0}"#
-        );
-    }
-
-    #[test]
-    fn should_write_a_command_with_its_placement() {
-        // Given
-        let command = ServerEvent::Command {
-            commands: vec!["stop dictation".into(), "press enter".into()],
-            start: 4.5,
-            end: 5.25,
-            placement: Placement::Anywhere,
-            timing: None,
-        };
-        // When
-        let json = serde_json::to_string(&command).unwrap();
-        // Then
-        assert_eq!(
-            json,
-            r#"{"event":"command","commands":["stop dictation","press enter"],"start":4.5,"end":5.25,"placement":"anywhere"}"#
-        );
-    }
-
-    #[test]
-    fn should_write_a_confirmed_command_with_its_timing() {
-        // Given
-        let command = ServerEvent::Command {
-            commands: vec!["start dictation".into()],
-            start: 4.5,
-            end: 5.25,
-            placement: Placement::Anywhere,
-            timing: Some(Timing { asked_at: 5.5, took_ms: 210 }),
-        };
-        // When
-        let json = serde_json::to_string(&command).unwrap();
-        // Then
-        assert_eq!(
-            json,
-            r#"{"event":"command","commands":["start dictation"],"start":4.5,"end":5.25,"placement":"anywhere","timing":{"asked_at":5.5,"took_ms":210}}"#
-        );
-    }
-
-    #[test]
-    fn should_write_a_confirmed_phrase_with_its_timing() {
-        // Given
-        let phrase = ServerEvent::Phrase {
-            phrase: "start dictation".into(),
-            start: 1.5,
-            end: 2.25,
-            timing: Some(Timing { asked_at: 2.75, took_ms: 180 }),
-        };
-        // When
-        let json = serde_json::to_string(&phrase).unwrap();
-        // Then
-        assert_eq!(
-            json,
-            r#"{"event":"phrase","phrase":"start dictation","start":1.5,"end":2.25,"timing":{"asked_at":2.75,"took_ms":180}}"#
-        );
-    }
-
-    #[test]
-    fn should_read_little_endian_float_samples() {
-        // Given
-        let bytes: Vec<u8> = [0.5f32, -1.0]
-            .iter()
-            .flat_map(|s| s.to_le_bytes())
-            .collect();
-        // When
-        let samples = samples_from_bytes(&bytes);
-        // Then
-        assert_eq!(samples, [0.5, -1.0]);
-    }
-}
+mod tests;

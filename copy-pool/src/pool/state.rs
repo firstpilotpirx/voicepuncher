@@ -23,6 +23,8 @@ pub(super) struct State {
     waiting: VecDeque<u64>,
     next_ticket: u64,
     offset: usize,
+    /// Whether the first probe round ended: until then nothing is known of the copies.
+    pub(super) probed_once: bool,
 }
 
 const SERVICE_PORT: usize = 0;
@@ -40,7 +42,7 @@ impl State {
                 hung: false,
             })
             .collect();
-        Self { copies, waiting: VecDeque::new(), next_ticket: 0, offset }
+        Self { copies, waiting: VecDeque::new(), next_ticket: 0, offset, probed_once: false }
     }
 
     /// The copies that take requests: the service's own port alone when it answers,
@@ -82,6 +84,7 @@ impl State {
         for (copy, up) in self.copies.iter_mut().zip(answers) {
             copy.up = *up;
         }
+        self.probed_once = true;
     }
 
     pub(super) fn enqueue(&mut self) -> u64 {

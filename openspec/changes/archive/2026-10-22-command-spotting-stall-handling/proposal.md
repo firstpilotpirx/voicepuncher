@@ -6,7 +6,7 @@ The audit of 2026-10-22 traced the open "whisper > 10 s stall" of voice control 
 
 - A copy that does not answer within its decoding budget hands the confirmation to another copy while the deadline lasts; a segment whose confirmation gets no answer is sent to the app as a failed confirmation, and the app shows that voice commands are unavailable.
 - A confirmation running far past its attempts makes the service unhealthy (`/health` 503) and tells the app (`stalled`), which moves to another copy as after a loss.
-- Bounded queues: past 10 s of audio waiting, new audio is dropped and the app is told (`dropped`), and treats the stream as lost; past a few waiting confirmations per thread, a new one fails at once.
+- Bounded queues: once audio has waited past 10 s, new audio is dropped and the app is told (`dropped`), and treats the stream as lost; past a few waiting confirmations per thread, a new one fails at once.
 - Protocol 2: a `hello` with the version opens every connection; messages are tagged; malformed input and partial samples close the connection with a reason.
 - `found_nothing` keeps every waiting check.
 - `copy-pool`: the constructor returns at once, the first request waits for the first probe round; `is_same` is removed.

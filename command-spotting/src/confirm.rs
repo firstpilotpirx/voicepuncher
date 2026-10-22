@@ -29,6 +29,8 @@ const TEMPERATURE_STEP: &str = "0";
 /// limit for 1.7–1.8 s and is never a command. Closing the connection stops the copy's
 /// decoding at once (fast-confirmation-of-repeating-russian-speech, design.md).
 const DECODING_BUDGET: Duration = Duration::from_secs(1);
+/// How long a copy cut short may take to answer its health check before it counts as stalled.
+const HEALTH_WAIT: Duration = Duration::from_millis(300);
 
 /// The last seconds of a connection's audio, by absolute sample position.
 pub struct RecentAudio {
@@ -138,8 +140,9 @@ impl UtteranceTranscriber {
 
     /// What was said in `samples` (16 kHz mono), with each word's times; the wait for a
     /// free copy and for its answer together never pass `deadline`. A copy still decoding
-    /// after `DECODING_BUDGET` is cut short, and nothing was heard. A copy that refuses the
-    /// connection hands the confirmation to another copy while the deadline lasts.
+    /// after `DECODING_BUDGET` is cut short: when it answers its health check the speech
+    /// decodes long and nothing was heard, else it stalled and, as a copy that refuses the
+    /// connection, hands the confirmation to another copy while the deadline lasts.
     pub fn transcribe(
         &self,
         samples: &[f32],
@@ -169,11 +172,10 @@ impl UtteranceTranscriber {
                     );
                 }
                 Ran::Answered(Ok(Posted::TimedOut(url))) if budget < left => {
-                    log::warn!(
-                        "confirmation cut short after {}ms on copy {url}: still decoding, nothing heard",
-                        budget.as_millis()
-                    );
-                    return Ok(Heard::default());
+                    match cut_short(&url, budget, deadline.saturating_sub(started.elapsed())) {
+                        Some(nothing) => return Ok(nothing),
+                        None => continue,
+                    }
                 }
                 Ran::Answered(Ok(Posted::TimedOut(url))) => bail!(
                     "speech recognition copy {url} sent no answer in {} ms",
@@ -238,6 +240,36 @@ fn post(url: &str, body: &[u8], timeout: Duration) -> (Result<Posted>, Finish) {
     }
 }
 
+/// A confirmation cut short after `budget` on the copy at `url`: nothing was heard when the
+/// copy is live, none when it stalled and the confirmation goes to another copy.
+fn cut_short(url: &str, budget: Duration, left: Duration) -> Option<Heard> {
+    let live = answers_health(url, HEALTH_WAIT.min(left));
+    let next = if live {
+        "still decoding, nothing heard"
+    } else {
+        "the copy does not answer, sending it to another copy"
+    };
+    log::warn!(
+        "confirmation cut short after {}ms on copy {url}: {next}",
+        budget.as_millis()
+    );
+    live.then(Heard::default)
+}
+
+/// Whether the copy at `url` (`http://host:port/v1`) answers its health check within `wait`:
+/// a live copy stops decoding once its request is closed and answers at once, a stalled one
+/// answers nothing.
+fn answers_health(url: &str, wait: Duration) -> bool {
+    let authority_end = url
+        .find("://")
+        .and_then(|scheme| url[scheme + 3..].find('/').map(|end| scheme + 3 + end))
+        .unwrap_or(url.len());
+    ureq::get(&format!("{}/health", &url[..authority_end]))
+        .timeout(wait)
+        .call()
+        .is_ok()
+}
+
 fn is_timeout(error: &std::io::Error) -> bool {
     matches!(
         error.kind(),
@@ -293,274 +325,4 @@ fn multipart_body(wav: &[u8]) -> Vec<u8> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::{BufRead, BufReader, Read, Write};
-    use std::net::TcpListener;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
-    use std::thread;
-    use voicepuncher_copy_pool::CopyPool;
-
-    /// A fake copy on its own port: answers every request with `answer` and counts them.
-    fn spawn_copy(answer: &'static str) -> (String, Arc<AtomicUsize>) {
-        spawn_slow_copy(answer, Duration::ZERO)
-    }
-
-    /// A fake copy that decodes each request for `decoding` before it answers.
-    fn spawn_slow_copy(answer: &'static str, decoding: Duration) -> (String, Arc<AtomicUsize>) {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let url = format!("http://{}/v1", listener.local_addr().unwrap());
-        (url, serve_copy(listener, answer, decoding))
-    }
-
-    /// Serves every request on `listener` with `answer` after `decoding`; counts them.
-    #[expect(clippy::excessive_nesting, reason = "size baseline")]
-    fn serve_copy(
-        listener: TcpListener,
-        answer: &'static str,
-        decoding: Duration,
-    ) -> Arc<AtomicUsize> {
-        let requests = Arc::new(AtomicUsize::new(0));
-        let counter = Arc::clone(&requests);
-        thread::spawn(move || {
-            for stream in listener.incoming() {
-                let mut stream = stream.unwrap();
-                let mut first = [0u8; 1];
-                if stream.peek(&mut first).unwrap_or(0) == 0 {
-                    continue;
-                }
-                counter.fetch_add(1, Ordering::SeqCst);
-                let mut reader = BufReader::new(stream.try_clone().unwrap());
-                let mut length = 0usize;
-                loop {
-                    let mut line = String::new();
-                    reader.read_line(&mut line).unwrap();
-                    let line = line.trim_end();
-                    if line.is_empty() {
-                        break;
-                    }
-                    if let Some((name, value)) = line.split_once(':') {
-                        if name.eq_ignore_ascii_case("content-length") {
-                            length = value.trim().parse().unwrap();
-                        }
-                    }
-                }
-                reader.read_exact(&mut vec![0u8; length]).unwrap();
-                thread::sleep(decoding);
-                let reply = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
-                    answer.len()
-                );
-                // The client may have closed the connection while the copy decoded.
-                let _ = stream.write_all(reply.as_bytes());
-            }
-        });
-        requests
-    }
-
-    /// Listeners on the first two copy ports of a service address nothing listens on.
-    fn two_copies() -> (String, TcpListener, TcpListener) {
-        loop {
-            let base = TcpListener::bind("127.0.0.1:0")
-                .unwrap()
-                .local_addr()
-                .unwrap()
-                .port();
-            let url = format!("http://127.0.0.1:{base}/v1");
-            let ports = voicepuncher_copy_pool::ServiceAddress::parse(&url)
-                .unwrap()
-                .copy_ports();
-            if let (Ok(first), Ok(second)) = (
-                TcpListener::bind(("127.0.0.1", ports[0])),
-                TcpListener::bind(("127.0.0.1", ports[1])),
-            ) {
-                return (url, first, second);
-            }
-        }
-    }
-
-    #[test]
-    fn should_send_a_confirmation_refused_by_its_copy_to_the_other_copy() {
-        // Given two copies; the one this process tries first stops accepting connections
-        let lines = crate::test_log::captured();
-        let (url, first, second) = two_copies();
-        let (down, up) = if std::process::id() % 2 == 0 {
-            (first, second)
-        } else {
-            (second, first)
-        };
-        let down_port = down.local_addr().unwrap().port();
-        let requests = serve_copy(up, PRESS_ENTER, Duration::ZERO);
-        let transcriber = UtteranceTranscriber::new(&url).unwrap();
-        drop(down);
-        // When
-        let heard = transcriber
-            .transcribe(&[0.0; 1_600], SAMPLE_RATE, Duration::from_secs(2))
-            .unwrap();
-        // Then
-        assert_eq!(heard.text, " press enter");
-        assert_eq!(requests.load(Ordering::SeqCst), 1);
-        let refused = lines.containing("confirmation refused by copy");
-        assert!(
-            refused
-                .iter()
-                .any(|line| line.contains(&down_port.to_string())),
-            "{refused:?}"
-        );
-    }
-
-    const PRESS_ENTER: &str = r#"{"text":" press enter","segments":[]}"#;
-    const DEADLINE: Duration = Duration::from_millis(300);
-    const SAMPLE_RATE: u32 = 16_000;
-
-    #[test]
-    fn should_give_a_confirmation_up_unsent_when_every_copy_stays_busy_past_its_deadline() {
-        // Given
-        let lines = crate::test_log::captured();
-        let (url, requests) = spawn_copy(PRESS_ENTER);
-        let transcriber = UtteranceTranscriber::new(&url).unwrap();
-        let held = CopyPool::shared(&url).unwrap().lease(DEADLINE).unwrap();
-        // When
-        let started = Instant::now();
-        let result = transcriber.transcribe(&[0.0; 1_600], SAMPLE_RATE, DEADLINE);
-        // Then
-        assert!(result.is_err());
-        let given_up = lines.containing("confirmation given up unsent");
-        assert!(
-            given_up.iter().any(|line| line.contains(&url)),
-            "{given_up:?}"
-        );
-        assert!(
-            started.elapsed() < DEADLINE * 2,
-            "waited {:?}",
-            started.elapsed()
-        );
-        assert_eq!(requests.load(Ordering::SeqCst), 0);
-        drop(held);
-    }
-
-    #[test]
-    fn should_send_a_confirmation_to_the_copy_that_frees_before_its_deadline() {
-        // Given
-        let (url, requests) = spawn_copy(PRESS_ENTER);
-        let transcriber = UtteranceTranscriber::new(&url).unwrap();
-        let held = CopyPool::shared(&url).unwrap().lease(DEADLINE).unwrap();
-        thread::spawn(move || {
-            thread::sleep(Duration::from_millis(200));
-            held.finished();
-        });
-        // When
-        let heard = transcriber
-            .transcribe(&[0.0; 1_600], SAMPLE_RATE, Duration::from_secs(2))
-            .unwrap();
-        // Then
-        assert_eq!(heard.text, " press enter");
-        assert_eq!(requests.load(Ordering::SeqCst), 1);
-    }
-
-    #[test]
-    fn should_cut_a_confirmation_short_when_its_copy_decodes_past_the_budget() {
-        // Given
-        let lines = crate::test_log::captured();
-        let (url, requests) = spawn_slow_copy(PRESS_ENTER, Duration::from_millis(1_500));
-        let transcriber = UtteranceTranscriber::new(&url).unwrap();
-        // When
-        let started = Instant::now();
-        let heard = transcriber
-            .transcribe(&[0.0; 1_600], SAMPLE_RATE, Duration::from_secs(3))
-            .unwrap();
-        let took = started.elapsed();
-        // Then
-        assert_eq!(heard, Heard::default());
-        assert!(
-            took >= Duration::from_millis(900) && took < Duration::from_millis(1_400),
-            "took {took:?}"
-        );
-        let cut = lines.containing("confirmation cut short");
-        assert!(cut.iter().any(|line| line.contains(&url)), "{cut:?}");
-        assert_eq!(requests.load(Ordering::SeqCst), 1);
-        let next = Instant::now();
-        let lease = CopyPool::shared(&url).unwrap().lease(DEADLINE).unwrap();
-        assert!(
-            next.elapsed() < Duration::from_millis(50),
-            "{:?}",
-            next.elapsed()
-        );
-        drop(lease);
-    }
-
-    #[test]
-    fn should_hold_only_the_last_samples() {
-        // Given
-        let mut recent = RecentAudio::new(4);
-        // When
-        recent.push(&[1.0, 2.0, 3.0]);
-        recent.push(&[4.0, 5.0, 6.0]);
-        // Then samples 2..6 are held
-        assert_eq!(recent.between(0, 10), [3.0, 4.0, 5.0, 6.0]);
-        assert_eq!(recent.between(3, 5), [4.0, 5.0]);
-        assert!(recent.between(8, 10).is_empty());
-    }
-
-    #[test]
-    fn should_put_the_fields_before_the_audio_in_the_request() {
-        // When
-        let body = String::from_utf8_lossy(&multipart_body(b"RIFF")).into_owned();
-        // Then
-        let language = body.find("name=\"language\"").unwrap();
-        let file = body.find("name=\"file\"").unwrap();
-        assert!(language < file);
-        assert!(body.contains("name=\"language\"\r\n\r\nen\r\n"));
-        assert!(body.contains("name=\"temperature\"\r\n\r\n0\r\n"));
-        assert!(body.contains("name=\"response_format\"\r\n\r\nverbose_json\r\n"));
-        assert!(body.contains("name=\"timestamp_granularities[]\"\r\n\r\nword\r\n"));
-        assert!(body.ends_with(&format!("--{BOUNDARY}--\r\n")));
-    }
-
-    #[test]
-    fn should_ask_for_no_retry_of_a_confirmation() {
-        // When
-        let body = String::from_utf8_lossy(&multipart_body(b"RIFF")).into_owned();
-        // Then
-        assert!(body.contains("name=\"temperature\"\r\n\r\n0\r\n"));
-        assert!(body.contains("name=\"temperature_inc\"\r\n\r\n0\r\n"));
-    }
-
-    #[test]
-    fn should_send_no_prompt_with_a_confirmation() {
-        // When
-        let body = String::from_utf8_lossy(&multipart_body(b"RIFF")).into_owned();
-        // Then
-        assert!(!body.contains("name=\"prompt\""));
-        assert!(!body.contains("name=\"max_context\""));
-        assert!(!body.contains("name=\"carry_initial_prompt\""));
-    }
-
-    #[test]
-    fn should_read_the_words_and_their_times() {
-        // Given
-        let answer = r#"{"text":" we meet stop","segments":[
-            {"start":0.0,"end":1.0,"words":[{"word":" we","start":0.0,"end":0.2},{"word":" meet","start":0.2,"end":0.6}]},
-            {"start":1.0,"end":1.4,"words":[{"word":" stop","start":1.0,"end":1.4}]}]}"#;
-        // When
-        let heard = heard_from(answer).unwrap();
-        // Then
-        assert_eq!(heard.text, " we meet stop");
-        assert_eq!(heard.word_texts(), [" we", " meet", " stop"]);
-        assert_eq!((heard.words[2].start, heard.words[2].end), (1.0, 1.4));
-    }
-
-    #[test]
-    fn should_join_the_pieces_of_a_word() {
-        // Given
-        let answer = r#"{"text":" top ender.","segments":[{"words":[
-            {"word":" top","start":0.0,"end":0.3},{"word":" end","start":0.3,"end":0.5},
-            {"word":"er","start":0.5,"end":0.7},{"word":".","start":0.7,"end":0.7}]}]}"#;
-        // When
-        let heard = heard_from(answer).unwrap();
-        // Then
-        assert_eq!(heard.word_texts(), [" top", " ender."]);
-        assert_eq!((heard.words[1].start, heard.words[1].end), (0.3, 0.7));
-    }
-}
+mod tests;

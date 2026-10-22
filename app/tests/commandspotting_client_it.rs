@@ -62,10 +62,10 @@ fn answer_late(mut socket: WebSocket<TcpStream>, delay: Duration) {
                     format!(r#"{{"event":"speech_start","t":{answered}}}"#),
                 ));
             }
-            Ok(Message::Text(text)) => {
+            Ok(Message::Text(text)) if text.contains(r#""type":"sync""#) => {
                 let sync: serde_json::Value = serde_json::from_str(text.as_str()).unwrap();
                 let at = due.last().map_or_else(Instant::now, |(at, _)| *at);
-                due.push((at, format!(r#"{{"event":"synced","id":{}}}"#, sync["sync"])));
+                due.push((at, format!(r#"{{"event":"synced","id":{}}}"#, sync["id"])));
             }
             Ok(_) => {}
             Err(tungstenite::Error::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {}

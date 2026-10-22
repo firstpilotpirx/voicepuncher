@@ -8,9 +8,11 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use tungstenite::protocol::frame::coding::CloseCode;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Message, WebSocket};
 
+#[path = "../common/mod.rs"]
 mod common;
 
 use voicepuncher_command_spotting::engine::{Engine, EngineCfg, SAMPLE_RATE};
@@ -35,8 +37,10 @@ const SILENCE_SECS: f32 = 0.5;
 /// A long utterance: the service checks it with speech recognition while it runs.
 const LONG_UTTERANCE: &str =
     "so I was saying that the weather today is really nice and we could go for a walk later";
-const PHRASES: &str =
-    r#"{"phrases":["stop dictation","cancel dictation","restart dictation","press enter"]}"#;
+const HELLO: &str = r#"{"type":"hello","version":2}"#;
+const PHRASES: &str = r#"{"type":"select","phrases":["stop dictation","cancel dictation","restart dictation","press enter"]}"#;
+/// How long the service may take to close a connection it refuses.
+const CLOSE_LIMIT: Duration = Duration::from_secs(5);
 
 /// A speech recognition service that takes every request and never answers it.
 fn speech_recognition_that_never_answers() -> u16 {
@@ -87,12 +91,20 @@ fn start_service(stt_port: u16) -> Option<u16> {
 }
 
 fn connect(port: u16) -> WebSocket<MaybeTlsStream<TcpStream>> {
+    let mut socket = handshake(port);
+    socket.send(Message::text(HELLO)).unwrap();
+    socket.send(Message::text(PHRASES)).unwrap();
+    socket
+}
+
+/// A WebSocket to the service that has sent nothing yet.
+fn handshake(port: u16) -> WebSocket<MaybeTlsStream<TcpStream>> {
     let handshake_failed = "the command spotting service did not complete the handshake within 5 s";
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     let stream = TcpStream::connect_timeout(&addr, HANDSHAKE_LIMIT).expect(handshake_failed);
     stream.set_read_timeout(Some(HANDSHAKE_LIMIT)).unwrap();
     stream.set_write_timeout(Some(HANDSHAKE_LIMIT)).unwrap();
-    let (mut socket, _) = tungstenite::client(
+    let (socket, _) = tungstenite::client(
         format!("ws://127.0.0.1:{port}"),
         MaybeTlsStream::Plain(stream),
     )
@@ -101,7 +113,6 @@ fn connect(port: u16) -> WebSocket<MaybeTlsStream<TcpStream>> {
         stream.set_read_timeout(Some(READ_WAIT)).unwrap();
         stream.set_write_timeout(None).unwrap();
     }
-    socket.send(Message::text(PHRASES)).unwrap();
     socket
 }
 
@@ -207,4 +218,80 @@ fn should_keep_answering_the_app_while_a_confirmation_hangs() {
         !given_up.is_empty(),
         "no hung confirmation was logged as given up"
     );
+}
+
+/// The code and reason the service closes the connection with, once `sent` went out.
+fn closed_after(sent: &[Message]) -> Option<(CloseCode, String)> {
+    let port = start_service(speech_recognition_that_never_answers())?;
+    let mut socket = handshake(port);
+    for message in sent {
+        socket.send(message.clone()).unwrap();
+    }
+    let deadline = Instant::now() + CLOSE_LIMIT;
+    while Instant::now() < deadline {
+        match socket.read() {
+            Ok(Message::Close(Some(frame))) => return Some((frame.code, frame.reason.to_string())),
+            Ok(Message::Close(None)) => {
+                panic!("the service closed the connection without a reason")
+            }
+            Ok(_) => {}
+            Err(tungstenite::Error::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(e) => panic!("the connection ended without a close: {e}"),
+        }
+    }
+    panic!("the service did not close the connection within {CLOSE_LIMIT:?}")
+}
+
+#[test]
+fn should_refuse_an_app_of_another_protocol_version() {
+    // When
+    let Some((code, reason)) = closed_after(&[Message::text(r#"{"type":"hello","version":1}"#)])
+    else {
+        return;
+    };
+    // Then
+    assert_eq!(code, CloseCode::Policy);
+    assert!(
+        reason.contains("version 1") && reason.contains("version 2"),
+        "{reason}"
+    );
+}
+
+#[test]
+fn should_refuse_an_app_that_does_not_say_its_protocol_version_first() {
+    // When
+    let Some((code, reason)) = closed_after(&[Message::text(r#"{"phrases":["press enter"]}"#)])
+    else {
+        return;
+    };
+    // Then
+    assert_eq!(code, CloseCode::Policy);
+    assert!(
+        reason.contains("version 1") && reason.contains("version 2"),
+        "{reason}"
+    );
+}
+
+#[test]
+fn should_close_a_malformed_message_with_its_reason() {
+    // When
+    let Some((code, reason)) = closed_after(&[Message::text(HELLO), Message::text("{nonsense")])
+    else {
+        return;
+    };
+    // Then
+    assert_eq!(code, CloseCode::Invalid);
+    assert!(reason.contains("malformed message"), "{reason}");
+}
+
+#[test]
+fn should_close_an_audio_frame_of_partial_samples_with_its_reason() {
+    // When
+    let partial = Message::binary(vec![0u8; 5]);
+    let Some((code, reason)) = closed_after(&[Message::text(HELLO), partial]) else {
+        return;
+    };
+    // Then
+    assert_eq!(code, CloseCode::Invalid);
+    assert!(reason.contains("5 bytes"), "{reason}");
 }

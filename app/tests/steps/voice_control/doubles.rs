@@ -238,8 +238,12 @@ impl VisualIndicator for RecordingOverlay {
         record(&self.0, Event::Overlay("hidden"));
     }
 
-    fn show_failure_notice(&self, _notice: &FailureNotice) {
-        record(&self.0, Event::Overlay("failure notice"));
+    fn show_failure_notice(&self, notice: &FailureNotice) {
+        let shown = match notice {
+            FailureNotice::VoiceCommandsUnavailable => "voice commands unavailable notice",
+            _ => "failure notice",
+        };
+        record(&self.0, Event::Overlay(shown));
     }
 
     fn show_commands_unavailable(&self) {

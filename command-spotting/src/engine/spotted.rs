@@ -31,28 +31,30 @@ pub(super) struct DueCheck {
     pub utterance: Option<u64>,
 }
 
-/// The check a spotted phrase asks for, until it is asked.
+/// The checks spotted phrases ask for, until each is asked.
 #[derive(Debug, Default)]
 pub(super) struct SpottedChecks {
-    waiting: Option<DueCheck>,
+    waiting: Vec<DueCheck>,
 }
 
 impl SpottedChecks {
-    /// A phrase spotted ending at sample `said_end`; an earlier one not asked yet keeps its
-    /// time.
+    /// A phrase spotted ending at sample `said_end`; while a check waits, it covers this
+    /// phrase too and keeps its time.
     pub fn spotted(&mut self, said_end: usize) {
-        self.waiting.get_or_insert(DueCheck {
-            said_end,
-            due: said_end + samples_in(CHECK_AFTER_SECS),
-            round: Round::First,
-            utterance: None,
-        });
+        if self.waiting.is_empty() {
+            self.waiting.push(DueCheck {
+                said_end,
+                due: said_end + samples_in(CHECK_AFTER_SECS),
+                round: Round::First,
+                utterance: None,
+            });
+        }
     }
 
     /// The first check of the phrase spotted ending at `said_end` in `utterance` found no
     /// command in audio up to `heard_to`: the second check follows.
     pub fn found_nothing(&mut self, said_end: usize, heard_to: usize, utterance: u64) {
-        self.waiting = Some(DueCheck {
+        self.waiting.push(DueCheck {
             said_end,
             due: heard_to + samples_in(SECOND_CHECK_AFTER_SECS),
             round: Round::Second,
@@ -63,62 +65,12 @@ impl SpottedChecks {
     /// The check to ask at stream position `now`, when one is due; it is asked, or waits its
     /// turn behind another check, with the audio it was due for.
     pub fn take_due(&mut self, now: usize) -> Option<DueCheck> {
-        self.waiting.take_if(|check| now >= check.due)
+        let (index, _) = (self.waiting.iter().enumerate())
+            .filter(|(_, check)| now >= check.due)
+            .min_by_key(|(_, check)| check.due)?;
+        Some(self.waiting.remove(index))
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const SAID_END: usize = 32_000;
-    const UTTERANCE: u64 = 3;
-
-    #[test]
-    fn should_ask_the_check_once_the_next_word_has_begun() {
-        // Given
-        let mut checks = SpottedChecks::default();
-        checks.spotted(SAID_END);
-        let due = SAID_END + samples_in(CHECK_AFTER_SECS);
-        // When
-        let early = checks.take_due(due - 1);
-        let on_time = checks.take_due(due);
-        // Then
-        assert_eq!(early, None);
-        assert_eq!(
-            on_time,
-            Some(DueCheck { said_end: SAID_END, due, round: Round::First, utterance: None })
-        );
-        assert_eq!(checks.take_due(due + 1), None);
-    }
-
-    #[test]
-    fn should_keep_the_time_of_the_first_phrase_spotted() {
-        // Given two phrases spotted before the first one's check is due
-        let mut checks = SpottedChecks::default();
-        checks.spotted(SAID_END);
-        checks.spotted(SAID_END + samples_in(0.2));
-        // When
-        let asked = checks.take_due(SAID_END + samples_in(CHECK_AFTER_SECS));
-        // Then
-        assert_eq!(asked.map(|c| c.said_end), Some(SAID_END));
-    }
-
-    #[test]
-    fn should_ask_the_second_check_0_3_s_after_the_audio_of_the_first() {
-        // Given the first check found no command in audio up to `heard_to`
-        let mut checks = SpottedChecks::default();
-        let heard_to = SAID_END + samples_in(CHECK_AFTER_SECS);
-        checks.found_nothing(SAID_END, heard_to, UTTERANCE);
-        let due = heard_to + samples_in(SECOND_CHECK_AFTER_SECS);
-        // When
-        let early = checks.take_due(due - 1);
-        let on_time = checks.take_due(due);
-        // Then
-        assert_eq!(early, None);
-        assert_eq!(
-            on_time.map(|c| (c.round, c.utterance)),
-            Some((Round::Second, Some(UTTERANCE)))
-        );
-    }
-}
+mod tests;

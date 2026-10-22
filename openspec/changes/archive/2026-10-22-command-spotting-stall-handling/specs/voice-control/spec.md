@@ -27,12 +27,17 @@ The command spotting service SHALL report a closed speech segment whose confirma
 - **THEN** the overlay shows the failure notice that voice commands are unavailable
 
 ### Requirement: Audio the command spotting service cannot keep up with is dropped and reported
-The command spotting service SHALL hold at most 10 seconds of audio waiting for processing per connection; audio past that SHALL be dropped and reported to the app with the number of samples dropped, and the system SHALL then count the stream as lost and connect again, replaying the speech the service may have missed.
+The command spotting service SHALL let no audio of a connection wait for processing longer than 10 seconds; audio that arrives while the oldest waiting audio has waited longer SHALL be dropped, while audio sent faster than real time that the service keeps up with (a replay) SHALL be kept, and reported to the app with the number of samples dropped, and the system SHALL then count the stream as lost and connect again, replaying the speech the service may have missed.
 
 #### Scenario: A flood of audio past the backlog is dropped
 - **GIVEN** the command spotting service processes audio slower than it arrives
-- **WHEN** more than 10 seconds of audio wait for processing
-- **THEN** the audio past that is dropped, the app is told how many samples were dropped, and the audio held stays at most 10 seconds
+- **WHEN** audio arrives while the oldest waiting audio has waited more than 10 seconds
+- **THEN** that audio is dropped and the app is told how many samples were dropped
+
+#### Scenario: Audio sent faster than real time is kept while the service keeps up
+- **GIVEN** the command spotting service keeps up with its processing
+- **WHEN** 30 seconds of audio arrive at once, as a replay sends them
+- **THEN** none of it is dropped
 
 #### Scenario: The app connects again after audio was dropped
 - **GIVEN** listening is on

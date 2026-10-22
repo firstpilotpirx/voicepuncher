@@ -228,8 +228,35 @@ fn should_share_one_pool_per_service_address() {
     let one = CopyPool::shared("http://127.0.0.1:1/v1").unwrap();
     let again = CopyPool::shared("http://127.0.0.1:1/v1").unwrap();
     let other = CopyPool::shared("http://127.0.0.1:2/v1").unwrap();
-    assert!(one.is_same(&again));
-    assert!(!one.is_same(&other));
+    assert!(Arc::ptr_eq(&one.inner, &again.inner));
+    assert!(!Arc::ptr_eq(&one.inner, &other.inner));
+}
+
+/// Takes `delay` to tell whether a port answers; every port answers.
+struct SlowProbe {
+    delay: Duration,
+}
+
+impl Probe for SlowProbe {
+    fn answers(&self, _: u16) -> bool {
+        thread::sleep(self.delay);
+        true
+    }
+}
+
+#[test]
+fn should_return_before_a_slow_first_probe_ends_and_lease_once_it_did() {
+    // Given
+    let address = ServiceAddress::parse(SERVICE).unwrap();
+    let probe = SlowProbe { delay: Duration::from_millis(300) };
+    // When
+    let started = Instant::now();
+    let pool = CopyPool::discover(address, probe, 0, NEVER_ON_ITS_OWN);
+    let created_in = started.elapsed();
+    let lease = pool.lease(LONG_WAIT);
+    // Then
+    assert!(created_in < Duration::from_millis(100), "{created_in:?}");
+    assert_eq!(lease.unwrap().port(), 8081);
 }
 
 #[test]

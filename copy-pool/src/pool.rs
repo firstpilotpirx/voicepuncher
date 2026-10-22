@@ -105,8 +105,9 @@ impl CopyPool {
         pool
     }
 
-    /// A pool that probes the copies of `address` now and every `interval`, and starts
-    /// its search for a free copy at `offset`.
+    /// A pool that probes the copies of `address` at once and then every `interval`, and
+    /// starts its search for a free copy at `offset`; it returns before the first probe
+    /// round ends, and every question about the copies waits for that round.
     pub fn discover(
         address: ServiceAddress,
         probe: impl Probe,
@@ -116,29 +117,27 @@ impl CopyPool {
         let state = Mutex::new(State::new(&address, offset));
         let inner =
             Arc::new(Inner { address, probe: Box::new(probe), state, changed: Condvar::new() });
-        inner.probe_round();
         let watched = Arc::downgrade(&inner);
-        let _ = thread::Builder::new()
+        let spawned = thread::Builder::new()
             .name("copy-probe".into())
             .spawn(move || watch(watched, interval));
+        if spawned.is_err() {
+            inner.probe_round();
+        }
         Self { inner }
     }
 
     pub fn has_copies(&self) -> bool {
-        self.inner.lock().has_copies()
+        self.inner.lock_probed().has_copies()
     }
 
     /// The copies that take requests, in port order.
     pub fn snapshot(&self) -> Vec<CopyState> {
-        let copies = self.inner.lock().snapshot();
+        let copies = self.inner.lock_probed().snapshot();
         copies
             .into_iter()
             .map(|(port, busy, hung)| CopyState { port, busy, hung })
             .collect()
-    }
-
-    pub fn is_same(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.inner, &other.inner)
     }
 
     /// A free copy, after waiting at most `wait` for one, first come first served; a
@@ -158,7 +157,7 @@ impl CopyPool {
     /// when none does: a service being restarted answers again within seconds.
     pub fn await_copy(&self, wait: Duration) -> bool {
         let deadline = Instant::now() + wait;
-        let mut state = self.inner.lock();
+        let mut state = self.inner.lock_probed();
         loop {
             if state.has_copies() {
                 return true;
@@ -190,7 +189,7 @@ impl Place {
     /// stays in the queue for the next wait. Fails at once when no copy takes requests.
     pub fn lease_avoiding(&mut self, wait: Duration, tried: &[u16]) -> Result<Lease, PoolError> {
         let deadline = Instant::now() + wait;
-        let mut state = self.inner.lock();
+        let mut state = self.inner.lock_probed();
         let ticket = *self.ticket.get_or_insert_with(|| state.enqueue());
         loop {
             let now = Instant::now();
@@ -241,6 +240,12 @@ impl Inner {
         unpoisoned(self.state.lock())
     }
 
+    /// The state once the first probe round ended: it takes at most one round.
+    fn lock_probed(&self) -> MutexGuard<'_, State> {
+        let state = self.lock();
+        unpoisoned(self.changed.wait_while(state, |state| !state.probed_once))
+    }
+
     /// Probes the service's own port, and the copy ports only when it does not answer.
     fn probe_round(&self) {
         let ports = self.lock().ports();
@@ -284,14 +289,15 @@ impl Inner {
     }
 }
 
-/// Probes the copies every `interval` while the pool is in use.
+/// Probes the copies at once and then every `interval` while the pool is in use.
 fn watch(inner: Weak<Inner>, interval: Duration) {
     loop {
-        thread::sleep(interval);
-        let Some(inner) = inner.upgrade() else {
+        let Some(pool) = inner.upgrade() else {
             return;
         };
-        inner.probe_round();
+        pool.probe_round();
+        drop(pool);
+        thread::sleep(interval);
     }
 }
 

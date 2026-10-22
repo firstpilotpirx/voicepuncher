@@ -24,15 +24,14 @@ const SPEECH_RATE_HZ: u32 = 16_000;
 const QUIET: Duration = Duration::from_secs(2);
 /// How long connecting and the WebSocket handshake with the service may take.
 const HANDSHAKE_LIMIT: Duration = Duration::from_secs(5);
-const HANDSHAKE_FAILED: &str =
-    "the command spotting service did not complete the handshake within 5 s";
+const HANDSHAKE_FAILED: &str = "the command spotting service did not finish the handshake in 5 s";
 /// How long the service may take to refuse an unknown phrase: it refuses at once.
 const REFUSAL_LIMIT: Duration = Duration::from_secs(5);
-const NOT_REFUSED: &str =
-    "the command spotting service did not refuse the unknown phrase within 5 s";
+const NOT_REFUSED: &str = "the command spotting service did not refuse the unknown phrase in 5 s";
 /// How long the events of one utterance may keep coming after the speech was sent.
 const UTTERANCE_EVENTS_LIMIT: Duration = Duration::from_secs(30);
 
+const HELLO: &str = r#"{"type":"hello","version":2}"#;
 /// A loopback port nothing listens on.
 const NOTHING_LISTENING: &str = "ws://127.0.0.1:1";
 
@@ -76,7 +75,7 @@ fn should_report_a_spoken_phrase_with_its_speech() {
             SpottingEvent::SpeechStarted(_) => "speech started",
             SpottingEvent::PhraseSpotted { phrase, .. } => phrase.as_str(),
             SpottingEvent::SpeechEnded(_) => "speech ended",
-            SpottingEvent::CommandsSaid { .. } => "commands said",
+            _ => "another event",
         })
         .collect();
     // The keyword spotter and the speech recognition of the utterance may both report it,
@@ -119,9 +118,9 @@ fn should_be_refused_a_phrase_the_service_does_not_know() {
     // Given
     let mut socket = raw_socket(&url);
     // When
-    socket
-        .send(Message::text(r#"{"phrases": ["open the door"]}"#))
-        .unwrap();
+    for message in [HELLO, r#"{"type":"select","phrases":["open the door"]}"#] {
+        socket.send(Message::text(message)).unwrap();
+    }
     // Then
     let deadline = Instant::now() + REFUSAL_LIMIT;
     let refusal = loop {

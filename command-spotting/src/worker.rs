@@ -4,10 +4,18 @@
 use std::fmt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::confirm::{Hear, Heard};
+
+/// The most jobs a confirmation thread holds unanswered while its running job is stalled;
+/// past it a job fails at once. A thread that keeps answering, however slowly, queues them.
+const MOST_UNANSWERED: usize = 4;
+/// A job running this long cannot be a slow copy, whatever its attempts: the thread hangs.
+const STALL_FLOOR: Duration = Duration::from_secs(10);
+/// What a job may take beyond its attempts' deadlines before it counts as stalled.
+const STALL_MARGIN: Duration = Duration::from_secs(2);
 
 /// Where a confirmation is in its utterance; only a segment's confirmation is tried twice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,6 +96,8 @@ pub struct ConfirmationWorker {
     checks: Queue,
     rehears: Queue,
     answers: Receiver<Answer>,
+    /// Answers a job refused at once, as its thread runs them.
+    refused: Sender<Answer>,
     submitted: AtomicUsize,
     taken: AtomicUsize,
 }
@@ -97,6 +107,21 @@ struct Queue {
     thread: String,
     jobs: Sender<Job>,
     unanswered: Arc<AtomicUsize>,
+    /// When the running job started, and how long it may run before it counts as stalled.
+    running: Arc<Mutex<Option<(Instant, Duration)>>>,
+}
+
+impl Queue {
+    /// How long the running job has run, when it has run past its bound by `now`.
+    fn ran_past_bound(&self, now: Instant) -> Option<Duration> {
+        let (started, bound) = (*self.running.lock().ok()?)?;
+        let ran = now.saturating_duration_since(started);
+        (ran > bound).then_some(ran)
+    }
+
+    fn stalled_at(&self, now: Instant) -> bool {
+        self.ran_past_bound(now).is_some()
+    }
 }
 
 /// What the worker holds at a moment: by thread, the jobs sent to it and not answered yet;
@@ -124,18 +149,28 @@ impl ConfirmationWorker {
             deadline,
             answer_tx.clone(),
         )?;
-        let rehears = spawn(format!("conn-{conn}-rehear"), hear, deadline, answer_tx)?;
+        let rehears = spawn(
+            format!("conn-{conn}-rehear"),
+            hear,
+            deadline,
+            answer_tx.clone(),
+        )?;
         Ok(Self {
             jobs,
             checks,
             rehears,
             answers,
+            refused: answer_tx,
             submitted: AtomicUsize::new(0),
             taken: AtomicUsize::new(0),
         })
     }
 
     pub fn submit(&self, job: Job) {
+        self.submit_at(job, Instant::now());
+    }
+
+    fn submit_at(&self, job: Job, now: Instant) {
         log::debug!(
             "job={} kind={} queued audio={:.2}s",
             job.id,
@@ -150,8 +185,30 @@ impl ConfirmationWorker {
             &self.jobs
         };
         self.submitted.fetch_add(1, Ordering::SeqCst);
+        if queue.unanswered.load(Ordering::SeqCst) >= MOST_UNANSWERED && queue.stalled_at(now) {
+            log::warn!(
+                "job={} kind={} failed at once: {} is stalled with {MOST_UNANSWERED} unanswered jobs",
+                job.id,
+                job.kind.name(),
+                queue.thread
+            );
+            let _ = self.refused.send(Answer { id: job.id, heard: None });
+            return;
+        }
         queue.unanswered.fetch_add(1, Ordering::SeqCst);
-        let _ = queue.jobs.send(job);
+        if let Err(lost) = queue.jobs.send(job) {
+            queue.unanswered.fetch_sub(1, Ordering::SeqCst);
+            log::warn!("job={} lost: {} has ended", lost.0.id, queue.thread);
+            let _ = self.refused.send(Answer { id: lost.0.id, heard: None });
+        }
+    }
+
+    /// How long a job has run, when one has run past its bound by `now`: its thread hangs.
+    pub fn stalled_at(&self, now: Instant) -> Option<Duration> {
+        [&self.jobs, &self.checks, &self.rehears]
+            .iter()
+            .filter_map(|q| q.ran_past_bound(now))
+            .max()
     }
 
     /// The answers that arrived so far, without waiting.
@@ -191,11 +248,16 @@ fn spawn(
     let (jobs, job_rx) = mpsc::channel::<Job>();
     let unanswered = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&unanswered);
+    let running = Arc::new(Mutex::new(None));
+    let started = Arc::clone(&running);
     std::thread::Builder::new()
         .name(name.clone())
         .spawn(move || {
             for job in job_rx {
+                let bound = stall_bound(job.kind.attempts(), deadline);
+                set(&started, Some((Instant::now(), bound)));
                 let answer = run(hear.as_ref(), &job, deadline);
+                set(&started, None);
                 // WHY: before the send, so a taken answer is never still counted unanswered
                 counted.fetch_sub(1, Ordering::SeqCst);
                 if answers.send(answer).is_err() {
@@ -203,7 +265,18 @@ fn spawn(
                 }
             }
         })?;
-    Ok(Queue { thread: name, jobs, unanswered })
+    Ok(Queue { thread: name, jobs, unanswered, running })
+}
+
+fn set<T>(slot: &Mutex<T>, value: T) {
+    if let Ok(mut slot) = slot.lock() {
+        *slot = value;
+    }
+}
+
+/// How long a job of `attempts` attempts, each given up at `deadline`, may run at most.
+fn stall_bound(attempts: u32, deadline: Duration) -> Duration {
+    (deadline * attempts + STALL_MARGIN).max(STALL_FLOOR)
 }
 
 fn run(hear: &dyn Hear, job: &Job, deadline: Duration) -> Answer {
@@ -246,204 +319,4 @@ fn seconds(samples: usize) -> f32 {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::atomic::{AtomicU32, Ordering};
-
-    use anyhow::{anyhow, Result};
-
-    use super::*;
-
-    const DEADLINE: Duration = Duration::from_millis(200);
-    const WAIT: Duration = Duration::from_secs(2);
-
-    /// Fails the first `failures` requests, then hears `text`.
-    struct Scripted {
-        failures: u32,
-        calls: AtomicU32,
-        text: &'static str,
-    }
-
-    impl Hear for Scripted {
-        fn hear(&self, _: &[f32], _: Duration) -> Result<Heard> {
-            let call = self.calls.fetch_add(1, Ordering::SeqCst);
-            if call < self.failures {
-                return Err(anyhow!("timed out reading response"));
-            }
-            Ok(Heard { text: self.text.to_owned(), words: Vec::new() })
-        }
-    }
-
-    fn worker_with(failures: u32) -> (ConfirmationWorker, Arc<Scripted>) {
-        let hear = Arc::new(Scripted { failures, calls: AtomicU32::new(0), text: " press enter" });
-        let worker = ConfirmationWorker::start(1, hear.clone(), DEADLINE).unwrap();
-        (worker, hear)
-    }
-
-    fn job(n: u64, kind: JobKind) -> Job {
-        Job { id: JobId { conn: 1, n }, kind, audio: vec![0.0; 1_600] }
-    }
-
-    #[test]
-    fn should_try_a_segment_once_more_when_its_first_attempt_fails() {
-        // Given
-        let (worker, hear) = worker_with(1);
-        // When
-        worker.submit(job(1, JobKind::Segment));
-        let answer = worker.next_answer(WAIT).unwrap();
-        // Then
-        assert_eq!(answer.heard.unwrap().text, " press enter");
-        assert_eq!(hear.calls.load(Ordering::SeqCst), 2);
-    }
-
-    #[test]
-    fn should_give_up_a_check_after_one_failed_attempt() {
-        // Given
-        let (worker, hear) = worker_with(1);
-        // When
-        worker.submit(job(1, JobKind::Head));
-        let answer = worker.next_answer(WAIT).unwrap();
-        // Then
-        assert!(answer.heard.is_none());
-        assert_eq!(hear.calls.load(Ordering::SeqCst), 1);
-    }
-
-    #[test]
-    fn should_answer_confirmations_other_than_checks_in_the_order_they_were_submitted() {
-        // Given
-        let (worker, _) = worker_with(0);
-        // When
-        for (n, kind) in [
-            (1, JobKind::Tail),
-            (2, JobKind::Segment),
-            (3, JobKind::Unheld),
-        ] {
-            worker.submit(job(n, kind));
-        }
-        let order: Vec<u64> = (0..3)
-            .map(|_| worker.next_answer(WAIT).unwrap().id.n)
-            .collect();
-        // Then
-        assert_eq!(order, [1, 2, 3]);
-    }
-
-    /// Hangs on a check's audio until the test ends, and hears every other clip at once.
-    struct HangingCheck {
-        released: std::sync::Mutex<Receiver<()>>,
-    }
-
-    const CHECK_SAMPLE: f32 = 1.0;
-    const HANG: Duration = Duration::from_secs(10);
-
-    impl Hear for HangingCheck {
-        fn hear(&self, audio: &[f32], _: Duration) -> Result<Heard> {
-            if audio.first() == Some(&CHECK_SAMPLE) {
-                let _ = self.released.lock().unwrap().recv_timeout(HANG);
-                return Err(anyhow!("timed out reading response"));
-            }
-            Ok(Heard { text: " enter".to_owned(), words: Vec::new() })
-        }
-    }
-
-    #[test]
-    fn should_answer_a_segment_while_a_check_hangs() {
-        // Given
-        let (release, released) = mpsc::channel();
-        let hear = Arc::new(HangingCheck { released: std::sync::Mutex::new(released) });
-        let worker = ConfirmationWorker::start(1, hear, DEADLINE).unwrap();
-        let check = Job { audio: vec![CHECK_SAMPLE; 1_600], ..job(1, JobKind::Head) };
-        // When
-        worker.submit(check);
-        worker.submit(job(2, JobKind::Segment));
-        let first = worker.next_answer(WAIT);
-        drop(release);
-        // Then
-        assert_eq!(first.map(|a| a.id.n), Some(2));
-    }
-
-    #[test]
-    fn should_answer_a_second_hearing_while_a_segment_hangs() {
-        // Given
-        let (release, released) = mpsc::channel();
-        let hear = Arc::new(HangingCheck { released: std::sync::Mutex::new(released) });
-        let worker = ConfirmationWorker::start(1, hear, DEADLINE).unwrap();
-        let segment = Job { audio: vec![CHECK_SAMPLE; 1_600], ..job(1, JobKind::Segment) };
-        // When
-        worker.submit(segment);
-        worker.submit(job(2, JobKind::Rehear));
-        let first = worker.next_answer(WAIT);
-        drop(release);
-        // Then
-        assert_eq!(first.map(|a| a.id.n), Some(2));
-    }
-
-    #[test]
-    fn should_count_a_job_unanswered_on_its_thread_and_untaken_until_its_answer_is_taken() {
-        // Given a segment whose hearing hangs until released
-        let (release, released) = mpsc::channel();
-        let hear = Arc::new(HangingCheck { released: std::sync::Mutex::new(released) });
-        let worker = ConfirmationWorker::start(4, hear, DEADLINE).unwrap();
-        let segment = Job { audio: vec![CHECK_SAMPLE; 1_600], ..job_of(4, 1, JobKind::Segment) };
-        // When
-        worker.submit(segment);
-        let held = worker.load();
-        drop(release);
-        let answer = worker.next_answer(WAIT);
-        // Then
-        assert!(answer.is_some());
-        assert_eq!(held.untaken, 1);
-        assert!(held.unanswered.contains(&("conn-4-confirm".to_owned(), 1)));
-        let after = worker.load();
-        assert_eq!(after.untaken, 0);
-        assert!(after.unanswered.iter().all(|(_, n)| *n == 0), "{after:?}");
-    }
-
-    use crate::test_log::captured;
-
-    #[test]
-    fn should_name_the_job_its_kind_and_its_attempt_in_every_line_about_it() {
-        // Given
-        let lines = captured();
-        let hear = Arc::new(Scripted { failures: 1, calls: AtomicU32::new(0), text: " enter" });
-        let worker = ConfirmationWorker::start(7, hear, DEADLINE).unwrap();
-        // When
-        worker.submit(job_of(7, 3, JobKind::Segment));
-        worker.next_answer(WAIT).unwrap();
-        // Then
-        let about: Vec<String> = lines
-            .0
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|l| l.contains("job=7.3"))
-            .cloned()
-            .collect();
-        assert!(about.iter().any(|l| l.contains("queued")), "{about:?}");
-        assert!(
-            about
-                .iter()
-                .any(|l| l.contains("kind=segment attempt=1/2 given up")),
-            "{about:?}"
-        );
-        assert!(
-            about
-                .iter()
-                .any(|l| l.contains("kind=segment attempt=2 answered in")),
-            "{about:?}"
-        );
-        assert!(
-            about.iter().any(|l| l.starts_with("[conn-7-confirm]")),
-            "the worker thread is not named after its connection: {about:?}"
-        );
-    }
-
-    fn job_of(conn: u64, n: u64, kind: JobKind) -> Job {
-        Job { id: JobId { conn, n }, kind, audio: vec![0.0; 1_600] }
-    }
-
-    #[test]
-    fn should_count_head_and_window_as_checks_of_a_running_utterance() {
-        assert!(JobKind::Head.is_check() && JobKind::Window.is_check());
-        assert!(JobKind::Spotted.is_check());
-        assert!(!JobKind::Segment.is_check() && !JobKind::Unheld.is_check());
-    }
-}
+mod tests;

@@ -3,6 +3,7 @@
 //! watches the ordered log of what the stand-ins in `doubles` were asked to do.
 
 mod doubles;
+mod failed_confirmation;
 mod speech_after_start;
 mod start_timing;
 
@@ -465,8 +466,7 @@ pub(crate) fn records_with_hotkey(world: &mut IntegrationWorld) -> Result<()> {
     run.start_when();
     run.dictate_with_hotkey()?;
     run.press_hotkey()?;
-    run.pasted()?;
-    Ok(())
+    run.pasted().map(drop)
 }
 
 #[when(expr = "the user says {string}")]

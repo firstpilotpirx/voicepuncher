@@ -1,6 +1,6 @@
 [package]
 name = "voicepuncher-copy-pool"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.88"
 description = "Routes requests to the copies of a local speech recognition service: one request per copy, first come first served"

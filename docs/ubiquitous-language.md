@@ -493,6 +493,30 @@
 - **Code:** `PipelineInput::SpottingLost`; `lose_spotting` in `app/src/core/application/pipeline/voice_control.rs`
 - **Synonyms to AVOID:** "dead", "offline", "disconnected" (alone: the connection may be up while the service is slow)
 
+### Confirmation failed
+- **Type:** Boundary signal (service event `confirmation_failed`)
+- **Definition:** The *command spotting service* got no answer for a closed speech segment from any copy of the *speech recognition service for commands*, within both attempts of its *confirmation deadline*: a command said in it is lost. A copy that sends nothing within its decoding budget and does not answer its health check counts as stalled, and the confirmation goes to another copy first. The app shows the *failure notice* that voice commands are unavailable at once; the recognizer ignores the event.
+- **Code:** `ServerEvent::ConfirmationFailed` in `command-spotting/src/protocol.rs`; `SpottingEvent::ConfirmationFailed` in `app/src/core/domain/voice_command_recognizer.rs`
+- **Synonyms to AVOID:** "timeout" (a copy may time out and another still answer), "no command" (nothing heard is an answer)
+
+### Stalled (command spotting service)
+- **Type:** State of a connection of the command spotting service (service event `stalled`)
+- **Definition:** A confirmation of the connection has run past every attempt it has (at least 10 s): its thread hangs, since every request is given up at its deadline. The service's `/health` answers 503, and it tells the app once; the app takes it as a loss and *reconnects*.
+- **Code:** `ConfirmationWorker::stalled_at` in `command-spotting/src/worker.rs`; `Beat::stalled` in `health.rs`
+- **Synonyms to AVOID:** "slow" (a slow copy keeps answering within its deadlines), "stuck" (alone: audio waiting with no progress)
+
+### Dropped audio
+- **Type:** Behavior of the command spotting service (service event `dropped`)
+- **Definition:** Audio arriving while the oldest audio waiting for a connection's processing has waited past 10 s is dropped on arrival (a burst the service keeps up with, such as a replay, is kept), and the service tells the app how many samples; the stream's clock no longer matches the app's, so the app takes it as a loss, *reconnects* and sends the *speech captured while the service was away*.
+- **Code:** `Beat::queued` in `command-spotting/src/health.rs`; `drop_audio` in `server.rs`
+- **Synonyms to AVOID:** "lag" (audio that waited and was still processed)
+
+### Protocol version (command spotting)
+- **Type:** Concept
+- **Definition:** The version of the messages between the app and the *command spotting service*, now 2: every connection opens with the app's `hello` naming it, and each message names its `type` (`hello`, `select`, `sync`). The service closes a connection of another version, or one without a `hello` first, naming both versions; a message it cannot read and an audio frame of partial samples close the connection with the reason.
+- **Code:** `PROTOCOL_VERSION`, `AppMessage` in `command-spotting/src/protocol.rs`; `command-spotting/src/server/refusal.rs`; `SpottingClient::connect`
+- **Synonyms to AVOID:** "API version"
+
 ### Reconnect
 - **Type:** Behavior of the command spotting adapter
 - **Definition:** While the service is *away*, the adapter tries it again after 0.25, 0.5, 1, 2 and then every 4 s, logging the first and every tenth failed attempt, for as long as listening is on.

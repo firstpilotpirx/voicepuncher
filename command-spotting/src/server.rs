@@ -3,7 +3,6 @@
 //! confirmations by the speech recognition service run on a third (see `worker`), so a
 //! slow one never keeps the connection from answering.
 
-use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
@@ -11,29 +10,29 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
-use tungstenite::protocol::frame::coding::CloseCode;
-use tungstenite::protocol::CloseFrame;
 use tungstenite::{Message, WebSocket};
 
 use crate::engine::{Engine, Session};
 use crate::health::{Beat, Health};
-use crate::protocol::{samples_from_bytes, AppMessage};
+use crate::protocol::{samples_from_bytes, AppMessage, ServerEvent};
 
 /// How long a read on the socket waits before the I/O thread sends what is ready.
 const READ_WAIT: Duration = Duration::from_millis(10);
 /// How long the processing thread waits for input before it applies the answers that came.
 const POLL_WAIT: Duration = Duration::from_millis(20);
-/// Audio that waited longer than this for the processing thread is logged as lag.
-const LAG_LOGGED: Duration = Duration::from_secs(1);
-/// How often a connection logs its counters.
-const STATS_EVERY: Duration = Duration::from_secs(30);
-/// How long the accept thread waits for a health probe's request line.
-const PROBE_WAIT: Duration = Duration::from_secs(2);
-const HEALTH_REQUEST: &[u8] = b"GET /health";
+
+mod probe;
+mod refusal;
+mod stats;
+
+use probe::{answer_health, is_health_probe};
+use refusal::{greet, refuse, refuse_or_end, Refusal};
+use stats::Stats;
 
 static NEXT_CONN: AtomicU64 = AtomicU64::new(1);
 
 enum Input {
+    Hello(u32),
     Audio(Vec<f32>, Instant),
     Select(Vec<String>),
     Sync(u64),
@@ -97,40 +96,65 @@ fn exchange(
     conn: u64,
     beat: &Beat,
 ) -> Result<()> {
+    let mut greeted = false;
     loop {
-        if let Some(input) = read_input(socket, conn)? {
-            if matches!(input, Input::Audio(..)) {
-                beat.queued();
+        let input = read_input(socket, conn, greeted).and_then(|i| greet(i, &mut greeted));
+        let input = match input {
+            Ok(input) => input,
+            Err(e) => return refuse_or_end(socket, conn, e),
+        };
+        match input {
+            Some(Input::Audio(samples, _)) if !beat.queued() => {
+                drop_audio(socket, conn, samples.len())?;
             }
-            inputs
+            Some(input) => inputs
                 .send(input)
-                .map_err(|_| anyhow!("the processing thread ended"))?;
+                .map_err(|_| anyhow!("the processing thread ended"))?,
+            None => {}
         }
-        loop {
-            match outputs.try_recv() {
-                Ok(Output::Event(json)) => socket.send(Message::text(json))?,
-                Ok(Output::Refuse(reason)) => return refuse(socket, conn, &reason),
-                Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => {
-                    return Err(anyhow!("the processing thread ended"))
-                }
+        if let Some(ended) = send_outputs(socket, &outputs, conn) {
+            return ended;
+        }
+    }
+}
+
+/// Sends the processing thread's events to the app; how the connection ends, once it does.
+fn send_outputs(
+    socket: &mut WebSocket<TcpStream>,
+    outputs: &Receiver<Output>,
+    conn: u64,
+) -> Option<Result<()>> {
+    loop {
+        let sent = match outputs.try_recv() {
+            Ok(Output::Event(json)) => socket.send(Message::text(json)),
+            Ok(Output::Refuse(reason)) => {
+                return Some(refuse(socket, conn, Refusal::policy(reason)))
             }
+            Err(TryRecvError::Empty) => return None,
+            Err(TryRecvError::Disconnected) => {
+                return Some(Err(anyhow!("the processing thread ended")))
+            }
+        };
+        if let Err(e) = sent {
+            return Some(Err(e.into()));
         }
     }
 }
 
 /// The next message of the app, or none within the read wait; `Ok(None)` also for a ping,
-/// which tungstenite answers on the next read or write.
-fn read_input(socket: &mut WebSocket<TcpStream>, conn: u64) -> Result<Option<Input>> {
+/// which tungstenite answers on the next read or write. A message that breaks the protocol
+/// fails with the [`Refusal`] to close the connection with.
+fn read_input(
+    socket: &mut WebSocket<TcpStream>,
+    conn: u64,
+    greeted: bool,
+) -> Result<Option<Input>> {
     match socket.read() {
-        Ok(Message::Text(text)) => match serde_json::from_str::<AppMessage>(text.as_str())? {
-            AppMessage::Select(selection) => Ok(Some(Input::Select(selection.phrases))),
-            AppMessage::Sync { sync } => Ok(Some(Input::Sync(sync))),
+        Ok(Message::Text(text)) => text_input(text.as_str(), greeted).map(Some),
+        Ok(Message::Binary(bytes)) => match samples_from_bytes(&bytes) {
+            Ok(samples) => Ok(Some(Input::Audio(samples, Instant::now()))),
+            Err(reason) => Err(Refusal::invalid(reason).into()),
         },
-        Ok(Message::Binary(bytes)) => Ok(Some(Input::Audio(
-            samples_from_bytes(&bytes),
-            Instant::now(),
-        ))),
         Ok(Message::Close(_)) => {
             log::info!("conn={conn} app disconnected");
             Err(anyhow!("the app closed the connection"))
@@ -148,6 +172,17 @@ fn read_input(socket: &mut WebSocket<TcpStream>, conn: u64) -> Result<Option<Inp
     }
 }
 
+/// The app's text message; one that cannot be read breaks the protocol.
+fn text_input(text: &str, greeted: bool) -> Result<Input> {
+    Ok(match serde_json::from_str::<AppMessage>(text) {
+        Ok(AppMessage::Hello { version }) => Input::Hello(version),
+        Ok(AppMessage::Select(selection)) => Input::Select(selection.phrases),
+        Ok(AppMessage::Sync { id }) => Input::Sync(id),
+        Err(_) if !greeted => return Err(Refusal::no_hello().into()),
+        Err(e) => return Err(Refusal::invalid(format!("malformed message: {e}")).into()),
+    })
+}
+
 /// The processing thread: spots and detects speech in the audio, in the order it came.
 fn process(
     mut session: Session<'_>,
@@ -157,14 +192,16 @@ fn process(
     beat: &Beat,
 ) {
     let mut stats = Stats::new();
+    let mut reported = false;
     loop {
-        let events = match inputs.recv_timeout(POLL_WAIT) {
+        let mut events = match inputs.recv_timeout(POLL_WAIT) {
             Ok(Input::Audio(samples, received)) => {
                 stats.audio(received.elapsed(), conn);
                 let events = session.accept(&samples);
                 beat.processed();
                 events
             }
+            Ok(Input::Hello(_)) => Vec::new(),
             Ok(Input::Select(phrases)) => match session.listen_for(&phrases) {
                 Ok(()) => {
                     log::info!("conn={conn} listening for {phrases:?}");
@@ -183,6 +220,7 @@ fn process(
             Err(RecvTimeoutError::Disconnected) => return,
         };
         beat.alive();
+        events.extend(watch_stall(session.stalled(), beat, conn, &mut reported));
         for event in events {
             let Ok(json) = serde_json::to_string(&event) else {
                 continue;
@@ -195,147 +233,33 @@ fn process(
     }
 }
 
-/// Counters a connection logs every `STATS_EVERY`.
-struct Stats {
-    since: Instant,
-    messages: u64,
-    worst_lag: Duration,
+/// Keeps the connection's health current with its confirmations, and tells the app once when
+/// one runs past its attempts.
+fn watch_stall(
+    stalled: Option<Duration>,
+    beat: &Beat,
+    conn: u64,
+    reported: &mut bool,
+) -> Option<ServerEvent> {
+    beat.stalled(stalled.is_some());
+    let first = stalled.filter(|_| !*reported);
+    *reported = stalled.is_some();
+    let waited = first?;
+    log::warn!(
+        "conn={conn} a confirmation has run {}ms, past its attempts: stalled",
+        waited.as_millis()
+    );
+    let waited_ms = u64::try_from(waited.as_millis()).unwrap_or(u64::MAX);
+    Some(ServerEvent::Stalled { waited_ms })
 }
 
-impl Stats {
-    fn new() -> Self {
-        Self { since: Instant::now(), messages: 0, worst_lag: Duration::ZERO }
-    }
-
-    fn audio(&mut self, waited: Duration, conn: u64) {
-        self.messages += 1;
-        self.worst_lag = self.worst_lag.max(waited);
-        if waited > LAG_LOGGED {
-            log::info!(
-                "conn={conn} lag={}ms: audio waited for processing",
-                waited.as_millis()
-            );
-        }
-    }
-
-    fn maybe_log(&mut self, conn: u64, pending: usize) {
-        if self.since.elapsed() < STATS_EVERY {
-            return;
-        }
-        log::info!(
-            "stats conn={conn} messages={} worst_lag={}ms confirmations_pending={pending}",
-            self.messages,
-            self.worst_lag.as_millis()
-        );
-        *self = Self::new();
-    }
-}
-
-/// A plain HTTP `GET /health` on the WebSocket port, told apart by its request line.
-fn is_health_probe(stream: &TcpStream) -> bool {
-    let mut line = [0u8; HEALTH_REQUEST.len()];
-    let _ = stream.set_read_timeout(Some(PROBE_WAIT));
-    let started = Instant::now();
-    while started.elapsed() < PROBE_WAIT {
-        match stream.peek(&mut line) {
-            Ok(n) if n >= line.len() => return line == HEALTH_REQUEST,
-            Ok(n) if n > 0 && !HEALTH_REQUEST.starts_with(&line[..n]) => return false,
-            Ok(0) | Err(_) => return false,
-            Ok(_) => std::thread::sleep(READ_WAIT),
-        }
-    }
-    false
-}
-
-fn answer_health(mut stream: TcpStream, health: &Health) -> Result<()> {
-    let mut request = [0u8; 1024];
-    let _ = stream.read(&mut request);
-    let (status, body) = match health.stuck() {
-        None => ("200 OK", "ok\n".to_owned()),
-        Some(conn) => {
-            log::warn!("health: conn={conn} has audio waiting and made no progress");
-            ("503 Service Unavailable", format!("stuck conn={conn}\n"))
-        }
-    };
-    write!(
-        stream,
-        "HTTP/1.1 {status}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-        body.len()
-    )?;
-    Ok(())
-}
-
-fn refuse(socket: &mut WebSocket<TcpStream>, conn: u64, reason: &str) -> Result<()> {
-    log::warn!("conn={conn} refusing the connection: {reason}");
-    socket.close(Some(CloseFrame {
-        code: CloseCode::Policy,
-        reason: reason.to_owned().into(),
-    }))?;
-    while socket.read().is_ok() {}
+/// Drops audio that does not fit the backlog, and tells the app.
+fn drop_audio(socket: &mut WebSocket<TcpStream>, conn: u64, samples: usize) -> Result<()> {
+    log::warn!("conn={conn} dropped {samples} samples: audio has waited past 10 s");
+    let dropped = ServerEvent::Dropped { samples: samples as u64 };
+    socket.send(Message::text(serde_json::to_string(&dropped)?))?;
     Ok(())
 }
 
 #[cfg(test)]
-mod tests {
-    use std::io::{Read, Write};
-    use std::net::{TcpListener, TcpStream};
-    use std::time::Duration;
-
-    use super::*;
-
-    /// What the service answers to a health probe while `health` holds.
-    fn health_answer(health: &Health) -> String {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let mut probe = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
-        probe
-            .write_all(b"GET /health HTTP/1.1\r\nHost: x\r\n\r\n")
-            .unwrap();
-        let (stream, _) = listener.accept().unwrap();
-        assert!(is_health_probe(&stream));
-        answer_health(stream, health).unwrap();
-        let mut answer = String::new();
-        probe.read_to_string(&mut answer).unwrap();
-        answer
-    }
-
-    #[test]
-    fn should_answer_ok_without_connections() {
-        assert!(health_answer(&Health::default()).starts_with("HTTP/1.1 200"));
-    }
-
-    #[test]
-    fn should_answer_ok_while_every_connection_keeps_up() {
-        // Given
-        let health = Health::default();
-        let beat = health.register(3);
-        // When
-        beat.queued();
-        // Then
-        assert!(health_answer(&health).starts_with("HTTP/1.1 200"));
-    }
-
-    #[test]
-    fn should_answer_unavailable_naming_a_stuck_connection() {
-        // Given a connection with audio waiting and no progress since
-        let health = Health::stuck_after(Duration::ZERO);
-        let beat = health.register(3);
-        beat.queued();
-        std::thread::sleep(Duration::from_millis(5));
-        // When
-        let answer = health_answer(&health);
-        // Then
-        assert!(answer.starts_with("HTTP/1.1 503"), "{answer}");
-        assert!(answer.contains("stuck conn=3"), "{answer}");
-    }
-
-    #[test]
-    fn should_not_take_a_websocket_handshake_for_a_health_probe() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
-        client
-            .write_all(b"GET / HTTP/1.1\r\nUpgrade: websocket\r\n\r\n")
-            .unwrap();
-        let (stream, _) = listener.accept().unwrap();
-        assert!(!is_health_probe(&stream));
-    }
-}
+mod tests;

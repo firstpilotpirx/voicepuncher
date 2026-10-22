@@ -1,36 +1,65 @@
 //! Whether every connection's processing keeps up: a connection with audio waiting that made
 //! no progress for a while is stuck, and the service scripts restart a stuck service.
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// How long a connection with audio waiting may make no progress before it counts as stuck;
 /// well above the longest a confirmation holds anything, since none holds the audio.
 const STUCK_AFTER: Duration = Duration::from_secs(10);
+/// The longest audio may wait for the processing thread: past it, the service no longer
+/// keeps up. Audio sent faster than real time (a replay) waits only while it is processed.
+const LONGEST_WAIT: Duration = Duration::from_secs(10);
 
 /// One connection's progress, written by its threads.
 pub struct Beat {
     last_progress: Mutex<Instant>,
-    waiting: AtomicUsize,
+    /// When each audio frame waiting for the processing thread arrived, oldest first.
+    waiting: Mutex<VecDeque<Instant>>,
+    /// A confirmation of the connection runs past its attempts: its thread hangs.
+    stalled: AtomicBool,
 }
 
 impl Beat {
     fn new() -> Self {
-        Self { last_progress: Mutex::new(Instant::now()), waiting: AtomicUsize::new(0) }
+        Self {
+            last_progress: Mutex::new(Instant::now()),
+            waiting: Mutex::default(),
+            stalled: AtomicBool::new(false),
+        }
     }
 
-    /// A message of audio waits for the processing thread.
-    pub fn queued(&self) {
-        self.waiting.fetch_add(1, Ordering::Relaxed);
+    /// Whether an audio frame arriving now may wait for the processing thread, counting it
+    /// when it may; audio is to be dropped once the oldest waiting frame waited past 10 s.
+    pub fn queued(&self) -> bool {
+        self.queued_at(Instant::now())
     }
 
-    /// The processing thread took a message of audio.
+    fn queued_at(&self, now: Instant) -> bool {
+        let Ok(mut waiting) = self.waiting.lock() else {
+            return true;
+        };
+        let behind = waiting
+            .front()
+            .is_some_and(|oldest| now.saturating_duration_since(*oldest) > LONGEST_WAIT);
+        if !behind {
+            waiting.push_back(now);
+        }
+        !behind
+    }
+
+    /// The processing thread took the oldest waiting audio frame.
     pub fn processed(&self) {
-        let _ = self
-            .waiting
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1));
+        if let Ok(mut waiting) = self.waiting.lock() {
+            waiting.pop_front();
+        }
+    }
+
+    /// Whether a confirmation of the connection runs past its attempts.
+    pub fn stalled(&self, stalled: bool) {
+        self.stalled.store(stalled, Ordering::Relaxed);
     }
 
     /// The processing thread went round its loop.
@@ -46,7 +75,8 @@ impl Beat {
             .lock()
             .map(|last| now.saturating_duration_since(*last))
             .unwrap_or_default();
-        self.waiting.load(Ordering::Relaxed) > 0 && idle > after
+        let waiting = self.waiting.lock().is_ok_and(|waiting| !waiting.is_empty());
+        self.stalled.load(Ordering::Relaxed) || waiting && idle > after
     }
 }
 
@@ -98,57 +128,4 @@ impl Health {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const LATER: Duration = Duration::from_secs(11);
-
-    #[test]
-    fn should_be_healthy_without_connections() {
-        assert_eq!(Health::default().stuck(), None);
-    }
-
-    #[test]
-    fn should_count_a_connection_with_audio_waiting_and_no_progress_as_stuck() {
-        // Given
-        let health = Health::default();
-        let beat = health.register(4);
-        // When
-        beat.queued();
-        // Then
-        assert_eq!(health.stuck_at(Instant::now() + LATER), Some(4));
-    }
-
-    #[test]
-    fn should_not_count_an_idle_connection_as_stuck() {
-        // Given
-        let health = Health::default();
-        let _beat = health.register(4);
-        // Then
-        assert_eq!(health.stuck_at(Instant::now() + LATER), None);
-    }
-
-    #[test]
-    fn should_not_count_a_connection_that_keeps_up_as_stuck() {
-        // Given
-        let health = Health::default();
-        let beat = health.register(4);
-        // When
-        beat.queued();
-        beat.processed();
-        beat.alive();
-        // Then
-        assert_eq!(health.stuck_at(Instant::now() + LATER), None);
-    }
-
-    #[test]
-    fn should_forget_a_closed_connection() {
-        // Given
-        let health = Health::default();
-        health.register(4).queued();
-        // When
-        health.unregister(4);
-        // Then
-        assert_eq!(health.stuck_at(Instant::now() + LATER), None);
-    }
-}
+mod tests;

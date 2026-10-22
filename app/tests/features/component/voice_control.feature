@@ -415,6 +415,13 @@ Feature: voice-control
       Then the overlay still shows that voice commands do not work after the paste
       And once the service is back, the overlay hides
 
+  Rule: A command whose confirmation fails is reported
+
+    Scenario: The app shows a failed confirmation
+      Given listening is on
+      When the command spotting service reports a failed confirmation
+      Then the overlay shows the failure notice that voice commands are unavailable
+
   Rule: A dictation keeps recording while the command spotting service is away
 
     Scenario: The hotkey ends a dictation while the service is away
