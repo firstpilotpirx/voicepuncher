@@ -39,11 +39,7 @@ impl fmt::Display for RuntimeState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             RuntimeState::Starting => write!(f, "starting"),
-            RuntimeState::Ready {
-                hotkey,
-                voice_control,
-                ..
-            } => write!(
+            RuntimeState::Ready { hotkey, voice_control, .. } => write!(
                 f,
                 "ready (hotkey {hotkey}, voice control {})",
                 if *voice_control { "on" } else { "off" }

@@ -25,10 +25,7 @@ pub fn refine_or_raw(refiner: &mut dyn TextRefiner, raw: &RawTranscript) -> Opti
     };
     match refiner.refine(&spoken) {
         Ok(cleaned) => match check_normalization(&spoken, &cleaned) {
-            Ok(()) => Some(RefinedText {
-                text: cleaned,
-                fell_back: false,
-            }),
+            Ok(()) => Some(RefinedText { text: cleaned, fell_back: false }),
             Err(reason) => {
                 log::warn!(
                     "refinement answer rejected ({reason}), pasting the raw transcript instead: {}",

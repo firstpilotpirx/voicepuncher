@@ -66,23 +66,11 @@ mod tests {
     use super::*;
 
     fn window(job: u64, utterance: u64, to: usize) -> QueuedCheck {
-        QueuedCheck {
-            job,
-            kind: JobKind::Window,
-            from: to - 100,
-            to,
-            window_of: Some(utterance),
-        }
+        QueuedCheck { job, kind: JobKind::Window, from: to - 100, to, window_of: Some(utterance) }
     }
 
     fn head(job: u64, to: usize) -> QueuedCheck {
-        QueuedCheck {
-            job,
-            kind: JobKind::Head,
-            from: 0,
-            to,
-            window_of: None,
-        }
+        QueuedCheck { job, kind: JobKind::Head, from: 0, to, window_of: None }
     }
 
     #[test]

@@ -256,3 +256,41 @@ fn should_refuse_a_lease_at_once_when_no_copy_takes_requests() {
         started.elapsed()
     );
 }
+
+#[test]
+fn should_wait_for_a_copy_to_come_back_when_none_takes_requests() {
+    // Given
+    let (pool, probe) = pool_with(&[], 0);
+    let comes_back = thread::spawn(move || {
+        thread::sleep(SHORT_WAIT);
+        probe.up(18083);
+    });
+    // When
+    let started = Instant::now();
+    let back = pool.await_copy(LONG_WAIT);
+    // Then
+    comes_back.join().unwrap();
+    assert!(back);
+    assert!(started.elapsed() < LONG_WAIT);
+    assert_eq!(ports(&pool), [18083]);
+}
+
+#[test]
+fn should_give_up_waiting_for_a_copy_that_never_comes_back() {
+    // Given
+    let (pool, _) = pool_with(&[], 0);
+    // When
+    let started = Instant::now();
+    let back = pool.await_copy(SHORT_WAIT);
+    // Then
+    assert!(!back);
+    assert!(started.elapsed() >= SHORT_WAIT);
+}
+
+#[test]
+fn should_not_wait_while_a_copy_takes_requests() {
+    let (pool, _) = pool_with(&[18082], 0);
+    let started = Instant::now();
+    assert!(pool.await_copy(LONG_WAIT));
+    assert!(started.elapsed() < SHORT_WAIT);
+}

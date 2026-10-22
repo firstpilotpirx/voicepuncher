@@ -5,6 +5,9 @@ edition = "2021"
 rust-version = "1.88"
 description = "Command spotting service of voicepuncher: spots the voice control phrases in streamed audio"
 
+[lints]
+workspace = true
+
 [dependencies]
 anyhow = "=1.0.102"
 clap = { version = "=4.6.1", features = ["derive"] }

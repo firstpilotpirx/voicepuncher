@@ -162,10 +162,7 @@ pub enum RuleCall {
     Listing(Vec<String>),
     /// Run the scenarios of one test (every scenario when `None`) with these cucumber
     /// arguments (without the program name).
-    Run {
-        test: Option<RuleTest>,
-        cucumber: Vec<String>,
-    },
+    Run { test: Option<RuleTest>, cucumber: Vec<String> },
 }
 
 /// Reads the arguments of a harness that shows nextest one test per rule ([`rule_tests`]), so
@@ -184,16 +181,14 @@ pub fn read_rule_harness_call(args: &[String], tests: &[RuleTest]) -> RuleCall {
                 cucumber: args[3..].to_vec(),
             }
         }
-        _ => RuleCall::Run {
-            test: None,
-            cucumber: args.to_vec(),
-        },
+        _ => RuleCall::Run { test: None, cucumber: args.to_vec() },
     }
 }
 
 /// The feature files below `root`, each named by its path below `root` without `.feature`,
 /// sorted.
 pub fn feature_names(root: &std::path::Path) -> Vec<String> {
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn walk(dir: &std::path::Path, root: &std::path::Path, names: &mut Vec<String>) {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return;
@@ -380,10 +375,7 @@ mod tests {
                 ]),
                 &tests()
             ),
-            RuleCall::Run {
-                test: Some(tests()[0].clone()),
-                cucumber: args(&["--tags", "@x"]),
-            }
+            RuleCall::Run { test: Some(tests()[0].clone()), cucumber: args(&["--tags", "@x"]) }
         );
     }
 
@@ -396,10 +388,7 @@ mod tests {
         ] {
             assert_eq!(
                 read_rule_harness_call(&other, &tests()),
-                RuleCall::Run {
-                    test: None,
-                    cucumber: other.clone(),
-                }
+                RuleCall::Run { test: None, cucumber: other.clone() }
             );
         }
     }

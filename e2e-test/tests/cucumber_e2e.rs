@@ -45,6 +45,8 @@ pub struct E2eWorld {
     pub hands_free: Option<steps::voice_control::HandsFree>,
     pub session: Option<steps::voice_control::HandsFreeSession>,
     pub local_services: Option<steps::local_services::ScenarioServices>,
+    /// Services the app's own supervisor started for the scenario, and their outages.
+    pub owned_services: steps::local_services::OwnedServices,
     pub archive: steps::dictation_archive::ArchiveRun,
     pub distribution: steps::app_distribution::DistributionRun,
 }
@@ -70,6 +72,7 @@ impl E2eWorld {
 /// cucumber never gets the selection (`--name`, `--tags`, `CUCUMBER_FILTER_TAGS`): it would apply
 /// it instead of the filter, and the gates with it. `scenario_filter::split` takes it out of the
 /// options and into the one filter that requires both.
+#[expect(clippy::too_many_lines, reason = "size baseline")]
 fn main() {
     // One nextest test, `scenarios`, is the whole run; any other command line is cucumber's own
     let Some(command_line) = harness_args::cucumber_command_line() else {
@@ -78,8 +81,11 @@ fn main() {
     // check and full-check stop at the first failed scenario
     let command_line =
         harness_args::with_fail_fast(command_line, std::env::var(harness_args::FAIL_FAST_VAR));
-    // The app's log lines, such as its `voice start:` timing, only for the modules RUST_LOG names
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("off")).init();
+    // The app's log lines, such as its `voice start:` timing, only for the modules RUST_LOG names;
+    // the scenarios read the warnings and notes the app logs whatever RUST_LOG says
+    steps::local_services::capture_log(
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("off")).build(),
+    );
     // The user's recorded commands stay on the machine; scenarios that need them run only
     // where they exist.
     let gates = vec![

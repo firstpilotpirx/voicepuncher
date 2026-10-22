@@ -31,10 +31,7 @@ fn model(name: &str, bytes: &[u8]) -> ModelFile {
 }
 
 fn archive(name: &str, folder: &'static str, bytes: &[u8]) -> ModelFile {
-    ModelFile {
-        kind: ModelKind::TarBz2 { folder },
-        ..model(name, bytes)
-    }
+    ModelFile { kind: ModelKind::TarBz2 { folder }, ..model(name, bytes) }
 }
 
 #[derive(Default)]
@@ -263,10 +260,7 @@ struct TestClock {
 
 impl TestClock {
     fn new() -> Self {
-        Self {
-            now: Arc::new(Mutex::new(Instant::now())),
-            pauses: Arc::default(),
-        }
+        Self { now: Arc::new(Mutex::new(Instant::now())), pauses: Arc::default() }
     }
 
     fn pauses(&self) -> Vec<Duration> {
@@ -392,9 +386,7 @@ fn should_tell_the_progress_of_each_file() {
         .events
         .iter()
         .filter_map(|e| match e {
-            DownloadEvent::Progress {
-                received, total, ..
-            } => {
+            DownloadEvent::Progress { received, total, .. } => {
                 assert_eq!(*total, 3);
                 Some(*received)
             }
@@ -557,10 +549,7 @@ fn should_fetch_nothing_when_the_space_is_short() {
     // Then
     assert_eq!(
         run.events,
-        vec![DownloadEvent::NotEnoughSpace {
-            needed: DICTATION.len() as u64,
-            free: 5
-        }]
+        vec![DownloadEvent::NotEnoughSpace { needed: DICTATION.len() as u64, free: 5 }]
     );
     assert!(server.requests().is_empty());
 }
@@ -614,10 +603,7 @@ fn should_extract_an_archive_once_it_is_verified() {
 fn should_fetch_from_the_mirror_when_one_is_named() {
     // Given
     let vad = model("vad.bin", VAD);
-    let mirrored = ModelFile {
-        url: "http://127.0.0.1:9/vad.bin",
-        ..vad
-    };
+    let mirrored = ModelFile { url: "http://127.0.0.1:9/vad.bin", ..vad };
     let server = Server::default().answers(&mirrored, vec![Answer::Serve(VAD.to_vec())]);
     let use_case = ModelDownload::new(
         vec![vad],

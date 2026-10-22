@@ -39,13 +39,7 @@ pub struct SettingsWindow {
 
 impl SettingsWindow {
     pub fn new(opener: SessionOpener, logs_dir: PathBuf, login_item: Arc<dyn LoginItem>) -> Self {
-        Self {
-            opener,
-            logs_dir,
-            login_item,
-            models: None,
-            shown: RefCell::new(None),
-        }
+        Self { opener, logs_dir, login_item, models: None, shown: RefCell::new(None) }
     }
 
     /// The Services tab shows the models of `panel`; without one it shows no Models row.
@@ -98,11 +92,7 @@ fn build(
     models: Option<Rc<dyn ModelsPanel>>,
 ) -> Rc<Form> {
     let target = FormTarget::new(mtm);
-    let parts = Parts {
-        mtm,
-        target: &target,
-        session: &session,
-    };
+    let parts = Parts { mtm, target: &target, session: &session };
     let controls: Vec<_> = FIELDS
         .iter()
         .enumerate()

@@ -44,16 +44,10 @@ struct AnswerMessage {
 /// each example is a delimited transcript answered with its normalization, and the
 /// transcript is delimited data in the last user message.
 pub fn chat_body(cfg: &RefinementCfg, transcript: &str) -> String {
-    let mut messages = vec![ChatMessage {
-        role: "system",
-        content: cfg.system_prompt.clone(),
-    }];
+    let mut messages = vec![ChatMessage { role: "system", content: cfg.system_prompt.clone() }];
     for example in &cfg.examples {
         messages.push(transcript_message(&example.transcript));
-        messages.push(ChatMessage {
-            role: "assistant",
-            content: example.normalized.clone(),
-        });
+        messages.push(ChatMessage { role: "assistant", content: example.normalized.clone() });
     }
     messages.push(transcript_message(transcript));
     let request = ChatRequest {
@@ -67,10 +61,7 @@ pub fn chat_body(cfg: &RefinementCfg, transcript: &str) -> String {
 }
 
 fn transcript_message(transcript: &str) -> ChatMessage<'static> {
-    ChatMessage {
-        role: "user",
-        content: format!("<transcript>\n{transcript}\n</transcript>"),
-    }
+    ChatMessage { role: "user", content: format!("<transcript>\n{transcript}\n</transcript>") }
 }
 
 /// Output limit in tokens: about one token per two characters of the transcript, which
@@ -194,10 +185,7 @@ mod tests {
     #[test]
     fn should_send_sampling_budget_and_no_streaming() {
         // Given
-        let cfg = RefinementCfg {
-            temperature: 0.5,
-            ..RefinementCfg::default()
-        };
+        let cfg = RefinementCfg { temperature: 0.5, ..RefinementCfg::default() };
         // When
         let body: Value = serde_json::from_str(&chat_body(&cfg, TRANSCRIPT)).unwrap();
         // Then

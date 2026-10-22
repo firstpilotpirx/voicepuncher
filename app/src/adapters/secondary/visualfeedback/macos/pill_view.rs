@@ -80,6 +80,7 @@ impl PillView {
 
     /// Draws `look` and returns the width the pill needs for it; `visible_columns` is how many
     /// columns the waveform shows, `light_content` whether the glass is milky.
+    #[expect(clippy::too_many_arguments, reason = "size baseline")]
     pub(super) fn draw(
         &self,
         look: PillLook,
@@ -218,10 +219,7 @@ impl PillView {
         for (item, item_width) in items.iter().zip(widths) {
             let view = self.view_of(*item);
             let height = view.frame().size.height;
-            view.setFrameOrigin(NSPoint {
-                x,
-                y: ((PILL_HEIGHT - height) / 2.0).round(),
-            });
+            view.setFrameOrigin(NSPoint { x, y: ((PILL_HEIGHT - height) / 2.0).round() });
             view.setHidden(false);
             x += item_width + gap;
         }
@@ -361,14 +359,5 @@ fn set_view_size(view: &NSView, width: f64, height: f64) {
 }
 
 fn square(offset: f64, side: f64) -> NSRect {
-    NSRect {
-        origin: NSPoint {
-            x: offset,
-            y: offset,
-        },
-        size: NSSize {
-            width: side,
-            height: side,
-        },
-    }
+    NSRect { origin: NSPoint { x: offset, y: offset }, size: NSSize { width: side, height: side } }
 }

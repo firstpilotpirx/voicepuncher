@@ -39,6 +39,7 @@ impl Default for HttpModelFetcher {
 }
 
 impl ModelFetcher for HttpModelFetcher {
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn fetch(
         &self,
         url: &str,

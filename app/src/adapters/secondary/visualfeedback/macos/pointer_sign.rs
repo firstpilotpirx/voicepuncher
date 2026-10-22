@@ -29,10 +29,7 @@ const SIGN_LEVEL: isize = 101;
 /// square whose top-left corner sits `POINTER_GAP_RIGHT` right of and `POINTER_GAP_DOWN` below
 /// `pointer`.
 pub(super) fn sign_origin(pointer: NSPoint, size: f64) -> NSPoint {
-    NSPoint {
-        x: pointer.x + POINTER_GAP_RIGHT,
-        y: pointer.y - POINTER_GAP_DOWN - size,
-    }
+    NSPoint { x: pointer.x + POINTER_GAP_RIGHT, y: pointer.y - POINTER_GAP_DOWN - size }
 }
 
 struct SignWindow {
@@ -53,10 +50,7 @@ pub struct MacosPointerSign {
 
 impl MacosPointerSign {
     pub fn initialize(mtm: MainThreadMarker) -> Self {
-        Self {
-            window: Arc::new(build_window(mtm)),
-            generation: Arc::new(AtomicU64::new(0)),
-        }
+        Self { window: Arc::new(build_window(mtm)), generation: Arc::new(AtomicU64::new(0)) }
     }
 
     pub fn is_visible(&self) -> bool {
@@ -82,10 +76,7 @@ impl MacosPointerSign {
     /// Where the sign's top-left corner is, in global screen coordinates.
     pub fn top_left(&self) -> NSPoint {
         let frame = self.window.window.frame();
-        NSPoint {
-            x: frame.origin.x,
-            y: frame.origin.y + frame.size.height,
-        }
+        NSPoint { x: frame.origin.x, y: frame.origin.y + frame.size.height }
     }
 }
 
@@ -134,10 +125,7 @@ fn move_to_pointer(window: &NSWindow) {
 fn build_window(mtm: MainThreadMarker) -> SignWindow {
     let frame = NSRect {
         origin: NSPoint { x: 0.0, y: 0.0 },
-        size: NSSize {
-            width: BADGE_SIZE,
-            height: BADGE_SIZE,
-        },
+        size: NSSize { width: BADGE_SIZE, height: BADGE_SIZE },
     };
     let window = unsafe {
         NSWindow::initWithContentRect_styleMask_backing_defer(
@@ -177,19 +165,7 @@ mod tests {
 
     #[test]
     fn should_place_the_sign_on_a_screen_left_of_and_below_the_main_one() {
-        let origin = sign_origin(
-            NSPoint {
-                x: -1200.0,
-                y: -40.0,
-            },
-            38.0,
-        );
-        assert_eq!(
-            origin,
-            NSPoint {
-                x: -1192.0,
-                y: -84.0
-            }
-        );
+        let origin = sign_origin(NSPoint { x: -1200.0, y: -40.0 }, 38.0);
+        assert_eq!(origin, NSPoint { x: -1192.0, y: -84.0 });
     }
 }

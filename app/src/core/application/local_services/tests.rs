@@ -24,12 +24,7 @@ impl Harness {
             Box::new(probe.clone()),
             Arc::new(clock.clone()),
         );
-        Self {
-            clock,
-            spawns,
-            probe,
-            services,
-        }
+        Self { clock, spawns, probe, services }
     }
 
     fn ready_ports(&self) -> Vec<u16> {
@@ -58,6 +53,39 @@ fn should_count_the_needed_services_ready_as_they_answer() {
     let progress = ServicesProgress::of(&[18082, 8080], &harness.services.snapshot());
     assert_eq!((progress.ready, progress.total), (1, 2));
     assert_eq!(harness.ready_ports(), vec![18082]);
+}
+
+#[test]
+fn should_restart_only_the_speech_recognition_copy_that_stops_answering() {
+    // Given
+    let mut harness = Harness::new(false);
+    let copies = [18082, 18083, 18084];
+    harness.services.supervise(
+        copies
+            .iter()
+            .map(|&port| spec(ServiceKind::Dictation, port))
+            .collect(),
+    );
+    harness.services.tick();
+    copies
+        .iter()
+        .for_each(|&port| harness.probe.set(port, ProbeAnswer::Ready));
+    harness.services.tick();
+    // When
+    harness.probe.set(18083, ProbeAnswer::Busy);
+    for _ in 0..3 {
+        harness.clock.advance(Duration::from_secs(5));
+        harness.services.tick();
+    }
+    // Then
+    let killed: Vec<u16> = harness
+        .spawns
+        .all()
+        .iter()
+        .filter(|life| life.killed)
+        .map(|life| life.port)
+        .collect();
+    assert_eq!(killed, vec![18083]);
 }
 
 #[test]

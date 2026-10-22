@@ -19,6 +19,7 @@ use crate::steps::file_transcription::{env, sut_bin, STARTUP_FAILURE_EXIT_CODE};
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
+mod copies;
 mod hands_free;
 mod outages;
 mod session;

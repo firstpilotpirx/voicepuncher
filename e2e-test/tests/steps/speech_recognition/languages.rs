@@ -37,11 +37,7 @@ fn short_phrase(world: &mut E2eWorld, language: String) -> Result<()> {
         "Russian" => (RUSSIAN_VOICE, SHORT_RUSSIAN_PHRASE),
         _ => (ENGLISH_VOICE, SHORT_ENGLISH_PHRASE),
     };
-    let samples = synthesized(&SayRequest {
-        voice: Some(voice),
-        words_per_minute: None,
-        text,
-    })?;
+    let samples = synthesized(&SayRequest { voice: Some(voice), words_per_minute: None, text })?;
     let path = world.workdir()?.join("short_phrase.wav");
     write_wav(&path, &samples)?;
     world.recording = Some(path);

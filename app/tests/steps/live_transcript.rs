@@ -202,12 +202,11 @@ fn live_transcripts(shown: &[Shown]) -> Vec<String> {
 
 fn send_part(parts: &Parts) -> Result<()> {
     let one_second = AudioBuffer16k::new(vec![1_000i16; AudioBuffer16k::SAMPLE_RATE_HZ as usize]);
-    let sent = parts.lock().unwrap().as_ref().map(|tx| {
-        tx.send(LiveChunk {
-            audio: one_second,
-            enqueued_at: Instant::now(),
-        })
-    });
+    let sent = parts
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|tx| tx.send(LiveChunk { audio: one_second, enqueued_at: Instant::now() }));
     match sent {
         Some(Ok(())) => Ok(()),
         _ => bail!("no recording takes parts"),

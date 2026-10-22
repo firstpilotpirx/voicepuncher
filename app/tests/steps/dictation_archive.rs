@@ -642,10 +642,7 @@ struct TakesRecorder {
 impl TakesRecorder {
     fn send(&self, audio: &AudioBuffer16k) {
         if let Some(parts) = &self.parts {
-            let _ = parts.send(LiveChunk {
-                audio: audio.clone(),
-                enqueued_at: Instant::now(),
-            });
+            let _ = parts.send(LiveChunk { audio: audio.clone(), enqueued_at: Instant::now() });
         }
     }
 }

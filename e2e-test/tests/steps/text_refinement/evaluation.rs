@@ -37,9 +37,7 @@ const CATEGORIES: [&str; 8] = [
 fn service_appends_answer(world: &mut E2eWorld) -> Result<()> {
     use_stub(
         world,
-        StubBehavior::AppendToTranscript {
-            suffix: APPENDED_ANSWER,
-        },
+        StubBehavior::AppendToTranscript { suffix: APPENDED_ANSWER },
     )
 }
 
@@ -47,10 +45,7 @@ fn service_appends_answer(world: &mut E2eWorld) -> Result<()> {
 fn service_respells_loanword(world: &mut E2eWorld) -> Result<()> {
     use_stub(
         world,
-        StubBehavior::Answer {
-            content: LOANWORD_IN_LATIN.to_owned(),
-            finish_reason: "stop",
-        },
+        StubBehavior::Answer { content: LOANWORD_IN_LATIN.to_owned(), finish_reason: "stop" },
     )
 }
 

@@ -263,3 +263,11 @@ Feature: text-refinement
       Given the configuration sets a language model file path
       When the user starts the app with refinement
       Then the app exits with a message saying the language model is now chosen when starting the text refinement service and naming its address setting
+
+  @serial @resilience
+  Rule: A dropped connection to the text refinement service is retried once
+
+    Scenario: A copy of the text refinement service is killed during a refinement
+      Given the app started the text refinement service as two copies and they are ready
+      When the copy refining a transcript is killed before it answers
+      Then the other copy refines the transcript, and the text is not reported as pasted without refinement

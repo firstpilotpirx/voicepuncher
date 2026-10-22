@@ -46,11 +46,7 @@ pub(super) fn show_notice(
 /// text window; the message goes to the log.
 fn apply_failure_notice(windows: &[Arc<WindowSet>], notice: &FailureNotice) {
     let state = OverlayState::FailureNotice(*notice);
-    let look = PillLook {
-        kind: PillKind::Sign,
-        sign: state_sign(state),
-        breathes: false,
-    };
+    let look = PillLook { kind: PillKind::Sign, sign: state_sign(state), breathes: false };
     log::warn!("overlay: failure notice: {}", notice.message());
     for ws in windows {
         ws.draw(look, glass_tint(state), false, 0);

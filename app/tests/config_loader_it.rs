@@ -2,6 +2,11 @@ use voicepuncher::config::load;
 use voicepuncher::core::domain::HotKey;
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    reason = "size baseline"
+)]
 fn should_round_trip_full_example_toml() {
     // Given
     let toml_str = r#"

@@ -26,14 +26,8 @@ pub enum Widget {
     Switch(Retained<NSSwitch>),
     PopUp(Retained<NSPopUpButton>, RefCell<Vec<Choice>>),
     Radio(Vec<(Retained<NSButton>, Value)>),
-    Number {
-        text: Retained<NSTextField>,
-        stepper: Retained<NSStepper>,
-    },
-    Slider {
-        slider: Retained<NSSlider>,
-        shown: Retained<NSTextField>,
-    },
+    Number { text: Retained<NSTextField>, stepper: Retained<NSStepper> },
+    Slider { slider: Retained<NSSlider>, shown: Retained<NSTextField> },
     Text(Retained<NSTextField>),
     Languages(Retained<NSTextField>),
     TextArea(Retained<NSTextView>),
@@ -60,13 +54,7 @@ impl FieldControl {
         outlined: Retained<NSView>,
         widget: Widget,
     ) -> Self {
-        Self {
-            field,
-            view,
-            outlined,
-            widget,
-            shown: RefCell::new(Value::Boolean(false)),
-        }
+        Self { field, view, outlined, widget, shown: RefCell::new(Value::Boolean(false)) }
     }
 
     /// The same control placed in the grid inside `view`, with the views that follow it.
@@ -156,10 +144,7 @@ fn select(popup: &NSPopUpButton, choices: &mut Vec<Choice>, value: &Value) {
         None => {
             let title = plain(value);
             popup.addItemWithTitle(&NSString::from_str(&title));
-            choices.push(Choice {
-                title,
-                value: value.clone(),
-            });
+            choices.push(Choice { title, value: value.clone() });
             choices.len() - 1
         }
     };

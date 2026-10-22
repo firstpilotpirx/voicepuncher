@@ -148,3 +148,12 @@ Feature: local-services
       When the app launches, its services become ready and the app is told to end
       Then each started service answered on its port while the app ran
       And no process of them is left after the app ended
+
+  @serial @resilience
+  Rule: An owned service that stops is started again
+
+    Scenario: An owned speech recognition copy that stops answering is restarted
+      Given the app started the speech recognition service for dictation as two copies and they are ready
+      When one copy stops answering without exiting
+      Then within 30 seconds the app has killed that copy and started it again, and it answers on its port
+      And the other copies were never restarted

@@ -18,6 +18,11 @@ const SILENT_RMS: f32 = 0.003;
 const PAUSE_MIN_FRAMES: usize = 5;
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    clippy::excessive_nesting,
+    reason = "size baseline"
+)]
 fn should_cut_most_chunk_seams_of_synthesized_speech_in_a_pause() {
     // Given
     let cfg = TranscriptionCfg::default();

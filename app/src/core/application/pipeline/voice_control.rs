@@ -164,6 +164,7 @@ impl Pipeline {
         }
     }
 
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn carry_out(&mut self, spoken: SpokenCommand) -> anyhow::Result<()> {
         let phrase = spoken.command.phrase();
         let accepted: &[VoiceCommand] = if self.is_recording() {
@@ -466,13 +467,11 @@ mod tests {
         PipelineConfig {
             min_press_ms: 0,
             recording_mode: RecordingMode::Toggle,
-            chunking: ChunkingCfg {
-                chunk_threshold_secs: 0,
-                ..ChunkingCfg::default()
-            },
+            chunking: ChunkingCfg { chunk_threshold_secs: 0, ..ChunkingCfg::default() },
         }
     }
 
+    #[expect(clippy::too_many_arguments, reason = "size baseline")]
     fn pipeline_with(
         recorder: MockAudioRecorder,
         paster: MockTextPaster,
@@ -481,10 +480,7 @@ mod tests {
         keys: MockKeyPresser,
         mode: RecordingMode,
     ) -> Pipeline {
-        let cfg = PipelineConfig {
-            recording_mode: mode,
-            ..toggle_cfg()
-        };
+        let cfg = PipelineConfig { recording_mode: mode, ..toggle_cfg() };
         Pipeline::new(
             Box::new(recorder),
             Box::new(answering_transcriber()),
@@ -519,10 +515,7 @@ mod tests {
         let cfg = PipelineConfig {
             min_press_ms: 0,
             recording_mode: RecordingMode::Toggle,
-            chunking: ChunkingCfg {
-                chunk_threshold_secs: 1,
-                ..ChunkingCfg::default()
-            },
+            chunking: ChunkingCfg { chunk_threshold_secs: 1, ..ChunkingCfg::default() },
         };
         Pipeline::new(
             Box::new(recorder),
@@ -557,12 +550,7 @@ mod tests {
         let end = start + PHRASE_LENGTH;
         let events = [
             SpottingEvent::SpeechStarted(segment_start),
-            SpottingEvent::PhraseSpotted {
-                phrase: phrase.to_owned(),
-                start,
-                end,
-                timing: None,
-            },
+            SpottingEvent::PhraseSpotted { phrase: phrase.to_owned(), start, end, timing: None },
             SpottingEvent::SpeechEnded(end + PHRASE_LEAD),
         ];
         for event in events {
@@ -811,6 +799,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn should_keep_listening_when_a_dictation_cannot_start() {
         // Given the microphone cannot be opened for recording
         let mut recorder = MockAudioRecorder::new();
@@ -1016,6 +1005,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn should_take_the_heard_speech_once_the_recorder_runs_and_before_live_chunks() {
         // Given
         let order = Arc::new(Mutex::new(Vec::new()));
@@ -1202,10 +1192,7 @@ mod tests {
             PipelineConfig {
                 min_press_ms: 0,
                 recording_mode: RecordingMode::Toggle,
-                chunking: ChunkingCfg {
-                    chunk_threshold_secs: 1,
-                    ..ChunkingCfg::default()
-                },
+                chunking: ChunkingCfg { chunk_threshold_secs: 1, ..ChunkingCfg::default() },
             },
         )
         .with_voice_control(Box::new(lenient_spotter()), Box::new(MockKeyPresser::new()));

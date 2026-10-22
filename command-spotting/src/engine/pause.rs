@@ -68,6 +68,11 @@ impl PauseWatch {
     /// Hears `samples`, the stream's next ones; `speaking` tells whether an utterance runs.
     /// Gives the sample position where a quiet run began once it is long enough to end the
     /// utterance.
+    #[expect(
+        clippy::too_many_lines,
+        clippy::excessive_nesting,
+        reason = "size baseline"
+    )]
     pub(super) fn hear(&mut self, samples: &[f32], speaking: bool) -> Option<usize> {
         self.pending.extend_from_slice(samples);
         let mut pause = None;

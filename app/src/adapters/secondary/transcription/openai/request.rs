@@ -114,10 +114,7 @@ mod tests {
     #[test]
     fn should_include_model_temperature_format_and_file_parts() {
         // Given
-        let cfg = TranscriptionCfg {
-            model: "whisper-1".into(),
-            ..TranscriptionCfg::default()
-        };
+        let cfg = TranscriptionCfg { model: "whisper-1".into(), ..TranscriptionCfg::default() };
         // When
         let body = body_text(&cfg);
         // Then
@@ -167,10 +164,8 @@ mod tests {
     #[test]
     fn should_make_the_service_use_the_prompt_in_every_window() {
         // Given
-        let cfg = TranscriptionCfg {
-            prompt: "Docker, Kubernetes".into(),
-            ..TranscriptionCfg::default()
-        };
+        let cfg =
+            TranscriptionCfg { prompt: "Docker, Kubernetes".into(), ..TranscriptionCfg::default() };
         // When
         let body = body_text(&cfg);
         // Then

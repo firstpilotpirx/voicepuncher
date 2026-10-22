@@ -16,10 +16,8 @@ pub struct FocusWaitCfg {
 }
 
 impl FocusWaitCfg {
-    pub const OFF: FocusWaitCfg = FocusWaitCfg {
-        timeout: Duration::ZERO,
-        poll_interval: Duration::ZERO,
-    };
+    pub const OFF: FocusWaitCfg =
+        FocusWaitCfg { timeout: Duration::ZERO, poll_interval: Duration::ZERO };
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +36,7 @@ pub enum WaitEnd {
 /// Delivers the final text: pastes at once unless no text input is surely focused, then
 /// waits for text input focus; a wait that ends without one leaves the text in the clipboard.
 /// The wait ends early when `hotkey_pressed` reports a hotkey press.
+#[expect(clippy::too_many_arguments, reason = "size baseline")]
 pub fn insert_text(
     text: &CleanedText,
     paster: &mut dyn TextPaster,
@@ -213,10 +212,7 @@ mod tests {
 
     #[test]
     fn should_log_that_the_focused_element_lies_in_web_content() {
-        let page = FocusedElement {
-            in_web_content: true,
-            ..element("AXWebArea")
-        };
+        let page = FocusedElement { in_web_content: true, ..element("AXWebArea") };
         assert_eq!(
             decision_line(&TextFocus::of(Ok(Some(&page))), Duration::from_secs(300)),
             "focus: AXWebArea +web → wait (up to 300s)"
@@ -297,10 +293,7 @@ mod tests {
         tx.send(PipelineInput::Hotkey(PttSignal::Pressed)).unwrap();
         let mut pending = VecDeque::new();
         let mut paster = leaving_in_clipboard();
-        let cfg = FocusWaitCfg {
-            timeout: Duration::from_secs(60),
-            ..WAIT
-        };
+        let cfg = FocusWaitCfg { timeout: Duration::from_secs(60), ..WAIT };
         let outcome = insert_text(
             &text(),
             &mut paster,
@@ -322,10 +315,7 @@ mod tests {
         tx.send(PipelineInput::Hotkey(PttSignal::Cancel)).unwrap();
         let mut pending = VecDeque::new();
         let mut paster = leaving_in_clipboard();
-        let cfg = FocusWaitCfg {
-            timeout: Duration::from_secs(60),
-            ..WAIT
-        };
+        let cfg = FocusWaitCfg { timeout: Duration::from_secs(60), ..WAIT };
         let outcome = insert_text(
             &text(),
             &mut paster,

@@ -62,6 +62,11 @@ impl VisualIndicator for NoopVisualIndicator {
     fn show_failure_notice(&self, _notice: &FailureNotice) {}
 }
 
+#[expect(
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    reason = "size baseline"
+)]
 fn main() {
     install_panic_hook();
     let cli = Cli::parse();
@@ -326,10 +331,7 @@ fn download_models(cli: &Cli, config_path: &std::path::Path) -> i32 {
         config.services.models_dir = dir.clone();
     }
     let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-    let needs = ModelNeeds {
-        voice_control: true,
-        refinement: !cli.no_llm,
-    };
+    let needs = ModelNeeds { voice_control: true, refinement: !cli.no_llm };
     voicepuncher::runtime::models::download_headless(
         &CatalogModels::current(),
         config.services.resolved_models_dir(&home),

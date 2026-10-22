@@ -37,11 +37,9 @@ fn hotkey_to_rdev(hotkey: HotKey) -> RdevTarget {
         HotKey::Fn => RdevTarget::Single(Key::Function),
         HotKey::CapsLock => RdevTarget::Single(Key::CapsLock),
         HotKey::Space => RdevTarget::Single(Key::Space),
-        HotKey::LeftOptionE => RdevTarget::Chord {
-            modifier_a: Key::Alt,
-            modifier_b: Key::Alt,
-            key: Key::KeyE,
-        },
+        HotKey::LeftOptionE => {
+            RdevTarget::Chord { modifier_a: Key::Alt, modifier_b: Key::Alt, key: Key::KeyE }
+        }
         HotKey::CmdE => RdevTarget::Chord {
             modifier_a: Key::MetaLeft,
             modifier_b: Key::MetaRight,
@@ -58,6 +56,7 @@ fn hotkey_to_rdev(hotkey: HotKey) -> RdevTarget {
 }
 
 impl HotkeyListener for RdevHotkeyListener {
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn spawn(
         self: Box<Self>,
         binding: HotkeyBinding,
@@ -93,10 +92,7 @@ struct ChordState {
 impl ChordState {
     fn follow(&mut self, hotkey: HotKey) {
         if self.bound_to != Some(hotkey) {
-            *self = Self {
-                bound_to: Some(hotkey),
-                ..Self::default()
-            };
+            *self = Self { bound_to: Some(hotkey), ..Self::default() };
         }
     }
 }
@@ -113,11 +109,7 @@ fn classify(event: &EventType, hotkey: HotKey, chord: &mut ChordState) -> Option
             EventType::KeyRelease(k) if *k == rdev_key => Some(PttSignal::Released),
             _ => None,
         },
-        RdevTarget::Chord {
-            modifier_a,
-            modifier_b,
-            key,
-        } => {
+        RdevTarget::Chord { modifier_a, modifier_b, key } => {
             let is_modifier = |k: Key| k == modifier_a || k == modifier_b;
             match event {
                 EventType::KeyPress(k) if is_modifier(*k) => {
@@ -374,11 +366,7 @@ mod tests {
     fn should_map_left_option_e_to_left_alt_only() {
         assert!(matches!(
             hotkey_to_rdev(HotKey::LeftOptionE),
-            RdevTarget::Chord {
-                modifier_a: Key::Alt,
-                modifier_b: Key::Alt,
-                key: Key::KeyE,
-            }
+            RdevTarget::Chord { modifier_a: Key::Alt, modifier_b: Key::Alt, key: Key::KeyE }
         ));
     }
 

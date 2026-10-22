@@ -16,7 +16,7 @@ use crate::adapters::secondary::soundplaying::macos::MacosSoundPlayer;
 use crate::adapters::secondary::textpasting::macos::MacOsTextPaster;
 use crate::adapters::secondary::textrefinement::openai::OpenAiTextRefiner;
 use crate::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
-use crate::adapters::secondary::transcription::openai::OpenAiTranscriber;
+use crate::adapters::secondary::transcription::openai::{longest_wait, OpenAiTranscriber};
 use crate::config::{Config, TranscriptionCfg};
 use crate::core::application::pipeline::{Pipeline, PipelineConfig};
 use crate::core::application::{
@@ -27,6 +27,8 @@ use super::{PipelineAssembler, SharedVisualIndicator};
 
 /// How often the pipeline asks which element has focus while it waits for a text input.
 const FOCUS_POLL_INTERVAL: Duration = Duration::from_millis(100);
+/// What a stopped dictation may wait beyond its last chunk, for the chunks before it.
+const STOP_DRAIN: Duration = Duration::from_secs(2);
 
 /// Builds every pipeline over the process's one overlay and one level register.
 pub struct WiringAssembler {
@@ -36,14 +38,12 @@ pub struct WiringAssembler {
 
 impl WiringAssembler {
     pub fn new(overlay: SharedVisualIndicator, level_register: Arc<AtomicU32>) -> Self {
-        Self {
-            overlay,
-            level_register,
-        }
+        Self { overlay, level_register }
     }
 }
 
 impl PipelineAssembler for WiringAssembler {
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn assemble(&mut self, config: &Config, inputs: Sender<PipelineInput>) -> Result<Pipeline> {
         let spotter = config
             .voice_control
@@ -73,6 +73,7 @@ impl PipelineAssembler for WiringAssembler {
                 chunking: chunking_cfg(&config.transcription),
             },
         )
+        .with_stop_wait(stop_wait(&config.transcription))
         .with_focus_wait(
             Box::new(MacOsFocusProbe::new()),
             FocusWaitCfg {
@@ -146,6 +147,12 @@ fn connect_command_spotter(
         .with_input_device(&config.audio.input_device);
     spotter.probe()?;
     Ok(spotter)
+}
+
+/// How long a stopped dictation waits for its transcript: its last chunk with every retry,
+/// plus the drain of the chunks before it.
+fn stop_wait(cfg: &TranscriptionCfg) -> Duration {
+    longest_wait(Duration::from_secs(cfg.timeout_secs)) + STOP_DRAIN
 }
 
 pub fn connect_transcriber(config: &Config) -> Result<OpenAiTranscriber> {

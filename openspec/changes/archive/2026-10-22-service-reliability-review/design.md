@@ -4,11 +4,11 @@ The proposal lists the gaps; the code involved: supervisor `core/application/loc
 
 ## Decisions
 
-**D1 — Health-check every whisper copy the app starts.** `catalog` sets `health_checked = true` for whisper copies; the probe already asks `GET /health` and `GET /`. whisper-server answers `/health` without its inference lock, so only a paused or dead copy fails it.
+**D1 — Health-check every whisper copy.** `catalog` sets `health_checked = true` for whisper copies. whisper-server answers `/health` without its inference lock, so only a paused or dead copy fails it.
 
 **D2 — Waiting for a copy is a `copy-pool` call.** `CopyPool::await_copy(wait) -> bool` blocks until a probe round sees a copy accept connections or `wait` passes. The dictation client calls it once per request, after its dropped-connection pauses are used up and only when `has_copies()` is false; on success it resets the dropped counter. A service that accepts and drops keeps today's four attempts. The 30 s wait is a field, short in adapter tests. Rejected: longer retry pauses, which delay every dead-service failure as much.
 
-**D3 — The text refinement and command spotting services as copies.** The `copy-pool` address scheme (port + 10000 + n, single copy on the service's own port) is reused for both: `catalog` builds one spec per copy for llama and command spotting the way it does for whisper (`copy_ports`, `running_copies` for adoption), with `[services] refinement_copies` and `command_spotting_copies` (default 2, clamped 1–4). The refinement client leases from a `CopyPool` of its base URL (protocol-free; one request per copy matches llama's `-np 1`). A second Qwen3-4B copy costs ~2.5 GB: accepted, refinement is off by default.
+**D3 — The text refinement and command spotting services as copies, on ports of their own.** The `copy-pool` scheme (single copy on the service's own port, several on four copy ports found from the address) is reused, but not its +10000 offset: with the default ports 8080, 8081, 8082 and 8085 lying within four of each other, the copy ports of llama and command spotting would include whisper copies. `ServiceAddress::with_copy_offset` sets the offset per service: 10000 for speech recognition (unchanged), 40000 for text refinement (48081–48084), 41000 for command spotting (49083–49086), all below the ephemeral range; where neither the port plus nor minus the offset fits, the service has no copy ports and runs one copy. `catalog` builds one spec per copy for llama and command spotting as for whisper (`copy_ports`, `running_copies`), with `[services] refinement_copies` and `command_spotting_copies` (default 2, 1–4). The refinement client leases from a `CopyPool` of its address (protocol-free; one request per copy matches llama's `-np 1`). A second Qwen3-4B copy costs ~2.5 GB: accepted, refinement is off by default.
 
 **D4 — Refinement retry.** One more attempt after a refused or dropped connection or a timeout, on another copy (`lease_avoiding(tried)`); before it, when no copy accepts connections, `await_copy(RECOVERY_WAIT)`. A hung copy ends at the request timeout or when the supervisor kills it after 15 s; both lead to the retry.
 
@@ -30,6 +30,7 @@ The proposal lists the gaps; the code involved: supervisor `core/application/loc
 | Voice control starts two copies of the command spotting service | unit (catalog) |
 | One configured copy runs on the service's own port | unit (catalog) |
 | A text refinement service the scripts run is adopted | unit (catalog) |
+| The copy ports of the services never overlap | unit (`copy-pool` address) |
 | Every copy of the dictation service is killed while a chunk is sent | E2E `speech_recognition.feature` |
 | The service does not come back | adapter integration `transcription_openai_it.rs` |
 | The text refinement service drops one connection | adapter integration (existing) |

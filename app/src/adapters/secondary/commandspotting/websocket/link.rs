@@ -28,10 +28,7 @@ pub struct LinkTimings {
 
 impl Default for LinkTimings {
     fn default() -> Self {
-        Self {
-            reconnect_pauses: RECONNECT_PAUSES,
-            replay_before_loss: REPLAY_BEFORE_LOSS,
-        }
+        Self { reconnect_pauses: RECONNECT_PAUSES, replay_before_loss: REPLAY_BEFORE_LOSS }
     }
 }
 

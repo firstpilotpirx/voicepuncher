@@ -16,7 +16,7 @@ pub mod wiring;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 
@@ -44,6 +44,9 @@ pub use services::{LocalServices, ManagedServices, ServicesView};
 const MODELS_POLL: Duration = Duration::from_secs(1);
 /// How often a restart checks whether the dictation in progress has ended.
 const IDLE_POLL_INTERVAL: Duration = Duration::from_millis(20);
+/// A pipeline that fails this soon after the restart that followed a failure is not
+/// restarted again.
+const RESTART_WINDOW: Duration = Duration::from_secs(30);
 
 /// Owns the hotkey listener for the life of the process and one pipeline at a time.
 pub struct Runtime {
@@ -60,6 +63,11 @@ pub struct Runtime {
 enum Command {
     Reload(Box<Config>, Option<ReloadListener>),
     Stop,
+    /// The pipeline of `generation` ended with an error or a panic.
+    PipelineFailed {
+        generation: u64,
+        reason: String,
+    },
 }
 
 impl Runtime {
@@ -116,6 +124,7 @@ impl Runtime {
         else {
             bail!("the runtime was started already");
         };
+        let (commands_tx, commands_rx) = mpsc::channel();
         let mut supervisor = Supervisor::new(
             assembler,
             listener,
@@ -124,7 +133,8 @@ impl Runtime {
             self.permissions.take().map(Watched::start),
             self.services.take(),
             self.models.take(),
-        );
+        )
+        .reporting_failures_to(commands_tx.clone());
         if let Some(state) = supervisor.gate() {
             self.change(state);
         } else {
@@ -135,7 +145,6 @@ impl Runtime {
             }
             self.change(supervisor.ready());
         }
-        let (commands_tx, commands_rx) = mpsc::channel();
         let thread = std::thread::Builder::new()
             .name("runtime".into())
             .spawn(move || supervisor.serve(commands_rx))
@@ -239,30 +248,47 @@ impl Next {
     fn assemble(assembler: &mut dyn PipelineAssembler, config: &Config) -> Result<Self> {
         let (inputs, inbox) = mpsc::channel();
         let pipeline = assembler.assemble(config, inputs.clone())?;
-        Ok(Self {
-            pipeline,
-            inputs,
-            inbox,
-        })
+        Ok(Self { pipeline, inputs, inbox })
     }
 
-    fn launch(self, activity: &ActivityRegister) -> Running {
+    /// Runs the pipeline on a thread of its own; one that ends with an error or a panic is
+    /// stopped in order and reported to `failures` under `generation`.
+    fn launch(
+        self,
+        activity: &ActivityRegister,
+        failures: Option<Sender<Command>>,
+        generation: u64,
+    ) -> Running {
         activity.publish(PipelineActivity::Idle);
         let mut pipeline = self.pipeline.with_activity_sink(Box::new(activity.clone()));
         let inbox = self.inbox;
         let thread = std::thread::Builder::new()
             .name("pipeline".into())
             .spawn(move || {
-                pipeline.run(inbox).unwrap_or_else(|e| {
-                    log::error!("fatal: {e:#}");
-                    std::process::exit(1);
-                });
+                let outcome =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| pipeline.run(inbox)));
+                let reason = match outcome {
+                    Ok(Ok(())) => return,
+                    Ok(Err(e)) => format!("{e:#}"),
+                    Err(panic) => panic_message(panic.as_ref()),
+                };
+                log::error!("fatal: pipeline stopped: {reason}");
+                pipeline.stop_after_failure();
+                if let Some(failures) = failures {
+                    let _ = failures.send(Command::PipelineFailed { generation, reason });
+                }
             })
             .expect("failed to spawn pipeline thread");
-        Running {
-            inputs: self.inputs,
-            thread,
-        }
+        Running { inputs: self.inputs, thread }
+    }
+}
+
+/// What a panic said, as far as it is text.
+fn panic_message(panic: &(dyn std::any::Any + Send)) -> String {
+    match (panic.downcast_ref::<&str>(), panic.downcast_ref::<String>()) {
+        (Some(message), _) => format!("panic: {message}"),
+        (None, Some(message)) => format!("panic: {message}"),
+        (None, None) => "panic".to_owned(),
     }
 }
 
@@ -281,6 +307,13 @@ impl Running {
     /// Ends the pipeline because `permission` was revoked.
     fn revoke(self, permission: Permission) {
         self.end_with(PipelineInput::PermissionRevoked(permission));
+    }
+
+    /// Waits until a pipeline that ended on its own is gone.
+    fn join(self) {
+        if self.thread.join().is_err() {
+            log::error!("runtime: the pipeline thread panicked");
+        }
     }
 
     fn end_with(self, last_input: PipelineInput) {
@@ -315,9 +348,16 @@ struct Supervisor {
     activity: ActivityRegister,
     pipeline: Option<Running>,
     config: Config,
+    /// Where a pipeline reports that it failed; none in tests that build no runtime.
+    failures: Option<Sender<Command>>,
+    /// Numbers the pipelines, so a failure reported by a replaced one is ignored.
+    generation: u64,
+    /// When the pipeline was last started again after a failure.
+    restarted_at: Option<Instant>,
 }
 
 impl Supervisor {
+    #[expect(clippy::too_many_arguments, reason = "size baseline")]
     fn new(
         assembler: Box<dyn PipelineAssembler>,
         listener: Box<dyn HotkeyListener>,
@@ -341,9 +381,56 @@ impl Supervisor {
             activity: ActivityRegister::default(),
             pipeline: None,
             config,
+            failures: None,
+            generation: 0,
+            restarted_at: None,
         };
         supervisor.models_missing();
         supervisor
+    }
+
+    fn reporting_failures_to(mut self, failures: Sender<Command>) -> Self {
+        self.failures = Some(failures);
+        self
+    }
+
+    /// Runs `next` as the current pipeline, under a new generation.
+    fn launch(&mut self, next: Next) -> Running {
+        self.generation += 1;
+        next.launch(&self.activity, self.failures.clone(), self.generation)
+    }
+
+    /// Starts a new pipeline after the current one failed; one that failed soon after such a
+    /// restart fails the runtime instead.
+    fn pipeline_failed(&mut self, generation: u64, reason: String) {
+        if generation != self.generation {
+            return;
+        }
+        self.router.detach();
+        if let Some(running) = self.pipeline.take() {
+            running.join();
+        }
+        let now = Instant::now();
+        if self
+            .restarted_at
+            .is_some_and(|at| now.duration_since(at) < RESTART_WINDOW)
+        {
+            self.failed = true;
+            self.change(RuntimeState::Failed(format!(
+                "the dictation pipeline stopped: {reason}"
+            )));
+            return;
+        }
+        log::warn!("runtime: starting a new pipeline after: {reason}");
+        self.restarted_at = Some(now);
+        self.change(RuntimeState::Starting);
+        match self.open() {
+            Ok(()) => self.change(self.ready()),
+            Err(e) => {
+                self.failed = true;
+                self.change(RuntimeState::Failed(format!("{e:#}")));
+            }
+        }
     }
 
     /// Waiting for models when a file the configuration needs is missing; otherwise the
@@ -390,7 +477,8 @@ impl Supervisor {
 
     /// Starts a pipeline from the configuration, and the hotkey listener with the first one.
     fn open(&mut self) -> Result<()> {
-        let running = Next::assemble(self.assembler.as_mut(), &self.config)?.launch(&self.activity);
+        let next = Next::assemble(self.assembler.as_mut(), &self.config)?;
+        let running = self.launch(next);
         self.router.route_to(running.inputs.clone());
         self.pipeline = Some(running);
         if let Some(listener) = self.listener.take() {
@@ -463,6 +551,7 @@ impl Supervisor {
         }
     }
 
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn serve(mut self, commands: Receiver<Command>) {
         let mut pending = std::collections::VecDeque::new();
         loop {
@@ -484,10 +573,14 @@ impl Supervisor {
                     }
                 }
                 Command::Stop => return self.stop(),
+                Command::PipelineFailed { generation, reason } => {
+                    self.pipeline_failed(generation, reason)
+                }
             }
         }
     }
 
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn reload(
         &mut self,
         config: Config,
@@ -533,7 +626,7 @@ impl Supervisor {
         }
         self.binding.rebind(config.hotkey.key);
         self.config = config;
-        let running = next.launch(&self.activity);
+        let running = self.launch(next);
         self.router.route_to(running.inputs.clone());
         self.pipeline = Some(running);
         self.change(self.ready());
@@ -543,6 +636,7 @@ impl Supervisor {
 
     /// Waits until every service the new configuration needs answers; with one failed, the
     /// running pipeline keeps its settings until a later reload.
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn wait_for_services(
         &mut self,
         commands: &Receiver<Command>,
@@ -608,6 +702,7 @@ impl Supervisor {
 
     /// Waits until no dictation is in progress and detaches the router from the pipeline;
     /// a stop arriving meanwhile ends the wait, a reload waits its turn.
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn wait_for_idle(
         &mut self,
         listener: &mut Option<ReloadListener>,
@@ -739,11 +834,7 @@ mod tests {
     }
 
     fn ready(hotkey: HotKey) -> RuntimeState {
-        RuntimeState::Ready {
-            hotkey,
-            recording_mode: RecordingMode::Toggle,
-            voice_control: false,
-        }
+        RuntimeState::Ready { hotkey, recording_mode: RecordingMode::Toggle, voice_control: false }
     }
 
     #[test]
@@ -867,10 +958,7 @@ mod tests {
         // Then
         assert!(matches!(
             runtime.state(),
-            Some(RuntimeState::Ready {
-                recording_mode: RecordingMode::Hold,
-                ..
-            })
+            Some(RuntimeState::Ready { recording_mode: RecordingMode::Hold, .. })
         ));
     }
 
@@ -932,10 +1020,7 @@ mod tests {
     }
 
     fn waiting_for(files: &[&'static str]) -> RuntimeState {
-        RuntimeState::WaitingForModels {
-            folder: "/models".into(),
-            missing: files.to_vec(),
-        }
+        RuntimeState::WaitingForModels { folder: "/models".into(), missing: files.to_vec() }
     }
 
     fn wait_for_state(seen: &Mutex<Vec<RuntimeState>>, state: &RuntimeState) {

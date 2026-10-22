@@ -27,11 +27,7 @@ struct StubReply {
 
 impl StubReply {
     fn ok(body: &'static str) -> Self {
-        Self {
-            status: 200,
-            body,
-            delay: Duration::ZERO,
-        }
+        Self { status: 200, body, delay: Duration::ZERO }
     }
 }
 
@@ -134,6 +130,7 @@ fn spawn_dropping_stub(drops: usize, reply: StubReply) -> (TranscriptionCfg, Arc
 /// service does. After the first answer it waits for a message on the returned
 /// sender, resets that connection (as macOS reports a connection the service closed
 /// minutes ago) and confirms on the returned receiver.
+#[expect(clippy::excessive_nesting, reason = "size baseline")]
 fn spawn_resetting_stub(
     body: &'static str,
 ) -> (TranscriptionCfg, mpsc::Sender<()>, mpsc::Receiver<()>) {
@@ -196,10 +193,7 @@ fn answer_kept_open(stream: &mut TcpStream, body: &str) -> bool {
 
 /// Closes the connection with a reset instead of an orderly close.
 fn reset(stream: TcpStream) {
-    let linger = libc::linger {
-        l_onoff: 1,
-        l_linger: 0,
-    };
+    let linger = libc::linger { l_onoff: 1, l_linger: 0 };
     // SAFETY: `stream` owns a valid socket; `linger` is a valid SO_LINGER value of its size.
     let rc = unsafe {
         libc::setsockopt(
@@ -265,7 +259,7 @@ fn half_second() -> AudioBuffer16k {
 }
 
 fn transcribe(cfg: TranscriptionCfg) -> anyhow::Result<Option<String>> {
-    let mut transcriber = OpenAiTranscriber::connect(cfg)?;
+    let mut transcriber = OpenAiTranscriber::connect(cfg)?.with_recovery_wait(SHORT_RECOVERY_WAIT);
     let transcript = transcriber.transcribe(&half_second())?;
     Ok(transcript.map(|t| t.as_str().to_owned()))
 }
@@ -274,10 +268,7 @@ fn transcribe(cfg: TranscriptionCfg) -> anyhow::Result<Option<String>> {
 fn should_post_multipart_request_and_return_transcript() {
     // Given
     let (cfg, requests) = spawn_stub(StubReply::ok(r#"{"text": " hello world\n"}"#));
-    let cfg = TranscriptionCfg {
-        language: "en".into(),
-        ..cfg
-    };
+    let cfg = TranscriptionCfg { language: "en".into(), ..cfg };
     // When
     let transcript = transcribe(cfg).unwrap();
     // Then
@@ -384,10 +375,8 @@ fn should_return_no_transcript_when_service_answers_only_whitespace() {
 #[test]
 fn should_fail_on_server_error() {
     // Given
-    let (cfg, _requests) = spawn_stub(StubReply {
-        status: 500,
-        ..StubReply::ok(r#"{"error": "boom"}"#)
-    });
+    let (cfg, _requests) =
+        spawn_stub(StubReply { status: 500, ..StubReply::ok(r#"{"error": "boom"}"#) });
     // When / Then
     assert!(transcribe(cfg).is_err());
 }
@@ -411,10 +400,7 @@ fn should_fail_when_service_answers_after_timeout() {
         delay: Duration::from_secs(3),
         ..StubReply::ok(r#"{"text": "late"}"#)
     });
-    let cfg = TranscriptionCfg {
-        timeout_secs: 1,
-        ..cfg
-    };
+    let cfg = TranscriptionCfg { timeout_secs: 1, ..cfg };
     // When / Then
     assert!(transcribe(cfg).is_err());
 }
@@ -432,6 +418,15 @@ fn should_retry_when_service_drops_connection() {
     assert_eq!(
         logged_by_this_thread("WARN speech recognition service dropped the connection"),
         2
+    );
+    assert_eq!(logged_by_this_thread(WAITING_FOR_A_COPY), 0);
+}
+
+#[test]
+fn should_wait_30_seconds_for_a_copy_to_come_back_by_default() {
+    assert_eq!(
+        voicepuncher::adapters::secondary::transcription::openai::RECOVERY_WAIT,
+        Duration::from_secs(30)
     );
 }
 
@@ -451,10 +446,7 @@ fn should_send_a_recording_answered_with_errors_three_times() {
     // Given
     let (cfg, attempts) = spawn_dropping_stub(
         0,
-        StubReply {
-            status: 500,
-            ..StubReply::ok(r#"{"error": "boom"}"#)
-        },
+        StubReply { status: 500, ..StubReply::ok(r#"{"error": "boom"}"#) },
     );
     // When
     let result = transcribe(cfg);
@@ -468,10 +460,7 @@ fn should_not_retry_a_request_the_service_cannot_take() {
     // Given
     let (cfg, attempts) = spawn_dropping_stub(
         0,
-        StubReply {
-            status: 400,
-            ..StubReply::ok(r#"{"error": "bad request"}"#)
-        },
+        StubReply { status: 400, ..StubReply::ok(r#"{"error": "bad request"}"#) },
     );
     // When
     let result = transcribe(cfg);
@@ -510,13 +499,7 @@ fn spawn_scripted_stub(script: Vec<Turn>) -> (TranscriptionCfg, Arc<AtomicUsize>
                     held.push(stream);
                 }
                 Turn::Answer(status, body) => {
-                    read_request(
-                        &mut stream,
-                        &StubReply {
-                            status,
-                            ..StubReply::ok(body)
-                        },
-                    );
+                    read_request(&mut stream, &StubReply { status, ..StubReply::ok(body) });
                 }
             }
         }
@@ -538,10 +521,7 @@ fn should_transcribe_by_a_new_attempt_when_the_first_request_hangs() {
     let (cfg, mut listeners) = free_copies(2);
     let other = spawn_copy(listeners.remove(1 - first_tried(2)), vec![CopyTurn::Answer]);
     let hung = spawn_copy(listeners.remove(0), vec![CopyTurn::Hang]);
-    let cfg = TranscriptionCfg {
-        timeout_secs: SHORT_TIMEOUT_SECS,
-        ..cfg
-    };
+    let cfg = TranscriptionCfg { timeout_secs: SHORT_TIMEOUT_SECS, ..cfg };
     // When
     let transcript = transcribe(cfg).unwrap();
     // Then
@@ -652,10 +632,7 @@ fn real_service_and_first_corpus_sample() -> Option<(String, serde_json::Value, 
 }
 
 fn transcribe_through_real_service(base_url: &str, audio: &AudioBuffer16k) -> String {
-    let cfg = TranscriptionCfg {
-        base_url: base_url.to_owned(),
-        ..TranscriptionCfg::default()
-    };
+    let cfg = TranscriptionCfg { base_url: base_url.to_owned(), ..TranscriptionCfg::default() };
     let transcript = OpenAiTranscriber::connect(cfg)
         .unwrap()
         .transcribe(audio)
@@ -782,10 +759,7 @@ fn should_keep_a_transcript_detected_as_one_of_the_user_languages() {
 fn should_keep_a_transcript_of_a_fixed_language_whatever_the_service_detects() {
     // Given
     let (cfg, requests) = spawn_answering_stub(vec![KOREAN_ANSWER, RUSSIAN_ANSWER]);
-    let cfg = TranscriptionCfg {
-        language: "en".into(),
-        ..cfg
-    };
+    let cfg = TranscriptionCfg { language: "en".into(), ..cfg };
     // When
     let transcript = transcribe(cfg).unwrap();
     // Then
@@ -850,10 +824,7 @@ fn free_copies(n: usize) -> (TranscriptionCfg, Vec<TcpListener>) {
             .map(|port| TcpListener::bind(("127.0.0.1", *port)))
             .collect();
         if let Ok(listeners) = listeners {
-            let cfg = TranscriptionCfg {
-                base_url,
-                ..TranscriptionCfg::default()
-            };
+            let cfg = TranscriptionCfg { base_url, ..TranscriptionCfg::default() };
             return (cfg, listeners);
         }
     }
@@ -908,16 +879,18 @@ fn first_tried(n: usize) -> usize {
 
 /// Serves each request on its own thread as `script` says; the last turn repeats.
 /// Connections that send nothing (the pool's probes) are not counted.
+#[expect(
+    clippy::too_many_lines,
+    clippy::excessive_nesting,
+    reason = "size baseline"
+)]
 fn spawn_copy(listener: TcpListener, script: Vec<CopyTurn>) -> FakeCopy {
     let port = listener.local_addr().unwrap().port();
     let requests = Arc::new(AtomicUsize::new(0));
     let most_at_once = Arc::new(AtomicUsize::new(0));
     let in_flight = Arc::new(AtomicUsize::new(0));
-    let copy = FakeCopy {
-        port,
-        requests: Arc::clone(&requests),
-        most_at_once: Arc::clone(&most_at_once),
-    };
+    let copy =
+        FakeCopy { port, requests: Arc::clone(&requests), most_at_once: Arc::clone(&most_at_once) };
     thread::spawn(move || {
         for stream in listener.incoming() {
             let mut stream = stream.unwrap();
@@ -937,10 +910,8 @@ fn spawn_copy(listener: TcpListener, script: Vec<CopyTurn>) -> FakeCopy {
                 most_at_once.fetch_max(now, Ordering::SeqCst);
                 match script[n.min(script.len() - 1)] {
                     CopyTurn::Answer => {
-                        let reply = StubReply {
-                            delay: COPY_WORK,
-                            ..StubReply::ok(r#"{"text": "hello"}"#)
-                        };
+                        let reply =
+                            StubReply { delay: COPY_WORK, ..StubReply::ok(r#"{"text": "hello"}"#) };
                         read_request(&mut stream, &reply);
                         in_flight.fetch_sub(1, Ordering::SeqCst);
                     }
@@ -1017,6 +988,41 @@ fn should_skip_a_copy_closed_before_a_request() {
     assert_eq!(logged_by_any_thread(&skipped).len(), 1, "{skipped}");
 }
 
+/// What the client logs when it waits for a copy of a service that accepts no connections.
+const WAITING_FOR_A_COPY: &str = "no copy accepts connections — waiting";
+const SHORT_RECOVERY_WAIT: Duration = Duration::from_millis(300);
+/// Long enough for the pool to probe a copy that came back: it probes every second.
+const RECOVERY_WAIT: Duration = Duration::from_secs(5);
+/// After the attempts for dropped connections (1.4 s of pauses) are used up.
+const COMES_BACK_AFTER: Duration = Duration::from_millis(2_500);
+
+#[test]
+fn should_transcribe_once_a_copy_comes_back_after_every_copy_went_down() {
+    // Given
+    let (cfg, mut listeners) = free_copies(1);
+    let port = listeners[0].local_addr().unwrap().port();
+    capturing_logger();
+    let mut transcriber = OpenAiTranscriber::connect(cfg)
+        .unwrap()
+        .with_recovery_wait(RECOVERY_WAIT);
+    drop(listeners.remove(0));
+    let comes_back = thread::spawn(move || {
+        thread::sleep(COMES_BACK_AFTER);
+        spawn_copy(
+            TcpListener::bind(("127.0.0.1", port)).unwrap(),
+            vec![CopyTurn::Answer],
+        )
+    });
+    // When
+    let transcript = transcriber.transcribe(&half_second()).unwrap();
+    // Then
+    let copy = comes_back.join().unwrap();
+    assert_eq!(transcript.unwrap().as_str(), "hello");
+    assert_eq!(copy.requests(), 1);
+    assert_eq!(logged_by_this_thread(WAITING_FOR_A_COPY), 1);
+    assert_eq!(logged_by_this_thread("— giving up"), 0);
+}
+
 #[test]
 fn should_fail_naming_the_copies_when_every_copy_refuses() {
     // Given
@@ -1026,7 +1032,9 @@ fn should_fail_naming_the_copies_when_every_copy_refuses() {
         .map(|l| l.local_addr().unwrap().port())
         .collect();
     capturing_logger();
-    let mut transcriber = OpenAiTranscriber::connect(cfg).unwrap();
+    let mut transcriber = OpenAiTranscriber::connect(cfg)
+        .unwrap()
+        .with_recovery_wait(SHORT_RECOVERY_WAIT);
     drop(listeners);
     // When
     let message = format!("{:#}", transcriber.transcribe(&half_second()).unwrap_err());
@@ -1036,6 +1044,7 @@ fn should_fail_naming_the_copies_when_every_copy_refuses() {
         4,
         "not every attempt was used"
     );
+    assert_eq!(logged_by_this_thread(WAITING_FOR_A_COPY), 1);
     assert_eq!(logged_by_this_thread("— giving up"), 1);
     for port in ports {
         assert!(message.contains(&port.to_string()), "{message}");
@@ -1048,10 +1057,7 @@ fn should_send_the_attempt_after_a_hung_one_to_another_copy() {
     let (cfg, mut listeners) = free_copies(2);
     let other = spawn_copy(listeners.remove(1 - first_tried(2)), vec![CopyTurn::Answer]);
     let hung = spawn_copy(listeners.remove(0), vec![CopyTurn::Hang]);
-    let cfg = TranscriptionCfg {
-        timeout_secs: SHORT_TIMEOUT_SECS,
-        ..cfg
-    };
+    let cfg = TranscriptionCfg { timeout_secs: SHORT_TIMEOUT_SECS, ..cfg };
     // When
     let transcript = transcribe(cfg).unwrap();
     // Then
@@ -1177,10 +1183,7 @@ fn should_transcribe_the_first_of_two_waiting_requests_first_when_its_wait_ran_o
     const SECOND_SAMPLES: usize = 16_000;
     let (cfg, mut listeners) = free_copies(1);
     let bodies = spawn_recording_copy(listeners.remove(0));
-    let cfg = TranscriptionCfg {
-        timeout_secs: WAIT_SECS,
-        ..cfg
-    };
+    let cfg = TranscriptionCfg { timeout_secs: WAIT_SECS, ..cfg };
     let pool = voicepuncher_copy_pool::CopyPool::shared(&cfg.base_url).unwrap();
     let busy = pool.lease(Duration::from_secs(WAIT_SECS)).unwrap();
     let started = Instant::now();

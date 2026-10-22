@@ -68,10 +68,7 @@ pub fn live_refiner(world: &E2eWorld) -> Result<OpenAiTextRefiner> {
         .refinement_url
         .clone()
         .context("no text refinement service")?;
-    OpenAiTextRefiner::connect(RefinementCfg {
-        base_url,
-        ..RefinementCfg::default()
-    })
+    OpenAiTextRefiner::connect(RefinementCfg { base_url, ..RefinementCfg::default() })
 }
 
 #[when("the user dictates a sentence that the speech recognition service returns without punctuation or capitals")]

@@ -189,15 +189,11 @@ fn bundle_copy(world: &mut E2eWorld) -> Result<()> {
 }
 
 #[when("the copy's application starts its services with refinement and voice control on")]
+#[expect(clippy::too_many_lines, reason = "size baseline")]
 async fn copy_starts_services(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let launch = launch(world);
-        let Ports {
-            stt,
-            command_stt,
-            llm,
-            kws,
-        } = launch.ports;
+        let Ports { stt, command_stt, llm, kws } = launch.ports;
         let app = launch
             .folder
             .as_ref()
@@ -207,6 +203,7 @@ async fn copy_starts_services(world: &mut E2eWorld) -> Result<()> {
             .join(APP_PROGRAM);
         let home = tempfile::tempdir()?;
         let config = home.path().join("config.toml");
+        // One copy of each service, so each answers on the port the scenario checks
         fs::write(
             &config,
             format!(
@@ -214,6 +211,7 @@ async fn copy_starts_services(world: &mut E2eWorld) -> Result<()> {
                  [refinement]\nenabled = true\nbase_url = \"{}\"\n\n\
                  [voice_control]\nenabled = true\nurl = \"ws://127.0.0.1:{kws}\"\n\n\
                  [services]\nmanage = true\ndictation_copies = 1\ncommand_copies = 1\n\
+                 refinement_copies = 1\ncommand_spotting_copies = 1\n\
                  commands_url = \"{}\"\n",
                 url(stt),
                 url(llm),

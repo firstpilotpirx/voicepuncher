@@ -203,11 +203,7 @@ fn spawn(
                 }
             }
         })?;
-    Ok(Queue {
-        thread: name,
-        jobs,
-        unanswered,
-    })
+    Ok(Queue { thread: name, jobs, unanswered })
 }
 
 fn run(hear: &dyn Hear, job: &Job, deadline: Duration) -> Answer {
@@ -231,10 +227,7 @@ fn run(hear: &dyn Hear, job: &Job, deadline: Duration) -> Answer {
             ),
         }
     }
-    Answer {
-        id: job.id,
-        heard: None,
-    }
+    Answer { id: job.id, heard: None }
 }
 
 /// Every answer at info, with how long it took and what was heard: the trace of a session.
@@ -276,29 +269,18 @@ mod tests {
             if call < self.failures {
                 return Err(anyhow!("timed out reading response"));
             }
-            Ok(Heard {
-                text: self.text.to_owned(),
-                words: Vec::new(),
-            })
+            Ok(Heard { text: self.text.to_owned(), words: Vec::new() })
         }
     }
 
     fn worker_with(failures: u32) -> (ConfirmationWorker, Arc<Scripted>) {
-        let hear = Arc::new(Scripted {
-            failures,
-            calls: AtomicU32::new(0),
-            text: " press enter",
-        });
+        let hear = Arc::new(Scripted { failures, calls: AtomicU32::new(0), text: " press enter" });
         let worker = ConfirmationWorker::start(1, hear.clone(), DEADLINE).unwrap();
         (worker, hear)
     }
 
     fn job(n: u64, kind: JobKind) -> Job {
-        Job {
-            id: JobId { conn: 1, n },
-            kind,
-            audio: vec![0.0; 1_600],
-        }
+        Job { id: JobId { conn: 1, n }, kind, audio: vec![0.0; 1_600] }
     }
 
     #[test]
@@ -358,10 +340,7 @@ mod tests {
                 let _ = self.released.lock().unwrap().recv_timeout(HANG);
                 return Err(anyhow!("timed out reading response"));
             }
-            Ok(Heard {
-                text: " enter".to_owned(),
-                words: Vec::new(),
-            })
+            Ok(Heard { text: " enter".to_owned(), words: Vec::new() })
         }
     }
 
@@ -369,14 +348,9 @@ mod tests {
     fn should_answer_a_segment_while_a_check_hangs() {
         // Given
         let (release, released) = mpsc::channel();
-        let hear = Arc::new(HangingCheck {
-            released: std::sync::Mutex::new(released),
-        });
+        let hear = Arc::new(HangingCheck { released: std::sync::Mutex::new(released) });
         let worker = ConfirmationWorker::start(1, hear, DEADLINE).unwrap();
-        let check = Job {
-            audio: vec![CHECK_SAMPLE; 1_600],
-            ..job(1, JobKind::Head)
-        };
+        let check = Job { audio: vec![CHECK_SAMPLE; 1_600], ..job(1, JobKind::Head) };
         // When
         worker.submit(check);
         worker.submit(job(2, JobKind::Segment));
@@ -390,14 +364,9 @@ mod tests {
     fn should_answer_a_second_hearing_while_a_segment_hangs() {
         // Given
         let (release, released) = mpsc::channel();
-        let hear = Arc::new(HangingCheck {
-            released: std::sync::Mutex::new(released),
-        });
+        let hear = Arc::new(HangingCheck { released: std::sync::Mutex::new(released) });
         let worker = ConfirmationWorker::start(1, hear, DEADLINE).unwrap();
-        let segment = Job {
-            audio: vec![CHECK_SAMPLE; 1_600],
-            ..job(1, JobKind::Segment)
-        };
+        let segment = Job { audio: vec![CHECK_SAMPLE; 1_600], ..job(1, JobKind::Segment) };
         // When
         worker.submit(segment);
         worker.submit(job(2, JobKind::Rehear));
@@ -411,14 +380,9 @@ mod tests {
     fn should_count_a_job_unanswered_on_its_thread_and_untaken_until_its_answer_is_taken() {
         // Given a segment whose hearing hangs until released
         let (release, released) = mpsc::channel();
-        let hear = Arc::new(HangingCheck {
-            released: std::sync::Mutex::new(released),
-        });
+        let hear = Arc::new(HangingCheck { released: std::sync::Mutex::new(released) });
         let worker = ConfirmationWorker::start(4, hear, DEADLINE).unwrap();
-        let segment = Job {
-            audio: vec![CHECK_SAMPLE; 1_600],
-            ..job_of(4, 1, JobKind::Segment)
-        };
+        let segment = Job { audio: vec![CHECK_SAMPLE; 1_600], ..job_of(4, 1, JobKind::Segment) };
         // When
         worker.submit(segment);
         let held = worker.load();
@@ -439,11 +403,7 @@ mod tests {
     fn should_name_the_job_its_kind_and_its_attempt_in_every_line_about_it() {
         // Given
         let lines = captured();
-        let hear = Arc::new(Scripted {
-            failures: 1,
-            calls: AtomicU32::new(0),
-            text: " enter",
-        });
+        let hear = Arc::new(Scripted { failures: 1, calls: AtomicU32::new(0), text: " enter" });
         let worker = ConfirmationWorker::start(7, hear, DEADLINE).unwrap();
         // When
         worker.submit(job_of(7, 3, JobKind::Segment));
@@ -477,11 +437,7 @@ mod tests {
     }
 
     fn job_of(conn: u64, n: u64, kind: JobKind) -> Job {
-        Job {
-            id: JobId { conn, n },
-            kind,
-            audio: vec![0.0; 1_600],
-        }
+        Job { id: JobId { conn, n }, kind, audio: vec![0.0; 1_600] }
     }
 
     #[test]

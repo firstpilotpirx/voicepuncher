@@ -19,9 +19,7 @@ pub struct TcpProbe {
 
 impl TcpProbe {
     pub fn new(host: &str) -> Self {
-        Self {
-            host: host.to_owned(),
-        }
+        Self { host: host.to_owned() }
     }
 }
 

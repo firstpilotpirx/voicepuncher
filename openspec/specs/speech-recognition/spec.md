@@ -331,3 +331,35 @@ The system SHALL ask the speech recognition service for one deterministic transc
 - **GIVEN** a recording of speech under high noise
 - **WHEN** it is transcribed twice in a row
 - **THEN** both transcripts are the same text
+
+### Requirement: A chunk waits for its service to come back
+When the attempts for a dropped connection are used up and no copy of the speech recognition service accepts connections, the system SHALL wait up to 30 seconds for a copy to come back, log the wait, and send the chunk again with a fresh set of attempts; only when none comes back is the chunk lost. Copies that accept connections and drop them SHALL NOT be waited for.
+
+#### Scenario: Every copy of the dictation service is killed while a chunk is sent
+- **GIVEN** the app started the speech recognition service for dictation
+- **WHEN** every copy of it is killed while a dictation's chunk is being transcribed
+- **THEN** the chunk's text comes back once the app has started the copies again, and no failure is reported
+- **AND** the wait for the service is logged
+
+#### Scenario: The service does not come back
+- **GIVEN** no copy of the speech recognition service accepts connections, and none comes back
+- **WHEN** a chunk is sent
+- **THEN** the chunk is lost once the wait for the service ran out, and the wait and the loss are logged
+
+### Requirement: A dead transcription worker loses only its dictation
+The system SHALL end a dictation whose live transcription worker stopped without a result with the notice that speech recognition failed, and SHALL transcribe and paste the next dictation as usual; no dictation SHALL find the transcriber gone.
+
+#### Scenario: The worker dies mid-dictation
+- **GIVEN** the live transcription worker of a dictation stops without a result
+- **WHEN** the user finishes that dictation and then dictates again
+- **THEN** the first dictation ends with the notice that speech recognition failed
+- **AND** the text of the second dictation is pasted
+
+### Requirement: Stopping a dictation waits a bounded time for its transcript
+The system SHALL wait for the transcript of a stopped dictation no longer than the longest time speech recognition may take on one request with its retries, plus two seconds; past it the dictation SHALL end with the notice that speech recognition failed, the recording SHALL stop, and the app SHALL handle the hotkey again, including a press made during the wait.
+
+#### Scenario: The speech recognition request never answers
+- **GIVEN** the speech recognition service never answers the last chunk of a dictation
+- **WHEN** the user finishes the dictation and presses the hotkey during the wait
+- **THEN** the dictation ends with the notice that speech recognition failed once the wait is over
+- **AND** the hotkey press made during the wait starts a new recording

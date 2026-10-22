@@ -41,13 +41,7 @@ fn should_reload_the_edited_hotkey_on_a_hang_up_signal() {
     hang_up();
     // Then
     wait_until(&states, |s| {
-        matches!(
-            s,
-            RuntimeState::Ready {
-                hotkey: HotKey::F19,
-                ..
-            }
-        )
+        matches!(s, RuntimeState::Ready { hotkey: HotKey::F19, .. })
     });
     assert!(states.lock().unwrap().contains(&RuntimeState::Restarting));
     drop(runtime);

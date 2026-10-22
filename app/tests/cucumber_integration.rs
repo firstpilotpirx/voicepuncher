@@ -22,6 +22,7 @@ pub struct IntegrationWorld {
     pub dictation_language: Option<String>,
     pub dictation: Option<steps::speech_recognition::Dictation>,
     pub pasted: Option<String>,
+    pub loss: Option<steps::speech_recognition::losses::LossRun>,
     pub insertion: Option<steps::text_insertion::InsertionRun>,
     pub voice: Option<steps::voice_control::VoiceRun>,
     pub stages: Option<steps::processing_stages::StagesRun>,

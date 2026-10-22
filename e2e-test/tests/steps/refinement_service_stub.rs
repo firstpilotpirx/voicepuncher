@@ -16,10 +16,7 @@ const TRANSCRIPT_CLOSE: &str = "\n</transcript>";
 #[derive(Debug, Clone)]
 pub enum StubBehavior {
     /// Answers every chat request with `content` and `finish_reason`.
-    Answer {
-        content: String,
-        finish_reason: &'static str,
-    },
+    Answer { content: String, finish_reason: &'static str },
     /// Answers every chat request with its transcript followed by `suffix`.
     AppendToTranscript { suffix: &'static str },
     /// Answers every chat request with its transcript, the last letter of every Cyrillic
@@ -72,10 +69,9 @@ fn serve(listener: TcpListener, behavior: &StubBehavior, recorded: &Mutex<Vec<St
             log.push(body.clone());
         }
         match behavior {
-            StubBehavior::Answer {
-                content,
-                finish_reason,
-            } => respond(&mut stream, &chat_answer(content, finish_reason)),
+            StubBehavior::Answer { content, finish_reason } => {
+                respond(&mut stream, &chat_answer(content, finish_reason))
+            }
             StubBehavior::AppendToTranscript { suffix } => {
                 let content = format!("{}{suffix}", last_transcript(&body));
                 respond(&mut stream, &chat_answer(&content, STOP_FINISH_REASON));

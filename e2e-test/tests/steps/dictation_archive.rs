@@ -36,11 +36,8 @@ pub struct ArchiveRun {
 #[given("a recording of the user saying a phrase")]
 async fn spoken_phrase(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
-        let speech = synthesized(&SayRequest {
-            voice: None,
-            words_per_minute: None,
-            text: PHRASE,
-        })?;
+        let speech =
+            synthesized(&SayRequest { voice: None, words_per_minute: None, text: PHRASE })?;
         let path = world.workdir()?.join("phrase.wav");
         write_wav(&path, &speech)?;
         world.recording = Some(path);

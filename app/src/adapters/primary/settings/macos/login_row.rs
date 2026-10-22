@@ -40,13 +40,7 @@ impl LoginRow {
         note.setFont(Some(&NSFont::systemFontOfSize(NOTE_SIZE)));
         note.setTextColor(Some(&NSColor::secondaryLabelColor()));
         let view = stack(parts.mtm, &[control.as_ref(), open_settings.as_ref()]);
-        let row = Self {
-            switch,
-            control,
-            note,
-            open_settings,
-            view: Retained::into_super(view),
-        };
+        let row = Self { switch, control, note, open_settings, view: Retained::into_super(view) };
         row.refresh();
         row
     }

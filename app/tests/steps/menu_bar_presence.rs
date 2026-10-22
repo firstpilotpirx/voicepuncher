@@ -172,11 +172,7 @@ fn config_with(hotkey: HotKey, mode: RecordingMode) -> Config {
 impl MenuBarRun {
     fn runtime_parts(&self, gate: Option<Receiver<bool>>) -> Runtime {
         let overlay = SharedVisualIndicator::new(Box::new(self.cell.indicator(QuietOverlay)));
-        let assembler = StandInAssembler {
-            parts: self.parts.clone(),
-            overlay,
-            gate,
-        };
+        let assembler = StandInAssembler { parts: self.parts.clone(), overlay, gate };
         let runtime = Runtime::new(Box::new(assembler), Box::new(self.keyboard.clone()));
         runtime.observe(Box::new(self.cell.observer()));
         runtime.observe(Box::new(QuitObserver(Arc::clone(&self.quit_log))));
@@ -731,10 +727,7 @@ impl PipelineAssembler for StandInAssembler {
             PipelineConfig {
                 min_press_ms: config.hotkey.min_press_ms,
                 recording_mode: config.hotkey.recording_mode,
-                chunking: ChunkingCfg {
-                    chunk_threshold_secs: 0,
-                    ..ChunkingCfg::default()
-                },
+                chunking: ChunkingCfg { chunk_threshold_secs: 0, ..ChunkingCfg::default() },
             },
         )
         .with_focus_wait(

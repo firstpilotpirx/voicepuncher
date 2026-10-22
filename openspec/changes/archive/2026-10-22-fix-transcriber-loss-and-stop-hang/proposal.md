@@ -8,13 +8,13 @@ Two failure paths in the dictation pipeline turn a service hiccup into a frozen 
 ## What Changes
 
 - A dead worker never takes the transcriber with it: the pipeline keeps a transcriber it can use again (shared, or rebuilt from the assembler on loss), the `TranscriberSource`/`dropped_worker` hand-off goes away, and a worker that died ends the dictation with a failure notice ("speech recognition failed") and leaves the app ready for the next one.
-- Stopping a recording waits for the worker's result for a bounded time (the speech recognition timeout plus the drain, from the configuration); past it the dictation ends with a failure notice, the recorder stops, the overlay hides, and the pipeline reads inputs again; a hotkey press during the wait is not lost.
-- A panic in the pipeline thread stops the pipeline in order (services stopped, overlay hidden, log line) instead of `process::exit(1)` from a non-main thread, and the runtime restarts the pipeline or quits with a notice.
+- Stopping a recording waits for the worker's result for a bounded time (the longest one request may take with every retry at the configured `[transcription] timeout_secs`, plus 2 s for the drain); past it the dictation ends with a failure notice, the recorder stops, the overlay hides, and the pipeline reads inputs again; a hotkey press during the wait is not lost.
+- A panic in the pipeline thread stops the pipeline in order (services stopped, overlay hidden, log line) instead of `process::exit(1)` from a non-main thread, and the runtime starts a new pipeline; one that fails again within 30 s of that restart leaves the runtime Failed, the process still running.
 - Component scenarios reproduce both paths first (TDD red): a worker that dies mid-dictation, a request that never answers.
 
 Current stage: PoC. Target stage: PoC.
 Scope: `Pipeline` ownership of the transcriber, the stop wait, the fatal path of the runtime; the component feature `app_runtime` / `speech_recognition`.
-Acceptance bar: with the worker killed mid-dictation the next dictation pastes; with the recognition service paused on stop the app shows a failure notice within the configured timeout and the hotkey works right after; no `panic!`/`expect` on the transcriber path.
+Acceptance bar: with the worker killed mid-dictation the next dictation pastes; with the recognition service paused on stop the app shows a failure notice within the stop-wait bound (every attempt at the configured timeout, plus 2 s) and the hotkey works right after; no `panic!`/`expect` on the transcriber path.
 Out of scope: the duplicated refine/paste paths and the fictional pipeline states (`slim-pipeline-module`); the command spotting service's own stalls (`command-spotting-stall-handling`).
 
 ## Capabilities
@@ -31,7 +31,7 @@ Out of scope: the duplicated refine/paste paths and the fictional pipeline state
 ## Open points
 
 - Shared `Arc<dyn Transcriber>` (the adapter is already thread-safe over HTTP) versus rebuilding from the assembler; proposed: `Arc`, the smaller change.
-- The bound on the stop wait: the transcription timeout from `[transcription] timeout_secs` plus 2 s, or its own key; proposed: derived, no new key.
+- The bound on the stop wait: derived from `[transcription] timeout_secs` (every attempt with its retries, plus 2 s), or its own key; decided: derived, no new key.
 
 ## Release
 

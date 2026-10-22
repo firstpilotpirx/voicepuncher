@@ -5,7 +5,7 @@ A menu bar app for macOS on Apple Silicon that turns speech into text: press a h
 ## Requirements
 
 - Apple Silicon Mac (Metal required — no Intel support), macOS 15 or later
-- 16 GB RAM minimum (all models load resident, ~6 GB working set combined: six whisper-server copies ≈ 4.3 GB, text refinement ≈ 1 GB)
+- 16 GB RAM minimum (all models load resident, ~7 GB working set combined: six whisper-server copies ≈ 4.3 GB, two text refinement copies ≈ 2 GB)
 - ≈ 2.1 GB of free disk space for the models (≈ 4.6 GB with text refinement)
 
 ## Install
@@ -298,16 +298,18 @@ voicepuncher runs no model itself. It sends each recording to the **speech recog
 |---|---|---|---|---|
 | speech recognition for dictation | `whisper-server` | 8081 (`VOICEPUNCHER_STT_PORT`) | `ggml-large-v3-turbo-q5_0.bin` (`VOICEPUNCHER_WHISPER_MODEL`) | 3 (`VOICEPUNCHER_STT_INSTANCES`) |
 | speech recognition for commands | `whisper-server-commands` | 8085 (`VOICEPUNCHER_COMMAND_STT_PORT`) | `ggml-small.bin` (`VOICEPUNCHER_COMMAND_WHISPER_MODEL`) | 3 (`VOICEPUNCHER_COMMAND_STT_INSTANCES`) |
-| text refinement | `llama-server` | 8080 (`VOICEPUNCHER_LLM_PORT`) | `Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf` (`VOICEPUNCHER_LLM_MODEL`) | 1 |
-| command spotting | `voicepuncher-command-spotting` | 8082 (`VOICEPUNCHER_KWS_PORT`) | see [Command spotting](#command-spotting-voice-control) | 1 |
+| text refinement | `llama-server` | 8080 (`VOICEPUNCHER_LLM_PORT`) | `Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf` (`VOICEPUNCHER_LLM_MODEL`) | 1 (the app: 2) |
+| command spotting | `voicepuncher-command-spotting` | 8082 (`VOICEPUNCHER_KWS_PORT`) | see [Command spotting](#command-spotting-voice-control) | 1 (the app: 2) |
 
-**The app starts them itself.** In hotkey mode the app starts the services its configuration needs: the speech recognition service for dictation, the text refinement service when text refinement is on (`--llm` or `[refinement] enabled = true`), and with voice control the speech recognition service for commands and the command spotting service. A service that already answers on its port — started by `just start-model-servers`, say — is adopted: the app uses it and leaves it running at quit. The menu bar shows "Starting services… (N of M ready)" until all answer; the Services submenu lists each service with its state, with Restart for one the app started and Open Log. A service the app started is started again when it exits (after 1 s, doubling up to 30 s) or stops answering its health check three times; after five starts that never answered it is Failed, naming its log. At quit the app asks each service it started to end and kills one still running 5 s later. The app finds `whisper-server` and `llama-server` in its bundle (`engines/`), through `VOICEPUNCHER_WHISPER_BINARY` / `VOICEPUNCHER_LLAMA_BINARY`, or on `$PATH`; the command spotting service next to the app or through `VOICEPUNCHER_KWS_BINARY`; the models through the variables of the table or in `~/.voicepuncher/models/`. A missing one fails that service with the file it looked for. The `[services]` section sets it:
+**The app starts them itself.** In hotkey mode the app starts the services its configuration needs: the speech recognition service for dictation, the text refinement service when text refinement is on (`--llm` or `[refinement] enabled = true`), and with voice control the speech recognition service for commands and the command spotting service. A service that already answers on its port — started by `just start-model-servers`, say — is adopted: the app uses it and leaves it running at quit. The menu bar shows "Starting services… (N of M ready)" until all answer; the Services submenu lists each service with its state, with Restart for one the app started and Open Log. A service the app started is started again when it exits (after 1 s, doubling up to 30 s) or stops answering its health check three times; after five starts that never answered it is Failed, naming its log. Every service runs as copies the app starts and watches one by one, so one copy that dies or hangs is restarted while the others answer: the text refinement service as two `llama-server` copies (8080 → 48081–48082), the command spotting service as two copies (8082 → 49083–49084). A chunk whose speech recognition copies are all down waits up to 30 s for one to come back instead of being lost; a refinement whose copy drops the connection or sends no answer is sent once to another copy; the app's listening moves to another command spotting copy at once, and a confirmation refused by its copy goes to another copy for commands. At quit the app asks each service it started to end and kills one still running 5 s later. The app finds `whisper-server` and `llama-server` in its bundle (`engines/`), through `VOICEPUNCHER_WHISPER_BINARY` / `VOICEPUNCHER_LLAMA_BINARY`, or on `$PATH`; the command spotting service next to the app or through `VOICEPUNCHER_KWS_BINARY`; the models through the variables of the table or in `~/.voicepuncher/models/`. A missing one fails that service with the file it looked for. The `[services]` section sets it:
 
 ```toml
 [services]
 manage = true            # false: the app starts nothing and expects the scripts below
 dictation_copies = 3      # 1 to 4
 command_copies = 3        # 1 to 4
+refinement_copies = 2     # 1 to 4; 1 runs llama-server on the service's own port
+command_spotting_copies = 2  # 1 to 4
 models_dir = "~/.voicepuncher/models"
 commands_url = "http://127.0.0.1:8085/v1"  # the speech recognition service for commands
 ```

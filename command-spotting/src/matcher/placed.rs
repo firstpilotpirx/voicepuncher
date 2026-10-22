@@ -221,6 +221,7 @@ impl PhraseMatcher {
     }
 
     /// A doubled short form or a chain of two or three commands anywhere in `words`.
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     pub fn anywhere(&self, words: &[&str]) -> Option<Found> {
         let tokens = tokens(words);
         let accepted = self.accepted();
@@ -441,6 +442,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn should_find_a_chain_of_commands_anywhere() {
         assert_eq!(
             dictating().anywhere(&words("that is it, stop, enter.")),

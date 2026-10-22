@@ -4,7 +4,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use voicepuncher_copy_pool::ServiceAddress;
+use voicepuncher_copy_pool::{
+    ServiceAddress, COMMAND_SPOTTING_COPY_OFFSET, TEXT_REFINEMENT_COPY_OFFSET,
+};
 
 use crate::adapters::secondary::logging::file::logs_dir;
 use crate::config::Config;
@@ -163,10 +165,7 @@ pub struct Needs {
 impl Needs {
     /// Text refinement only when it is on (`--llm` or `[refinement] enabled`, never with `--no-llm`).
     pub fn of(cfg: &Config) -> Self {
-        Self {
-            refinement: cfg.refinement.enabled,
-            voice_control: cfg.voice_control.enabled,
-        }
+        Self { refinement: cfg.refinement.enabled, voice_control: cfg.voice_control.enabled }
     }
 }
 
@@ -193,25 +192,48 @@ pub fn needed(
             cfg.services.command_copies,
             probe,
         ));
-        specs.extend(lookup.command_spotting(&cfg.voice_control.url, &cfg.services.commands_url));
+        specs.extend(lookup.command_spotting(
+            &cfg.voice_control.url,
+            &cfg.services.commands_url,
+            cfg.services.command_spotting_copies,
+            probe,
+        ));
     }
     if needs.refinement {
-        specs.extend(lookup.llama(&cfg.refinement.base_url));
+        specs.extend(lookup.llama(
+            &cfg.refinement.base_url,
+            cfg.services.refinement_copies,
+            probe,
+        ));
     }
     specs
 }
 
-/// The ports of the copies of a speech recognition service: one copy on the service's own
-/// port, several on the first ports its clients look at.
+/// The ports of the copies of a service: one copy on the service's own
+/// port, several on the first ports its clients look at; one on the service's own port too
+/// when its port leaves no room for copy ports.
 pub fn copy_ports(address: &ServiceAddress, copies: u32) -> Vec<u16> {
-    if copies <= 1 {
-        return vec![address.port()];
-    }
-    address
+    let ports: Vec<u16> = address
         .copy_ports()
         .into_iter()
         .take(copies as usize)
-        .collect()
+        .collect();
+    if copies <= 1 || ports.is_empty() {
+        return vec![address.port()];
+    }
+    ports
+}
+
+/// Each port with the label of its copy: the service's name alone for a single copy.
+fn labelled(kind: ServiceKind, ports: &[u16]) -> impl Iterator<Item = (u16, String)> + '_ {
+    ports.iter().enumerate().map(move |(index, &port)| {
+        let label = if ports.len() == 1 {
+            kind.name().to_string()
+        } else {
+            format!("{}: copy {} of {}", kind.name(), index + 1, ports.len())
+        };
+        (port, label)
+    })
 }
 
 /// `cores / copies`, at least one.
@@ -236,10 +258,7 @@ impl<'a> Lookup<'a> {
                 model_dirs.push(dir);
             }
         }
-        Self {
-            machine,
-            model_dirs,
-        }
+        Self { machine, model_dirs }
     }
 
     fn whisper(
@@ -266,60 +285,71 @@ impl<'a> Lookup<'a> {
         let ports =
             running_copies(kind, &address, probe).unwrap_or_else(|| copy_ports(&address, copies));
         let threads = threads(self.machine.cores, ports.len());
-        ports
-            .iter()
-            .enumerate()
-            .map(|(index, &port)| {
-                let label = if ports.len() == 1 {
-                    kind.name().to_string()
-                } else {
-                    format!("{}: copy {} of {}", kind.name(), index + 1, ports.len())
-                };
+        labelled(kind, &ports)
+            .map(|(port, label)| {
                 let args = whisper_args(&shown(&model), port, threads, &shown(&vad));
                 let problem = first_problem([&program, &model, &vad]);
-                self.spec(kind, label, &program, args, port, WHISPER, problem, false)
+                self.spec(kind, label, &program, args, port, WHISPER, problem, true)
             })
             .collect()
     }
 
-    fn llama(&self, url: &str) -> Option<ServiceSpec> {
-        let port = ServiceAddress::parse(url).ok()?.port();
+    fn llama(&self, url: &str, copies: u32, probe: &dyn ServiceProbe) -> Vec<ServiceSpec> {
+        let Ok(address) = ServiceAddress::parse(url) else {
+            return Vec::new();
+        };
+        let address = address.with_copy_offset(TEXT_REFINEMENT_COPY_OFFSET);
         let program = self.engine(LLAMA, "VOICEPUNCHER_LLAMA_BINARY", "brew install llama.cpp");
         let model = self.model("VOICEPUNCHER_LLM_MODEL", REFINEMENT_MODEL);
-        let args = llama_args(&shown(&model), port);
-        let problem = first_problem([&program, &model]);
-        Some(self.spec(
-            ServiceKind::Refinement,
-            ServiceKind::Refinement.name().into(),
-            &program,
-            args,
-            port,
-            LLAMA,
-            problem,
-            true,
-        ))
+        let kind = ServiceKind::Refinement;
+        let ports =
+            running_copies(kind, &address, probe).unwrap_or_else(|| copy_ports(&address, copies));
+        labelled(kind, &ports)
+            .map(|(port, label)| {
+                let args = llama_args(&shown(&model), port);
+                let problem = first_problem([&program, &model]);
+                self.spec(kind, label, &program, args, port, LLAMA, problem, true)
+            })
+            .collect()
     }
 
-    fn command_spotting(&self, url: &str, commands_url: &str) -> Option<ServiceSpec> {
-        let port = ServiceAddress::parse(url).ok()?.port();
+    fn command_spotting(
+        &self,
+        url: &str,
+        commands_url: &str,
+        copies: u32,
+        probe: &dyn ServiceProbe,
+    ) -> Vec<ServiceSpec> {
+        let Ok(address) = ServiceAddress::parse(url) else {
+            return Vec::new();
+        };
+        let address = address.with_copy_offset(COMMAND_SPOTTING_COPY_OFFSET);
         let program = self.command_spotting_program();
         let model_dir = self.kws_model_dir();
         let vad = self.model("VOICEPUNCHER_KWS_VAD_MODEL", KWS_VAD_MODEL);
-        let args = command_spotting_args(port, &shown(&model_dir), &shown(&vad), commands_url);
-        let problem = first_problem([&program, &model_dir, &vad]);
-        Some(self.spec(
-            ServiceKind::CommandSpotting,
-            ServiceKind::CommandSpotting.name().into(),
-            &program,
-            args,
-            port,
-            COMMAND_SPOTTING,
-            problem,
-            true,
-        ))
+        let kind = ServiceKind::CommandSpotting;
+        let ports =
+            running_copies(kind, &address, probe).unwrap_or_else(|| copy_ports(&address, copies));
+        labelled(kind, &ports)
+            .map(|(port, label)| {
+                let args =
+                    command_spotting_args(port, &shown(&model_dir), &shown(&vad), commands_url);
+                let problem = first_problem([&program, &model_dir, &vad]);
+                self.spec(
+                    kind,
+                    label,
+                    &program,
+                    args,
+                    port,
+                    COMMAND_SPOTTING,
+                    problem,
+                    true,
+                )
+            })
+            .collect()
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments, reason = "size baseline")]
     fn spec(
         &self,
         kind: ServiceKind,
@@ -444,7 +474,7 @@ impl<'a> Lookup<'a> {
     }
 }
 
-/// The ports a speech recognition service already answers on, its own or its copies', when
+/// The ports a service already answers on, its own or its copies', when
 /// any does: the service scripts may run it as other copies than this configuration.
 fn running_copies(
     kind: ServiceKind,

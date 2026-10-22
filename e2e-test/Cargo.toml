@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[lints]
+workspace = true
+
 [lib]
 path = "src/lib.rs"
 crate-type = ["lib"]
@@ -24,6 +27,7 @@ regex = "1"
 
 [dev-dependencies]
 env_logger = "=0.11.10"
+log = "=0.4.29"
 voicepuncher-command-spotting = { path = "../command-spotting" }
 voicepuncher-copy-pool = { path = "../copy-pool" }
 futures = "=0.3.34"

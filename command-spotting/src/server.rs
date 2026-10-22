@@ -204,11 +204,7 @@ struct Stats {
 
 impl Stats {
     fn new() -> Self {
-        Self {
-            since: Instant::now(),
-            messages: 0,
-            worst_lag: Duration::ZERO,
-        }
+        Self { since: Instant::now(), messages: 0, worst_lag: Duration::ZERO }
     }
 
     fn audio(&mut self, waited: Duration, conn: u64) {

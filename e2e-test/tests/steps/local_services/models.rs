@@ -165,6 +165,7 @@ impl ScenarioServices {
 
     /// Fails unless the speech recognition service of `role` started, runs `model` (its command
     /// line and its log say so) and transcribes a short utterance.
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn check_loads(&self, role: Role, model: &Path) -> Result<()> {
         let label = role.label();
         let log = std::fs::read_to_string(self.speech_log(role)).unwrap_or_default();

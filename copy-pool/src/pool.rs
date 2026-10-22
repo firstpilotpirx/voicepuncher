@@ -88,17 +88,21 @@ impl CopyPool {
     /// The one pool of this process for the service at `url`, so every client of the
     /// service shares its copies; each process starts its search at a copy of its own.
     pub fn shared(url: &str) -> Result<Self, AddressError> {
-        let address = ServiceAddress::parse(url)?;
-        let key = address.to_string();
+        Ok(Self::shared_at(ServiceAddress::parse(url)?))
+    }
+
+    /// As [`CopyPool::shared`], for an address whose copies may lie at another offset.
+    pub fn shared_at(address: ServiceAddress) -> Self {
+        let key = format!("{address} {:?}", address.copy_ports());
         let mut pools = unpoisoned(POOLS.get_or_init(Default::default).lock());
         if let Some(inner) = pools.get(&key).and_then(Weak::upgrade) {
-            return Ok(Self { inner });
+            return Self { inner };
         }
         let probe = TcpProbe::new(address.host());
         let offset = std::process::id() as usize;
         let pool = Self::discover(address, probe, offset, PROBE_INTERVAL);
         pools.insert(key, Arc::downgrade(&pool.inner));
-        Ok(pool)
+        pool
     }
 
     /// A pool that probes the copies of `address` now and every `interval`, and starts
@@ -110,12 +114,8 @@ impl CopyPool {
         interval: Duration,
     ) -> Self {
         let state = Mutex::new(State::new(&address, offset));
-        let inner = Arc::new(Inner {
-            address,
-            probe: Box::new(probe),
-            state,
-            changed: Condvar::new(),
-        });
+        let inner =
+            Arc::new(Inner { address, probe: Box::new(probe), state, changed: Condvar::new() });
         inner.probe_round();
         let watched = Arc::downgrade(&inner);
         let _ = thread::Builder::new()
@@ -154,12 +154,26 @@ impl CopyPool {
         self.place().lease_avoiding(wait, tried)
     }
 
+    /// Whether a copy takes requests, after waiting at most `wait` for one to come back
+    /// when none does: a service being restarted answers again within seconds.
+    pub fn await_copy(&self, wait: Duration) -> bool {
+        let deadline = Instant::now() + wait;
+        let mut state = self.inner.lock();
+        loop {
+            if state.has_copies() {
+                return true;
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                return false;
+            }
+            state = unpoisoned(self.inner.changed.wait_timeout(state, deadline - now)).0;
+        }
+    }
+
     /// A place in the queue for a copy, for one request that may wait more than once.
     pub fn place(&self) -> Place {
-        Place {
-            inner: self.inner.clone(),
-            ticket: None,
-        }
+        Place { inner: self.inner.clone(), ticket: None }
     }
 }
 
@@ -211,13 +225,7 @@ impl Drop for Place {
 impl Inner {
     fn lease_of(self: &Arc<Self>, index: usize, port: u16) -> Lease {
         let url = self.address.with_port(port);
-        Lease {
-            inner: self.clone(),
-            index,
-            port,
-            url,
-            released: false,
-        }
+        Lease { inner: self.clone(), index, port, url, released: false }
     }
 
     fn no_copy(&self, has_copies: bool, waited: Duration) -> PoolError {
@@ -245,8 +253,9 @@ impl Inner {
         state.probed(&answers);
         for (port, waited) in state.find_hung(Instant::now()) {
             log::warn!(
-                "speech recognition copy {port} hung: no answer in {} s",
-                waited.as_secs()
+                "copy {port} hung: no answer in {} s (service at {})",
+                waited.as_secs(),
+                self.address
             );
         }
         self.changed.notify_all();
@@ -260,11 +269,15 @@ impl Inner {
         let mut state = self.lock();
         let port = state.port(index);
         if state.release(index, finish == Finish::Refused) {
-            log::info!("speech recognition copy {port} answered again");
+            log::info!(
+                "copy {port} of the service at {} answered again",
+                self.address
+            );
         }
         if finish == Finish::Refused {
             log::warn!(
-                "speech recognition copy {port} refused the connection: skipped until it answers"
+                "copy {port} refused the connection: skipped until it answers (service at {})",
+                self.address
             );
         }
         self.changed.notify_all();

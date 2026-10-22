@@ -39,10 +39,7 @@ pub struct CatalogModels {
 
 impl CatalogModels {
     pub fn new(home: &Path, env: HashMap<String, String>) -> Self {
-        Self {
-            home: home.to_path_buf(),
-            env,
-        }
+        Self { home: home.to_path_buf(), env }
     }
 
     /// This process's home and environment.
@@ -143,23 +140,14 @@ fn headless_line(event: &DownloadEvent, last_percent: &mut Option<u64>) -> Optio
             Some(format!("{name}: downloading"))
         }
         DownloadEvent::Verifying(name) => Some(format!("{name}: verifying the part")),
-        DownloadEvent::Progress {
-            name,
-            received,
-            total,
-            ..
-        } => {
+        DownloadEvent::Progress { name, received, total, .. } => {
             let percent = (received * 100).checked_div(*total).unwrap_or(100) / 10 * 10;
             (*last_percent != Some(percent)).then(|| {
                 *last_percent = Some(percent);
                 format!("{name}: {percent} %")
             })
         }
-        DownloadEvent::Retrying {
-            name,
-            attempt,
-            pause,
-        } => Some(format!(
+        DownloadEvent::Retrying { name, attempt, pause } => Some(format!(
             "{name}: no connection, try {} in {} s",
             attempt + 1,
             pause.as_secs()

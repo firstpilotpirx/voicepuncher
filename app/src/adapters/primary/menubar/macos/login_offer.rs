@@ -19,9 +19,7 @@ pub struct LoginOfferObserver {
 
 impl LoginOfferObserver {
     pub fn new(offer: LoginOffer) -> Self {
-        Self {
-            offer: Arc::new(offer),
-        }
+        Self { offer: Arc::new(offer) }
     }
 }
 

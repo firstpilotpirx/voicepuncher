@@ -291,6 +291,7 @@ fn should_reach_for_the_service_again_after_it_closes_the_connection() {
 }
 
 #[test]
+#[expect(clippy::too_many_lines, reason = "size baseline")]
 fn should_be_back_within_seconds_once_the_service_answers_after_a_long_outage() {
     // Given the service goes away and nothing listens on its port for a while
     lines();
@@ -515,4 +516,105 @@ fn should_give_up_connecting_to_a_service_that_never_completes_the_handshake() {
         started.elapsed()
     );
     drop(listener);
+}
+
+/// The service ports the fake copies' addresses take: their copies land 41 000 below, on
+/// 2001–8004, clear of the system's ephemeral ports (49152+) and of the user's services.
+const FAKE_SERVICE_PORTS: std::ops::Range<u16> = 43_000..49_000;
+
+/// Listeners on the first two copy ports of a command spotting service address nothing
+/// listens on, and that address.
+fn two_free_copies() -> (TcpListener, TcpListener, String) {
+    loop {
+        let base = reserve_port();
+        let url = format!("ws://127.0.0.1:{base}");
+        let ports = voicepuncher_copy_pool::ServiceAddress::parse(&url)
+            .unwrap()
+            .with_copy_offset(voicepuncher_copy_pool::COMMAND_SPOTTING_COPY_OFFSET)
+            .copy_ports();
+        if let (Ok(first), Ok(second)) = (
+            TcpListener::bind(("127.0.0.1", ports[0])),
+            TcpListener::bind(("127.0.0.1", ports[1])),
+        ) {
+            return (first, second, url);
+        }
+    }
+}
+
+/// A port of `FAKE_SERVICE_PORTS` bound without listening for the life of the test process:
+/// connections to it are refused, so the client looks for copies.
+fn reserve_port() -> u16 {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let span = FAKE_SERVICE_PORTS.len();
+    let start = std::process::id() as usize * 7_919;
+    loop {
+        let index = (start + NEXT.fetch_add(1, Ordering::SeqCst)) % span;
+        let port = FAKE_SERVICE_PORTS.start + index as u16;
+        if bind_without_listening(port) {
+            return port;
+        }
+    }
+}
+
+fn bind_without_listening(port: u16) -> bool {
+    // SAFETY: plain socket calls on a zeroed sockaddr_in of the right length; a bound
+    // descriptor is never closed, so its port stays reserved until the process exits.
+    unsafe {
+        let fd = libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0);
+        assert!(fd >= 0, "socket: {}", std::io::Error::last_os_error());
+        let mut addr: libc::sockaddr_in = std::mem::zeroed();
+        let len = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+        addr.sin_len = len as u8;
+        addr.sin_family = libc::AF_INET as libc::sa_family_t;
+        addr.sin_port = port.to_be();
+        addr.sin_addr.s_addr = u32::from(std::net::Ipv4Addr::LOCALHOST).to_be();
+        let bound = libc::bind(fd, (&raw const addr).cast(), len) == 0;
+        if !bound {
+            libc::close(fd);
+        }
+        bound
+    }
+}
+
+/// A stub service on `listener` that keeps every connection, recording what it receives.
+fn stub_service_that_stays(listener: TcpListener) -> Arc<Mutex<Vec<Received>>> {
+    let connections = Arc::new(Mutex::new(Vec::new()));
+    let recorded = Arc::clone(&connections);
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let connections = Arc::clone(&recorded);
+            std::thread::spawn(move || serve(stream, 1, &connections));
+        }
+    });
+    connections
+}
+
+#[test]
+fn should_move_to_another_copy_at_the_first_attempt_when_the_connected_copy_goes() {
+    // Given two copies: the first serves one connection and goes, the second stays
+    lines();
+    let (first, second, url) = two_free_copies();
+    serve_one_connection_then_go(first);
+    let connections = stub_service_that_stays(second);
+    let (stream, audio, inputs) = start_stream(&url);
+    // When
+    let outage = outage_inputs(&audio, &inputs, &OnceLock::new());
+    // Then
+    assert_eq!(
+        outage,
+        [PipelineInput::SpottingLost, PipelineInput::SpottingBack],
+        "{:#?}",
+        logged(&url)
+    );
+    let failed: Vec<String> = logged(&url)
+        .into_iter()
+        .filter(|line| line.contains("failed"))
+        .collect();
+    assert!(failed.is_empty(), "{failed:#?}");
+    wait_for_record(&connections, |all| {
+        all.first()
+            .is_some_and(|c| c.selections.iter().any(|s| s.contains("press enter")))
+    });
+    stream.stop();
 }

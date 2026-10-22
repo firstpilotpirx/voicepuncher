@@ -256,14 +256,8 @@ mod tests {
         assert_eq!(
             kept,
             [
-                StageTiming {
-                    stage: "stop",
-                    ms: 3
-                },
-                StageTiming {
-                    stage: "transcribe",
-                    ms: 400
-                }
+                StageTiming { stage: "stop", ms: 3 },
+                StageTiming { stage: "transcribe", ms: 400 }
             ]
         );
     }

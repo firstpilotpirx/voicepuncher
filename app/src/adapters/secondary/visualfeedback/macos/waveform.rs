@@ -31,10 +31,7 @@ pub(super) struct LevelWave {
 impl LevelWave {
     /// A history of silence starting now.
     pub(super) fn starting_now() -> Self {
-        Self {
-            history: LevelHistory::new(FULL_CAPACITY, Duration::ZERO),
-            origin: Instant::now(),
-        }
+        Self { history: LevelHistory::new(FULL_CAPACITY, Duration::ZERO), origin: Instant::now() }
     }
 
     /// How long ago the recording started.
@@ -131,14 +128,8 @@ fn column_opacity(x: f64, height: f32) -> f32 {
 
 fn place(column: &CALayer, x: f64, height: f64) {
     column.setFrame(NSRect {
-        origin: NSPoint {
-            x,
-            y: (AREA_HEIGHT - height) / 2.0,
-        },
-        size: NSSize {
-            width: COLUMN_WIDTH,
-            height,
-        },
+        origin: NSPoint { x, y: (AREA_HEIGHT - height) / 2.0 },
+        size: NSSize { width: COLUMN_WIDTH, height },
     });
 }
 

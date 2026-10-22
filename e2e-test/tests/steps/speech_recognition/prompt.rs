@@ -118,11 +118,7 @@ fn no_echo(world: &mut E2eWorld) -> Result<()> {
 }
 
 fn russian(text: &str) -> Result<Vec<i16>> {
-    synthesized(&SayRequest {
-        voice: Some(RUSSIAN_VOICE),
-        words_per_minute: None,
-        text,
-    })
+    synthesized(&SayRequest { voice: Some(RUSSIAN_VOICE), words_per_minute: None, text })
 }
 
 /// Russian speech without the term, at least `secs` long.

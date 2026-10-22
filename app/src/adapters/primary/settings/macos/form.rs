@@ -64,6 +64,7 @@ impl Form {
     }
 
     /// Saves; false when a value was refused and is marked.
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn save(&self) -> bool {
         self.collect();
         self.controls.iter().for_each(|control| control.mark(false));

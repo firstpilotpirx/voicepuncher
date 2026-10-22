@@ -101,6 +101,20 @@ pub const FIELDS: &[Field] = &[
     ),
     field(
         "services",
+        "refinement_copies",
+        Tab::Services,
+        "Refinement service copies",
+        number(1, 4, ""),
+    ),
+    field(
+        "services",
+        "command_spotting_copies",
+        Tab::Services,
+        "Command spotting service copies",
+        number(1, 4, ""),
+    ),
+    field(
+        "services",
         "models_dir",
         Tab::Services,
         "Models folder",

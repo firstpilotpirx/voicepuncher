@@ -3230,7 +3230,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "voicepuncher"
-version = "0.35.0"
+version = "0.36.1"
 dependencies = [
  "anyhow",
  "arboard",
@@ -3254,6 +3254,7 @@ dependencies = [
  "objc2-foundation",
  "objc2-quartz-core",
  "objc2-service-management",
+ "proc-macro2",
  "rdev",
  "regex",
  "rubato",
@@ -3261,6 +3262,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "signal-hook",
+ "syn 2.0.117",
  "tempfile",
  "thiserror 1.0.69",
  "toml",
@@ -3307,6 +3309,7 @@ dependencies = [
  "env_logger",
  "futures",
  "hound",
+ "log",
  "regex",
  "serde",
  "serde_json",

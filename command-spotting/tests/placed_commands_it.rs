@@ -89,11 +89,7 @@ fn clocked_engine_on(
             delay,
             deadline,
         }));
-    ClockedEngine {
-        engine,
-        clock,
-        _one_at_a_time: one_at_a_time,
-    }
+    ClockedEngine { engine, clock, _one_at_a_time: one_at_a_time }
 }
 
 /// The engine confirming with the real speech recognition service for commands.
@@ -174,11 +170,9 @@ fn commands(events: &[ServerEvent]) -> Vec<(Vec<String>, Placement)> {
     events
         .iter()
         .filter_map(|e| match e {
-            ServerEvent::Command {
-                commands,
-                placement,
-                ..
-            } => Some((commands.clone(), *placement)),
+            ServerEvent::Command { commands, placement, .. } => {
+                Some((commands.clone(), *placement))
+            }
             _ => None,
         })
         .collect()
@@ -338,11 +332,7 @@ fn heard_in_time_by(
 ) -> Option<Vec<ServerEvent>> {
     let cfg = engine_cfg(None)?;
     let (stream, script) = scripted(sentence);
-    let scripted = ScriptedHearing {
-        stream: stream.clone(),
-        script,
-        completes_cut_words: false,
-    };
+    let scripted = ScriptedHearing { stream: stream.clone(), script, completes_cut_words: false };
     let engine = clocked_engine(&cfg, hearing(scripted), delay, None);
     let mut session = engine.engine.session().unwrap();
     let phrases: Vec<String> = phrases.iter().map(|p| (*p).to_owned()).collect();
@@ -406,11 +396,7 @@ fn heard_with_dictation_started_at_first_pause(
     let first_words = utterances[0].split_whitespace().count();
     let switch_at =
         script[first_words - 1].said.end + (PAUSE_SECS / 2.0 * SAMPLE_RATE as f32) as usize;
-    let hearing = ScriptedHearing {
-        stream: stream.clone(),
-        script,
-        completes_cut_words: true,
-    };
+    let hearing = ScriptedHearing { stream: stream.clone(), script, completes_cut_words: true };
     let engine = clocked_engine(&cfg, Arc::new(hearing), delay, None);
     let mut session = engine.engine.session().unwrap();
     session.listen_for(&owned(&STANDBY)).unwrap();
@@ -436,11 +422,7 @@ fn heard_with_standby_once_stopped(
     let (mut stream, script) = scripted_utterances(utterances);
     // Silence after the last word, while the late confirmations come back.
     stream.extend(vec![0.0; 2 * samples(delay)]);
-    let hearing = ScriptedHearing {
-        stream: stream.clone(),
-        script,
-        completes_cut_words: true,
-    };
+    let hearing = ScriptedHearing { stream: stream.clone(), script, completes_cut_words: true };
     let engine = clocked_engine(&cfg, Arc::new(hearing), delay, None);
     let mut session = engine.engine.session().unwrap();
     session.listen_for(&owned(&DICTATING)).unwrap();
@@ -757,6 +739,7 @@ fn heard_finely(phrases: &[&str], words: &[(f32, &str)], delay: Duration) -> Opt
 
 /// [`heard_finely`], with the clips asked before the pause after the last word closes hearing
 /// the word `mishears` names as the other one.
+#[expect(clippy::too_many_lines, reason = "size baseline")]
 fn heard_finely_misheard(
     phrases: &[&str],
     words: &[(f32, &str)],
@@ -783,11 +766,7 @@ fn heard_finely_misheard(
     stream.extend(silence(PAUSE_SECS + 2.0 * delay.as_secs_f32()));
     let clock = Arc::new(StreamClock::default());
     let hearing = Arc::new(NotedHearing {
-        hearing: ScriptedHearing {
-            stream: stream.clone(),
-            script,
-            completes_cut_words: false,
-        },
+        hearing: ScriptedHearing { stream: stream.clone(), script, completes_cut_words: false },
         clock: Arc::clone(&clock),
         asked: Mutex::new(Vec::new()),
         mishears,

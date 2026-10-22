@@ -28,16 +28,18 @@ const MAX_LOST_BY_MERGE_SHARE: f64 = 0.02;
 const MAX_DROPPED_PHRASE_WORDS: usize = 5;
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    clippy::excessive_nesting,
+    reason = "size baseline"
+)]
 fn should_merge_chunked_speech_without_repeating_or_dropping_a_phrase() {
     // Given
     let Ok(base_url) = std::env::var("VOICEPUNCHER_TRANSCRIPTION_URL") else {
         eprintln!("GATED: VOICEPUNCHER_TRANSCRIPTION_URL not set, skipping");
         return;
     };
-    let cfg = TranscriptionCfg {
-        base_url,
-        ..TranscriptionCfg::default()
-    };
+    let cfg = TranscriptionCfg { base_url, ..TranscriptionCfg::default() };
     let chunking = ChunkingCfg {
         chunk_threshold_secs: cfg.chunk_threshold_secs,
         chunk_overlap_secs: cfg.chunk_overlap_secs,

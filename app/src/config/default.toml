@@ -114,6 +114,10 @@ manage = true
 dictation_copies = 3
 # Copies of the speech recognition service for commands, 1 to 4.
 command_copies = 3
+# Copies of the text refinement service, 1 to 4.
+refinement_copies = 2
+# Copies of the command spotting service, 1 to 4.
+command_spotting_copies = 2
 # The folder the models are downloaded to.
 models_dir = "~/.voicepuncher/models"
 # Address of the speech recognition service for commands; it must be on this Mac.

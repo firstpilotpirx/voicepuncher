@@ -45,10 +45,7 @@ pub struct Choice {
 
 impl Choice {
     fn new(title: impl Into<String>, value: impl Into<String>) -> Self {
-        Self {
-            title: title.into(),
-            value: Value::String(value.into()),
-        }
+        Self { title: title.into(), value: Value::String(value.into()) }
     }
 }
 

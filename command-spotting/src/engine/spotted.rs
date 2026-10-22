@@ -87,12 +87,7 @@ mod tests {
         assert_eq!(early, None);
         assert_eq!(
             on_time,
-            Some(DueCheck {
-                said_end: SAID_END,
-                due,
-                round: Round::First,
-                utterance: None
-            })
+            Some(DueCheck { said_end: SAID_END, due, round: Round::First, utterance: None })
         );
         assert_eq!(checks.take_due(due + 1), None);
     }

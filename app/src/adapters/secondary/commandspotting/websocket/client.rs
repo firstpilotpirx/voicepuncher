@@ -9,6 +9,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use serde::Deserialize;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Message, WebSocket};
+use voicepuncher_copy_pool::{ServiceAddress, COMMAND_SPOTTING_COPY_OFFSET};
 
 use crate::core::domain::{
     CommandPlacement, ConfirmationTiming, ReportTiming, SpottingEvent, VoiceCommand,
@@ -83,9 +84,10 @@ pub struct SpottingClient {
 }
 
 impl SpottingClient {
-    /// Connects to the service; `audio_start` is when the first sample to be sent was captured.
+    /// Connects to the service at its own port, else to the first of its copies that
+    /// answers; `audio_start` is when the first sample to be sent was captured.
     pub fn connect(url: &str, audio_start: Instant) -> Result<Self> {
-        let socket = handshake(url).with_context(|| {
+        let socket = handshake_any(url).with_context(|| {
             format!(
                 "command spotting service not reachable at {url} — run 'just start-model-servers'"
             )
@@ -94,13 +96,7 @@ impl SpottingClient {
             stream.set_read_timeout(Some(READ_WAIT))?;
             stream.set_write_timeout(Some(WRITE_WAIT))?;
         }
-        Ok(Self {
-            socket,
-            audio_start,
-            unanswered_since: None,
-            last_ping: None,
-            answer_waits: 0,
-        })
+        Ok(Self { socket, audio_start, unanswered_since: None, last_ping: None, answer_waits: 0 })
     }
 
     /// Spots the phrases of `commands` from now on.
@@ -159,6 +155,7 @@ impl SpottingClient {
     /// service answers a sync only after the events for every message sent before it. A
     /// service that keeps answering pings is waited for up to `within`; a service that
     /// answers nothing fails the wait at the silence limit.
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     pub fn events_for_sent_audio(&mut self, within: Duration) -> Result<Vec<SpottingEvent>> {
         self.answer_waits += 1;
         let id = self.answer_waits;
@@ -255,39 +252,53 @@ fn to_spotting_event(
     Some(match event {
         ServiceEvent::SpeechStart { t } => SpottingEvent::SpeechStarted(at(t)),
         ServiceEvent::SpeechEnd { t } => SpottingEvent::SpeechEnded(at(t)),
-        ServiceEvent::Phrase {
-            phrase,
-            start,
-            end,
-            timing,
-        } => SpottingEvent::PhraseSpotted {
+        ServiceEvent::Phrase { phrase, start, end, timing } => SpottingEvent::PhraseSpotted {
             phrase,
             start: at(start),
             end: at(end),
             timing: report(end, timing),
         },
-        ServiceEvent::Command {
-            commands,
-            start,
-            end,
-            placement,
-            timing,
-        } => SpottingEvent::CommandsSaid {
-            commands: commands
-                .iter()
-                .filter_map(|phrase| VoiceCommand::from_phrase(phrase))
-                .collect(),
-            start: at(start),
-            end: at(end),
-            placement: match placement {
-                Placement::Tail => CommandPlacement::Tail,
-                Placement::Head => CommandPlacement::Head,
-                Placement::Anywhere => CommandPlacement::Anywhere,
-            },
-            timing: report(end, timing),
-        },
+        ServiceEvent::Command { commands, start, end, placement, timing } => {
+            SpottingEvent::CommandsSaid {
+                commands: commands
+                    .iter()
+                    .filter_map(|phrase| VoiceCommand::from_phrase(phrase))
+                    .collect(),
+                start: at(start),
+                end: at(end),
+                placement: match placement {
+                    Placement::Tail => CommandPlacement::Tail,
+                    Placement::Head => CommandPlacement::Head,
+                    Placement::Anywhere => CommandPlacement::Anywhere,
+                },
+                timing: report(end, timing),
+            }
+        }
         ServiceEvent::Synced { .. } => return None,
     })
+}
+
+/// A WebSocket connection to the service's own port, else to its first copy that
+/// completes the handshake; the error of the own port when none does.
+fn handshake_any(url: &str) -> Result<WebSocket<MaybeTlsStream<TcpStream>>> {
+    let own = handshake(url);
+    if own.is_ok() {
+        return own;
+    }
+    let copies = ServiceAddress::parse(url)
+        .map(|address| {
+            let address = address.with_copy_offset(COMMAND_SPOTTING_COPY_OFFSET);
+            address
+                .copy_ports()
+                .into_iter()
+                .map(|port| address.with_port(port))
+                .collect()
+        })
+        .unwrap_or_else(|_| Vec::new());
+    copies
+        .iter()
+        .find_map(|copy| handshake(copy).ok())
+        .map_or(own, Ok)
 }
 
 /// A WebSocket connection to `url`, given up after `CONNECT_WAIT` at each step.

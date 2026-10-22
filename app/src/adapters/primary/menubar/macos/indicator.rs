@@ -58,18 +58,12 @@ impl StatusItemCell {
 
     /// The menu as it reads at this moment.
     pub fn menu(&self) -> MenuModel {
-        MenuModel {
-            title_line: title_line(),
-            status_line: self.lock().0.status_line(),
-        }
+        MenuModel { title_line: title_line(), status_line: self.lock().0.status_line() }
     }
 
     /// `overlay`, also telling the status item each thing it shows.
     pub fn indicator<I: VisualIndicator>(&self, overlay: I) -> StatusItemIndicator<I> {
-        StatusItemIndicator {
-            overlay,
-            cell: self.clone(),
-        }
+        StatusItemIndicator { overlay, cell: self.clone() }
     }
 
     /// Tells the status item each state of the runtime.

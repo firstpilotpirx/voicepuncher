@@ -4,26 +4,26 @@ The audit of 2026-10-22 (five independent reviews over 74 634 lines of Rust, 1 4
 
 ## What Changes
 
-- The budgets become checks: `clippy.toml` with `too-many-lines-threshold`, `too-many-arguments-threshold`, `excessive-nesting-threshold`, `cognitive-complexity-threshold`; `[workspace.lints.clippy]` turning `too_many_lines`, `too_many_arguments`, `excessive_nesting`, `cognitive_complexity` and `type_complexity` on as errors; function length and parameters (for the ratchet), file length, struct fields, public members and directory size measured by a new test target `app/tests/size_budgets.rs` (code lines, as the kit defines them).
+- The budgets become checks: `clippy.toml` with `too-many-lines-threshold`, `too-many-arguments-threshold`, `excessive-nesting-threshold`, `cognitive-complexity-threshold`; `[workspace.lints.clippy]` turning `too_many_lines`, `too_many_arguments`, `excessive_nesting`, `cognitive_complexity` and `type_complexity` on as errors; function length and parameters (for the ratchet), file length, struct fields, public members and directory size measured by a new test target `app/tests/size_budgets/` (code lines, as the kit defines them).
 - Budgets for structure too: a struct with more than 12 fields and a module directory over a stated budget fail the same rule, so a `Pipeline` or a `Session` cannot grow silently.
-- A ratchet, not a big bang: the units over budget today are listed in one baseline file with their current measure; a check fails when a listed unit grows, when a new unit exceeds a budget, or when a listed unit shrinks under budget without leaving the list. Every change that touches a listed unit must shrink it (`AGENTS.md` § Workflow gets the rule, `/opsx:verify` checks it).
+- A ratchet, not a big bang: the units over budget today are listed in one baseline file with their current measure; a check fails when a listed unit grows, when a new unit exceeds a budget, or when a listed unit shrinks under budget without leaving the list. Every change that touches a listed unit shrinks it or leaves it as it is, never grows it (`AGENTS.md` § Workflow gets the rule, `/opsx:verify` checks it).
 - `AGENTS.md` § Architecture rules names the budgets and the baseline; `rustfmt.toml` sets `struct_lit_width`/`struct_variant_width` as `quality.md` requires so line counts measure complexity, not formatting.
-- `just lint` runs the size check with the clippy stage; `just test` runs the architecture rule as today.
+- `just lint` runs the clippy budgets; `just test` runs the size check (`app/tests/size_budgets/`).
 
 Current stage: PoC. Target stage: PoC.
 Scope: the thresholds, the baseline, the checks and the rule text; no code is split in this change (the splits are `slim-pipeline-module`, `tame-confirming-special-cases`, `stage-runner-in-rust`).
-Acceptance bar: `just lint` and `just test` fail on a function, file, struct, parameter list, nesting or complexity over budget outside the baseline, and on a baseline unit that grew; the baseline names every unit over budget on `main` with its measure; the architecture test proves each rule with a fixture.
-Out of scope: shrinking the hubs; `justfile` size (its own change); tests under budget (the kit applies budgets to tests too — kept as an open point).
+Acceptance bar: `just lint` and `just test` fail on a function, file, struct, parameter list, nesting or complexity over budget outside the baseline, and on a baseline unit that grew; the baseline names every unit over budget on `main` with its measure; the size test proves each rule with a fixture.
+Out of scope: shrinking the hubs; `justfile` size (its own change); shrinking over-budget tests (they are under the budgets, listed in the same baseline).
 
 ## Capabilities
 
 ### Modified Capabilities
 
-- `change-workflow`: a change that touches a baseline unit must shrink it; the check that proves it.
+- `change-workflow`: a change that touches a baseline unit shrinks it or leaves it as it is; the check that proves it.
 
 ## Impact
 
-- `clippy.toml`, `rustfmt.toml`, `Cargo.toml` (`[workspace.lints]`), `app/tests/size_budgets.rs` and the baseline file `app/tests/size_baseline.toml`, `#[expect(…, reason = "size baseline")]` on every listed function, `justfile` (`_lint`), `AGENTS.md`.
+- `clippy.toml`, `rustfmt.toml`, `Cargo.toml` (`[workspace.lints]`), `app/tests/size_budgets/` and the baseline file `app/tests/size_baseline.toml`, `#[expect(…, reason = "size baseline")]` on every listed function, `justfile` (`_lint`), `AGENTS.md`.
 
 ## Open points (settled in design.md: the kit's numbers; tests under the budgets from the start, in the same baseline; 12 fields, 2 000 code lines per directory)
 

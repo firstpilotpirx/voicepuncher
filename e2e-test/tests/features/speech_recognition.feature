@@ -191,3 +191,12 @@ Feature: speech-recognition
       And a recording file of an unrelated Russian sentence
       When the user transcribes the recording file without refinement
       Then the printed text holds no word of the first sentence that the second one does not say
+
+  @serial @resilience
+  Rule: A chunk waits for its service to come back
+
+    Scenario: Every copy of the dictation service is killed while a chunk is sent
+      Given the app started the speech recognition service for dictation as two copies and they are ready
+      When every copy of it is killed while a dictation's chunk is being transcribed
+      Then the chunk's text comes back once the app has started the copies again, and no failure is reported
+      And the wait for the service is logged

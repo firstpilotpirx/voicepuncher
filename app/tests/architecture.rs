@@ -11,6 +11,7 @@ fn read_lines(path: &std::path::Path) -> Vec<String> {
 }
 
 #[test]
+#[expect(clippy::excessive_nesting, reason = "size baseline")]
 fn r1_domain_no_adapter_imports() {
     let forbidden_patterns = [
         "use crate::core::application",
@@ -58,6 +59,7 @@ fn r1_domain_no_adapter_imports() {
 }
 
 #[test]
+#[expect(clippy::excessive_nesting, reason = "size baseline")]
 fn r2_application_no_adapter_imports() {
     let forbidden_patterns = [
         "use crate::adapters",
@@ -255,6 +257,11 @@ fn r5_domain_vos_have_test_blocks() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    clippy::excessive_nesting,
+    reason = "size baseline"
+)]
 fn r6_core_only_whitelisted_external_crates() {
     let allowed: std::collections::HashSet<&str> = ["anyhow", "thiserror", "serde", "log"]
         .iter()
@@ -318,6 +325,7 @@ fn r6_core_only_whitelisted_external_crates() {
 }
 
 #[test]
+#[expect(clippy::excessive_nesting, reason = "size baseline")]
 fn r7_adapters_in_feature_tech_structure() {
     let adapter_roots = ["src/adapters/primary", "src/adapters/secondary"];
     let mut violations: Vec<String> = Vec::new();
@@ -393,6 +401,11 @@ fn r10_no_retained_into_raw_under_visualfeedback_macos() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    clippy::excessive_nesting,
+    reason = "size baseline"
+)]
 fn r_core_no_atomic_register() {
     let forbidden_patterns = [
         "AtomicU8",
@@ -442,6 +455,7 @@ fn r_core_no_atomic_register() {
 }
 
 #[test]
+#[expect(clippy::too_many_lines, reason = "size baseline")]
 fn r9_every_primary_adapter_has_it() {
     let mut violations: Vec<String> = Vec::new();
 
@@ -527,6 +541,7 @@ fn r11_core_never_imports_the_runtime() {
 /// assembles the one of file mode and nothing else does, and no file outside the adapters,
 /// the runtime and `main.rs` imports a secondary adapter.
 #[test]
+#[expect(clippy::excessive_nesting, reason = "size baseline")]
 fn r12_only_the_runtime_assembles_the_hotkey_pipeline() {
     let mut violations: Vec<String> = Vec::new();
     for path in rust_files("src") {

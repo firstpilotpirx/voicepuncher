@@ -6,5 +6,8 @@ rust-version = "1.88"
 description = "Routes requests to the copies of a local speech recognition service: one request per copy, first come first served"
 publish = false
 
+[lints]
+workspace = true
+
 [dependencies]
 log = "=0.4.29"

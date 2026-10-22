@@ -54,10 +54,7 @@ pub struct SignLifetimes {
 
 impl Default for SignLifetimes {
     fn default() -> Self {
-        Self {
-            pasted: PASTED_SIGN_LIFETIME,
-            failure: FAILURE_NOTICE_LIFETIME,
-        }
+        Self { pasted: PASTED_SIGN_LIFETIME, failure: FAILURE_NOTICE_LIFETIME }
     }
 }
 
@@ -79,12 +76,7 @@ impl<V: VisualIndicator, S: PointerSignView> PointerSignIndicator<V, S> {
     }
 
     pub fn with_lifetimes(overlay: V, sign: S, lifetimes: SignLifetimes) -> Self {
-        Self {
-            overlay,
-            sign: Arc::new(sign),
-            lifetimes,
-            generation: Arc::new(Mutex::new(0)),
-        }
+        Self { overlay, sign: Arc::new(sign), lifetimes, generation: Arc::new(Mutex::new(0)) }
     }
 
     fn show_badge(&self, badge: DictationSignState) {
@@ -222,10 +214,7 @@ mod tests {
     }
 
     fn indicator(sign: &Sign) -> PointerSignIndicator<MockVisualIndicator, Sign> {
-        let lifetimes = SignLifetimes {
-            pasted: SHORT_LIFETIME,
-            failure: SHORT_LIFETIME,
-        };
+        let lifetimes = SignLifetimes { pasted: SHORT_LIFETIME, failure: SHORT_LIFETIME };
         PointerSignIndicator::with_lifetimes(quiet_overlay(), sign.clone(), lifetimes)
     }
 

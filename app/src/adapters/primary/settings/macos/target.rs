@@ -146,9 +146,7 @@ define_class!(
 
 impl FormTarget {
     pub fn new(mtm: MainThreadMarker) -> Retained<Self> {
-        let this = Self::alloc(mtm).set_ivars(FormTargetIvars {
-            handler: OnceCell::new(),
-        });
+        let this = Self::alloc(mtm).set_ivars(FormTargetIvars { handler: OnceCell::new() });
         // SAFETY: `NSObject`'s `init` on a freshly allocated object.
         unsafe { msg_send![super(this), init] }
     }

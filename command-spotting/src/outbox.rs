@@ -42,11 +42,7 @@ impl Outbox {
 
     /// Holds a closed segment's `events` until its confirmation `job` is resolved.
     pub fn hold(&mut self, job: u64, events: Vec<ServerEvent>) {
-        self.held.push_back(Held {
-            job,
-            events,
-            resolved: false,
-        });
+        self.held.push_back(Held { job, events, resolved: false });
     }
 
     /// Events of no confirmation: they go out after the segments still held, or at once.
@@ -81,12 +77,11 @@ impl Outbox {
 
     /// Drops from the segment `job` holds every spotted phrase but `phrase`: its
     /// confirmation heard that command, with `timing`, which the phrases kept take on.
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     pub fn keep_only_phrase(&mut self, job: u64, phrase: &str, timing: Option<Timing>) {
         if let Some(held) = self.held.iter_mut().find(|h| h.job == job) {
             held.events.retain(|e| match e {
-                ServerEvent::Phrase {
-                    phrase: spotted, ..
-                } => spotted == phrase,
+                ServerEvent::Phrase { phrase: spotted, .. } => spotted == phrase,
                 _ => true,
             });
             for event in &mut held.events {
@@ -167,21 +162,11 @@ mod tests {
     }
 
     fn phrase(name: &str) -> ServerEvent {
-        ServerEvent::Phrase {
-            phrase: name.to_owned(),
-            start: 0.0,
-            end: 0.0,
-            timing: None,
-        }
+        ServerEvent::Phrase { phrase: name.to_owned(), start: 0.0, end: 0.0, timing: None }
     }
 
     fn timed_phrase(name: &str, timing: Timing) -> ServerEvent {
-        ServerEvent::Phrase {
-            phrase: name.to_owned(),
-            start: 0.0,
-            end: 0.0,
-            timing: Some(timing),
-        }
+        ServerEvent::Phrase { phrase: name.to_owned(), start: 0.0, end: 0.0, timing: Some(timing) }
     }
 
     #[test]
@@ -284,10 +269,7 @@ mod tests {
     #[test]
     fn should_give_the_spotted_phrase_kept_the_timing_of_the_confirmation_that_heard_it() {
         // Given
-        let timing = Timing {
-            asked_at: 2.5,
-            took_ms: 200,
-        };
+        let timing = Timing { asked_at: 2.5, took_ms: 200 };
         let mut outbox = Outbox::default();
         outbox.asked(1, false);
         outbox.hold(1, vec![start(1.0), phrase("start dictation"), end(2.0)]);

@@ -34,10 +34,7 @@ mod tests {
     use super::*;
 
     fn detected(language: Option<&str>) -> TranscriptionResponse {
-        TranscriptionResponse {
-            text: "text".into(),
-            language: language.map(str::to_owned),
-        }
+        TranscriptionResponse { text: "text".into(), language: language.map(str::to_owned) }
     }
 
     #[test]

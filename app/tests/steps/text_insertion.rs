@@ -131,18 +131,12 @@ impl InsertionRun {
             PipelineConfig {
                 min_press_ms: 0,
                 recording_mode: RecordingMode::Toggle,
-                chunking: ChunkingCfg {
-                    chunk_threshold_secs: 0,
-                    ..ChunkingCfg::default()
-                },
+                chunking: ChunkingCfg { chunk_threshold_secs: 0, ..ChunkingCfg::default() },
             },
         )
         .with_focus_wait(
             Box::new(ScriptedFocus(Arc::clone(&self.focus))),
-            FocusWaitCfg {
-                timeout: self.wait_time,
-                poll_interval: POLL_INTERVAL,
-            },
+            FocusWaitCfg { timeout: self.wait_time, poll_interval: POLL_INTERVAL },
         );
         std::thread::spawn(move || pipeline.run(rx));
         tx

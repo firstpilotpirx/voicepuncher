@@ -212,10 +212,7 @@ fn run(download: ModelDownload, cancel: &AtomicBool) {
     let last_progress = Mutex::new(None::<Instant>);
     let summary = download.download_missing(
         &mut |event: &DownloadEvent| {
-            if let DownloadEvent::Progress {
-                received, total, ..
-            } = event
-            {
+            if let DownloadEvent::Progress { received, total, .. } = event {
                 let mut last = last_progress.lock().unwrap_or_else(|e| e.into_inner());
                 let now = Instant::now();
                 let due = last.is_none_or(|at| now.duration_since(at) >= PROGRESS_EVERY);
@@ -307,6 +304,7 @@ fn below_top(x: f64, y: f64, width: f64, height: f64) -> NSRect {
     )
 }
 
+#[expect(clippy::too_many_lines, reason = "size baseline")]
 fn content(mtm: MainThreadMarker, target: &WindowTarget, model: &WindowModel) -> Retained<NSView> {
     let view = NSView::initWithFrame(
         mtm.alloc::<NSView>(),

@@ -41,13 +41,9 @@ pub fn spoken_by(voice: &str, words: &str) -> Result<Vec<f32>> {
 
 fn spoken(voice: Option<&str>, words: &str) -> Result<Vec<f32>> {
     let pause = vec![0.0f32; (PAUSE_SECS * SAMPLE_RATE_HZ) as usize];
-    let speech = synthesized(&SayRequest {
-        voice,
-        words_per_minute: None,
-        text: words,
-    })?
-    .into_iter()
-    .map(|s| f32::from(s) / f32::from(i16::MAX));
+    let speech = synthesized(&SayRequest { voice, words_per_minute: None, text: words })?
+        .into_iter()
+        .map(|s| f32::from(s) / f32::from(i16::MAX));
     Ok(pause
         .iter()
         .copied()

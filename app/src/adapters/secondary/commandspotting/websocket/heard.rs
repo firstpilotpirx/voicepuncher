@@ -34,21 +34,14 @@ pub struct HeardAudio {
 impl HeardAudio {
     /// Audio whose first sample was captured at `audio_start`.
     pub fn new(audio_start: Instant) -> Self {
-        Self {
-            audio_start,
-            first: 0,
-            samples: VecDeque::new(),
-            blocks: VecDeque::new(),
-        }
+        Self { audio_start, first: 0, samples: VecDeque::new(), blocks: VecDeque::new() }
     }
 
     /// Holds `samples`, the last of them captured at `captured_at`.
     pub fn push(&mut self, samples: &[f32], captured_at: Instant) {
         self.samples.extend(samples.iter().copied());
-        self.blocks.push_back(Block {
-            end: self.first + self.samples.len(),
-            captured_at,
-        });
+        self.blocks
+            .push_back(Block { end: self.first + self.samples.len(), captured_at });
         let excess = self
             .samples
             .len()

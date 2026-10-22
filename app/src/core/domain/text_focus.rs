@@ -69,18 +69,10 @@ pub enum TextFocus {
 impl TextFocus {
     pub fn of(probed: Result<Option<&FocusedElement>, &anyhow::Error>) -> Self {
         match probed {
-            Err(e) => TextFocus::Paste {
-                seen: format!("unknown ({e})"),
-            },
-            Ok(None) => TextFocus::Paste {
-                seen: "no focused element".to_owned(),
-            },
-            Ok(Some(el)) if el.is_surely_not_text() => TextFocus::Wait {
-                seen: el.to_string(),
-            },
-            Ok(Some(el)) => TextFocus::Paste {
-                seen: el.to_string(),
-            },
+            Err(e) => TextFocus::Paste { seen: format!("unknown ({e})") },
+            Ok(None) => TextFocus::Paste { seen: "no focused element".to_owned() },
+            Ok(Some(el)) if el.is_surely_not_text() => TextFocus::Wait { seen: el.to_string() },
+            Ok(Some(el)) => TextFocus::Paste { seen: el.to_string() },
         }
     }
 
@@ -109,10 +101,7 @@ mod tests {
     }
 
     fn in_web(role: &str, has_text_selection: bool, value_settable: bool) -> FocusedElement {
-        FocusedElement {
-            in_web_content: true,
-            ..element(role, has_text_selection, value_settable)
-        }
+        FocusedElement { in_web_content: true, ..element(role, has_text_selection, value_settable) }
     }
 
     fn verdict(el: &FocusedElement) -> TextFocus {
@@ -178,9 +167,7 @@ mod tests {
         let focus = TextFocus::of(Ok(None));
         assert_eq!(
             focus,
-            TextFocus::Paste {
-                seen: "no focused element".into()
-            }
+            TextFocus::Paste { seen: "no focused element".into() }
         );
     }
 
@@ -190,9 +177,7 @@ mod tests {
         let focus = TextFocus::of(Err(&e));
         assert_eq!(
             focus,
-            TextFocus::Paste {
-                seen: "unknown (AX error -25204)".into()
-            }
+            TextFocus::Paste { seen: "unknown (AX error -25204)".into() }
         );
     }
 
@@ -217,9 +202,7 @@ mod tests {
     fn should_describe_the_element_with_role_and_flags() {
         assert_eq!(
             verdict(&element("AXButton", false, false)),
-            TextFocus::Wait {
-                seen: "AXButton".into()
-            }
+            TextFocus::Wait { seen: "AXButton".into() }
         );
         assert_eq!(
             verdict(&element("AXTextArea", true, true)).seen(),

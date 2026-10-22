@@ -49,6 +49,7 @@ impl Server {
     }
 }
 
+#[expect(clippy::too_many_lines, reason = "size baseline")]
 fn serve(mut stream: TcpStream, mode: Mode, seen: &Mutex<Vec<Option<String>>>) {
     let mut reader = BufReader::new(stream.try_clone().unwrap());
     let mut request_line = String::new();

@@ -254,7 +254,7 @@ A needed service whose port already answers as that service SHALL be adopted: th
 - **AND** after the app quits both services still answer
 
 ### Requirement: An owned service that stops is started again
-A service the app started SHALL be started again when its process exits, after 1 second, the pause doubling with every exit in a row up to 30 seconds and falling back to 1 second after a run of 30 seconds or more; a service with a health check (the text refinement and command spotting services; the whisper copies have none, as in the service scripts) that once answered and then fails three checks of it in a row SHALL be killed and started again the same way.
+A service the app started SHALL be started again when its process exits, after 1 second, the pause doubling with every exit in a row up to 30 seconds and falling back to 1 second after a run of 30 seconds or more; a service or copy that once answered its health check and then fails three checks of it in a row SHALL be killed and started again the same way. Every service the app starts is health-checked, each copy of a speech recognition service on its own.
 
 #### Scenario: An owned service exits
 - **GIVEN** the app started the text refinement service and it is ready
@@ -270,6 +270,12 @@ A service the app started SHALL be started again when its process exits, after 1
 - **GIVEN** the app started the text refinement service and it is ready
 - **WHEN** it fails three checks in a row without exiting
 - **THEN** the app kills it and starts it again
+
+#### Scenario: An owned speech recognition copy that stops answering is restarted
+- **GIVEN** the app started the speech recognition service for dictation and its copies are ready
+- **WHEN** one copy stops answering without exiting
+- **THEN** within 30 seconds the app has killed that copy and started it again, and it answers on its port
+- **AND** the other copies were never restarted
 
 ### Requirement: An owned service that cannot start is marked Failed
 After five starts in a row of one service that each ended before the service answered — its process exited or 60 seconds passed — the app SHALL mark that service Failed with the reason and its log file, stop trying, and start it again only when the user asks to retry it.
@@ -358,3 +364,31 @@ At every launch that manages services, the app SHALL log for each service the en
 - **GIVEN** the app runs outside a bundle and `$PATH` leads to llama-server in Homebrew's folder of version 0.7.0
 - **WHEN** the app launches with refinement on and looks up its services
 - **THEN** its log says the text refinement service runs llama-server 0.7.0 from `$PATH`
+
+### Requirement: The app runs every service as copies
+When the app manages its services, it SHALL start the text refinement and command spotting services as the configured number of copies, 1 to 4, 2 by default, found from the service's address as the copies of a speech recognition service are, on copy ports apart from those of every other service. A service already answering on its own port or its copy ports SHALL be adopted as it runs.
+
+#### Scenario: Refinement on starts two copies of the text refinement service
+- **GIVEN** no local service runs, refinement is on and the number of its copies is not configured
+- **WHEN** the app launches
+- **THEN** the text refinement service is started as two copies on its copy ports, and nothing is started on its own port
+
+#### Scenario: Voice control starts two copies of the command spotting service
+- **GIVEN** no local service runs, voice control is on and the number of its copies is not configured
+- **WHEN** the app launches
+- **THEN** the command spotting service is started as two copies on its copy ports
+
+#### Scenario: One configured copy runs on the service's own port
+- **GIVEN** refinement is on and its service is configured as one copy
+- **WHEN** the app launches
+- **THEN** the text refinement service is started once, on its own port
+
+#### Scenario: The copy ports of the services never overlap
+- **GIVEN** every service on its default address
+- **WHEN** the app works out the copy ports of each
+- **THEN** no port is a copy port of two services
+
+#### Scenario: A text refinement service the scripts run is adopted
+- **GIVEN** the service scripts run the text refinement service on its own port
+- **WHEN** the app launches with refinement on
+- **THEN** the app adopts it and starts no copy of it

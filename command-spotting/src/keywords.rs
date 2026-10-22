@@ -55,10 +55,7 @@ pub fn parse(text: &str) -> Vec<Keyword> {
         .filter(|line| !line.is_empty() && !line.starts_with(COMMENT))
         .filter_map(|line| {
             let (_, phrase) = line.split_once(PHRASE_MARKER)?;
-            Some(Keyword {
-                phrase: phrase_of(phrase.trim()),
-                line: line.to_owned(),
-            })
+            Some(Keyword { phrase: phrase_of(phrase.trim()), line: line.to_owned() })
         })
         .collect()
 }

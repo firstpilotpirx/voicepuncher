@@ -42,3 +42,19 @@ Feature: speech-recognition
       When the user stops the dictation
       Then the text of the first and third chunks is pasted
       And the lost second chunk is logged
+
+  Rule: A dead transcription worker loses only its dictation
+
+    Scenario: The worker dies mid-dictation
+      Given the live transcription worker of a dictation stops without a result
+      When the user finishes that dictation and then dictates again
+      Then the first dictation ends with the notice that speech recognition failed
+      And the text of the second dictation is pasted
+
+  Rule: Stopping a dictation waits a bounded time for its transcript
+
+    Scenario: The speech recognition request never answers
+      Given the speech recognition service never answers the last chunk of a dictation
+      When the user finishes the dictation and presses the hotkey during the wait
+      Then the dictation ends with the notice that speech recognition failed once the wait is over
+      And the hotkey press made during the wait starts a new recording

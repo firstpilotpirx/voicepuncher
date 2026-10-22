@@ -27,21 +27,11 @@ impl Harness {
         let spawns = Spawns::default();
         let launcher = FakeLauncher::new(&spawns);
         let unit = Supervision::new(spec, clock.now());
-        Self {
-            clock,
-            spawns,
-            probe: FakeProbe::default(),
-            launcher,
-            unit,
-        }
+        Self { clock, spawns, probe: FakeProbe::default(), launcher, unit }
     }
 
     fn tick(&mut self) {
-        let senses = Senses {
-            launcher: &self.launcher,
-            probe: &self.probe,
-            now: self.clock.now(),
-        };
+        let senses = Senses { launcher: &self.launcher, probe: &self.probe, now: self.clock.now() };
         self.unit.tick(&senses);
     }
 
@@ -182,19 +172,18 @@ fn should_kill_and_restart_an_owned_service_after_three_failed_checks() {
 }
 
 #[test]
-fn should_not_check_a_whisper_copy_while_it_runs() {
+fn should_kill_and_restart_a_whisper_copy_that_stops_answering() {
     // Given
-    let mut copy = spec(ServiceKind::Dictation, PORT);
-    copy.health_checked = false;
-    let mut harness = Harness::of(copy);
+    let mut harness = Harness::of(spec(ServiceKind::Dictation, PORT));
     harness.tick();
     harness.answers(ProbeAnswer::Ready);
     harness.tick();
     harness.answers(ProbeAnswer::Busy);
     // When
-    (0..4).for_each(|_| harness.after(5.0));
+    (0..3).for_each(|_| harness.after(5.0));
     // Then
-    assert_eq!(harness.state(), ServiceState::Ready);
+    assert!(harness.spawns.all()[0].killed);
+    assert!(matches!(harness.state(), ServiceState::Restarting { .. }));
 }
 
 #[test]

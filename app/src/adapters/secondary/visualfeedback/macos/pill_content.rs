@@ -39,35 +39,20 @@ pub(super) struct SignLook {
 
 pub(super) const FAILURE_SYMBOL: &str = "exclamationmark.triangle.fill";
 
-pub(super) const PASTED_SIGN: SignLook = SignLook {
-    symbol: "checkmark",
-    label: "Pasted",
-    tint: IconTint::PastedGreen,
-};
+pub(super) const PASTED_SIGN: SignLook =
+    SignLook { symbol: "checkmark", label: "Pasted", tint: IconTint::PastedGreen };
 
-pub(super) const COMMANDS_UNAVAILABLE_SIGN: SignLook = SignLook {
-    symbol: "mic.slash",
-    label: "CMD",
-    tint: IconTint::Unavailable,
-};
+pub(super) const COMMANDS_UNAVAILABLE_SIGN: SignLook =
+    SignLook { symbol: "mic.slash", label: "CMD", tint: IconTint::Unavailable };
 
-const RECOGNIZING_SIGN: SignLook = SignLook {
-    symbol: "ear",
-    label: "Recognizing",
-    tint: IconTint::Content,
-};
+const RECOGNIZING_SIGN: SignLook =
+    SignLook { symbol: "ear", label: "Recognizing", tint: IconTint::Content };
 
-const REFINING_SIGN: SignLook = SignLook {
-    symbol: "sparkles",
-    label: "Refining text",
-    tint: IconTint::Content,
-};
+const REFINING_SIGN: SignLook =
+    SignLook { symbol: "sparkles", label: "Refining text", tint: IconTint::Content };
 
-const WAITING_SIGN: SignLook = SignLook {
-    symbol: "keyboard",
-    label: "Click a text field",
-    tint: IconTint::Content,
-};
+const WAITING_SIGN: SignLook =
+    SignLook { symbol: "keyboard", label: "Click a text field", tint: IconTint::Content };
 
 /// The icon and label of `state`; `None` for the recording, which shows the record sign and the
 /// waveform instead, and for the hidden overlay.
@@ -97,11 +82,7 @@ pub(super) fn command_sign(command: VoiceCommand) -> Option<SignLook> {
         | VoiceCommand::StopDictation
         | VoiceCommand::CancelDictation => return None,
     };
-    Some(SignLook {
-        symbol,
-        label,
-        tint: IconTint::Content,
-    })
+    Some(SignLook { symbol, label, tint: IconTint::Content })
 }
 
 /// The tint of the glass in `state`.
@@ -238,11 +219,7 @@ mod tests {
     const ANY_ROW: f64 = 0.0;
 
     fn look(symbol: &'static str, label: &'static str, tint: IconTint) -> SignLook {
-        SignLook {
-            symbol,
-            label,
-            tint,
-        }
+        SignLook { symbol, label, tint }
     }
 
     #[test]

@@ -44,12 +44,8 @@ pub struct Turned {
 
 /// The row of `status`.
 pub fn shown(status: LoginItemStatus) -> LoginSwitchView {
-    let view = |on, enabled, note, approval_button| LoginSwitchView {
-        on,
-        enabled,
-        note,
-        approval_button,
-    };
+    let view =
+        |on, enabled, note, approval_button| LoginSwitchView { on, enabled, note, approval_button };
     match status {
         LoginItemStatus::NotRegistered => view(false, true, None, false),
         LoginItemStatus::Enabled => view(true, true, None, false),
@@ -83,20 +79,14 @@ impl LoginSwitch {
     pub fn turn(&self, on: bool) -> Turned {
         let before = self.item.status();
         if before == LoginItemStatus::Unavailable || shown(before).on == on {
-            return Turned {
-                view: shown(before),
-                refusal: None,
-            };
+            return Turned { view: shown(before), refusal: None };
         }
         let changed = if on {
             self.item.register()
         } else {
             self.item.unregister()
         };
-        Turned {
-            view: self.view(),
-            refusal: changed.err(),
-        }
+        Turned { view: self.view(), refusal: changed.err() }
     }
 }
 
@@ -117,11 +107,7 @@ pub struct LoginOffer {
 
 impl LoginOffer {
     pub fn new(item: Arc<dyn LoginItem>, config_path: PathBuf) -> Self {
-        Self {
-            item,
-            config_path,
-            made: AtomicBool::new(false),
-        }
+        Self { item, config_path, made: AtomicBool::new(false) }
     }
 
     /// Whether reaching Ready asks now; true at most once per run, so a reload that

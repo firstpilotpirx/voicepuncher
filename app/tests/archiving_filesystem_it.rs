@@ -29,10 +29,7 @@ fn entry(started_at: SystemTime, samples: Vec<i16>) -> ArchiveEntry {
         refinement: Some(RefinementOutcome::Refined),
         outcome: DictationOutcome::Pasted,
         lost_chunks: 0,
-        timings: vec![StageTiming {
-            stage: "transcribe",
-            ms: 300,
-        }],
+        timings: vec![StageTiming { stage: "transcribe", ms: 300 }],
     }
 }
 

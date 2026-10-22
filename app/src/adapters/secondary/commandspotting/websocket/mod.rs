@@ -49,6 +49,7 @@ impl AudioStream {
     /// resampled to 16 kHz; the service's events go to `inputs`. When the service goes
     /// away the worker reaches for it again until stopped, and tells `inputs` of the loss
     /// and of the return.
+    #[expect(clippy::too_many_arguments, reason = "size baseline")]
     pub fn start(
         url: &str,
         commands: &[VoiceCommand],
@@ -69,6 +70,7 @@ impl AudioStream {
     }
 
     /// As `start`, pacing the attempts after a loss and the replay by `timings`.
+    #[expect(clippy::too_many_arguments, reason = "size baseline")]
     pub fn start_with_timings(
         url: &str,
         commands: &[VoiceCommand],
@@ -101,11 +103,7 @@ impl AudioStream {
         let worker = std::thread::Builder::new()
             .name("command-spotting".into())
             .spawn(move || stream_to_service(streamed))?;
-        Ok(Self {
-            control,
-            worker,
-            heard,
-        })
+        Ok(Self { control, worker, heard })
     }
 
     /// The audio streamed from `since` on, as far as it is still held.
@@ -142,12 +140,7 @@ pub struct WebSocketCommandSpotter {
 
 impl WebSocketCommandSpotter {
     pub fn new(url: String, inputs: Sender<PipelineInput>) -> Self {
-        Self {
-            url,
-            inputs,
-            listening: None,
-            input_device: devices::DEFAULT_DEVICE.to_owned(),
-        }
+        Self { url, inputs, listening: None, input_device: devices::DEFAULT_DEVICE.to_owned() }
     }
 
     /// Listens on the input device `name` names (see [`devices::open`]).
@@ -179,10 +172,7 @@ impl CommandSpotter for WebSocketCommandSpotter {
             self.inputs.clone(),
         )?;
         log::info!("command spotting: streaming to the service");
-        self.listening = Some(Listening {
-            stream,
-            _capture: capture,
-        });
+        self.listening = Some(Listening { stream, _capture: capture });
         Ok(())
     }
 
@@ -300,14 +290,8 @@ impl Stream {
     /// captured: they fall behind the clock once audio was lost. Its own times stay, as the
     /// lead-in is taken by them.
     fn to_capture_times(&self, event: &mut SpottingEvent) {
-        let (SpottingEvent::PhraseSpotted {
-            timing: Some(report),
-            ..
-        }
-        | SpottingEvent::CommandsSaid {
-            timing: Some(report),
-            ..
-        }) = event
+        let (SpottingEvent::PhraseSpotted { timing: Some(report), .. }
+        | SpottingEvent::CommandsSaid { timing: Some(report), .. }) = event
         else {
             return;
         };
@@ -344,6 +328,7 @@ impl Stream {
 
     /// Tries the service again when the pause after the last attempt is over; tells the
     /// pipeline once when the outage has lasted too long for the replay to hide it.
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn reach_for_service(&mut self) {
         let Link::Away(outage) = &mut self.link else {
             return;

@@ -17,9 +17,13 @@ mod app;
 mod confirmations;
 mod copies;
 mod hangs;
+mod managed;
 mod models;
+mod owned;
 
+pub use managed::{capture_log, ManagedRun, Needed};
 pub use models::Role;
+pub use owned::OwnedServices;
 
 const SPEECH_RECOGNITION: &str = "whisper-server";
 /// The speech recognition service for commands, by its name in the service scripts.
@@ -300,6 +304,7 @@ impl ScenarioServices {
 }
 
 impl Drop for ScenarioServices {
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn drop(&mut self) {
         for pid in std::mem::take(&mut self.paused) {
             let _ = signal(pid, "-CONT");
@@ -592,6 +597,7 @@ async fn service_stays_stopped(world: &mut E2eWorld) -> Result<()> {
 }
 
 #[then("the start fails within 15 seconds naming the service and its log, and no process of it is left")]
+#[expect(clippy::too_many_lines, reason = "size baseline")]
 async fn start_failed(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let services = services(world)?;

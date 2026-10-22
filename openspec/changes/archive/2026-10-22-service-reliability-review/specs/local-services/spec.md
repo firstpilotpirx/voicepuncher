@@ -27,7 +27,7 @@ A service the app started SHALL be started again when its process exits, after 1
 ## ADDED Requirements
 
 ### Requirement: The app runs every service as copies
-When the app manages its services, it SHALL start the text refinement and command spotting services as the configured number of copies, 1 to 4, 2 by default, placed and found from the service's address as the copies of a speech recognition service are. A service already answering on its own port or its copy ports SHALL be adopted as it runs.
+When the app manages its services, it SHALL start the text refinement and command spotting services as the configured number of copies, 1 to 4, 2 by default, found from the service's address as the copies of a speech recognition service are, on copy ports apart from those of every other service. A service already answering on its own port or its copy ports SHALL be adopted as it runs.
 
 #### Scenario: Refinement on starts two copies of the text refinement service
 - **GIVEN** no local service runs, refinement is on and the number of its copies is not configured
@@ -43,6 +43,11 @@ When the app manages its services, it SHALL start the text refinement and comman
 - **GIVEN** refinement is on and its service is configured as one copy
 - **WHEN** the app launches
 - **THEN** the text refinement service is started once, on its own port
+
+#### Scenario: The copy ports of the services never overlap
+- **GIVEN** every service on its default address
+- **WHEN** the app works out the copy ports of each
+- **THEN** no port is a copy port of two services
 
 #### Scenario: A text refinement service the scripts run is adopted
 - **GIVEN** the service scripts run the text refinement service on its own port

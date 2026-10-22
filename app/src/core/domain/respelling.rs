@@ -25,6 +25,7 @@ enum Sound {
 /// Which `cyrillic` and `latin` words (lowercase) are respellings of each other: one
 /// flag per word, set when the word is part of a respelling. Both lists keep their order,
 /// and respellings never cross: the first Cyrillic word matches before the second.
+#[expect(clippy::excessive_nesting, reason = "size baseline")]
 pub fn find_respellings(cyrillic: &[String], latin: &[String]) -> (Vec<bool>, Vec<bool>) {
     let (cyr, lat): (Vec<Vec<Sound>>, Vec<Vec<Sound>>) = (
         cyrillic.iter().map(|w| sounds(w)).collect(),

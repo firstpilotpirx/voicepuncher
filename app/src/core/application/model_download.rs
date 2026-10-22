@@ -207,14 +207,7 @@ impl ModelDownload {
         disk: Box<dyn DiskSpace>,
         clock: Arc<dyn Clock>,
     ) -> Self {
-        Self {
-            files,
-            store,
-            fetcher,
-            disk,
-            clock,
-            mirror: None,
-        }
+        Self { files, store, fetcher, disk, clock, mirror: None }
     }
 
     /// Fetches every file from `<mirror>/<name>` instead of its pinned address.
@@ -242,11 +235,7 @@ impl ModelDownload {
             .filter(|row| !row.present)
             .map(|row| row.file.size_bytes.saturating_sub(row.part))
             .sum();
-        ModelsReport {
-            rows,
-            missing_bytes,
-            free_bytes: self.disk.free_bytes(),
-        }
+        ModelsReport { rows, missing_bytes, free_bytes: self.disk.free_bytes() }
     }
 
     /// Fetches every missing file in catalog order; returns once each is placed, failed or
@@ -257,11 +246,8 @@ impl ModelDownload {
         cancel: &AtomicBool,
     ) -> DownloadSummary {
         let report = self.check();
-        let mut summary = DownloadSummary {
-            failed: Vec::new(),
-            cancelled: false,
-            all_present: false,
-        };
+        let mut summary =
+            DownloadSummary { failed: Vec::new(), cancelled: false, all_present: false };
         if !report.enough_space() {
             observer.event(&DownloadEvent::NotEnoughSpace {
                 needed: report.missing_bytes,
@@ -298,6 +284,7 @@ impl ModelDownload {
     }
 
     /// Places `file`; `Err(None)` when cancelled.
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn download(
         &self,
         file: &ModelFile,
@@ -342,6 +329,7 @@ impl ModelDownload {
         }
     }
 
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn try_once(
         &self,
         file: &ModelFile,

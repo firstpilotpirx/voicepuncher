@@ -41,14 +41,8 @@ pub(super) struct FakeServices {
 
 impl FakeServices {
     pub(super) fn new(events: &Events, answer_by_themselves: bool) -> Self {
-        let inner = Inner {
-            answer_by_themselves,
-            ..Inner::default()
-        };
-        Self {
-            inner: Arc::new(Mutex::new(inner)),
-            events: Arc::clone(events),
-        }
+        let inner = Inner { answer_by_themselves, ..Inner::default() };
+        Self { inner: Arc::new(Mutex::new(inner)), events: Arc::clone(events) }
     }
 
     fn set(&self, port: u16, state: ServiceState) {
@@ -106,6 +100,7 @@ impl LocalServices for FakeServices {
         inner.needed = needed;
     }
 
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn progress(&self) -> ServicesProgress {
         let mut inner = self.inner.lock().unwrap();
         if inner.answer_by_themselves {
@@ -276,10 +271,7 @@ fn ready_with_services(world: &mut IntegrationWorld) -> Result<()> {
 
 #[when("one of them stops answering")]
 fn one_stops_answering(world: &mut IntegrationWorld) -> Result<()> {
-    let restarting = ServiceState::Restarting {
-        attempt: 1,
-        pause: Duration::from_secs(1),
-    };
+    let restarting = ServiceState::Restarting { attempt: 1, pause: Duration::from_secs(1) };
     services(run(world))?.set(REFINEMENT, restarting);
     Ok(())
 }
@@ -324,15 +316,7 @@ fn voice_control_services_started(world: &mut IntegrationWorld) -> Result<()> {
 #[then("the runtime becomes Ready with voice control on once they are ready")]
 fn ready_with_voice_control_on(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
-    run.state_becomes(|s| {
-        matches!(
-            s,
-            RuntimeState::Ready {
-                voice_control: true,
-                ..
-            }
-        )
-    })?;
+    run.state_becomes(|s| matches!(s, RuntimeState::Ready { voice_control: true, .. }))?;
     if services(run)?
         .states()
         .iter()

@@ -616,3 +616,20 @@ Feature: voice-control
       When the user says "stop dictation" once the service is back
       Then the dictation ends and its text is pasted
 
+  @serial @resilience
+  Rule: Listening moves to another copy of the command spotting service
+
+    Scenario: The command spotting copy the app listens with is killed
+      Given the app started the command spotting service and the speech recognition service for commands as two copies each, and listening is on
+      When the copy of the command spotting service the app listens with is killed and the user says "press enter" a moment later
+      Then the Return key is pressed in the focused app
+      And the overlay did not show that voice commands do not work
+      And the killed copy answers again within 30 seconds
+
+  @serial @resilience
+  Rule: A confirmation refused by its copy goes to another copy
+
+    Scenario: A copy for commands is killed while voice control runs
+      Given the app started the command spotting service and the speech recognition service for commands as two copies each, and listening is on
+      When one copy of the speech recognition service for commands is killed and the user says "press enter" right away
+      Then the Return key is pressed in the focused app

@@ -77,11 +77,7 @@ fn load(dir: &Path) -> Session {
         .into_iter()
         .map(|s| f32::from(s) / f32::from(i16::MAX))
         .collect();
-    Session {
-        name: dir.file_name().unwrap().to_string_lossy().into_owned(),
-        audio,
-        forms,
-    }
+    Session { name: dir.file_name().unwrap().to_string_lossy().into_owned(), audio, forms }
 }
 
 fn sample_at(secs: f32) -> usize {
@@ -117,6 +113,7 @@ fn heard(url: &str, session: &Session, form: &Form) -> Vec<String> {
 }
 
 #[test]
+#[expect(clippy::too_many_lines, reason = "size baseline")]
 fn should_carry_out_every_recorded_way_of_saying_the_commands() {
     let Some((url, sessions)) = sessions() else {
         return;

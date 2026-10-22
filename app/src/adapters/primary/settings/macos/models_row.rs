@@ -49,11 +49,7 @@ impl ModelsRow {
             parts.mtm,
             &[line.as_ref(), download.as_ref(), show.as_ref()],
         );
-        let row = Self {
-            panel,
-            line,
-            view: Retained::into_super(view),
-        };
+        let row = Self { panel, line, view: Retained::into_super(view) };
         row.refresh();
         row
     }

@@ -236,10 +236,7 @@ impl VoiceControlCfg {
 
 impl Default for VoiceControlCfg {
     fn default() -> Self {
-        Self {
-            enabled: false,
-            url: Self::default_url(),
-        }
+        Self { enabled: false, url: Self::default_url() }
     }
 }
 
@@ -312,9 +309,7 @@ impl LoggingCfg {
 
 impl Default for LoggingCfg {
     fn default() -> Self {
-        Self {
-            level: Self::default_level(),
-        }
+        Self { level: Self::default_level() }
     }
 }
 
@@ -328,6 +323,10 @@ pub struct ServicesCfg {
     pub dictation_copies: u32,
     #[serde(default = "ServicesCfg::default_copies")]
     pub command_copies: u32,
+    #[serde(default = "ServicesCfg::default_service_copies")]
+    pub refinement_copies: u32,
+    #[serde(default = "ServicesCfg::default_service_copies")]
+    pub command_spotting_copies: u32,
     #[serde(default = "ServicesCfg::default_models_dir")]
     pub models_dir: PathBuf,
     /// The speech recognition service for commands, which the command spotting service asks.
@@ -335,7 +334,7 @@ pub struct ServicesCfg {
     pub commands_url: String,
 }
 
-/// The most copies of a speech recognition service: its clients look on four ports.
+/// The most copies of a service: its clients look on four ports.
 pub const MAX_SERVICE_COPIES: u32 = 4;
 const DEFAULT_MODELS_DIR: &str = "~/.voicepuncher/models";
 
@@ -346,6 +345,12 @@ impl ServicesCfg {
 
     fn default_copies() -> u32 {
         3
+    }
+
+    /// Two copies of a service that answers one request at a time: one takes over while
+    /// the other is restarted.
+    fn default_service_copies() -> u32 {
+        2
     }
 
     fn default_models_dir() -> PathBuf {
@@ -371,6 +376,8 @@ impl Default for ServicesCfg {
             manage: Self::default_manage(),
             dictation_copies: Self::default_copies(),
             command_copies: Self::default_copies(),
+            refinement_copies: Self::default_service_copies(),
+            command_spotting_copies: Self::default_service_copies(),
             models_dir: Self::default_models_dir(),
             commands_url: Self::default_commands_url(),
         }
@@ -423,7 +430,12 @@ pub fn validate(cfg: &Config) -> Result<()> {
     ensure_loopback_websocket("voice_control.url", &cfg.voice_control.url)?;
     ensure_loopback("services.commands_url", &cfg.services.commands_url)?;
     ensure_copies("services.dictation_copies", cfg.services.dictation_copies)?;
-    ensure_copies("services.command_copies", cfg.services.command_copies)
+    ensure_copies("services.command_copies", cfg.services.command_copies)?;
+    ensure_copies("services.refinement_copies", cfg.services.refinement_copies)?;
+    ensure_copies(
+        "services.command_spotting_copies",
+        cfg.services.command_spotting_copies,
+    )
 }
 
 fn ensure_copies(key: &str, copies: u32) -> Result<()> {
@@ -460,6 +472,7 @@ mod default_file_tests {
     }
 
     #[test]
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn should_set_every_option_with_a_comment_above_it_in_the_default_file() {
         // Given
         let defaults = toml::Value::try_from(Config::default()).unwrap();
@@ -701,10 +714,7 @@ mod tests {
     #[test]
     fn should_keep_an_absolute_archive_folder_as_it_is() {
         // Given
-        let archive = ArchiveCfg {
-            dir: "/tmp/dictations".into(),
-            ..ArchiveCfg::default()
-        };
+        let archive = ArchiveCfg { dir: "/tmp/dictations".into(), ..ArchiveCfg::default() };
         // When
         let dir = archive.resolved_dir(Path::new("/Users/someone"));
         // Then
@@ -895,6 +905,47 @@ mod tests {
             PathBuf::from("~/.voicepuncher/models")
         );
         assert_eq!(cfg.services.commands_url, "http://127.0.0.1:8085/v1");
+    }
+
+    #[test]
+    fn should_run_two_copies_of_the_refinement_service_by_default() {
+        let cfg = Config::default();
+        assert_eq!(cfg.services.refinement_copies, 2);
+    }
+
+    #[test]
+    fn should_run_two_copies_of_the_command_spotting_service_by_default() {
+        let cfg = Config::default();
+        assert_eq!(cfg.services.command_spotting_copies, 2);
+    }
+
+    #[test]
+    fn should_reject_more_command_spotting_copies_than_the_client_looks_for() {
+        for copies in [0, 5] {
+            // Given
+            let mut f = tempfile::NamedTempFile::new().unwrap();
+            writeln!(f, "[services]\ncommand_spotting_copies = {copies}").unwrap();
+            // When
+            let message = format!("{:#}", load(f.path()).unwrap_err());
+            // Then
+            assert!(
+                message.contains("services.command_spotting_copies"),
+                "{message}"
+            );
+        }
+    }
+
+    #[test]
+    fn should_reject_more_refinement_copies_than_the_pool_looks_for() {
+        for copies in [0, 5] {
+            // Given
+            let mut f = tempfile::NamedTempFile::new().unwrap();
+            writeln!(f, "[services]\nrefinement_copies = {copies}").unwrap();
+            // When
+            let message = format!("{:#}", load(f.path()).unwrap_err());
+            // Then
+            assert!(message.contains("services.refinement_copies"), "{message}");
+        }
     }
 
     #[test]

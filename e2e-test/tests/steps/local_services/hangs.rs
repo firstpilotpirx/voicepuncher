@@ -109,11 +109,7 @@ async fn stream_through_several_checks(world: &mut E2eWorld) -> Result<()> {
 }
 
 fn speech_as_f32() -> Result<Vec<f32>> {
-    let samples = synthesized(&SayRequest {
-        voice: None,
-        words_per_minute: None,
-        text: SPEECH,
-    })?;
+    let samples = synthesized(&SayRequest { voice: None, words_per_minute: None, text: SPEECH })?;
     Ok(samples
         .into_iter()
         .map(|s| f32::from(s) / f32::from(i16::MAX))

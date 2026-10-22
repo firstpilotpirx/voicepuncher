@@ -240,6 +240,7 @@ fn should_exit_2_when_the_file_mode_service_does_not_answer() {
 }
 
 #[test]
+#[expect(clippy::too_many_lines, reason = "size baseline")]
 fn should_offer_only_the_developer_options_each_saying_it_overrides_the_configuration() {
     // Given
     use clap::CommandFactory;

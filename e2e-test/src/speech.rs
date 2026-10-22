@@ -266,10 +266,7 @@ impl Biquad {
         } else {
             ((1.0 - cos) / 2.0, 1.0 - cos)
         };
-        Self {
-            b: [b0 / a0, b1 / a0, b0 / a0],
-            a: [-2.0 * cos / a0, (1.0 - alpha) / a0],
-        }
+        Self { b: [b0 / a0, b1 / a0, b0 / a0], a: [-2.0 * cos / a0, (1.0 - alpha) / a0] }
     }
 
     fn high_pass(freq: f32) -> Self {
@@ -464,6 +461,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn should_synthesize_speech_longer_than_the_chunk_threshold_in_every_condition() {
         std::thread::scope(|scope| {
             for lang in Lang::ALL {

@@ -35,11 +35,7 @@ impl MacOsTextPaster {
     /// A paster that sends `press_paste` instead of Cmd+V and needs no accessibility trust: for tests of
     /// what a paste does to the clipboard.
     pub fn with_paste_keystroke(restore_delay_ms: u64, press_paste: fn() -> Result<()>) -> Self {
-        Self {
-            restore_delay_ms,
-            trusted: || true,
-            press_paste,
-        }
+        Self { restore_delay_ms, trusted: || true, press_paste }
     }
 
     fn ensure_trusted(&self) -> Result<()> {
@@ -116,11 +112,8 @@ mod tests {
     #[test]
     fn should_fail_with_accessibility_missing_when_the_process_is_not_trusted() {
         // Given
-        let mut paster = MacOsTextPaster {
-            restore_delay_ms: 0,
-            trusted: || false,
-            press_paste: || Ok(()),
-        };
+        let mut paster =
+            MacOsTextPaster { restore_delay_ms: 0, trusted: || false, press_paste: || Ok(()) };
         let text = CleanedText::new("hello".to_owned()).unwrap();
         // When
         let error = paster.paste(&text).unwrap_err();

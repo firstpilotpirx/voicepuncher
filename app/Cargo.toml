@@ -1,8 +1,15 @@
 [package]
 name = "voicepuncher"
-version = "0.35.0"
+version = "0.36.1"
 edition = "2021"
 rust-version = "1.88"
+
+[lints]
+workspace = true
+
+# The size_budgets test measures every member's source, so its part key (justfile _stage-keys) covers them all
+[package.metadata.stage-keys]
+tests-read-every-member = true
 
 [dependencies]
 anyhow = "1"
@@ -120,6 +127,8 @@ mockall = "0.13"
 tempfile = "3"
 walkdir = "2"
 regex = "1"
+syn = { version = "=2.0.117", features = ["full", "visit"] }
+proc-macro2 = { version = "=1.0.106", features = ["span-locations"] }
 cucumber = "=0.23.0"
 futures = "=0.3.34"
 voicepuncher-e2e-test = { path = "../e2e-test" }

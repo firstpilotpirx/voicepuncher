@@ -38,11 +38,7 @@ pub struct LoginItemDouble {
 
 impl LoginItemDouble {
     fn new(status: LoginItemStatus) -> Self {
-        Self {
-            status: Mutex::new(status),
-            refuses: Mutex::new(false),
-            changes: Mutex::new(0),
-        }
+        Self { status: Mutex::new(status), refuses: Mutex::new(false), changes: Mutex::new(0) }
     }
 
     fn set(&self, status: LoginItemStatus) {

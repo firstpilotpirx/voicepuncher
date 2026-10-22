@@ -57,9 +57,7 @@ impl PhraseMatcher {
     }
 
     pub fn new(phrases: &[String]) -> Self {
-        Self {
-            phrases: phrases.to_vec(),
-        }
+        Self { phrases: phrases.to_vec() }
     }
 
     /// Selects the phrases of `self` and of `other`, each once, `self`'s first.

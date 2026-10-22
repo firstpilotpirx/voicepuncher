@@ -43,11 +43,7 @@ fn stored_entries(dir: &Path) -> Result<Vec<StoredEntry>> {
         }
         let path = item.path();
         let size_bytes = folder_size(&path)?;
-        entries.push(StoredEntry {
-            name,
-            path,
-            size_bytes,
-        });
+        entries.push(StoredEntry { name, path, size_bytes });
     }
     entries.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(entries)

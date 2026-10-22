@@ -152,11 +152,7 @@ fn ensure_all_answered(unanswered: &[String], sent: usize, when: &str) -> Result
 }
 
 pub(super) fn short_speech() -> Result<Vec<i16>> {
-    synthesized(&SayRequest {
-        voice: None,
-        words_per_minute: None,
-        text: SHORT_UTTERANCE,
-    })
+    synthesized(&SayRequest { voice: None, words_per_minute: None, text: SHORT_UTTERANCE })
 }
 
 fn long_speech() -> Result<Vec<i16>> {
@@ -517,6 +513,7 @@ async fn copies_busy(world: &mut E2eWorld) -> Result<()> {
 }
 
 #[when("two more requests arrive one after another")]
+#[expect(clippy::excessive_nesting, reason = "size baseline")]
 async fn more_requests(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let services = services(world)?;
@@ -567,6 +564,7 @@ fn answered(requests: Vec<JoinHandle<Result<Instant>>>) -> Result<Vec<Instant>> 
 }
 
 #[then("each starts on the first copy that frees, in the order they arrived, and no copy transcribes two requests at once")]
+#[expect(clippy::too_many_lines, reason = "size baseline")]
 async fn waited_their_turn(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let services = services(world)?;

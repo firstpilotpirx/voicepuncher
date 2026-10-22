@@ -11,11 +11,7 @@ pub struct TeeWriter<F: Write, T: Write> {
 
 impl<F: Write, T: Write> TeeWriter<F, T> {
     pub fn new(file: F, terminal: Option<T>) -> Self {
-        Self {
-            file,
-            terminal,
-            file_failure_reported: false,
-        }
+        Self { file, terminal, file_failure_reported: false }
     }
 
     fn report_file_failure(&mut self, error: &io::Error) {

@@ -21,12 +21,8 @@ const PADDING_Y: f64 = 9.0;
 const FONT_SIZE: f64 = 14.0;
 const MAX_LINES: isize = 2;
 const CORNER_RADIUS: f64 = 16.0;
-const SHADOW: ShadowStyle = ShadowStyle {
-    drop: 6.0,
-    blur: 18.0,
-    opacity: 0.15,
-    room_above: SHADOW_MARGIN,
-};
+const SHADOW: ShadowStyle =
+    ShadowStyle { drop: 6.0, blur: 18.0, opacity: 0.15, room_above: SHADOW_MARGIN };
 /// The window rises this far as it fades in.
 const RISE: f64 = 6.0;
 const RISE_SECS: f64 = 0.5;
@@ -51,11 +47,7 @@ impl TranscriptWindow {
         label.setLineBreakMode(NSLineBreakMode::ByTruncatingTail);
         label.setPreferredMaxLayoutWidth(WIDTH - 2.0 * PADDING_X);
         panel.content.addSubview(&label);
-        Self {
-            panel,
-            label,
-            rise: Arc::new(AtomicU64::new(0)),
-        }
+        Self { panel, label, rise: Arc::new(AtomicU64::new(0)) }
     }
 
     pub(super) fn window(&self) -> &NSWindow {
@@ -84,14 +76,8 @@ impl TranscriptWindow {
         self.label.setStringValue(&NSString::from_str(text));
         let text_height = self.text_height();
         self.label.setFrame(NSRect {
-            origin: NSPoint {
-                x: PADDING_X,
-                y: PADDING_Y,
-            },
-            size: NSSize {
-                width: WIDTH - 2.0 * PADDING_X,
-                height: text_height,
-            },
+            origin: NSPoint { x: PADDING_X, y: PADDING_Y },
+            size: NSSize { width: WIDTH - 2.0 * PADDING_X, height: text_height },
         });
         self.panel.set_glass_rect(glass_rect(pill, text_height));
         if self.panel.window.isVisible() {
@@ -168,10 +154,8 @@ impl WindowOnMain {
     /// Shows the window `eased` of the way in: as opaque, and as close to `landing`.
     fn place(&self, eased: f64, landing: NSPoint) {
         self.0.setAlphaValue(eased);
-        self.0.setFrameOrigin(NSPoint {
-            x: landing.x,
-            y: landing.y - RISE * (1.0 - eased),
-        });
+        self.0
+            .setFrameOrigin(NSPoint { x: landing.x, y: landing.y - RISE * (1.0 - eased) });
     }
 }
 
@@ -188,10 +172,7 @@ fn glass_rect(pill: NSRect, text_height: f64) -> NSRect {
             x: pill.origin.x + pill.size.width / 2.0 - WIDTH / 2.0,
             y: pill.origin.y - GAP_BELOW_PILL - height,
         },
-        size: NSSize {
-            width: WIDTH,
-            height,
-        },
+        size: NSSize { width: WIDTH, height },
     }
 }
 
@@ -210,10 +191,7 @@ mod tests {
     fn should_hang_the_window_eight_points_under_the_pill() {
         let pill = NSRect {
             origin: NSPoint { x: 400.0, y: 800.0 },
-            size: NSSize {
-                width: 200.0,
-                height: 40.0,
-            },
+            size: NSSize { width: 200.0, height: 40.0 },
         };
         let rect = glass_rect(pill, 20.0);
         assert_eq!(rect.origin, NSPoint { x: 260.0, y: 754.0 });

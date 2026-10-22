@@ -40,10 +40,7 @@ fn should_take_a_running_whisper_server_on_the_service_port_as_the_service() {
         app_dir: None,
         cores: 4,
     };
-    let needs = Needs {
-        refinement: false,
-        voice_control: false,
-    };
+    let needs = Needs { refinement: false, voice_control: false };
     // When
     let specs = needed(&cfg, needs, &machine, &HttpProbe);
     // Then

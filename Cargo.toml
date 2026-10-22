@@ -1,3 +1,12 @@
 [workspace]
 members = ["app", "command-spotting", "copy-pool", "e2e-test"]
 resolver = "2"
+
+# Size and complexity budgets (AGENTS.md § Architecture rules; thresholds in clippy.toml). A unit over budget on
+# `main` carries `#[expect(clippy::<lint>, reason = "size baseline")]` and an entry in app/tests/size_baseline.toml
+[workspace.lints.clippy]
+too_many_lines = "deny"
+too_many_arguments = "deny"
+excessive_nesting = "deny"
+cognitive_complexity = "deny"
+type_complexity = "deny"

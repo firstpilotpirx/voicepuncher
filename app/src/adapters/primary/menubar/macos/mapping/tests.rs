@@ -2,19 +2,11 @@ use super::*;
 use crate::core::domain::Permission;
 
 fn ready(mode: RecordingMode, voice_control: bool) -> Option<RuntimeState> {
-    Some(RuntimeState::Ready {
-        hotkey: HotKey::RightOption,
-        recording_mode: mode,
-        voice_control,
-    })
+    Some(RuntimeState::Ready { hotkey: HotKey::RightOption, recording_mode: mode, voice_control })
 }
 
 fn state(dictation: Option<DictationStage>, runtime: Option<RuntimeState>) -> StatusItemState {
-    StatusItemState {
-        dictation,
-        runtime,
-        commands_unavailable: false,
-    }
+    StatusItemState { dictation, runtime, commands_unavailable: false }
 }
 
 fn ready_state() -> StatusItemState {
@@ -109,12 +101,7 @@ fn should_draw_every_icon_state_with_its_symbol() {
         ),
     ];
     for (icon, symbol, template, red_dot, animated) in cases {
-        let expected = IconPicture {
-            symbol,
-            template,
-            red_dot,
-            animated,
-        };
+        let expected = IconPicture { symbol, template, red_dot, animated };
         assert_eq!(icon.picture(), expected, "{icon:?}");
     }
 }
@@ -153,6 +140,7 @@ fn should_name_how_to_stop_while_recording() {
 }
 
 #[test]
+#[expect(clippy::too_many_lines, reason = "size baseline")]
 fn should_name_every_other_state_in_words() {
     let failed = Some(RuntimeState::Failed(
         "speech recognition service is down".into(),

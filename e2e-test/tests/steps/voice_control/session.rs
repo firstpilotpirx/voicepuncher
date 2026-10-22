@@ -201,6 +201,7 @@ impl std::fmt::Debug for HandsFreeSession {
 }
 
 impl HandsFreeSession {
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn start(spotting_url: String, transcription_url: String) -> Result<Self> {
         let events = Events::default();
         let cues = Cues::default();
@@ -236,10 +237,7 @@ impl HandsFreeSession {
             PipelineConfig {
                 min_press_ms: 0,
                 recording_mode: RecordingMode::Toggle,
-                chunking: ChunkingCfg {
-                    chunk_threshold_secs: 0,
-                    ..ChunkingCfg::default()
-                },
+                chunking: ChunkingCfg { chunk_threshold_secs: 0, ..ChunkingCfg::default() },
             },
         )
         .with_voice_control(
@@ -247,13 +245,7 @@ impl HandsFreeSession {
             Box::new(RecordingKeys(Arc::clone(&events))),
         );
         std::thread::spawn(move || pipeline.run(inputs_rx));
-        Ok(Self {
-            events,
-            cues,
-            microphone,
-            to_spotter,
-            starts: Mutex::default(),
-        })
+        Ok(Self { events, cues, microphone, to_spotter, starts: Mutex::default() })
     }
 
     fn events(&self) -> Vec<Event> {

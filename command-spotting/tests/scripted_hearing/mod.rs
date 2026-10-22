@@ -52,10 +52,7 @@ impl ScriptedHearing {
                 end: seconds(word.said.end.min(clip_span.end) - offset),
             })
             .collect();
-        Heard {
-            text: words.iter().map(|w| w.text.as_str()).collect(),
-            words,
-        }
+        Heard { text: words.iter().map(|w| w.text.as_str()).collect(), words }
     }
 
     /// The sample of `word` a clip must hold for the word to be heard.

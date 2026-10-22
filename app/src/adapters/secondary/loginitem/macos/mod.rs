@@ -20,9 +20,7 @@ impl MacOsLoginItem {
     /// The login item of the app at `executable`; outside an installed bundle the system is
     /// never asked.
     pub fn new(executable: &Path) -> Self {
-        Self {
-            installed: is_installed_bundle(executable),
-        }
+        Self { installed: is_installed_bundle(executable) }
     }
 
     /// The login item of the running executable.

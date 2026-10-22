@@ -24,6 +24,8 @@ use voicepuncher_e2e_test::speech::repeated_phrases;
 
 use crate::IntegrationWorld;
 
+pub mod losses;
+
 const CHUNK_THRESHOLD_SECS: u32 = 30;
 
 /// One dictation: what the service answers per chunk, and the text the user spoke.
@@ -47,6 +49,7 @@ fn same_overlap() -> Dictation {
     }
 }
 
+#[expect(clippy::too_many_lines, reason = "size baseline")]
 fn differing_overlap(language: &str, difference: &str) -> Result<Dictation> {
     let (chunk_texts, spoken) = match (language, difference) {
         ("Russian", "other punctuation and case") => (
@@ -107,11 +110,7 @@ fn differing_overlap(language: &str, difference: &str) -> Result<Dictation> {
         ),
         _ => bail!("no {language} dictation with {difference}"),
     };
-    Ok(Dictation {
-        chunk_texts,
-        spoken,
-        failing_chunk: None,
-    })
+    Ok(Dictation { chunk_texts, spoken, failing_chunk: None })
 }
 
 fn no_shared_words() -> Dictation {
@@ -206,9 +205,7 @@ fn stop_dictation(world: &mut IntegrationWorld) -> Result<()> {
     let dictation = world.dictation.clone().context("no dictation")?;
     let pasted = Arc::new(Mutex::new(Vec::new()));
     let mut pipeline = Pipeline::new(
-        Box::new(ChunkingRecorder {
-            chunks: dictation.chunk_texts.len(),
-        }),
+        Box::new(ChunkingRecorder { chunks: dictation.chunk_texts.len() }),
         Box::new(FixedTranscripts(
             dictation.chunk_texts.clone(),
             dictation.failing_chunk,

@@ -48,9 +48,7 @@ impl Home {
     }
 
     fn empty() -> Self {
-        Self {
-            dir: tempfile::tempdir().unwrap(),
-        }
+        Self { dir: tempfile::tempdir().unwrap() }
     }
 
     fn path(&self) -> &Path {
@@ -81,19 +79,13 @@ fn kinds_and_ports(specs: &[ServiceSpec]) -> Vec<(ServiceKind, u16)> {
     specs.iter().map(|spec| (spec.kind, spec.port)).collect()
 }
 
-const ALL: Needs = Needs {
-    refinement: true,
-    voice_control: true,
-};
+const ALL: Needs = Needs { refinement: true, voice_control: true };
 
 #[test]
 fn should_need_the_dictation_copies_and_refinement_when_voice_control_is_off() {
     // Given
     let home = Home::complete();
-    let needs = Needs {
-        refinement: true,
-        voice_control: false,
-    };
+    let needs = Needs { refinement: true, voice_control: false };
     // When
     let specs = needed(&Config::default(), needs, &home.machine(), &NOTHING_RUNS);
     // Then
@@ -103,7 +95,8 @@ fn should_need_the_dictation_copies_and_refinement_when_voice_control_is_off() {
             (ServiceKind::Dictation, 18082),
             (ServiceKind::Dictation, 18083),
             (ServiceKind::Dictation, 18084),
-            (ServiceKind::Refinement, 8080),
+            (ServiceKind::Refinement, 48081),
+            (ServiceKind::Refinement, 48082),
         ]
     );
     assert!(specs.iter().all(|spec| spec.problem.is_none()), "{specs:?}");
@@ -112,10 +105,7 @@ fn should_need_the_dictation_copies_and_refinement_when_voice_control_is_off() {
 #[test]
 fn should_need_no_refinement_service_when_refinement_is_off() {
     let home = Home::complete();
-    let needs = Needs {
-        refinement: false,
-        voice_control: false,
-    };
+    let needs = Needs { refinement: false, voice_control: false };
     let specs = needed(&Config::default(), needs, &home.machine(), &NOTHING_RUNS);
     assert!(specs.iter().all(|spec| spec.kind == ServiceKind::Dictation));
 }
@@ -137,7 +127,8 @@ fn should_need_the_command_services_when_voice_control_is_on() {
             (ServiceKind::Commands, 18086),
             (ServiceKind::Commands, 18087),
             (ServiceKind::Commands, 18088),
-            (ServiceKind::CommandSpotting, 8082),
+            (ServiceKind::CommandSpotting, 49083),
+            (ServiceKind::CommandSpotting, 49084),
         ]
     );
 }
@@ -185,14 +176,110 @@ fn should_take_a_speech_recognition_service_as_the_scripts_run_it() {
 }
 
 #[test]
+fn should_run_one_configured_refinement_copy_on_the_service_port() {
+    // Given
+    let home = Home::complete();
+    let mut cfg = Config::default();
+    cfg.services.refinement_copies = 1;
+    // When
+    let specs = needed(&cfg, ALL, &home.machine(), &NOTHING_RUNS);
+    // Then
+    let refinement: Vec<(u16, &str)> = specs
+        .iter()
+        .filter(|spec| spec.kind == ServiceKind::Refinement)
+        .map(|spec| (spec.port, spec.label.as_str()))
+        .collect();
+    assert_eq!(refinement, vec![(8080, "text refinement service")]);
+}
+
+#[test]
+fn should_label_each_refinement_copy() {
+    let home = Home::complete();
+    let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
+    let labels: Vec<&str> = specs
+        .iter()
+        .filter(|spec| spec.kind == ServiceKind::Refinement)
+        .map(|spec| spec.label.as_str())
+        .collect();
+    assert_eq!(
+        labels,
+        vec![
+            "text refinement service: copy 1 of 2",
+            "text refinement service: copy 2 of 2"
+        ]
+    );
+}
+
+#[test]
+fn should_take_a_refinement_service_as_the_scripts_run_it() {
+    // Given: the scripts run one llama-server on the service's own port
+    let home = Home::complete();
+    // When
+    let specs = needed(
+        &Config::default(),
+        ALL,
+        &home.machine(),
+        &Answering(vec![8080]),
+    );
+    // Then
+    let refinement: Vec<u16> = specs
+        .iter()
+        .filter(|spec| spec.kind == ServiceKind::Refinement)
+        .map(|spec| spec.port)
+        .collect();
+    assert_eq!(refinement, vec![8080]);
+}
+
+#[test]
+fn should_start_each_command_spotting_copy_on_its_own_port() {
+    // Given
+    let home = Home::complete();
+    let mut cfg = Config::default();
+    cfg.services.command_spotting_copies = 3;
+    // When
+    let specs = needed(&cfg, ALL, &home.machine(), &NOTHING_RUNS);
+    // Then
+    let spotting: Vec<&ServiceSpec> = specs
+        .iter()
+        .filter(|spec| spec.kind == ServiceKind::CommandSpotting)
+        .collect();
+    assert_eq!(spotting.len(), 3);
+    for spec in spotting {
+        let port = spec.port.to_string();
+        assert!(
+            spec.args
+                .windows(2)
+                .any(|pair| pair == ["--port", port.as_str()]),
+            "{:?}",
+            spec.args
+        );
+    }
+}
+
+#[test]
+fn should_health_check_every_service_it_starts_each_copy_too() {
+    // Given
+    let home = Home::complete();
+    // When
+    let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
+    // Then
+    let unchecked: Vec<&str> = specs
+        .iter()
+        .filter(|spec| !spec.health_checked)
+        .map(|spec| spec.label.as_str())
+        .collect();
+    assert!(unchecked.is_empty(), "not health-checked: {unchecked:?}");
+}
+
+#[test]
 fn should_log_each_service_to_a_file_named_by_its_program_and_port() {
     let home = Home::complete();
     let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
     let logs: Vec<PathBuf> = specs.iter().map(|spec| spec.log_file.clone()).collect();
     let in_logs = home.path().join(".voicepuncher/logs");
     assert!(logs.contains(&in_logs.join("whisper-server-18082.log")));
-    assert!(logs.contains(&in_logs.join("llama-server-8080.log")));
-    assert!(logs.contains(&in_logs.join("voicepuncher-command-spotting-8082.log")));
+    assert!(logs.contains(&in_logs.join("llama-server-48081.log")));
+    assert!(logs.contains(&in_logs.join("voicepuncher-command-spotting-49083.log")));
 }
 
 #[test]

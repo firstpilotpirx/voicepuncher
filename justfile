@@ -377,6 +377,10 @@ stage_inputs := '''
     *.md                                               none
     app/packaging/*                                    e2e-bundle
     app/tests/architecture.rs                          code
+    app/tests/size_budgets/*                           code
+    app/tests/size_baseline.toml                       code
+    clippy.toml                                        code
+    rustfmt.toml                                       code
     app/tests/cucumber_integration.rs                  code
     app/tests/features/*                               code
     app/tests/steps/*                                  code
@@ -521,15 +525,18 @@ _stage-keys +stages:
     }
     # The workspace members (root Cargo.toml `members`) and the scope of each one's part test@<member>, as Cargo
     # builds its tests: the member, its `path = "../<member>"` dependencies and dev-dependencies, and from those on
-    # their normal dependencies only (a dependency's dev-dependencies are not built for its dependents)
+    # their normal dependencies only (a dependency's dev-dependencies are not built for its dependents); every member
+    # for one whose Cargo.toml sets `tests-read-every-member = true` under [package.metadata.stage-keys] (app: its
+    # size_budgets test measures every member's source)
     my $read = sub { open my $fh, "<", "$root/$_[0]" or return ""; local $/; <$fh> };
     my @members = ($read->("Cargo.toml") =~ /^members\s*=\s*\[([^\]]*)\]/m ? $1 =~ /"([^"]+)"/g : ());
     my %member = map { $_ => 1 } @members;
-    my (%deps, %dev);
+    my (%deps, %dev, %every);
     for my $m (@members) {
         my $section = "";
         for my $line (split /\n/, $read->("$m/Cargo.toml")) {
             $section = $1 if $line =~ /^\s*\[([^\]]+)\]/;
+            $every{$m} = 1 if $section eq "package.metadata.stage-keys" && $line =~ /^\s*tests-read-every-member\s*=\s*true/;
             my ($dep) = $line =~ /path\s*=\s*"\.\.\/([^"\/]+)\/?"/ or next;
             next unless $member{$dep};
             push @{ ($section =~ /dev-dependencies/ ? \%dev : \%deps)->{$m} }, $dep;
@@ -537,7 +544,7 @@ _stage-keys +stages:
     }
     my %scope;
     for my $m (@members) {
-        my @todo = ($m, @{ $dev{$m} || [] });
+        my @todo = ($m, @{ $dev{$m} || [] }, $every{$m} ? @members : ());
         while (defined(my $next = shift @todo)) {
             next if $scope{$m}{$next}++;
             push @todo, @{ $deps{$next} || [] };
@@ -978,6 +985,12 @@ lint:
 
 _lint:
     cargo clippy --workspace --all-targets -- -D warnings
+
+# Rewrites app/tests/size_baseline.toml from the code (AGENTS.md § Architecture rules) by running `test` with
+# VOICEPUNCHER_WRITE_SIZE_BASELINE=1: to drop the entries of units back within budget, or to list the units a merge
+# of branches written before the budgets brought in; a rewrite that adds or raises an entry is reviewed like code
+size-baseline:
+    VOICEPUNCHER_WRITE_SIZE_BASELINE=1 {{just_executable()}} test
 
 # Runs without the machine-wide lock, as an unlocked stage of _stages (which records it in the stage journal): it
 # uses no shared service, port, GPU or exclusive device. A lock directory of the run's own only gives it the wrapper's time limit (MACHINE_LOCK_TIMEOUT, exit 124; the timeout message
@@ -1743,6 +1756,10 @@ _test-stage-keys:
     expect "a file outside the members changes every package's part" "test@app test@command-spotting test@copy-pool test@e2e-test" "test@justfile"
     put docs/notes.md "even more notes"
     expect "a docs edit changes no part" "" "$parts"
+    put app/Cargo.toml $'[package]\nname = "voicepuncher"\n\n[package.metadata.stage-keys]\ntests-read-every-member = true\n\n[dependencies]\nvoicepuncher-copy-pool = { path = "../copy-pool" }\n\n[dev-dependencies]\nvoicepuncher-e2e-test = { path = "../e2e-test" }'
+    expect "a member whose tests read every member declares it" "test@app test@e2e-test" "test@command-spotting test@copy-pool test@justfile"
+    put command-spotting/src/engine.rs "fn spot() { unimplemented!() }"
+    expect "a command spotting edit reaches a member whose tests read every member" "test@command-spotting test@e2e-test test@app" "test@copy-pool test@justfile"
     put justfile "test: _test"
     expect "a justfile edit changes the self-tests' part" "$parts" ""
 

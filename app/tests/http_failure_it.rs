@@ -48,10 +48,7 @@ fn should_tell_a_service_that_never_answers_as_timed_out() {
 fn should_tell_a_reset_connection_as_dropped() {
     let url = stub(|mut stream| {
         read_some(&mut stream);
-        let linger = libc::linger {
-            l_onoff: 1,
-            l_linger: 0,
-        };
+        let linger = libc::linger { l_onoff: 1, l_linger: 0 };
         // SAFETY: the descriptor is open for the stream's lifetime and the option is a plain struct.
         unsafe {
             libc::setsockopt(

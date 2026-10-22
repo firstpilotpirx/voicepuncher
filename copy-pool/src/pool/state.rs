@@ -40,12 +40,7 @@ impl State {
                 hung: false,
             })
             .collect();
-        Self {
-            copies,
-            waiting: VecDeque::new(),
-            next_ticket: 0,
-            offset,
-        }
+        Self { copies, waiting: VecDeque::new(), next_ticket: 0, offset }
     }
 
     /// The copies that take requests: the service's own port alone when it answers,

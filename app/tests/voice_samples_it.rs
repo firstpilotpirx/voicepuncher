@@ -73,11 +73,7 @@ fn load(dir: &Path) -> Session {
         .into_iter()
         .map(|s| f32::from(s) / f32::from(i16::MAX))
         .collect();
-    Session {
-        name: dir.file_name().unwrap().to_string_lossy().into_owned(),
-        audio,
-        utterances,
-    }
+    Session { name: dir.file_name().unwrap().to_string_lossy().into_owned(), audio, utterances }
 }
 
 /// The phrases the app listens for in the state where `command` is accepted.
@@ -120,18 +116,12 @@ fn recognized_in(url: &str, session: &Session) -> Vec<(f32, VoiceCommand)> {
     client.close();
     recognized
         .into_iter()
-        .map(
-            |SpokenCommand {
-                 command,
-                 started_at,
-                 ..
-             }| {
-                (
-                    started_at.duration_since(audio_start).as_secs_f32(),
-                    command,
-                )
-            },
-        )
+        .map(|SpokenCommand { command, started_at, .. }| {
+            (
+                started_at.duration_since(audio_start).as_secs_f32(),
+                command,
+            )
+        })
         .collect()
 }
 
@@ -169,6 +159,7 @@ fn distance(group: &[&Utterance], at: f32) -> f32 {
 }
 
 #[test]
+#[expect(clippy::too_many_lines, reason = "size baseline")]
 fn should_recognize_every_recorded_command_of_the_user() {
     let Some((url, sessions)) = sessions() else {
         return;

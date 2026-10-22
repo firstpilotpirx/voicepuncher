@@ -95,11 +95,8 @@ async fn app_launches_and_ends(world: &mut E2eWorld) -> Result<()> {
             .spawn()
             .context("failed to spawn the app")?;
         let pid = child.id();
-        let launched = LaunchedApp {
-            home: Some(home),
-            child: Some(child),
-            ..LaunchedApp::default()
-        };
+        let launched =
+            LaunchedApp { home: Some(home), child: Some(child), ..LaunchedApp::default() };
         services(world)?.app = Some(launched);
         let app = app(world)?;
         let ready = wait_until(READY_WITHIN, || app.log().contains(READY_NOTE));

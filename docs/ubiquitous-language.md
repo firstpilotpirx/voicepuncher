@@ -291,14 +291,14 @@
 - **Synonyms to AVOID:** "command whisper", "confirmation server", "second whisper", "small server"
 
 ### Copy
-- **Type:** External system (one process of a *speech recognition service*)
-- **Definition:** One `whisper-server` process of a *speech recognition service*; it transcribes one request at a time. With several copies, copy *n* listens on the service's port + 10000 + *n* (− 10000 when that would pass the last port; at most 4 copies) and nothing listens on the service's own port; a single copy listens on the service's own port. A client finds the copies from the service's address alone.
+- **Type:** External system (one process of a local service)
+- **Definition:** One process of a local service — a `whisper-server` of a *speech recognition service*, a `llama-server` of the *text refinement service* or a `voicepuncher-command-spotting` of the *command spotting service*; a speech recognition or text refinement copy answers one request at a time, a command spotting copy serves one connection's listening. With several copies, copy *n* listens on the service's port + its copy offset + *n* — 10000 for a speech recognition service, 40000 for text refinement (8080 → 48081–48084), 41000 for command spotting (8082 → 49083–49086); − the offset when that would pass the last port; at most 4 copies — and nothing the app starts listens on the service's own port; a single copy listens on the service's own port. A client finds the copies from the service's address alone: the own port when it answers, else the copy ports.
 - **Code:** `copy-pool/src/address.rs` — `ServiceAddress::copy_ports`
 - **Synonyms to AVOID:** "instance", "backend", "replica", "worker"
 
 ### Copy pool
-- **Type:** Shared library (`copy-pool/`, used by the app's transcription adapter and the command spotting service)
-- **Definition:** The *copies* of one *speech recognition service* as one client process sees them: which accept connections (probed every second), which are held, and the requests waiting for one, first come first served. One pool per process per service address.
+- **Type:** Shared library (`copy-pool/`, used by the app's transcription and text refinement adapters, its command spotting client and the command spotting service)
+- **Definition:** The *copies* of one local service as one client process sees them: which accept connections (probed every second), which are held, and the requests waiting for one, first come first served. A request whose copy refuses the connection or drops it goes to another copy; when no copy accepts connections, the client waits for one to come back (30 s) before it fails. One pool per process per service address and copy offset.
 - **Code:** `copy-pool/src/pool.rs` — `CopyPool`
 - **Synonyms to AVOID:** "load balancer", "proxy", "router"
 

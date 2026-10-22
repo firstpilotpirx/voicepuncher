@@ -80,11 +80,7 @@ pub struct FakeLauncher {
 
 impl FakeLauncher {
     pub fn new(spawns: &Spawns) -> Self {
-        Self {
-            spawns: spawns.clone(),
-            refuse: false,
-            stubborn: false,
-        }
+        Self { spawns: spawns.clone(), refuse: false, stubborn: false }
     }
 }
 

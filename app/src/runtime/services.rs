@@ -42,6 +42,12 @@ pub struct ManagedServices {
 impl ManagedServices {
     /// Starts the supervision thread.
     pub fn start() -> Result<Self> {
+        Self::start_on(Machine::current())
+    }
+
+    /// Starts the supervision thread for services found on `machine`: its home holds their
+    /// logs, its environment names their programs and models.
+    pub fn start_on(machine: Machine) -> Result<Self> {
         let services = Services::new(
             Box::new(ProcessLauncher),
             Box::new(HttpProbe),
@@ -49,7 +55,7 @@ impl ManagedServices {
         );
         Ok(Self {
             runtime: Arc::new(ServiceRuntime::start(services, TICK)?),
-            machine: Machine::current(),
+            machine,
             ports: Vec::new(),
         })
     }

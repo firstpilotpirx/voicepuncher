@@ -95,9 +95,8 @@ impl ExamplesSource {
     }
 
     fn new(mtm: MainThreadMarker) -> Retained<Self> {
-        let this = Self::alloc(mtm).set_ivars(ExamplesSourceIvars {
-            rows: RefCell::new(Vec::new()),
-        });
+        let this =
+            Self::alloc(mtm).set_ivars(ExamplesSourceIvars { rows: RefCell::new(Vec::new()) });
         // SAFETY: `NSObject`'s `init` on a freshly allocated object.
         unsafe { msg_send![super(this), init] }
     }
@@ -130,11 +129,7 @@ impl ExamplesTable {
         let scroll = NSScrollView::initWithFrame(NSScrollView::alloc(mtm), frame);
         scroll.setDocumentView(Some(&table));
         scroll.setHasVerticalScroller(true);
-        Self {
-            scroll,
-            table,
-            source,
-        }
+        Self { scroll, table, source }
     }
 
     /// Shows the examples of `value`, a list of `{ transcript, normalized }` tables.

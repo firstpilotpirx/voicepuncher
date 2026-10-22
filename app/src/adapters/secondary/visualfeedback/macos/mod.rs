@@ -63,13 +63,8 @@ const PASTED_SIGN_MS: i64 = PASTED_SIGN_LIFETIME.as_millis() as i64;
 const NOTICE_DURATION: Duration = FAILURE_NOTICE_LIFETIME;
 
 /// The screen the overlay draws on when macOS reports none.
-const FALLBACK_SCREEN: NSRect = NSRect {
-    origin: NSPoint { x: 0.0, y: 0.0 },
-    size: NSSize {
-        width: 1440.0,
-        height: 900.0,
-    },
-};
+const FALLBACK_SCREEN: NSRect =
+    NSRect { origin: NSPoint { x: 0.0, y: 0.0 }, size: NSSize { width: 1440.0, height: 900.0 } };
 
 type SharedWindows = Arc<Mutex<Windows>>;
 
@@ -425,6 +420,7 @@ impl VisualIndicator for MacosVisualIndicator {
         self.hide_overlay();
     }
 
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn show_pasted(&self) {
         let turn = Turn::next(&self.pulse_generation);
         let windows = Arc::clone(&self.windows);
@@ -452,6 +448,7 @@ impl VisualIndicator for MacosVisualIndicator {
         self.show_state(OverlayState::FailureNotice(*notice));
     }
 
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn show_command_sign(&self, command: VoiceCommand) {
         let Some(sign) = command_sign(command) else {
             return;

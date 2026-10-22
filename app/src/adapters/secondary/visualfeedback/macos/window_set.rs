@@ -40,19 +40,12 @@ impl WindowSet {
                     - PILL_HEIGHT
                     - GAP_BELOW_SCREEN_TOP,
             },
-            size: NSSize {
-                width: INITIAL_PILL_WIDTH,
-                height: PILL_HEIGHT,
-            },
+            size: NSSize { width: INITIAL_PILL_WIDTH, height: PILL_HEIGHT },
         };
         let panel = GlassPanel::build(mtm, pill_rect, PILL_CORNER_RADIUS, PILL_SHADOW);
         let pill = PillView::build(mtm, &panel.content);
         let transcript = TranscriptWindow::build(mtm, pill_rect);
-        Arc::new(Self {
-            panel,
-            pill,
-            transcript,
-        })
+        Arc::new(Self { panel, pill, transcript })
     }
 
     pub(super) fn window(&self) -> &NSWindow {
@@ -120,10 +113,7 @@ impl WindowSet {
                 x: pill.origin.x + (pill.size.width - width) / 2.0,
                 y: pill.origin.y,
             },
-            size: NSSize {
-                width,
-                height: pill.size.height,
-            },
+            size: NSSize { width, height: pill.size.height },
         });
     }
 }

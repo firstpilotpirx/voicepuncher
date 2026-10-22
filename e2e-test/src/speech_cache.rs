@@ -143,11 +143,7 @@ mod tests {
         rate: Option<u32>,
         text: &'static str,
     ) -> SayRequest<'static> {
-        SayRequest {
-            voice,
-            words_per_minute: rate,
-            text,
-        }
+        SayRequest { voice, words_per_minute: rate, text }
     }
 
     /// Speech from `cache`, counting how often it had to be synthesized.

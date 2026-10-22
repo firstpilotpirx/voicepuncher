@@ -104,6 +104,11 @@ impl CpalAudioRecorder {
 }
 
 impl AudioRecorder for CpalAudioRecorder {
+    #[expect(
+        clippy::too_many_lines,
+        clippy::excessive_nesting,
+        reason = "size baseline"
+    )]
     fn start(&mut self) -> Result<()> {
         self.last_recording = None;
         let device = devices::open(&self.input_device)?;
@@ -255,6 +260,7 @@ impl AudioRecorder for CpalAudioRecorder {
         Ok(Some(chunk_rx))
     }
 
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn flush_live_chunks(&mut self) {
         if let Some(active) = self.active.as_mut() {
             drop(active.live_stop_tx.take());
@@ -409,6 +415,11 @@ impl Resampler16k {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    reason = "size baseline"
+)]
 fn live_watcher_thread(
     buffer: Arc<Mutex<Vec<i16>>>,
     native_sample_rate: u32,
@@ -571,10 +582,7 @@ mod last_recording_tests {
         let lead_in = AudioBuffer16k::new(vec![0; 8_000]);
         let mut samples = vec![0i16; DEVICE_RATE_HZ as usize];
         put_first(&mut samples, &lead_in, DEVICE_RATE_HZ);
-        let recording = NativeRecording {
-            samples,
-            rate: DEVICE_RATE_HZ,
-        };
+        let recording = NativeRecording { samples, rate: DEVICE_RATE_HZ };
         // When
         let audio = recording.at_16k().unwrap();
         // Then a second and a half at 16 kHz
@@ -589,10 +597,8 @@ mod last_recording_tests {
     #[test]
     fn should_give_a_16_khz_recording_as_it_is() {
         // Given
-        let recording = NativeRecording {
-            samples: vec![1, 2, 3],
-            rate: AudioBuffer16k::SAMPLE_RATE_HZ,
-        };
+        let recording =
+            NativeRecording { samples: vec![1, 2, 3], rate: AudioBuffer16k::SAMPLE_RATE_HZ };
         // When
         let audio = recording.at_16k().unwrap();
         // Then

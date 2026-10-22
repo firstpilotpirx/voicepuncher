@@ -51,10 +51,7 @@ fn words(text: &str) -> Vec<Word> {
         match (current, c.is_alphabetic()) {
             (None, true) => current = Some(at),
             (Some(start), false) => {
-                words.push(Word {
-                    start,
-                    text: text[start..at].to_lowercase(),
-                });
+                words.push(Word { start, text: text[start..at].to_lowercase() });
                 current = None;
             }
             _ => {}

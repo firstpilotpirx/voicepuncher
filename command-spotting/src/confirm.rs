@@ -3,6 +3,7 @@
 
 use std::collections::VecDeque;
 use std::io::Cursor;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -38,11 +39,7 @@ pub struct RecentAudio {
 
 impl RecentAudio {
     pub fn new(capacity: usize) -> Self {
-        Self {
-            samples: VecDeque::with_capacity(capacity),
-            first: 0,
-            capacity,
-        }
+        Self { samples: VecDeque::with_capacity(capacity), first: 0, capacity }
     }
 
     pub fn push(&mut self, frame: &[f32]) {
@@ -141,7 +138,8 @@ impl UtteranceTranscriber {
 
     /// What was said in `samples` (16 kHz mono), with each word's times; the wait for a
     /// free copy and for its answer together never pass `deadline`. A copy still decoding
-    /// after `DECODING_BUDGET` is cut short, and nothing was heard.
+    /// after `DECODING_BUDGET` is cut short, and nothing was heard. A copy that refuses the
+    /// connection hands the confirmation to another copy while the deadline lasts.
     pub fn transcribe(
         &self,
         samples: &[f32],
@@ -149,33 +147,44 @@ impl UtteranceTranscriber {
         deadline: Duration,
     ) -> Result<Heard> {
         let started = Instant::now();
-        let body = multipart_body(&wav(samples, sample_rate)?);
-        let lease = self.pool.lease(deadline).map_err(|e| {
-            log::warn!("confirmation given up unsent: {e}");
-            anyhow!("speech recognition service: {e}")
-        })?;
-        let port = lease.port();
-        let left = deadline.saturating_sub(started.elapsed());
-        let budget = DECODING_BUDGET.min(left);
-        let ran = lease.run(left, move |url| post(url, &body, budget));
-        match ran {
-            Ran::Answered(Ok(Posted::Answer(answer))) => heard_from(&answer),
-            Ran::Answered(Ok(Posted::TimedOut(url))) if budget < left => {
-                log::warn!(
-                    "confirmation cut short after {}ms on copy {url}: still decoding, nothing heard",
-                    budget.as_millis()
-                );
-                Ok(Heard::default())
+        let body = Arc::new(multipart_body(&wav(samples, sample_rate)?));
+        let mut tried: Vec<u16> = Vec::new();
+        loop {
+            let left = deadline.saturating_sub(started.elapsed());
+            let lease = self.pool.lease_avoiding(left, &tried).map_err(|e| {
+                log::warn!("confirmation given up unsent: {e}");
+                anyhow!("speech recognition service: {e}")
+            })?;
+            let port = lease.port();
+            tried.push(port);
+            let left = deadline.saturating_sub(started.elapsed());
+            let budget = DECODING_BUDGET.min(left);
+            let sent = Arc::clone(&body);
+            let ran = lease.run(left, move |url| post(url, &sent, budget));
+            match ran {
+                Ran::Answered(Ok(Posted::Answer(answer))) => return heard_from(&answer),
+                Ran::Answered(Ok(Posted::Refused(e))) => {
+                    log::warn!(
+                        "confirmation refused by copy {port}: sending it to another copy ({e:#})"
+                    );
+                }
+                Ran::Answered(Ok(Posted::TimedOut(url))) if budget < left => {
+                    log::warn!(
+                        "confirmation cut short after {}ms on copy {url}: still decoding, nothing heard",
+                        budget.as_millis()
+                    );
+                    return Ok(Heard::default());
+                }
+                Ran::Answered(Ok(Posted::TimedOut(url))) => bail!(
+                    "speech recognition copy {url} sent no answer in {} ms",
+                    deadline.as_millis()
+                ),
+                Ran::Answered(Err(e)) => return Err(e),
+                Ran::GaveUp => bail!(
+                    "speech recognition copy {port} sent no answer in {} ms",
+                    deadline.as_millis()
+                ),
             }
-            Ran::Answered(Ok(Posted::TimedOut(url))) => bail!(
-                "speech recognition copy {url} sent no answer in {} ms",
-                deadline.as_millis()
-            ),
-            Ran::Answered(Err(e)) => Err(e),
-            Ran::GaveUp => bail!(
-                "speech recognition copy {port} sent no answer in {} ms",
-                deadline.as_millis()
-            ),
         }
     }
 }
@@ -185,6 +194,8 @@ enum Posted {
     Answer(String),
     /// No answer within the request's time; the connection is closed, which stops the copy.
     TimedOut(String),
+    /// The copy refused the connection: another copy may take the request.
+    Refused(anyhow::Error),
 }
 
 /// Posts `body` to the copy at `url` and reads the whole answer, within `timeout`.
@@ -216,14 +227,13 @@ fn post(url: &str, body: &[u8], timeout: Duration) -> (Result<Posted>, Finish) {
                 &error,
                 ureq::Error::Transport(t) if t.kind() == ureq::ErrorKind::ConnectionFailed
             );
-            let finish = if refused {
-                Finish::Refused
-            } else {
-                Finish::Answered
-            };
             let error = anyhow::Error::from(error)
                 .context(format!("speech recognition service at {endpoint}"));
-            (Err(error), finish)
+            if refused {
+                (Ok(Posted::Refused(error)), Finish::Refused)
+            } else {
+                (Err(error), Finish::Answered)
+            }
         }
     }
 }
@@ -301,6 +311,16 @@ mod tests {
     fn spawn_slow_copy(answer: &'static str, decoding: Duration) -> (String, Arc<AtomicUsize>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}/v1", listener.local_addr().unwrap());
+        (url, serve_copy(listener, answer, decoding))
+    }
+
+    /// Serves every request on `listener` with `answer` after `decoding`; counts them.
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
+    fn serve_copy(
+        listener: TcpListener,
+        answer: &'static str,
+        decoding: Duration,
+    ) -> Arc<AtomicUsize> {
         let requests = Arc::new(AtomicUsize::new(0));
         let counter = Arc::clone(&requests);
         thread::spawn(move || {
@@ -336,7 +356,58 @@ mod tests {
                 let _ = stream.write_all(reply.as_bytes());
             }
         });
-        (url, requests)
+        requests
+    }
+
+    /// Listeners on the first two copy ports of a service address nothing listens on.
+    fn two_copies() -> (String, TcpListener, TcpListener) {
+        loop {
+            let base = TcpListener::bind("127.0.0.1:0")
+                .unwrap()
+                .local_addr()
+                .unwrap()
+                .port();
+            let url = format!("http://127.0.0.1:{base}/v1");
+            let ports = voicepuncher_copy_pool::ServiceAddress::parse(&url)
+                .unwrap()
+                .copy_ports();
+            if let (Ok(first), Ok(second)) = (
+                TcpListener::bind(("127.0.0.1", ports[0])),
+                TcpListener::bind(("127.0.0.1", ports[1])),
+            ) {
+                return (url, first, second);
+            }
+        }
+    }
+
+    #[test]
+    fn should_send_a_confirmation_refused_by_its_copy_to_the_other_copy() {
+        // Given two copies; the one this process tries first stops accepting connections
+        let lines = crate::test_log::captured();
+        let (url, first, second) = two_copies();
+        let (down, up) = if std::process::id() % 2 == 0 {
+            (first, second)
+        } else {
+            (second, first)
+        };
+        let down_port = down.local_addr().unwrap().port();
+        let requests = serve_copy(up, PRESS_ENTER, Duration::ZERO);
+        let transcriber = UtteranceTranscriber::new(&url).unwrap();
+        drop(down);
+        // When
+        let heard = transcriber
+            .transcribe(&[0.0; 1_600], SAMPLE_RATE, Duration::from_secs(2))
+            .unwrap();
+        // Then
+        assert_eq!(heard.text, " press enter");
+        assert_eq!(requests.load(Ordering::SeqCst), 1);
+        let refused = lines.containing("confirmation refused by copy");
+        assert!(
+            refused
+                .iter()
+                .any(|line| line.contains(&down_port.to_string())),
+            "{refused:?}"
+        );
     }
 
     const PRESS_ENTER: &str = r#"{"text":" press enter","segments":[]}"#;

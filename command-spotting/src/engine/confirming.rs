@@ -179,6 +179,7 @@ impl Session<'_> {
     }
 
     /// Asks the worker what was said in `audio`, the stream from sample `from` to `to`.
+    #[expect(clippy::too_many_arguments, reason = "size baseline")]
     fn ask_clip(
         &mut self,
         kind: JobKind,
@@ -215,6 +216,7 @@ impl Session<'_> {
     }
 
     /// Sends job `n` to the worker: what was said in `audio`, the stream from `from` to `to`.
+    #[expect(clippy::too_many_arguments, reason = "size baseline")]
     fn submit(&mut self, n: u64, kind: JobKind, audio: Vec<f32>, from: usize, to: usize) {
         log::debug!(
             "job={} {kind:?} asks for {:.2}–{:.2}s",
@@ -226,11 +228,7 @@ impl Session<'_> {
             asked.asked = Instant::now();
         }
         if let Some(worker) = self.worker.as_ref() {
-            worker.submit(Job {
-                id: JobId { conn: self.conn, n },
-                kind,
-                audio,
-            });
+            worker.submit(Job { id: JobId { conn: self.conn, n }, kind, audio });
         }
     }
 
@@ -261,26 +259,14 @@ impl Session<'_> {
             return;
         }
         if let Some(job) = self.reserve(kind, context) {
-            self.checks.push(QueuedCheck {
-                job,
-                kind,
-                from,
-                to,
-                window_of,
-            });
+            self.checks
+                .push(QueuedCheck { job, kind, from, to, window_of });
         }
     }
 
     /// Asks the check whose turn it is, once no other one waits for its answer.
     pub(super) fn ask_queued_check(&mut self) {
-        let Some(QueuedCheck {
-            job,
-            kind,
-            from,
-            to,
-            ..
-        }) = self.checks.next()
-        else {
+        let Some(QueuedCheck { job, kind, from, to, .. }) = self.checks.next() else {
             return;
         };
         let audio = self.recent.between(from, to);
@@ -291,6 +277,11 @@ impl Session<'_> {
     /// The events of a closed segment: held until its confirmation is answered, or out at
     /// once without a speech recognition service. Its confirmation clip runs past its end
     /// until the post-roll is over or a sound louder than `quiet_level` starts.
+    #[expect(
+        clippy::too_many_lines,
+        clippy::too_many_arguments,
+        reason = "size baseline"
+    )]
     pub(super) fn close_segment(
         &mut self,
         start: usize,
@@ -342,9 +333,7 @@ impl Session<'_> {
         let context = JobContext::Segment { utterance, segment };
         let again = context.rehear(String::new()).filter(|_| short);
         let (job, heard) = match half_pause {
-            Some(HalfPauseHearing {
-                job, answer: None, ..
-            }) => {
+            Some(HalfPauseHearing { job, answer: None, .. }) => {
                 log::debug!("job={job} heard at half the pause stands for its segment");
                 if let Some(asked) = self.jobs.get_mut(&job) {
                     asked.context = context;
@@ -352,10 +341,9 @@ impl Session<'_> {
                 self.stand_ins.insert(job, own_from);
                 (Some(job), None)
             }
-            Some(HalfPauseHearing {
-                answer: Some(heard),
-                ..
-            }) => (self.reserve(JobKind::Segment, context), heard),
+            Some(HalfPauseHearing { answer: Some(heard), .. }) => {
+                (self.reserve(JobKind::Segment, context), heard)
+            }
             None => (self.ask(JobKind::Segment, from, to, context), None),
         };
         let Some(job) = job else {
@@ -367,13 +355,9 @@ impl Session<'_> {
         }
         match heard {
             // Heard at half the pause: the answer is in already.
-            Some(heard) => self.apply(Answer {
-                id: JobId {
-                    conn: self.conn,
-                    n: job,
-                },
-                heard: Some(heard),
-            }),
+            Some(heard) => {
+                self.apply(Answer { id: JobId { conn: self.conn, n: job }, heard: Some(heard) })
+            }
             None => Vec::new(),
         }
     }
@@ -422,12 +406,7 @@ impl Session<'_> {
             now,
             JobContext::HalfPause { utterance },
         ) {
-            self.half_pause = Some(HalfPauseHearing {
-                job,
-                quiet_from,
-                from,
-                answer: None,
-            });
+            self.half_pause = Some(HalfPauseHearing { job, quiet_from, from, answer: None });
         }
     }
 
@@ -492,13 +471,7 @@ impl Session<'_> {
         if self.said_alone(heard) {
             return Ok(asked);
         }
-        let (utterance, segment) = (
-            *utterance,
-            SegmentSpan {
-                from: own_from,
-                ..*segment
-            },
-        );
+        let (utterance, segment) = (*utterance, SegmentSpan { from: own_from, ..*segment });
         let to = segment.to;
         let context = JobContext::Segment { utterance, segment };
         let Some(whole) = self.ask(JobKind::Segment, own_from, to, context) else {
@@ -512,6 +485,12 @@ impl Session<'_> {
     }
 
     /// Applies `answer` to the job it answers, reading it with `self.matcher`.
+    #[expect(
+        clippy::too_many_lines,
+        clippy::excessive_nesting,
+        clippy::cognitive_complexity,
+        reason = "size baseline"
+    )]
     fn apply_answer(&mut self, answer: Answer, asked: AskedJob) -> Vec<ServerEvent> {
         let n = answer.id.n;
         let timing = asked.timing();
@@ -628,27 +607,17 @@ impl Session<'_> {
         asked_at: usize,
     ) -> Vec<ServerEvent> {
         let event = match context {
-            JobContext::Head {
-                utterance,
-                from,
-                early: false,
-            } => self.place(&heard, from, utterance, asked_at, head_command),
+            JobContext::Head { utterance, from, early: false } => {
+                self.place(&heard, from, utterance, asked_at, head_command)
+            }
             // "start" heard alone may be cut off before the word after it, as the first
             // spotted check may hear it: "start stop" starts nothing.
-            JobContext::Head {
-                utterance,
-                from,
-                early: true,
-            } => self.place(&heard, from, utterance, asked_at, |m, w| {
-                spotted_command(m, w, true, Round::First)
-            }),
-            JobContext::Spotted {
-                utterance,
-                from,
-                at_head,
-                round,
-                said_end,
-            } => {
+            JobContext::Head { utterance, from, early: true } => {
+                self.place(&heard, from, utterance, asked_at, |m, w| {
+                    spotted_command(m, w, true, Round::First)
+                })
+            }
+            JobContext::Spotted { utterance, from, at_head, round, said_end } => {
                 let found = self.place(&heard, from, utterance, asked_at, |m, w| {
                     spotted_command(m, w, at_head, round)
                 });
@@ -674,12 +643,9 @@ impl Session<'_> {
             JobContext::Tail { utterance, from } => self
                 .place(&heard, from, utterance, usize::MAX, |m, w| m.anywhere(w))
                 .or_else(|| self.place(&heard, from, utterance, usize::MAX, |m, w| m.at_end(w))),
-            JobContext::Rehear {
-                bounds,
-                origin,
-                phrase,
-                ..
-            } => self.apply_rehear(&heard, bounds, origin, phrase),
+            JobContext::Rehear { bounds, origin, phrase, .. } => {
+                self.apply_rehear(&heard, bounds, origin, phrase)
+            }
         };
         event.into_iter().collect()
     }
@@ -765,14 +731,7 @@ impl Session<'_> {
 
     /// Asks the second hearing of a short segment, through its steady clip.
     fn ask_rehear(&mut self, rehear: Rehear) -> Option<u64> {
-        let Rehear {
-            utterance,
-            bounds,
-            from,
-            to,
-            quiet_level,
-            phrase,
-        } = rehear;
+        let Rehear { utterance, bounds, from, to, quiet_level, phrase } = rehear;
         let audio = self.recent.between(from, to);
         let clip = steady_clip(&audio, from, quiet_level);
         log::debug!(
@@ -782,12 +741,7 @@ impl Session<'_> {
             clip.gain
         );
         let origin = clip.origin;
-        let context = JobContext::Rehear {
-            utterance,
-            bounds,
-            origin,
-            phrase,
-        };
+        let context = JobContext::Rehear { utterance, bounds, origin, phrase };
         self.ask_clip(JobKind::Rehear, clip.samples, origin, to, context)
     }
 
@@ -825,13 +779,7 @@ impl Session<'_> {
         utterance: u64,
         segment: SegmentSpan,
     ) -> Option<ServerEvent> {
-        let SegmentSpan {
-            end,
-            bounds,
-            short,
-            from,
-            ..
-        } = segment;
+        let SegmentSpan { end, bounds, short, from, .. } = segment;
         if short {
             if let Some(phrase) = self.matcher.phrase_in(&heard.text) {
                 log::info!("conn={} utterance → {phrase:?}", self.conn);
@@ -886,6 +834,11 @@ impl Session<'_> {
     /// placed in the stream; of a chain the utterance already reported in part, only the
     /// commands after what it reported ("start" after a check heard "cancel enter"), none
     /// when nothing is left.
+    #[expect(
+        clippy::too_many_lines,
+        clippy::too_many_arguments,
+        reason = "size baseline"
+    )]
     fn place(
         &mut self,
         heard: &Heard,
@@ -995,10 +948,7 @@ enum Early {
     /// Neither hearing answered yet, or only this one is pending.
     Waiting { segment: u64 },
     /// It answered first, with these events; they stand when the first hearing holds none.
-    Answered {
-        segment: u64,
-        events: Vec<ServerEvent>,
-    },
+    Answered { segment: u64, events: Vec<ServerEvent> },
     /// The first hearing held a command: its answer is dropped.
     Dropped,
 }
@@ -1015,6 +965,7 @@ enum EarlyAnswer {
 
 impl EarlyRehears {
     /// The second hearings of segment job `from` belong to segment job `to` now.
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn retarget(&mut self, from: u64, to: u64) {
         for (job, _) in &mut self.pending {
             if *job == from {
@@ -1169,27 +1120,12 @@ fn starting_anywhere(matcher: &PhraseMatcher, words: &[&str]) -> Option<Found> {
 /// `event` with the timing of the confirmation that heard it, when it names a command.
 fn timed(event: ServerEvent, confirmation: Timing) -> ServerEvent {
     match event {
-        ServerEvent::Phrase {
-            phrase, start, end, ..
-        } => ServerEvent::Phrase {
-            phrase,
-            start,
-            end,
-            timing: Some(confirmation),
-        },
-        ServerEvent::Command {
-            commands,
-            start,
-            end,
-            placement,
-            ..
-        } => ServerEvent::Command {
-            commands,
-            start,
-            end,
-            placement,
-            timing: Some(confirmation),
-        },
+        ServerEvent::Phrase { phrase, start, end, .. } => {
+            ServerEvent::Phrase { phrase, start, end, timing: Some(confirmation) }
+        }
+        ServerEvent::Command { commands, start, end, placement, .. } => {
+            ServerEvent::Command { commands, start, end, placement, timing: Some(confirmation) }
+        }
         other => other,
     }
 }

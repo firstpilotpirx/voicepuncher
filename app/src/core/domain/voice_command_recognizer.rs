@@ -99,30 +99,15 @@ impl VoiceCommandRecognizer {
                 Vec::new()
             }
             SpottingEvent::SpeechEnded(at) => self.close_segment(at).into_iter().collect(),
-            SpottingEvent::PhraseSpotted {
-                phrase,
-                start,
-                end,
-                timing,
-            } => {
+            SpottingEvent::PhraseSpotted { phrase, start, end, timing } => {
                 if self.carried_out_until.is_some_and(|until| start <= until) {
                     return Vec::new();
                 }
-                let spotted = Spotted {
-                    command: VoiceCommand::from_phrase(&phrase),
-                    start,
-                    end,
-                    timing,
-                };
+                let spotted =
+                    Spotted { command: VoiceCommand::from_phrase(&phrase), start, end, timing };
                 self.spot(spotted).into_iter().collect()
             }
-            SpottingEvent::CommandsSaid {
-                commands,
-                start,
-                end,
-                placement,
-                timing,
-            } => {
+            SpottingEvent::CommandsSaid { commands, start, end, placement, timing } => {
                 self.carried_out_until = Some(end);
                 self.spotted_in_open_segment.retain(|s| s.start > end);
                 commands
@@ -142,13 +127,8 @@ impl VoiceCommandRecognizer {
     fn close_segment(&mut self, end: Instant) -> Option<SpokenCommand> {
         let start = self.open_segment_start.take()?;
         let spotted = std::mem::take(&mut self.spotted_in_open_segment);
-        let mut segment = ClosedSegment {
-            start,
-            end,
-            command: None,
-            mixed: false,
-            recognized: false,
-        };
+        let mut segment =
+            ClosedSegment { start, end, command: None, mixed: false, recognized: false };
         let commands: Vec<SpokenCommand> = spotted
             .into_iter()
             .filter_map(|s| segment.take(s))

@@ -101,10 +101,8 @@ impl Supervision {
             self.kill();
             self.pause = FIRST_PAUSE;
             self.next_at = now;
-            self.state = ServiceState::Restarting {
-                attempt: self.attempt + 1,
-                pause: Duration::ZERO,
-            };
+            self.state =
+                ServiceState::Restarting { attempt: self.attempt + 1, pause: Duration::ZERO };
         }
     }
 
@@ -179,9 +177,7 @@ impl Supervision {
                     self.spec.log_file.display()
                 );
                 self.process = Some(process);
-                self.state = ServiceState::Starting {
-                    attempt: self.attempt,
-                };
+                self.state = ServiceState::Starting { attempt: self.attempt };
             }
             Err(e) => self.start_failed(senses.now, format!("{e:#}")),
         }
@@ -256,10 +252,7 @@ impl Supervision {
             self.pause.as_secs_f64()
         );
         self.next_at = now + self.pause;
-        self.state = ServiceState::Restarting {
-            attempt: self.attempt + 1,
-            pause: self.pause,
-        };
+        self.state = ServiceState::Restarting { attempt: self.attempt + 1, pause: self.pause };
         self.pause = (self.pause * 2).min(LONGEST_PAUSE);
     }
 

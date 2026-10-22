@@ -147,10 +147,7 @@ fn says_command_polite_word_and_sentence(
         placement: CommandPlacement::Head,
         timing: Some(ReportTiming {
             words_ended: end,
-            confirmation: Some(ConfirmationTiming {
-                asked_at: end,
-                took: CONFIRMATION_TIME,
-            }),
+            confirmation: Some(ConfirmationTiming { asked_at: end, took: CONFIRMATION_TIME }),
             arrived_at: Instant::now(),
         }),
     }))?;

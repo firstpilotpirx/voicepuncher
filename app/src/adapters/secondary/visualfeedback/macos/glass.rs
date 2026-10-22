@@ -224,13 +224,8 @@ impl GlassPanel {
     }
 
     fn lay_out(&self, glass_size: NSSize) {
-        let glass = NSRect {
-            origin: NSPoint {
-                x: SHADOW_MARGIN,
-                y: SHADOW_MARGIN,
-            },
-            size: glass_size,
-        };
+        let glass =
+            NSRect { origin: NSPoint { x: SHADOW_MARGIN, y: SHADOW_MARGIN }, size: glass_size };
         let whole = at_origin(around(glass, self.room_above).size);
         self.shadow.setFrame(whole);
         self.surface.view().setFrame(glass);
@@ -325,10 +320,7 @@ fn cast_shadow(layer: &CALayer, shadow: ShadowStyle) {
     layer.setShadowColor(Some(&NSColor::blackColor().CGColor()));
     layer.setShadowOpacity(shadow.opacity);
     layer.setShadowRadius(shadow.blur / 2.0);
-    layer.setShadowOffset(NSSize {
-        width: 0.0,
-        height: -shadow.drop,
-    });
+    layer.setShadowOffset(NSSize { width: 0.0, height: -shadow.drop });
 }
 
 fn round(layer: &CALayer, corner_radius: f64) {
@@ -374,10 +366,7 @@ pub(super) fn every_space() -> NSWindowCollectionBehavior {
 /// The window around `glass`: the shadow's room beside and under it, `room_above` above it.
 fn around(glass: NSRect, room_above: f64) -> NSRect {
     NSRect {
-        origin: NSPoint {
-            x: glass.origin.x - SHADOW_MARGIN,
-            y: glass.origin.y - SHADOW_MARGIN,
-        },
+        origin: NSPoint { x: glass.origin.x - SHADOW_MARGIN, y: glass.origin.y - SHADOW_MARGIN },
         size: NSSize {
             width: glass.size.width + 2.0 * SHADOW_MARGIN,
             height: glass.size.height + SHADOW_MARGIN + room_above,
@@ -386,8 +375,5 @@ fn around(glass: NSRect, room_above: f64) -> NSRect {
 }
 
 fn at_origin(size: NSSize) -> NSRect {
-    NSRect {
-        origin: NSPoint { x: 0.0, y: 0.0 },
-        size,
-    }
+    NSRect { origin: NSPoint { x: 0.0, y: 0.0 }, size }
 }

@@ -5,10 +5,7 @@ use crate::core::domain::{is_filler_sound, CleanedText, RawTranscript};
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum NotANormalization {
     #[error("the answer is in another writing system ({from_cyrillic:.0}% → {to_cyrillic:.0}% Cyrillic letters)")]
-    LanguageChanged {
-        from_cyrillic: f64,
-        to_cyrillic: f64,
-    },
+    LanguageChanged { from_cyrillic: f64, to_cyrillic: f64 },
     #[error("the answer keeps only {kept} of the transcript's {total} words in one alphabet")]
     WordsLost { kept: usize, total: usize },
 }
@@ -60,10 +57,7 @@ impl Respelled {
                 .filter_map(|(word, flag)| flag.then_some(word))
                 .collect()
         };
-        Self {
-            cyrillic: flagged(missing, cyr_flags),
-            latin: flagged(new_latin, lat_flags),
-        }
+        Self { cyrillic: flagged(missing, cyr_flags), latin: flagged(new_latin, lat_flags) }
     }
 
     fn without_cyrillic(&self, words: &[String]) -> String {
@@ -91,10 +85,7 @@ fn check_writing_system(raw: &str, answer: &str) -> Result<(), NotANormalization
         return Ok(());
     };
     if (from_cyrillic - to_cyrillic).abs() > MAX_CYRILLIC_SHIFT_PERCENT {
-        return Err(NotANormalization::LanguageChanged {
-            from_cyrillic,
-            to_cyrillic,
-        });
+        return Err(NotANormalization::LanguageChanged { from_cyrillic, to_cyrillic });
     }
     Ok(())
 }

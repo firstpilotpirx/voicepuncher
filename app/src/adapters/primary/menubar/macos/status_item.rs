@@ -371,10 +371,8 @@ define_class!(
 
 impl MenuTarget {
     fn new(mtm: MainThreadMarker) -> Retained<Self> {
-        let this = Self::alloc(mtm).set_ivars(MenuTargetIvars {
-            cell: OnceCell::new(),
-            actions: RefCell::new(None),
-        });
+        let this = Self::alloc(mtm)
+            .set_ivars(MenuTargetIvars { cell: OnceCell::new(), actions: RefCell::new(None) });
         // SAFETY: `NSObject`'s `init` on a freshly allocated object.
         unsafe { msg_send![super(this), init] }
     }

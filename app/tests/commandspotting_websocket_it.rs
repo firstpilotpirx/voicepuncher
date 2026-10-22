@@ -166,6 +166,7 @@ fn listened_for(command: VoiceCommand) -> &'static [VoiceCommand] {
 }
 
 /// What the app recognizes when `words` reach it from a 48 kHz microphone.
+#[expect(clippy::too_many_lines, reason = "size baseline")]
 fn recognized_from_microphone(
     url: &str,
     words: &str,
@@ -310,6 +311,7 @@ impl Listening {
     /// The next command the app recognizes, as the pipeline would get it.
     /// WHY: the stream hands the audio to the service at its own pace, so under load 30 s of
     /// listening can take 10 s to arrive; the wait covers that audio too.
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn next_command(&mut self) -> Option<VoiceCommand> {
         let deadline = Instant::now() + std::mem::take(&mut self.unheard) + COMMAND_TIMEOUT;
         while let Some(left) = deadline.checked_duration_since(Instant::now()) {
@@ -383,6 +385,7 @@ fn heard_after_a_pause(url: &str, sentence: &str) -> Option<VoiceCommand> {
 const SHORT_PAUSE_SECS: f32 = 0.8;
 
 #[test]
+#[expect(clippy::excessive_nesting, reason = "size baseline")]
 fn should_recognize_stop_dictation_and_press_enter_said_with_a_short_pause_in_real_time() {
     let Some(url) = service_url() else { return };
     // Given a dictation runs

@@ -47,10 +47,7 @@ fn entry_json(entry: &ArchiveEntry, setup: &ArchiveSetup) -> Result<String> {
         format: ENTRY_FORMAT,
         started_at: UtcTime::from(entry.started_at).iso_8601(),
         start: start_name(entry.start),
-        audio: AudioFile {
-            file: AUDIO_FILE,
-            duration_ms: entry.audio.duration_ms(),
-        },
+        audio: AudioFile { file: AUDIO_FILE, duration_ms: entry.audio.duration_ms() },
         chunks: &entry.chunk_texts,
         raw_transcript: entry.raw_transcript.as_deref(),
         pasted_text: entry.pasted_text.as_deref(),
@@ -149,14 +146,8 @@ mod tests {
             outcome: DictationOutcome::LeftInClipboard,
             lost_chunks: 1,
             timings: vec![
-                StageTiming {
-                    stage: "transcribe",
-                    ms: 420,
-                },
-                StageTiming {
-                    stage: "refine",
-                    ms: 90,
-                },
+                StageTiming { stage: "transcribe", ms: 420 },
+                StageTiming { stage: "refine", ms: 90 },
             ],
         }
     }

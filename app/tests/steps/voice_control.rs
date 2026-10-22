@@ -170,10 +170,7 @@ impl VoiceRun {
             PipelineConfig {
                 min_press_ms: 0,
                 recording_mode: RecordingMode::Toggle,
-                chunking: ChunkingCfg {
-                    chunk_threshold_secs: 0,
-                    ..ChunkingCfg::default()
-                },
+                chunking: ChunkingCfg { chunk_threshold_secs: 0, ..ChunkingCfg::default() },
             },
         );
         if self.voice_control {
@@ -236,6 +233,7 @@ impl VoiceRun {
         self.speech.lock().unwrap().push((at, words.to_owned()));
     }
 
+    #[expect(clippy::too_many_arguments, reason = "size baseline")]
     fn send_segment(
         &mut self,
         phrase: &str,

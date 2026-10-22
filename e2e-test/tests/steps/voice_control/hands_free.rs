@@ -90,10 +90,7 @@ impl HandsFree {
             PipelineConfig {
                 min_press_ms: 0,
                 recording_mode: RecordingMode::Toggle,
-                chunking: ChunkingCfg {
-                    chunk_threshold_secs: 0,
-                    ..ChunkingCfg::default()
-                },
+                chunking: ChunkingCfg { chunk_threshold_secs: 0, ..ChunkingCfg::default() },
             },
         )
         .with_voice_control(

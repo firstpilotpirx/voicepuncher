@@ -23,11 +23,7 @@ pub struct PermissionsWatch {
 
 impl PermissionsWatch {
     pub fn new(gate: Arc<PermissionsGate>) -> Self {
-        Self {
-            gate,
-            while_ready: CHECK_WHILE_READY,
-            while_waiting: CHECK_WHILE_WAITING,
-        }
+        Self { gate, while_ready: CHECK_WHILE_READY, while_waiting: CHECK_WHILE_WAITING }
     }
 }
 
@@ -56,11 +52,7 @@ impl Watched {
     pub(super) fn start(watch: PermissionsWatch) -> Self {
         let last = watch.gate.report();
         log::info!("{}", last.log_line());
-        Self {
-            watch,
-            last,
-            revoked: Vec::new(),
-        }
+        Self { watch, last, revoked: Vec::new() }
     }
 
     pub(super) fn all_granted(&self) -> bool {

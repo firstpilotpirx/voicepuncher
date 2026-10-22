@@ -11,11 +11,7 @@ pub struct ChunkingCfg {
 
 impl Default for ChunkingCfg {
     fn default() -> Self {
-        Self {
-            chunk_threshold_secs: 0,
-            chunk_overlap_secs: 2,
-            vad_lookback_secs: 5,
-        }
+        Self { chunk_threshold_secs: 0, chunk_overlap_secs: 2, vad_lookback_secs: 5 }
     }
 }
 
@@ -81,6 +77,7 @@ enum Step {
 /// Aligns the end of `merged` with the start of `next` (local alignment of normalized
 /// words). The seam goes through the middle of the aligned overlap, where both chunks heard
 /// the words with context on both sides; the words near either chunk edge are dropped.
+#[expect(clippy::too_many_lines, reason = "size baseline")]
 fn find_seam(merged: &[&str], next: &[&str]) -> Option<Seam> {
     let tail_start = merged.len().saturating_sub(SEAM_TAIL_WORDS);
     let tail: Vec<String> = merged[tail_start..].iter().map(|w| normalize(w)).collect();
@@ -164,10 +161,7 @@ fn find_seam(merged: &[&str], next: &[&str]) -> Option<Seam> {
         same_words
     };
     let &(i, j, _) = splits[(splits.len() - 1) / 2];
-    Some(Seam {
-        merged_until: tail_start + i,
-        next_from: j,
-    })
+    Some(Seam { merged_until: tail_start + i, next_from: j })
 }
 
 /// Lowercase, `ё` read as `е`, every non-alphanumeric character dropped.
@@ -502,10 +496,7 @@ mod tests {
     const RATE: u32 = 16_000;
 
     fn cfg(threshold_secs: u32) -> ChunkingCfg {
-        ChunkingCfg {
-            chunk_threshold_secs: threshold_secs,
-            ..ChunkingCfg::default()
-        }
+        ChunkingCfg { chunk_threshold_secs: threshold_secs, ..ChunkingCfg::default() }
     }
 
     fn tone(secs: usize) -> Vec<i16> {

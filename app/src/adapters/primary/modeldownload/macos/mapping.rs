@@ -105,6 +105,7 @@ impl WindowModel {
     }
 
     /// A new check after a download or from the menu; the files still in the total stay in it.
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     pub fn rechecked(&mut self, report: &ModelsReport) {
         let mut fresh = Self::new(report, &self.folder);
         for row in &mut fresh.rows {
@@ -149,18 +150,11 @@ impl WindowModel {
                 self.set(name, RowStatus::Downloading { percent: 0 });
             }
             DownloadEvent::Verifying(name) => self.set(name, RowStatus::Verifying),
-            DownloadEvent::Progress {
-                name,
-                received,
-                total,
-                bytes_per_s,
-            } => {
+            DownloadEvent::Progress { name, received, total, bytes_per_s } => {
                 self.rate = *bytes_per_s;
                 if let Some(row) = self.row(name) {
                     row.received = *received;
-                    row.status = RowStatus::Downloading {
-                        percent: percent(*received, *total),
-                    };
+                    row.status = RowStatus::Downloading { percent: percent(*received, *total) };
                 }
             }
             DownloadEvent::Retrying { name, .. } => self.set(name, RowStatus::Retrying),

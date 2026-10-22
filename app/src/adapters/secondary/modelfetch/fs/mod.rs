@@ -31,11 +31,7 @@ impl FsModelStore {
             .into_iter()
             .filter(|dir| *dir != folder)
             .collect();
-        Self {
-            folder,
-            fallbacks,
-            env,
-        }
+        Self { folder, fallbacks, env }
     }
 
     /// The models folder.
@@ -108,12 +104,7 @@ impl ModelStore for FsModelStore {
             hasher.update(&buffer[..read]);
             len += read as u64;
         }
-        Ok(Box::new(FsPart {
-            path,
-            part,
-            hasher,
-            len,
-        }))
+        Ok(Box::new(FsPart { path, part, hasher, len }))
     }
 
     fn place(&self, file: &ModelFile) -> Result<(), String> {

@@ -76,12 +76,7 @@ impl Services {
         probe: Box<dyn ServiceProbe>,
         clock: Arc<dyn Clock>,
     ) -> Self {
-        Self {
-            units: Vec::new(),
-            launcher,
-            probe,
-            clock,
-        }
+        Self { units: Vec::new(), launcher, probe, clock }
     }
 
     /// Supervises every service of `specs` whose port is not supervised yet.
@@ -171,11 +166,7 @@ impl ServiceRuntime {
         let thread = std::thread::Builder::new()
             .name("services".into())
             .spawn(move || serve(services, &inbox, &published, tick))?;
-        Ok(Self {
-            commands,
-            statuses,
-            thread: Mutex::new(Some(thread)),
-        })
+        Ok(Self { commands, statuses, thread: Mutex::new(Some(thread)) })
     }
 
     pub fn supervise(&self, specs: Vec<ServiceSpec>) {

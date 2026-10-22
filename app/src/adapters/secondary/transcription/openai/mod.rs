@@ -34,6 +34,9 @@ const SLOW_RETRY_PAUSE: Duration = Duration::from_millis(200);
 /// The wait for one request: this, plus half the length of its audio.
 const DEADLINE_BASE: Duration = Duration::from_secs(5);
 const DEADLINE_PER_AUDIO_SECOND: f32 = 0.5;
+/// How long a request waits for a copy to come back once no copy accepts connections: the
+/// app restarts a copy that died after 1 s, and loading its model takes a few seconds more.
+pub const RECOVERY_WAIT: Duration = Duration::from_secs(30);
 
 /// Transcribes audio through a local speech recognition service that speaks the
 /// OpenAI Audio Transcriptions API (whisper.cpp `whisper-server`, Speaches, LocalAI),
@@ -44,6 +47,7 @@ pub struct OpenAiTranscriber {
     cfg: TranscriptionCfg,
     /// Numbers the requests, for the log: `request=<n>`.
     requests: u64,
+    recovery_wait: Duration,
 }
 
 /// Why one attempt brought no answer.
@@ -59,12 +63,7 @@ struct AttemptFailure {
 impl AttemptFailure {
     fn of(error: &ureq::Error) -> Self {
         let failure = Failure::of(error);
-        Self {
-            failure,
-            what: failure.describe(),
-            error: error.to_string(),
-            waiting: false,
-        }
+        Self { failure, what: failure.describe(), error: error.to_string(), waiting: false }
     }
 
     fn of_pool(error: &PoolError) -> Self {
@@ -97,12 +96,13 @@ impl OpenAiTranscriber {
             );
         }
         let agent = request_agent(Duration::from_secs(cfg.timeout_secs));
-        Ok(Self {
-            agent,
-            pool,
-            cfg,
-            requests: 0,
-        })
+        Ok(Self { agent, pool, cfg, requests: 0, recovery_wait: RECOVERY_WAIT })
+    }
+
+    /// The same transcriber, waiting `wait` instead of [`RECOVERY_WAIT`] for a copy to come
+    /// back.
+    pub fn with_recovery_wait(self, wait: Duration) -> Self {
+        Self { recovery_wait: wait, ..self }
     }
 
     /// Transcribes `audio`, again in the user's first language when the service heard a
@@ -116,10 +116,7 @@ impl OpenAiTranscriber {
                 response.language.as_deref().unwrap_or_default(),
                 self.cfg.languages.join(", ")
             );
-            let fixed = TranscriptionCfg {
-                language,
-                ..self.cfg.clone()
-            };
+            let fixed = TranscriptionCfg { language, ..self.cfg.clone() };
             response = self.request_transcript(multipart_body(&fixed, &wav), audio)?;
         }
         Ok(normalize_transcript(&response.text))
@@ -146,9 +143,14 @@ impl OpenAiTranscriber {
     /// Posts `body`, again after a refused or dropped connection, a timeout or an error
     /// answer, as often as each allows, each time to a copy not tried yet when one is
     /// free; every failed attempt is logged with how long it took. A request whose wait
-    /// for a free copy ran out asks again at once and keeps its place in the queue.
+    /// for a free copy ran out asks again at once and keeps its place in the queue. Once
+    /// the dropped connections are used up and no copy accepts connections, the request
+    /// waits once for a copy to come back and starts its dropped connections over.
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn post_with_retries(&self, body: Arc<Vec<u8>>, deadline: Duration) -> Result<String> {
         let (mut dropped, mut slow, mut attempt) = (0usize, 0u32, 0u32);
+        let mut waited_for_copy = false;
         let mut tried: Vec<u16> = Vec::new();
         let mut place = self.pool.place();
         loop {
@@ -161,32 +163,40 @@ impl OpenAiTranscriber {
             let pause = match failed.failure {
                 Failure::Dropped if dropped < RETRY_PAUSES.len() => {
                     dropped += 1;
-                    RETRY_PAUSES[dropped - 1]
+                    Some(RETRY_PAUSES[dropped - 1])
+                }
+                Failure::Dropped if !waited_for_copy && !self.pool.has_copies() => {
+                    waited_for_copy = true;
+                    self.wait_for_copy().then(|| {
+                        dropped = 0;
+                        Duration::ZERO
+                    })
                 }
                 Failure::TimedOut | Failure::Busy(_) if slow < SLOW_RETRIES => {
                     slow += 1;
-                    if failed.waiting {
+                    Some(if failed.waiting {
                         Duration::ZERO
                     } else {
                         SLOW_RETRY_PAUSE
-                    }
+                    })
                 }
-                _ => {
-                    log::warn!(
-                        "speech recognition service {} (request={} attempt {attempt}, after {}ms, deadline {}ms): {} — giving up",
-                        failed.what,
-                        self.requests,
-                        started.elapsed().as_millis(),
-                        deadline.as_millis(),
-                        failed.error
-                    );
-                    bail!(
-                        "speech recognition request to {} failed on copies {}: {}",
-                        self.cfg.base_url,
-                        ports_list(&tried),
-                        failed.error
-                    )
-                }
+                _ => None,
+            };
+            let Some(pause) = pause else {
+                log::warn!(
+                    "speech recognition service {} (request={} attempt {attempt}, after {}ms, deadline {}ms): {} — giving up",
+                    failed.what,
+                    self.requests,
+                    started.elapsed().as_millis(),
+                    deadline.as_millis(),
+                    failed.error
+                );
+                bail!(
+                    "speech recognition request to {} failed on copies {}: {}",
+                    self.cfg.base_url,
+                    ports_list(&tried),
+                    failed.error
+                )
             };
             log::warn!(
                 "speech recognition service {} (request={} attempt {attempt}, after {}ms, deadline {}ms): {} — retrying in {}ms",
@@ -201,8 +211,28 @@ impl OpenAiTranscriber {
         }
     }
 
+    /// Waits for a copy to accept connections again; logs the wait and how it ended.
+    fn wait_for_copy(&self) -> bool {
+        log::warn!(
+            "speech recognition: no copy accepts connections — waiting up to {} s for one to come back (request={})",
+            self.recovery_wait.as_secs_f32(),
+            self.requests
+        );
+        let started = Instant::now();
+        let back = self.pool.await_copy(self.recovery_wait);
+        if back {
+            log::info!(
+                "speech recognition: a copy is back after {}ms (request={})",
+                started.elapsed().as_millis(),
+                self.requests
+            );
+        }
+        back
+    }
+
     /// One attempt on a free copy, waiting at most `deadline` in `place` for the copy and
     /// again for its answer; a copy given up on stays held until it answered.
+    #[expect(clippy::too_many_arguments, reason = "size baseline")]
     fn attempt(
         &self,
         body: &Arc<Vec<u8>>,
@@ -271,6 +301,12 @@ fn post(agent: &ureq::Agent, url: &str, body: &[u8]) -> (Result<String, AttemptF
 fn ports_list(ports: &[u16]) -> String {
     let ports: Vec<String> = ports.iter().map(u16::to_string).collect();
     ports.join(", ")
+}
+
+/// The longest one recording or chunk may take with every retry, each attempt at its
+/// longest deadline `timeout`: what a stopped dictation may wait for its last chunk.
+pub fn longest_wait(timeout: Duration) -> Duration {
+    timeout * (1 + SLOW_RETRIES) + SLOW_RETRY_PAUSE * SLOW_RETRIES + RETRY_PAUSES.iter().sum()
 }
 
 /// How long one request may take: a few seconds for a short recording, more for long
@@ -378,6 +414,14 @@ mod tests {
         assert_eq!(
             request_deadline(&chunk, Duration::from_secs(60)),
             Duration::from_secs(21)
+        );
+    }
+
+    #[test]
+    fn should_wait_every_attempt_and_pause_at_the_longest() {
+        assert_eq!(
+            longest_wait(Duration::from_secs(60)),
+            Duration::from_millis(181_800)
         );
     }
 

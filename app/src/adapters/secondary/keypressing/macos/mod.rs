@@ -26,9 +26,7 @@ pub struct MacOsKeyPresser {
 
 impl MacOsKeyPresser {
     pub fn new() -> Self {
-        Self {
-            trusted: process_is_trusted_for_accessibility,
-        }
+        Self { trusted: process_is_trusted_for_accessibility }
     }
 
     fn ensure_trusted(&self) -> Result<()> {

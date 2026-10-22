@@ -26,11 +26,8 @@ const WAVEFORM_TICK_MS: i64 = 16;
 const PASTED_FADE_SECS: f64 = 0.2;
 const FADE_FRAME_MS: i64 = 16;
 
-const RECORDING_LOOK: PillLook = PillLook {
-    kind: PillKind::Recording,
-    sign: None,
-    breathes: false,
-};
+const RECORDING_LOOK: PillLook =
+    PillLook { kind: PillKind::Recording, sign: None, breathes: false };
 
 /// One drawing of the overlay; every later signal bumps the counter, which ends the timed work
 /// of this one.
@@ -105,11 +102,7 @@ pub(super) fn apply_processing_state(
     turn: Turn,
     commands_unavailable: bool,
 ) {
-    let look = PillLook {
-        kind: PillKind::Processing,
-        sign: state_sign(stage),
-        breathes: true,
-    };
+    let look = PillLook { kind: PillKind::Processing, sign: state_sign(stage), breathes: true };
     for ws in &windows {
         ws.draw(look, GlassTint::Clear, commands_unavailable, FULL_CAPACITY);
         ws.transcript.hide();
@@ -142,11 +135,7 @@ pub(super) fn apply_waiting_for_focus_state(
 
 /// The green check and "Pasted"; no text window.
 pub(super) fn apply_pasted_sign(windows: &[Arc<WindowSet>]) {
-    let look = PillLook {
-        kind: PillKind::Sign,
-        sign: Some(PASTED_SIGN),
-        breathes: false,
-    };
+    let look = PillLook { kind: PillKind::Sign, sign: Some(PASTED_SIGN), breathes: false };
     for ws in windows {
         ws.draw(look, GlassTint::Clear, false, FULL_CAPACITY);
         ws.transcript.hide();
@@ -156,11 +145,7 @@ pub(super) fn apply_pasted_sign(windows: &[Arc<WindowSet>]) {
 /// The command's icon and name in place of the state's sign, steady; the text window stays
 /// as it is.
 pub(super) fn apply_command_sign(windows: &[Arc<WindowSet>], sign: SignLook) {
-    let look = PillLook {
-        kind: PillKind::Command,
-        sign: Some(sign),
-        breathes: false,
-    };
+    let look = PillLook { kind: PillKind::Command, sign: Some(sign), breathes: false };
     for ws in windows {
         ws.draw(look, GlassTint::Clear, false, FULL_CAPACITY);
     }
@@ -179,11 +164,7 @@ pub(super) fn apply_hidden_state(windows: Windows, commands_unavailable: bool) {
 
 /// The muted microphone and "CMD" alone in a compact pill.
 fn apply_commands_unavailable_alone(windows: &[Arc<WindowSet>]) {
-    let look = PillLook {
-        kind: PillKind::UnavailableAlone,
-        sign: None,
-        breathes: false,
-    };
+    let look = PillLook { kind: PillKind::UnavailableAlone, sign: None, breathes: false };
     for ws in windows {
         ws.draw(look, GlassTint::Clear, true, FULL_CAPACITY);
         ws.transcript.hide();

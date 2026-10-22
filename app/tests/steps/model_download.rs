@@ -322,11 +322,7 @@ fn launched_check(world: &mut IntegrationWorld) -> ModelsReport {
             part: 0,
         })
         .collect();
-    ModelsReport {
-        rows,
-        missing_bytes: 0,
-        free_bytes: None,
-    }
+    ModelsReport { rows, missing_bytes: 0, free_bytes: None }
 }
 
 #[then("the models check lists the dictation model as Missing with its size and purpose")]
@@ -529,10 +525,8 @@ fn fetched_twice_then_failed(world: &mut IntegrationWorld) -> Result<()> {
     if run.requests_of(&file) != [0, 0] {
         bail!("requests: {:?}", run.requests());
     }
-    let failed = DownloadEvent::Failed {
-        name: file.name,
-        failure: DownloadFailure::ChecksumMismatch,
-    };
+    let failed =
+        DownloadEvent::Failed { name: file.name, failure: DownloadFailure::ChecksumMismatch };
     if !run.events.contains(&failed) {
         bail!(
             "not reported Failed with checksum mismatch: {:?}",
@@ -585,10 +579,8 @@ fn tried_four_times(world: &mut IntegrationWorld) -> Result<()> {
         if run.requests_of(&file).len() != 4 {
             bail!("{} tried {:?}", file.name, run.requests_of(&file));
         }
-        let failed = DownloadEvent::Failed {
-            name: file.name,
-            failure: DownloadFailure::NoInternet,
-        };
+        let failed =
+            DownloadEvent::Failed { name: file.name, failure: DownloadFailure::NoInternet };
         if !run.events.contains(&failed) {
             bail!(
                 "{} not reported Failed with no internet connection",
@@ -634,10 +626,7 @@ fn nothing_fetched(world: &mut IntegrationWorld) -> Result<()> {
 #[then("the download reports that 3 GB are needed and 1 GB is free")]
 fn reports_needed_and_free(world: &mut IntegrationWorld) -> Result<()> {
     let run = download(world);
-    let refused = DownloadEvent::NotEnoughSpace {
-        needed: 3 * GB,
-        free: GB,
-    };
+    let refused = DownloadEvent::NotEnoughSpace { needed: 3 * GB, free: GB };
     if run.events != [refused] {
         bail!("events: {:?}", run.events);
     }

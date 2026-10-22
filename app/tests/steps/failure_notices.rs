@@ -234,19 +234,13 @@ fn start_pipeline(events: &Events, setup: Setup) -> Sender<PipelineInput> {
         Box::new(PartsRecorder::new(Arc::clone(events), setup)),
         Box::new(ScriptedTranscriber::new(setup.recognition)),
         refiner,
-        Box::new(ScriptedPaster {
-            events: Arc::clone(events),
-            fails: setup.paste_fails,
-        }),
+        Box::new(ScriptedPaster { events: Arc::clone(events), fails: setup.paste_fails }),
         Box::new(Silent),
         Box::new(NotingOverlay(Arc::clone(events))),
         PipelineConfig {
             min_press_ms: 0,
             recording_mode: RecordingMode::Toggle,
-            chunking: ChunkingCfg {
-                chunk_threshold_secs: threshold,
-                ..ChunkingCfg::default()
-            },
+            chunking: ChunkingCfg { chunk_threshold_secs: threshold, ..ChunkingCfg::default() },
         },
     );
     if setup.refinement == Refinement::Off {
@@ -254,12 +248,8 @@ fn start_pipeline(events: &Events, setup: Setup) -> Sender<PipelineInput> {
     }
     if setup.voice_control {
         pipeline = pipeline.with_voice_control(
-            Box::new(QuietSpotter {
-                down: setup.spotting_down,
-            }),
-            Box::new(ScriptedKeys {
-                refused: setup.keys_refused,
-            }),
+            Box::new(QuietSpotter { down: setup.spotting_down }),
+            Box::new(ScriptedKeys { refused: setup.keys_refused }),
         );
     }
     std::thread::spawn(move || pipeline.run(rx));
@@ -631,11 +621,7 @@ struct PartsRecorder {
 
 impl PartsRecorder {
     fn new(events: Events, setup: Setup) -> Self {
-        Self {
-            events,
-            setup,
-            parts: None,
-        }
+        Self { events, setup, parts: None }
     }
 
     fn one_second() -> AudioBuffer16k {
@@ -644,10 +630,8 @@ impl PartsRecorder {
 
     fn send_part(&self) {
         if let Some(parts) = &self.parts {
-            let _ = parts.send(LiveChunk {
-                audio: Self::one_second(),
-                enqueued_at: Instant::now(),
-            });
+            let _ =
+                parts.send(LiveChunk { audio: Self::one_second(), enqueued_at: Instant::now() });
         }
     }
 }
@@ -689,10 +673,7 @@ struct ScriptedTranscriber {
 
 impl ScriptedTranscriber {
     fn new(recognition: Recognition) -> Self {
-        Self {
-            recognition,
-            calls: 0,
-        }
+        Self { recognition, calls: 0 }
     }
 }
 

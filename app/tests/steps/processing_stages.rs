@@ -107,6 +107,7 @@ impl StagesRun {
         Ok(())
     }
 
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn start_pipeline(&self) -> Sender<PipelineInput> {
         let (tx, rx) = mpsc::channel();
         let events = &self.events;
@@ -121,16 +122,11 @@ impl StagesRun {
                 in_parts: self.in_parts,
                 parts: None,
             }),
-            Box::new(NotingTranscriber {
-                events: Arc::clone(events),
-                no_speech: self.no_speech,
-            }),
+            Box::new(NotingTranscriber { events: Arc::clone(events), no_speech: self.no_speech }),
             refiner,
             Box::new(NotingPaster(Arc::clone(events))),
             Box::new(Silent),
-            Box::new(NotingOverlay {
-                events: Arc::clone(events),
-            }),
+            Box::new(NotingOverlay { events: Arc::clone(events) }),
             PipelineConfig {
                 min_press_ms: 0,
                 recording_mode: RecordingMode::Toggle,
@@ -146,10 +142,7 @@ impl StagesRun {
         if self.no_text_focus {
             pipeline = pipeline.with_focus_wait(
                 Box::new(FocusOnButton),
-                FocusWaitCfg {
-                    timeout: FOCUS_WAIT,
-                    poll_interval: Duration::from_millis(20),
-                },
+                FocusWaitCfg { timeout: FOCUS_WAIT, poll_interval: Duration::from_millis(20) },
             );
         }
         if self.voice_control {
@@ -451,10 +444,8 @@ impl PartsRecorder {
 
     fn send_part(&self) {
         if let Some(parts) = &self.parts {
-            let _ = parts.send(LiveChunk {
-                audio: Self::one_second(),
-                enqueued_at: Instant::now(),
-            });
+            let _ =
+                parts.send(LiveChunk { audio: Self::one_second(), enqueued_at: Instant::now() });
         }
     }
 }

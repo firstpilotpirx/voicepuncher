@@ -9,32 +9,20 @@ const GB: u64 = 1_000 * MB;
 const FOLDER: &str = "/Users/me/.voicepuncher/models";
 
 fn file(name: &'static str, size_bytes: u64) -> ModelFile {
-    ModelFile {
-        name,
-        size_bytes,
-        ..CATALOG[0]
-    }
+    ModelFile { name, size_bytes, ..CATALOG[0] }
 }
 
 fn report(rows: &[(ModelFile, bool)], free: Option<u64>) -> ModelsReport {
     let rows: Vec<ModelRow> = rows
         .iter()
-        .map(|(file, present)| ModelRow {
-            file: *file,
-            present: *present,
-            part: 0,
-        })
+        .map(|(file, present)| ModelRow { file: *file, present: *present, part: 0 })
         .collect();
     let missing_bytes = rows
         .iter()
         .filter(|r| !r.present)
         .map(|r| r.file.size_bytes)
         .sum();
-    ModelsReport {
-        rows,
-        missing_bytes,
-        free_bytes: free,
-    }
+    ModelsReport { rows, missing_bytes, free_bytes: free }
 }
 
 fn two_missing(free: Option<u64>) -> WindowModel {
@@ -151,10 +139,7 @@ fn should_turn_the_free_space_line_red_when_the_disk_is_too_full() {
     );
     assert!(!model.main_enabled());
     // When the download is refused
-    model.apply(&DownloadEvent::NotEnoughSpace {
-        needed: 3 * GB,
-        free: GB,
-    });
+    model.apply(&DownloadEvent::NotEnoughSpace { needed: 3 * GB, free: GB });
     assert!(model.space_line().1);
 }
 
@@ -169,10 +154,7 @@ fn should_offer_retry_after_a_failed_file() {
         attempt: 1,
         pause: Duration::from_secs(2),
     });
-    model.apply(&DownloadEvent::Failed {
-        name: "a.bin",
-        failure: DownloadFailure::NoInternet,
-    });
+    model.apply(&DownloadEvent::Failed { name: "a.bin", failure: DownloadFailure::NoInternet });
     model.ended();
     // Then
     assert_eq!(

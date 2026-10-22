@@ -378,10 +378,7 @@ impl Session<'_> {
             let start = self.vad_offset + segment.start().max(0) as usize;
             let detected_end = start + segment.n().max(0) as usize;
             let end = quiet_from.map_or(detected_end, |q| q.clamp(start, detected_end));
-            let bounds = Segment {
-                start: seconds(start),
-                end: seconds(end),
-            };
+            let bounds = Segment { start: seconds(start), end: seconds(end) };
             log::info!("speech {:.2}–{:.2}s", bounds.start, bounds.end);
             if let Some(dir) = self.engine.save_speech_dir.as_deref() {
                 save_speech(dir, bounds.start, &as_given(segment.samples()));
@@ -409,6 +406,7 @@ impl Session<'_> {
     /// Searches the utterance being spoken: its start for "start", and every second its
     /// last seconds for a doubled or chained command; a check due while another one waits
     /// for its answer waits its turn with the audio it was due for.
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn watch_running(&mut self) {
         if self.worker.is_none() || !self.vad.detected() {
             self.close_current();
@@ -417,13 +415,8 @@ impl Session<'_> {
         let now = self.samples_seen;
         let floor = self.last_segment_end;
         let id = self.current_or_new(now.saturating_sub(samples_in(ONSET_SECS)).max(floor));
-        let Some(&Running {
-            start,
-            head_checked,
-            early_head_checked,
-            next_window,
-            ..
-        }) = self.utterances.get(&id)
+        let Some(&Running { start, head_checked, early_head_checked, next_window, .. }) =
+            self.utterances.get(&id)
         else {
             return;
         };
@@ -440,11 +433,7 @@ impl Session<'_> {
                 JobKind::Head,
                 from,
                 now,
-                JobContext::Head {
-                    utterance: id,
-                    from,
-                    early: true,
-                },
+                JobContext::Head { utterance: id, from, early: true },
             );
         }
         if !head_checked && now - start >= samples_in(HEAD_CHECK_SECS) {
@@ -454,11 +443,7 @@ impl Session<'_> {
                 JobKind::Head,
                 from,
                 now,
-                JobContext::Head {
-                    utterance: id,
-                    from,
-                    early: false,
-                },
+                JobContext::Head { utterance: id, from, early: false },
             );
         }
         if now >= next_window {
@@ -470,10 +455,7 @@ impl Session<'_> {
                 JobKind::Window,
                 from,
                 now,
-                JobContext::Window {
-                    utterance: id,
-                    from,
-                },
+                JobContext::Window { utterance: id, from },
             );
         }
     }
@@ -601,11 +583,7 @@ fn decoded(
         };
         spotter.reset(stream);
         let (start, end) = phrase_span(position, &result.timestamps);
-        found.push(Spotted {
-            phrase: keywords::phrase_of(&result.keyword),
-            start,
-            end,
-        });
+        found.push(Spotted { phrase: keywords::phrase_of(&result.keyword), start, end });
     }
     found
 }

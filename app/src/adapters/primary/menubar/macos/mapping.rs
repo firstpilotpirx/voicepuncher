@@ -140,11 +140,7 @@ impl StatusItemState {
 
     fn recording_line(&self) -> String {
         match &self.runtime {
-            Some(RuntimeState::Ready {
-                hotkey,
-                recording_mode,
-                ..
-            }) => {
+            Some(RuntimeState::Ready { hotkey, recording_mode, .. }) => {
                 let verb = match recording_mode {
                     RecordingMode::Hold => "release",
                     RecordingMode::Toggle => "press",
@@ -170,11 +166,7 @@ impl StatusItemState {
             }
             Some(RuntimeState::Stopped) => "Quitting…".into(),
             Some(RuntimeState::Failed(reason)) => format!("Failed: {reason}"),
-            Some(RuntimeState::Ready {
-                hotkey,
-                recording_mode,
-                voice_control,
-            }) => {
+            Some(RuntimeState::Ready { hotkey, recording_mode, voice_control }) => {
                 if self.commands_unavailable {
                     "Voice control: commands unavailable".into()
                 } else if *voice_control {

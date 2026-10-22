@@ -278,6 +278,7 @@ fn below_top(x: f64, y: f64, width: f64, height: f64) -> NSRect {
     )
 }
 
+#[expect(clippy::too_many_lines, reason = "size baseline")]
 fn content(mtm: MainThreadMarker, target: &WindowTarget, model: &WindowModel) -> Retained<NSView> {
     let view = NSView::initWithFrame(
         mtm.alloc::<NSView>(),
@@ -329,6 +330,11 @@ fn content(mtm: MainThreadMarker, target: &WindowTarget, model: &WindowModel) ->
     view
 }
 
+#[expect(
+    clippy::too_many_lines,
+    clippy::too_many_arguments,
+    reason = "size baseline"
+)]
 fn add_row(
     mtm: MainThreadMarker,
     view: &NSView,

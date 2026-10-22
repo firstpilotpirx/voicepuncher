@@ -36,11 +36,7 @@ pub struct FileSystemDictationArchive {
 
 impl FileSystemDictationArchive {
     pub fn new(dir: PathBuf, max_size_bytes: u64, setup: ArchiveSetup) -> Self {
-        Self {
-            dir,
-            max_size_bytes,
-            setup,
-        }
+        Self { dir, max_size_bytes, setup }
     }
 
     fn write(&self, entry: &ArchiveEntry) -> Result<String> {

@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Maps `items` through `f` on at most `max_concurrent` threads at a time and
 /// returns the results in input order.
+#[expect(clippy::excessive_nesting, reason = "size baseline")]
 pub fn map_concurrently<T, R, F>(items: &[T], max_concurrent: usize, f: F) -> Vec<R>
 where
     T: Sync,

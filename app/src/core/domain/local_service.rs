@@ -37,7 +37,8 @@ pub struct ServiceSpec {
     pub args: Vec<String>,
     pub port: u16,
     pub log_file: PathBuf,
-    /// Checked while it runs, and killed when it stops answering; whisper copies are not.
+    /// Checked while it runs, and killed when it stops answering: every service the app
+    /// starts, each whisper copy on its own.
     pub health_checked: bool,
     pub problem: Option<String>,
 }
@@ -177,11 +178,7 @@ mod tests {
         // Then
         assert_eq!(
             progress,
-            ServicesProgress {
-                ready: 2,
-                total: 4,
-                failed: None
-            }
+            ServicesProgress { ready: 2, total: 4, failed: None }
         );
         assert!(!progress.all_ready());
     }
@@ -198,10 +195,7 @@ mod tests {
 
     #[test]
     fn should_describe_states_in_words() {
-        let restarting = ServiceState::Restarting {
-            attempt: 3,
-            pause: Duration::from_secs(4),
-        };
+        let restarting = ServiceState::Restarting { attempt: 3, pause: Duration::from_secs(4) };
         assert_eq!(restarting.to_string(), "Restarting (try 3)");
         assert_eq!(
             ServiceState::StoppedOutside.to_string(),

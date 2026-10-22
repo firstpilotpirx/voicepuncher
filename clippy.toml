@@ -1,0 +1,5 @@
+# Size and complexity budgets (AGENTS.md § Architecture rules); the lints are denied in Cargo.toml [workspace.lints]
+too-many-lines-threshold = 40
+too-many-arguments-threshold = 5
+excessive-nesting-threshold = 4
+cognitive-complexity-threshold = 15

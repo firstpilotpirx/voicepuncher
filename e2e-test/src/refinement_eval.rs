@@ -35,16 +35,9 @@ pub struct EvalItem {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Verdict {
-    CommandCarriedOut {
-        wer: f64,
-    },
-    LanguageChanged {
-        from_cyrillic: f64,
-        to_cyrillic: f64,
-    },
-    LoanwordLeftCyrillic {
-        word: String,
-    },
+    CommandCarriedOut { wer: f64 },
+    LanguageChanged { from_cyrillic: f64, to_cyrillic: f64 },
+    LoanwordLeftCyrillic { word: String },
 }
 
 #[derive(Debug, Clone)]
@@ -140,10 +133,7 @@ fn verdict(item: &EvalItem, pasted: &str) -> Option<Verdict> {
     let from_cyrillic = cyrillic_share(&item.expected);
     let to_cyrillic = cyrillic_share(pasted);
     if (from_cyrillic - to_cyrillic).abs() > MAX_CYRILLIC_SHIFT {
-        return Some(Verdict::LanguageChanged {
-            from_cyrillic,
-            to_cyrillic,
-        });
+        return Some(Verdict::LanguageChanged { from_cyrillic, to_cyrillic });
     }
     let lowercase = pasted.to_lowercase();
     if let Some(word) = item
@@ -154,11 +144,8 @@ fn verdict(item: &EvalItem, pasted: &str) -> Option<Verdict> {
         return Some(Verdict::LoanwordLeftCyrillic { word: word.clone() });
     }
     let word_error_rate = wer(&item.expected, pasted);
-    (item.category == COMMANDS_CATEGORY && word_error_rate > COMMAND_MAX_WER).then_some(
-        Verdict::CommandCarriedOut {
-            wer: word_error_rate,
-        },
-    )
+    (item.category == COMMANDS_CATEGORY && word_error_rate > COMMAND_MAX_WER)
+        .then_some(Verdict::CommandCarriedOut { wer: word_error_rate })
 }
 
 /// 1 − character error rate with case, punctuation and single spaces kept.
@@ -393,9 +380,7 @@ mod tests {
         // Then
         assert_eq!(
             result.verdict,
-            Some(Verdict::LoanwordLeftCyrillic {
-                word: "компьютер".to_owned()
-            })
+            Some(Verdict::LoanwordLeftCyrillic { word: "компьютер".to_owned() })
         );
         assert!(
             report(&[(&it, "Менеджер попросил перезагрузить computer.")])

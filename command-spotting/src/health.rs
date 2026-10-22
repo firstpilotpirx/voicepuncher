@@ -18,10 +18,7 @@ pub struct Beat {
 
 impl Beat {
     fn new() -> Self {
-        Self {
-            last_progress: Mutex::new(Instant::now()),
-            waiting: AtomicUsize::new(0),
-        }
+        Self { last_progress: Mutex::new(Instant::now()), waiting: AtomicUsize::new(0) }
     }
 
     /// A message of audio waits for the processing thread.
@@ -69,10 +66,7 @@ impl Default for Health {
 impl Health {
     /// Counts a connection as stuck once it made no progress for `after` with audio waiting.
     pub fn stuck_after(after: Duration) -> Self {
-        Self {
-            beats: Arc::default(),
-            stuck_after: after,
-        }
+        Self { beats: Arc::default(), stuck_after: after }
     }
 
     pub fn register(&self, conn: u64) -> Arc<Beat> {

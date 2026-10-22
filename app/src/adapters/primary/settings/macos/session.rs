@@ -125,10 +125,8 @@ impl SettingsSession {
     /// that does not check out refuses the Save, and nothing is written or applied.
     pub fn save(&mut self, listener: StatusListener) -> Result<(), Refusal> {
         for (field, value) in &self.edits {
-            validate(field, value, &self.home).map_err(|message| Refusal {
-                field: Some(field),
-                message,
-            })?;
+            validate(field, value, &self.home)
+                .map_err(|message| Refusal { field: Some(field), message })?;
         }
         let mut document = self.document.clone();
         for (field, value) in &self.edits {
@@ -153,10 +151,7 @@ impl SettingsSession {
 }
 
 fn unattributed(error: anyhow::Error) -> Refusal {
-    Refusal {
-        field: None,
-        message: format!("{error:#}"),
-    }
+    Refusal { field: None, message: format!("{error:#}") }
 }
 
 /// What the window's status line says about `status`.

@@ -136,12 +136,8 @@ fn should_extract_an_archive_into_its_folder_and_delete_it() {
         .status()
         .unwrap();
     assert!(status.success());
-    let kws = ModelFile {
-        kind: ModelKind::TarBz2 {
-            folder: "kws-model",
-        },
-        ..file("kws.tar.bz2", 1)
-    };
+    let kws =
+        ModelFile { kind: ModelKind::TarBz2 { folder: "kws-model" }, ..file("kws.tar.bz2", 1) };
     let store = store(home.path(), HashMap::new());
     // When
     store.extract(&kws).unwrap();
@@ -158,12 +154,8 @@ fn should_report_an_archive_that_is_no_archive() {
     let folder = home.path().join("models-folder");
     std::fs::create_dir_all(&folder).unwrap();
     std::fs::write(folder.join("kws.tar.bz2"), b"not bzip2").unwrap();
-    let kws = ModelFile {
-        kind: ModelKind::TarBz2 {
-            folder: "kws-model",
-        },
-        ..file("kws.tar.bz2", 1)
-    };
+    let kws =
+        ModelFile { kind: ModelKind::TarBz2 { folder: "kws-model" }, ..file("kws.tar.bz2", 1) };
     // When
     let result = store(home.path(), HashMap::new()).extract(&kws);
     // Then

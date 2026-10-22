@@ -162,3 +162,17 @@ Feature: app-runtime
       Given the runtime is Ready with services it started
       When the runtime stops
       Then the services it started are stopped
+
+  Rule: A pipeline that fails stops in order and starts again
+
+    Scenario: The pipeline panics once
+      Given the runtime is Ready
+      When the dictation pipeline panics during a recording
+      Then the failure is logged and the overlay is hidden
+      And the runtime starts a new pipeline and is Ready again, and the hotkey starts a recording
+
+    Scenario: The restarted pipeline panics again at once
+      Given every pipeline the runtime starts panics on its first recording
+      When the user starts a recording twice
+      Then the runtime state is Failed with a reason naming the panic
+      And the process still runs

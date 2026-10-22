@@ -45,10 +45,7 @@ impl MicCapture {
             None,
         )?;
         stream.play()?;
-        let capture = Self {
-            _stream: stream,
-            started_at: Instant::now(),
-        };
+        let capture = Self { _stream: stream, started_at: Instant::now() };
         Ok((capture, rate))
     }
 }
@@ -70,10 +67,7 @@ pub struct StreamResampler {
 impl StreamResampler {
     pub fn new(native_rate: u32) -> Result<Self> {
         if native_rate == SAMPLE_RATE_HZ {
-            return Ok(Self {
-                inner: None,
-                pending: Vec::new(),
-            });
+            return Ok(Self { inner: None, pending: Vec::new() });
         }
         let params = SincInterpolationParameters {
             sinc_len: RESAMPLER_SINC_LEN,
@@ -85,10 +79,7 @@ impl StreamResampler {
         let ratio = f64::from(SAMPLE_RATE_HZ) / f64::from(native_rate);
         let inner = SincFixedIn::<f32>::new(ratio, 1.0, params, RESAMPLER_CHUNK, 1)
             .map_err(|e| anyhow!("resampler construction failed: {e}"))?;
-        Ok(Self {
-            inner: Some(inner),
-            pending: Vec::new(),
-        })
+        Ok(Self { inner: Some(inner), pending: Vec::new() })
     }
 
     /// The 16 kHz samples of every full resampler chunk `samples` completes.

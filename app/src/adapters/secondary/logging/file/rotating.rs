@@ -22,13 +22,7 @@ impl RotatingFileWriter {
         }
         let file = open_append(path)?;
         let written = file.metadata()?.len();
-        Ok(Self {
-            path: path.to_path_buf(),
-            max_bytes,
-            keep,
-            file,
-            written,
-        })
+        Ok(Self { path: path.to_path_buf(), max_bytes, keep, file, written })
     }
 
     fn rotate(&mut self) -> io::Result<()> {

@@ -25,9 +25,7 @@ pub(crate) struct ModelsFolder {
 
 impl ModelsFolder {
     fn new() -> Self {
-        Self {
-            home: tempfile::tempdir().expect("a temporary home"),
-        }
+        Self { home: tempfile::tempdir().expect("a temporary home") }
     }
 
     pub(crate) fn folder(&self) -> PathBuf {

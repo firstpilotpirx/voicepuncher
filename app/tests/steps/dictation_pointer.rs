@@ -125,9 +125,7 @@ impl PointerRun {
         let (tx, rx) = mpsc::channel();
         let mut pipeline = Pipeline::new(
             Box::new(OneSecondRecorder(Arc::clone(&self.events))),
-            Box::new(SlowTranscriber {
-                down: self.recognition_down,
-            }),
+            Box::new(SlowTranscriber { down: self.recognition_down }),
             Box::new(SlowRefiner),
             Box::new(QuietPaster),
             Box::new(Silent),
@@ -136,10 +134,7 @@ impl PointerRun {
         )
         .with_focus_wait(
             Box::new(SwitchableFocus(Arc::clone(&self.button_focused))),
-            FocusWaitCfg {
-                timeout: FOCUS_WAIT,
-                poll_interval: Duration::from_millis(20),
-            },
+            FocusWaitCfg { timeout: FOCUS_WAIT, poll_interval: Duration::from_millis(20) },
         );
         if self.voice_control {
             pipeline = pipeline.with_voice_control(Box::new(QuietSpotter), Box::new(NoKeys));
@@ -149,10 +144,7 @@ impl PointerRun {
     }
 
     fn indicator(&self) -> PointerSignIndicator<NotingOverlay, NotingSign> {
-        let lifetimes = SignLifetimes {
-            failure: FAILURE_NOTICE_TIME,
-            ..SignLifetimes::default()
-        };
+        let lifetimes = SignLifetimes { failure: FAILURE_NOTICE_TIME, ..SignLifetimes::default() };
         PointerSignIndicator::with_lifetimes(
             NotingOverlay(Arc::clone(&self.events)),
             NotingSign(Arc::clone(&self.events)),
@@ -168,10 +160,7 @@ impl PointerRun {
             } else {
                 RecordingMode::Toggle
             },
-            chunking: ChunkingCfg {
-                chunk_threshold_secs: 0,
-                ..ChunkingCfg::default()
-            },
+            chunking: ChunkingCfg { chunk_threshold_secs: 0, ..ChunkingCfg::default() },
         }
     }
 

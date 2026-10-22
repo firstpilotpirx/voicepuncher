@@ -46,11 +46,7 @@ pub(super) fn steady_clip(audio: &[f32], start: usize, quiet_level: f32) -> Stea
     };
     let mut samples = vec![0.0; padding];
     samples.extend(audio[cut..].iter().map(|s| s * gain));
-    SteadyClip {
-        samples,
-        origin: (start + first).saturating_sub(lead),
-        gain,
-    }
+    SteadyClip { samples, origin: (start + first).saturating_sub(lead), gain }
 }
 
 #[cfg(test)]

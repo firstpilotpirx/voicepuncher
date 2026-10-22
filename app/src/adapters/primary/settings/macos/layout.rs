@@ -88,6 +88,11 @@ fn symbol(name: &str) -> Option<Retained<NSImage>> {
     NSImage::imageWithSystemSymbolName_accessibilityDescription(&NSString::from_str(name), None)
 }
 
+#[expect(
+    clippy::too_many_lines,
+    clippy::too_many_arguments,
+    reason = "size baseline"
+)]
 fn tab_view(
     parts: &Parts,
     page: &NSViewController,
@@ -143,17 +148,13 @@ fn tab_view(
     page.setOrientation(NSUserInterfaceLayoutOrientation::Vertical);
     page.setAlignment(NSLayoutAttribute::Leading);
     page.setSpacing(MARGIN);
-    page.setEdgeInsets(NSEdgeInsets {
-        top: MARGIN,
-        left: MARGIN,
-        bottom: MARGIN,
-        right: MARGIN,
-    });
+    page.setEdgeInsets(NSEdgeInsets { top: MARGIN, left: MARGIN, bottom: MARGIN, right: MARGIN });
     width(&page, CONTENT_WIDTH);
     (Retained::into_super(page), views)
 }
 
 /// The rows of `views.tab`'s fields, the advanced ones hidden, each with its note under it.
+#[expect(clippy::too_many_arguments, reason = "size baseline")]
 fn add_rows(
     parts: &Parts,
     grid: &NSGridView,

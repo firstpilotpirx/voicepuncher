@@ -53,10 +53,7 @@ fn use_stub(world: &mut E2eWorld, behavior: StubBehavior) -> Result<()> {
 }
 
 fn answer(content: String) -> StubBehavior {
-    StubBehavior::Answer {
-        content,
-        finish_reason: "stop",
-    }
+    StubBehavior::Answer { content, finish_reason: "stop" }
 }
 
 #[given("the text refinement service answers with corrected text")]
@@ -71,10 +68,8 @@ fn service_answers_with_reasoning(world: &mut E2eWorld) -> Result<()> {
 
 #[given("the text refinement service stops generating at its output limit")]
 fn service_cut_off(world: &mut E2eWorld) -> Result<()> {
-    let behavior = StubBehavior::Answer {
-        content: CUT_OFF_TEXT.to_owned(),
-        finish_reason: "length",
-    };
+    let behavior =
+        StubBehavior::Answer { content: CUT_OFF_TEXT.to_owned(), finish_reason: "length" };
     use_stub(world, behavior)
 }
 
@@ -267,11 +262,7 @@ fn speech_recording(world: &mut E2eWorld, text: &str) -> Result<PathBuf> {
 /// Synthesizes `text` with the macOS voice `voice` into the scenario's recording.
 fn voiced_speech_recording(world: &mut E2eWorld, voice: &str, text: &str) -> Result<PathBuf> {
     let path = world.workdir()?.join("speech.wav");
-    let speech = synthesized(&SayRequest {
-        voice: Some(voice),
-        words_per_minute: None,
-        text,
-    })?;
+    let speech = synthesized(&SayRequest { voice: Some(voice), words_per_minute: None, text })?;
     write_wav(&path, &speech)?;
     Ok(path)
 }

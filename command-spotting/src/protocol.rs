@@ -151,10 +151,7 @@ mod tests {
             start: 4.5,
             end: 5.25,
             placement: Placement::Anywhere,
-            timing: Some(Timing {
-                asked_at: 5.5,
-                took_ms: 210,
-            }),
+            timing: Some(Timing { asked_at: 5.5, took_ms: 210 }),
         };
         // When
         let json = serde_json::to_string(&command).unwrap();
@@ -172,10 +169,7 @@ mod tests {
             phrase: "start dictation".into(),
             start: 1.5,
             end: 2.25,
-            timing: Some(Timing {
-                asked_at: 2.75,
-                took_ms: 180,
-            }),
+            timing: Some(Timing { asked_at: 2.75, took_ms: 180 }),
         };
         // When
         let json = serde_json::to_string(&phrase).unwrap();

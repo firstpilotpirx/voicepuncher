@@ -14,9 +14,7 @@ pub struct SharedVisualIndicator {
 
 impl SharedVisualIndicator {
     pub fn new(indicator: Box<dyn VisualIndicator>) -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(indicator)),
-        }
+        Self { inner: Arc::new(Mutex::new(indicator)) }
     }
 
     fn overlay(&self) -> MutexGuard<'_, Box<dyn VisualIndicator>> {
@@ -79,6 +77,7 @@ mod tests {
     use crate::core::application::visual_indicator::MockVisualIndicator;
 
     #[test]
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn should_forward_every_call_to_the_shared_overlay() {
         // Given
         let mut overlay = MockVisualIndicator::new();

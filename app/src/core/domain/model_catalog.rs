@@ -121,10 +121,7 @@ pub struct ModelNeeds {
 
 impl ModelNeeds {
     /// Every model of the catalog.
-    pub const ALL: ModelNeeds = ModelNeeds {
-        voice_control: true,
-        refinement: true,
-    };
+    pub const ALL: ModelNeeds = ModelNeeds { voice_control: true, refinement: true };
 
     fn includes(self, used_by: ModelUse) -> bool {
         match used_by {
@@ -223,10 +220,7 @@ mod tests {
     #[test]
     fn should_need_only_the_dictation_models_with_voice_control_and_refinement_off() {
         // When
-        let files = needed(ModelNeeds {
-            voice_control: false,
-            refinement: false,
-        });
+        let files = needed(ModelNeeds { voice_control: false, refinement: false });
         // Then
         assert_eq!(
             names(&files),
@@ -241,10 +235,7 @@ mod tests {
 
     #[test]
     fn should_need_the_refinement_model_only_with_refinement_on() {
-        let files = needed(ModelNeeds {
-            voice_control: false,
-            refinement: true,
-        });
+        let files = needed(ModelNeeds { voice_control: false, refinement: true });
         assert!(names(&files).contains(&"Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf"));
         assert_eq!(files.len(), 3);
     }

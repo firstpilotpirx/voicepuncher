@@ -31,6 +31,7 @@ use voicepuncher::runtime::{
 
 use crate::IntegrationWorld;
 
+mod failures;
 pub(crate) mod models;
 mod services;
 
@@ -64,6 +65,8 @@ enum Event {
     ListeningOff(Generation),
     PipelineDropped(Generation),
     Notice(Generation, String),
+    /// The overlay was hidden.
+    Hidden(Generation),
     State(RuntimeState),
     ServicesStopped,
 }
@@ -88,6 +91,7 @@ pub struct RuntimeRun {
     permissions: Permissions,
     services: Option<services::FakeServices>,
     models: Option<models::ModelsFolder>,
+    panics: failures::PanicPlan,
 }
 
 impl std::fmt::Debug for RuntimeRun {
@@ -115,6 +119,7 @@ impl Default for RuntimeRun {
             permissions: Permissions::default(),
             services: None,
             models: None,
+            panics: failures::PanicPlan::default(),
         }
     }
 }
@@ -261,6 +266,7 @@ impl RuntimeRun {
             events: Arc::clone(&self.events),
             services_answer: Arc::clone(&self.services_answer),
             text_field_focused: Arc::clone(&self.text_field_focused),
+            panics: Arc::clone(&self.panics),
             generation: 0,
         }
     }
@@ -817,10 +823,12 @@ struct StandInAssembler {
     events: Events,
     services_answer: Arc<Mutex<bool>>,
     text_field_focused: Arc<Mutex<bool>>,
+    panics: failures::PanicPlan,
     generation: Generation,
 }
 
 impl PipelineAssembler for StandInAssembler {
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn assemble(&mut self, config: &Config, _inputs: Sender<PipelineInput>) -> Result<Pipeline> {
         if !*self.services_answer.lock().unwrap() {
             bail!("{SILENT_SERVICE_ERROR}");
@@ -839,12 +847,9 @@ impl PipelineAssembler for StandInAssembler {
                 config.refinement.enabled,
             ),
         );
-        let part = || Part {
-            events: Arc::clone(&self.events),
-            generation,
-        };
+        let part = || Part { events: Arc::clone(&self.events), generation };
         let mut pipeline = Pipeline::new(
-            Box::new(StandInRecorder(part())),
+            Box::new(StandInRecorder(part(), Arc::clone(&self.panics))),
             Box::new(FixedTranscript),
             Box::new(PassthroughTextRefiner),
             Box::new(StandInPaster(part())),
@@ -853,10 +858,7 @@ impl PipelineAssembler for StandInAssembler {
             PipelineConfig {
                 min_press_ms: config.hotkey.min_press_ms,
                 recording_mode: config.hotkey.recording_mode,
-                chunking: ChunkingCfg {
-                    chunk_threshold_secs: 0,
-                    ..ChunkingCfg::default()
-                },
+                chunking: ChunkingCfg { chunk_threshold_secs: 0, ..ChunkingCfg::default() },
             },
         )
         .with_focus_wait(
@@ -886,10 +888,13 @@ impl Part {
     }
 }
 
-struct StandInRecorder(Part);
+struct StandInRecorder(Part, failures::PanicPlan);
 
 impl AudioRecorder for StandInRecorder {
     fn start(&mut self) -> Result<()> {
+        if let Some(message) = failures::panic_of(&self.1, self.0.generation) {
+            panic!("{message}");
+        }
         self.0.log(Event::RecordingStarted);
         Ok(())
     }
@@ -956,7 +961,9 @@ impl VisualIndicator for NoticeOverlay {
     fn show_refining_text(&self) {}
     fn show_waiting_for_focus(&self) {}
     fn show_pasted(&self) {}
-    fn hide(&self) {}
+    fn hide(&self) {
+        self.0.log(Event::Hidden);
+    }
     fn show_failure_notice(&self, notice: &FailureNotice) {
         push(
             &self.0.events,

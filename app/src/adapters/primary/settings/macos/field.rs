@@ -77,15 +77,8 @@ pub enum Control {
     Switch,
     PopUp(Choices),
     Radio(Choices),
-    Number {
-        min: i64,
-        max: i64,
-        unit: &'static str,
-    },
-    Slider {
-        min: f64,
-        max: f64,
-    },
+    Number { min: i64, max: i64, unit: &'static str },
+    Slider { min: f64, max: f64 },
     Text,
     Address(Scheme),
     TextArea,
@@ -121,22 +114,12 @@ pub const fn field(
     label: &'static str,
     control: Control,
 ) -> Field {
-    Field {
-        section,
-        key,
-        tab,
-        label,
-        control,
-        advanced: false,
-    }
+    Field { section, key, tab, label, control, advanced: false }
 }
 
 impl Field {
     /// The same field under the tab's `Show advanced` disclosure.
     pub const fn advanced(self) -> Field {
-        Field {
-            advanced: true,
-            ..self
-        }
+        Field { advanced: true, ..self }
     }
 }

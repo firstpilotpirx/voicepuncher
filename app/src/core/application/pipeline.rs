@@ -4,8 +4,8 @@ mod live_transcript;
 mod voice_control;
 
 use std::collections::VecDeque;
-use std::sync::mpsc;
-use std::time::Instant;
+use std::sync::{mpsc, Arc, Mutex, MutexGuard};
+use std::time::{Duration, Instant};
 
 use crate::core::application::audio_recorder::LiveChunk;
 use crate::core::application::chunking::{merge_chunk_texts, split_into_chunks, ChunkingCfg};
@@ -59,29 +59,22 @@ struct LiveSessionResult {
     texts: Vec<String>,
     /// Chunks speech recognition failed on.
     lost_chunks: usize,
-    transcriber: Box<dyn Transcriber>,
 }
 
-/// Where a live worker gets the transcriber from: at once, or from the worker of a dropped
-/// dictation once its last request ends.
-enum TranscriberSource {
-    Ready(Box<dyn Transcriber>),
-    ReturnedBy(mpsc::Receiver<LiveSessionResult>),
-}
+/// The one transcriber the pipeline and every live worker use: a worker that dies leaves it
+/// here, and one still on a hung request holds it only until that request ends.
+type SharedTranscriber = Arc<Mutex<Box<dyn Transcriber>>>;
 
-impl TranscriberSource {
-    /// The transcriber, once it is back; none when the dropped dictation's worker died.
-    fn take(self) -> Option<Box<dyn Transcriber>> {
-        match self {
-            TranscriberSource::Ready(transcriber) => Some(transcriber),
-            TranscriberSource::ReturnedBy(results) => results.recv().ok().map(|r| r.transcriber),
-        }
-    }
+/// The shared transcriber; one a dead worker's panic left behind is taken over.
+fn lock_transcriber(transcriber: &SharedTranscriber) -> MutexGuard<'_, Box<dyn Transcriber>> {
+    transcriber
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 pub struct Pipeline {
     pub recorder: Box<dyn AudioRecorder>,
-    pub transcriber: Option<Box<dyn Transcriber>>,
+    transcriber: SharedTranscriber,
     pub refiner: Box<dyn TextRefiner>,
     pub paster: Box<dyn TextPaster>,
     pub sound_player: Box<dyn SoundPlayer>,
@@ -89,9 +82,6 @@ pub struct Pipeline {
     pub cfg: PipelineConfig,
     state: PipelineState,
     live_session: Option<LiveTranscriptionSession>,
-    /// The worker of a dictation "restart dictation" dropped, which returns the transcriber
-    /// once its last request ends.
-    dropped_worker: Option<mpsc::Receiver<LiveSessionResult>>,
     focus_probe: Option<Box<dyn FocusProbe>>,
     focus_wait: FocusWaitCfg,
     inputs: Option<mpsc::Receiver<PipelineInput>>,
@@ -109,7 +99,13 @@ pub struct Pipeline {
     trace: Option<DictationTrace>,
     /// Where the activity (idle, recording, processing) is published after every input.
     activity: Box<dyn PipelineActivitySink>,
+    /// How long a stopped dictation waits for its live worker's result.
+    stop_wait: Duration,
 }
+
+/// The wait for a stopped dictation's transcript without a configured one: three attempts
+/// at the default 60 s request timeout, their pauses and the drain.
+const DEFAULT_STOP_WAIT: Duration = Duration::from_secs(184);
 
 /// How a dictation that ends before its text is refined ends, with the stages it ran.
 type DictationEnd = (DictationOutcome, Vec<StageTiming>);
@@ -124,6 +120,7 @@ struct CommandWords {
 }
 
 impl Pipeline {
+    #[expect(clippy::too_many_arguments, reason = "size baseline")]
     pub fn new(
         recorder: Box<dyn AudioRecorder>,
         transcriber: Box<dyn Transcriber>,
@@ -135,7 +132,7 @@ impl Pipeline {
     ) -> Self {
         Self {
             recorder,
-            transcriber: Some(transcriber),
+            transcriber: Arc::new(Mutex::new(transcriber)),
             refiner,
             paster,
             sound_player,
@@ -143,7 +140,6 @@ impl Pipeline {
             cfg,
             state: PipelineState::Idle,
             live_session: None,
-            dropped_worker: None,
             focus_probe: None,
             focus_wait: FocusWaitCfg::OFF,
             inputs: None,
@@ -155,7 +151,14 @@ impl Pipeline {
             archive: None,
             trace: None,
             activity: Box::new(NoActivitySink),
+            stop_wait: DEFAULT_STOP_WAIT,
         }
+    }
+
+    /// A stopped dictation waits at most `wait` for its transcript.
+    pub fn with_stop_wait(mut self, wait: Duration) -> Self {
+        self.stop_wait = wait;
+        self
     }
 
     /// Publishes the activity to `sink` after every input, so a restart can wait for Idle.
@@ -248,6 +251,25 @@ impl Pipeline {
         Ok(())
     }
 
+    /// Stops what a pipeline that ended with an error or a panic may have left running:
+    /// the recording, listening and the overlay. Each step is guarded, as the panic may have
+    /// left a part half-used.
+    pub fn stop_after_failure(&mut self) {
+        let guarded = |step: &mut dyn FnMut()| {
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(step));
+        };
+        if let Some(session) = self.live_session.take() {
+            session.recording_end.signal();
+        }
+        guarded(&mut || {
+            let _ = self.recorder.stop();
+        });
+        guarded(&mut || self.turn_listening_off());
+        guarded(&mut || self.visual_indicator.hide());
+        self.state = PipelineState::Idle;
+        guarded(&mut || self.publish_activity());
+    }
+
     /// Ends this pipeline as a shutdown does; a recording in progress ends with a notice
     /// naming the revoked permission.
     fn shut_down_revoked(&mut self, permission: Permission) -> anyhow::Result<()> {
@@ -283,6 +305,8 @@ impl Pipeline {
 
     /// Starts a recording; one started by voice begins at `begins_at`, the end of the
     /// command, with the speech heard since then.
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn start_recording_from(
         &mut self,
         begins_at: Option<Instant>,
@@ -318,7 +342,7 @@ impl Pipeline {
                     self.cfg.chunking.chunk_overlap_secs,
                     target_chunk_secs,
                 );
-                let transcriber = self.transcriber_source();
+                let transcriber = Arc::clone(&self.transcriber);
                 let (results_tx, results_rx) = mpsc::sync_channel(1);
                 let (live_transcript, recording_end) =
                     LiveTranscript::new(self.visual_indicator.live_transcript_view());
@@ -328,10 +352,7 @@ impl Pipeline {
                         run_live_worker(transcriber, chunk_rx, results_tx, live_transcript)
                     })
                     .expect("failed to spawn live transcription thread");
-                self.live_session = Some(LiveTranscriptionSession {
-                    results_rx,
-                    recording_end,
-                });
+                self.live_session = Some(LiveTranscriptionSession { results_rx, recording_end });
             }
         }
         self.visual_indicator.show_recording();
@@ -339,22 +360,8 @@ impl Pipeline {
         Ok(())
     }
 
-    /// The transcriber for a new live worker: here, or still with a dropped dictation's worker.
-    fn transcriber_source(&mut self) -> TranscriberSource {
-        match (self.transcriber.take(), self.dropped_worker.take()) {
-            (Some(transcriber), _) => TranscriberSource::Ready(transcriber),
-            (None, Some(results)) => TranscriberSource::ReturnedBy(results),
-            (None, None) => panic!("transcriber already taken"),
-        }
-    }
-
-    /// Waits for the transcriber a dropped dictation's worker still holds.
-    fn reclaim_transcriber(&mut self) {
-        if let Some(results) = self.dropped_worker.take() {
-            self.transcriber = TranscriberSource::ReturnedBy(results).take();
-        }
-    }
-
+    #[expect(clippy::excessive_nesting, reason = "size baseline")]
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn stop_recording(&mut self) -> anyhow::Result<()> {
         let t_user_stop = std::time::Instant::now();
         self.follow_dictation(false);
@@ -365,13 +372,12 @@ impl Pipeline {
             self.state = PipelineState::Idle;
             let t_drain_start = std::time::Instant::now();
             self.recorder.flush_live_chunks();
-            match session.results_rx.recv() {
+            match session.results_rx.recv_timeout(self.stop_wait) {
                 Ok(result) => {
                     let drain_ms = t_drain_start.elapsed().as_millis() as u64;
                     let t_stop_start = std::time::Instant::now();
                     let _ = self.recorder.stop();
                     let stop_ms = t_stop_start.elapsed().as_millis() as u64;
-                    self.transcriber = Some(result.transcriber);
                     self.note_lost_chunks(result.lost_chunks, result.texts.is_empty());
                     self.trace_chunks(&result.texts, result.lost_chunks);
                     if result.texts.is_empty() {
@@ -404,8 +410,17 @@ impl Pipeline {
                         }
                     }
                 }
-                Err(_) => {
-                    log::error!("live transcription worker channel closed unexpectedly");
+                Err(e) => {
+                    match e {
+                        mpsc::RecvTimeoutError::Timeout => log::error!(
+                            "live transcription: no transcript within {:?} of the stop, dictation dropped",
+                            self.stop_wait
+                        ),
+                        mpsc::RecvTimeoutError::Disconnected => log::error!(
+                            "live transcription worker stopped without a result, dictation dropped"
+                        ),
+                    }
+                    self.note_failure(FailureNotice::DictationLost(FailingPart::SpeechRecognition));
                     let _ = self.recorder.stop();
                     self.end_cycle_on_overlay();
                     self.close_trace(DictationOutcome::SpeechRecognitionFailed, &[]);
@@ -436,7 +451,7 @@ impl Pipeline {
     }
 
     /// Stops the recording and drops it at once, its last chunk unheard, with no cue: the
-    /// worker still transcribing it hands the transcriber to the next live worker.
+    /// worker still transcribing it finishes for nobody.
     fn drop_recording(&mut self) -> anyhow::Result<()> {
         self.follow_dictation(false);
         self.drop_trace();
@@ -445,7 +460,6 @@ impl Pipeline {
             Some(session) => {
                 session.recording_end.signal();
                 let _ = self.recorder.stop();
-                self.dropped_worker = Some(session.results_rx);
             }
             None => {
                 self.recorder.stop()?;
@@ -464,10 +478,8 @@ impl Pipeline {
             session.recording_end.signal();
             self.recorder.flush_live_chunks();
             let _ = self.recorder.stop();
-            if let Ok(result) = session.results_rx.recv() {
-                self.transcriber = Some(result.transcriber);
-            } else {
-                log::error!("live worker channel closed on cancel");
+            if session.results_rx.recv_timeout(self.stop_wait).is_err() {
+                log::error!("live worker gave no result on cancel");
             }
         } else {
             let _ = self.recorder.stop()?;
@@ -481,7 +493,6 @@ impl Pipeline {
     }
 
     pub fn run_once(&mut self, audio: AudioBuffer16k) -> anyhow::Result<()> {
-        self.reclaim_transcriber();
         self.open_trace(DictationStart::RecordingFile);
         let chunks = split_into_chunks(&audio, self.cfg.chunking);
         if chunks.len() > 1 {
@@ -520,10 +531,7 @@ impl Pipeline {
 
     /// The text speech recognition returned for each chunk that had any.
     fn transcribe_chunks(&mut self, chunks: &[AudioBuffer16k]) -> anyhow::Result<Vec<String>> {
-        let transcriber = self
-            .transcriber
-            .as_mut()
-            .expect("transcriber not available");
+        let mut transcriber = lock_transcriber(&self.transcriber);
         let mut texts = Vec::with_capacity(chunks.len());
         for chunk in chunks {
             if let Some(raw) = transcriber.transcribe(chunk)? {
@@ -559,6 +567,7 @@ impl Pipeline {
         insertion_outcome(&insertion)
     }
 
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn run_transcribe_refine_paste(
         &mut self,
         audio: AudioBuffer16k,
@@ -621,13 +630,8 @@ impl Pipeline {
     ) -> Result<(RawTranscript, u64), DictationEnd> {
         self.state = PipelineState::Transcribing;
         log::info!("transcribing…");
-        self.reclaim_transcriber();
         let t_transcribe = std::time::Instant::now();
-        let transcribed = self
-            .transcriber
-            .as_mut()
-            .expect("transcriber not available")
-            .transcribe(&audio);
+        let transcribed = lock_transcriber(&self.transcriber).transcribe(&audio);
         let transcribe_ms = t_transcribe.elapsed().as_millis() as u64;
         self.trace_audio(audio);
         let stages = timings([("stop", stop_ms), ("transcribe", transcribe_ms)]);
@@ -686,6 +690,7 @@ impl Pipeline {
         }
     }
 
+    #[expect(clippy::too_many_arguments, reason = "size baseline")]
     fn run_refine_paste(
         &mut self,
         raw: RawTranscript,
@@ -731,16 +736,13 @@ impl Pipeline {
     }
 }
 
+#[expect(clippy::too_many_lines, reason = "size baseline")]
 fn run_live_worker(
-    transcriber: TranscriberSource,
+    transcriber: SharedTranscriber,
     chunk_rx: mpsc::Receiver<LiveChunk>,
     results_tx: mpsc::SyncSender<LiveSessionResult>,
     live_transcript: LiveTranscript,
 ) {
-    let Some(mut transcriber) = transcriber.take() else {
-        log::error!("live worker: the dropped dictation's worker never returned the transcriber");
-        return;
-    };
     let mut texts = Vec::new();
     let mut lost_chunks = 0usize;
     let mut chunk_num = 0usize;
@@ -753,7 +755,8 @@ fn run_live_worker(
         chunk_num += 1;
         let duration_secs = audio.duration_ms() as f32 / 1000.0;
         let t0 = std::time::Instant::now();
-        match transcriber.transcribe(&audio) {
+        let transcribed = lock_transcriber(&transcriber).transcribe(&audio);
+        match transcribed {
             Ok(Some(raw)) => {
                 log::info!(
                     "chunk {} | {:.1}s audio | queued {}ms | transcribed in {:.2}s",
@@ -779,12 +782,8 @@ fn run_live_worker(
             }
         }
     }
-    log::info!("live worker: {chunk_num} chunks done, returning transcriber");
-    let _ = results_tx.send(LiveSessionResult {
-        texts,
-        lost_chunks,
-        transcriber,
-    });
+    log::info!("live worker: {chunk_num} chunks done");
+    let _ = results_tx.send(LiveSessionResult { texts, lost_chunks });
 }
 
 #[cfg(test)]
@@ -819,16 +818,13 @@ mod tests {
         let (chunk_tx, chunk_rx) = mpsc::channel();
         for _ in 0..2 {
             chunk_tx
-                .send(LiveChunk {
-                    audio: one_second_audio(),
-                    enqueued_at: Instant::now(),
-                })
+                .send(LiveChunk { audio: one_second_audio(), enqueued_at: Instant::now() })
                 .unwrap();
         }
         drop(chunk_tx);
         let (results_tx, _results_rx) = mpsc::sync_channel(1);
         let (live_transcript, _recording_end) = LiveTranscript::new(Box::new(view));
-        let transcriber = TranscriberSource::Ready(Box::new(transcriber));
+        let transcriber: SharedTranscriber = Arc::new(Mutex::new(Box::new(transcriber)));
         run_live_worker(transcriber, chunk_rx, results_tx, live_transcript);
     }
 
@@ -941,11 +937,7 @@ mod tests {
             Box::new(paster),
             Box::new(noop_sound_player()),
             Box::new(noop_visual_indicator()),
-            PipelineConfig {
-                min_press_ms: 200,
-                recording_mode,
-                chunking: ChunkingCfg::default(),
-            },
+            PipelineConfig { min_press_ms: 200, recording_mode, chunking: ChunkingCfg::default() },
         )
     }
 
@@ -1066,6 +1058,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn should_cancel_the_recording_with_a_notice_naming_a_revoked_permission() {
         // Given
         let mut recorder = MockAudioRecorder::new();

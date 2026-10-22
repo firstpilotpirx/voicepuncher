@@ -159,10 +159,7 @@ fn build_ring() -> Retained<CAShapeLayer> {
     let inset = RING_INSET + RING_WIDTH / 2.0;
     let circle = NSRect {
         origin: NSPoint { x: inset, y: inset },
-        size: NSSize {
-            width: BADGE_SIZE - 2.0 * inset,
-            height: BADGE_SIZE - 2.0 * inset,
-        },
+        size: NSSize { width: BADGE_SIZE - 2.0 * inset, height: BADGE_SIZE - 2.0 * inset },
     };
     // SAFETY: a null transform is documented as "no transform".
     let path = unsafe { CGPath::with_ellipse_in_rect(circle, std::ptr::null()) };
@@ -180,24 +177,15 @@ fn build_ring() -> Retained<CAShapeLayer> {
 fn badge_rect() -> NSRect {
     NSRect {
         origin: NSPoint { x: 0.0, y: 0.0 },
-        size: NSSize {
-            width: BADGE_SIZE,
-            height: BADGE_SIZE,
-        },
+        size: NSSize { width: BADGE_SIZE, height: BADGE_SIZE },
     }
 }
 
 fn icon_rect() -> NSRect {
     let offset = (BADGE_SIZE - ICON_FRAME) / 2.0;
     NSRect {
-        origin: NSPoint {
-            x: offset,
-            y: offset,
-        },
-        size: NSSize {
-            width: ICON_FRAME,
-            height: ICON_FRAME,
-        },
+        origin: NSPoint { x: offset, y: offset },
+        size: NSSize { width: ICON_FRAME, height: ICON_FRAME },
     }
 }
 

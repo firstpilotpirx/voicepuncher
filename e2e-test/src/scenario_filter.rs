@@ -29,11 +29,7 @@ pub struct Gate {
 impl Gate {
     /// `@wip`: never runs.
     pub fn wip() -> Self {
-        Self {
-            tag: WIP_TAG,
-            open: false,
-            line: None,
-        }
+        Self { tag: WIP_TAG, open: false, line: None }
     }
 
     /// `@voice_samples`: runs where the user's recordings exist, from the value of
@@ -67,11 +63,7 @@ impl Gate {
     fn closed_by_variable(tag: &'static str, variable: &str, closed_because: Option<&str>) -> Self {
         let line = closed_because
             .map(|reason| format!("GATED: {variable} {reason}, skipping @{tag} scenarios"));
-        Self {
-            tag,
-            open: line.is_none(),
-            line,
-        }
+        Self { tag, open: line.is_none(), line }
     }
 
     /// Whether the gate is open.
@@ -139,10 +131,7 @@ impl ScenarioFilter {
     /// A rerun's names, when given, replace the command line's selection; the gates still hold.
     pub fn rerun_only(self, names: Option<Vec<String>>) -> Self {
         match names {
-            Some(names) => Self {
-                selection: Selection::Names(names),
-                ..self
-            },
+            Some(names) => Self { selection: Selection::Names(names), ..self },
             None => self,
         }
     }
@@ -169,28 +158,14 @@ where
     W: Args,
     C: Args,
 {
-    let Opts {
-        re_filter,
-        tags_filter,
-        parser,
-        runner,
-        writer,
-        custom,
-    } = opts;
+    let Opts { re_filter, tags_filter, parser, runner, writer, custom } = opts;
     // The precedence of cucumber's `filter_run`: the name, then the tags, then everything.
     let selection = match (re_filter, tags_filter) {
         (Some(name), _) => Selection::Name(name),
         (None, Some(expression)) => Selection::Tags(expression),
         (None, None) => Selection::Everything,
     };
-    let opts = Opts {
-        re_filter: None,
-        tags_filter: None,
-        parser,
-        runner,
-        writer,
-        custom,
-    };
+    let opts = Opts { re_filter: None, tags_filter: None, parser, runner, writer, custom };
     (opts, ScenarioFilter { selection, gates })
 }
 

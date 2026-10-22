@@ -6,6 +6,9 @@ mod address;
 mod pool;
 mod probe;
 
-pub use address::{AddressError, ServiceAddress, MAX_COPIES};
+pub use address::{
+    AddressError, ServiceAddress, COMMAND_SPOTTING_COPY_OFFSET, MAX_COPIES,
+    SPEECH_RECOGNITION_COPY_OFFSET, TEXT_REFINEMENT_COPY_OFFSET,
+};
 pub use pool::{CopyPool, CopyState, Finish, Lease, Place, PoolError, Ran};
 pub use probe::{Probe, TcpProbe};

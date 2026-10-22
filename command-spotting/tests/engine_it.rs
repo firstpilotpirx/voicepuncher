@@ -256,9 +256,7 @@ fn phrases_in_segments(events: &[ServerEvent]) -> Vec<PhraseInSegment> {
             ServerEvent::SpeechStart { t } => segment_start = Some(*t),
             // A phrase reported after its segment ended still belongs to it: the spotter
             // may decode it after the short pause that closed the segment.
-            ServerEvent::Phrase {
-                phrase, start, end, ..
-            } => match (segment_start, last_segment) {
+            ServerEvent::Phrase { phrase, start, end, .. } => match (segment_start, last_segment) {
                 (None, Some(segment)) if *start <= segment.1 => {
                     found.push((phrase.clone(), segment, (*start, *end)))
                 }
@@ -436,10 +434,7 @@ struct HearsPressEnter;
 
 impl Hear for HearsPressEnter {
     fn hear(&self, _: &[f32], _: Duration) -> anyhow::Result<Heard> {
-        Ok(Heard {
-            text: " press enter".to_owned(),
-            words: Vec::new(),
-        })
+        Ok(Heard { text: " press enter".to_owned(), words: Vec::new() })
     }
 }
 
@@ -570,10 +565,7 @@ impl Hear for SlowHear {
     fn hear(&self, _: &[f32], _: Duration) -> anyhow::Result<Heard> {
         self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         std::thread::sleep(SLOW_HEARING);
-        Ok(Heard {
-            text: " hello there".to_owned(),
-            words: Vec::new(),
-        })
+        Ok(Heard { text: " hello there".to_owned(), words: Vec::new() })
     }
 }
 
@@ -762,10 +754,7 @@ struct KeepsClips(Mutex<Vec<Vec<f32>>>);
 impl Hear for KeepsClips {
     fn hear(&self, samples: &[f32], _: Duration) -> anyhow::Result<Heard> {
         self.0.lock().unwrap().push(samples.to_vec());
-        Ok(Heard {
-            text: "restart".to_owned(),
-            words: Vec::new(),
-        })
+        Ok(Heard { text: "restart".to_owned(), words: Vec::new() })
     }
 }
 
@@ -838,10 +827,7 @@ impl Hear for HearsTheCommandOnlyInTheTail {
         } else {
             &["We", "meet", "on", "Friday", "at", "10am."]
         };
-        Ok(Heard {
-            text: words.join(" "),
-            words: timed(words),
-        })
+        Ok(Heard { text: words.join(" "), words: timed(words) })
     }
 }
 
@@ -908,10 +894,7 @@ impl Hear for HearsInTurn {
         }
         .unwrap_or("");
         let words: Vec<&str> = text.split_whitespace().collect();
-        Ok(Heard {
-            text: text.to_owned(),
-            words: timed(&words),
-        })
+        Ok(Heard { text: text.to_owned(), words: timed(&words) })
     }
 }
 
@@ -1041,11 +1024,7 @@ impl HearsTheWordsInTheClip {
             spans.push((*word, start..stream.len()));
         }
         stream.extend(vec![0.0f32; (PAUSE_SECS * SAMPLE_RATE as f32) as usize]);
-        Arc::new(Self {
-            stream,
-            words: spans,
-            cut_off: Mutex::new(Vec::new()),
-        })
+        Arc::new(Self { stream, words: spans, cut_off: Mutex::new(Vec::new()) })
     }
 
     /// Where `clip` starts in the stream, found by its first sound.
@@ -1092,10 +1071,7 @@ impl Hear for HearsTheWordsInTheClip {
                 end: secs(span.end.min(end)),
             });
         }
-        Ok(Heard {
-            text: words.iter().map(|w| w.text.as_str()).collect(),
-            words,
-        })
+        Ok(Heard { text: words.iter().map(|w| w.text.as_str()).collect(), words })
     }
 }
 
@@ -1323,10 +1299,7 @@ fn should_report_nothing_of_a_check_answered_after_its_utterances_segment() {
     // Given "start dictation please" said alone, its head check answered late
     let words = HearsTheWordsInTheClip::said(&["start", "dictation", "please"], 0.15);
     let stream = words.stream.clone();
-    let hear = Arc::new(SlowFirstClip {
-        words,
-        clips: Mutex::new(0),
-    });
+    let hear = Arc::new(SlowFirstClip { words, clips: Mutex::new(0) });
     let engine = own_engine(None).unwrap().hearing(hear.clone());
     let mut session = engine.session().unwrap();
     let phrases: Vec<String> = STANDBY_PHRASES.iter().map(|p| (*p).to_owned()).collect();
