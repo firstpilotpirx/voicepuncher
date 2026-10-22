@@ -14,7 +14,7 @@ See proposal.md § Why. The scenario runs the app in file mode once against a st
 
 | Question | Chosen | Why | Rejected |
 |---|---|---|---|
-| What the stub records | Every connection as an event: `models`, `chat` (with body) or `dropped` with the reason | Zero chat requests then reads as "no connection" or "dropped because …" | Drops only: an app that exits at the startup check stays invisible |
+| What the stub records | Every connection as an event: `models`, `chat` (with body), `probe` (closed without a byte: the copy pool's liveness check) or `dropped` with the reason | Zero chat requests then reads as "no connection" or "dropped because …" | Drops only: an app that exits at the startup check stays invisible |
 | How the step reports | The missing-request failure lists the stub's event log and the app's stderr | Both sides in one message, no second run | Printing during the run: lost in captured output |
 | Where the 20-run series lives | A `@regression` scenario in `text_refinement.feature`: one step runs the app 20 times against one stub, asserting one request and the raw transcript each time | `e2e-regression` is a light stage: in `full-check` it runs beside other runs' heavy phases, the load the flake appeared under, and `check` stays as long as it is; the shared speech recognition service keeps a run at a few seconds | `@smoke`: a minute more on every `check`; `@resilience`: its scenarios start services of their own, 20 model loads |
 | How the acceptance series runs in apply | `just e2e-regression` beside a heavy E2E run (`just e2e-smoke` from this worktree after its build, or another session's check) | The spec scenario's load; the stage journal records it | `kit verify --series 20`: 20 full checks for one 60 s scenario |
@@ -32,7 +32,7 @@ The refinement paths in `stage_inputs` (`justfile`) gain `e2e-regression`; the `
 
 ## First series
 
-Beside `just e2e-smoke`, all 20 runs sent their request and pasted the raw transcript: the lost transcription did not reproduce. The series named the stub: the copy pool's liveness probes (a connection closed without a byte, about two per run) counted as drops; now they are recorded as probes. The heavy run beside it failed in `e2e-smoke-speech`, untouched here and filed (§ Filed beside it).
+Beside `just e2e-smoke`, all 20 runs sent their request and pasted the raw transcript: the lost transcription did not reproduce. The series named the stub: the copy pool's liveness probes (a connection closed without a byte, about two per run) counted as drops; now they are recorded as probes. The second series, beside a full `just e2e-smoke` pass, ran 20 of 20 (regression stage 44 s, so the 2 min limit stays). The heavy run beside it failed in `e2e-smoke-speech`, untouched here and filed (§ Filed beside it).
 
 ## Filed beside it
 

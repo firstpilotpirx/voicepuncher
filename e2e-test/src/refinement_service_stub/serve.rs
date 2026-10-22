@@ -1,87 +1,68 @@
-//! A text refinement service stand-in: answers the startup model list and chat requests
-//! with fixed content and records every chat request body.
+//! The stub's connection loop: one request per connection, answered by its behavior.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::{Arc, Mutex};
-use std::thread;
+use std::sync::Mutex;
 
-use anyhow::Result;
+use super::{StubBehavior, StubEvent, STOP_FINISH_REASON};
 
 const SINGLE_MODEL: &str = "stub-model";
-const STOP_FINISH_REASON: &str = "stop";
 const TRANSCRIPT_OPEN: &str = "<transcript>\n";
 const TRANSCRIPT_CLOSE: &str = "\n</transcript>";
 
-#[derive(Debug, Clone)]
-pub enum StubBehavior {
-    /// Answers every chat request with `content` and `finish_reason`.
-    Answer { content: String, finish_reason: &'static str },
-    /// Answers every chat request with its transcript followed by `suffix`.
-    AppendToTranscript { suffix: &'static str },
-    /// Answers every chat request with its transcript, the last letter of every Cyrillic
-    /// word of three or more letters replaced, starting with a capital and ending with a period.
-    CorrectEndings,
-    /// Offers these models; never receives a chat request.
-    OfferModels(Vec<&'static str>),
-    /// Answers the startup model list, then stops listening.
-    StopAfterStartupCheck,
-}
-
-#[derive(Debug)]
-pub struct RefinementServiceStub {
-    pub url: String,
-    chat_requests: Arc<Mutex<Vec<String>>>,
-}
-
-impl RefinementServiceStub {
-    pub fn spawn(behavior: StubBehavior) -> Result<Self> {
-        let listener = TcpListener::bind("127.0.0.1:0")?;
-        let url = format!("http://127.0.0.1:{}/v1", listener.local_addr()?.port());
-        let chat_requests = Arc::new(Mutex::new(Vec::new()));
-        let recorded = Arc::clone(&chat_requests);
-        thread::spawn(move || serve(listener, &behavior, &recorded));
-        Ok(Self { url, chat_requests })
-    }
-
-    pub fn chat_requests(&self) -> Vec<String> {
-        self.chat_requests
-            .lock()
-            .expect("stub request log is not poisoned")
-            .clone()
+fn record(log: &Mutex<Vec<StubEvent>>, event: StubEvent) {
+    if let Ok(mut events) = log.lock() {
+        events.push(event);
     }
 }
 
-fn serve(listener: TcpListener, behavior: &StubBehavior, recorded: &Mutex<Vec<String>>) {
+pub(super) fn serve(
+    listener: &TcpListener,
+    behavior: &StubBehavior,
+    recorded: &Mutex<Vec<StubEvent>>,
+) {
     for stream in listener.incoming() {
         let Ok(mut stream) = stream else { continue };
-        let Some((request_line, body)) = read_request(&mut stream) else {
-            continue;
+        let (request_line, body) = match read_request(&stream) {
+            Ok(request) => request,
+            Err(Unanswered::Probe) => {
+                record(recorded, StubEvent::Probe);
+                continue;
+            }
+            Err(Unanswered::Dropped(reason)) => {
+                record(recorded, StubEvent::Dropped { reason });
+                continue;
+            }
         };
         if request_line.starts_with("GET ") {
+            record(recorded, StubEvent::Models);
             respond(&mut stream, &models_answer(behavior));
             if matches!(behavior, StubBehavior::StopAfterStartupCheck) {
                 return;
             }
             continue;
         }
-        if let Ok(mut log) = recorded.lock() {
-            log.push(body.clone());
+        record(recorded, StubEvent::Chat { body: body.clone() });
+        answer_chat(&mut stream, behavior, &body);
+    }
+}
+
+/// Answers a chat request as the behavior says; the behaviors that never expect one leave
+/// the connection unanswered.
+fn answer_chat(stream: &mut TcpStream, behavior: &StubBehavior, body: &str) {
+    match behavior {
+        StubBehavior::Answer { content, finish_reason } => {
+            respond(stream, &chat_answer(content, finish_reason));
         }
-        match behavior {
-            StubBehavior::Answer { content, finish_reason } => {
-                respond(&mut stream, &chat_answer(content, finish_reason));
-            }
-            StubBehavior::AppendToTranscript { suffix } => {
-                let content = format!("{}{suffix}", last_transcript(&body));
-                respond(&mut stream, &chat_answer(&content, STOP_FINISH_REASON));
-            }
-            StubBehavior::CorrectEndings => {
-                let content = with_endings_changed(&last_transcript(&body));
-                respond(&mut stream, &chat_answer(&content, STOP_FINISH_REASON));
-            }
-            _ => {}
+        StubBehavior::AppendToTranscript { suffix } => {
+            let content = format!("{}{suffix}", last_transcript(body));
+            respond(stream, &chat_answer(&content, STOP_FINISH_REASON));
         }
+        StubBehavior::CorrectEndings => {
+            let content = with_endings_changed(&last_transcript(body));
+            respond(stream, &chat_answer(&content, STOP_FINISH_REASON));
+        }
+        _ => {}
     }
 }
 
@@ -155,29 +136,63 @@ fn chat_answer(content: &str, finish_reason: &str) -> String {
     .to_string()
 }
 
-fn read_request(stream: &mut TcpStream) -> Option<(String, String)> {
-    let mut reader = BufReader::new(stream.try_clone().ok()?);
-    let mut request_line = String::new();
-    if reader.read_line(&mut request_line).ok()? == 0 {
-        return None;
+/// A connection that carried no request to answer.
+enum Unanswered {
+    /// Closed without a byte: a liveness probe.
+    Probe,
+    /// Dropped mid-request, and why.
+    Dropped(String),
+}
+
+impl From<String> for Unanswered {
+    fn from(reason: String) -> Self {
+        Self::Dropped(reason)
     }
+}
+
+/// The request line and body of one request, or why there is none.
+fn read_request(stream: &TcpStream) -> Result<(String, String), Unanswered> {
+    let cloned = stream
+        .try_clone()
+        .map_err(|e| format!("the connection cannot be read: {e}"))?;
+    let mut reader = BufReader::new(cloned);
+    let mut request_line = String::new();
+    let read = reader
+        .read_line(&mut request_line)
+        .map_err(|e| format!("the request line failed to read: {e}"))?;
+    if read == 0 {
+        return Err(Unanswered::Probe);
+    }
+    let content_length = read_content_length(&mut reader)?;
+    let mut body = vec![0u8; content_length];
+    reader
+        .read_exact(&mut body)
+        .map_err(|e| format!("the body of {content_length} bytes failed to read: {e}"))?;
+    Ok((request_line, String::from_utf8_lossy(&body).into_owned()))
+}
+
+/// The content length of the headers `reader` holds, 0 without one.
+fn read_content_length(reader: &mut BufReader<TcpStream>) -> Result<usize, String> {
     let mut content_length = 0usize;
     loop {
         let mut line = String::new();
-        reader.read_line(&mut line).ok()?;
+        reader
+            .read_line(&mut line)
+            .map_err(|e| format!("a header failed to read: {e}"))?;
         let line = line.trim_end();
         if line.is_empty() {
-            break;
+            return Ok(content_length);
         }
-        if let Some((name, value)) = line.split_once(':') {
-            if name.eq_ignore_ascii_case("content-length") {
-                content_length = value.trim().parse().ok()?;
-            }
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        if name.eq_ignore_ascii_case("content-length") {
+            content_length = value
+                .trim()
+                .parse()
+                .map_err(|_| format!("bad content length {:?}", value.trim()))?;
         }
     }
-    let mut body = vec![0u8; content_length];
-    reader.read_exact(&mut body).ok()?;
-    Some((request_line, String::from_utf8_lossy(&body).into_owned()))
 }
 
 fn respond(stream: &mut TcpStream, body: &str) {

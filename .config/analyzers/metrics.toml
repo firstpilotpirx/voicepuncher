@@ -97,7 +97,6 @@
 "cyclomatic e2e-test/tests/steps/local_services/owned.rs::every_copy_killed_during_a_chunk::<anonymous>" = 12
 "cyclomatic e2e-test/tests/steps/local_services/owned.rs::refining_copy_killed" = 14
 "cyclomatic e2e-test/tests/steps/local_services/owned.rs::refining_copy_killed::<anonymous>" = 13
-"cyclomatic e2e-test/tests/steps/refinement_service_stub.rs::read_request" = 11
 "cyclomatic e2e-test/tests/steps/speech_recognition.rs::condition_of" = 13
 "cyclomatic e2e-test/tests/steps/text_refinement/mod.rs::sentence_sent_as_data" = 11
 "cyclomatic e2e-test/tests/steps/voice_control/outages.rs::command_spotting_stays_away" = 13
@@ -106,5 +105,5 @@
 "cyclomatic e2e-test/tests/steps/voice_control/session.rs::recorded" = 12
 "cyclomatic e2e-test/tests/steps/voice_control/session.rs::session_done" = 11
 "cyclomatic e2e-test/tests/steps/voice_control/session/start_cue.rs::recorded_starts" = 19
-"duplicated_lines" = 1433
+"duplicated_lines" = 1350
 "unsafe app" = 129

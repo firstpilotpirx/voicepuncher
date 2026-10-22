@@ -72,6 +72,12 @@ Feature: text-refinement
       When the user transcribes a recording of speech with refinement
       Then the raw transcript is pasted instead of the cut-off text
 
+    @regression
+    Scenario: Service hits its output limit while the machine is under load
+      Given the text refinement service stops generating at its output limit
+      When the user transcribes the same recording 20 times in a row with refinement
+      Then every run sends the service exactly one request and pastes the raw transcript instead of the cut-off text
+
   Rule: Answer that is not a normalization falls back to the raw transcript
 
     @smoke

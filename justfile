@@ -401,16 +401,16 @@ stage_inputs := '''
     app/tests/it/voice_forms.rs                        e2e-smoke-voice
     app/tests/it/chunked_transcription.rs              e2e-seams
     app/src/core/application/chunking_seam_cases.rs    e2e-seams
-    app/src/adapters/secondary/textrefinement/*        e2e-smoke-refinement,refine-eval,e2e-smoke-speech,accuracy
-    app/src/core/application/text_refiner.rs          e2e-smoke-refinement,refine-eval,e2e-smoke-speech,accuracy
-    app/src/core/domain/cleaned_text.rs                e2e-smoke-refinement,refine-eval,e2e-smoke-speech,accuracy
-    app/src/core/domain/filler_sounds.rs               e2e-smoke-refinement,refine-eval,e2e-smoke-speech,accuracy
-    app/src/core/domain/normalization_check.rs         e2e-smoke-refinement,refine-eval,e2e-smoke-speech,accuracy
-    e2e-test/src/refinement_eval.rs                    e2e-smoke-refinement,refine-eval
-    e2e-test/refinement/*                              e2e-smoke-refinement,refine-eval
-    e2e-test/tests/features/text_refinement.feature    e2e-smoke-refinement,refine-eval
-    e2e-test/tests/steps/text_refinement/*             e2e-smoke-refinement,refine-eval
-    e2e-test/tests/steps/refinement_service_stub.rs    e2e-smoke-refinement,refine-eval
+    app/src/adapters/secondary/textrefinement/*        e2e-smoke-refinement,refine-eval,e2e-regression,e2e-smoke-speech,accuracy
+    app/src/core/application/text_refiner.rs          e2e-smoke-refinement,refine-eval,e2e-regression,e2e-smoke-speech,accuracy
+    app/src/core/domain/cleaned_text.rs                e2e-smoke-refinement,refine-eval,e2e-regression,e2e-smoke-speech,accuracy
+    app/src/core/domain/filler_sounds.rs               e2e-smoke-refinement,refine-eval,e2e-regression,e2e-smoke-speech,accuracy
+    app/src/core/domain/normalization_check.rs         e2e-smoke-refinement,refine-eval,e2e-regression,e2e-smoke-speech,accuracy
+    e2e-test/src/refinement_eval.rs                    e2e-smoke-refinement,refine-eval,e2e-regression
+    e2e-test/refinement/*                              e2e-smoke-refinement,refine-eval,e2e-regression
+    e2e-test/tests/features/text_refinement.feature    e2e-smoke-refinement,refine-eval,e2e-regression
+    e2e-test/tests/steps/text_refinement/*             e2e-smoke-refinement,refine-eval,e2e-regression
+    e2e-test/src/refinement_service_stub/*             e2e-smoke-refinement,refine-eval,e2e-regression
     command-spotting/*                                 e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
     app/src/adapters/secondary/commandspotting/*       e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
     app/src/adapters/secondary/keypressing/*           e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
@@ -1382,7 +1382,7 @@ _it-filter modules="":
     fi
     printf '%s\n' "$filter"
 
-# The voice control scenarios beyond the smoke set (@regression), run by full-check right after e2e-smoke so it still runs the whole set
+# The scenarios beyond the smoke set (@regression): voice control and the 20-run refinement series under load, run by full-check right after e2e-smoke so it still runs the whole set
 e2e-regression:
     @VOICEPUNCHER_STAGES_RECIPE=e2e-regression {{just_executable()}} _stages e2e-regression
 

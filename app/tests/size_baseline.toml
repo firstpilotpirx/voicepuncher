@@ -126,7 +126,6 @@
 "e2e-test/tests/steps/local_services.rs" = 538
 "e2e-test/tests/steps/local_services/copies.rs" = 659
 "e2e-test/tests/steps/speech_recognition.rs" = 399
-"e2e-test/tests/steps/text_refinement/mod.rs" = 333
 "e2e-test/tests/steps/voice_control.rs" = 361
 "e2e-test/tests/steps/voice_control/session.rs" = 375
 
@@ -153,7 +152,7 @@
 "app/tests/steps" = 7326
 "command-spotting/src" = 2002
 "command-spotting/tests/it" = 2119
-"e2e-test/tests/steps" = 2530
+"e2e-test/tests/steps" = 2366
 
 [excessive_nesting]
 "app/src/adapters/primary/modeldownload/macos/mapping.rs::WindowModel::rechecked" = 0

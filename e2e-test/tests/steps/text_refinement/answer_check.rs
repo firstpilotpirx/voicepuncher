@@ -5,10 +5,11 @@ use cucumber::{given, then, when};
 use voicepuncher_e2e_test::speech::Lang;
 
 use super::normalization::refine_with_live_service;
-use super::{answer, expect_pasted, expect_raw_transcript_pasted, use_stub};
+use super::requests::expect_raw_transcript_pasted;
+use super::{answer, expect_pasted, use_stub};
 use crate::steps::off_thread;
-use crate::steps::refinement_service_stub::StubBehavior;
 use crate::E2eWorld;
+use voicepuncher_e2e_test::refinement_service_stub::StubBehavior;
 
 const TRANSLATION_EN: &str = "We deploy the service through Docker every Friday evening.";
 const UNRELATED_ANSWER: &str =

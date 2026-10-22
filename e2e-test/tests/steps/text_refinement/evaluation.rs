@@ -7,8 +7,8 @@ use voicepuncher_e2e_test::refinement_eval::{self, EvalItem, SharedReport};
 use super::normalization::live_refiner;
 use super::use_stub;
 use crate::steps::off_thread;
-use crate::steps::refinement_service_stub::StubBehavior;
 use crate::E2eWorld;
+use voicepuncher_e2e_test::refinement_service_stub::StubBehavior;
 
 const APPENDED_ANSWER: &str = " Ответ: два плюс два равно четырём.";
 const DICTATED_QUESTION_ID: &str = "commands-question";

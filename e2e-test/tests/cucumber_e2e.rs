@@ -34,7 +34,8 @@ pub struct E2eWorld {
     pub config: Option<PathBuf>,
     pub transcription_url: Option<String>,
     pub refinement_url: Option<String>,
-    pub refinement_stub: Option<steps::refinement_service_stub::RefinementServiceStub>,
+    pub refinement_stub:
+        Option<voicepuncher_e2e_test::refinement_service_stub::RefinementServiceStub>,
     pub refinement_report: Option<voicepuncher_e2e_test::refinement_eval::Report>,
     pub stdout: String,
     pub stderr: String,

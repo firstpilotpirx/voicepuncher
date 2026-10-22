@@ -10,15 +10,18 @@ use voicepuncher_e2e_test::speech_cache::{synthesized, SayRequest};
 
 use crate::steps::file_transcription::{env, sut_bin, write_silence_wav, NO_CONFIG};
 use crate::steps::off_thread;
-use crate::steps::refinement_service_stub::{RefinementServiceStub, StubBehavior};
+use voicepuncher_e2e_test::refinement_service_stub::{RefinementServiceStub, StubBehavior};
+
 use crate::steps::speech_recognition::{expect_message, expect_startup_failure};
 use crate::E2eWorld;
+use requests::{expect_message_role, expect_raw_transcript_pasted, only_chat_request};
 use voicepuncher_e2e_test::speech::Lang;
 
 mod answer_check;
 mod evaluation;
 mod live;
 mod normalization;
+mod requests;
 
 const MAX_STARTUP_FAILURE: Duration = Duration::from_secs(3);
 const REMOTE_SERVICE_URL: &str = "http://192.168.1.10:8080/v1";
@@ -27,23 +30,23 @@ const OUTDATED_CONFIG: &str = "[llm]\nmodel_path = \"/models/Qwen2.5-1.5B-Instru
 const REFINEMENT_ON_CONFIG: &str = "[refinement]\nenabled = true\n";
 const OFFERED_MODELS: [&str; 2] = ["qwen2.5-7b-instruct", "llama-3.1-8b-instruct"];
 
-const SPEECH: &str = "The quick brown fox jumps over the lazy dog.";
-const SPEECH_WORDS: &str = "quick brown fox";
+pub(super) const SPEECH: &str = "The quick brown fox jumps over the lazy dog.";
+pub(super) const SPEECH_WORDS: &str = "quick brown fox";
 const TRANSLATION_REQUEST: &str = "Translate this sentence into Russian.";
 const TRANSLATION_REQUEST_WORDS: [&str; 2] = ["translate", "russian"];
 /// A normalization of `SPEECH` that its raw transcript never equals.
-const CORRECTED_TEXT: &str = "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG!";
+pub(super) const CORRECTED_TEXT: &str = "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG!";
 /// Long enough (over half the transcript) that only the output limit can reject it.
-const CUT_OFF_TEXT: &str = "The quick brown fox jumps over the";
-const OUTPUT_LIMIT_LOG: &str = "output limit";
+pub(super) const CUT_OFF_TEXT: &str = "The quick brown fox jumps over the";
+pub(super) const OUTPUT_LIMIT_LOG: &str = "output limit";
 const REASONING_BLOCK: &str = "<think>\nThe transcript is a pangram; nothing to fix.\n</think>\n\n";
 const TRANSCRIPT_OPEN: &str = "<transcript>\n";
 const TRANSCRIPT_CLOSE: &str = "\n</transcript>";
 const REFINEMENT_FAILURE_LOG: &str = "refinement failed";
 const DEFAULT_VOICE: &str = "Samantha";
 const RUSSIAN_VOICE: &str = "Milena";
-const SPEECH_RU: &str = "Мы деплоим сервис через докер каждую пятницу вечером.";
-const SPEECH_RU_WORDS: &str = "пятницу";
+pub(super) const SPEECH_RU: &str = "Мы деплоим сервис через докер каждую пятницу вечером.";
+pub(super) const SPEECH_RU_WORDS: &str = "пятницу";
 
 fn use_stub(world: &mut E2eWorld, behavior: StubBehavior) -> Result<()> {
     let stub = RefinementServiceStub::spawn(behavior)?;
@@ -256,7 +259,7 @@ fn reported_outdated_llm_config(world: &mut E2eWorld) -> Result<()> {
     expect_message(world, "[refinement].base_url")
 }
 
-fn speech_recording(world: &mut E2eWorld, text: &str) -> Result<PathBuf> {
+pub(super) fn speech_recording(world: &mut E2eWorld, text: &str) -> Result<PathBuf> {
     voiced_speech_recording(world, DEFAULT_VOICE, text)
 }
 
@@ -270,7 +273,7 @@ fn voiced_speech_recording(world: &mut E2eWorld, voice: &str, text: &str) -> Res
 
 /// How a step asks the app for text refinement: turned on, turned off, or left to the default and the config.
 #[derive(Clone, Copy)]
-enum Refinement {
+pub(super) enum Refinement {
     On,
     Off,
     Default,
@@ -286,7 +289,11 @@ impl Refinement {
     }
 }
 
-fn run_app(world: &mut E2eWorld, recording: &Path, refinement: Refinement) -> Result<()> {
+pub(super) fn run_app(
+    world: &mut E2eWorld,
+    recording: &Path,
+    refinement: Refinement,
+) -> Result<()> {
     let mut cmd = Command::new(sut_bin());
     match &world.config {
         Some(config) => cmd.arg("--config").arg(config),
@@ -316,31 +323,7 @@ fn run_app(world: &mut E2eWorld, recording: &Path, refinement: Refinement) -> Re
     Ok(())
 }
 
-fn only_chat_request(world: &E2eWorld) -> Result<serde_json::Value> {
-    let stub = world
-        .refinement_stub
-        .as_ref()
-        .context("no text refinement service stub")?;
-    let requests = stub.chat_requests();
-    let [request] = requests.as_slice() else {
-        bail!(
-            "expected one request to the text refinement service, got {}",
-            requests.len()
-        );
-    };
-    serde_json::from_str(request).context("the request to the service is not JSON")
-}
-
-fn expect_message_role<'a>(message: &'a serde_json::Value, role: &str) -> Result<&'a str> {
-    if message["role"] != role {
-        bail!("expected a '{role}' message, got {message}");
-    }
-    message["content"]
-        .as_str()
-        .with_context(|| format!("the '{role}' message has no text"))
-}
-
-fn expect_success(world: &E2eWorld) -> Result<()> {
+pub(super) fn expect_success(world: &E2eWorld) -> Result<()> {
     let status = world.exit_status.context("the app did not run")?;
     if !status.success() {
         bail!("the app failed with {status}; stderr: {}", world.stderr);
@@ -356,25 +339,6 @@ fn expect_pasted(world: &E2eWorld, expected: &str) -> Result<()> {
             world.stdout,
             world.stderr
         );
-    }
-    Ok(())
-}
-
-fn expect_raw_transcript_pasted(world: &E2eWorld) -> Result<()> {
-    expect_success(world)?;
-    let pasted = world.stdout.to_lowercase();
-    let (spoken, spoken_words) = match world.spoken {
-        Some(Lang::Ru) => (SPEECH_RU, SPEECH_RU_WORDS),
-        _ => (SPEECH, SPEECH_WORDS),
-    };
-    if !pasted.contains(spoken_words) || world.stdout == CORRECTED_TEXT {
-        bail!(
-            "expected the raw transcript of {spoken:?} to be pasted, got {:?}",
-            world.stdout
-        );
-    }
-    if world.stdout == CUT_OFF_TEXT {
-        bail!("the cut-off text was pasted");
     }
     Ok(())
 }
