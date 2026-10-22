@@ -1,1 +1,14 @@
 priority: high
+prepared:
+  estimate: 1h30m
+  decisions:
+    - question: Explore before specs?
+      answer: "No"
+    - question: How to fix — clipping first, then a mishearing entry?
+      answer: First inspect the segment sent to the recognizer and fix the clipping if the word is cut; otherwise add "Stud" as a mishearing
+    - question: Check against the user's own voice recordings?
+      answer: Yes, run voice_samples_it first
+    - question: Wait for tame-confirming-special-cases?
+      answer: Do not wait; use its mishearing table if it already landed, else fix in the confirmation code
+    - question: Version?
+      answer: Next free PATCH version above main (0.37.3 already released; kit version-check corrects it)
