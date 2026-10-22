@@ -1,3 +1,18 @@
 depends_on:
   - change: unmask-gated-tests
     why: both reshape the shared step definitions of app/tests/steps and e2e-test/tests/steps
+prepared:
+  estimate: 4h
+  decisions:
+    - question: Estimate of the change?
+      answer: 4h
+    - question: Run explore before specs?
+      answer: "No"
+    - question: Where does the requirement-to-rule mapping check live?
+      answer: A test in this project (architecture tests), not a kit command
+    - question: How to test behavior observable only through AppKit?
+      answer: Component scenarios on a recording fake overlay; the _it test keeps only the adapter contract
+    - question: At what level are the local-services scenarios?
+      answer: Component level with fake service binaries; E2E only where real servers are needed
+    - question: Other capabilities missing rules?
+      answer: Fill them all so the check passes for all 21 capabilities; no exception list
