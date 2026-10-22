@@ -1,3 +1,0 @@
-depends_on:
-  - change: adopt-static-analyzers
-    why: installs its tools through the same just tools recipe and baseline format
