@@ -26,7 +26,7 @@ See proposal.md § Why. Two facts shape the approach:
 
 ## Dependencies
 
-None: no running change reworks the capture ring, the harness or these scenarios (the peers share only `AGENTS.md`, `justfile` lines and the `it` binary's module list).
+No running change reworks the capture ring, the harness or these scenarios (the peers share only `AGENTS.md`, `justfile` lines and the `it` binary's module list). The acceptance series of task 3.1 (`just e2e-smoke` 3 times beside `just e2e-regression`) failed on its first run in the `e2e-smoke-services` stage, on the local-services scenario "Requests that arrive at once are shared by the copies" (2 of 9 requests past the 5.4 s deadline with the regression run beside it), a test this change does not touch: its fix is filed as `fix-copies-shared-scenario-under-load`, and this change runs the series again once that fix is on `main` (`kit sync-change` refuses a `depends_on` entry for a change filed after this one started, so the wait is not declared in `orchestration.yaml`; the orchestrator was told).
 
 ## Test levels
 
