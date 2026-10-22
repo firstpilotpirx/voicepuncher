@@ -1,3 +1,18 @@
 depends_on:
   - change: command-spotting-stall-handling
     why: both rewrite confirming.rs, worker.rs and engine.rs
+prepared:
+  estimate: 5h
+  decisions:
+    - question: Explore before the run?
+      answer: No
+    - question: Where does the single declaration of commands, forms and states live?
+      answer: A small voice-commands Rust crate both app and command-spotting depend on; keywords.txt generated or checked by a test
+    - question: How does "the app started early" reach the engine, given the protocol version belongs to command-spotting-stall-handling?
+      answer: An optional field in the existing message, no protocol version change
+    - question: What happens to the CUT_WORD_SECS cut of "please" (timing, not a mishearing)?
+      answer: A trailing-words data table next to NEAR_MISSES, no branch in code
+    - question: A mishearing that cannot become a table row without changing behavior?
+      answer: Keep its branch with a comment and file its fix via /create-change; behavior unchanged
+    - question: How is confirming.rs laid out after the split?
+      answer: No preference; agent picks a confirming/ directory, one file per JobContext plus mod.rs, each within the file budget
