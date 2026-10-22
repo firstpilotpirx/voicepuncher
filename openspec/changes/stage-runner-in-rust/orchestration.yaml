@@ -3,3 +3,20 @@ depends_on:
     why: moves the recipes that change adds into the runner
   - change: unmask-gated-tests
     why: moves the real-device stage and skip counting that change adds into the runner
+prepared:
+  estimate: 7h
+  decisions:
+    - question: Run explore before the change starts?
+      answer: No; the proposal is concrete enough
+    - question: Where does the stage runner binary live?
+      answer: A new workspace member dev-tools/
+    - question: Vendor with-machine-lock or guard it?
+      answer: Guard it with _require-machine-lock naming the install command, like _require-nextest; the lock stays in agent-kit
+    - question: Runner as a kit command or in this repository?
+      answer: In this repository; moving it to kit is decided later
+    - question: How to prove the stage table and journal line are unchanged?
+      answer: Golden Rust tests on keys and the journal line, plus one just check with the old and the new runner on one commit; the landing queue runs full-check
+    - question: Move everything at once or in parts?
+      answer: Everything in this change, one PR, a commit per part
+    - question: What about an || true whose failure cannot simply surface?
+      answer: Keep it with a comment naming the tolerated failure and why; remove the others
