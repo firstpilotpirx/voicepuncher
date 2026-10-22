@@ -1,0 +1,4 @@
+depends_on:
+  - change: measure-test-strength
+    why: names stage_inputs
+priority: high
