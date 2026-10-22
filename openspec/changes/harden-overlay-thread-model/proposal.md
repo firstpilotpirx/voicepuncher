@@ -27,9 +27,9 @@ Out of scope: the overlay's look and states; the menu bar.
 
 ## Open points
 
-- Whether `SharedVisualIndicator`'s `Mutex` stays (the handle is `Send + Sync` by construction, so the mutex may go); proposed: it goes.
+- Whether `SharedVisualIndicator`'s `Mutex` stays: decided it stays — dropping it needs `VisualIndicator: Sync` for every implementor, beyond this change's scope; the lock is already poison-tolerant.
 
 ## Release
 
 SemVer: PATCH — the clipboard restore at quit is a visible fix.
-Target version: 0.36.2 (next PATCH above `main` at merge; `kit version-check` corrects it).
+Target version: 0.37.1 (next PATCH above `command-spotting-stall-handling`'s 0.37.0, which lands in the same batch; `kit version-check` corrects it).
