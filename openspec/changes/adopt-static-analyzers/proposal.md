@@ -37,4 +37,4 @@ Out of scope: dynamic analysis (miri, sanitizers, mutation testing, coverage —
 ## Release
 
 SemVer: no release — tooling only.
-Target version: 0.35.0 (unchanged).
+Target version: 0.36.1 (unchanged).
