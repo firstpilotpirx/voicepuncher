@@ -4,7 +4,7 @@ Two unit tests of the command spotting service's confirmation, `confirm::tests::
 
 ## What Changes
 
-- The three confirmation tests no longer depend on the wall clock: a test clock, or a deterministic order in which the copies answer, decides which copy answers and when.
+- The two tests that serve two copies on the copy ports of an ephemeral base port each reserve a copy-port window of their own, so a test's pool finds only that test's copies (reproduced in this change: macOS hands out ephemeral ports in sequence, two of these tests running at the same time get bases a few ports apart, and one test's pool finds the other's fake copies — the ` press enter` heard with 0 requests on the test's own copy came from another test; load only makes the two overlap in time more often; design.md).
 - The budgets the tests assert stay as they are; none is widened.
 
 Current stage: PoC. Target stage: PoC.
@@ -24,8 +24,8 @@ Out of scope: the confirmation logic itself; the budgets of the production code;
 
 ## Open points
 
-- Whether a test clock or a scripted copy order is the smaller seam: proposed — a scripted copy order, as the tests already serve copies on local ports.
-- Whether `should_fail_a_confirmation_when_every_copy_stays_silent_past_its_deadline` has the same cause: proposed — treat it the same way, it failed beside the other two at 03:07.
+- Whether a test clock or a scripted copy order is the smaller seam: neither — the stray copy belongs to another test process, which no clock or order in this process controls; the fix is a copy-port window of the test's own, in the test file alone (design.md).
+- Whether `should_fail_a_confirmation_when_every_copy_stays_silent_past_its_deadline` has the same cause: no — it serves its copy on the service port, which the pool takes alone; measured under load in this change (design.md § Results), unchanged unless the measurement fails.
 
 ## Release
 
