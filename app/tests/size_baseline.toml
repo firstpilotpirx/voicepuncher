@@ -26,7 +26,7 @@
 "app/src/core/application/pipeline/voice_control.rs::Pipeline::carry_out" = 41
 "app/src/core/application/pipeline/voice_control.rs::tests::should_keep_listening_when_a_dictation_cannot_start" = 47
 "app/src/core/application/pipeline/voice_control.rs::tests::should_take_the_heard_speech_once_the_recorder_runs_and_before_live_chunks" = 42
-"app/src/main.rs::main" = 136
+"app/src/main.rs::main" = 128
 "app/src/runtime/mod.rs::Supervisor::reload" = 47
 "app/src/runtime/overlay.rs::tests::should_forward_every_call_to_the_shared_overlay" = 50
 "app/src/runtime/wiring.rs::<WiringAssembler as PipelineAssembler>::assemble" = 52
@@ -96,7 +96,7 @@
 "app/src/adapters/secondary/textrefinement/openai/mod.rs" = 318
 "app/src/adapters/secondary/transcription/openai/mod.rs" = 357
 "app/src/adapters/secondary/visualfeedback/macos/glass.rs" = 315
-"app/src/adapters/secondary/visualfeedback/macos/mod.rs" = 444
+"app/src/adapters/secondary/visualfeedback/macos/mod.rs" = 429
 "app/src/adapters/secondary/visualfeedback/macos/pill_content.rs" = 407
 "app/src/adapters/secondary/visualfeedback/macos/pill_view.rs" = 311
 "app/src/config.rs" = 642
@@ -111,7 +111,7 @@
 "app/src/core/application/text_insertion.rs" = 355
 "app/src/core/domain/normalization_check.rs" = 315
 "app/src/core/domain/voice_command_recognizer.rs" = 384
-"app/src/main.rs" = 371
+"app/src/main.rs" = 366
 "app/src/runtime/mod.rs" = 929
 "app/tests/architecture.rs" = 561
 "app/tests/commandspotting_reconnect_it.rs" = 512
@@ -171,7 +171,7 @@
 
 [directory_lines]
 "app/src/adapters/primary/settings/macos" = 2399
-"app/src/adapters/secondary/visualfeedback/macos" = 2828
+"app/src/adapters/secondary/visualfeedback/macos" = 2787
 "app/src/core/application" = 4893
 "app/src/core/domain" = 3048
 "app/tests" = 7082
@@ -228,6 +228,5 @@
 
 [cognitive_complexity]
 "app/src/adapters/secondary/recording/cpal/mod.rs::live_watcher_thread" = 0
-"app/src/main.rs::main" = 0
 "app/tests/config_loader_it.rs::should_round_trip_full_example_toml" = 0
 "command-spotting/src/engine/confirming.rs::Session::apply_answer" = 0

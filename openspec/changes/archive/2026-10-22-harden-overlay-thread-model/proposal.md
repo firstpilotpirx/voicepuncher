@@ -6,13 +6,13 @@ The overlay's thread safety rests on convention (audit of 2026-10-22): `unsafe i
 
 - The AppKit-owning types are not `Send`/`Sync`: they live on the main thread only, reached through a handle that is `Send` because it carries nothing but a way to dispatch a closure to the main queue (`main_queue.rs`); the `VisualIndicator` port implementation is that handle. Any off-main access fails to compile.
 - Overlay locks tolerate poisoning as the menu bar's do, or the state moves to the main thread where no lock is needed.
-- Timers and delayed work (clipboard restore, notice expiry, pointer sign) are owned: cancelled or joined at quit, so a quit after a paste still restores the clipboard; a restore that cannot run before quit runs at once.
+- Delayed work off the main queue (clipboard restore, the pointer sign's badge self-hide) is owned: cancelled or joined when its owner drops, so a quit after a paste still restores the clipboard; a restore that cannot run before quit runs at once. Main-queue timers (notice expiry, heartbeats) stay main-queue work, checked by their turn.
 - Sound playback reaps its child; service output threads are joined at stop.
-- The three `unsafe impl` leave the allowlist of `enforce-unsafe-safety-comments`.
+- All six `unsafe impl Send`/`Sync` entries leave the allowlist of `enforce-unsafe-safety-comments`.
 
 Current stage: PoC. Target stage: PoC.
-Scope: `visualfeedback/macos/*`, `visualfeedback/pointer_sign.rs`, `main_queue.rs`, `textpasting/macos`, `soundplaying/macos`, `localservices/process`, the integration tests of each.
-Acceptance bar: no `unsafe impl Send`/`Sync` in `app/`; a test that calls an AppKit getter off the main thread does not compile (a `compile_fail` doctest or trybuild case); quit right after a paste restores the clipboard (integration test); no zombie after a sound.
+Scope: `visualfeedback/macos/*`, `visualfeedback/pointer_sign.rs`, `main_queue.rs`, `textpasting/macos`, `soundplaying/macos`, `localservices/process`, their unit and integration tests.
+Acceptance bar: no `unsafe impl Send`/`Sync` in `app/`; code that carries an AppKit object off the main thread does not compile (static `assert_not_send!` assertions on the main-thread-only types; nextest runs no doctests); quit right after a paste restores the clipboard (integration test); no zombie after a sound.
 Out of scope: the overlay's look and states; the menu bar.
 
 ## Capabilities
@@ -23,7 +23,7 @@ Out of scope: the overlay's look and states; the menu bar.
 
 ## Impact
 
-- `app/src/adapters/secondary/visualfeedback/**`, `app/src/adapters/main_queue.rs`, `app/src/runtime/mod.rs` (`SharedVisualIndicator`), `app/src/adapters/secondary/{textpasting,soundplaying,localservices/process}/`, `app/tests/{visualfeedback,textpasting,soundplaying,localservices_process}_*_it.rs`.
+- `app/src/adapters/secondary/visualfeedback/**`, `app/src/adapters/main_queue.rs`, `app/src/runtime/mod.rs` (`SharedVisualIndicator`), `app/src/adapters/secondary/{textpasting,soundplaying,localservices/process}/`, `app/tests/{visualfeedback,textpasting,soundplaying}_macos_it.rs`, `app/tests/unsafe_impls/`, the unit tests of the touched modules.
 
 ## Open points
 
@@ -32,4 +32,4 @@ Out of scope: the overlay's look and states; the menu bar.
 ## Release
 
 SemVer: PATCH — the clipboard restore at quit is a visible fix.
-Target version: 0.37.1 (next PATCH above `command-spotting-stall-handling`'s 0.37.0, which lands in the same batch; `kit version-check` corrects it).
+Target version: 0.36.3 (next PATCH above batch 9's 0.36.2).

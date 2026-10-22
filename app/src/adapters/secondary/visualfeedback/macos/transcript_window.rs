@@ -11,7 +11,7 @@ use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 
 use super::glass::{GlassFinish, GlassPanel, ShadowStyle, SHADOW_MARGIN};
 use super::motion::reduce_motion;
-use crate::adapters::main_queue::dispatch_to_main_after;
+use crate::adapters::main_queue::{on_main_after, MainOnly};
 
 const WIDTH: f64 = 480.0;
 /// Space between the bottom of the pill and the top of the text window.
@@ -106,9 +106,10 @@ impl TranscriptWindow {
 
     fn rise_in(&self) {
         let generation = self.rise.fetch_add(1, Ordering::SeqCst) + 1;
-        let window = WindowOnMain(self.panel.window.clone());
+        let mtm = MainThreadMarker::from(&*self.panel.window);
+        let window = MainOnly::new(mtm, self.panel.window.clone());
         let landing = self.panel.window.frame().origin;
-        window.place(0.0, landing);
+        place(&self.panel.window, 0.0, landing);
         step_rise(
             window,
             landing,
@@ -121,18 +122,20 @@ impl TranscriptWindow {
 
 /// One frame of the rise-in: eases the window up and in until `RISE_SECS` have passed.
 fn step_rise(
-    window: WindowOnMain,
+    window: MainOnly<Retained<NSWindow>>,
     landing: NSPoint,
     start: Instant,
     generation: u64,
     current: Arc<AtomicU64>,
 ) {
-    dispatch_to_main_after(FRAME_MS, move || {
+    on_main_after(FRAME_MS, move |mtm| {
         if current.load(Ordering::SeqCst) != generation {
             return;
         }
         let progress = (start.elapsed().as_secs_f64() / RISE_SECS).min(1.0);
-        window.place(ease_out(progress), landing);
+        if let Some(shown) = window.get(mtm) {
+            place(&shown, ease_out(progress), landing);
+        }
         if progress < 1.0 {
             step_rise(window, landing, start, generation, current);
         }
@@ -144,19 +147,10 @@ fn ease_out(progress: f64) -> f64 {
     1.0 - (1.0 - progress).powi(3)
 }
 
-/// A window moved by main-queue work.
-struct WindowOnMain(Retained<NSWindow>);
-
-// SAFETY: the window is only touched inside main-queue work, on the main thread.
-unsafe impl Send for WindowOnMain {}
-
-impl WindowOnMain {
-    /// Shows the window `eased` of the way in: as opaque, and as close to `landing`.
-    fn place(&self, eased: f64, landing: NSPoint) {
-        self.0.setAlphaValue(eased);
-        self.0
-            .setFrameOrigin(NSPoint { x: landing.x, y: landing.y - RISE * (1.0 - eased) });
-    }
+/// Shows `window` `eased` of the way in: as opaque, and as close to `landing`.
+fn place(window: &NSWindow, eased: f64, landing: NSPoint) {
+    window.setAlphaValue(eased);
+    window.setFrameOrigin(NSPoint { x: landing.x, y: landing.y - RISE * (1.0 - eased) });
 }
 
 fn line_height() -> f64 {

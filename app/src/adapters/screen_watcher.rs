@@ -1,3 +1,5 @@
+//! Calls a handler when the screens change or the Mac wakes: the overlay rebuilds its windows.
+
 use std::sync::Arc;
 
 use objc2::rc::Retained;
@@ -8,7 +10,7 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSNotification, NSNotificationCenter, NSObject, NSObjectProtocol};
 
-pub(super) struct RebuildObserverIvars {
+pub(crate) struct RebuildObserverIvars {
     handler: Arc<dyn Fn() + Send + Sync + 'static>,
 }
 
@@ -16,7 +18,7 @@ define_class!(
     #[unsafe(super(NSObject))]
     #[name = "VPRebuildObserver"]
     #[ivars = RebuildObserverIvars]
-    pub(super) struct RebuildObserver;
+    pub(crate) struct RebuildObserver;
 
     unsafe impl NSObjectProtocol for RebuildObserver {}
 
@@ -36,21 +38,21 @@ impl RebuildObserver {
     }
 }
 
-pub(super) struct ScreenWatcher {
+pub(crate) struct ScreenWatcher {
     observer: Retained<RebuildObserver>,
 }
 
 impl ScreenWatcher {
-    pub(super) fn install(handler: Arc<dyn Fn() + Send + Sync + 'static>) -> Self {
+    pub(crate) fn install(handler: Arc<dyn Fn() + Send + Sync + 'static>) -> Self {
         let observer = RebuildObserver::new(handler);
 
-        let (on_event, observed) = (sel!(onEvent:), observer.as_ref() as &AnyObject);
+        let (on_event, listener) = (sel!(onEvent:), observer.as_ref() as &AnyObject);
         let center = NSNotificationCenter::defaultCenter();
         // SAFETY: an immutable framework constant, set before any Rust code runs.
         let screens = unsafe { NSApplicationDidChangeScreenParametersNotification };
         // SAFETY: the watcher holds the observer and removes it in Drop, so it outlives its registration.
         unsafe {
-            center.addObserver_selector_name_object(observed, on_event, Some(screens), None);
+            center.addObserver_selector_name_object(listener, on_event, Some(screens), None);
         }
 
         let wake_center = NSWorkspace::sharedWorkspace().notificationCenter();
@@ -58,7 +60,7 @@ impl ScreenWatcher {
         let did_wake = unsafe { NSWorkspaceDidWakeNotification };
         // SAFETY: as above: Drop removes the observer before the watcher releases it.
         unsafe {
-            wake_center.addObserver_selector_name_object(observed, on_event, Some(did_wake), None);
+            wake_center.addObserver_selector_name_object(listener, on_event, Some(did_wake), None);
         }
 
         Self { observer }

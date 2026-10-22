@@ -154,6 +154,7 @@ impl MacosMenuActions {
 impl MenuActions for MacosMenuActions {
     /// Stops the runtime, cancelling a recording in progress, then ends the process.
     fn quit(&self) {
+        log::info!("quit: stopping the runtime and the services the app started");
         if let Some(mut runtime) = self.runtime.borrow_mut().take() {
             runtime.stop();
         }

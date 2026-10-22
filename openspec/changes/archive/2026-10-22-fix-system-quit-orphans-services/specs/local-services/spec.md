@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Quit stops every owned service
-When the app quits or is told to end — Quit in its menu, a quit from the system (logout, shutdown, Activity Monitor's Quit, any quit Apple Event), a termination or an interrupt signal — it SHALL log which quit it got and SHALL stop every service it started — the command spotting service first, then the speech recognition copies, then the text refinement service — by asking it to end and killing it after 5 seconds, and SHALL leave every adopted service running.
+When the app quits or is told to end — Quit in its menu, a quit from the system (logout, shutdown, Activity Monitor's Quit, any quit Apple Event), a termination or an interrupt signal — it SHALL log the quit, naming a quit from the system or the signal it got, and SHALL stop every service it started — the command spotting service first, then the speech recognition copies, then the text refinement service — by asking it to end and killing it after 5 seconds, and SHALL leave every adopted service running.
 
 #### Scenario: Quit with owned and adopted services
 - **GIVEN** the app started the speech recognition service for dictation and adopted the text refinement service

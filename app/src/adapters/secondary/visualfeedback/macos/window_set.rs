@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use objc2::MainThreadMarker;
 use objc2_app_kit::NSWindow;
@@ -8,7 +9,12 @@ use super::glass::{GlassFinish, GlassPanel, ShadowStyle};
 use super::motion::reduce_motion;
 use super::pill_content::{GlassTint, PillKind};
 use super::pill_view::{PillLook, PillView, PILL_HEIGHT};
+use super::topology::ScreenTopology;
 use super::transcript_window::TranscriptWindow;
+use crate::adapters::main_queue::MainOnly;
+
+/// The overlay windows of every screen.
+pub(super) type Windows = Vec<Rc<WindowSet>>;
 
 const PILL_CORNER_RADIUS: f64 = PILL_HEIGHT / 2.0;
 /// The pill's width before its first state is drawn.
@@ -32,7 +38,7 @@ pub(super) struct WindowSet {
 }
 
 impl WindowSet {
-    pub(super) fn build(mtm: MainThreadMarker, visible_frame: NSRect) -> Arc<Self> {
+    pub(super) fn build(mtm: MainThreadMarker, visible_frame: NSRect) -> Rc<Self> {
         let pill_rect = NSRect {
             origin: NSPoint {
                 x: visible_frame.origin.x + (visible_frame.size.width - INITIAL_PILL_WIDTH) / 2.0,
@@ -45,7 +51,7 @@ impl WindowSet {
         let panel = GlassPanel::build(mtm, pill_rect, PILL_CORNER_RADIUS, PILL_SHADOW);
         let pill = PillView::build(mtm, &panel.content);
         let transcript = TranscriptWindow::build(mtm, pill_rect);
-        Arc::new(Self { panel, pill, transcript })
+        Rc::new(Self { panel, pill, transcript })
     }
 
     pub(super) fn window(&self) -> &NSWindow {
@@ -118,18 +124,30 @@ impl WindowSet {
     }
 }
 
-// SAFETY: the Retained<…> AppKit objects are only touched on the main thread, through main-queue
-// work or functions that take a MainThreadMarker; Drop asserts the main thread in debug builds.
-unsafe impl Send for WindowSet {}
-// SAFETY: as for Send: no AppKit object is read or written off the main thread.
-unsafe impl Sync for WindowSet {}
-
 impl Drop for WindowSet {
     fn drop(&mut self) {
-        debug_assert!(
-            MainThreadMarker::new().is_some(),
-            "WindowSet must be dropped on the main thread"
-        );
         self.hide();
+    }
+}
+
+/// The overlay's part that lives on the main thread: the windows of every screen and the
+/// screens they were built for.
+pub(super) struct MainState {
+    pub(super) windows: RefCell<Windows>,
+    pub(super) topology: RefCell<ScreenTopology>,
+}
+
+const _: () = crate::assert_not_send!(WindowSet);
+const _: () = crate::assert_not_send!(MainState);
+
+/// The overlay's main-thread part, reached from any thread.
+pub(super) type SharedWindows = MainOnly<MainState>;
+
+impl MainOnly<MainState> {
+    /// The windows of the moment; none once the overlay is gone.
+    pub(super) fn windows(&self, mtm: MainThreadMarker) -> Windows {
+        self.get(mtm)
+            .map(|state| state.windows.borrow().clone())
+            .unwrap_or_default()
     }
 }

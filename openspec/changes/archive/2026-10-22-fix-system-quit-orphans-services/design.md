@@ -26,3 +26,8 @@ The app runs an `NSApplication` without a delegate. A quit Apple Event (logout, 
 | Quit with owned and adopted services, A service that ignores the request to end is killed | unchanged (existing tests) |
 
 In this batch the E2E scenario is not run by this session (batch mode: `just test` and `just lint` only); the batch's `full-check` runs it. Red/green of the delegate is shown by hand with the debug binary: before the fix a quit Apple Event ends the app with no log line and its `whisper-server` copy left; after it the log shows `quit: asked by the system` and the copy is gone.
+
+## Notes from apply
+
+- `main` got simpler with `or_exit` (cyclomatic 27 → 22, cognitive complexity back within budget: its `size_baseline` entry and `expect` dropped); `unsafe app` in `.config/analyzers/metrics.toml` rose 131 → 134 — the delegate's `define_class!` needs `unsafe impl NSObjectProtocol`, `unsafe impl NSApplicationDelegate` and the `unsafe(method(…))` attribute, which AppKit's delegate protocol has no safe form for.
+- The hand check showed, on the debug build, a `debug_assert` panic `WindowSet must be dropped on the main thread` while the runtime thread drops the overlay at any quit that stops the runtime (menu Quit too); it is in the scope of `harden-overlay-thread-model` and does not affect a release build.

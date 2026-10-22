@@ -292,7 +292,7 @@ After five starts in a row of one service that each ended before the service ans
 - **THEN** the service is ready and dictation starts
 
 ### Requirement: Quit stops every owned service
-When the app quits or is told to end, it SHALL stop every service it started — the command spotting service first, then the speech recognition copies, then the text refinement service — by asking it to end and killing it after 5 seconds, and SHALL leave every adopted service running.
+When the app quits or is told to end — Quit in its menu, a quit from the system (logout, shutdown, Activity Monitor's Quit, any quit Apple Event), a termination or an interrupt signal — it SHALL log the quit, naming a quit from the system or the signal it got, and SHALL stop every service it started — the command spotting service first, then the speech recognition copies, then the text refinement service — by asking it to end and killing it after 5 seconds, and SHALL leave every adopted service running.
 
 #### Scenario: Quit with owned and adopted services
 - **GIVEN** the app started the speech recognition service for dictation and adopted the text refinement service
@@ -304,6 +304,12 @@ When the app quits or is told to end, it SHALL stop every service it started —
 - **GIVEN** the app started a service that does not end when asked
 - **WHEN** the user quits the app
 - **THEN** the service is killed 5 seconds after it was asked to end
+
+#### Scenario: A quit from the system stops the owned services
+- **GIVEN** the app started the speech recognition service for dictation and it is ready
+- **WHEN** the system tells the app to quit
+- **THEN** the app's log names the quit from the system
+- **AND** no process of the speech recognition service for dictation is left after the app ended
 
 ### Requirement: An adopted service that goes away is reported and waited for
 When an adopted service stops answering three checks in a row, the app SHALL report it as stopped outside the app, SHALL NOT start its own on that port, and SHALL count it adopted again once it answers again.

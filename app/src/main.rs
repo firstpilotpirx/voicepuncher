@@ -8,6 +8,7 @@ use voicepuncher::adapters::primary::menubar::macos::applier::RuntimeApplier;
 use voicepuncher::adapters::primary::menubar::macos::indicator::StatusItemCell;
 use voicepuncher::adapters::primary::menubar::macos::login_offer::LoginOfferObserver;
 use voicepuncher::adapters::primary::menubar::macos::status_item::MacosStatusItem;
+use voicepuncher::adapters::primary::menubar::macos::system_quit::SystemQuit;
 use voicepuncher::adapters::primary::modeldownload::macos::{
     self as modeldownload, DownloadWindow,
 };
@@ -62,11 +63,7 @@ impl VisualIndicator for NoopVisualIndicator {
     fn show_failure_notice(&self, _notice: &FailureNotice) {}
 }
 
-#[expect(
-    clippy::too_many_lines,
-    clippy::cognitive_complexity,
-    reason = "size baseline"
-)]
+#[expect(clippy::too_many_lines, reason = "size baseline")]
 fn main() {
     install_panic_hook();
     let cli = Cli::parse();
@@ -125,19 +122,16 @@ fn main() {
 
     // the app starts the services itself and waits for them; when it leaves them to the
     // scripts, a missing service ends the launch at once, before the app waits for any permission
-    let services = config.services.manage.then(|| {
-        ManagedServices::start().unwrap_or_else(|e| {
-            log::error!("services: {e:#}");
-            std::process::exit(2);
-        })
-    });
+    let services = config
+        .services
+        .manage
+        .then(ManagedServices::start)
+        .map(or_exit);
     if services.is_none() && config.voice_control.enabled {
-        if let Err(e) =
-            SpottingClient::connect(&config.voice_control.url, std::time::Instant::now())
-        {
-            log::error!("{e:#}");
-            std::process::exit(2);
-        }
+        or_exit(SpottingClient::connect(
+            &config.voice_control.url,
+            std::time::Instant::now(),
+        ));
     }
 
     let mtm = MainThreadMarker::new().expect("main must run on the main thread");
@@ -161,10 +155,7 @@ fn main() {
     let mut services_view = None;
     if let Some(services) = services {
         services_view = Some(services.view());
-        signals::stop_on_termination(services.stopper()).unwrap_or_else(|e| {
-            log::error!("{e:#}");
-            std::process::exit(2);
-        });
+        or_exit(signals::stop_on_termination(services.stopper()));
         // the services start only once the models they load are on disk
         runtime = runtime
             .with_models(Box::new(CatalogModels::current()))
@@ -199,11 +190,8 @@ fn main() {
             cli: cli.clone(),
         }));
     }
-    signals::reload_on_hang_up(config_path, Box::new(move |cfg| cli.overlay(cfg)), reloader)
-        .unwrap_or_else(|e| {
-            log::error!("{e:#}");
-            std::process::exit(2);
-        });
+    let overrides = Box::new(move |cfg: &mut Config| cli.overlay(cfg));
+    or_exit(signals::reload_on_hang_up(config_path, overrides, reloader));
     // Quit in the menu stops the runtime and ends the process; run() never returns.
     let mut actions = MacosMenuActions::new(runtime, Box::new(settings), logs_folder())
         .with_permissions_window(Box::new(permissions::bring_to_front));
@@ -218,6 +206,7 @@ fn main() {
         let actions = std::rc::Rc::clone(&actions);
         window.set_quit(Box::new(move || actions.quit()));
     }
+    let _system_quit = SystemQuit::install(mtm, std::rc::Rc::clone(&actions) as _);
     permissions_window.set_quit(Box::new(move || actions.quit()));
 
     app.run();
@@ -302,6 +291,14 @@ impl ModelsPanel for SavedModels {
 }
 
 /// The folder the services' logs live in: `~/.voicepuncher/logs`.
+/// The value, or the error logged and the process ended as a launch that cannot go on.
+fn or_exit<T>(result: anyhow::Result<T>) -> T {
+    result.unwrap_or_else(|e| {
+        log::error!("{e:#}");
+        std::process::exit(2);
+    })
+}
+
 fn logs_folder() -> std::path::PathBuf {
     logs_dir(&dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(".")))
 }

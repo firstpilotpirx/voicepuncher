@@ -149,6 +149,13 @@ Feature: local-services
       Then each started service answered on its port while the app ran
       And no process of them is left after the app ended
 
+    Scenario: A quit from the system stops the owned services
+      Given no local service runs on the chosen ports and the models are on disk
+      When the app launches, its services become ready and the system tells the app to quit
+      Then each started service answered on its port while the app ran
+      And the app's log names the quit from the system
+      And no process of them is left after the app ended
+
   @serial @resilience
   Rule: An owned service that stops is started again
 

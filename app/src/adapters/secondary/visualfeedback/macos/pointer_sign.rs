@@ -11,7 +11,7 @@ use objc2_app_kit::{NSWindowCollectionBehavior, NSWindowStyleMask};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 
 use super::sign_badge::{BadgeView, BADGE_SIZE};
-use super::{dispatch_to_main, dispatch_to_main_after};
+use crate::adapters::main_queue::{on_main, on_main_after, MainOnly};
 use crate::adapters::secondary::visualfeedback::pointer_sign::{
     DictationSignState, PointerSignView,
 };
@@ -37,83 +37,93 @@ struct SignWindow {
     badge: BadgeView,
 }
 
-// SAFETY: the window and its badge are only touched on the main thread: every use goes through
-// the main queue.
-unsafe impl Send for SignWindow {}
-// SAFETY: as for Send: no use of the window or badge runs off the main queue.
-unsafe impl Sync for SignWindow {}
+const _: () = crate::assert_not_send!(SignWindow);
 
 /// The dictation sign next to the pointer, over every app and on every screen.
 pub struct MacosPointerSign {
-    window: Arc<SignWindow>,
+    window: MainOnly<SignWindow>,
     /// Bumped by every show and hide; a follow tick of an older one stops.
     generation: Arc<AtomicU64>,
 }
 
 impl MacosPointerSign {
     pub fn initialize(mtm: MainThreadMarker) -> Self {
-        Self { window: Arc::new(build_window(mtm)), generation: Arc::new(AtomicU64::new(0)) }
+        let window = MainOnly::new(mtm, build_window(mtm));
+        Self { window, generation: Arc::new(AtomicU64::new(0)) }
     }
 
     pub fn is_visible(&self) -> bool {
-        self.window.window.isVisible()
+        self.probe(|sign| sign.window.isVisible())
     }
 
     pub fn ignores_mouse_events(&self) -> bool {
-        self.window.window.ignoresMouseEvents()
+        self.probe(|sign| sign.window.ignoresMouseEvents())
     }
 
     pub fn can_become_key(&self) -> bool {
-        self.window.window.canBecomeKeyWindow()
+        self.probe(|sign| sign.window.canBecomeKeyWindow())
     }
 
     pub fn shows_icon(&self) -> bool {
-        self.window.badge.shows_icon()
+        self.probe(|sign| sign.badge.shows_icon())
     }
 
     pub fn activity_ring_turns(&self) -> bool {
-        self.window.badge.activity_ring_turns()
+        self.probe(|sign| sign.badge.activity_ring_turns())
     }
 
     /// Where the sign's top-left corner is, in global screen coordinates.
     pub fn top_left(&self) -> NSPoint {
-        let frame = self.window.window.frame();
+        let sign = self.window.on_this_thread();
+        let frame = sign.map_or(NSRect::ZERO, |sign| sign.window.frame());
         NSPoint { x: frame.origin.x, y: frame.origin.y + frame.size.height }
+    }
+
+    /// Reads the window on the main thread only; off it nothing shows.
+    fn probe(&self, read: impl FnOnce(&SignWindow) -> bool) -> bool {
+        self.window.on_this_thread().is_some_and(|sign| read(&sign))
     }
 }
 
 impl PointerSignView for MacosPointerSign {
     fn show(&self, badge: DictationSignState) {
         let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        let sign = Arc::clone(&self.window);
+        let handle = self.window.clone();
         let current = Arc::clone(&self.generation);
-        dispatch_to_main(move || {
+        on_main(move |mtm| {
+            let Some(sign) = handle.get(mtm) else {
+                return;
+            };
             sign.badge.apply(badge);
             move_to_pointer(&sign.window);
             sign.window.orderFrontRegardless();
             sign.window.invalidateShadow();
-            follow(sign, generation, current);
+            follow(handle, generation, current);
         });
     }
 
     fn hide(&self) {
         self.generation.fetch_add(1, Ordering::SeqCst);
-        let sign = Arc::clone(&self.window);
-        dispatch_to_main(move || {
-            sign.window.orderOut(None);
-            sign.badge.stop();
+        let handle = self.window.clone();
+        on_main(move |mtm| {
+            if let Some(sign) = handle.get(mtm) {
+                sign.window.orderOut(None);
+                sign.badge.stop();
+            }
         });
     }
 }
 
 /// Moves the sign to the pointer once per frame until a later show or hide.
-fn follow(sign: Arc<SignWindow>, generation: u64, current: Arc<AtomicU64>) {
-    dispatch_to_main_after(FOLLOW_MS, move || {
+fn follow(handle: MainOnly<SignWindow>, generation: u64, current: Arc<AtomicU64>) {
+    on_main_after(FOLLOW_MS, move |mtm| {
         if current.load(Ordering::SeqCst) != generation {
             return;
         }
-        move_to_pointer(&sign.window);
-        follow(sign, generation, current);
+        if let Some(sign) = handle.get(mtm) {
+            move_to_pointer(&sign.window);
+        }
+        follow(handle, generation, current);
     });
 }
 

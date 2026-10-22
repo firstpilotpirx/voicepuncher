@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use anyhow::{bail, ensure, Context, Result};
 use cucumber::{given, then, when};
+use voicepuncher::adapters::primary::menubar::macos::system_quit::SYSTEM_QUIT_NOTE;
 use voicepuncher::adapters::secondary::logging::file::{logs_dir, LOG_FILE_NAME};
 
 use super::{answers, healthy, service_process, services, signal, wait_until, ScenarioServices};
@@ -72,41 +73,74 @@ fn ports_free_models_on_disk(world: &mut E2eWorld) -> Result<()> {
 
 #[when("the app launches, its services become ready and the app is told to end")]
 async fn app_launches_and_ends(world: &mut E2eWorld) -> Result<()> {
-    off_thread(world, move |world| {
-        let port = services(world)?.stt_port;
-        let home = tempfile::tempdir()?;
-        let config = home.path().join("config.toml");
-        std::fs::write(
-            &config,
-            format!(
-                "[transcription]\nbase_url = \"http://127.0.0.1:{port}/v1\"\n\n\
-                 [services]\nmanage = true\ndictation_copies = 1\n"
-            ),
-        )?;
-        // A home of its own: the app logs, and its services log, there, never to the user's
-        let child = Command::new(sut_bin())
-            .arg("--config")
-            .arg(&config)
-            .arg("--no-llm")
-            .env("HOME", home.path())
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .context("failed to spawn the app")?;
-        let pid = child.id();
-        let launched =
-            LaunchedApp { home: Some(home), child: Some(child), ..LaunchedApp::default() };
-        services(world)?.app = Some(launched);
-        let app = app(world)?;
-        let ready = wait_until(READY_WITHIN, || app.log().contains(READY_NOTE));
-        app.answered = ready && healthy(port);
-        signal(pid, "-TERM")?;
-        let child = app.child.as_mut().context("the app is gone")?;
-        app.exit = wait_for_exit(child, ENDED_WITHIN)?;
-        Ok(())
+    off_thread(world, |world| {
+        launch_ready_and_end(world, |pid| signal(pid, "-TERM"))
     })
     .await
+}
+
+#[when("the app launches, its services become ready and the system tells the app to quit")]
+async fn app_launches_and_system_quits(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, |world| {
+        launch_ready_and_end(world, quit_from_the_system)
+    })
+    .await
+}
+
+/// Launches the app on the scenario's port, waits for its service, then ends it with `end`.
+fn launch_ready_and_end(world: &mut E2eWorld, end: fn(u32) -> Result<()>) -> Result<()> {
+    let port = services(world)?.stt_port;
+    let home = tempfile::tempdir()?;
+    let config = home.path().join("config.toml");
+    std::fs::write(
+        &config,
+        format!(
+            "[transcription]\nbase_url = \"http://127.0.0.1:{port}/v1\"\n\n\
+             [services]\nmanage = true\ndictation_copies = 1\n"
+        ),
+    )?;
+    // A home of its own: the app logs, and its services log, there, never to the user's
+    let child = Command::new(sut_bin())
+        .arg("--config")
+        .arg(&config)
+        .arg("--no-llm")
+        .env("HOME", home.path())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .context("failed to spawn the app")?;
+    let pid = child.id();
+    let launched = LaunchedApp { home: Some(home), child: Some(child), ..LaunchedApp::default() };
+    services(world)?.app = Some(launched);
+    let app = app(world)?;
+    let ready = wait_until(READY_WITHIN, || app.log().contains(READY_NOTE));
+    app.answered = ready && healthy(port);
+    end(pid)?;
+    let child = app.child.as_mut().context("the app is gone")?;
+    app.exit = wait_for_exit(child, ENDED_WITHIN)?;
+    Ok(())
+}
+
+/// Sends the app the quit Apple Event that logout, shutdown and Activity Monitor send.
+fn quit_from_the_system(pid: u32) -> Result<()> {
+    let script = format!(
+        "ObjC.import('AppKit'); \
+         const app = $.NSRunningApplication.runningApplicationWithProcessIdentifier({pid}); \
+         app.isNil() ? 'not running' : (app.terminate ? 'sent' : 'refused')"
+    );
+    let output = Command::new("osascript")
+        .args(["-l", "JavaScript", "-e", &script])
+        .output()
+        .context("failed to run osascript")?;
+    let answer = String::from_utf8_lossy(&output.stdout);
+    ensure!(
+        answer.trim() == "sent",
+        "the quit was not sent to the app {pid}: {} {}",
+        answer.trim(),
+        String::from_utf8_lossy(&output.stderr).trim()
+    );
+    Ok(())
 }
 
 fn wait_for_exit(child: &mut Child, limit: Duration) -> Result<Option<ExitStatus>> {
@@ -146,5 +180,16 @@ fn no_process_left(world: &mut E2eWorld) -> Result<()> {
     if answers(port) || service_process(port).is_some() {
         bail!("the speech recognition service on port {port} is left after the app ended");
     }
+    Ok(())
+}
+
+#[then("the app's log names the quit from the system")]
+fn log_names_system_quit(world: &mut E2eWorld) -> Result<()> {
+    let app = app(world)?;
+    let log = app.log();
+    ensure!(
+        log.contains(SYSTEM_QUIT_NOTE),
+        "the app logged no quit from the system:\n{log}"
+    );
     Ok(())
 }

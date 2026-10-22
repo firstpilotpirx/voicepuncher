@@ -83,7 +83,11 @@ impl MacosSoundPlayer {
 
     fn play_async(path: &std::path::Path) {
         match std::process::Command::new("afplay").arg(path).spawn() {
-            Ok(_) => log::debug!("sound: playing {}", path.display()),
+            Ok(mut child) => {
+                log::debug!("sound: playing {}", path.display());
+                // Reaped when it ends, so no zombie stays behind a sound.
+                std::thread::spawn(move || child.wait());
+            }
             Err(e) => log::warn!("sound: cannot play {}: {e}", path.display()),
         }
     }
@@ -142,6 +146,7 @@ impl SoundPlayer for MacosSoundPlayer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::application::SoundPlayer;
 
     #[test]
     fn should_resolve_empty_name_to_none() {
@@ -182,5 +187,60 @@ mod tests {
         let path = result.expect("non-empty name must resolve to Some");
         assert!(path.to_string_lossy().contains("My Sound"));
         assert!(path.to_string_lossy().ends_with(".aiff"));
+    }
+
+    #[test]
+    fn should_not_panic_when_playing_stop_sound_with_valid_name() {
+        // Given
+        let player = MacosSoundPlayer::new("", "Pop", "");
+        // When / Then
+        player.play_stop();
+    }
+
+    #[test]
+    fn should_not_panic_when_both_sounds_are_empty() {
+        // Given
+        let player = MacosSoundPlayer::new("", "", "");
+        // When / Then
+        player.play_start();
+        player.play_stop();
+    }
+
+    #[test]
+    fn should_not_panic_when_sound_name_does_not_exist() {
+        // Given — unknown name; afplay will fail but we ignore errors
+        let player = MacosSoundPlayer::new("NonExistentSoundXYZ", "", "");
+        // When / Then
+        player.play_start();
+    }
+
+    /// The children of this test process that still play or wait to be reaped: `afplay`, or a
+    /// zombie, which `ps` names `<defunct>`.
+    fn afplay_children() -> Vec<String> {
+        let listing = std::process::Command::new("ps")
+            .args(["-A", "-o", "ppid=,stat=,comm="])
+            .output()
+            .expect("ps runs");
+        let own = std::process::id().to_string();
+        String::from_utf8_lossy(&listing.stdout)
+            .lines()
+            .filter(|line| line.split_whitespace().next() == Some(own.as_str()))
+            .filter(|line| line.ends_with("afplay") || line.ends_with("<defunct>"))
+            .map(str::to_owned)
+            .collect()
+    }
+
+    #[test]
+    fn should_leave_no_zombie_after_a_sound() {
+        // Given
+        let player = MacosSoundPlayer::new("Tink", "", "");
+        // When — the short sound plays to its end
+        player.play_start();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !afplay_children().is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        // Then — the ended afplay was reaped, not left as a zombie
+        assert_eq!(afplay_children(), Vec::<String>::new());
     }
 }

@@ -122,7 +122,7 @@ Whenever the focus wait is on, the system SHALL log, for every dictation it deli
 
 ### Requirement: The paste keeps the user's clipboard
 
-When the system pastes a dictation, the clipboard SHALL afterwards hold again what it held right before the paste, whatever its kind — text, an image, files or several kinds at once — including content the user copied while the recording ran. An empty clipboard SHALL stay empty.
+When the system pastes a dictation, the clipboard SHALL afterwards hold again what it held right before the paste, whatever its kind — text, an image, files or several kinds at once — including content the user copied while the recording ran. An empty clipboard SHALL stay empty. What the user copies after the paste SHALL stay; a second paste within the restore delay SHALL still leave the user's clipboard, not the first dictation. When the app quits, or its pipeline stops, before the restore delay ran out, the clipboard SHALL be restored at once rather than lost.
 
 #### Scenario: A screenshot copied during the recording survives the paste
 - **GIVEN** a text field has keyboard focus and a recording runs
@@ -139,3 +139,20 @@ When the system pastes a dictation, the clipboard SHALL afterwards hold again wh
 - **GIVEN** the clipboard is empty
 - **WHEN** a dictation is pasted
 - **THEN** the clipboard is empty again after the paste
+
+#### Scenario: Quitting right after a paste still restores the clipboard
+- **GIVEN** the clipboard holds text the user copied
+- **AND** a dictation was just pasted and its restore delay has not run out
+- **WHEN** the user quits the app
+- **THEN** the clipboard holds the user's text again before the app ends
+
+#### Scenario: A copy made after the paste is not overwritten
+- **GIVEN** a dictation was just pasted and its restore delay has not run out
+- **WHEN** the user copies something new
+- **THEN** the clipboard keeps the new copy after the delay
+
+#### Scenario: A second dictation within the delay keeps the user's clipboard
+- **GIVEN** the clipboard holds text the user copied
+- **AND** a dictation was just pasted and its restore delay has not run out
+- **WHEN** a second dictation is pasted
+- **THEN** the clipboard holds the user's text again after the paste, not the first dictation

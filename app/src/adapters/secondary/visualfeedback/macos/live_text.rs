@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use super::OverlayState;
+use crate::adapters::locking::lock;
 
 /// Characters of the live transcript the text window shows: two lines of the 14 pt system
 /// font in its width.
@@ -48,14 +49,14 @@ pub(super) struct LiveTranscriptText(Arc<Mutex<String>>);
 impl LiveTranscriptText {
     /// Forgets the text of an earlier recording.
     pub(super) fn clear(&self) {
-        self.0.lock().unwrap().clear();
+        lock(&self.0).clear();
     }
 
     /// Keeps `text` while the overlay shows the recording; an update that arrives after
     /// the recording ended is dropped.
     pub(super) fn update(&self, state: OverlayState, text: &str) {
         if state == OverlayState::Recording {
-            *self.0.lock().unwrap() = text.to_owned();
+            *lock(&self.0) = text.to_owned();
         }
     }
 
@@ -67,7 +68,7 @@ impl LiveTranscriptText {
 
     /// What the text window shows in `state`; `None` hides it.
     pub(super) fn shown(&self, state: OverlayState) -> Option<String> {
-        let text = self.0.lock().unwrap();
+        let text = lock(&self.0);
         (state == OverlayState::Recording && !text.trim().is_empty())
             .then(|| latest_words(&text, LIVE_TRANSCRIPT_CHARS))
     }

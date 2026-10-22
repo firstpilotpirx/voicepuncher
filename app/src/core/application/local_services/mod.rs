@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::core::domain::{ServiceKind, ServiceSpec, ServiceStatus};
 
@@ -165,7 +165,8 @@ impl ServiceRuntime {
         let published = Arc::clone(&statuses);
         let thread = std::thread::Builder::new()
             .name("services".into())
-            .spawn(move || serve(services, &inbox, &published, tick))?;
+            .spawn(move || serve(services, &inbox, &published, tick))
+            .context("services: failed to spawn the services thread")?;
         Ok(Self { commands, statuses, thread: Mutex::new(Some(thread)) })
     }
 

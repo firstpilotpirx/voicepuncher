@@ -18,44 +18,7 @@ struct Allowed {
     reason: &'static str,
 }
 
-const ALLOWED: [Allowed; 6] = [
-    Allowed {
-        file: "app/src/adapters/secondary/visualfeedback/macos/mod.rs",
-        ty: "MacosVisualIndicator",
-        marker: "Send",
-        reason: "its AppKit windows are only touched by main-queue work",
-    },
-    Allowed {
-        file: "app/src/adapters/secondary/visualfeedback/macos/window_set.rs",
-        ty: "WindowSet",
-        marker: "Send",
-        reason: "every use goes through the main queue; Drop asserts the main thread",
-    },
-    Allowed {
-        file: "app/src/adapters/secondary/visualfeedback/macos/window_set.rs",
-        ty: "WindowSet",
-        marker: "Sync",
-        reason: "every use goes through the main queue; Drop asserts the main thread",
-    },
-    Allowed {
-        file: "app/src/adapters/secondary/visualfeedback/macos/pointer_sign.rs",
-        ty: "SignWindow",
-        marker: "Send",
-        reason: "the window and its badge are only touched on the main queue",
-    },
-    Allowed {
-        file: "app/src/adapters/secondary/visualfeedback/macos/pointer_sign.rs",
-        ty: "SignWindow",
-        marker: "Sync",
-        reason: "the window and its badge are only touched on the main queue",
-    },
-    Allowed {
-        file: "app/src/adapters/secondary/visualfeedback/macos/transcript_window.rs",
-        ty: "WindowOnMain",
-        marker: "Send",
-        reason: "the window is only moved inside main-queue work",
-    },
-];
+const ALLOWED: [Allowed; 0] = [];
 
 /// An `unsafe impl Send|Sync for Type` found in a file, and whether a `SAFETY:` comment sits above it.
 #[derive(Debug, PartialEq)]

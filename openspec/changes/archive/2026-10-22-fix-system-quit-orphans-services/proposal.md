@@ -31,4 +31,4 @@ Out of scope: services the app adopted (they stay running, as specified); the ol
 ## Release
 
 SemVer: PATCH — a bug fix.
-Target version: 0.37.1 (batch; the orchestrator fixes the final number).
+Target version: 0.36.2.

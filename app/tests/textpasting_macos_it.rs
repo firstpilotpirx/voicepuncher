@@ -29,6 +29,11 @@ const RICH_TEXT_BYTES: &[u8] = br"{\rtf1\ansi copied {\b text}}";
 
 type PasteboardItemTypes = Vec<(String, Vec<u8>)>;
 
+/// One pasteboard item holding `text` as plain text.
+fn plain_text(text: &[u8]) -> Vec<PasteboardItemTypes> {
+    vec![vec![(PLAIN_TEXT_TYPE.to_owned(), text.to_vec())]]
+}
+
 fn send_no_keystroke() -> anyhow::Result<()> {
     Ok(())
 }
@@ -96,7 +101,8 @@ impl Drop for SavedUserPasteboard {
     }
 }
 
-fn paste_without_keystroke(restore_delay_ms: u64) {
+/// Pastes and returns the paster, whose restore is pending until the delay ran out or it drops.
+fn paste_without_keystroke(restore_delay_ms: u64) -> MacOsTextPaster {
     let mut paster = MacOsTextPaster::with_paste_keystroke(restore_delay_ms, send_no_keystroke);
     paster
         .paste(&CleanedText::new(PASTED_TEXT.to_owned()).unwrap())
@@ -106,6 +112,7 @@ fn paste_without_keystroke(restore_delay_ms: u64) {
         Some(PASTED_TEXT),
         "the paste must put its text on the pasteboard"
     );
+    paster
 }
 
 fn wait_until_pasted_text_is_gone() {
@@ -137,7 +144,7 @@ fn should_bring_back_a_copied_screenshot_after_the_paste() {
         vec![vec![(PNG_TYPE.to_owned(), SCREENSHOT_BYTES.to_vec())]];
     write_items(&screenshot);
     // When
-    paste_without_keystroke(RESTORE_DELAY_MS);
+    let _paster = paste_without_keystroke(RESTORE_DELAY_MS);
     wait_until_restored(&screenshot);
     // Then
     assert_every_type_is_back(&screenshot);
@@ -154,7 +161,7 @@ fn should_bring_back_copied_text_with_every_type_after_the_paste() {
     ]];
     write_items(&rich_text);
     // When
-    paste_without_keystroke(RESTORE_DELAY_MS);
+    let _paster = paste_without_keystroke(RESTORE_DELAY_MS);
     wait_until_restored(&rich_text);
     // Then
     assert_every_type_is_back(&rich_text);
@@ -163,15 +170,10 @@ fn should_bring_back_copied_text_with_every_type_after_the_paste() {
 /// Each copied item is back with each of its types' data; macOS may add types it converts the text to.
 fn assert_every_type_is_back(copied: &[PasteboardItemTypes]) {
     let restored: Vec<PasteboardItemTypes> = read_items();
-    assert_eq!(restored.len(), copied.len(), "items: {restored:?}");
-    for (copied_item, restored_item) in copied.iter().zip(&restored) {
-        for copied_type in copied_item {
-            assert!(
-                restored_item.contains(copied_type),
-                "{copied_type:?} missing from {restored_item:?}"
-            );
-        }
-    }
+    assert!(
+        every_type_is_back(copied, &restored),
+        "{copied:?} not all in {restored:?}"
+    );
 }
 
 fn every_type_is_back(copied: &[PasteboardItemTypes], restored: &[PasteboardItemTypes]) -> bool {
@@ -193,7 +195,7 @@ fn should_leave_an_empty_clipboard_empty_after_the_paste() {
     let _user_pasteboard = SavedUserPasteboard::save();
     write_items(&[]);
     // When
-    paste_without_keystroke(RESTORE_DELAY_MS);
+    let _paster = paste_without_keystroke(RESTORE_DELAY_MS);
     wait_until_pasted_text_is_gone();
     // Then
     assert_eq!(read_items(), Vec::<PasteboardItemTypes>::new());
@@ -206,16 +208,10 @@ fn should_not_overwrite_a_copy_made_after_the_paste() {
     const AFTER_RESTORE_WINDOW: Duration = Duration::from_millis(3 * SLOW_RESTORE_DELAY_MS);
     let _pasteboard_lock = PasteboardLock::take();
     let _user_pasteboard = SavedUserPasteboard::save();
-    write_items(&[vec![(
-        PLAIN_TEXT_TYPE.to_owned(),
-        b"copied before the paste".to_vec(),
-    )]]);
-    paste_without_keystroke(SLOW_RESTORE_DELAY_MS);
+    write_items(&plain_text(b"copied before the paste"));
+    let _paster = paste_without_keystroke(SLOW_RESTORE_DELAY_MS);
     // When
-    let copied_after: Vec<PasteboardItemTypes> = vec![vec![(
-        PLAIN_TEXT_TYPE.to_owned(),
-        b"copied after the paste".to_vec(),
-    )]];
+    let copied_after = plain_text(b"copied after the paste");
     write_items(&copied_after);
     std::thread::sleep(AFTER_RESTORE_WINDOW);
     // Then
@@ -248,4 +244,35 @@ fn should_make_a_second_run_wait_while_another_holds_the_pasteboard() {
         .recv_timeout(TAKEN_WITHIN)
         .expect("the second run must take the lock once the first drops it");
     second_run.join().unwrap();
+}
+
+#[test]
+fn should_restore_the_clipboard_at_once_when_the_app_quits_before_the_delay() {
+    // Given — a paste whose restore waits far longer than the test
+    let _pasteboard_lock = PasteboardLock::take();
+    let _user_pasteboard = SavedUserPasteboard::save();
+    let copied = plain_text(b"copied before quit");
+    write_items(&copied);
+    let paster = paste_without_keystroke(60_000);
+    // When — the stopping runtime drops its pipeline's paster
+    drop(paster);
+    // Then
+    assert_every_type_is_back(&copied);
+}
+
+#[test]
+fn should_restore_the_users_clipboard_when_a_second_paste_comes_within_the_delay() {
+    // Given — a paste whose restore is still pending
+    let _pasteboard_lock = PasteboardLock::take();
+    let _user_pasteboard = SavedUserPasteboard::save();
+    let copied = plain_text(b"copied before both pastes");
+    write_items(&copied);
+    let mut paster = paste_without_keystroke(60_000);
+    // When — the next dictation pastes, then the app quits
+    paster
+        .paste(&CleanedText::new(PASTED_TEXT.to_owned()).unwrap())
+        .unwrap();
+    drop(paster);
+    // Then — the user's copy is back, not the first dictation
+    assert_every_type_is_back(&copied);
 }

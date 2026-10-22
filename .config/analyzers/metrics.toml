@@ -44,7 +44,7 @@
 "cyclomatic app/src/core/domain/hotkey.rs::HotKey::human_name" = 19
 "cyclomatic app/src/core/domain/respelling.rs::find_respellings" = 16
 "cyclomatic app/src/core/domain/respelling.rs::letter_sounds" = 14
-"cyclomatic app/src/main.rs::main" = 27
+"cyclomatic app/src/main.rs::main" = 22
 "cyclomatic app/src/runtime/mod.rs::Supervisor::reload" = 12
 "cyclomatic app/src/runtime/models.rs::headless_line" = 12
 "cyclomatic app/src/runtime/observer.rs::RuntimeState::fmt" = 11
@@ -93,8 +93,7 @@
 "cyclomatic e2e-test/tests/steps/app_distribution/bundle_launch.rs::whisper_on_metal" = 11
 "cyclomatic e2e-test/tests/steps/app_distribution/engines.rs::holds_locked_files" = 11
 "cyclomatic e2e-test/tests/steps/app_distribution/engines.rs::version_files" = 11
-"cyclomatic e2e-test/tests/steps/local_services/app.rs::app_launches_and_ends" = 13
-"cyclomatic e2e-test/tests/steps/local_services/app.rs::app_launches_and_ends::<anonymous>" = 12
+"cyclomatic e2e-test/tests/steps/local_services/app.rs::launch_ready_and_end" = 12
 "cyclomatic e2e-test/tests/steps/local_services/copies.rs::more_requests" = 12
 "cyclomatic e2e-test/tests/steps/local_services/copies.rs::more_requests::<anonymous>" = 11
 "cyclomatic e2e-test/tests/steps/local_services/copies.rs::waited_their_turn" = 11
@@ -115,5 +114,5 @@
 "cyclomatic e2e-test/tests/steps/voice_control/session.rs::recorded" = 12
 "cyclomatic e2e-test/tests/steps/voice_control/session.rs::session_done" = 11
 "cyclomatic e2e-test/tests/steps/voice_control/session/start_cue.rs::recorded_starts" = 19
-"duplicated_lines" = 1535
-"unsafe app" = 131
+"duplicated_lines" = 1528
+"unsafe app" = 129

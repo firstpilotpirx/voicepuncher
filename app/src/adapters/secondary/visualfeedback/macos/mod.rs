@@ -6,7 +6,6 @@ mod pill_content;
 mod pill_states;
 mod pill_view;
 mod pointer_sign;
-mod screen_watcher;
 mod sign_badge;
 mod symbols;
 mod topology;
@@ -14,6 +13,8 @@ mod transcript_window;
 mod waveform;
 mod window_set;
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -25,19 +26,19 @@ use objc2_foundation::{NSPoint, NSRect, NSSize};
 use crate::core::application::{AudioLevelSource, LiveTranscriptView, VisualIndicator};
 use crate::core::domain::{AudioLevel, FailureNotice, VoiceCommand};
 
-use crate::adapters::main_queue::{dispatch_to_main, dispatch_to_main_after};
+use crate::adapters::locking::lock;
+use crate::adapters::main_queue::{on_main, on_main_after, MainOnly};
+use crate::adapters::screen_watcher::ScreenWatcher;
 use failure_notice::{show_notice, NoticeTimer};
 use live_text::LiveTranscriptText;
 use pill_content::{command_sign, state_after_sign};
 use pill_states::{
     apply_command_sign, apply_hidden_state, apply_pasted_sign, apply_processing_state,
     apply_recording_state, apply_waiting_for_focus_state, fade_out_then_hide, LevelFeed, Turn,
-    Windows,
 };
-use screen_watcher::ScreenWatcher;
 use topology::{diff_screens, ScreenChange, ScreenTopology};
 use waveform::LevelWave;
-use window_set::WindowSet;
+use window_set::{MainState, SharedWindows, WindowSet, Windows};
 
 pub use glass::GlassFinish;
 pub use pointer_sign::MacosPointerSign;
@@ -66,19 +67,16 @@ const NOTICE_DURATION: Duration = FAILURE_NOTICE_LIFETIME;
 const FALLBACK_SCREEN: NSRect =
     NSRect { origin: NSPoint { x: 0.0, y: 0.0 }, size: NSSize { width: 1440.0, height: 900.0 } };
 
-type SharedWindows = Arc<Mutex<Windows>>;
-
 pub struct MacosVisualIndicator {
     state: Arc<Mutex<OverlayState>>,
     /// Whether the commands-unavailable sign shows beside the state.
     commands_unavailable: Arc<AtomicBool>,
-    windows: SharedWindows,
+    main: SharedWindows,
     pulse_generation: Arc<AtomicU64>,
     feed: LevelFeed,
     live_transcript: LiveTranscriptText,
-    last_topology: Arc<Mutex<ScreenTopology>>,
     notice_duration_ms: i64,
-    _watcher: ScreenWatcher,
+    _watcher: MainOnly<ScreenWatcher>,
 }
 
 impl MacosVisualIndicator {
@@ -93,8 +91,11 @@ impl MacosVisualIndicator {
         notice_duration: Duration,
     ) -> Self {
         let notice_duration_ms = i64::try_from(notice_duration.as_millis()).unwrap_or(i64::MAX);
-        let windows = Arc::new(Mutex::new(build_windows(mtm)));
-        let last_topology = Arc::new(Mutex::new(collect_topology(mtm)));
+        let main = MainState {
+            windows: RefCell::new(build_windows(mtm)),
+            topology: RefCell::new(collect_topology(mtm)),
+        };
+        let main = MainOnly::new(mtm, main);
 
         let app = NSApplication::sharedApplication(mtm);
         app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
@@ -103,7 +104,7 @@ impl MacosVisualIndicator {
         let commands_unavailable = Arc::new(AtomicBool::new(false));
         let pulse_generation = Arc::new(AtomicU64::new(0));
         let redraw = Redraw {
-            windows,
+            main,
             feed: LevelFeed {
                 register: level_register,
                 wave: Arc::new(Mutex::new(LevelWave::starting_now())),
@@ -116,35 +117,29 @@ impl MacosVisualIndicator {
                 commands_unavailable: Arc::clone(&commands_unavailable),
             },
         };
-        let watcher = ScreenWatcher::install(screen_change_handler(
-            redraw.clone(),
-            Arc::clone(&last_topology),
-        ));
+        let watcher = ScreenWatcher::install(screen_change_handler(redraw.clone()));
         Self {
             state,
             commands_unavailable,
-            windows: redraw.windows,
+            main: redraw.main,
             pulse_generation,
             feed: redraw.feed,
             live_transcript: redraw.live_transcript,
-            last_topology,
             notice_duration_ms,
-            _watcher: watcher,
+            _watcher: MainOnly::new(mtm, watcher),
         }
     }
 
     /// Rebuilds the windows when the screens changed and redraws the current state.
     pub fn rebuild_window_set(&self, mtm: MainThreadMarker) {
-        if diff_screens(&self.last_topology.lock().unwrap(), &collect_topology(mtm))
-            == ScreenChange::Identical
+        let Some(main) = self.main.get(mtm) else {
+            return;
+        };
+        if diff_screens(&main.topology.borrow(), &collect_topology(mtm)) == ScreenChange::Identical
         {
             return;
         }
-        let redraw = self.redraw();
-        let turn = Turn::next(&redraw.timer.pulse_generation);
-        do_rebuild(mtm, &redraw.windows, &self.last_topology);
-        let current_state = *redraw.timer.state.lock().unwrap();
-        redraw.draw(current_state, turn);
+        self.redraw().rebuild_and_draw(mtm);
     }
 
     pub fn generation_count(&self) -> u64 {
@@ -227,15 +222,23 @@ impl MacosVisualIndicator {
 
     /// Whether any overlay window took the keyboard focus or could take it.
     pub fn has_key_window(&self) -> bool {
-        self.windows.lock().unwrap().iter().any(|ws| {
+        self.windows_here().iter().any(|ws| {
             [ws.window(), ws.transcript.window()]
                 .iter()
                 .any(|window| window.isKeyWindow() || window.canBecomeKeyWindow())
         })
     }
 
-    fn first_window(&self) -> Option<Arc<WindowSet>> {
-        self.windows.lock().unwrap().first().cloned()
+    fn first_window(&self) -> Option<Rc<WindowSet>> {
+        self.windows_here().first().cloned()
+    }
+
+    /// The windows, read on the main thread; none elsewhere.
+    fn windows_here(&self) -> Windows {
+        self.main
+            .on_this_thread()
+            .map(|main| main.windows.borrow().clone())
+            .unwrap_or_default()
     }
 
     fn notice_timer(&self) -> NoticeTimer {
@@ -249,7 +252,7 @@ impl MacosVisualIndicator {
 
     fn redraw(&self) -> Redraw {
         Redraw {
-            windows: Arc::clone(&self.windows),
+            main: self.main.clone(),
             feed: self.feed.clone(),
             live_transcript: self.live_transcript.clone(),
             timer: self.notice_timer(),
@@ -258,32 +261,31 @@ impl MacosVisualIndicator {
 
     /// Sets `state` and draws it on freshly built windows, on the main queue.
     fn show_state(&self, state: OverlayState) {
-        *self.state.lock().unwrap() = state;
+        *lock(&self.state) = state;
         log::debug!("overlay: {state:?} requested");
         let turn = Turn::next(&self.pulse_generation);
         let redraw = self.redraw();
-        let last_topology = Arc::clone(&self.last_topology);
-        dispatch_to_main(move || {
-            if let Some(mtm) = MainThreadMarker::new() {
-                do_rebuild(mtm, &redraw.windows, &last_topology);
-                redraw.draw(state, turn);
-            }
+        on_main(move |mtm| {
+            do_rebuild(mtm, &redraw.main);
+            redraw.draw(mtm, state, turn);
         });
     }
 
     fn hide_overlay(&self) {
         self.pulse_generation.fetch_add(1, Ordering::SeqCst);
-        let windows = Arc::clone(&self.windows);
+        let main = self.main.clone();
         let commands_unavailable = Arc::clone(&self.commands_unavailable);
 
-        *self.state.lock().unwrap() = OverlayState::Hidden;
+        *lock(&self.state) = OverlayState::Hidden;
         log::debug!("overlay: hide requested");
 
-        dispatch_to_main(move || {
+        on_main(move |mtm| {
             log::debug!("overlay: hidden");
             // WHY: read on the main queue; a show queued before this hide may build the windows
-            let windows = windows.lock().unwrap().clone();
-            apply_hidden_state(windows, commands_unavailable.load(Ordering::SeqCst));
+            apply_hidden_state(
+                &main.windows(mtm),
+                commands_unavailable.load(Ordering::SeqCst),
+            );
         });
     }
 
@@ -295,35 +297,23 @@ impl MacosVisualIndicator {
         let redraw = self.redraw();
         log::debug!("overlay: commands unavailable {unavailable} requested");
 
-        dispatch_to_main(move || {
+        on_main(move |mtm| {
             // WHY: read on the main queue, so a state shown after this signal was queued wins
-            let state = *redraw.timer.state.lock().unwrap();
+            let state = *lock(&redraw.timer.state);
             if matches!(state, OverlayState::FailureNotice(_)) {
                 return;
             }
             let turn = Turn::next(&redraw.timer.pulse_generation);
-            redraw.draw(state, turn);
+            redraw.draw(mtm, state, turn);
         });
     }
 }
 
 /// Rebuilds the windows for the screens of the moment and redraws the current state.
-fn screen_change_handler(
-    redraw: Redraw,
-    last_topology: Arc<Mutex<ScreenTopology>>,
-) -> Arc<dyn Fn() + Send + Sync + 'static> {
+fn screen_change_handler(redraw: Redraw) -> Arc<dyn Fn() + Send + Sync + 'static> {
     Arc::new(move || {
         let redraw = redraw.clone();
-        let last_topology = Arc::clone(&last_topology);
-        dispatch_to_main(move || {
-            let Some(mtm) = MainThreadMarker::new() else {
-                return;
-            };
-            let turn = Turn::next(&redraw.timer.pulse_generation);
-            do_rebuild(mtm, &redraw.windows, &last_topology);
-            let current_state = *redraw.timer.state.lock().unwrap();
-            redraw.draw(current_state, turn);
-        });
+        on_main(move |mtm| redraw.rebuild_and_draw(mtm));
     })
 }
 
@@ -337,16 +327,11 @@ fn build_windows(mtm: MainThreadMarker) -> Windows {
         .collect()
 }
 
-fn do_rebuild(
-    mtm: MainThreadMarker,
-    windows: &SharedWindows,
-    last_topology: &Arc<Mutex<ScreenTopology>>,
-) {
-    let new_topology = collect_topology(mtm);
-    let new_windows = build_windows(mtm);
-    let old_windows = std::mem::replace(&mut *windows.lock().unwrap(), new_windows);
-    drop(old_windows);
-    *last_topology.lock().unwrap() = new_topology;
+fn do_rebuild(mtm: MainThreadMarker, main: &SharedWindows) {
+    if let Some(main) = main.get(mtm) {
+        main.windows.replace(build_windows(mtm));
+        main.topology.replace(collect_topology(mtm));
+    }
 }
 
 fn collect_topology(mtm: MainThreadMarker) -> ScreenTopology {
@@ -361,22 +346,32 @@ fn collect_topology(mtm: MainThreadMarker) -> ScreenTopology {
 /// commands-unavailable sign while it is on.
 #[derive(Clone)]
 struct Redraw {
-    windows: SharedWindows,
+    main: SharedWindows,
     feed: LevelFeed,
     live_transcript: LiveTranscriptText,
     timer: NoticeTimer,
 }
 
 impl Redraw {
-    fn draw(&self, state: OverlayState, turn: Turn) {
+    /// Rebuilds the windows for the screens of the moment and draws the current state.
+    fn rebuild_and_draw(&self, mtm: MainThreadMarker) {
+        let turn = Turn::next(&self.timer.pulse_generation);
+        do_rebuild(mtm, &self.main);
+        let current_state = *lock(&self.timer.state);
+        self.draw(mtm, current_state, turn);
+    }
+
+    fn draw(&self, mtm: MainThreadMarker, state: OverlayState, turn: Turn) {
         let commands_unavailable = self.timer.commands_unavailable.load(Ordering::SeqCst);
-        let ws_vec = self.windows.lock().unwrap().clone();
+        let main = (&self.main, mtm);
+        let ws_vec = self.main.windows(mtm);
         log::debug!("overlay: {state:?} shown on {} screen(s)", ws_vec.len());
         match state {
             OverlayState::Recording => {
                 let shown = self.live_transcript.shown(state);
                 apply_recording_state(
-                    ws_vec.clone(),
+                    &self.main,
+                    mtm,
                     turn,
                     self.feed.clone(),
                     commands_unavailable,
@@ -384,15 +379,15 @@ impl Redraw {
                 apply_live_transcript(&ws_vec, shown);
             }
             OverlayState::RecognizingSpeech | OverlayState::RefiningText => {
-                apply_processing_state(ws_vec, state, turn, commands_unavailable);
+                apply_processing_state(main, state, turn, commands_unavailable);
             }
             OverlayState::WaitingForFocus => {
-                apply_waiting_for_focus_state(ws_vec, turn, commands_unavailable);
+                apply_waiting_for_focus_state(main, turn, commands_unavailable);
             }
             OverlayState::FailureNotice(notice) => {
-                show_notice(&self.windows, &notice, turn.generation, self.timer.clone());
+                show_notice(main, &notice, turn.generation, self.timer.clone());
             }
-            OverlayState::Hidden => apply_hidden_state(ws_vec, commands_unavailable),
+            OverlayState::Hidden => apply_hidden_state(&ws_vec, commands_unavailable),
         }
     }
 }
@@ -400,7 +395,7 @@ impl Redraw {
 impl VisualIndicator for MacosVisualIndicator {
     fn show_recording(&self) {
         self.live_transcript.clear();
-        *self.feed.wave.lock().unwrap() = LevelWave::starting_now();
+        *lock(&self.feed.wave) = LevelWave::starting_now();
         self.show_state(OverlayState::Recording);
     }
 
@@ -423,22 +418,21 @@ impl VisualIndicator for MacosVisualIndicator {
     #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn show_pasted(&self) {
         let turn = Turn::next(&self.pulse_generation);
-        let windows = Arc::clone(&self.windows);
+        let main = self.main.clone();
         let commands_unavailable = Arc::clone(&self.commands_unavailable);
         // The sign hides itself, so a screen change draws the overlay hidden.
-        *self.state.lock().unwrap() = OverlayState::Hidden;
+        *lock(&self.state) = OverlayState::Hidden;
         log::debug!("overlay: Pasted sign requested");
 
-        dispatch_to_main(move || {
+        on_main(move |mtm| {
             if !turn.is_current() {
                 return;
             }
-            let ws_vec = windows.lock().unwrap().clone();
-            apply_pasted_sign(&ws_vec);
-            dispatch_to_main_after(PASTED_SIGN_MS, move || {
+            apply_pasted_sign(&main.windows(mtm));
+            on_main_after(PASTED_SIGN_MS, move |_| {
                 // WHY: a later signal took over the overlay; its own drawing stands
                 if turn.is_current() {
-                    fade_out_then_hide(ws_vec, turn, commands_unavailable);
+                    fade_out_then_hide(main, turn, commands_unavailable);
                 }
             });
         });
@@ -455,21 +449,17 @@ impl VisualIndicator for MacosVisualIndicator {
         };
         let turn = Turn::next(&self.pulse_generation);
         let redraw = self.redraw();
-        let last_topology = Arc::clone(&self.last_topology);
         // The state stays what the command left, so a screen change redraws that state.
-        let after = state_after_sign(*self.state.lock().unwrap());
+        let after = state_after_sign(*lock(&self.state));
         log::debug!("overlay: command sign {} requested", sign.label);
 
-        dispatch_to_main(move || {
-            let Some(mtm) = MainThreadMarker::new() else {
-                return;
-            };
-            do_rebuild(mtm, &redraw.windows, &last_topology);
-            apply_command_sign(&redraw.windows.lock().unwrap(), sign);
-            dispatch_to_main_after(COMMAND_SIGN_MS, move || {
+        on_main(move |mtm| {
+            do_rebuild(mtm, &redraw.main);
+            apply_command_sign(&redraw.main.windows(mtm), sign);
+            on_main_after(COMMAND_SIGN_MS, move |mtm| {
                 // WHY: a later signal took over the overlay; its own drawing stands
                 if turn.is_current() {
-                    redraw.draw(after, turn);
+                    redraw.draw(mtm, after, turn);
                 }
             });
         });
@@ -486,7 +476,7 @@ impl VisualIndicator for MacosVisualIndicator {
     fn live_transcript_view(&self) -> Box<dyn LiveTranscriptView> {
         Box::new(MacosLiveTranscriptView {
             state: Arc::clone(&self.state),
-            windows: Arc::clone(&self.windows),
+            main: self.main.clone(),
             live_transcript: self.live_transcript.clone(),
         })
     }
@@ -495,28 +485,27 @@ impl VisualIndicator for MacosVisualIndicator {
 /// Draws the live transcript under the pill of every screen while the recording runs.
 struct MacosLiveTranscriptView {
     state: Arc<Mutex<OverlayState>>,
-    windows: SharedWindows,
+    main: SharedWindows,
     live_transcript: LiveTranscriptText,
 }
 
 impl LiveTranscriptView for MacosLiveTranscriptView {
     fn show_live_transcript(&self, text: &str) {
-        self.live_transcript
-            .update(*self.state.lock().unwrap(), text);
+        self.live_transcript.update(*lock(&self.state), text);
         let state = Arc::clone(&self.state);
-        let windows = Arc::clone(&self.windows);
+        let main = self.main.clone();
         let live_transcript = self.live_transcript.clone();
-        dispatch_to_main(move || {
+        on_main(move |mtm| {
             // WHY: read on the main queue, so a stage shown after this update was queued wins
-            let state = *state.lock().unwrap();
+            let state = *lock(&state);
             if LiveTranscriptText::draws_text_window(state) {
-                apply_live_transcript(&windows.lock().unwrap(), live_transcript.shown(state));
+                apply_live_transcript(&main.windows(mtm), live_transcript.shown(state));
             }
         });
     }
 }
 
-fn apply_live_transcript(windows: &[Arc<WindowSet>], shown: Option<String>) {
+fn apply_live_transcript(windows: &[Rc<WindowSet>], shown: Option<String>) {
     for ws in windows {
         ws.show_live_transcript(shown.as_deref());
     }
@@ -527,10 +516,6 @@ impl AudioLevelSource for MacosVisualIndicator {
         AudioLevel::from_bits(self.feed.register.load(Ordering::Relaxed))
     }
 }
-
-// SAFETY: only the screen watcher's observer is not Send; it is created on the main thread, AppKit
-// calls it there, and no method of the indicator touches it, so moving the indicator never uses it.
-unsafe impl Send for MacosVisualIndicator {}
 
 #[cfg(test)]
 mod tests {

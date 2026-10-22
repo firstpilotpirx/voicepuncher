@@ -22,17 +22,17 @@ Around it: twelve `lock().unwrap()` in the overlay; the clipboard restore, the s
 
 ### 2. The overlay's main-thread state
 
-`MacosVisualIndicator` keeps only thread-safe parts (the state under its lock, atomics, the level feed, the live transcript text) plus one `MainOnly<MainState>`, where `MainState` holds the windows (`RefCell<Vec<Rc<WindowSet>>>`), the last screen topology and the screen watcher. `WindowSet` and the windows' `Arc` become `Rc`, `!Send`. Every timed drawing (heartbeat, waveform tick, Pasted fade, notice expiry, command sign) captures the handle and takes the windows of the moment from it on each tick, after its turn check: a rebuild always starts a new turn, so the windows a tick finds are the ones its turn drew on. The test accessors (`first_icon_symbol`, …) read through the handle with the marker of the calling thread and answer "nothing shows" off the main thread, so their signatures, and the integration tests, stay. The test accessors move to a file of their own (`probe.rs`), so `mod.rs` shrinks below its size baseline.
+`MacosVisualIndicator` keeps only thread-safe parts (the state under its lock, atomics, the level feed, the live transcript text) plus one `MainOnly<MainState>`, where `MainState` holds the windows (`RefCell<Vec<Rc<WindowSet>>>`) and the last screen topology, and a `MainOnly<ScreenWatcher>` of its own (the watcher's handler holds the state's handle, so the state cannot hold the watcher without a cycle). `WindowSet` and the windows' `Arc` become `Rc`, `!Send`. Every timed drawing (heartbeat, waveform tick, Pasted fade, notice expiry, command sign) captures the handle and takes the windows of the moment from it on each tick, after its turn check: a rebuild always starts a new turn, so the windows a tick finds are the ones its turn drew on. The test accessors (`first_icon_symbol`, …) read through the handle with the marker of the calling thread and answer "nothing shows" off the main thread, so their signatures, and the integration tests, stay. The screen watcher knows nothing of the overlay, so it moves to `adapters/screen_watcher.rs`, beside `main_queue.rs`: the overlay's directory, listed in the size baseline, must not grow.
 
 The dictation sign's window becomes `MainOnly<SignWindow>`; the transcript window's rise animation captures a `MainOnly<Retained<NSWindow>>` instead of `WindowOnMain`.
 
 ### 3. Compile-time proof
 
-A test that calls an `AppKit` getter off the main thread must not compile. The workspace runs its tests under cargo-nextest, which runs no doctests, so a `compile_fail` doctest would never run; trybuild would add a dependency and a slow nested build. Instead each module with a main-thread-only type holds a test-only static assertion that the type is **not** `Send` (the ambiguous-impl trick of `static_assertions::assert_not_impl_any!`, written out in a shared test helper): `WindowSet`, `SignWindow` and `MainState` turning `Send` again breaks the build of `just test`. With them `!Send`, any closure that carries one to `thread::spawn` or `dispatch_to_main` fails to compile, which is the guarantee the bar asks for. The `unsafe_impls` allowlist test loses all six entries; its `ALLOWED` becomes empty, and it then fails on any new `unsafe impl Send`/`Sync`.
+A test that calls an `AppKit` getter off the main thread must not compile. The workspace runs its tests under cargo-nextest, which runs no doctests, so a `compile_fail` doctest would never run; trybuild would add a dependency and a slow nested build. Instead each module with a main-thread-only type holds a static assertion, `const _: () = assert_not_send!(T);`, that the type is **not** `Send` (the ambiguous-impl trick of `static_assertions::assert_not_impl_any!`, written out as a macro in `main_queue.rs`): `WindowSet`, `SignWindow` and `MainState` turning `Send` again breaks every build, `just test` and `just lint` included. With them `!Send`, any closure that carries one to `thread::spawn` or `dispatch_to_main` fails to compile, which is the guarantee the bar asks for. The `unsafe_impls` allowlist test loses all six entries; its `ALLOWED` becomes empty, and it then fails on any new `unsafe impl Send`/`Sync`.
 
 ### 4. Poison-tolerant locks
 
-Every overlay and dictation-sign `lock().unwrap()` becomes `lock().unwrap_or_else(PoisonError::into_inner)` through one small helper per file group, as in `menubar/macos/indicator.rs`: a panic in one closure no longer brings down the next signal. The state, the waveform and the topology locks are all covered.
+Every overlay and dictation-sign `lock().unwrap()` becomes `lock().unwrap_or_else(PoisonError::into_inner)` through one shared helper, `adapters/locking.rs` `lock`, as in `menubar/macos/indicator.rs`: a panic in one closure no longer brings down the next signal. The state, the waveform and the topology locks are all covered.
 
 ### 5. Owned delayed work
 
@@ -49,8 +49,10 @@ Every overlay and dictation-sign `lock().unwrap()` becomes `lock().unwrap_or_els
 | text-insertion: Copied text survives the paste | adapter integration (`textpasting_macos_it`, unchanged) |
 | text-insertion: An empty clipboard stays empty | adapter integration (`textpasting_macos_it`, unchanged) |
 | text-insertion: Quitting right after a paste still restores the clipboard | adapter integration (`textpasting_macos_it`: the paster dropped as the stopping runtime drops it) |
+| text-insertion: A copy made after the paste is not overwritten | adapter integration (`textpasting_macos_it`, unchanged) |
+| text-insertion: A second dictation within the delay keeps the user's clipboard | adapter integration (`textpasting_macos_it`: two pastes inside one restore delay) |
 
-The thread-model goals have no spec scenario: unit tests and compile-time assertions (§ 3), and the adapter integration tests of the sound player and the service process.
+The thread-model goals have no spec scenario: unit tests and compile-time assertions (§ 3), unit tests of the sound player (all but one of its integration tests move beside them, so `app/tests` does not grow) and of the service process.
 
 ## Risks / Trade-offs
 

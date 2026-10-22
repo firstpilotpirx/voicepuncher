@@ -9,8 +9,10 @@ use crate::core::application::text_paster::TextPaster;
 use crate::core::domain::{AccessibilityMissing, CleanedText};
 
 mod pasteboard;
+mod restore;
 
 use pasteboard::{ChangeCount, PasteboardSnapshot};
+use restore::PendingRestore;
 
 /// The time the pasteboard gets to publish the text before Cmd+V reads it.
 const PASTEBOARD_SETTLE_DELAY: Duration = Duration::from_millis(20);
@@ -21,6 +23,8 @@ pub struct MacOsTextPaster {
     trusted: fn() -> bool,
     /// Sends the paste keystroke to the focused app.
     press_paste: fn() -> Result<()>,
+    /// The restore the last paste left waiting; finished by the next paste and when the paster drops.
+    pending: Option<PendingRestore>,
 }
 
 impl MacOsTextPaster {
@@ -29,13 +33,14 @@ impl MacOsTextPaster {
             restore_delay_ms,
             trusted: process_is_trusted_for_accessibility,
             press_paste: Self::post_cmd_v,
+            pending: None,
         }
     }
 
     /// A paster that sends `press_paste` instead of Cmd+V and needs no accessibility trust: for tests of
     /// what a paste does to the clipboard.
     pub fn with_paste_keystroke(restore_delay_ms: u64, press_paste: fn() -> Result<()>) -> Self {
-        Self { restore_delay_ms, trusted: || true, press_paste }
+        Self { restore_delay_ms, trusted: || true, press_paste, pending: None }
     }
 
     fn ensure_trusted(&self) -> Result<()> {
@@ -81,6 +86,8 @@ fn restore_unless_copied_over(
 impl TextPaster for MacOsTextPaster {
     fn paste(&mut self, text: &CleanedText) -> Result<()> {
         self.ensure_trusted()?;
+        // The previous paste's restore runs first, so this snapshot holds the user's clipboard.
+        drop(self.pending.take());
         let user_clipboard = PasteboardSnapshot::take();
         let pasted_change_count: ChangeCount = pasteboard::write_text(text.as_str())?;
         std::thread::sleep(PASTEBOARD_SETTLE_DELAY);
@@ -91,10 +98,9 @@ impl TextPaster for MacOsTextPaster {
         }
 
         let restore_delay = Duration::from_millis(self.restore_delay_ms);
-        std::thread::spawn(move || {
-            std::thread::sleep(restore_delay);
+        self.pending = Some(PendingRestore::after(restore_delay, move || {
             restore_unless_copied_over(&user_clipboard, pasted_change_count);
-        });
+        }));
 
         Ok(())
     }
@@ -112,8 +118,8 @@ mod tests {
     #[test]
     fn should_fail_with_accessibility_missing_when_the_process_is_not_trusted() {
         // Given
-        let mut paster =
-            MacOsTextPaster { restore_delay_ms: 0, trusted: || false, press_paste: || Ok(()) };
+        let mut paster = MacOsTextPaster::with_paste_keystroke(0, || Ok(()));
+        paster.trusted = || false;
         let text = CleanedText::new("hello".to_owned()).unwrap();
         // When
         let error = paster.paste(&text).unwrap_err();

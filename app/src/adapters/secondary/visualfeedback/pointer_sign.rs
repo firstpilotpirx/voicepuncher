@@ -3,6 +3,8 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use super::self_hide::SelfHideTimer;
+use crate::adapters::locking::lock;
 use crate::core::application::live_transcript_view::LiveTranscriptView;
 use crate::core::application::VisualIndicator;
 use crate::core::domain::{FailureNotice, VoiceCommand};
@@ -68,6 +70,8 @@ pub struct PointerSignIndicator<V, S> {
     /// Bumped by every change of the sign; a self-hide of an older badge does nothing. Held
     /// while the sign changes, so a self-hide never lands after a later badge.
     generation: Arc<Mutex<u64>>,
+    /// Hides the Pasted or failure badge after its lifetime; dropped with the indicator.
+    timer: SelfHideTimer,
 }
 
 impl<V: VisualIndicator, S: PointerSignView> PointerSignIndicator<V, S> {
@@ -76,38 +80,30 @@ impl<V: VisualIndicator, S: PointerSignView> PointerSignIndicator<V, S> {
     }
 
     pub fn with_lifetimes(overlay: V, sign: S, lifetimes: SignLifetimes) -> Self {
-        Self { overlay, sign: Arc::new(sign), lifetimes, generation: Arc::new(Mutex::new(0)) }
+        let sign = Arc::new(sign);
+        let generation = Arc::new(Mutex::new(0));
+        let timer = SelfHideTimer::hiding(Arc::clone(&sign), Arc::clone(&generation));
+        Self { overlay, sign, lifetimes, generation, timer }
     }
 
     fn show_badge(&self, badge: DictationSignState) {
-        let mut generation = self.generation.lock().unwrap();
+        let mut generation = lock(&self.generation);
         *generation += 1;
         self.sign.show(badge);
     }
 
     fn hide_badge(&self) {
-        let mut generation = self.generation.lock().unwrap();
+        let mut generation = lock(&self.generation);
         *generation += 1;
         self.sign.hide();
     }
 
     /// Shows `badge` and hides it after `lifetime`, unless the sign changed meanwhile.
     fn show_badge_for(&self, badge: DictationSignState, lifetime: Duration) {
-        let shown = {
-            let mut generation = self.generation.lock().unwrap();
-            *generation += 1;
-            self.sign.show(badge);
-            *generation
-        };
-        let sign = Arc::clone(&self.sign);
-        let generation = Arc::clone(&self.generation);
-        std::thread::spawn(move || {
-            std::thread::sleep(lifetime);
-            let current = generation.lock().unwrap();
-            if *current == shown {
-                sign.hide();
-            }
-        });
+        let mut generation = lock(&self.generation);
+        *generation += 1;
+        self.sign.show(badge);
+        self.timer.hide_after(lifetime, *generation);
     }
 }
 

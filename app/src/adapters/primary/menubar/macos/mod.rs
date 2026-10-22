@@ -7,3 +7,4 @@ pub mod indicator;
 pub mod login_offer;
 pub mod mapping;
 pub mod status_item;
+pub mod system_quit;
