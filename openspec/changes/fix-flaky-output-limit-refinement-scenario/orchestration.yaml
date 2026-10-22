@@ -1,0 +1,4 @@
+depends_on:
+  - change: slim-pipeline-module
+    why: names run_file_mode
+priority: high
