@@ -68,3 +68,7 @@ Out of scope: notarization and an Apple Developer ID signature; other overlay el
 
 SemVer: PATCH — bug fixes, no new capability.
 Target version: 0.37.4.
+
+## Absorbed by
+
+`fix-permissions-and-login-item` (bugs 1–4), `fix-hotkey-crash-and-limit-warning` (bugs 5–6) and `improve-recording-pill-look` (bugs 7–8): the user asked to split the bugs into a few grouped changes, so this change closes without its own implementation.
