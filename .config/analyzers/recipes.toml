@@ -2,6 +2,7 @@
 # Rewritten by `just analyzers-baseline`; a rewrite that adds or raises an entry is reviewed like code.
 [findings]
 "shellcheck _accuracy-stage SC2053" = 1
+"shellcheck _it-filter SC2043" = 1
 "shellcheck _lock-phases SC2043" = 1
 "shellcheck _model-stages SC2043" = 2
 "shellcheck _require-release-identity SC2157" = 1

@@ -141,13 +141,5 @@ name = "cucumber_integration"
 harness = false
 
 [[test]]
-name = "visualfeedback_macos_it"
-harness = false
-
-[[test]]
-name = "menubar_macos_it"
-harness = false
-
-[[test]]
-name = "settings_macos_it"
+name = "main_thread"
 harness = false

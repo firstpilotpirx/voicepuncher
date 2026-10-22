@@ -59,16 +59,15 @@ e2e_smoke_stages := "e2e-smoke-voice e2e-smoke-refinement e2e-smoke-speech e2e-s
 # Gherkin runs last. `accuracy` stands for the accuracy stage full-check picks (_accuracy-stage)
 check_model_stages := "e2e-smoke-voice e2e-smoke-refinement refine-eval e2e-smoke-speech e2e-quick e2e-smoke-services"
 full_check_model_stages := "e2e-smoke-voice e2e-regression e2e-resilience e2e-smoke-refinement refine-eval e2e-bundle e2e-smoke-speech accuracy e2e-smoke-services e2e-seams e2e-cues"
-# The test binaries of the voice control smoke part, the most failing first; placed_commands_it is the command
+# The test modules of the voice control smoke part, the most failing first: every member's integration tests
+# build into its one `it` binary (tests/it/<module>.rs), so a part names modules; placed_commands is the command
 # spotting service's, the others the app's
-voice_smoke_binaries := "placed_commands_it voice_forms_it voice_samples_it commandspotting_websocket_it"
-# The app's service binaries of the smoke set
-e2e_smoke_binaries := "transcription_openai_it textrefinement_openai_it commandspotting_websocket_it voice_samples_it voice_forms_it"
+voice_smoke_modules := "placed_commands voice_forms voice_samples commandspotting_websocket"
 # Every test binary of the smoke parts in one cargo selection: each part's one nextest call builds exactly what
-# _build-e2e built before the machine lock, and picks its own binaries with a filter (_smoke-part-filter)
-smoke_parts_tests := "-p voicepuncher -p voicepuncher-command-spotting -p voicepuncher-e2e-test " + prepend("--test ", e2e_smoke_binaries + " placed_commands_it cucumber_e2e")
-e2e_seams_tests := "-p voicepuncher --test chunked_transcription_it"
-placed_commands_tests := "-p voicepuncher-command-spotting --test placed_commands_it"
+# _build-e2e built before the machine lock, and picks its own modules with a filter (_smoke-part-filter)
+smoke_parts_tests := "-p voicepuncher -p voicepuncher-command-spotting -p voicepuncher-e2e-test --test it --test cucumber_e2e"
+e2e_seams_tests := "-p voicepuncher --test it"
+e2e_seams_modules := "chunked_transcription"
 cucumber_e2e_tests := "-p voicepuncher-e2e-test --test cucumber_e2e"
 # What `test` runs: every test target of the workspace but the E2E harness (one cargo call cannot pick targets
 # per package; a binary the filter excludes is not even listed)
@@ -382,9 +381,6 @@ stage_inputs := '''
     .github/*                                          none
     *.md                                               none
     app/packaging/*                                    e2e-bundle
-    app/tests/architecture.rs                          code
-    app/tests/size_budgets/*                           code
-    app/tests/unsafe_impls/*                           code
     app/tests/size_baseline.toml                       code
     clippy.toml                                        code
     analyzers/*                                        code
@@ -396,13 +392,14 @@ stage_inputs := '''
     app/tests/cucumber_integration.rs                  code
     app/tests/features/*                               code
     app/tests/steps/*                                  code
-    app/tests/*_it.rs                                  code
-    app/tests/transcription_openai_it.rs               e2e-smoke-speech
-    app/tests/textrefinement_openai_it.rs              e2e-smoke-refinement
-    app/tests/commandspotting_websocket_it.rs          e2e-smoke-voice
-    app/tests/voice_samples_it.rs                      e2e-smoke-voice
-    app/tests/voice_forms_it.rs                        e2e-smoke-voice
-    app/tests/chunked_transcription_it.rs              e2e-seams
+    app/tests/it/*                                     code
+    app/tests/main_thread/*                            code
+    app/tests/it/transcription_openai.rs               e2e-smoke-speech
+    app/tests/it/textrefinement_openai.rs              e2e-smoke-refinement
+    app/tests/it/commandspotting_websocket.rs          e2e-smoke-voice
+    app/tests/it/voice_samples.rs                      e2e-smoke-voice
+    app/tests/it/voice_forms.rs                        e2e-smoke-voice
+    app/tests/it/chunked_transcription.rs              e2e-seams
     app/src/core/application/chunking_seam_cases.rs    e2e-seams
     app/src/adapters/secondary/textrefinement/*        e2e-smoke-refinement,refine-eval,e2e-smoke-speech,accuracy
     app/src/core/application/text_refiner.rs          e2e-smoke-refinement,refine-eval,e2e-smoke-speech,accuracy
@@ -1009,7 +1006,6 @@ _build-e2e: _require-nextest
     cargo build --release {{command_spotting_build}}
     cargo nextest run {{smoke_parts_tests}} --no-run
     cargo nextest run {{e2e_seams_tests}} --no-run
-    cargo nextest run {{placed_commands_tests}} --no-run
     cargo nextest run {{cucumber_e2e_tests}} --no-run
 
 # The static analyzers' pinned versions (`tools`, `_require-tools`)
@@ -1336,37 +1332,51 @@ e2e-smoke:
 # own (stage_inputs): speech recognition, file transcription and every capability without a part of its own
 # (the dictation archive: a part of 6 s cost more than it saved), text refinement, voice control and local
 # services. Each part's scenario selection and limits are its profile's (.config/nextest.toml)
-_e2e-smoke-speech: (_e2e-smoke-part "e2e-smoke-speech" "transcription_openai_it")
-_e2e-smoke-refinement: (_e2e-smoke-part "e2e-smoke-refinement" "textrefinement_openai_it")
-_e2e-smoke-voice: (_e2e-smoke-part "e2e-smoke-voice" voice_smoke_binaries)
+_e2e-smoke-speech: (_e2e-smoke-part "e2e-smoke-speech" "transcription_openai")
+_e2e-smoke-refinement: (_e2e-smoke-part "e2e-smoke-refinement" "textrefinement_openai")
+_e2e-smoke-voice: (_e2e-smoke-part "e2e-smoke-voice" voice_smoke_modules)
 _e2e-smoke-services: (_e2e-smoke-part "e2e-smoke-services")
 
-# One nextest call for the part's service binaries and its Gherkin scenarios, so the binaries run beside the
+# One nextest call for the part's service test modules and its Gherkin scenarios, so the modules run beside the
 # harness instead of before it (speed-up-smoke-and-test); the command-spotting-models test group still keeps the
-# binaries that drive the shared command spotting service to one test at a time, and the harness keeps its own
+# tests that drive the shared command spotting service to one at a time, and the harness keeps its own
 # scenario concurrency. nextest runs nothing in parallel under --no-capture, so the harness's output is captured
-# and printed whole when it ends (the profiles' success-output). placed_commands_it is the command spotting
-# service's binary, every other one the app's
-_e2e-smoke-part profile binaries="": _require-nextest _require-models _build
+# and printed whole when it ends (the profiles' success-output). placed_commands is the command spotting
+# service's module, every other one the app's
+_e2e-smoke-part profile modules="": _require-nextest _require-models _build
     #!/usr/bin/env bash
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
     export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
-    filter=$({{just_executable()}} --justfile {{quote(justfile())}} _smoke-part-filter "{{binaries}}")
+    filter=$({{just_executable()}} --justfile {{quote(justfile())}} _smoke-part-filter "{{modules}}")
     cargo nextest run --profile {{profile}} {{smoke_parts_tests}} -E "$filter" ${VOICEPUNCHER_RERUN_FILTER:+--no-tests=pass} {{fail_fast}}
 
-# The nextest filter of one smoke part: its service binaries and the E2E harness, narrowed to a rerun's selection
-# when there is one (a second -E would widen it: nextest joins several with "or")
-_smoke-part-filter binaries="":
+# The nextest filter of one smoke part: its test modules of the `it` binaries and the E2E harness, narrowed to a
+# rerun's selection when there is one (a second -E would widen it: nextest joins several with "or")
+_smoke-part-filter modules="":
     #!/usr/bin/env bash
     set -euo pipefail
     filter=""
-    for binary in {{binaries}}; do
-        filter+="binary(=$binary) | "
+    for module in {{modules}}; do
+        filter+="(binary(=it) & test(/^$module::/)) | "
     done
     filter+="binary(=cucumber_e2e)"
+    if [[ -n "${VOICEPUNCHER_RERUN_FILTER:-}" ]]; then
+        filter="($filter) & ($VOICEPUNCHER_RERUN_FILTER)"
+    fi
+    printf '%s\n' "$filter"
+
+# The nextest filter of the test modules of the `it` binaries a stage runs on their own, narrowed like a smoke part's
+_it-filter modules="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    filter=""
+    for module in {{modules}}; do
+        filter+="${filter:+ | }test(/^$module::/)"
+    done
+    filter="binary(=it) & ($filter)"
     if [[ -n "${VOICEPUNCHER_RERUN_FILTER:-}" ]]; then
         filter="($filter) & ($VOICEPUNCHER_RERUN_FILTER)"
     fi
@@ -1438,7 +1448,8 @@ _e2e-seams: _require-nextest _require-models _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}"
-    cargo nextest run --profile e2e-seams {{e2e_seams_tests}} {{rerun_filter}} {{fail_fast}}
+    filter=$({{just_executable()}} --justfile {{quote(justfile())}} _it-filter "{{e2e_seams_modules}}")
+    cargo nextest run --profile e2e-seams {{e2e_seams_tests}} -E "$filter" ${VOICEPUNCHER_RERUN_FILTER:+--no-tests=pass} {{fail_fast}}
     cargo nextest run --profile e2e-seams {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
 # Start cues: the start cue of each voice start, timed from the end of the command's words, on an idle machine — the stage holds the machine lock exclusively and keeps the other checks' build stages out (~2.5 min)
@@ -1802,18 +1813,24 @@ _test-lock-phases:
     [[ $(sorted {{e2e_smoke_stages}}) == $(sorted e2e-smoke-speech e2e-smoke-refinement e2e-smoke-voice e2e-smoke-services) && "{{e2e_smoke_stages}}" == e2e-smoke-voice* ]] \
         || { echo "✗ the smoke parts are not voice control first: {{e2e_smoke_stages}}" >&2; exit 1; }
     echo "  ✓ check and full-check run the same stages as before"
-    [[ "{{voice_smoke_binaries}}" == "placed_commands_it voice_forms_it "* ]] \
-        || { echo "✗ the voice control part does not run placed_commands_it and voice_forms_it first: {{voice_smoke_binaries}}" >&2; exit 1; }
-    echo "  ✓ the voice control part runs its most failing binaries first"
+    [[ "{{voice_smoke_modules}}" == "placed_commands voice_forms "* ]] \
+        || { echo "✗ the voice control part does not run placed_commands and voice_forms first: {{voice_smoke_modules}}" >&2; exit 1; }
+    echo "  ✓ the voice control part runs its most failing modules first"
     part() { {{just_executable()}} --justfile {{quote(justfile())}} _smoke-part-filter "$@"; }
-    want='binary(=placed_commands_it) | binary(=voice_forms_it) | binary(=cucumber_e2e)'
-    [[ $(VOICEPUNCHER_RERUN_FILTER= part "placed_commands_it voice_forms_it") == "$want" ]] \
-        || { echo "✗ a smoke part does not select its binaries and the harness in one call: $(part "placed_commands_it voice_forms_it")" >&2; exit 1; }
+    want='(binary(=it) & test(/^placed_commands::/)) | (binary(=it) & test(/^voice_forms::/)) | binary(=cucumber_e2e)'
+    [[ $(VOICEPUNCHER_RERUN_FILTER= part "placed_commands voice_forms") == "$want" ]] \
+        || { echo "✗ a smoke part does not select its modules and the harness in one call: $(part "placed_commands voice_forms")" >&2; exit 1; }
     [[ $(VOICEPUNCHER_RERUN_FILTER= part "") == 'binary(=cucumber_e2e)' ]] \
-        || { echo "✗ a smoke part without binaries does not select the harness alone: $(part "")" >&2; exit 1; }
-    [[ $(VOICEPUNCHER_RERUN_FILTER='test(=x)' part "voice_forms_it") == '(binary(=voice_forms_it) | binary(=cucumber_e2e)) & (test(=x))' ]] \
+        || { echo "✗ a smoke part without modules does not select the harness alone: $(part "")" >&2; exit 1; }
+    [[ $(VOICEPUNCHER_RERUN_FILTER='test(=x)' part "voice_forms") == '((binary(=it) & test(/^voice_forms::/)) | binary(=cucumber_e2e)) & (test(=x))' ]] \
         || { echo "✗ a rerun's filter widens a smoke part instead of narrowing it" >&2; exit 1; }
-    echo "  ✓ a smoke part runs its binaries beside the harness in one call, narrowed by a rerun"
+    echo "  ✓ a smoke part runs its modules beside the harness in one call, narrowed by a rerun"
+    seams() { {{just_executable()}} --justfile {{quote(justfile())}} _it-filter "$@"; }
+    [[ $(VOICEPUNCHER_RERUN_FILTER='' seams "chunked_transcription") == 'binary(=it) & (test(/^chunked_transcription::/))' ]] \
+        || { echo "✗ the seams stage does not select its module of the it binary: $(seams "chunked_transcription")" >&2; exit 1; }
+    [[ $(VOICEPUNCHER_RERUN_FILTER='test(=x)' seams "a b") == '(binary(=it) & (test(/^a::/) | test(/^b::/))) & (test(=x))' ]] \
+        || { echo "✗ a rerun's filter widens the seams stage instead of narrowing it" >&2; exit 1; }
+    echo "  ✓ a stage of it modules selects them, narrowed by a rerun"
     expect "a light first stage runs its phase first" $'light e2e-resilience\nheavy e2e-seams' e2e-resilience e2e-seams
     expect "an unknown stage is heavy" "heavy e2e-something-new" e2e-something-new
     expect "only light stages give one phase" "light e2e-regression" e2e-regression

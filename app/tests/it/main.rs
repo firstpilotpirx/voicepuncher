@@ -1,0 +1,43 @@
+//! Every integration test of the app in one binary: one link instead of one per file.
+
+mod support;
+
+mod architecture;
+mod archiving_filesystem;
+mod capture_allocations;
+mod chunk_cuts;
+mod chunked_transcription;
+mod cli;
+mod commandspotting_client;
+mod commandspotting_reconnect;
+mod commandspotting_stall;
+mod commandspotting_websocket;
+mod config_document;
+mod config_loader;
+mod focus_macos;
+mod http_failure;
+mod keypressing_macos;
+mod localservices_catalog;
+mod localservices_process;
+mod logging_file;
+mod loginitem_macos;
+mod modeldownload_macos;
+mod modelfetch_fs;
+mod modelfetch_http;
+mod packaging;
+mod permissions_macos;
+mod ptt_rdev;
+mod recording_cpal;
+mod recording_filesystem;
+mod runtime_signal;
+mod size_budgets;
+mod soundplaying_macos;
+mod test_layout;
+mod textpasting_macos;
+mod textpasting_stdio;
+mod textrefinement_openai;
+mod textrefinement_passthrough;
+mod transcription_openai;
+mod unsafe_impls;
+mod voice_forms;
+mod voice_samples;

@@ -30,7 +30,7 @@ command-spotting-engine = { max-threads = 6 }
 pasteboard = { max-threads = 1 }
 
 [[profile.default.overrides]]
-filter = 'binary(engine_it) | binary(placed_commands_it)'
+filter = '(package(voicepuncher-command-spotting) & binary(it) & (test(/^engine::/) | test(/^placed_commands::/)))'
 test-group = "command-spotting-engine"
 # Started first (speed-up-smoke-and-test): the group's 6 threads hold about 85 s of model work, which bounds
 # `just test` when it starts after the quick tests
@@ -38,17 +38,17 @@ priority = 50
 
 # The longest single tests start right after the model tests, so none of them starts last
 [[profile.default.overrides]]
-filter = 'test(should_log_a_copy_hung_with_the_time_waited_only_past_twice_its_time_limit) | binary(commandspotting_reconnect_it) | binary(commandspotting_client_it) | binary(server_it)'
+filter = 'test(should_log_a_copy_hung_with_the_time_waited_only_past_twice_its_time_limit) | (package(voicepuncher) & binary(it) & (test(/^commandspotting_reconnect::/) | test(/^commandspotting_client::/))) | (package(voicepuncher-command-spotting) & binary(it) & (test(/^server::/)))'
 priority = 40
 
 [[profile.default.overrides]]
-filter = 'binary(textpasting_macos_it)'
+filter = '(package(voicepuncher) & binary(it) & (test(/^textpasting_macos::/)))'
 test-group = "pasteboard"
 
 # The tests that drive the real command spotting service run one at a time too, so one confirmation
 # service never gets the utterances of several test processes at once
 [[profile.default.overrides]]
-filter = 'binary(commandspotting_websocket_it) | binary(voice_forms_it) | binary(voice_samples_it)'
+filter = '(package(voicepuncher) & binary(it) & (test(/^commandspotting_websocket::/) | test(/^voice_forms::/) | test(/^voice_samples::/)))'
 test-group = "command-spotting-models"
 
 # ── Suite profiles ── one per E2E recipe (`cargo nextest run --profile <recipe>`): its scenario selection
@@ -59,7 +59,7 @@ test-group = "command-spotting-models"
 
 # The smoke set, one profile per capability (the justfile's e2e_smoke_stages): the four selections make up the
 # @smoke scenarios. Each part runs its service binaries and its harness in one nextest call, side by side, the
-# harness captured like the binaries (_e2e-smoke-part). Service binaries: default 2 min a test (voice_forms_it 34 s measured)
+# harness captured like the binaries (_e2e-smoke-part). Service binaries: default 2 min a test (voice_forms 34 s measured)
 
 # @smoke of speech recognition, file transcription and every capability without a part of its own (the dictation archive), 30 s measured: 2 min
 [profile.e2e-smoke-speech]
@@ -140,12 +140,12 @@ filter = 'binary(cucumber_e2e)'
 run-extra-args = ["--tags", "@resilience and not @wip"]
 slow-timeout = { period = "60s", terminate-after = 7 }
 
-# chunked_transcription_it, 120 s measured: 4 min; @seams, 88 s measured (the voice start timing moved to e2e-cues): 3 min
+# chunked_transcription, 120 s measured: 4 min; @seams, 88 s measured (the voice start timing moved to e2e-cues): 3 min
 [profile.e2e-seams]
 success-output = "immediate"
 
 [[profile.e2e-seams.overrides]]
-filter = 'binary(chunked_transcription_it)'
+filter = '(package(voicepuncher) & binary(it) & (test(/^chunked_transcription::/)))'
 slow-timeout = { period = "60s", terminate-after = 4 }
 
 [[profile.e2e-seams.overrides]]
@@ -192,4 +192,4 @@ run-extra-args = ["--tags", "@real_keyboard"]
 # check that the synthesized speech is over 30 s, which holds only for the owner's voices. Inherits every limit
 # and override of the default profile; the default filter narrows any filter given on the command line
 [profile.ci]
-default-filter = 'not (binary(visualfeedback_macos_it) | test(=speech::tests::should_synthesize_speech_longer_than_the_chunk_threshold_in_every_condition))'
+default-filter = 'not ((binary(main_thread) & test(/^visualfeedback_macos::/)) | test(=speech::tests::should_synthesize_speech_longer_than_the_chunk_threshold_in_every_condition))'

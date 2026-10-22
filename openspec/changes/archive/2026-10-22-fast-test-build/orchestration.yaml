@@ -1,0 +1,6 @@
+priority: high
+depends_on:
+  - change: fix-clear-text-please-unrecognized
+    why: the full-check of this branch failed on the voice control scenario "Clear text is recognized as clear all text" that this change does not touch; the flake rule makes the branch wait for its fix
+  - change: fix-slow-confirmation-of-russian-filler
+    why: the second full-check of this branch failed in e2e-resilience on "Russian speech that makes speech recognition repeat itself" (a confirmation of 2.116 s against the 2 s bound), which this change does not touch; the flake rule makes the branch wait for its fix

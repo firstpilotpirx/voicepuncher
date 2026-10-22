@@ -12,3 +12,7 @@ cognitive_complexity = "deny"
 type_complexity = "deny"
 undocumented_unsafe_blocks = "deny"
 multiple_unsafe_ops_per_block = "deny"
+
+# Test builds: line tables are enough for a backtrace with file and line; full debug info only slows the links
+[profile.dev]
+debug = "line-tables-only"
