@@ -6,7 +6,7 @@ The audit of 2026-10-22 found helpers pasted between adapters instead of shared:
 
 - One HTTP agent builder in `adapters/secondary/http` used by transcription, refinement, the probes and the model fetcher.
 - One AppKit window-building helper module used by the permissions and download windows (and the settings window where it fits).
-- One source of the service command lines: the catalog is the source and the `justfile` asks the app for them (`voicepuncher --print-service-command <service>`), or the `justfile` is the source and the catalog reads it — decided in design; a test fails on a drift.
+- The service command lines held equal: the catalog and the `justfile` keep their lists, and a test fails on a drift between them (design).
 - Menu items found by identifier, not index; `ServiceSpec` ports probed without a dummy spec; model files picked by one rule; `spec()` takes a value object.
 - Config parsed once; defaults by `#[serde(default)]` with a `Default` impl per section; the retired key dropped with its migration message.
 - The handshake tries every resolved address; the one-line selectors become a table.
@@ -28,7 +28,7 @@ Out of scope: the overlay (`harden-overlay-thread-model`), the pipeline (`slim-p
 
 ## Open points
 
-- Source of the service command lines: proposed the catalog (Rust), with the `justfile` calling the binary, so one typed place holds ports, threads and models.
+- Source of the service command lines: decided in design — a drift test, not the `justfile` calling the app binary, which would need a release build of the app before every service start.
 
 ## Release
 
