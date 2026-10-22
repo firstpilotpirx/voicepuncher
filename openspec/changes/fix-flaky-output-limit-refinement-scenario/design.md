@@ -30,6 +30,14 @@ The refinement paths in `stage_inputs` (`justfile`) gain `e2e-regression`; the `
 | Service hits its output limit while the machine is under load | E2E `.feature`, `@regression` |
 | Missing refinement request is told apart from a lost transcription | Unit: the stub records a dropped connection with its reason and a model-list request; the step's failure message carries the event log and stderr |
 
+## First series
+
+Beside `just e2e-smoke`, all 20 runs sent their request and pasted the raw transcript: the lost transcription did not reproduce. The series named the stub: the copy pool's liveness probes (a connection closed without a byte, about two per run) counted as drops; now they are recorded as probes. The heavy run beside it failed in `e2e-smoke-speech`, untouched here and filed (§ Filed beside it).
+
+## Filed beside it
+
+`fix-dictation-smoke-and-recording-test-under-load`: `e2e-smoke-speech` (beside the first series) and the `recording_cpal` busy-machine test (in `just test`) failed under load in this worktree, outside this change's scope. `kit sync-change` refuses a dependency on a change that has not started, so this change does not wait for it; its own checks must pass on their own.
+
 ## Risks / Trade-offs
 
 - [20 passes, flake unexplained] → the diagnostics stay; the next failure names its side and gets a fix change.
