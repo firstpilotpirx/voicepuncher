@@ -1,0 +1,13 @@
+prepared:
+  estimate: 2h30m
+  decisions:
+    - question: Run explore before the specs?
+      answer: No.
+    - question: What replaces rdev for the hotkey listener?
+      answer: Our own listen-only CGEventTap using key codes and modifier flags only (no input-source API); drop the rdev dependency.
+    - question: How to prove the crash is gone when CI may run an older macOS?
+      answer: A test that the listener never calls the input-source API (no rdev/TSM), plus the manual run on macOS 27.
+    - question: How to fix the false recording-limit warning?
+      answer: The buffer keeps a "limit reached" flag set only when capture hits the limit; cut_at by the final chunk never sets it.
+    - question: The hotkey manual run cannot happen at night; what then?
+      answer: Merge and release 0.37.4 after a green full-check; the user runs the manual check in the morning and files a new change on failure.
