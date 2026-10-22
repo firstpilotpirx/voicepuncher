@@ -20,6 +20,10 @@ See proposal.md § Why. `Pipeline::new` is called from 22 files (wiring, main, e
 9. **Files.** `pipeline.rs` keeps the struct, `new`, the builders and the run loop; `pipeline/dictation.rs`, `pipeline/recording.rs` (start, stop, cancel, abandon), `pipeline/processing.rs` (transcribe, refine, deliver, finish, `StageClock`), `pipeline/live_worker.rs`; the unit tests move to `pipeline/tests/` on one `PipelineUnderTest` builder with no-op defaults, asserting the pasted text, the overlay calls and the published activity.
 10. **Baselines.** The last group drops the entries of units gone or shrunk (`just size-baseline`, `just analyzers-baseline`); none is added or raised.
 
+## Dependencies
+
+None: `fast-test-build` moves `app/tests/*_it.rs` into `app/tests/it/` and rewrites the baselines, files this change also touches (the constructor sweep, the baseline entries), but reworks nothing this change builds on; the one merged second resolves the path moves.
+
 ## Risks / Trade-offs
 
 - [22 constructor sites, 20 implementors] → compiler-driven sweeps, one commit each, no logic in them.
