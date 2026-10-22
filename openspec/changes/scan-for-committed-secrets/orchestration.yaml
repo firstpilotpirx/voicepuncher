@@ -1,0 +1,15 @@
+prepared:
+  estimate: 2h
+  decisions:
+    - question: Which projects to scan?
+      answer: Every repository under ~/Workspaces/my/ plus every GitHub repository of firstpilotpirx; clone the ones not on disk into a temporary folder.
+    - question: Which scanner?
+      answer: Both gitleaks and trufflehog, each pinned to an exact version.
+    - question: Where does the guard against new secrets go?
+      answer: Scanner in just lint and CI of voicepuncher; a shared pre-commit hook for every project filed as a separate agent-kit change.
+    - question: What to do with secrets found in history during the night run?
+      answer: Report only, never rewrite history; give a ready fix command per leak for the user to run.
+    - question: Where does the findings report go?
+      answer: Outside the repository at ~/.voicepuncher/secret-scan/report.md with secrets masked; the repository gets counts only.
+    - question: How does the night run end, given each finding needs the user's verdict?
+      answer: Merge the scanner; add obvious false positives to the allowlist; file real leaks as one change for the morning.
