@@ -5,6 +5,8 @@ use std::time::{Duration, Instant};
 
 use super::*;
 
+mod probing;
+
 const SERVICE: &str = "http://127.0.0.1:8081/v1";
 const INTERVAL: Duration = Duration::from_millis(10);
 const SHORT_WAIT: Duration = Duration::from_millis(30);

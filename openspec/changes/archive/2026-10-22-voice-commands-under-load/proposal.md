@@ -45,4 +45,4 @@ Out of scope: the stall and backlog handling of `command-spotting-stall-handling
 ## Release
 
 SemVer: PATCH — a bug fix: commands and retries lost under load.
-Target version: 0.37.1.
+Target version: 0.37.2 (0.37.1 was taken by `realtime-safe-audio-capture` while this change waited for `idle-machine-for-cue-timing-scenarios`).

@@ -4,13 +4,13 @@
 //! for commands the justfile exports, so the engine confirms as the command spotting service
 //! does.
 
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 mod common;
 mod scripted_hearing;
 mod stream_clock;
+mod under_load;
 
 use scripted_hearing::{ScriptedHearing, ScriptedWord};
 use stream_clock::{samples, Clocked, StreamClock};
@@ -43,7 +43,6 @@ const SLOWER_HEARING: Duration = Duration::from_millis(2500);
 const SLOW_HEARING: Duration = Duration::from_secs(2);
 /// Between two words of a scripted sentence: no pause that would end the utterance.
 const WORD_GAP_SECS: f32 = 0.06;
-
 /// How long the speech recognition service for commands takes to answer, in the speech: a
 /// quick answer, however long the shared service really takes.
 const REAL_HEARING: Duration = Duration::from_millis(300);
@@ -123,8 +122,8 @@ fn engine_cfg(transcription_url: Option<String>) -> Option<EngineCfg> {
         return None;
     };
     Some(EngineCfg {
-        model_dir: PathBuf::from(model_dir),
-        vad_model: PathBuf::from(vad_model),
+        model_dir: model_dir.into(),
+        vad_model: vad_model.into(),
         threads: 2,
         min_silence_secs: MIN_SILENCE_SECS,
         save_speech_dir: None,

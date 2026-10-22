@@ -28,7 +28,7 @@ The speech recognition service for commands SHALL answer the command spotting se
 #### Scenario: The budget never passes the deadline
 - **GIVEN** the speech recognition service for commands runs as one copy, which took longer than half the confirmation deadline for each of its recent confirmations
 - **WHEN** the command spotting service sends an utterance the copy keeps decoding past the deadline
-- **THEN** the confirmation is cut short at the deadline, not later
+- **THEN** the confirmation ends at the deadline as a failed confirmation, not later and never as an utterance heard as no command
 
 ### Requirement: Copies of a speech recognition service are found from its address
 A client of a speech recognition service SHALL find the copies of the service from the service's address alone: when the service's own port accepts connections it is the one copy; otherwise every port among the four that follow its port plus ten thousand (minus ten thousand when those would pass the last port) that accepts a connection is a copy. A copy SHALL leave at its first refused connection to a request, and at a probe only when two attempts in a row get no connection, so one probe that is slow under machine load does not drop a copy that accepts connections; a copy SHALL join, again or anew, within a second of accepting connections.
@@ -58,7 +58,7 @@ A client of a speech recognition service SHALL find the copies of the service fr
 - **WHEN** a copy gets no connection at two probe attempts in a row
 - **THEN** the client sends no request to that copy until it accepts connections again
 
-#### Scenario: A retry after a hung request reaches the other copy under load
-- **GIVEN** the speech recognition service for dictation runs as two copies, one of which never answers, and the machine is busy enough that a probe may miss a copy once
+#### Scenario: A retry after a hung request reaches the other copy
+- **GIVEN** the speech recognition service for dictation runs as two copies, one of which never answers, and both stay found by the probes (a probe that misses one once keeps it, as the scenario "A copy missed by one slow probe stays" proves)
 - **WHEN** a transcription request hangs on the silent copy and is retried
 - **THEN** the retry is answered by the other copy, and both copies received one request

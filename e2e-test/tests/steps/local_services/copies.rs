@@ -413,9 +413,12 @@ async fn copies_start_failed(world: &mut E2eWorld) -> Result<()> {
 const GIVES_UP_AFTER: Duration = Duration::from_millis(300);
 /// The long requests that keep both copies busy.
 const BUSY_REQUESTS: usize = 2;
-/// The long speech of a busy copy, this many times the long speech: still busy when the
-/// requests after it arrive.
-const BUSY_SPEECH_REPEATS: usize = 3;
+/// The long speech of a busy copy, this many times the long speech (about a minute of
+/// audio each time): still busy when the requests after it arrive (0.2–0.4 s later), yet
+/// answered before the waiting requests give up: three waits of 5 s plus half their audio,
+/// about 16 s in all, whatever the load of the other checkouts' checks on the GPU. At two
+/// and three times, the full-checks of 2026-10-22 saw both copies stay busy past that wait.
+const BUSY_SPEECH_REPEATS: usize = 1;
 /// The abandoned request, this many times the long speech: still transcribed when the
 /// client's next request is answered.
 const ABANDONED_SPEECH_REPEATS: usize = 10;

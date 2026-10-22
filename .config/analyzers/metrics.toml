@@ -67,7 +67,6 @@
 "cyclomatic app/tests/unsafe_impls/main.rs::violations" = 13
 "cyclomatic app/tests/voice_forms_it.rs::should_carry_out_every_recorded_way_of_saying_the_commands" = 12
 "cyclomatic app/tests/voice_samples_it.rs::should_recognize_every_recorded_command_of_the_user" = 14
-"cyclomatic command-spotting/src/confirm.rs::UtteranceTranscriber::transcribe" = 15
 "cyclomatic command-spotting/src/confirm.rs::post" = 13
 "cyclomatic command-spotting/src/engine.rs::Session<'_>::watch_running" = 13
 "cyclomatic command-spotting/src/engine/confirming.rs::Session<'_>::apply_answer" = 43

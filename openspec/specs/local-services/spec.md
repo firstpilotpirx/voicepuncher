@@ -141,7 +141,7 @@ A client that gives up on a request SHALL leave its copy alone until the copy an
 - **THEN** the abandoned request is not sent to any copy
 
 ### Requirement: Speech that is no command is confirmed quickly
-The speech recognition service for commands SHALL answer the command spotting service's confirmation of any utterance up to 2.5 seconds in under 2 seconds when it is otherwise idle, also for speech in another language that makes speech recognition repeat itself, so a confirmation never waits out its deadline and never holds up the commands said after it. A confirmation the speech recognition service has not answered within 1 second of being sent SHALL be cut short: the command spotting service takes its utterance as no command, does not send it again, and the copy that held it takes the next confirmation at once.
+The speech recognition service for commands SHALL answer the command spotting service's confirmation of any utterance up to 2.5 seconds in under 2 seconds when it is otherwise idle, also for speech in another language that makes speech recognition repeat itself, so a confirmation never waits out its deadline and never holds up the commands said after it. A confirmation the speech recognition service has not answered within its decoding budget SHALL be cut short: the command spotting service takes its utterance as no command, does not send it again, and the copy that held it takes the next confirmation at once. The decoding budget SHALL follow the pace of the service's recent confirmations: 1 second when they came back quickly, longer when the last few took long, as under machine load, and never past the confirmation's deadline, so speech that decodes slowly because the machine is busy is heard in full while speech that decodes long because speech recognition repeats itself is still cut short.
 
 #### Scenario: Russian speech that makes speech recognition repeat itself
 - **GIVEN** voice control runs and the speech recognition service for commands is otherwise idle
@@ -154,9 +154,19 @@ The speech recognition service for commands SHALL answer the command spotting se
 - **THEN** the command spotting service reports "press enter"
 
 #### Scenario: A confirmation still decoding after 1 second is cut short
-- **GIVEN** the speech recognition service for commands runs as one copy, which keeps decoding an utterance for 1.5 seconds before it answers
+- **GIVEN** the speech recognition service for commands runs as one copy, which answered its recent confirmations quickly and keeps decoding an utterance for 1.5 seconds before it answers
 - **WHEN** the command spotting service sends that utterance for confirmation
 - **THEN** the confirmation ends in about 1 second with nothing heard, the utterance is not sent again, and the next confirmation is sent to that copy at once
+
+#### Scenario: A confirmation decoding slowly under load is heard in full
+- **GIVEN** the speech recognition service for commands runs as one copy, which took close to a second for each of its recent confirmations, as under machine load, and keeps decoding "press enter" for 1.5 seconds before it answers
+- **WHEN** the command spotting service sends that utterance for confirmation
+- **THEN** the confirmation is answered with "press enter", not cut short
+
+#### Scenario: The budget never passes the deadline
+- **GIVEN** the speech recognition service for commands runs as one copy, which took longer than half the confirmation deadline for each of its recent confirmations
+- **WHEN** the command spotting service sends an utterance the copy keeps decoding past the deadline
+- **THEN** the confirmation ends at the deadline as a failed confirmation, not later and never as an utterance heard as no command
 
 ### Requirement: Voice commands are confirmed by a speech recognition service of their own
 The service scripts SHALL start, beside the speech recognition service for dictation, a speech recognition service for commands that recognizes speech with the Whisper small model, and the command spotting service they start SHALL send every confirmation to it, so that the larger dictation model never slows down the confirmation of a voice command.
@@ -169,7 +179,7 @@ The service scripts SHALL start, beside the speech recognition service for dicta
 - **AND** the speech recognition service for commands answered its confirmation with the small model, and the speech recognition service for dictation got no request
 
 ### Requirement: Copies of a speech recognition service are found from its address
-A client of a speech recognition service SHALL find the copies of the service from the service's address alone: when the service's own port accepts connections it is the one copy; otherwise every port among the four that follow its port plus ten thousand (minus ten thousand when those would pass the last port) that accepts a connection is a copy. A copy SHALL leave at its first refused connection and join, again or anew, within a second of accepting connections.
+A client of a speech recognition service SHALL find the copies of the service from the service's address alone: when the service's own port accepts connections it is the one copy; otherwise every port among the four that follow its port plus ten thousand (minus ten thousand when those would pass the last port) that accepts a connection is a copy. A copy SHALL leave at its first refused connection to a request, and at a probe only when two attempts in a row get no connection, so one probe that is slow under machine load does not drop a copy that accepts connections; a copy SHALL join, again or anew, within a second of accepting connections.
 
 #### Scenario: Three copies are found from the service address
 - **GIVEN** the service scripts started the speech recognition service for dictation as three copies
@@ -185,6 +195,21 @@ A client of a speech recognition service SHALL find the copies of the service fr
 - **GIVEN** a client of the speech recognition service, and one copy stopped accepting connections
 - **WHEN** that copy accepts connections again
 - **THEN** within a second the client sends requests to it again
+
+#### Scenario: A copy missed by one slow probe stays
+- **GIVEN** a client of the speech recognition service running as several copies, and the machine is so busy that one probe of a copy gets no connection in time while the copy still accepts connections
+- **WHEN** the client probes the copies
+- **THEN** the client probes that copy once more at once, and keeps sending requests to it
+
+#### Scenario: A copy missed by two probes in a row leaves
+- **GIVEN** a client of the speech recognition service running as several copies
+- **WHEN** a copy gets no connection at two probe attempts in a row
+- **THEN** the client sends no request to that copy until it accepts connections again
+
+#### Scenario: A retry after a hung request reaches the other copy
+- **GIVEN** the speech recognition service for dictation runs as two copies, one of which never answers, and both stay found by the probes (a probe that misses one once keeps it, as the scenario "A copy missed by one slow probe stays" proves)
+- **WHEN** a transcription request hangs on the silent copy and is retried
+- **THEN** the retry is answered by the other copy, and both copies received one request
 
 ### Requirement: A request whose copy died is retried on another copy
 When a request cannot connect to the copy it took, the client SHALL mark that copy down and send the next attempt of the request to another copy that is up, within the request's own limits on attempts and time; when no attempt reaches a copy, the request SHALL fail naming the copies it tried.

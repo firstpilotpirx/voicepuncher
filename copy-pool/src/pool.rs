@@ -246,13 +246,15 @@ impl Inner {
         unpoisoned(self.changed.wait_while(state, |state| !state.probed_once))
     }
 
-    /// Probes the service's own port, and the copy ports only when it does not answer.
+    /// Probes the service's own port, and the copy ports only when it does not answer; a
+    /// port missed once is probed once more at once, as a copy busy decoding under load
+    /// answers a probe late, and leaves only when both probes miss.
     fn probe_round(&self) {
         let ports = self.lock().ports();
         let service_answers = self.probe.answers(ports[0]);
         let copies = ports[1..]
             .iter()
-            .map(|port| !service_answers && self.probe.answers(*port));
+            .map(|port| !service_answers && self.answers_twice_asked(*port));
         let answers: Vec<bool> = std::iter::once(service_answers).chain(copies).collect();
         let mut state = self.lock();
         state.probed(&answers);
@@ -264,6 +266,10 @@ impl Inner {
             );
         }
         self.changed.notify_all();
+    }
+
+    fn answers_twice_asked(&self, port: u16) -> bool {
+        self.probe.answers(port) || self.probe.answers(port)
     }
 
     fn expect_answer_within(&self, index: usize, wait: Duration) {

@@ -1,0 +1,4 @@
+priority: high
+depends_on:
+  - change: idle-machine-for-cue-timing-scenarios
+    why: the fourth full-check lost the seams cue scenario "Restart restart followed by the new dictation at once gives its cue at once" while another checkout's builds loaded the machine; the branch waits for the cue-timing scenarios to get the idle machine their spec assumes

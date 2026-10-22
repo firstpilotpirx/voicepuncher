@@ -2,33 +2,19 @@
 //! decides whether the utterance is a command phrase.
 
 use std::collections::VecDeque;
-use std::io::Cursor;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
 use voicepuncher_copy_pool::{CopyPool, Finish, Ran};
 
-const BOUNDARY: &str = "voicepuncher-command-spotting-3f9a";
-const LANGUAGE: &str = "en";
-// No prompt: with the command phrases as the prompt (whisper-server runs with `-mc 0`, which
-// drops a prompt unless the request sets its own `max_context`), Russian speech such as
-// "четыре", "пять" or "очисти" was heard as "clear all text." or "press enter.", the user's
-// recorded speech gave four wrong commands instead of one, and the slowest confirmations of
-// Russian speech took 1.7 s instead of 0.2 s (restore-recognition-prompt, design.md § Results).
+mod pace;
+mod request;
 
-/// The temperature step of a retry when a decoding fails (stuck repeating, or too unsure):
-/// 0 turns the retries off. The service's default 0.2 retries at 0.2, 0.4, … 1.0, and
-/// speech in another language that gets stuck repeating in English used those up for
-/// seconds; a retry at 0.55 still took up to 3 s, since it got stuck as well.
-const TEMPERATURE_STEP: &str = "0";
+use pace::Pace;
+use request::{multipart_body, wav, BOUNDARY};
 
-/// The longest a copy may decode a confirmation once it was sent: an ordinary one is answered
-/// in at most 0.3 s, while speech that gets stuck repeating decodes whisper's whole 219-token
-/// limit for 1.7–1.8 s and is never a command. Closing the connection stops the copy's
-/// decoding at once (fast-confirmation-of-repeating-russian-speech, design.md).
-const DECODING_BUDGET: Duration = Duration::from_secs(1);
 /// How long a copy cut short may take to answer its health check before it counts as stalled.
 const HEALTH_WAIT: Duration = Duration::from_millis(300);
 
@@ -128,6 +114,17 @@ pub trait Hear: Send + Sync {
 /// confirmation per copy of the service.
 pub struct UtteranceTranscriber {
     pool: CopyPool,
+    pace: Pace,
+}
+
+/// One confirmation sent to a copy: what it was given and how long it took.
+struct Sent {
+    port: u16,
+    /// How long the copy could decode before it was cut short.
+    budget: Duration,
+    /// How much of the deadline was left when it was sent.
+    left: Duration,
+    took: Duration,
 }
 
 impl UtteranceTranscriber {
@@ -135,14 +132,15 @@ impl UtteranceTranscriber {
     pub fn new(base_url: &str) -> Result<Self> {
         let pool = CopyPool::shared(base_url)
             .map_err(|e| anyhow!("speech recognition service address {base_url}: {e}"))?;
-        Ok(Self { pool })
+        Ok(Self { pool, pace: Pace::default() })
     }
 
     /// What was said in `samples` (16 kHz mono), with each word's times; the wait for a
     /// free copy and for its answer together never pass `deadline`. A copy still decoding
-    /// after `DECODING_BUDGET` is cut short: when it answers its health check the speech
-    /// decodes long and nothing was heard, else it stalled and, as a copy that refuses the
-    /// connection, hands the confirmation to another copy while the deadline lasts.
+    /// after the budget the pace of the recent confirmations gives is cut short: when it
+    /// answers its health check the speech decodes long and nothing was heard, else it
+    /// stalled and, as a copy that refuses the connection, hands the confirmation to
+    /// another copy while the deadline lasts.
     pub fn transcribe(
         &self,
         samples: &[f32],
@@ -161,32 +159,56 @@ impl UtteranceTranscriber {
             let port = lease.port();
             tried.push(port);
             let left = deadline.saturating_sub(started.elapsed());
-            let budget = DECODING_BUDGET.min(left);
-            let sent = Arc::clone(&body);
-            let ran = lease.run(left, move |url| post(url, &sent, budget));
-            match ran {
-                Ran::Answered(Ok(Posted::Answer(answer))) => return heard_from(&answer),
-                Ran::Answered(Ok(Posted::Refused(e))) => {
-                    log::warn!(
-                        "confirmation refused by copy {port}: sending it to another copy ({e:#})"
-                    );
-                }
-                Ran::Answered(Ok(Posted::TimedOut(url))) if budget < left => {
-                    match cut_short(&url, budget, deadline.saturating_sub(started.elapsed())) {
-                        Some(nothing) => return Ok(nothing),
-                        None => continue,
-                    }
-                }
-                Ran::Answered(Ok(Posted::TimedOut(url))) => bail!(
-                    "speech recognition copy {url} sent no answer in {} ms",
-                    deadline.as_millis()
-                ),
-                Ran::Answered(Err(e)) => return Err(e),
-                Ran::GaveUp => bail!(
-                    "speech recognition copy {port} sent no answer in {} ms",
-                    deadline.as_millis()
-                ),
+            let budget = self.pace.budget(deadline).min(left);
+            let body = Arc::clone(&body);
+            let asked = Instant::now();
+            let ran = lease.run(left, move |url| post(url, &body, budget));
+            let sent = Sent { port, budget, left, took: asked.elapsed() };
+            if let Some(outcome) =
+                self.settle(ran, &sent, deadline.saturating_sub(started.elapsed()))
+            {
+                return outcome;
             }
+        }
+    }
+
+    /// What the confirmation `sent` came to, or none when it goes to another copy; `left`
+    /// is what remains of the deadline.
+    fn settle(
+        &self,
+        ran: Ran<Result<Posted>>,
+        sent: &Sent,
+        left: Duration,
+    ) -> Option<Result<Heard>> {
+        match ran {
+            Ran::Answered(Ok(Posted::Answer(answer))) => {
+                self.pace.note(sent.took);
+                Some(heard_from(&answer))
+            }
+            Ran::Answered(Ok(Posted::Refused(e))) => {
+                log::warn!(
+                    "confirmation refused by copy {}: sending it to another copy ({e:#})",
+                    sent.port
+                );
+                None
+            }
+            Ran::Answered(Ok(Posted::TimedOut(url))) if sent.budget < sent.left => {
+                let nothing = cut_short(&url, sent.budget, left);
+                if nothing.is_some() {
+                    self.pace.note(sent.budget);
+                }
+                nothing.map(Ok)
+            }
+            Ran::Answered(Ok(Posted::TimedOut(url))) => Some(Err(anyhow!(
+                "speech recognition copy {url} sent no answer in {} ms",
+                sent.left.as_millis()
+            ))),
+            Ran::Answered(Err(e)) => Some(Err(e)),
+            Ran::GaveUp => Some(Err(anyhow!(
+                "speech recognition copy {} sent no answer in {} ms",
+                sent.port,
+                sent.left.as_millis()
+            ))),
         }
     }
 }
@@ -281,47 +303,6 @@ impl Hear for UtteranceTranscriber {
     fn hear(&self, samples: &[f32], deadline: Duration) -> Result<Heard> {
         self.transcribe(samples, crate::engine::SAMPLE_RATE, deadline)
     }
-}
-
-fn wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>> {
-    let spec = hound::WavSpec {
-        channels: 1,
-        sample_rate,
-        bits_per_sample: 16,
-        sample_format: hound::SampleFormat::Int,
-    };
-    let mut cursor = Cursor::new(Vec::new());
-    let mut writer = hound::WavWriter::new(&mut cursor, spec)?;
-    for sample in samples {
-        writer.write_sample((sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16)?;
-    }
-    writer.finalize()?;
-    Ok(cursor.into_inner())
-}
-
-fn multipart_body(wav: &[u8]) -> Vec<u8> {
-    let mut body = Vec::with_capacity(wav.len() + 512);
-    for (name, value) in [
-        ("language", LANGUAGE),
-        ("temperature", "0"),
-        ("temperature_inc", TEMPERATURE_STEP),
-        ("response_format", "verbose_json"),
-        ("timestamp_granularities[]", "word"),
-    ] {
-        body.extend_from_slice(
-            format!("--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n")
-                .as_bytes(),
-        );
-    }
-    body.extend_from_slice(
-        format!(
-            "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"utterance.wav\"\r\nContent-Type: audio/wav\r\n\r\n"
-        )
-        .as_bytes(),
-    );
-    body.extend_from_slice(wav);
-    body.extend_from_slice(format!("\r\n--{BOUNDARY}--\r\n").as_bytes());
-    body
 }
 
 #[cfg(test)]

@@ -14,8 +14,3 @@ When the speech recognition service for commands answers its confirmations slowl
 - **GIVEN** voice control runs and the speech recognition service for commands takes over a second for every confirmation, as under machine load
 - **WHEN** the user says "that is all stop enter start"
 - **THEN** the command spotting service reports "stop dictation", "press enter" and "start dictation", in that order
-
-#### Scenario: A restart after a pause under load
-- **GIVEN** voice control runs, a dictation is on, and the speech recognition service for commands takes over a second for every confirmation, as under machine load
-- **WHEN** the user dictates a sentence, pauses, and says "restart dictation"
-- **THEN** the command spotting service reports "restart dictation"

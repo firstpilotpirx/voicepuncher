@@ -1,4 +1,6 @@
 use super::*;
+
+mod under_load;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -25,35 +27,39 @@ fn serve_copy(listener: TcpListener, answer: &'static str, decoding: Duration) -
     let counter = Arc::clone(&requests);
     thread::spawn(move || {
         for stream in listener.incoming() {
-            answer_request(stream.unwrap(), answer, decoding, &counter);
+            answer_request(stream.unwrap(), answer, &[decoding], &counter);
         }
     });
     requests
 }
 
 /// As `serve_copy`, each request on a thread of its own: a live copy that answers its health
-/// check while it decodes.
-fn serve_live_copy(
+/// check while it decodes, decoding each transcription for its entry of `decodings`, the last
+/// one for every later transcription: a copy whose pace changes.
+fn serve_live_copy_paced(
     listener: TcpListener,
     answer: &'static str,
-    decoding: Duration,
+    decodings: Vec<Duration>,
 ) -> Arc<AtomicUsize> {
     let requests = Arc::new(AtomicUsize::new(0));
     let counter = Arc::clone(&requests);
+    let decodings = Arc::new(decodings);
     thread::spawn(move || {
         for stream in listener.incoming() {
             let counter = Arc::clone(&counter);
-            thread::spawn(move || answer_request(stream.unwrap(), answer, decoding, &counter));
+            let decodings = Arc::clone(&decodings);
+            thread::spawn(move || answer_request(stream.unwrap(), answer, &decodings, &counter));
         }
     });
     requests
 }
 
-/// Answers a health check at once, and a transcription with `answer` after `decoding`.
+/// Answers a health check at once, and the n-th transcription with `answer` after the n-th
+/// of `decodings` (the last one once they run out).
 fn answer_request(
     mut stream: TcpStream,
     answer: &'static str,
-    decoding: Duration,
+    decodings: &[Duration],
     counter: &AtomicUsize,
 ) {
     let mut reader = BufReader::new(stream.try_clone().unwrap());
@@ -65,9 +71,9 @@ fn answer_request(
     let reply = if request.starts_with("GET /health") {
         "ok"
     } else {
-        counter.fetch_add(1, Ordering::SeqCst);
+        let n = counter.fetch_add(1, Ordering::SeqCst);
         reader.read_exact(&mut vec![0u8; length]).unwrap();
-        thread::sleep(decoding);
+        thread::sleep(decodings[n.min(decodings.len() - 1)]);
         answer
     };
     let reply = format!(
@@ -244,31 +250,6 @@ fn should_fail_a_confirmation_when_every_copy_stays_silent_past_its_deadline() {
 }
 
 #[test]
-fn should_hear_nothing_when_a_live_copy_decodes_past_the_budget() {
-    // Given
-    let lines = crate::test_log::captured();
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("http://{}/v1", listener.local_addr().unwrap());
-    let requests = serve_live_copy(listener, PRESS_ENTER, Duration::from_millis(1_500));
-    let transcriber = UtteranceTranscriber::new(&url).unwrap();
-    // When
-    let started = Instant::now();
-    let heard = transcriber
-        .transcribe(&[0.0; 1_600], SAMPLE_RATE, Duration::from_secs(3))
-        .unwrap();
-    let took = started.elapsed();
-    // Then
-    assert_eq!(heard, Heard::default());
-    assert!(
-        took >= Duration::from_millis(900) && took < Duration::from_millis(1_400),
-        "took {took:?}"
-    );
-    let cut = lines.containing("still decoding, nothing heard");
-    assert!(cut.iter().any(|line| line.contains(&url)), "{cut:?}");
-    assert_eq!(requests.load(Ordering::SeqCst), 1);
-}
-
-#[test]
 fn should_hold_only_the_last_samples() {
     // Given
     let mut recent = RecentAudio::new(4);
@@ -279,40 +260,6 @@ fn should_hold_only_the_last_samples() {
     assert_eq!(recent.between(0, 10), [3.0, 4.0, 5.0, 6.0]);
     assert_eq!(recent.between(3, 5), [4.0, 5.0]);
     assert!(recent.between(8, 10).is_empty());
-}
-
-#[test]
-fn should_put_the_fields_before_the_audio_in_the_request() {
-    // When
-    let body = String::from_utf8_lossy(&multipart_body(b"RIFF")).into_owned();
-    // Then
-    let language = body.find("name=\"language\"").unwrap();
-    let file = body.find("name=\"file\"").unwrap();
-    assert!(language < file);
-    assert!(body.contains("name=\"language\"\r\n\r\nen\r\n"));
-    assert!(body.contains("name=\"temperature\"\r\n\r\n0\r\n"));
-    assert!(body.contains("name=\"response_format\"\r\n\r\nverbose_json\r\n"));
-    assert!(body.contains("name=\"timestamp_granularities[]\"\r\n\r\nword\r\n"));
-    assert!(body.ends_with(&format!("--{BOUNDARY}--\r\n")));
-}
-
-#[test]
-fn should_ask_for_no_retry_of_a_confirmation() {
-    // When
-    let body = String::from_utf8_lossy(&multipart_body(b"RIFF")).into_owned();
-    // Then
-    assert!(body.contains("name=\"temperature\"\r\n\r\n0\r\n"));
-    assert!(body.contains("name=\"temperature_inc\"\r\n\r\n0\r\n"));
-}
-
-#[test]
-fn should_send_no_prompt_with_a_confirmation() {
-    // When
-    let body = String::from_utf8_lossy(&multipart_body(b"RIFF")).into_owned();
-    // Then
-    assert!(!body.contains("name=\"prompt\""));
-    assert!(!body.contains("name=\"max_context\""));
-    assert!(!body.contains("name=\"carry_initial_prompt\""));
 }
 
 #[test]
