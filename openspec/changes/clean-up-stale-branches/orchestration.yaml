@@ -1,0 +1,11 @@
+prepared:
+  estimate: 45m
+  decisions:
+    - question: Explore before the proposal?
+      answer: No
+    - question: Where to make kit land delete the head branch, local branch and worktree after landing?
+      answer: In this change (edit agent-kit from it), not filed separately
+    - question: Branches without a merged PR (closed PR or none) — the night run cannot ask; what to do?
+      answer: Keep them; list them in the report and delete only after the user answers
+    - question: A worktree of a merged branch with uncommitted edits — what to do?
+      answer: Keep it and list it; remove only clean worktrees
