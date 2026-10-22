@@ -2,12 +2,11 @@
 //! the microphone streams to the service on a worker thread, and the service's events go
 //! into the pipeline's input channel.
 
-mod capture;
 pub mod client;
 mod heard;
 mod link;
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -15,11 +14,11 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 
-use crate::adapters::secondary::recording::cpal::devices;
+use crate::adapters::secondary::recording::cpal::capture::{CapturedAudio, MicInput};
+use crate::adapters::secondary::recording::cpal::{devices, resampler::StreamResampler};
 use crate::core::application::{CommandSpotter, PipelineInput};
 use crate::core::domain::{AudioBuffer16k, SpottingEvent, VoiceCommand};
 
-use capture::{MicCapture, StreamResampler};
 use client::SpottingClient;
 use heard::HeardAudio;
 pub use link::LinkTimings;
@@ -55,7 +54,7 @@ impl AudioStream {
         commands: &[VoiceCommand],
         audio_start: Instant,
         native_rate: u32,
-        audio: Receiver<Vec<f32>>,
+        audio: impl CapturedAudio,
         inputs: Sender<PipelineInput>,
     ) -> Result<Self> {
         Self::start_with_timings(
@@ -76,7 +75,7 @@ impl AudioStream {
         commands: &[VoiceCommand],
         audio_start: Instant,
         native_rate: u32,
-        audio: Receiver<Vec<f32>>,
+        audio: impl CapturedAudio,
         inputs: Sender<PipelineInput>,
         timings: LinkTimings,
     ) -> Result<Self> {
@@ -95,7 +94,7 @@ impl AudioStream {
             commands: commands.to_vec(),
             last_command_end: None,
             resampler,
-            audio,
+            audio: Box::new(audio),
             control: control_rx,
             inputs,
             heard: Arc::clone(&heard),
@@ -127,7 +126,7 @@ impl AudioStream {
 
 struct Listening {
     stream: AudioStream,
-    _capture: MicCapture,
+    _capture: MicInput,
 }
 
 pub struct WebSocketCommandSpotter {
@@ -157,18 +156,18 @@ impl CommandSpotter for WebSocketCommandSpotter {
 
     fn start_listening(&mut self, commands: &[VoiceCommand]) -> Result<()> {
         self.stop_listening();
-        let (audio_tx, audio_rx) = mpsc::channel();
-        let (capture, native_rate) = MicCapture::open(audio_tx, &self.input_device)?;
+        let (capture, audio) = MicInput::open(&self.input_device, Arc::new(AtomicU32::new(0)))?;
         log::info!(
-            "command spotting: microphone open at {native_rate} Hz, connecting to {}",
+            "command spotting: microphone open at {} Hz, connecting to {}",
+            capture.rate,
             self.url
         );
         let stream = AudioStream::start(
             &self.url,
             commands,
             capture.started_at,
-            native_rate,
-            audio_rx,
+            capture.rate,
+            audio,
             self.inputs.clone(),
         )?;
         log::info!("command spotting: streaming to the service");
@@ -214,7 +213,7 @@ struct Stream {
     /// The end of the last command reported: a replay never reaches back to it.
     last_command_end: Option<Instant>,
     resampler: StreamResampler,
-    audio: Receiver<Vec<f32>>,
+    audio: Box<dyn CapturedAudio>,
     control: Receiver<Control>,
     inputs: Sender<PipelineInput>,
     heard: Arc<Mutex<HeardAudio>>,
@@ -253,7 +252,7 @@ impl Stream {
 
     /// Holds every sample captured, and sends it while the service is there.
     fn stream_audio(&mut self) {
-        let captured: Vec<f32> = self.audio.try_iter().flatten().collect();
+        let captured = self.audio.take();
         let samples = self.resampler.push(&captured);
         if samples.is_empty() {
             return;

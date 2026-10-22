@@ -37,6 +37,14 @@ pub struct WiringAssembler {
 }
 
 impl WiringAssembler {
+    /// The microphone recorder of the configuration, reporting a failed device to `inputs`.
+    fn recorder(&self, config: &Config, inputs: Sender<PipelineInput>) -> CpalAudioRecorder {
+        let level = Arc::clone(&self.level_register);
+        CpalAudioRecorder::new(config.audio.max_recording_seconds, level)
+            .with_input_device(&config.audio.input_device)
+            .with_failure_input(inputs)
+    }
+
     pub fn new(overlay: SharedVisualIndicator, level_register: Arc<AtomicU32>) -> Self {
         Self { overlay, level_register }
     }
@@ -45,6 +53,7 @@ impl WiringAssembler {
 impl PipelineAssembler for WiringAssembler {
     #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn assemble(&mut self, config: &Config, inputs: Sender<PipelineInput>) -> Result<Pipeline> {
+        let recorder = self.recorder(config, inputs.clone());
         let spotter = config
             .voice_control
             .enabled
@@ -53,13 +62,7 @@ impl PipelineAssembler for WiringAssembler {
         let transcriber = connect_transcriber(config)?;
         let refiner = connect_refiner(config)?;
         let mut pipeline = Pipeline::new(
-            Box::new(
-                CpalAudioRecorder::new(
-                    config.audio.max_recording_seconds,
-                    Arc::clone(&self.level_register),
-                )
-                .with_input_device(&config.audio.input_device),
-            ),
+            Box::new(recorder),
             Box::new(transcriber),
             refiner,
             Box::new(MacOsTextPaster::new(

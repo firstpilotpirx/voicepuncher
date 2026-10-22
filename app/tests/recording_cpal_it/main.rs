@@ -1,5 +1,7 @@
+mod synthetic;
+
 use std::sync::atomic::AtomicU32;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use cpal::traits::{DeviceTrait, HostTrait};
 
@@ -65,23 +67,44 @@ fn name(device: &cpal::Device) -> Option<String> {
 }
 
 /// The warnings logged by the test process.
-struct WarningLog(Mutex<Vec<String>>);
+mod warnings {
+    use std::sync::{Mutex, Once};
 
-impl log::Log for WarningLog {
-    fn enabled(&self, metadata: &log::Metadata) -> bool {
-        metadata.level() <= log::Level::Warn
-    }
+    struct WarningLog(Mutex<Vec<String>>);
 
-    fn log(&self, record: &log::Record) {
-        if self.enabled(record.metadata()) {
-            self.0.lock().unwrap().push(record.args().to_string());
+    impl log::Log for WarningLog {
+        fn enabled(&self, metadata: &log::Metadata) -> bool {
+            metadata.level() <= log::Level::Warn
         }
+
+        fn log(&self, record: &log::Record) {
+            if self.enabled(record.metadata()) {
+                self.0.lock().unwrap().push(record.args().to_string());
+            }
+        }
+
+        fn flush(&self) {}
     }
 
-    fn flush(&self) {}
-}
+    static WARNINGS: WarningLog = WarningLog(Mutex::new(Vec::new()));
+    static INSTALL: Once = Once::new();
 
-static WARNINGS: WarningLog = WarningLog(Mutex::new(Vec::new()));
+    /// Captures the warnings of the whole test process, once.
+    pub fn install() {
+        INSTALL.call_once(|| {
+            log::set_logger(&WARNINGS).expect("one logger per test process");
+            log::set_max_level(log::LevelFilter::Warn);
+        });
+    }
+
+    pub fn all() -> Vec<String> {
+        WARNINGS.0.lock().unwrap().clone()
+    }
+
+    pub fn count(text: &str) -> usize {
+        all().iter().filter(|w| w.contains(text)).count()
+    }
+}
 
 #[test]
 fn should_record_from_the_default_device_and_log_a_named_device_that_is_not_connected() {
@@ -90,14 +113,13 @@ fn should_record_from_the_default_device_and_log_a_named_device_that_is_not_conn
         eprintln!("GATED: this Mac has no default input device, skipping");
         return;
     };
-    log::set_logger(&WARNINGS).expect("one logger per test process");
-    log::set_max_level(log::LevelFilter::Warn);
+    warnings::install();
     let missing = "No Such Microphone";
     // When
     let device = open(missing).expect("the default device opens");
     // Then
     assert_eq!(name(&device), name(&default));
-    let warnings = WARNINGS.0.lock().unwrap().clone();
+    let warnings = warnings::all();
     assert!(
         warnings.iter().any(|warning| warning.contains(missing)),
         "no warning names {missing:?}: {warnings:?}"

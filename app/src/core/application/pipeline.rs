@@ -1,6 +1,7 @@
 mod archiving;
 mod failure_notices;
 mod live_transcript;
+mod recording_failure;
 mod voice_control;
 
 use std::collections::VecDeque;
@@ -218,13 +219,12 @@ impl Pipeline {
     }
 
     fn dispatch(&mut self, input: PipelineInput) -> anyhow::Result<()> {
-        if self.voice.is_some() {
-            return self.handle_with_voice_control(input);
-        }
         match input {
             PipelineInput::Hotkey(signal) => self.step(signal),
             PipelineInput::Shutdown => self.shut_down(),
             PipelineInput::PermissionRevoked(permission) => self.shut_down_revoked(permission),
+            PipelineInput::RecordingFailed(reason) => self.recording_failed(&reason),
+            spotting if self.voice.is_some() => self.handle_with_voice_control(spotting),
             other => {
                 log::warn!("ignoring {other:?}: voice control is off");
                 Ok(())
@@ -249,25 +249,6 @@ impl Pipeline {
         self.turn_listening_off();
         self.publish_activity();
         Ok(())
-    }
-
-    /// Stops what a pipeline that ended with an error or a panic may have left running:
-    /// the recording, listening and the overlay. Each step is guarded, as the panic may have
-    /// left a part half-used.
-    pub fn stop_after_failure(&mut self) {
-        let guarded = |step: &mut dyn FnMut()| {
-            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(step));
-        };
-        if let Some(session) = self.live_session.take() {
-            session.recording_end.signal();
-        }
-        guarded(&mut || {
-            let _ = self.recorder.stop();
-        });
-        guarded(&mut || self.turn_listening_off());
-        guarded(&mut || self.visual_indicator.hide());
-        self.state = PipelineState::Idle;
-        guarded(&mut || self.publish_activity());
     }
 
     /// Ends this pipeline as a shutdown does; a recording in progress ends with a notice
@@ -440,7 +421,7 @@ impl Pipeline {
             if audio.is_empty() || audio.duration_ms() < self.cfg.min_press_ms {
                 log::info!("dropped: too short ({} ms)", audio.duration_ms());
                 self.drop_trace();
-                self.end_cycle_on_overlay();
+                self.end_empty_cycle_on_overlay();
                 return Ok(());
             }
             self.run_transcribe_refine_paste(audio, t_user_stop, stop_ms);

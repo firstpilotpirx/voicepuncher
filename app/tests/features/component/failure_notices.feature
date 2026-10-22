@@ -72,6 +72,20 @@ Feature: failure-notices
       Then the recording does not start
       And the overlay shows a failure notice that the microphone is unavailable
 
+  Rule: A microphone lost during a dictation is announced
+
+    Scenario: The microphone fails during a hotkey dictation
+      Given the user is recording a hotkey dictation
+      When the input device fails
+      Then the overlay shows a failure notice that the microphone failed
+      And the dictation ends at once
+
+    Scenario: The microphone fails during a voice dictation
+      Given voice control is turned on and a dictation started by voice runs
+      When the input device fails
+      Then the overlay shows a failure notice that the microphone failed
+      And the dictation ends at once
+
   Rule: A failure notice goes away on its own
 
     Scenario: A new dictation replaces the notice

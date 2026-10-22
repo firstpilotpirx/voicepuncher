@@ -23,7 +23,7 @@ Out of scope: the chunking algorithm; the recorder port.
 
 ## Impact
 
-- `app/src/adapters/secondary/recording/cpal/**`, `app/src/adapters/secondary/commandspotting/websocket/capture.rs`, a new shared module, `app/Cargo.toml` (ring buffer crate, pinned), `app/tests/recording_cpal_it.rs`, `chunk_cuts_it.rs`.
+- `app/src/adapters/secondary/recording/cpal/**`, `app/src/adapters/secondary/commandspotting/websocket/capture.rs`, a new shared module, `app/Cargo.toml` (ring buffer crate, pinned), `app/tests/recording_cpal_it/{main,synthetic}.rs`, `chunk_cuts_it.rs`.
 
 ## Open points
 
@@ -33,4 +33,4 @@ Out of scope: the chunking algorithm; the recorder port.
 ## Release
 
 SemVer: PATCH — fewer dropouts, a device error reported.
-Target version: 0.36.3 (next PATCH above `main` at merge; `kit version-check` corrects it).
+Target version: 0.37.1 (next PATCH above `main` at merge; `kit version-check` corrects it).

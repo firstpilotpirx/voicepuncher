@@ -55,7 +55,6 @@ impl Pipeline {
             ),
         }
         match input {
-            PipelineInput::Hotkey(signal) => self.step(signal),
             PipelineInput::Spotting(SpottingEvent::ConfirmationFailed { .. })
                 if self.listening() =>
             {
@@ -75,8 +74,10 @@ impl Pipeline {
                 Ok(())
             }
             PipelineInput::SpottingBack => self.regain_spotting(),
-            PipelineInput::Shutdown => self.shut_down(),
-            PipelineInput::PermissionRevoked(permission) => self.shut_down_revoked(permission),
+            other => {
+                log::warn!("voice control cannot handle {other:?}: the pipeline handles it");
+                Ok(())
+            }
         }
     }
 

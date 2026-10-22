@@ -22,8 +22,6 @@
 "cyclomatic app/src/adapters/secondary/commandspotting/websocket/client/handshake.rs::handshake" = 11
 "cyclomatic app/src/adapters/secondary/localservices/catalog/mod.rs::engine_origin" = 11
 "cyclomatic app/src/adapters/secondary/modelfetch/http/mod.rs::HttpModelFetcher::fetch" = 26
-"cyclomatic app/src/adapters/secondary/recording/cpal/mod.rs::CpalAudioRecorder::start" = 15
-"cyclomatic app/src/adapters/secondary/recording/cpal/mod.rs::live_watcher_thread" = 21
 "cyclomatic app/src/adapters/secondary/textrefinement/openai/mod.rs::OpenAiTextRefiner::post_with_retry" = 13
 "cyclomatic app/src/adapters/secondary/transcription/openai/mod.rs::OpenAiTranscriber::post_with_retries" = 14
 "cyclomatic app/src/config/refinement.rs::changes_only_endings" = 11
@@ -113,5 +111,5 @@
 "cyclomatic e2e-test/tests/steps/voice_control/session.rs::recorded" = 12
 "cyclomatic e2e-test/tests/steps/voice_control/session.rs::session_done" = 11
 "cyclomatic e2e-test/tests/steps/voice_control/session/start_cue.rs::recorded_starts" = 19
-"duplicated_lines" = 1650
+"duplicated_lines" = 1624
 "unsafe app" = 129

@@ -17,4 +17,7 @@ pub enum PipelineInput {
     /// The runtime ends this pipeline because `Permission` was revoked: as a shutdown, and
     /// a recording in progress ends with a failure notice naming the permission.
     PermissionRevoked(Permission),
+    /// The microphone failed or disappeared, with the reason the recorder saw: a dictation
+    /// in progress ends with what was recorded before it.
+    RecordingFailed(String),
 }

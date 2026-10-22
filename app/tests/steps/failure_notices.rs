@@ -22,6 +22,8 @@ use voicepuncher::core::domain::{
 
 use crate::IntegrationWorld;
 
+mod microphone;
+
 const RAW_TRANSCRIPT: &str = "meeting moved to friday";
 const REFINED_TEXT: &str = "Meeting moved to Friday.";
 /// Longest a pipeline reaction may take in these scenarios.
@@ -83,10 +85,11 @@ struct Setup {
     voice_control: bool,
     keys_refused: bool,
     spotting_down: bool,
+    nothing_recorded: bool,
 }
 
 /// What a failure-notices scenario shares with the pipeline thread.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct NoticesRun {
     events: Events,
     setup: Setup,
@@ -95,14 +98,6 @@ pub struct NoticesRun {
     stop: Option<(usize, Instant)>,
     /// Moment the failure notice was first seen after the stop.
     notice_seen: Option<Instant>,
-}
-
-impl std::fmt::Debug for NoticesRun {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NoticesRun")
-            .field("events", &self.events())
-            .finish()
-    }
 }
 
 impl NoticesRun {
@@ -479,6 +474,7 @@ fn dictation_lost(world: &mut IntegrationWorld) -> Result<()> {
 }
 
 #[then("the text of the other parts is pasted")]
+#[then("the speech recorded before the failure is pasted")]
 fn other_parts_pasted(world: &mut IntegrationWorld) -> Result<()> {
     let events = run(world).wait_until_over()?;
     if pasted(&events) != [REFINED_TEXT] {
@@ -646,6 +642,9 @@ impl AudioRecorder for PartsRecorder {
     }
 
     fn stop(&mut self) -> Result<AudioBuffer16k> {
+        if self.setup.nothing_recorded {
+            return Ok(AudioBuffer16k::new(Vec::new()));
+        }
         Ok(Self::one_second())
     }
 

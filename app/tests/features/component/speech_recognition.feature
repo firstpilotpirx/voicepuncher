@@ -58,3 +58,29 @@ Feature: speech-recognition
       When the user finishes the dictation and presses the hotkey during the wait
       Then the dictation ends with the notice that speech recognition failed once the wait is over
       And the hotkey press made during the wait starts a new recording
+
+  Rule: A microphone lost during a dictation ends it with a notice
+
+    @serial
+    Scenario: The microphone disappears mid-dictation
+      Given the user is recording a hotkey dictation
+      When the input device disappears
+      Then the dictation ends at once
+      And the speech recorded before the failure is pasted
+      And the overlay shows a failure notice that the microphone failed
+
+    @serial
+    Scenario: The microphone reports an error mid-dictation
+      Given the user is recording a hotkey dictation
+      When the input device fails
+      Then the dictation ends at once
+      And the speech recorded before the failure is pasted
+      And the overlay shows a failure notice that the microphone failed
+
+    @serial
+    Scenario: Nothing recorded before the failure
+      Given a dictation has just started, nothing recorded yet
+      When the input device fails
+      Then the dictation ends at once
+      And the dictation's text is not pasted
+      And the overlay shows a failure notice that the dictation was lost because the microphone failed

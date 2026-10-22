@@ -12,8 +12,6 @@
 "app/src/adapters/primary/settings/macos/layout.rs::tab_view" = 49
 "app/src/adapters/secondary/commandspotting/websocket/mod.rs::Stream::reach_for_service" = 44
 "app/src/adapters/secondary/modelfetch/http/mod.rs::<HttpModelFetcher as ModelFetcher>::fetch" = 53
-"app/src/adapters/secondary/recording/cpal/mod.rs::<CpalAudioRecorder as AudioRecorder>::start" = 77
-"app/src/adapters/secondary/recording/cpal/mod.rs::live_watcher_thread" = 82
 "app/src/adapters/secondary/textrefinement/openai/mod.rs::OpenAiTextRefiner::attempt" = 43
 "app/src/adapters/secondary/transcription/openai/mod.rs::OpenAiTranscriber::post_with_retries" = 60
 "app/src/core/application/chunking.rs::find_seam" = 77
@@ -31,7 +29,7 @@
 "app/src/runtime/overlay.rs::tests::should_forward_every_call_to_the_shared_overlay" = 50
 "app/src/runtime/wiring.rs::<WiringAssembler as PipelineAssembler>::assemble" = 52
 "app/tests/architecture.rs::r6_core_only_whitelisted_external_crates" = 52
-"app/tests/architecture.rs::r9_every_primary_adapter_has_it" = 44
+"app/tests/architecture.rs::r9_every_primary_adapter_has_it" = 48
 "app/tests/architecture.rs::r_core_no_atomic_register" = 42
 "app/tests/chunk_cuts_it.rs::should_cut_most_chunk_seams_of_synthesized_speech_in_a_pause" = 49
 "app/tests/chunked_transcription_it.rs::should_merge_chunked_speech_without_repeating_or_dropping_a_phrase" = 52
@@ -88,10 +86,9 @@
 "app/src/adapters/primary/permissions/macos/mod.rs" = 431
 "app/src/adapters/primary/ptt/rdev/mod.rs" = 370
 "app/src/adapters/primary/settings/macos/table.rs" = 312
-"app/src/adapters/secondary/commandspotting/websocket/mod.rs" = 336
+"app/src/adapters/secondary/commandspotting/websocket/mod.rs" = 335
 "app/src/adapters/secondary/localservices/catalog/mod.rs" = 514
 "app/src/adapters/secondary/localservices/catalog/tests.rs" = 416
-"app/src/adapters/secondary/recording/cpal/mod.rs" = 614
 "app/src/adapters/secondary/textrefinement/openai/mod.rs" = 318
 "app/src/adapters/secondary/transcription/openai/mod.rs" = 357
 "app/src/adapters/secondary/visualfeedback/macos/glass.rs" = 315
@@ -111,7 +108,7 @@
 "app/src/core/domain/normalization_check.rs" = 315
 "app/src/main.rs" = 366
 "app/src/runtime/mod.rs" = 929
-"app/tests/architecture.rs" = 561
+"app/tests/architecture.rs" = 569
 "app/tests/commandspotting_reconnect_it.rs" = 512
 "app/tests/commandspotting_websocket_it.rs" = 421
 "app/tests/settings_macos_it.rs" = 349
@@ -169,7 +166,7 @@
 "app/src/adapters/secondary/visualfeedback/macos" = 2787
 "app/src/core/application" = 4893
 "app/src/core/domain" = 2810
-"app/tests" = 7081
+"app/tests" = 7008
 "app/tests/steps" = 8370
 "command-spotting/src" = 2014
 "e2e-test/tests/steps" = 2530
@@ -179,8 +176,6 @@
 "app/src/adapters/primary/ptt/rdev/mod.rs::<RdevHotkeyListener as HotkeyListener>::spawn" = 0
 "app/src/adapters/primary/settings/macos/form.rs::Form::save" = 0
 "app/src/adapters/secondary/commandspotting/websocket/client.rs::SpottingClient::events_for_sent_audio" = 0
-"app/src/adapters/secondary/recording/cpal/mod.rs::<CpalAudioRecorder as AudioRecorder>::flush_live_chunks" = 0
-"app/src/adapters/secondary/recording/cpal/mod.rs::<CpalAudioRecorder as AudioRecorder>::start" = 0
 "app/src/adapters/secondary/textrefinement/openai/mod.rs::OpenAiTextRefiner::post_with_retry" = 0
 "app/src/adapters/secondary/textrefinement/openai/mod.rs::tests::spawn_models_stub" = 0
 "app/src/adapters/secondary/transcription/openai/mod.rs::OpenAiTranscriber::post_with_retries" = 0
@@ -221,6 +216,5 @@
 "e2e-test/tests/steps/local_services/copies.rs::more_requests" = 0
 
 [cognitive_complexity]
-"app/src/adapters/secondary/recording/cpal/mod.rs::live_watcher_thread" = 0
 "app/tests/config_loader_it.rs::should_round_trip_full_example_toml" = 0
 "command-spotting/src/engine/confirming.rs::Session::apply_answer" = 0

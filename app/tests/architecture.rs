@@ -203,13 +203,23 @@ fn secondary_leaf_adapter_names() -> Vec<(std::path::PathBuf, String)> {
         .collect()
 }
 
+/// Whether `tests/<stem>_it.rs` or `tests/<stem>_it/main.rs` exists.
+fn has_integration_test(stem: &str) -> bool {
+    [
+        format!("tests/{stem}_it.rs"),
+        format!("tests/{stem}_it/main.rs"),
+    ]
+    .iter()
+    .any(|it| std::path::Path::new(it).exists())
+}
+
 #[test]
 fn r4_every_secondary_adapter_has_it() {
     let mut violations: Vec<String> = Vec::new();
 
     for (dir, stem) in secondary_leaf_adapter_names() {
         let expected_it = format!("tests/{stem}_it.rs");
-        if !std::path::Path::new(&expected_it).exists() {
+        if !has_integration_test(&stem) {
             violations.push(format!(
                 "{}: missing integration test at {}",
                 dir.display(),
@@ -486,7 +496,7 @@ fn r9_every_primary_adapter_has_it() {
         })
     {
         let expected_it = format!("tests/{stem}_it.rs");
-        if !std::path::Path::new(&expected_it).exists() {
+        if !has_integration_test(&stem) {
             violations.push(format!(
                 "{}: missing integration test at {}",
                 dir.display(),
