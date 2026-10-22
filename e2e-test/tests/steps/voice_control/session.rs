@@ -16,14 +16,12 @@ use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughT
 use voicepuncher::adapters::secondary::transcription::openai::OpenAiTranscriber;
 use voicepuncher::config::TranscriptionCfg;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
-use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
+use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use voicepuncher::core::application::{
     AudioRecorder, ChunkingCfg, CommandSpotter, KeyPresser, PipelineInput, SoundPlayer, TextPaster,
     VisualIndicator,
 };
-use voicepuncher::core::domain::{
-    AudioBuffer16k, CleanedText, FailureNotice, RecordingMode, VoiceCommand,
-};
+use voicepuncher::core::domain::{AudioBuffer16k, CleanedText, FailureNotice, VoiceCommand};
 use voicepuncher_e2e_test::speech::read_wav;
 use voicepuncher_e2e_test::voice_commands::spoken_by;
 
@@ -36,6 +34,11 @@ use super::RUSSIAN_VOICE;
 use crate::steps::file_transcription::env;
 use crate::steps::off_thread;
 use crate::E2eWorld;
+mod doubles;
+use doubles::{
+    MicrophoneRecorder, MicrophoneSpotter, NoOverlay, RecordingKeys, RecordingPaster,
+    RecordingSounds,
+};
 
 const SAMPLE_RATE_HZ: f32 = 16_000.0;
 const FRAME_SAMPLES: usize = 1_600;
@@ -228,17 +231,15 @@ impl HandsFreeSession {
             lead_in: Vec::new(),
         };
         let mut pipeline = Pipeline::new(
-            Box::new(recorder),
-            Box::new(transcriber),
-            Box::new(PassthroughTextRefiner),
-            Box::new(RecordingPaster(Arc::clone(&events))),
-            Box::new(RecordingSounds(Arc::clone(&events), Arc::clone(&cues))),
-            Box::new(NoOverlay),
-            PipelineConfig {
-                min_press_ms: 0,
-                recording_mode: RecordingMode::Toggle,
-                chunking: ChunkingCfg { chunk_threshold_secs: 0, ..ChunkingCfg::default() },
+            PipelineParts {
+                recorder: Box::new(recorder),
+                transcriber: Box::new(transcriber),
+                refiner: Box::new(PassthroughTextRefiner),
+                paster: Box::new(RecordingPaster(Arc::clone(&events))),
+                sound_player: Box::new(RecordingSounds(Arc::clone(&events), Arc::clone(&cues))),
+                visual_indicator: Box::new(NoOverlay),
             },
+            PipelineConfig::default(),
         )
         .with_voice_control(
             Box::new(spotter),
@@ -436,165 +437,4 @@ fn session_done(world: &mut E2eWorld) -> Result<()> {
         bail!("expected {expected:?}\n     got {events:?}");
     }
     Ok(())
-}
-
-/// The command spotting adapter's streaming path, fed by the session's microphone.
-struct MicrophoneSpotter {
-    url: String,
-    inputs: Sender<PipelineInput>,
-    heard: Option<Receiver<Vec<f32>>>,
-    stream: Option<AudioStream>,
-    microphone: Arc<Microphone>,
-    events: Events,
-}
-
-impl CommandSpotter for MicrophoneSpotter {
-    fn probe(&self) -> Result<()> {
-        Ok(())
-    }
-
-    fn start_listening(&mut self, commands: &[VoiceCommand]) -> Result<()> {
-        let heard = self
-            .heard
-            .take()
-            .context("the microphone is already in use")?;
-        let started_at = Instant::now();
-        *self.microphone.started_at.lock().unwrap() = Some(started_at);
-        let rate = SAMPLE_RATE_HZ as u32;
-        let stream = AudioStream::start(
-            &self.url,
-            commands,
-            started_at,
-            rate,
-            heard,
-            self.inputs.clone(),
-        )?;
-        self.stream = Some(stream);
-        self.events.lock().unwrap().push(Event::Listening);
-        Ok(())
-    }
-
-    fn listen_for(&mut self, commands: &[VoiceCommand]) {
-        if let Some(stream) = self.stream.as_ref() {
-            stream.listen_for(commands);
-        }
-    }
-
-    fn stop_listening(&mut self) {
-        if let Some(stream) = self.stream.take() {
-            stream.stop();
-        }
-    }
-
-    fn heard_since(&self, since: Instant) -> AudioBuffer16k {
-        self.stream.as_ref().map_or_else(
-            || AudioBuffer16k::new(Vec::new()),
-            |stream| stream.heard_since(since),
-        )
-    }
-}
-
-/// Records from the session's microphone, as the real recorder records from the real one.
-struct MicrophoneRecorder {
-    microphone: Arc<Microphone>,
-    events: Events,
-    start: usize,
-    cut: Option<usize>,
-    /// Heard before the recording started, put at its beginning.
-    lead_in: Vec<i16>,
-}
-
-impl AudioRecorder for MicrophoneRecorder {
-    fn start(&mut self) -> Result<()> {
-        std::thread::sleep(MICROPHONE_OPENING);
-        self.start = self.microphone.captured.lock().unwrap().len();
-        self.cut = None;
-        self.lead_in.clear();
-        self.events.lock().unwrap().push(Event::RecordingStarted);
-        Ok(())
-    }
-
-    fn stop(&mut self) -> Result<AudioBuffer16k> {
-        let captured = self.microphone.captured.lock().unwrap();
-        let end = self.cut.unwrap_or(captured.len()).min(captured.len());
-        let recorded = captured[self.start.min(end)..end]
-            .iter()
-            .map(|s| (s.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16);
-        let samples = self.lead_in.iter().copied().chain(recorded).collect();
-        Ok(AudioBuffer16k::new(samples))
-    }
-
-    fn start_live_chunks(&mut self, _cfg: ChunkingCfg) -> Result<Option<Receiver<LiveChunk>>> {
-        Ok(None)
-    }
-
-    fn flush_live_chunks(&mut self) {}
-
-    fn truncate_at(&mut self, cut: Instant) {
-        self.cut = Some(self.microphone.index_at(cut));
-    }
-
-    fn begin_with(&mut self, lead_in: AudioBuffer16k) {
-        self.lead_in = lead_in.samples().to_vec();
-    }
-}
-
-struct RecordingPaster(Events);
-
-impl TextPaster for RecordingPaster {
-    fn paste(&mut self, text: &CleanedText) -> Result<()> {
-        let pasted = Event::Pasted(text.as_str().to_owned());
-        self.0.lock().unwrap().push(pasted);
-        Ok(())
-    }
-
-    fn leave_in_clipboard(&mut self, text: &CleanedText) -> Result<()> {
-        self.paste(text)
-    }
-}
-
-struct RecordingKeys(Events);
-
-impl KeyPresser for RecordingKeys {
-    fn press_enter(&mut self) -> Result<()> {
-        self.0.lock().unwrap().push(Event::ReturnPressed);
-        Ok(())
-    }
-
-    fn clear_all_text(&mut self) -> Result<()> {
-        self.0.lock().unwrap().push(Event::Cleared);
-        Ok(())
-    }
-
-    fn paste(&mut self) -> Result<()> {
-        self.0.lock().unwrap().push(Event::PasteKeyPressed);
-        Ok(())
-    }
-}
-
-struct RecordingSounds(Events, Cues);
-
-impl SoundPlayer for RecordingSounds {
-    fn play_start(&self) {
-        self.1.lock().unwrap().push(Instant::now());
-    }
-    fn play_stop(&self) {}
-    fn play_cancel(&self) {
-        self.0.lock().unwrap().push(Event::Cancelled);
-    }
-    fn play_restart(&self) {
-        self.1.lock().unwrap().push(Instant::now());
-    }
-}
-
-struct NoOverlay;
-
-impl VisualIndicator for NoOverlay {
-    fn show_recording(&self) {}
-    fn show_recognizing_speech(&self) {}
-    fn show_refining_text(&self) {}
-    fn show_waiting_for_focus(&self) {}
-    fn show_pasted(&self) {}
-    fn hide(&self) {}
-    fn show_failure_notice(&self, _notice: &FailureNotice) {}
 }

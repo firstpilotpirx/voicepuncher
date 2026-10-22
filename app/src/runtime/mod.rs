@@ -42,7 +42,8 @@ pub use services::{LocalServices, ManagedServices, ServicesView};
 
 /// How often the runtime looks for the model files it waits for.
 const MODELS_POLL: Duration = Duration::from_secs(1);
-/// How often a restart checks whether the dictation in progress has ended.
+/// How long a restart waits for the dictation in progress between its checks for a stop, and
+/// the grace it gives a signal on its way to the pipeline after the detach.
 const IDLE_POLL_INTERVAL: Duration = Duration::from_millis(20);
 /// A pipeline that fails this soon after the restart that followed a failure is not
 /// restarted again.
@@ -171,10 +172,12 @@ impl Runtime {
         if let Some(commands) = self.commands.take() {
             let _ = commands.send(Command::Stop);
         }
-        if let Some(thread) = self.thread.take() {
-            if thread.join().is_err() {
-                log::error!("runtime: the runtime thread panicked");
-            }
+        if self
+            .thread
+            .take()
+            .is_some_and(|thread| thread.join().is_err())
+        {
+            log::error!("runtime: the runtime thread panicked");
         }
     }
 
@@ -318,13 +321,12 @@ impl Running {
 
     fn end_with(self, last_input: PipelineInput) {
         let _ = self.inputs.send(last_input);
-        if self.thread.join().is_err() {
-            log::error!("runtime: the pipeline thread panicked");
-        }
+        self.join();
     }
 }
 
 /// What a restart that waits for the dictation in progress learns meanwhile.
+#[derive(PartialEq, Eq)]
 enum Wait {
     Idle,
     Stopped,
@@ -410,19 +412,22 @@ impl Supervisor {
         if let Some(running) = self.pipeline.take() {
             running.join();
         }
-        let now = Instant::now();
-        if self
+        let soon_again = self
             .restarted_at
-            .is_some_and(|at| now.duration_since(at) < RESTART_WINDOW)
-        {
+            .is_some_and(|at| at.elapsed() < RESTART_WINDOW);
+        if soon_again {
             self.failed = true;
-            self.change(RuntimeState::Failed(format!(
-                "the dictation pipeline stopped: {reason}"
-            )));
+            let failure = format!("the dictation pipeline stopped: {reason}");
+            self.change(RuntimeState::Failed(failure));
             return;
         }
         log::warn!("runtime: starting a new pipeline after: {reason}");
-        self.restarted_at = Some(now);
+        self.restarted_at = Some(Instant::now());
+        self.start_pipeline();
+    }
+
+    /// Starts the pipeline; a start that fails leaves the runtime Failed.
+    fn start_pipeline(&mut self) {
         self.change(RuntimeState::Starting);
         match self.open() {
             Ok(()) => self.change(self.ready()),
@@ -436,15 +441,14 @@ impl Supervisor {
     /// Waiting for models when a file the configuration needs is missing; otherwise the
     /// services are told what it needs, once.
     fn models_missing(&mut self) -> Option<RuntimeState> {
-        if let Some(models) = &self.models {
-            let missing = models.missing(&self.config);
-            if !missing.is_empty() {
-                self.services_required = false;
-                return Some(RuntimeState::WaitingForModels {
-                    folder: models.folder(&self.config),
-                    missing,
-                });
-            }
+        let missing = match &self.models {
+            Some(models) => models.missing(&self.config),
+            None => Vec::new(),
+        };
+        if let Some(models) = self.models.as_ref().filter(|_| !missing.is_empty()) {
+            self.services_required = false;
+            let folder = models.folder(&self.config);
+            return Some(RuntimeState::WaitingForModels { folder, missing });
         }
         if !self.services_required {
             if let Some(services) = &mut self.services {
@@ -524,16 +528,9 @@ impl Supervisor {
         if self.pipeline.is_some() || self.failed {
             return;
         }
-        if let Some(state) = self.gate() {
-            return self.change_to_new(state);
-        }
-        self.change(RuntimeState::Starting);
-        match self.open() {
-            Ok(()) => self.change(self.ready()),
-            Err(e) => {
-                self.failed = true;
-                self.change(RuntimeState::Failed(format!("{e:#}")));
-            }
+        match self.gate() {
+            Some(state) => self.change_to_new(state),
+            None => self.start_pipeline(),
         }
     }
 
@@ -551,37 +548,31 @@ impl Supervisor {
         }
     }
 
-    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn serve(mut self, commands: Receiver<Command>) {
         let mut pending = std::collections::VecDeque::new();
         loop {
-            let command = match pending.pop_front() {
-                Some(command) => command,
-                None => {
-                    if let Some(command) = self.next_command(&commands) {
-                        command
-                    } else {
-                        self.check_gates();
-                        continue;
-                    }
-                }
+            let next = pending.pop_front().or_else(|| self.next_command(&commands));
+            let Some(command) = next else {
+                self.check_gates();
+                continue;
             };
-            match command {
+            let stopped = match command {
                 Command::Reload(config, mut listener) => {
                     let reload = self.reload(*config, &mut listener, &commands, &mut pending);
-                    if matches!(reload, Wait::Stopped) {
-                        return self.stop();
-                    }
+                    reload == Wait::Stopped
                 }
-                Command::Stop => return self.stop(),
+                Command::Stop => true,
                 Command::PipelineFailed { generation, reason } => {
                     self.pipeline_failed(generation, reason);
+                    false
                 }
+            };
+            if stopped {
+                return self.stop();
             }
         }
     }
 
-    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn reload(
         &mut self,
         config: Config,
@@ -606,9 +597,8 @@ impl Supervisor {
             return self.wait_for_models(config, listener, commands, pending);
         }
         self.change(RuntimeState::Restarting);
-        match self.wait_for_services(commands, pending) {
-            Wait::Idle => {}
-            Wait::Stopped => return Wait::Stopped,
+        if self.wait_for_services(commands, pending) == Wait::Stopped {
+            return Wait::Stopped;
         }
         let next = match Next::assemble(self.assembler.as_mut(), &config) {
             Ok(next) => next,
@@ -619,17 +609,10 @@ impl Supervisor {
                 return Wait::Idle;
             }
         };
-        if matches!(
-            self.wait_for_idle(listener, commands, pending),
-            Wait::Stopped
-        ) {
+        if self.wait_for_idle(listener, commands, pending) == Wait::Stopped {
             return Wait::Stopped;
         }
-        if let Some(old) = self.pipeline.take() {
-            old.shut_down();
-        }
-        self.binding.rebind(config.hotkey.key);
-        self.config = config;
+        self.end_pipeline(config);
         let running = self.launch(next);
         self.router.route_to(running.inputs.clone());
         self.pipeline = Some(running);
@@ -681,17 +664,10 @@ impl Supervisor {
         pending: &mut std::collections::VecDeque<Command>,
     ) -> Wait {
         self.change(RuntimeState::Restarting);
-        if matches!(
-            self.wait_for_idle(listener, commands, pending),
-            Wait::Stopped
-        ) {
+        if self.wait_for_idle(listener, commands, pending) == Wait::Stopped {
             return Wait::Stopped;
         }
-        if let Some(old) = self.pipeline.take() {
-            old.shut_down();
-        }
-        self.binding.rebind(config.hotkey.key);
-        self.config = config;
+        self.end_pipeline(config);
         if let Some(state) = self.models_missing() {
             self.change(state);
         }
@@ -701,15 +677,23 @@ impl Supervisor {
 
     /// Without a pipeline, the configuration waits for the next start.
     fn keep_for_later(&mut self, config: Config) -> Wait {
-        self.binding.rebind(config.hotkey.key);
-        self.config = config;
+        self.end_pipeline(config);
         log::info!("runtime: configuration kept for when the pipeline starts");
         Wait::Idle
     }
 
+    /// Ends the pipeline, if one runs, and keeps `config` as the configuration of the next
+    /// one, its hotkey bound.
+    fn end_pipeline(&mut self, config: Config) {
+        if let Some(old) = self.pipeline.take() {
+            old.shut_down();
+        }
+        self.binding.rebind(config.hotkey.key);
+        self.config = config;
+    }
+
     /// Waits until no dictation is in progress and detaches the router from the pipeline;
     /// a stop arriving meanwhile ends the wait, a reload waits its turn.
-    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn wait_for_idle(
         &self,
         listener: &mut Option<ReloadListener>,
@@ -723,25 +707,31 @@ impl Supervisor {
                 Ok(reload) => pending.push_back(reload),
                 Err(mpsc::TryRecvError::Empty) => {}
             }
-            if self.activity.current() == PipelineActivity::Idle {
-                self.router.detach();
-                // a signal forwarded just before the detach may still be on its way to the
-                // pipeline: give it the time to start its dictation, which the wait then keeps
-                std::thread::sleep(IDLE_POLL_INTERVAL);
-                if self.activity.current() == PipelineActivity::Idle {
-                    return Wait::Idle;
-                }
-                if let Some(running) = &self.pipeline {
-                    self.router.route_to(running.inputs.clone());
-                }
+            let idle = self.activity.wait_idle(IDLE_POLL_INTERVAL) == PipelineActivity::Idle;
+            if idle && self.detached_idle() {
+                return Wait::Idle;
             }
-            if !told {
+            if !idle && !told {
                 log::info!("runtime: restart waits for the dictation in progress");
                 tell(listener, ReloadReport::WaitsForDictation);
                 told = true;
             }
-            std::thread::sleep(IDLE_POLL_INTERVAL);
         }
+    }
+
+    /// Detaches the router and whether the pipeline is still idle after that: a signal
+    /// forwarded just before the detach may still be on its way to the pipeline, so it gets
+    /// the time to start its dictation, which the wait then keeps, the router attached again.
+    fn detached_idle(&self) -> bool {
+        self.router.detach();
+        std::thread::sleep(IDLE_POLL_INTERVAL);
+        if self.activity.current() == PipelineActivity::Idle {
+            return true;
+        }
+        if let Some(running) = &self.pipeline {
+            self.router.route_to(running.inputs.clone());
+        }
+        false
     }
 
     fn stop(mut self) {
@@ -781,13 +771,12 @@ mod tests {
     use super::*;
     use crate::core::application::audio_recorder::MockAudioRecorder;
     use crate::core::application::hotkey_listener::MockHotkeyListener;
-    use crate::core::application::pipeline::PipelineConfig;
+    use crate::core::application::pipeline::{PipelineConfig, PipelineParts};
     use crate::core::application::sound_player::MockSoundPlayer;
     use crate::core::application::text_paster::MockTextPaster;
     use crate::core::application::text_refiner::MockTextRefiner;
     use crate::core::application::transcriber::MockTranscriber;
     use crate::core::application::visual_indicator::MockVisualIndicator;
-    use crate::core::application::ChunkingCfg;
     use crate::core::domain::{HotKey, RecordingMode};
     use std::time::Instant;
 
@@ -797,23 +786,17 @@ mod tests {
     struct IdleAssembler;
 
     impl PipelineAssembler for IdleAssembler {
-        fn assemble(
-            &mut self,
-            _config: &Config,
-            _inputs: Sender<PipelineInput>,
-        ) -> Result<Pipeline> {
+        fn assemble(&mut self, _cfg: &Config, _in: Sender<PipelineInput>) -> Result<Pipeline> {
             Ok(Pipeline::new(
-                Box::new(MockAudioRecorder::new()),
-                Box::new(MockTranscriber::new()),
-                Box::new(MockTextRefiner::new()),
-                Box::new(MockTextPaster::new()),
-                Box::new(MockSoundPlayer::new()),
-                Box::new(MockVisualIndicator::new()),
-                PipelineConfig {
-                    min_press_ms: 0,
-                    recording_mode: RecordingMode::Toggle,
-                    chunking: ChunkingCfg::default(),
+                PipelineParts {
+                    recorder: Box::new(MockAudioRecorder::new()),
+                    transcriber: Box::new(MockTranscriber::new()),
+                    refiner: Box::new(MockTextRefiner::new()),
+                    paster: Box::new(MockTextPaster::new()),
+                    sound_player: Box::new(MockSoundPlayer::new()),
+                    visual_indicator: Box::new(MockVisualIndicator::new()),
                 },
+                PipelineConfig::default(),
             ))
         }
     }
@@ -853,15 +836,7 @@ mod tests {
         // When
         runtime.start(with_hotkey(HotKey::F13)).unwrap();
         runtime.reload(with_hotkey(HotKey::F19)).unwrap();
-        let deadline = Instant::now() + REACTION;
-        while seen.lock().unwrap().last() != Some(&ready(HotKey::F19)) {
-            assert!(
-                Instant::now() < deadline,
-                "seen: {:?}",
-                seen.lock().unwrap()
-            );
-            std::thread::sleep(Duration::from_millis(5));
-        }
+        wait_for_state(&seen, &ready(HotKey::F19));
         runtime.stop();
         // Then
         assert_eq!(
@@ -902,11 +877,20 @@ mod tests {
     }
 
     fn wait_for_report(reports: &Mutex<Vec<ReloadReport>>) -> Vec<ReloadReport> {
+        wait_until(|| !reports.lock().unwrap().is_empty());
+        reports.lock().unwrap().clone()
+    }
+
+    /// Whether `done` held within the reaction time.
+    fn wait_until(done: impl Fn() -> bool) -> bool {
         let deadline = Instant::now() + REACTION;
-        while reports.lock().unwrap().is_empty() && Instant::now() < deadline {
+        while !done() {
+            if Instant::now() >= deadline {
+                return false;
+            }
             std::thread::sleep(Duration::from_millis(5));
         }
-        reports.lock().unwrap().clone()
+        true
     }
 
     #[test]
@@ -1031,15 +1015,8 @@ mod tests {
     }
 
     fn wait_for_state(seen: &Mutex<Vec<RuntimeState>>, state: &RuntimeState) {
-        let deadline = Instant::now() + REACTION;
-        while seen.lock().unwrap().last() != Some(state) {
-            assert!(
-                Instant::now() < deadline,
-                "seen: {:?}",
-                seen.lock().unwrap()
-            );
-            std::thread::sleep(Duration::from_millis(5));
-        }
+        let reached = wait_until(|| seen.lock().unwrap().last() == Some(state));
+        assert!(reached, "seen: {:?}", seen.lock().unwrap());
     }
 
     #[test]

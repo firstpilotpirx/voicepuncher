@@ -12,16 +12,15 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 
 use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
+use voicepuncher::adapters::secondary::visualfeedback::quiet::QuietVisualIndicator;
 use voicepuncher::config::Config;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
-use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
+use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use voicepuncher::core::application::{
-    AudioRecorder, ChunkingCfg, HotkeyListener, PipelineInput, SoundPlayer, TextPaster,
-    Transcriber, VisualIndicator,
+    AudioRecorder, ChunkingCfg, HotkeyListener, PipelineInput, SoundPlayer, TextPaster, Transcriber,
 };
 use voicepuncher::core::domain::{
-    AudioBuffer16k, CleanedText, FailureNotice, HotKey, HotkeyBinding, PttSignal, RawTranscript,
-    RecordingMode,
+    AudioBuffer16k, CleanedText, HotKey, HotkeyBinding, PttSignal, RawTranscript, RecordingMode,
 };
 use voicepuncher::runtime::signals;
 use voicepuncher::runtime::{PipelineAssembler, Runtime, RuntimeObserver, RuntimeState};
@@ -209,16 +208,18 @@ struct StandInAssembler;
 impl PipelineAssembler for StandInAssembler {
     fn assemble(&mut self, config: &Config, _inputs: Sender<PipelineInput>) -> Result<Pipeline> {
         Ok(Pipeline::new(
-            Box::new(SilentRecorder),
-            Box::new(NoSpeech),
-            Box::new(PassthroughTextRefiner),
-            Box::new(NoPaste),
-            Box::new(Silent),
-            Box::new(NoOverlay),
+            PipelineParts {
+                recorder: Box::new(SilentRecorder),
+                transcriber: Box::new(NoSpeech),
+                refiner: Box::new(PassthroughTextRefiner),
+                paster: Box::new(NoPaste),
+                sound_player: Box::new(Silent),
+                visual_indicator: Box::new(QuietVisualIndicator),
+            },
             PipelineConfig {
                 min_press_ms: config.hotkey.min_press_ms,
                 recording_mode: config.hotkey.recording_mode,
-                chunking: ChunkingCfg::default(),
+                ..PipelineConfig::default()
             },
         ))
     }
@@ -252,6 +253,7 @@ impl AudioRecorder for SilentRecorder {
     }
 
     fn flush_live_chunks(&mut self) {}
+    voicepuncher::records_whole_buffers_only!();
 }
 
 struct NoSpeech;
@@ -280,16 +282,4 @@ impl SoundPlayer for Silent {
     fn play_start(&self) {}
     fn play_stop(&self) {}
     fn play_cancel(&self) {}
-}
-
-struct NoOverlay;
-
-impl VisualIndicator for NoOverlay {
-    fn show_recording(&self) {}
-    fn show_recognizing_speech(&self) {}
-    fn show_refining_text(&self) {}
-    fn show_waiting_for_focus(&self) {}
-    fn show_pasted(&self) {}
-    fn hide(&self) {}
-    fn show_failure_notice(&self, _notice: &FailureNotice) {}
 }

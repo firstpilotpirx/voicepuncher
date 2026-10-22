@@ -14,17 +14,23 @@ use voicepuncher::adapters::secondary::visualfeedback::pointer_sign::{
     DictationSignState, PointerSignIndicator, PointerSignView, SignLifetimes,
 };
 use voicepuncher::core::application::audio_recorder::LiveChunk;
-use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
+use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use voicepuncher::core::application::{
-    AudioRecorder, ChunkingCfg, CommandSpotter, FocusProbe, FocusWaitCfg, KeyPresser,
-    PipelineInput, SoundPlayer, TextPaster, TextRefiner, Transcriber, VisualIndicator,
+    AudioRecorder, ChunkingCfg, FocusProbe, FocusWaitCfg, PipelineInput, SoundPlayer, TextPaster,
+    TextRefiner, Transcriber, VisualIndicator,
 };
 use voicepuncher::core::domain::{
     AudioBuffer16k, CleanedText, FailureNotice, FocusedElement, PttSignal, RawTranscript,
     RecordingMode, SpottingEvent, VoiceCommand,
 };
 
+use crate::steps::quiet_voice_control::{NoKeys, QuietSpotter};
 use crate::IntegrationWorld;
+mod doubles;
+use doubles::{
+    NotingOverlay, NotingSign, OneSecondRecorder, QuietPaster, Silent, SlowRefiner,
+    SlowTranscriber, SwitchableFocus,
+};
 
 const SENTENCE: &str = "Meeting moved to Friday.";
 /// How long each stand-in for a local service takes, so a stage lasts long enough to see.
@@ -124,12 +130,14 @@ impl PointerRun {
     fn start_pipeline(&self) -> Sender<PipelineInput> {
         let (tx, rx) = mpsc::channel();
         let mut pipeline = Pipeline::new(
-            Box::new(OneSecondRecorder(Arc::clone(&self.events))),
-            Box::new(SlowTranscriber { down: self.recognition_down }),
-            Box::new(SlowRefiner),
-            Box::new(QuietPaster),
-            Box::new(Silent),
-            Box::new(self.indicator()),
+            PipelineParts {
+                recorder: Box::new(OneSecondRecorder(Arc::clone(&self.events))),
+                transcriber: Box::new(SlowTranscriber { down: self.recognition_down }),
+                refiner: Box::new(SlowRefiner),
+                paster: Box::new(QuietPaster),
+                sound_player: Box::new(Silent),
+                visual_indicator: Box::new(self.indicator()),
+            },
             self.config(),
         )
         .with_focus_wait(
@@ -160,7 +168,7 @@ impl PointerRun {
             } else {
                 RecordingMode::Toggle
             },
-            chunking: ChunkingCfg { chunk_threshold_secs: 0, ..ChunkingCfg::default() },
+            ..PipelineConfig::default()
         }
     }
 
@@ -475,173 +483,4 @@ fn commands_unavailable_without_sign(world: &mut IntegrationWorld) -> Result<()>
         bail!("the dictation sign showed: {events:?}");
     }
     Ok(())
-}
-
-/// The dictation sign's window as the adapter sees it.
-struct NotingSign(Events);
-
-impl PointerSignView for NotingSign {
-    fn show(&self, badge: DictationSignState) {
-        record(&self.0, Event::Sign(Sign::Shown(badge)));
-    }
-
-    fn hide(&self) {
-        record(&self.0, Event::Sign(Sign::Gone));
-    }
-}
-
-struct NotingOverlay(Events);
-
-impl VisualIndicator for NotingOverlay {
-    fn show_recording(&self) {
-        record(&self.0, Event::Overlay(Overlay::Recording));
-    }
-
-    fn show_recognizing_speech(&self) {
-        record(&self.0, Event::Overlay(Overlay::RecognizingSpeech));
-    }
-
-    fn show_refining_text(&self) {
-        record(&self.0, Event::Overlay(Overlay::RefiningText));
-    }
-
-    fn show_pasted(&self) {
-        record(&self.0, Event::Overlay(Overlay::PastedSign));
-    }
-
-    fn show_waiting_for_focus(&self) {
-        record(&self.0, Event::Overlay(Overlay::WaitingForFocus));
-    }
-
-    fn hide(&self) {
-        record(&self.0, Event::Overlay(Overlay::Hidden));
-    }
-
-    fn show_failure_notice(&self, _notice: &FailureNotice) {
-        record(&self.0, Event::Overlay(Overlay::FailureNotice));
-    }
-
-    fn show_commands_unavailable(&self) {
-        record(&self.0, Event::Overlay(Overlay::CommandsUnavailable));
-    }
-}
-
-/// Hands over one second of audio at the stop.
-struct OneSecondRecorder(Events);
-
-impl AudioRecorder for OneSecondRecorder {
-    fn start(&mut self) -> Result<()> {
-        record(&self.0, Event::RecordingStarted);
-        Ok(())
-    }
-
-    fn stop(&mut self) -> Result<AudioBuffer16k> {
-        Ok(AudioBuffer16k::new(vec![
-            1_000i16;
-            AudioBuffer16k::SAMPLE_RATE_HZ
-                as usize
-        ]))
-    }
-
-    fn start_live_chunks(&mut self, _cfg: ChunkingCfg) -> Result<Option<Receiver<LiveChunk>>> {
-        Ok(None)
-    }
-
-    fn flush_live_chunks(&mut self) {}
-}
-
-/// The speech recognition service: answers after a moment, or refuses the connection when
-/// it is down.
-struct SlowTranscriber {
-    down: bool,
-}
-
-impl Transcriber for SlowTranscriber {
-    fn transcribe(&mut self, _audio: &AudioBuffer16k) -> Result<Option<RawTranscript>> {
-        std::thread::sleep(SERVICE_TIME);
-        if self.down {
-            bail!("connection refused");
-        }
-        Ok(Some(RawTranscript::new(SENTENCE.to_owned())?))
-    }
-}
-
-struct SlowRefiner;
-
-impl TextRefiner for SlowRefiner {
-    fn refine(&mut self, raw: &RawTranscript) -> Result<CleanedText> {
-        std::thread::sleep(SERVICE_TIME);
-        Ok(CleanedText::new(raw.as_str().to_owned())?)
-    }
-}
-
-struct QuietPaster;
-
-impl TextPaster for QuietPaster {
-    fn paste(&mut self, _text: &CleanedText) -> Result<()> {
-        Ok(())
-    }
-
-    fn leave_in_clipboard(&mut self, _text: &CleanedText) -> Result<()> {
-        Ok(())
-    }
-}
-
-/// A text field has keyboard focus, or a button while the flag is set.
-struct SwitchableFocus(Arc<AtomicBool>);
-
-impl FocusProbe for SwitchableFocus {
-    fn focused_element(&self) -> Result<Option<FocusedElement>> {
-        let button = self.0.load(Ordering::SeqCst);
-        Ok(Some(FocusedElement {
-            role: if button { "AXButton" } else { "AXTextField" }.to_owned(),
-            has_text_selection: !button,
-            value_settable: !button,
-            in_web_content: false,
-        }))
-    }
-}
-
-/// The command spotting service as the pipeline sees it; the scenario feeds the phrase it
-/// reports straight into the pipeline's input channel.
-struct QuietSpotter;
-
-impl CommandSpotter for QuietSpotter {
-    fn probe(&self) -> Result<()> {
-        Ok(())
-    }
-
-    fn start_listening(&mut self, _commands: &[VoiceCommand]) -> Result<()> {
-        Ok(())
-    }
-
-    fn listen_for(&mut self, _commands: &[VoiceCommand]) {}
-
-    fn stop_listening(&mut self) {}
-}
-
-struct NoKeys;
-
-impl KeyPresser for NoKeys {
-    fn press_enter(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn clear_all_text(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn paste(&mut self) -> Result<()> {
-        Ok(())
-    }
-}
-
-struct Silent;
-
-impl SoundPlayer for Silent {
-    fn play_start(&self) {}
-    fn play_stop(&self) {}
-    fn play_cancel(&self) {}
-    fn play_listening_on(&self) {}
-    fn play_listening_off(&self) {}
 }

@@ -99,6 +99,9 @@ impl AudioRecorder for NotingRecorder {
             .collect();
         self.speech.lock().unwrap().splice(0..0, heard);
     }
+    fn recording(&mut self) -> Option<voicepuncher::core::domain::AudioBuffer16k> {
+        None
+    }
 }
 
 /// Answers every part of the speech that started before the recording's cut.
@@ -252,6 +255,11 @@ impl VisualIndicator for RecordingOverlay {
 
     fn hide_commands_unavailable(&self) {
         record(&self.0, Event::Overlay("commands unavailable hidden"));
+    }
+    fn live_transcript_view(
+        &self,
+    ) -> Box<dyn voicepuncher::core::application::live_transcript_view::LiveTranscriptView> {
+        Box::new(voicepuncher::core::application::live_transcript_view::HiddenLiveTranscript)
     }
 }
 

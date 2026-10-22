@@ -28,7 +28,7 @@ impl LiveTranscript {
     }
 }
 
-pub(super) struct RecordingEnd(Arc<AtomicBool>);
+pub(crate) struct RecordingEnd(Arc<AtomicBool>);
 
 impl RecordingEnd {
     pub(super) fn signal(&self) {

@@ -18,7 +18,7 @@ use crate::adapters::secondary::textrefinement::openai::OpenAiTextRefiner;
 use crate::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use crate::adapters::secondary::transcription::openai::{longest_wait, OpenAiTranscriber};
 use crate::config::{Config, TranscriptionCfg};
-use crate::core::application::pipeline::{Pipeline, PipelineConfig};
+use crate::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use crate::core::application::{
     ChunkingCfg, CommandSpotter, FocusWaitCfg, PipelineInput, TextRefiner,
 };
@@ -61,20 +61,17 @@ impl PipelineAssembler for WiringAssembler {
             .transpose()?;
         let transcriber = connect_transcriber(config)?;
         let refiner = connect_refiner(config)?;
+        let paster = MacOsTextPaster::new(config.paste.clipboard_restore_delay_ms);
         let mut pipeline = Pipeline::new(
-            Box::new(recorder),
-            Box::new(transcriber),
-            refiner,
-            Box::new(MacOsTextPaster::new(
-                config.paste.clipboard_restore_delay_ms,
-            )),
-            Box::new(sound_player(config)),
-            Box::new(self.overlay.clone()),
-            PipelineConfig {
-                min_press_ms: config.hotkey.min_press_ms,
-                recording_mode: config.hotkey.recording_mode,
-                chunking: chunking_cfg(&config.transcription),
+            PipelineParts {
+                recorder: Box::new(recorder),
+                transcriber: Box::new(transcriber),
+                refiner,
+                paster: Box::new(paster),
+                sound_player: Box::new(sound_player(config)),
+                visual_indicator: Box::new(self.overlay.clone()),
             },
+            pipeline_config(config),
         )
         .with_stop_wait(stop_wait(&config.transcription))
         .with_focus_wait(
@@ -100,6 +97,16 @@ impl PipelineAssembler for WiringAssembler {
                 pipeline.with_voice_control(Box::new(spotter), Box::new(MacOsKeyPresser::new()));
         }
         Ok(pipeline)
+    }
+}
+
+/// The pipeline's settings from the configuration: the hotkey's and the chunking.
+fn pipeline_config(config: &Config) -> PipelineConfig {
+    PipelineConfig {
+        min_press_ms: config.hotkey.min_press_ms,
+        recording_mode: config.hotkey.recording_mode,
+        chunking: chunking_cfg(&config.transcription),
+        ..PipelineConfig::default()
     }
 }
 
@@ -130,12 +137,11 @@ pub fn connect_archive(config: &Config) -> FileSystemDictationArchive {
         dir.display(),
         config.archive.max_size_mb
     );
+    let refining = config.refinement.enabled;
+    let refinement_model = refining.then(|| config.refinement.model.clone());
     let setup = ArchiveSetup {
         dictation_model: config.transcription.model.clone(),
-        refinement_model: config
-            .refinement
-            .enabled
-            .then(|| config.refinement.model.clone()),
+        refinement_model,
         app_version: env!("CARGO_PKG_VERSION").to_string(),
     };
     FileSystemDictationArchive::new(dir, config.archive.max_size_bytes(), setup)
@@ -169,9 +175,8 @@ pub fn connect_refiner(config: &Config) -> Result<Box<dyn TextRefiner>> {
         log::info!("text refinement off (turn it on with --llm), pasting raw transcripts");
         return Ok(Box::new(PassthroughTextRefiner));
     }
-    Ok(Box::new(OpenAiTextRefiner::connect(
-        config.refinement.clone(),
-    )?))
+    let refiner = OpenAiTextRefiner::connect(config.refinement.clone())?;
+    Ok(Box::new(refiner))
 }
 
 pub fn chunking_cfg(cfg: &TranscriptionCfg) -> ChunkingCfg {

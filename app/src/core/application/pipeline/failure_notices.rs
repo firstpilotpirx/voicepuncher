@@ -1,6 +1,7 @@
 use crate::core::application::DictationOutcome;
 use crate::core::domain::{AccessibilityMissing, FailingPart, FailureNotice, VoiceCommand};
 
+use super::dictation::Dictation;
 use super::Pipeline;
 
 /// The recorder did not start; its failure notice is already shown.
@@ -33,7 +34,7 @@ fn gravity(notice: FailureNotice) -> Gravity {
 }
 
 /// The notice a cycle ends with once `notice` applies too: the graver of the two.
-fn graver(pending: Option<FailureNotice>, notice: FailureNotice) -> FailureNotice {
+pub(super) fn graver(pending: Option<FailureNotice>, notice: FailureNotice) -> FailureNotice {
     match pending {
         Some(pending) if gravity(pending) >= gravity(notice) => pending,
         _ => notice,
@@ -61,27 +62,25 @@ fn accessibility_if_missing(error: &anyhow::Error) -> Option<FailingPart> {
 }
 
 impl Pipeline {
-    /// Keeps `notice` for the end of the cycle, unless a graver one is already pending.
-    pub(super) fn note_failure(&mut self, notice: FailureNotice) {
-        log::warn!("failure notice: {}", notice.message());
-        self.pending_notice = Some(graver(self.pending_notice, notice));
-    }
-
-    /// Ends the cycle on the overlay: the pending failure notice, or hidden without one.
-    pub(super) fn end_cycle_on_overlay(&mut self) {
-        match self.pending_notice.take() {
+    /// Ends `dictation` on the overlay: its pending failure notice, or hidden without one.
+    pub(super) fn end_cycle_on_overlay(&self, dictation: &mut Dictation) {
+        match dictation.pending_notice.take() {
             Some(notice) => self.visual_indicator.show_failure_notice(&notice),
             None => self.visual_indicator.hide(),
         }
     }
 
-    /// Ends a dictation whose text was delivered on the overlay: the pending failure notice,
-    /// the Pasted sign when the text was pasted, or hidden.
-    pub(super) fn end_delivery_on_overlay(&mut self, outcome: DictationOutcome) {
-        if outcome == DictationOutcome::Pasted && self.pending_notice.is_none() {
+    /// Ends `dictation`, whose text was delivered, on the overlay: its pending failure
+    /// notice, the Pasted sign when the text was pasted, or hidden.
+    pub(super) fn end_delivery_on_overlay(
+        &self,
+        dictation: &mut Dictation,
+        outcome: DictationOutcome,
+    ) {
+        if outcome == DictationOutcome::Pasted && dictation.pending_notice.is_none() {
             self.visual_indicator.show_pasted();
         } else {
-            self.end_cycle_on_overlay();
+            self.end_cycle_on_overlay(dictation);
         }
     }
 

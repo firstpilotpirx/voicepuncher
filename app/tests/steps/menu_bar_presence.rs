@@ -20,10 +20,10 @@ use voicepuncher::adapters::primary::menubar::macos::mapping::IconState;
 use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::config::Config;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
-use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
+use voicepuncher::core::application::pipeline::{Pipeline, PipelineParts};
 use voicepuncher::core::application::{
-    AudioRecorder, ChunkingCfg, CommandSpotter, FocusProbe, FocusWaitCfg, HotkeyListener,
-    KeyPresser, PipelineInput, SoundPlayer, TextPaster, Transcriber, VisualIndicator,
+    AudioRecorder, ChunkingCfg, FocusProbe, FocusWaitCfg, HotkeyListener, PipelineInput,
+    SoundPlayer, TextPaster, Transcriber, VisualIndicator,
 };
 use voicepuncher::core::domain::{
     AudioBuffer16k, CleanedText, CommandPlacement, FailureNotice, FocusedElement, HotKey,
@@ -33,9 +33,13 @@ use voicepuncher::runtime::{
     PipelineAssembler, Runtime, RuntimeObserver, RuntimeState, SharedVisualIndicator,
 };
 
+use crate::steps::pipeline_config::pipeline_config;
+use crate::steps::quiet_voice_control::{NoKeys, QuietSpotter};
 use crate::IntegrationWorld;
 
+mod doubles;
 mod services;
+use doubles::{FakeKeyboard, QuietOverlay, StandInAssembler};
 
 const DICTATED: &str = "Meeting moved to Friday.";
 const SILENT_SERVICE_ERROR: &str =
@@ -697,195 +701,4 @@ fn status_line_failed(world: &mut IntegrationWorld, prefix: String) -> Result<()
         bail!("the status line reads {line:?}");
     }
     Ok(())
-}
-
-/// Builds every pipeline from stand-ins over the overlay the status item decorates.
-struct StandInAssembler {
-    parts: Parts,
-    overlay: SharedVisualIndicator,
-    /// Holds the first assembly until the scenario says whether the services answer.
-    gate: Option<Receiver<bool>>,
-}
-
-impl PipelineAssembler for StandInAssembler {
-    fn assemble(&mut self, config: &Config, inputs: Sender<PipelineInput>) -> Result<Pipeline> {
-        let answer = match self.gate.take() {
-            Some(gate) => gate.recv().unwrap_or(false),
-            None => *self.parts.services_answer.lock().unwrap(),
-        };
-        if !answer {
-            bail!("{SILENT_SERVICE_ERROR}");
-        }
-        *self.parts.inputs.lock().unwrap() = Some(inputs);
-        let mut pipeline = Pipeline::new(
-            Box::new(StandInRecorder),
-            Box::new(StandInTranscriber(self.parts.clone())),
-            Box::new(PassthroughTextRefiner),
-            Box::new(StandInPaster(Arc::clone(&self.parts.pasted))),
-            Box::new(StandInSounds(Arc::clone(&self.parts.cancel_played))),
-            Box::new(self.overlay.clone()),
-            PipelineConfig {
-                min_press_ms: config.hotkey.min_press_ms,
-                recording_mode: config.hotkey.recording_mode,
-                chunking: ChunkingCfg { chunk_threshold_secs: 0, ..ChunkingCfg::default() },
-            },
-        )
-        .with_focus_wait(
-            Box::new(ScriptedFocus(Arc::clone(&self.parts.text_field_focused))),
-            FocusWaitCfg {
-                timeout: Duration::from_secs(config.paste.focus_wait_seconds),
-                poll_interval: FOCUS_POLL,
-            },
-        );
-        if config.voice_control.enabled {
-            pipeline = pipeline.with_voice_control(Box::new(StandInSpotter), Box::new(NoKeys));
-        }
-        Ok(pipeline)
-    }
-}
-
-struct StandInRecorder;
-
-impl AudioRecorder for StandInRecorder {
-    fn start(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn stop(&mut self) -> Result<AudioBuffer16k> {
-        Ok(AudioBuffer16k::new(vec![
-            1_000i16;
-            AudioBuffer16k::SAMPLE_RATE_HZ
-                as usize
-        ]))
-    }
-
-    fn start_live_chunks(&mut self, _cfg: ChunkingCfg) -> Result<Option<Receiver<LiveChunk>>> {
-        Ok(None)
-    }
-
-    fn flush_live_chunks(&mut self) {}
-}
-
-/// Answers with the dictated sentence, fails when the service is down, and waits while held.
-struct StandInTranscriber(Parts);
-
-impl Transcriber for StandInTranscriber {
-    fn transcribe(&mut self, _audio: &AudioBuffer16k) -> Result<Option<RawTranscript>> {
-        while *self.0.transcription_held.lock().unwrap() {
-            std::thread::sleep(POLL);
-        }
-        if *self.0.transcription_fails.lock().unwrap() {
-            bail!("{SILENT_SERVICE_ERROR}");
-        }
-        Ok(Some(RawTranscript::new(DICTATED.to_owned())?))
-    }
-}
-
-struct StandInPaster(Flag);
-
-impl TextPaster for StandInPaster {
-    fn paste(&mut self, _text: &CleanedText) -> Result<()> {
-        set(&self.0, true);
-        Ok(())
-    }
-
-    fn leave_in_clipboard(&mut self, _text: &CleanedText) -> Result<()> {
-        Ok(())
-    }
-}
-
-struct StandInSounds(Flag);
-
-impl SoundPlayer for StandInSounds {
-    fn play_start(&self) {}
-    fn play_stop(&self) {}
-    fn play_cancel(&self) {
-        set(&self.0, true);
-    }
-}
-
-struct QuietOverlay;
-
-impl VisualIndicator for QuietOverlay {
-    fn show_recording(&self) {}
-    fn show_recognizing_speech(&self) {}
-    fn show_refining_text(&self) {}
-    fn show_waiting_for_focus(&self) {}
-    fn show_pasted(&self) {}
-    fn hide(&self) {}
-    fn show_failure_notice(&self, _notice: &FailureNotice) {}
-}
-
-struct ScriptedFocus(Flag);
-
-impl FocusProbe for ScriptedFocus {
-    fn focused_element(&self) -> Result<Option<FocusedElement>> {
-        let text_field = *self.0.lock().unwrap();
-        Ok(Some(FocusedElement {
-            role: if text_field {
-                "AXTextField"
-            } else {
-                "AXButton"
-            }
-            .to_owned(),
-            has_text_selection: text_field,
-            value_settable: text_field,
-            in_web_content: false,
-        }))
-    }
-}
-
-struct StandInSpotter;
-
-impl CommandSpotter for StandInSpotter {
-    fn probe(&self) -> Result<()> {
-        Ok(())
-    }
-
-    fn start_listening(&mut self, _commands: &[VoiceCommand]) -> Result<()> {
-        Ok(())
-    }
-
-    fn listen_for(&mut self, _commands: &[VoiceCommand]) {}
-
-    fn stop_listening(&mut self) {}
-}
-
-struct NoKeys;
-
-impl KeyPresser for NoKeys {
-    fn press_enter(&mut self) -> Result<()> {
-        Ok(())
-    }
-    fn clear_all_text(&mut self) -> Result<()> {
-        Ok(())
-    }
-    fn paste(&mut self) -> Result<()> {
-        Ok(())
-    }
-}
-
-/// The keyboard the runtime's listener reads.
-#[derive(Clone, Default)]
-struct FakeKeyboard {
-    wired: Arc<Mutex<Option<Sender<PttSignal>>>>,
-}
-
-impl FakeKeyboard {
-    fn signal(&self, signal: PttSignal) {
-        if let Some(tx) = self.wired.lock().unwrap().as_ref() {
-            let _ = tx.send(signal);
-        }
-    }
-}
-
-impl HotkeyListener for FakeKeyboard {
-    fn spawn(
-        self: Box<Self>,
-        _binding: HotkeyBinding,
-        tx: Sender<PttSignal>,
-    ) -> Result<JoinHandle<()>> {
-        *self.wired.lock().unwrap() = Some(tx);
-        Ok(std::thread::spawn(|| {}))
-    }
 }

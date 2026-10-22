@@ -16,11 +16,9 @@ use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 
 use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
-use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
-use voicepuncher::core::application::{ChunkingCfg, PipelineInput};
-use voicepuncher::core::domain::{
-    CommandPlacement, PttSignal, RecordingMode, SpottingEvent, VoiceCommand,
-};
+use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
+use voicepuncher::core::application::PipelineInput;
+use voicepuncher::core::domain::{CommandPlacement, PttSignal, SpottingEvent, VoiceCommand};
 
 use doubles::{
     Cut, Event, Events, NotingRecorder, Phrases, PipelineLog, RecordingKeyPresser,
@@ -154,25 +152,23 @@ impl VoiceRun {
         pipeline_log();
         let (tx, rx) = mpsc::channel();
         let mut pipeline = Pipeline::new(
-            Box::new(NotingRecorder {
-                events: Arc::clone(&self.events),
-                speech: Arc::clone(&self.speech),
-                cut: Arc::clone(&self.cut),
-                said_before: Vec::new(),
-            }),
-            Box::new(SpeechBeforeCut {
-                speech: Arc::clone(&self.speech),
-                cut: Arc::clone(&self.cut),
-            }),
-            Box::new(PassthroughTextRefiner),
-            Box::new(RecordingPaster(Arc::clone(&self.events))),
-            Box::new(RecordingSounds(Arc::clone(&self.events))),
-            Box::new(RecordingOverlay(Arc::clone(&self.events))),
-            PipelineConfig {
-                min_press_ms: 0,
-                recording_mode: RecordingMode::Toggle,
-                chunking: ChunkingCfg { chunk_threshold_secs: 0, ..ChunkingCfg::default() },
+            PipelineParts {
+                recorder: Box::new(NotingRecorder {
+                    events: Arc::clone(&self.events),
+                    speech: Arc::clone(&self.speech),
+                    cut: Arc::clone(&self.cut),
+                    said_before: Vec::new(),
+                }),
+                transcriber: Box::new(SpeechBeforeCut {
+                    speech: Arc::clone(&self.speech),
+                    cut: Arc::clone(&self.cut),
+                }),
+                refiner: Box::new(PassthroughTextRefiner),
+                paster: Box::new(RecordingPaster(Arc::clone(&self.events))),
+                sound_player: Box::new(RecordingSounds(Arc::clone(&self.events))),
+                visual_indicator: Box::new(RecordingOverlay(Arc::clone(&self.events))),
             },
+            PipelineConfig::default(),
         );
         if self.voice_control {
             pipeline = pipeline.with_voice_control(

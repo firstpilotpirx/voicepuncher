@@ -6,7 +6,7 @@ use crate::core::application::audio_recorder::{LiveChunk, MockAudioRecorder};
 use crate::core::application::command_spotter::MockCommandSpotter;
 use crate::core::application::key_presser::MockKeyPresser;
 use crate::core::application::live_transcript_view::HiddenLiveTranscript;
-use crate::core::application::pipeline::PipelineConfig;
+use crate::core::application::pipeline::{PipelineConfig, PipelineParts};
 use crate::core::application::sound_player::MockSoundPlayer;
 use crate::core::application::text_paster::MockTextPaster;
 use crate::core::application::text_refiner::MockTextRefiner;
@@ -137,10 +137,18 @@ fn pipeline(
 
 /// Toggle recording, transcribed in one go when it ends.
 fn toggle_cfg() -> PipelineConfig {
-    PipelineConfig {
-        min_press_ms: 0,
-        recording_mode: RecordingMode::Toggle,
-        chunking: ChunkingCfg { chunk_threshold_secs: 0, ..ChunkingCfg::default() },
+    PipelineConfig::default()
+}
+
+/// The parts of a pipeline over `recorder` and `paster`, the other ports answering doubles.
+fn parts(recorder: MockAudioRecorder, paster: MockTextPaster) -> PipelineParts {
+    PipelineParts {
+        recorder: Box::new(recorder),
+        transcriber: Box::new(answering_transcriber()),
+        refiner: Box::new(passthrough_refiner()),
+        paster: Box::new(paster),
+        sound_player: Box::new(sounds()),
+        visual_indicator: Box::new(overlay()),
     }
 }
 
@@ -154,49 +162,29 @@ fn pipeline_with(
     mode: RecordingMode,
 ) -> Pipeline {
     let cfg = PipelineConfig { recording_mode: mode, ..toggle_cfg() };
-    Pipeline::new(
-        Box::new(recorder),
-        Box::new(answering_transcriber()),
-        Box::new(passthrough_refiner()),
-        Box::new(paster),
-        Box::new(sounds),
-        Box::new(overlay()),
-        cfg,
-    )
-    .with_voice_control(Box::new(spotter), Box::new(keys))
+    let parts = PipelineParts { sound_player: Box::new(sounds), ..parts(recorder, paster) };
+    Pipeline::new(parts, cfg).with_voice_control(Box::new(spotter), Box::new(keys))
 }
 
 /// A pipeline in standby whose overlay is `overlay` and whose sounds are `sounds`.
 fn standby_pipeline(overlay: MockVisualIndicator, sounds: MockSoundPlayer) -> Pipeline {
-    Pipeline::new(
-        Box::new(idle_recorder()),
-        Box::new(answering_transcriber()),
-        Box::new(passthrough_refiner()),
-        Box::new(MockTextPaster::new()),
-        Box::new(sounds),
-        Box::new(overlay),
-        toggle_cfg(),
-    )
-    .with_voice_control(Box::new(lenient_spotter()), Box::new(MockKeyPresser::new()))
+    let parts = PipelineParts {
+        sound_player: Box::new(sounds),
+        visual_indicator: Box::new(overlay),
+        ..parts(idle_recorder(), MockTextPaster::new())
+    };
+    Pipeline::new(parts, toggle_cfg())
+        .with_voice_control(Box::new(lenient_spotter()), Box::new(MockKeyPresser::new()))
 }
 
 /// A pipeline that transcribes a dictation in live chunks while it runs.
 fn live_chunking_pipeline(recorder: MockAudioRecorder, spotter: MockCommandSpotter) -> Pipeline {
     let cfg = PipelineConfig {
-        min_press_ms: 0,
-        recording_mode: RecordingMode::Toggle,
         chunking: ChunkingCfg { chunk_threshold_secs: 1, ..ChunkingCfg::default() },
+        ..PipelineConfig::default()
     };
-    Pipeline::new(
-        Box::new(recorder),
-        Box::new(answering_transcriber()),
-        Box::new(passthrough_refiner()),
-        Box::new(MockTextPaster::new()),
-        Box::new(sounds()),
-        Box::new(overlay()),
-        cfg,
-    )
-    .with_voice_control(Box::new(spotter), Box::new(MockKeyPresser::new()))
+    Pipeline::new(parts(recorder, MockTextPaster::new()), cfg)
+        .with_voice_control(Box::new(spotter), Box::new(MockKeyPresser::new()))
 }
 
 fn listen(pipeline: &mut Pipeline) {
@@ -262,7 +250,7 @@ fn should_record_with_the_hotkey_and_keep_listening() {
     press(&mut pipeline);
     // Then
     assert!(!pipeline.is_recording());
-    assert!(pipeline.listening());
+    assert!(pipeline.voice.listening());
 }
 
 #[test]
@@ -283,7 +271,7 @@ fn should_end_a_hold_dictation_on_release_and_keep_listening() {
         .unwrap();
     // Then
     assert!(!pipeline.is_recording());
-    assert!(pipeline.listening());
+    assert!(pipeline.voice.listening());
 }
 
 #[test]
@@ -417,7 +405,7 @@ fn should_cancel_a_dictation_on_escape_and_keep_listening() {
         .unwrap();
     // Then
     assert!(!pipeline.is_recording());
-    assert!(pipeline.listening());
+    assert!(pipeline.voice.listening());
 }
 
 #[test]
@@ -441,7 +429,7 @@ fn should_stop_listening_on_shutdown() {
     let result = pipeline.run(rx);
     // Then
     assert!(result.is_ok());
-    assert!(!pipeline.listening());
+    assert!(!pipeline.voice.listening());
     drop(inputs);
 }
 
@@ -465,7 +453,7 @@ fn should_start_listening_as_soon_as_the_pipeline_runs() {
     // When
     let _ = pipeline.run(rx);
     // Then
-    assert!(pipeline.listening());
+    assert!(pipeline.voice.listening());
 }
 
 #[test]
@@ -508,7 +496,7 @@ fn should_keep_listening_when_a_dictation_cannot_start() {
         "{results:?}"
     );
     assert!(!pipeline.is_recording());
-    assert!(pipeline.listening());
+    assert!(pipeline.voice.listening());
     assert_eq!(
         *listened.lock().unwrap(),
         [
@@ -648,16 +636,10 @@ fn should_paste_a_restarted_dictation_without_the_restart_its_lead_in_caught() {
         seen.lock().unwrap().push(text.as_str().to_owned());
         Ok(())
     });
-    let mut pipeline = Pipeline::new(
-        Box::new(recording_recorder()),
-        Box::new(transcriber),
-        Box::new(passthrough_refiner()),
-        Box::new(paster),
-        Box::new(sounds()),
-        Box::new(overlay()),
-        toggle_cfg(),
-    )
-    .with_voice_control(Box::new(lenient_spotter()), Box::new(MockKeyPresser::new()));
+    let parts =
+        PipelineParts { transcriber: Box::new(transcriber), ..parts(recording_recorder(), paster) };
+    let mut pipeline = Pipeline::new(parts, toggle_cfg())
+        .with_voice_control(Box::new(lenient_spotter()), Box::new(MockKeyPresser::new()));
     listen(&mut pipeline);
     say(&mut pipeline, "start dictation");
     let restart = said(
@@ -850,17 +832,16 @@ fn should_give_the_restart_cue_before_the_dropped_dictation_is_transcribed() {
         .returning(move || seen.lock().unwrap().push("restart"));
     let mut paster = MockTextPaster::new();
     paster.expect_paste().never();
+    let parts = PipelineParts {
+        transcriber: Box::new(slow_transcriber(released, Arc::clone(&order))),
+        sound_player: Box::new(sounds),
+        ..parts(recorder_with_one_live_chunk(), paster)
+    };
     let mut pipeline = Pipeline::new(
-        Box::new(recorder_with_one_live_chunk()),
-        Box::new(slow_transcriber(released, Arc::clone(&order))),
-        Box::new(passthrough_refiner()),
-        Box::new(paster),
-        Box::new(sounds),
-        Box::new(overlay()),
+        parts,
         PipelineConfig {
-            min_press_ms: 0,
-            recording_mode: RecordingMode::Toggle,
             chunking: ChunkingCfg { chunk_threshold_secs: 1, ..ChunkingCfg::default() },
+            ..PipelineConfig::default()
         },
     )
     .with_voice_control(Box::new(lenient_spotter()), Box::new(MockKeyPresser::new()));

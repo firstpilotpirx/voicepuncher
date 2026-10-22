@@ -12,14 +12,13 @@ use cucumber::{given, then, when};
 
 use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
-use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
+use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use voicepuncher::core::application::{
     AudioRecorder, ChunkingCfg, PipelineInput, SoundPlayer, TextPaster, Transcriber,
     VisualIndicator,
 };
 use voicepuncher::core::domain::{
     AudioBuffer16k, CleanedText, FailingPart, FailureNotice, PttSignal, RawTranscript,
-    RecordingMode,
 };
 
 use crate::IntegrationWorld;
@@ -69,16 +68,17 @@ fn start_pipeline(run: &mut LossRun) -> Result<(Sender<PipelineInput>, JoinHandl
     let (release_tx, release_rx) = mpsc::channel();
     run.release = Some(release_tx);
     let mut pipeline = Pipeline::new(
-        Box::new(OneChunkRecorder(run.recordings.clone())),
-        Box::new(FirstDictationLost { loss, release: Some(release_rx) }),
-        Box::new(PassthroughTextRefiner),
-        Box::new(CapturingPaster(run.pasted.clone())),
-        Box::new(Quiet(run.notices.clone())),
-        Box::new(Quiet(run.notices.clone())),
+        PipelineParts {
+            recorder: Box::new(OneChunkRecorder(run.recordings.clone())),
+            transcriber: Box::new(FirstDictationLost { loss, release: Some(release_rx) }),
+            refiner: Box::new(PassthroughTextRefiner),
+            paster: Box::new(CapturingPaster(run.pasted.clone())),
+            sound_player: Box::new(Quiet(run.notices.clone())),
+            visual_indicator: Box::new(Quiet(run.notices.clone())),
+        },
         PipelineConfig {
-            min_press_ms: 0,
-            recording_mode: RecordingMode::Toggle,
             chunking: ChunkingCfg { chunk_threshold_secs: 30, ..ChunkingCfg::default() },
+            ..PipelineConfig::default()
         },
     )
     .with_stop_wait(STOP_WAIT);
@@ -195,6 +195,7 @@ impl AudioRecorder for OneChunkRecorder {
     }
 
     fn flush_live_chunks(&mut self) {}
+    voicepuncher::records_whole_buffers_only!();
 }
 
 /// Loses the first dictation's chunk as `loss` says and answers the second one.
@@ -253,4 +254,5 @@ impl VisualIndicator for Quiet {
     fn show_failure_notice(&self, notice: &FailureNotice) {
         self.0.lock().unwrap().push(*notice);
     }
+    voicepuncher::shows_no_voice_control_signs!();
 }

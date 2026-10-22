@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
+use std::time::Instant;
 
 use anyhow::{anyhow, Result};
 
@@ -63,6 +64,8 @@ impl AudioRecorder for FileSystemAudioRecorder {
     fn recording(&mut self) -> Option<AudioBuffer16k> {
         Self::load(&self.path).ok()
     }
+    fn truncate_at(&mut self, _cut: Instant) {}
+    fn begin_with(&mut self, _lead_in: AudioBuffer16k) {}
 }
 
 #[cfg(test)]

@@ -12,17 +12,20 @@ use cucumber::{given, then, when};
 
 use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
-use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
+use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use voicepuncher::core::application::{
     AudioRecorder, ChunkingCfg, FocusProbe, FocusWaitCfg, PipelineInput, SoundPlayer, TextPaster,
     Transcriber, VisualIndicator,
 };
 use voicepuncher::core::domain::{
     AudioBuffer16k, CleanedText, FailureNotice, FocusedElement, PttSignal, RawTranscript,
-    RecordingMode,
 };
 
 use crate::IntegrationWorld;
+mod doubles;
+use doubles::{
+    FixedTranscript, OneSecondRecorder, RecordingIndicator, RecordingPaster, ScriptedFocus, Silent,
+};
 
 const DICTATED: &str = "Meeting moved to Friday.";
 const WAIT_TIME: Duration = Duration::from_secs(3);
@@ -116,23 +119,21 @@ impl InsertionRun {
         let (tx, rx) = mpsc::channel();
         let events = Arc::clone(&self.events);
         let mut pipeline = Pipeline::new(
-            Box::new(OneSecondRecorder(Arc::clone(&events))),
-            Box::new(FixedTranscript),
-            Box::new(PassthroughTextRefiner),
-            Box::new(RecordingPaster(
-                Arc::clone(&events),
-                Arc::clone(&self.left_in_clipboard_at),
-            )),
-            Box::new(Silent),
-            Box::new(RecordingIndicator(
-                Arc::clone(&events),
-                Arc::clone(&self.waiting_shown_at),
-            )),
-            PipelineConfig {
-                min_press_ms: 0,
-                recording_mode: RecordingMode::Toggle,
-                chunking: ChunkingCfg { chunk_threshold_secs: 0, ..ChunkingCfg::default() },
+            PipelineParts {
+                recorder: Box::new(OneSecondRecorder(Arc::clone(&events))),
+                transcriber: Box::new(FixedTranscript),
+                refiner: Box::new(PassthroughTextRefiner),
+                paster: Box::new(RecordingPaster(
+                    Arc::clone(&events),
+                    Arc::clone(&self.left_in_clipboard_at),
+                )),
+                sound_player: Box::new(Silent),
+                visual_indicator: Box::new(RecordingIndicator(
+                    Arc::clone(&events),
+                    Arc::clone(&self.waiting_shown_at),
+                )),
             },
+            PipelineConfig::default(),
         )
         .with_focus_wait(
             Box::new(ScriptedFocus(Arc::clone(&self.focus))),
@@ -423,113 +424,4 @@ fn recording_starts(world: &mut IntegrationWorld) -> Result<()> {
         std::thread::sleep(Duration::from_millis(5));
     }
     Ok(())
-}
-
-struct ScriptedFocus(Arc<Mutex<Focus>>);
-
-impl FocusProbe for ScriptedFocus {
-    fn focused_element(&self) -> Result<Option<FocusedElement>> {
-        let element =
-            |role: &str, has_text_selection: bool, value_settable: bool, in_web_content: bool| {
-                Ok(Some(FocusedElement {
-                    role: role.to_owned(),
-                    has_text_selection,
-                    value_settable,
-                    in_web_content,
-                }))
-            };
-        match *self.0.lock().unwrap() {
-            Focus::TextField => element("AXTextField", true, true, false),
-            Focus::Button => element("AXButton", false, false, false),
-            Focus::WebPage => element("AXWebArea", false, false, true),
-            Focus::WebPageWithSelectedText => element("AXWebArea", true, false, true),
-            Focus::WebTextInput => element("AXTextField", true, true, true),
-            Focus::WebEditable => element("AXGroup", true, true, true),
-            Focus::TerminalWindow => element("AXWindow", false, false, false),
-            Focus::ListWithTextSelection => element("AXList", true, false, false),
-            Focus::Unreported => bail!("AX error -25204: cannot complete"),
-        }
-    }
-}
-
-struct OneSecondRecorder(Arc<Mutex<Vec<Event>>>);
-
-impl AudioRecorder for OneSecondRecorder {
-    fn start(&mut self) -> Result<()> {
-        self.0.lock().unwrap().push(Event::RecordingStarted);
-        Ok(())
-    }
-
-    fn stop(&mut self) -> Result<AudioBuffer16k> {
-        Ok(AudioBuffer16k::new(vec![
-            1_000i16;
-            AudioBuffer16k::SAMPLE_RATE_HZ
-                as usize
-        ]))
-    }
-
-    fn start_live_chunks(&mut self, _cfg: ChunkingCfg) -> Result<Option<Receiver<LiveChunk>>> {
-        Ok(None)
-    }
-
-    fn flush_live_chunks(&mut self) {}
-}
-
-struct FixedTranscript;
-
-impl Transcriber for FixedTranscript {
-    fn transcribe(&mut self, _audio: &AudioBuffer16k) -> Result<Option<RawTranscript>> {
-        Ok(Some(RawTranscript::new(DICTATED.to_owned())?))
-    }
-}
-
-struct RecordingPaster(Arc<Mutex<Vec<Event>>>, Arc<Mutex<Option<Instant>>>);
-
-impl TextPaster for RecordingPaster {
-    fn paste(&mut self, text: &CleanedText) -> Result<()> {
-        self.0
-            .lock()
-            .unwrap()
-            .push(Event::Pasted(text.as_str().to_owned()));
-        Ok(())
-    }
-
-    fn leave_in_clipboard(&mut self, text: &CleanedText) -> Result<()> {
-        *self.1.lock().unwrap() = Some(Instant::now());
-        self.0
-            .lock()
-            .unwrap()
-            .push(Event::LeftInClipboard(text.as_str().to_owned()));
-        Ok(())
-    }
-}
-
-struct RecordingIndicator(Arc<Mutex<Vec<Event>>>, Arc<Mutex<Option<Instant>>>);
-
-impl VisualIndicator for RecordingIndicator {
-    fn show_recording(&self) {}
-    fn show_recognizing_speech(&self) {}
-    fn show_refining_text(&self) {}
-    fn show_pasted(&self) {
-        self.0.lock().unwrap().push(Event::PastedSignShown);
-    }
-    fn show_waiting_for_focus(&self) {
-        *self.1.lock().unwrap() = Some(Instant::now());
-        self.0.lock().unwrap().push(Event::WaitingShown);
-    }
-    fn hide(&self) {
-        std::thread::sleep(PIPELINE_LAG);
-        self.0.lock().unwrap().push(Event::Hidden);
-    }
-    fn show_failure_notice(&self, notice: &FailureNotice) {
-        self.0.lock().unwrap().push(Event::FailureNotice(*notice));
-    }
-}
-
-struct Silent;
-
-impl SoundPlayer for Silent {
-    fn play_start(&self) {}
-    fn play_stop(&self) {}
-    fn play_cancel(&self) {}
 }

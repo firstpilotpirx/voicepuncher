@@ -1,7 +1,8 @@
 /// What the pipeline is doing, as far as a restart must care: a dictation in progress is
 /// never cut.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PipelineActivity {
+    #[default]
     Idle,
     Recording,
     /// Recognition, refinement, the focus wait and the paste.

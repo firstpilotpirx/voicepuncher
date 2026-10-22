@@ -7,7 +7,14 @@ use crate::core::domain::{
 };
 
 use super::failure_notices::{command_failed, RecordingNotStarted};
+use super::recording::Awaits;
 use super::{Pipeline, StartCue};
+
+/// Voice control: off, or on with its service and the keys it presses.
+pub(super) enum Voice {
+    Off,
+    On(VoiceControl),
+}
 
 pub(super) struct VoiceControl {
     spotter: Box<dyn CommandSpotter>,
@@ -25,6 +32,49 @@ pub(super) struct VoiceControl {
     carried_before_outage: Option<Instant>,
 }
 
+impl Voice {
+    pub(super) fn listening(&self) -> bool {
+        matches!(self, Self::On(voice) if voice.listening)
+    }
+
+    /// Voice control while it listens; none when it is off or not listening.
+    fn listening_mut(&mut self) -> Option<&mut VoiceControl> {
+        match self {
+            Self::On(voice) if voice.listening => Some(voice),
+            _ => None,
+        }
+    }
+
+    /// Points the service at the phrases of a running dictation or of standby, whatever
+    /// started or ended the dictation; nothing without voice control or while not listening.
+    pub(super) fn follow_dictation(&mut self, dictating: bool) {
+        if let Some(voice) = self.listening_mut() {
+            voice.spotter.listen_for(if dictating {
+                &VoiceCommand::DICTATING
+            } else {
+                &VoiceCommand::STANDBY
+            });
+        }
+    }
+
+    /// The sound heard since `since`; none without voice control.
+    pub(super) fn heard_since(&self, since: Instant) -> AudioBuffer16k {
+        match self {
+            Self::On(voice) => voice.spotter.heard_since(since),
+            Self::Off => AudioBuffer16k::new(Vec::new()),
+        }
+    }
+
+    /// Closes the microphone of voice control; nothing without voice control.
+    pub(super) fn turn_listening_off(&mut self) {
+        if let Some(voice) = self.listening_mut() {
+            voice.spotter.stop_listening();
+            voice.listening = false;
+            log::info!("voice control: listening off");
+        }
+    }
+}
+
 impl Pipeline {
     /// Turns voice control on: listening runs alongside push-to-talk, and spoken commands
     /// drive dictations and key presses as the hotkey does.
@@ -33,7 +83,7 @@ impl Pipeline {
         spotter: Box<dyn CommandSpotter>,
         key_presser: Box<dyn KeyPresser>,
     ) -> Self {
-        self.voice = Some(VoiceControl {
+        self.voice = Voice::On(VoiceControl {
             spotter,
             key_presser,
             recognizer: VoiceCommandRecognizer::new(),
@@ -51,12 +101,12 @@ impl Pipeline {
             PipelineInput::Spotting(event) => log::debug!("voice control recv {event:?}"),
             other => log::info!(
                 "voice control recv {other:?}, listening={}",
-                self.listening()
+                self.voice.listening()
             ),
         }
         match input {
             PipelineInput::Spotting(SpottingEvent::ConfirmationFailed { .. })
-                if self.listening() =>
+                if self.voice.listening() =>
             {
                 // A command said in the segment is lost: say so, as when the service is away.
                 self.show_failure_at_once(FailureNotice::VoiceCommandsUnavailable);
@@ -81,38 +131,12 @@ impl Pipeline {
         }
     }
 
-    fn voice(&mut self) -> &mut VoiceControl {
-        self.voice.as_mut().expect("voice control is on")
-    }
-
-    fn listening(&self) -> bool {
-        self.voice.as_ref().is_some_and(|voice| voice.listening)
-    }
-
-    /// Points the service at the phrases of a running dictation or of standby, whatever
-    /// started or ended the dictation; nothing without voice control or while not listening.
-    pub(super) fn follow_dictation(&mut self, dictating: bool) {
-        let Some(voice) = self.voice.as_mut().filter(|voice| voice.listening) else {
+    /// Opens the microphone of voice control; nothing without voice control.
+    pub(super) fn turn_listening_on(&mut self) {
+        let Voice::On(voice) = &mut self.voice else {
             return;
         };
-        voice.spotter.listen_for(if dictating {
-            &VoiceCommand::DICTATING
-        } else {
-            &VoiceCommand::STANDBY
-        });
-    }
-
-    /// The sound heard since `since`; none without voice control.
-    pub(super) fn heard_since(&self, since: Instant) -> AudioBuffer16k {
-        self.voice.as_ref().map_or_else(
-            || AudioBuffer16k::new(Vec::new()),
-            |voice| voice.spotter.heard_since(since),
-        )
-    }
-
-    pub(super) fn turn_listening_on(&mut self) {
         log::info!("voice control: turning listening on…");
-        let voice = self.voice();
         voice.recognizer = VoiceCommandRecognizer::new();
         if let Err(e) = voice.spotter.start_listening(&VoiceCommand::STANDBY) {
             log::error!("voice control: cannot listen, command spotting service: {e:#}");
@@ -124,47 +148,33 @@ impl Pipeline {
         log::info!("voice control: listening");
     }
 
-    /// Closes the microphone of voice control; nothing without voice control.
-    pub(super) fn turn_listening_off(&mut self) {
-        let Some(voice) = self.voice.as_mut().filter(|voice| voice.listening) else {
-            return;
-        };
-        voice.spotter.stop_listening();
-        voice.listening = false;
-        log::info!("voice control: listening off");
-    }
-
     fn recognize(&mut self, event: SpottingEvent) -> Vec<SpokenCommand> {
-        if !self.listening() {
-            return Vec::new();
+        match self.voice.listening_mut() {
+            Some(voice) => voice.recognizer.feed(event),
+            None => Vec::new(),
         }
-        self.voice().recognizer.feed(event)
     }
 
     /// A command that fails (the microphone is busy, a key press is refused) is logged and
     /// announced; the app keeps listening for the next one.
     fn carry_out_or_log(&mut self, spoken: SpokenCommand) {
-        let voice = self.voice();
+        let phrase = spoken.command.phrase();
+        let Voice::On(voice) = &mut self.voice else {
+            return;
+        };
         if voice
             .carried_before_outage
             .is_some_and(|until| spoken.ends_at <= until)
         {
-            log::info!(
-                "voice control: \"{}\" was carried out before the outage, skipped",
-                spoken.command.phrase()
-            );
+            log::info!("voice control: \"{phrase}\" was carried out before the outage, skipped");
             return;
         }
-        voice.last_carried_end = Some(
-            voice
-                .last_carried_end
-                .map_or(spoken.ends_at, |end| end.max(spoken.ends_at)),
-        );
+        let end = voice
+            .last_carried_end
+            .map_or(spoken.ends_at, |end| end.max(spoken.ends_at));
+        voice.last_carried_end = Some(end);
         if let Err(e) = self.carry_out(spoken) {
-            log::error!(
-                "voice control: \"{}\" failed: {e:#}",
-                spoken.command.phrase()
-            );
+            log::error!("voice control: \"{phrase}\" failed: {e:#}");
             // a recording that did not start shows its own notice already
             if !e.is::<RecordingNotStarted>() {
                 self.show_failure_at_once(command_failed(spoken.command, &e));
@@ -172,7 +182,6 @@ impl Pipeline {
         }
     }
 
-    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn carry_out(&mut self, spoken: SpokenCommand) -> anyhow::Result<()> {
         let phrase = spoken.command.phrase();
         let accepted: &[VoiceCommand] = if self.is_recording() {
@@ -191,23 +200,17 @@ impl Pipeline {
                 log_voice_start(&spoken);
                 Ok(())
             }
-            VoiceCommand::StopDictation => {
-                self.command_words.closing = spoken.placement != CommandPlacement::Alone;
-                self.recorder.truncate_at(spoken.started_at);
-                self.stop_recording()
-            }
+            VoiceCommand::StopDictation => self.close_dictation(spoken),
             VoiceCommand::PressEnter if self.is_recording() => {
                 // "enter" during a dictation is "stop enter": paste, then send.
-                self.command_words.closing = spoken.placement != CommandPlacement::Alone;
-                self.recorder.truncate_at(spoken.started_at);
-                self.stop_recording()?;
+                self.close_dictation(spoken)?;
                 self.press_keys(VoiceCommand::PressEnter)
             }
             VoiceCommand::CancelDictation => self.cancel_recording(),
             VoiceCommand::RestartDictation => {
                 // One restart cue instead of the cancel and start cues, so it is heard apart;
                 // it never waits for the dropped dictation's last request.
-                self.drop_recording()?;
+                self.abandon(Awaits::Nothing)?;
                 self.start_dictation_after(spoken, StartCue::Restart)?;
                 self.visual_indicator
                     .show_command_sign(VoiceCommand::RestartDictation);
@@ -229,15 +232,30 @@ impl Pipeline {
     ) -> anyhow::Result<()> {
         self.start_recording_from(Some(spoken.ends_at), cue)?;
         // Only an end the voice activity detector placed lies safely past the last word.
-        self.command_words.opening =
-            (spoken.placement != CommandPlacement::Alone).then_some(spoken.command);
+        if let Some(dictation) = self.dictation.as_mut() {
+            dictation.command_words.opening =
+                (spoken.placement != CommandPlacement::Alone).then_some(spoken.command);
+        }
         Ok(())
+    }
+
+    /// Ends the running dictation where `spoken` began: the command's words are no part of
+    /// it, unless it was said in one breath with the last words.
+    fn close_dictation(&mut self, spoken: SpokenCommand) -> anyhow::Result<()> {
+        if let Some(dictation) = self.dictation.as_mut() {
+            dictation.command_words.closing = spoken.placement != CommandPlacement::Alone;
+        }
+        self.recorder.truncate_at(spoken.started_at);
+        self.stop_recording()
     }
 
     /// Presses the keys of "press enter", "clear all text" or "paste text", then confirms the
     /// command.
     fn press_keys(&mut self, command: VoiceCommand) -> anyhow::Result<()> {
-        let keys = self.voice().key_presser.as_mut();
+        let Voice::On(voice) = &mut self.voice else {
+            return Ok(());
+        };
+        let keys = voice.key_presser.as_mut();
         let pressed = match command {
             VoiceCommand::ClearAllText => keys.clear_all_text(),
             VoiceCommand::PasteText => keys.paste(),
@@ -267,58 +285,62 @@ impl Pipeline {
     /// The service went away: listening stays on, a running dictation keeps recording, and
     /// the adapter reaches for the service until it is back.
     fn lose_spotting(&mut self) -> anyhow::Result<()> {
-        if !self.listening() || self.voice().away {
+        let recording = self.is_recording();
+        let Some(voice) = self.voice.listening_mut() else {
+            return Ok(());
+        };
+        if voice.away {
             return Ok(());
         }
         log::error!(
             "voice control: the command spotting service stopped answering; listening resumes once it is back"
         );
-        let recording = self.is_recording();
-        let voice = self.voice();
         voice.away = true;
         voice.carried_before_outage = voice.last_carried_end;
-        log::info!(
-            "voice control: listening → away{}",
-            if recording {
-                ", the dictation keeps recording"
-            } else {
-                ""
-            }
-        );
+        let dictation = if recording {
+            ", the dictation keeps recording"
+        } else {
+            ""
+        };
+        log::info!("voice control: listening → away{dictation}");
         Ok(())
     }
 
     /// The service stayed away: the overlay shows that voice commands do not work, once.
     fn show_commands_unavailable(&mut self) {
-        if !self.listening() || !self.voice().away || self.voice().unavailable_shown {
+        let Some(voice) = self.voice.listening_mut() else {
+            return;
+        };
+        if !voice.away || voice.unavailable_shown {
             return;
         }
-        self.voice().unavailable_shown = true;
+        voice.unavailable_shown = true;
         self.visual_indicator.show_commands_unavailable();
         log::info!("voice control: away → voice commands shown as unavailable");
     }
 
     /// The service is back: the commands of the current state are spotted again.
     fn regain_spotting(&mut self) -> anyhow::Result<()> {
-        if !self.listening() || !self.voice().away {
+        let recording = self.is_recording();
+        let Some(voice) = self.voice.listening_mut() else {
+            return Ok(());
+        };
+        if !voice.away {
             return Ok(());
         }
-        let recording = self.is_recording();
-        let voice = self.voice();
         voice.away = false;
         voice.recognizer = VoiceCommandRecognizer::new();
-        self.follow_dictation(recording);
-        if std::mem::take(&mut self.voice().unavailable_shown) {
+        let unavailable_shown = std::mem::take(&mut voice.unavailable_shown);
+        self.voice.follow_dictation(recording);
+        if unavailable_shown {
             self.visual_indicator.hide_commands_unavailable();
         }
-        log::info!(
-            "voice control: away → listening again{}",
-            if recording {
-                " during the dictation"
-            } else {
-                ""
-            }
-        );
+        let dictation = if recording {
+            " during the dictation"
+        } else {
+            ""
+        };
+        log::info!("voice control: away → listening again{dictation}");
         Ok(())
     }
 }

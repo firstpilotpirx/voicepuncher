@@ -12,17 +12,20 @@ use cucumber::{given, then, when};
 use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::chunking::merge_chunk_texts;
-use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
+use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use voicepuncher::core::application::{
-    AudioRecorder, ChunkingCfg, CommandSpotter, KeyPresser, LiveTranscriptView, PipelineInput,
-    SoundPlayer, TextPaster, Transcriber, VisualIndicator,
+    AudioRecorder, ChunkingCfg, LiveTranscriptView, PipelineInput, SoundPlayer, TextPaster,
+    Transcriber, VisualIndicator,
 };
 use voicepuncher::core::domain::{
-    AudioBuffer16k, CleanedText, FailureNotice, PttSignal, RawTranscript, RecordingMode,
-    SpottingEvent, VoiceCommand,
+    AudioBuffer16k, CleanedText, FailureNotice, PttSignal, RawTranscript, SpottingEvent,
+    VoiceCommand,
 };
 
+use crate::steps::quiet_voice_control::{NoKeys, QuietSpotter};
 use crate::IntegrationWorld;
+mod doubles;
+use doubles::{CapturingPaster, NotingOverlay, PartsOnDemand, ScriptedTranscriber, Silent};
 
 const FIRST_PART: &str = "we moved the weekly meeting to friday because";
 const NEXT_PART: &str = "to friday because the big room was busy";
@@ -80,22 +83,23 @@ impl LiveRun {
     fn start_pipeline(&mut self, voice_control: bool) {
         let (tx, rx) = mpsc::channel();
         let mut pipeline = Pipeline::new(
-            Box::new(PartsOnDemand(Arc::clone(&self.parts))),
-            Box::new(ScriptedTranscriber {
-                answers: Arc::clone(&self.answers),
-                transcribed: Arc::clone(&self.transcribed),
-            }),
-            Box::new(PassthroughTextRefiner),
-            Box::new(CapturingPaster(Arc::clone(&self.pasted))),
-            Box::new(Silent),
-            Box::new(NotingOverlay(Arc::clone(&self.shown))),
+            PipelineParts {
+                recorder: Box::new(PartsOnDemand(Arc::clone(&self.parts))),
+                transcriber: Box::new(ScriptedTranscriber {
+                    answers: Arc::clone(&self.answers),
+                    transcribed: Arc::clone(&self.transcribed),
+                }),
+                refiner: Box::new(PassthroughTextRefiner),
+                paster: Box::new(CapturingPaster(Arc::clone(&self.pasted))),
+                sound_player: Box::new(Silent),
+                visual_indicator: Box::new(NotingOverlay(Arc::clone(&self.shown))),
+            },
             PipelineConfig {
-                min_press_ms: 0,
-                recording_mode: RecordingMode::Toggle,
                 chunking: ChunkingCfg {
                     chunk_threshold_secs: CHUNK_THRESHOLD_SECS,
                     ..ChunkingCfg::default()
                 },
+                ..PipelineConfig::default()
             },
         );
         if voice_control {
@@ -332,148 +336,4 @@ fn pasted_stitched(world: &mut IntegrationWorld) -> Result<()> {
         bail!("expected {expected:?} pasted; pasted {pasted:?}");
     }
     Ok(())
-}
-
-/// Hands over a part only when the scenario sends one; the last part comes at the flush.
-struct PartsOnDemand(Parts);
-
-impl AudioRecorder for PartsOnDemand {
-    fn start(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn stop(&mut self) -> Result<AudioBuffer16k> {
-        Ok(AudioBuffer16k::new(Vec::new()))
-    }
-
-    fn start_live_chunks(&mut self, _cfg: ChunkingCfg) -> Result<Option<Receiver<LiveChunk>>> {
-        let (tx, rx) = mpsc::channel();
-        *self.0.lock().unwrap() = Some(tx);
-        Ok(Some(rx))
-    }
-
-    fn flush_live_chunks(&mut self) {
-        let _ = send_part(&self.0);
-        // the transcription of the parts ends with the last one
-        *self.0.lock().unwrap() = None;
-    }
-}
-
-/// Answers each part with the next scripted text; `None` is a part without speech.
-struct ScriptedTranscriber {
-    answers: Arc<Mutex<VecDeque<Option<&'static str>>>>,
-    transcribed: Arc<Mutex<usize>>,
-}
-
-impl Transcriber for ScriptedTranscriber {
-    fn transcribe(&mut self, _audio: &AudioBuffer16k) -> Result<Option<RawTranscript>> {
-        let answer = self.answers.lock().unwrap().pop_front().flatten();
-        let raw = answer
-            .map(|text| RawTranscript::new(text.to_owned()))
-            .transpose()?;
-        *self.transcribed.lock().unwrap() += 1;
-        Ok(raw)
-    }
-}
-
-struct CapturingPaster(Arc<Mutex<Option<String>>>);
-
-impl TextPaster for CapturingPaster {
-    fn paste(&mut self, text: &CleanedText) -> Result<()> {
-        *self.0.lock().unwrap() = Some(text.as_str().to_owned());
-        Ok(())
-    }
-
-    fn leave_in_clipboard(&mut self, text: &CleanedText) -> Result<()> {
-        self.paste(text)
-    }
-}
-
-struct NotingOverlay(Log);
-
-impl VisualIndicator for NotingOverlay {
-    fn show_recording(&self) {
-        self.0.lock().unwrap().push(Shown::Recording);
-    }
-
-    fn show_recognizing_speech(&self) {
-        self.0.lock().unwrap().push(Shown::RecognizingSpeech);
-    }
-
-    fn show_refining_text(&self) {
-        self.0.lock().unwrap().push(Shown::Other);
-    }
-
-    fn show_pasted(&self) {
-        self.0.lock().unwrap().push(Shown::PastedSign);
-    }
-
-    fn show_waiting_for_focus(&self) {
-        self.0.lock().unwrap().push(Shown::Other);
-    }
-
-    fn hide(&self) {
-        self.0.lock().unwrap().push(Shown::Hidden);
-    }
-
-    fn show_failure_notice(&self, _notice: &FailureNotice) {
-        self.0.lock().unwrap().push(Shown::Other);
-    }
-
-    fn live_transcript_view(&self) -> Box<dyn LiveTranscriptView> {
-        Box::new(NotingView(Arc::clone(&self.0)))
-    }
-}
-
-struct NotingView(Log);
-
-impl LiveTranscriptView for NotingView {
-    fn show_live_transcript(&self, text: &str) {
-        self.0
-            .lock()
-            .unwrap()
-            .push(Shown::LiveTranscript(text.to_owned()));
-    }
-}
-
-struct QuietSpotter;
-
-impl CommandSpotter for QuietSpotter {
-    fn probe(&self) -> Result<()> {
-        Ok(())
-    }
-
-    fn start_listening(&mut self, _commands: &[VoiceCommand]) -> Result<()> {
-        Ok(())
-    }
-
-    fn listen_for(&mut self, _commands: &[VoiceCommand]) {}
-
-    fn stop_listening(&mut self) {}
-}
-
-struct NoKeys;
-
-impl KeyPresser for NoKeys {
-    fn press_enter(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn clear_all_text(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn paste(&mut self) -> Result<()> {
-        Ok(())
-    }
-}
-
-struct Silent;
-
-impl SoundPlayer for Silent {
-    fn play_start(&self) {}
-    fn play_stop(&self) {}
-    fn play_cancel(&self) {}
-    fn play_listening_on(&self) {}
-    fn play_listening_off(&self) {}
 }

@@ -1,0 +1,112 @@
+//! What the overlay shows along a dictation, and the live transcript while it records.
+
+use std::sync::mpsc;
+use std::time::Instant;
+
+use super::*;
+use crate::core::application::audio_recorder::LiveChunk;
+use crate::core::application::live_transcript_view::MockLiveTranscriptView;
+use crate::core::application::pipeline::live_transcript::LiveTranscript;
+use crate::core::application::pipeline::live_worker::run_live_worker;
+use crate::core::application::pipeline::SharedTranscriber;
+use crate::core::domain::{FailingPart, FailureNotice, RawTranscript};
+
+/// What the overlay showed for a dictation whose refiner is `refiner`.
+fn signs_with(refiner: MockTextRefiner, refinement_shown: bool) -> Vec<String> {
+    let (overlay, shown) = noting_overlay();
+    let mut under_test = PipelineUnderTest::new().refiner(refiner).overlay(overlay);
+    if !refinement_shown {
+        under_test = under_test.without_refinement_stage();
+    }
+    let mut pipeline = under_test.build();
+    press(&mut pipeline);
+    press(&mut pipeline);
+    seen(&shown)
+}
+
+#[test]
+fn should_show_speech_recognition_then_text_refinement_then_the_pasted_sign() {
+    assert_eq!(
+        signs_with(refining_to("Hello."), true),
+        ["recording", "recognizing speech", "refining text", "pasted"]
+    );
+}
+
+#[test]
+fn should_not_show_text_refinement_when_its_stage_is_off() {
+    assert_eq!(
+        signs_with(refining_to("Hello."), false),
+        ["recording", "recognizing speech", "pasted"]
+    );
+}
+
+#[test]
+fn should_end_on_the_pending_failure_notice_instead_of_the_pasted_sign() {
+    let notice = FailureNotice::PastedUnrefined(FailingPart::TextRefinement);
+    assert_eq!(
+        signs_with(refinement_down(), true),
+        [
+            "recording".to_owned(),
+            "recognizing speech".to_owned(),
+            "refining text".to_owned(),
+            format!("{notice:?}"),
+        ]
+    );
+}
+
+/// Runs the live worker over two chunks the transcriber answers with `answers` in turn.
+fn run_worker_over(answers: Vec<Option<&'static str>>, view: MockLiveTranscriptView) {
+    let mut transcriber = MockTranscriber::new();
+    let mut answers = answers.into_iter();
+    transcriber.expect_transcribe().returning(move |_| {
+        Ok(answers
+            .next()
+            .flatten()
+            .map(|t| RawTranscript::new(t.to_owned()).unwrap()))
+    });
+    let (chunk_tx, chunk_rx) = mpsc::channel();
+    for _ in 0..2 {
+        chunk_tx
+            .send(LiveChunk { audio: one_second(), enqueued_at: Instant::now() })
+            .unwrap();
+    }
+    drop(chunk_tx);
+    let (results_tx, _results_rx) = mpsc::sync_channel(1);
+    let (live_transcript, _recording_end) = LiveTranscript::new(Box::new(view));
+    let transcriber: SharedTranscriber = Arc::new(Mutex::new(Box::new(transcriber)));
+    run_live_worker(transcriber, chunk_rx, results_tx, live_transcript);
+}
+
+#[test]
+fn should_show_the_stitched_text_after_every_chunk_with_text() {
+    // Given
+    let mut view = MockLiveTranscriptView::new();
+    let mut seq = mockall::Sequence::new();
+    view.expect_show_live_transcript()
+        .withf(|text| text == "one two three")
+        .once()
+        .in_sequence(&mut seq)
+        .return_const(());
+    view.expect_show_live_transcript()
+        .withf(|text| text == "one two three four five")
+        .once()
+        .in_sequence(&mut seq)
+        .return_const(());
+    // When / Then
+    run_worker_over(
+        vec![Some("one two three"), Some("two three four five")],
+        view,
+    );
+}
+
+#[test]
+fn should_show_nothing_new_for_a_chunk_without_text() {
+    // Given
+    let mut view = MockLiveTranscriptView::new();
+    view.expect_show_live_transcript()
+        .withf(|text| text == "one two three")
+        .once()
+        .return_const(());
+    // When / Then
+    run_worker_over(vec![Some("one two three"), None], view);
+}

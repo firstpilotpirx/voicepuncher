@@ -12,19 +12,21 @@ use cucumber::{given, then, when};
 
 use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
-use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
+use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use voicepuncher::core::application::{
     AudioRecorder, ChunkingCfg, PipelineInput, SoundPlayer, TextPaster, Transcriber,
     VisualIndicator,
 };
 use voicepuncher::core::domain::{
-    AudioBuffer16k, CleanedText, FailureNotice, PttSignal, RawTranscript, RecordingMode,
+    AudioBuffer16k, CleanedText, FailureNotice, PttSignal, RawTranscript,
 };
 use voicepuncher_e2e_test::speech::repeated_phrases;
 
 use crate::IntegrationWorld;
 
+mod doubles;
 pub mod losses;
+use doubles::{CapturingPaster, ChunkingRecorder, FixedTranscripts, Silent};
 
 const CHUNK_THRESHOLD_SECS: u32 = 30;
 
@@ -205,22 +207,23 @@ fn stop_dictation(world: &mut IntegrationWorld) -> Result<()> {
     let dictation = world.dictation.clone().context("no dictation")?;
     let pasted = Arc::new(Mutex::new(Vec::new()));
     let mut pipeline = Pipeline::new(
-        Box::new(ChunkingRecorder { chunks: dictation.chunk_texts.len() }),
-        Box::new(FixedTranscripts(
-            dictation.chunk_texts.clone(),
-            dictation.failing_chunk,
-        )),
-        Box::new(PassthroughTextRefiner),
-        Box::new(CapturingPaster(pasted.clone())),
-        Box::new(Silent),
-        Box::new(Silent),
+        PipelineParts {
+            recorder: Box::new(ChunkingRecorder { chunks: dictation.chunk_texts.len() }),
+            transcriber: Box::new(FixedTranscripts(
+                dictation.chunk_texts.clone(),
+                dictation.failing_chunk,
+            )),
+            refiner: Box::new(PassthroughTextRefiner),
+            paster: Box::new(CapturingPaster(pasted.clone())),
+            sound_player: Box::new(Silent),
+            visual_indicator: Box::new(Silent),
+        },
         PipelineConfig {
-            min_press_ms: 0,
-            recording_mode: RecordingMode::Toggle,
             chunking: ChunkingCfg {
                 chunk_threshold_secs: CHUNK_THRESHOLD_SECS,
                 ..ChunkingCfg::default()
             },
+            ..PipelineConfig::default()
         },
     );
     let (tx, rx) = mpsc::channel();
@@ -259,79 +262,4 @@ fn spoken_and_pasted(world: &IntegrationWorld) -> Result<(&'static str, &str)> {
     let spoken = world.dictation.as_ref().context("no dictation")?.spoken;
     let pasted = world.pasted.as_deref().context("nothing was pasted")?;
     Ok((spoken, pasted))
-}
-
-/// Delivers `chunks` one-second live chunks; the first sample numbers the chunk.
-struct ChunkingRecorder {
-    chunks: usize,
-}
-
-impl AudioRecorder for ChunkingRecorder {
-    fn start(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn stop(&mut self) -> Result<AudioBuffer16k> {
-        Ok(AudioBuffer16k::new(Vec::new()))
-    }
-
-    fn start_live_chunks(&mut self, _cfg: ChunkingCfg) -> Result<Option<Receiver<LiveChunk>>> {
-        let (tx, rx) = mpsc::channel();
-        for n in 0..self.chunks {
-            let mut samples = vec![1_000i16; AudioBuffer16k::SAMPLE_RATE_HZ as usize];
-            samples[0] = n as i16;
-            tx.send(LiveChunk {
-                audio: AudioBuffer16k::new(samples),
-                enqueued_at: Instant::now(),
-            })?;
-        }
-        Ok(Some(rx))
-    }
-
-    fn flush_live_chunks(&mut self) {}
-}
-
-/// Answers chunk n with the n-th transcript, and fails the chunk it is told to fail.
-struct FixedTranscripts(Vec<&'static str>, Option<usize>);
-
-impl Transcriber for FixedTranscripts {
-    fn transcribe(&mut self, audio: &AudioBuffer16k) -> Result<Option<RawTranscript>> {
-        let n = audio.samples()[0] as usize;
-        if self.1 == Some(n) {
-            bail!("speech recognition request failed: every attempt timed out");
-        }
-        let text = self.0.get(n).context("no transcript for this chunk")?;
-        Ok(Some(RawTranscript::new((*text).to_owned())?))
-    }
-}
-
-struct CapturingPaster(Arc<Mutex<Vec<String>>>);
-
-impl TextPaster for CapturingPaster {
-    fn paste(&mut self, text: &CleanedText) -> Result<()> {
-        self.0.lock().unwrap().push(text.as_str().to_owned());
-        Ok(())
-    }
-
-    fn leave_in_clipboard(&mut self, _text: &CleanedText) -> Result<()> {
-        bail!("the text was left in the clipboard instead of pasted")
-    }
-}
-
-struct Silent;
-
-impl SoundPlayer for Silent {
-    fn play_start(&self) {}
-    fn play_stop(&self) {}
-    fn play_cancel(&self) {}
-}
-
-impl VisualIndicator for Silent {
-    fn show_recording(&self) {}
-    fn show_recognizing_speech(&self) {}
-    fn show_refining_text(&self) {}
-    fn show_waiting_for_focus(&self) {}
-    fn show_pasted(&self) {}
-    fn hide(&self) {}
-    fn show_failure_notice(&self, _notice: &FailureNotice) {}
 }

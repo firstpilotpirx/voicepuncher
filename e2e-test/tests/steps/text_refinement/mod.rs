@@ -206,8 +206,9 @@ fn raw_pasted_failure_logged(world: &mut E2eWorld) -> Result<()> {
 
 #[then("the raw transcript is pasted instead of the cut-off text")]
 fn raw_pasted_not_cut_off(world: &mut E2eWorld) -> Result<()> {
-    only_chat_request(world)?;
+    // the app's own failure first, so a lost transcription is not reported as a missing request
     expect_raw_transcript_pasted(world)?;
+    only_chat_request(world)?;
     expect_message(world, OUTPUT_LIMIT_LOG)
 }
 

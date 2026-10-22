@@ -15,11 +15,11 @@ use cucumber::{given, then, when};
 use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::config::Config;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
-use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
+use voicepuncher::core::application::pipeline::{Pipeline, PipelineParts};
 use voicepuncher::core::application::{
     AudioRecorder, ChunkingCfg, CommandSpotter, FocusProbe, FocusWaitCfg, HotkeyListener,
-    KeyPresser, PermissionProbe, PermissionsGate, PipelineInput, SoundPlayer, TextPaster,
-    Transcriber, VisualIndicator,
+    PermissionProbe, PermissionsGate, PipelineInput, SoundPlayer, TextPaster, Transcriber,
+    VisualIndicator,
 };
 use voicepuncher::core::domain::{
     AudioBuffer16k, CleanedText, FailureNotice, FocusedElement, HotKey, HotkeyBinding, Permission,
@@ -29,11 +29,18 @@ use voicepuncher::runtime::{
     PermissionsWatch, PipelineAssembler, Reloader, Runtime, RuntimeObserver, RuntimeState,
 };
 
+use crate::steps::pipeline_config::pipeline_config;
+use crate::steps::quiet_voice_control::NoKeys;
 use crate::IntegrationWorld;
 
+mod doubles;
 mod failures;
 pub(crate) mod models;
 mod services;
+use doubles::{
+    FakeKeyboard, NoticeOverlay, Permissions, RecordingObserver, ScriptedFocus, StandInPaster,
+    StandInSounds, StandInSpotter,
+};
 
 const DICTATED: &str = "Meeting moved to Friday.";
 const FIRST_HOTKEY: HotKey = HotKey::RightOption;
@@ -253,7 +260,8 @@ impl RuntimeRun {
             1_000i16;
             AudioBuffer16k::SAMPLE_RATE_HZ
                 as usize
-        ]))
+        ]))?;
+        Ok(())
     }
 
     pub(crate) fn printed(&self) -> Result<()> {
@@ -849,17 +857,15 @@ impl PipelineAssembler for StandInAssembler {
         );
         let part = || Part { events: Arc::clone(&self.events), generation };
         let mut pipeline = Pipeline::new(
-            Box::new(StandInRecorder(part(), Arc::clone(&self.panics))),
-            Box::new(FixedTranscript),
-            Box::new(PassthroughTextRefiner),
-            Box::new(StandInPaster(part())),
-            Box::new(StandInSounds(part())),
-            Box::new(NoticeOverlay(part())),
-            PipelineConfig {
-                min_press_ms: config.hotkey.min_press_ms,
-                recording_mode: config.hotkey.recording_mode,
-                chunking: ChunkingCfg { chunk_threshold_secs: 0, ..ChunkingCfg::default() },
+            PipelineParts {
+                recorder: Box::new(StandInRecorder(part(), Arc::clone(&self.panics))),
+                transcriber: Box::new(FixedTranscript),
+                refiner: Box::new(PassthroughTextRefiner),
+                paster: Box::new(StandInPaster(part())),
+                sound_player: Box::new(StandInSounds(part())),
+                visual_indicator: Box::new(NoticeOverlay(part())),
             },
+            pipeline_config(config),
         )
         .with_focus_wait(
             Box::new(ScriptedFocus(Arc::clone(&self.text_field_focused))),
@@ -912,6 +918,7 @@ impl AudioRecorder for StandInRecorder {
     }
 
     fn flush_live_chunks(&mut self) {}
+    voicepuncher::records_whole_buffers_only!();
 }
 
 /// The recorder lives as long as its pipeline: its drop is the pipeline's end.
@@ -926,200 +933,5 @@ struct FixedTranscript;
 impl Transcriber for FixedTranscript {
     fn transcribe(&mut self, _audio: &AudioBuffer16k) -> Result<Option<RawTranscript>> {
         Ok(Some(RawTranscript::new(DICTATED.to_owned())?))
-    }
-}
-
-struct StandInPaster(Part);
-
-impl TextPaster for StandInPaster {
-    fn paste(&mut self, _text: &CleanedText) -> Result<()> {
-        self.0.log(Event::Pasted);
-        Ok(())
-    }
-
-    fn leave_in_clipboard(&mut self, _text: &CleanedText) -> Result<()> {
-        Ok(())
-    }
-}
-
-struct StandInSounds(Part);
-
-impl SoundPlayer for StandInSounds {
-    fn play_start(&self) {}
-    fn play_stop(&self) {}
-    fn play_cancel(&self) {
-        self.0.log(Event::CancelPlayed);
-    }
-}
-
-/// Shows nothing; a failure notice goes to the log.
-struct NoticeOverlay(Part);
-
-impl VisualIndicator for NoticeOverlay {
-    fn show_recording(&self) {}
-    fn show_recognizing_speech(&self) {}
-    fn show_refining_text(&self) {}
-    fn show_waiting_for_focus(&self) {}
-    fn show_pasted(&self) {}
-    fn hide(&self) {
-        self.0.log(Event::Hidden);
-    }
-    fn show_failure_notice(&self, notice: &FailureNotice) {
-        push(
-            &self.0.events,
-            Event::Notice(self.0.generation, notice.message()),
-        );
-    }
-}
-
-struct ScriptedFocus(Arc<Mutex<bool>>);
-
-impl FocusProbe for ScriptedFocus {
-    fn focused_element(&self) -> Result<Option<FocusedElement>> {
-        let text_field = *self.0.lock().unwrap();
-        Ok(Some(FocusedElement {
-            role: if text_field {
-                "AXTextField"
-            } else {
-                "AXButton"
-            }
-            .to_owned(),
-            has_text_selection: text_field,
-            value_settable: text_field,
-            in_web_content: false,
-        }))
-    }
-}
-
-struct StandInSpotter(Part);
-
-impl CommandSpotter for StandInSpotter {
-    fn probe(&self) -> Result<()> {
-        Ok(())
-    }
-
-    fn start_listening(&mut self, _commands: &[VoiceCommand]) -> Result<()> {
-        self.0.log(Event::ListeningOn);
-        Ok(())
-    }
-
-    fn listen_for(&mut self, _commands: &[VoiceCommand]) {}
-
-    fn stop_listening(&mut self) {
-        self.0.log(Event::ListeningOff);
-    }
-}
-
-struct NoKeys;
-
-impl KeyPresser for NoKeys {
-    fn press_enter(&mut self) -> Result<()> {
-        Ok(())
-    }
-    fn clear_all_text(&mut self) -> Result<()> {
-        Ok(())
-    }
-    fn paste(&mut self) -> Result<()> {
-        Ok(())
-    }
-}
-
-struct RecordingObserver(Events);
-
-impl RuntimeObserver for RecordingObserver {
-    fn state_changed(&self, state: &RuntimeState) {
-        push(&self.0, Event::State(state.clone()));
-    }
-}
-
-/// The keyboard the runtime's listener reads: a press reaches the runtime only when the key
-/// is the one the binding holds at that moment, as the real listener matches every event.
-#[derive(Clone, Default)]
-struct FakeKeyboard {
-    wired: Arc<Mutex<Option<Wiring>>>,
-}
-
-/// The binding the runtime handed the listener, and where its signals go.
-type Wiring = (HotkeyBinding, Sender<PttSignal>);
-
-impl FakeKeyboard {
-    fn press(&self, key: HotKey) {
-        if let Some((binding, tx)) = self.wired.lock().unwrap().as_ref() {
-            if binding.current() == key {
-                let _ = tx.send(PttSignal::Pressed);
-                let _ = tx.send(PttSignal::Released);
-            }
-        }
-    }
-}
-
-impl HotkeyListener for FakeKeyboard {
-    fn spawn(
-        self: Box<Self>,
-        binding: HotkeyBinding,
-        tx: Sender<PttSignal>,
-    ) -> Result<JoinHandle<()>> {
-        *self.wired.lock().unwrap() = Some((binding, tx));
-        Ok(std::thread::spawn(|| {}))
-    }
-}
-
-type Statuses = Arc<Mutex<[PermissionStatus; 3]>>;
-
-/// The permissions as System Settings holds them, which the scenario changes, and how often
-/// the runtime asked.
-#[derive(Clone)]
-pub(crate) struct Permissions {
-    statuses: Statuses,
-    checks: Arc<AtomicUsize>,
-}
-
-impl Default for Permissions {
-    fn default() -> Self {
-        Self {
-            statuses: Arc::new(Mutex::new([PermissionStatus::Granted; 3])),
-            checks: Arc::default(),
-        }
-    }
-}
-
-impl Permissions {
-    pub(crate) fn set(&self, permission: Permission, status: PermissionStatus) {
-        self.statuses.lock().unwrap()[index(permission)] = status;
-    }
-
-    pub(crate) fn checks(&self) -> usize {
-        self.checks.load(Ordering::SeqCst)
-    }
-
-    /// A gate over the scenario's permissions, as the window asks it.
-    pub(crate) fn gate(&self) -> Arc<PermissionsGate> {
-        Arc::new(PermissionsGate::new(Box::new(ScriptedProbe(self.clone()))))
-    }
-}
-
-fn index(permission: Permission) -> usize {
-    Permission::ALL
-        .iter()
-        .position(|p| *p == permission)
-        .expect("every permission is in ALL")
-}
-
-struct ScriptedProbe(Permissions);
-
-impl PermissionProbe for ScriptedProbe {
-    fn status(&self, permission: Permission) -> PermissionStatus {
-        self.0.checks.fetch_add(1, Ordering::SeqCst);
-        self.0.statuses.lock().unwrap()[index(permission)]
-    }
-
-    fn request(&self, _permission: Permission) {}
-
-    fn settings_url(&self, permission: Permission) -> String {
-        format!("settings:{permission}")
-    }
-
-    fn responsible_app(&self) -> Option<String> {
-        None
     }
 }

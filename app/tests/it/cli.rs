@@ -237,6 +237,11 @@ fn should_exit_2_when_the_file_mode_service_does_not_answer() {
     // Then
     let printed = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(2), "{printed}");
+    let errors = printed
+        .lines()
+        .filter(|line| line.contains("ERROR"))
+        .count();
+    assert_eq!(errors, 1, "one error line expected:\n{printed}");
 }
 
 #[test]

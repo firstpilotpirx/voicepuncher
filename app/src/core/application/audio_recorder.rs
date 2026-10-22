@@ -21,13 +21,11 @@ pub trait AudioRecorder: Send {
     fn flush_live_chunks(&mut self);
     /// Drops the audio captured from `cut` on and records nothing more, so a later
     /// `flush_live_chunks` and `stop` deliver only the audio before `cut`.
-    fn truncate_at(&mut self, _cut: Instant) {}
+    fn truncate_at(&mut self, cut: Instant);
     /// Puts `lead_in`, sound heard right up to the moment the recording started, at its
     /// beginning: the recording then begins where the lead-in does.
-    fn begin_with(&mut self, _lead_in: AudioBuffer16k) {}
+    fn begin_with(&mut self, lead_in: AudioBuffer16k);
     /// The whole last recording at 16 kHz, lead-in included and nothing after a cut; none
     /// when the recorder keeps none.
-    fn recording(&mut self) -> Option<AudioBuffer16k> {
-        None
-    }
+    fn recording(&mut self) -> Option<AudioBuffer16k>;
 }

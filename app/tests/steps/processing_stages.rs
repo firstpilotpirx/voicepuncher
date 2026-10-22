@@ -10,17 +10,23 @@ use cucumber::{given, then, when};
 
 use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
-use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
+use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use voicepuncher::core::application::{
-    AudioRecorder, ChunkingCfg, CommandSpotter, FocusProbe, FocusWaitCfg, KeyPresser,
-    PipelineInput, SoundPlayer, TextPaster, TextRefiner, Transcriber, VisualIndicator,
+    AudioRecorder, ChunkingCfg, FocusProbe, FocusWaitCfg, PipelineInput, SoundPlayer, TextPaster,
+    TextRefiner, Transcriber, VisualIndicator,
 };
 use voicepuncher::core::domain::{
     AudioBuffer16k, CleanedText, FailureNotice, FocusedElement, PttSignal, RawTranscript,
-    RecordingMode, SpottingEvent, VoiceCommand,
+    SpottingEvent, VoiceCommand,
 };
 
+use crate::steps::quiet_voice_control::{NoKeys, QuietSpotter};
 use crate::IntegrationWorld;
+mod doubles;
+use doubles::{
+    FocusOnButton, NotingOverlay, NotingPaster, NotingRefiner, NotingTranscriber, PartsRecorder,
+    Silent,
+};
 
 const SENTENCE: &str = "Meeting moved to Friday.";
 /// How long each stand-in for a local service takes, so a stage lasts long enough to see.
@@ -107,33 +113,40 @@ impl StagesRun {
         Ok(())
     }
 
-    #[expect(clippy::too_many_lines, reason = "size baseline")]
-    fn start_pipeline(&self) -> Sender<PipelineInput> {
-        let (tx, rx) = mpsc::channel();
+    fn parts(&self) -> PipelineParts {
         let events = &self.events;
         let refiner: Box<dyn TextRefiner> = if self.refinement_off {
             Box::new(PassthroughTextRefiner)
         } else {
             Box::new(NotingRefiner(Arc::clone(events)))
         };
-        let mut pipeline = Pipeline::new(
-            Box::new(PartsRecorder {
+        PipelineParts {
+            recorder: Box::new(PartsRecorder {
                 events: Arc::clone(events),
                 in_parts: self.in_parts,
                 parts: None,
             }),
-            Box::new(NotingTranscriber { events: Arc::clone(events), no_speech: self.no_speech }),
+            transcriber: Box::new(NotingTranscriber {
+                events: Arc::clone(events),
+                no_speech: self.no_speech,
+            }),
             refiner,
-            Box::new(NotingPaster(Arc::clone(events))),
-            Box::new(Silent),
-            Box::new(NotingOverlay { events: Arc::clone(events) }),
+            paster: Box::new(NotingPaster(Arc::clone(events))),
+            sound_player: Box::new(Silent),
+            visual_indicator: Box::new(NotingOverlay { events: Arc::clone(events) }),
+        }
+    }
+
+    fn start_pipeline(&self) -> Sender<PipelineInput> {
+        let (tx, rx) = mpsc::channel();
+        let mut pipeline = Pipeline::new(
+            self.parts(),
             PipelineConfig {
-                min_press_ms: 0,
-                recording_mode: RecordingMode::Toggle,
                 chunking: ChunkingCfg {
                     chunk_threshold_secs: if self.in_parts { 5 } else { 0 },
                     ..ChunkingCfg::default()
                 },
+                ..PipelineConfig::default()
             },
         );
         if self.refinement_off {
@@ -422,189 +435,4 @@ fn stages_then_focus_wait(world: &mut IntegrationWorld) -> Result<()> {
         bail!("the wait for focus was shown before the text was refined: {events:?}");
     }
     Ok(())
-}
-
-/// Hands over one second of audio at the stop; recorded in parts, it sends one part while
-/// the user speaks and the last one when the recording is flushed.
-struct PartsRecorder {
-    events: Events,
-    in_parts: bool,
-    parts: Option<mpsc::Sender<LiveChunk>>,
-}
-
-impl PartsRecorder {
-    fn one_second() -> AudioBuffer16k {
-        AudioBuffer16k::new(vec![1_000i16; AudioBuffer16k::SAMPLE_RATE_HZ as usize])
-    }
-
-    fn send_part(&self) {
-        if let Some(parts) = &self.parts {
-            let _ =
-                parts.send(LiveChunk { audio: Self::one_second(), enqueued_at: Instant::now() });
-        }
-    }
-}
-
-impl AudioRecorder for PartsRecorder {
-    fn start(&mut self) -> Result<()> {
-        record(&self.events, Event::RecordingStarted);
-        Ok(())
-    }
-
-    fn stop(&mut self) -> Result<AudioBuffer16k> {
-        Ok(Self::one_second())
-    }
-
-    fn start_live_chunks(&mut self, _cfg: ChunkingCfg) -> Result<Option<Receiver<LiveChunk>>> {
-        if !self.in_parts {
-            return Ok(None);
-        }
-        let (tx, rx) = mpsc::channel();
-        self.parts = Some(tx);
-        self.send_part();
-        Ok(Some(rx))
-    }
-
-    fn flush_live_chunks(&mut self) {
-        self.send_part();
-        // the transcription of the parts ends with the last one
-        self.parts = None;
-    }
-}
-
-struct NotingTranscriber {
-    events: Events,
-    no_speech: bool,
-}
-
-impl Transcriber for NotingTranscriber {
-    fn transcribe(&mut self, _audio: &AudioBuffer16k) -> Result<Option<RawTranscript>> {
-        record(&self.events, Event::TranscriptionStarted);
-        std::thread::sleep(SERVICE_TIME);
-        record(&self.events, Event::TranscriptionFinished);
-        if self.no_speech {
-            return Ok(None);
-        }
-        Ok(Some(RawTranscript::new(SENTENCE.to_owned())?))
-    }
-}
-
-struct NotingRefiner(Events);
-
-impl TextRefiner for NotingRefiner {
-    fn refine(&mut self, raw: &RawTranscript) -> Result<CleanedText> {
-        record(&self.0, Event::RefinementStarted);
-        std::thread::sleep(SERVICE_TIME);
-        record(&self.0, Event::RefinementFinished);
-        Ok(CleanedText::new(raw.as_str().to_owned())?)
-    }
-}
-
-struct NotingPaster(Events);
-
-impl TextPaster for NotingPaster {
-    fn paste(&mut self, _text: &CleanedText) -> Result<()> {
-        record(&self.0, Event::Pasted);
-        Ok(())
-    }
-
-    fn leave_in_clipboard(&mut self, text: &CleanedText) -> Result<()> {
-        self.paste(text)
-    }
-}
-
-struct NotingOverlay {
-    events: Events,
-}
-
-impl VisualIndicator for NotingOverlay {
-    fn show_recording(&self) {
-        std::thread::sleep(PIPELINE_LAG);
-        record(&self.events, Event::Overlay(Overlay::Recording));
-    }
-
-    fn show_recognizing_speech(&self) {
-        record(&self.events, Event::Overlay(Overlay::RecognizingSpeech));
-    }
-
-    fn show_refining_text(&self) {
-        record(&self.events, Event::Overlay(Overlay::RefiningText));
-    }
-
-    fn show_pasted(&self) {
-        record(&self.events, Event::Overlay(Overlay::PastedSign));
-    }
-
-    fn show_waiting_for_focus(&self) {
-        record(&self.events, Event::Overlay(Overlay::WaitingForFocus));
-    }
-
-    fn hide(&self) {
-        record(&self.events, Event::Overlay(Overlay::Hidden));
-    }
-
-    fn show_failure_notice(&self, notice: &FailureNotice) {
-        record(
-            &self.events,
-            Event::Overlay(Overlay::FailureNotice(*notice)),
-        );
-    }
-}
-
-/// A button has focus: the text is held back until the wait runs out.
-struct FocusOnButton;
-
-impl FocusProbe for FocusOnButton {
-    fn focused_element(&self) -> Result<Option<FocusedElement>> {
-        Ok(Some(FocusedElement {
-            role: "AXButton".to_owned(),
-            has_text_selection: false,
-            value_settable: false,
-            in_web_content: false,
-        }))
-    }
-}
-
-/// The command spotting service as the pipeline sees it; the scenario feeds the phrase it
-/// reports straight into the pipeline's input channel.
-struct QuietSpotter;
-
-impl CommandSpotter for QuietSpotter {
-    fn probe(&self) -> Result<()> {
-        Ok(())
-    }
-
-    fn start_listening(&mut self, _commands: &[VoiceCommand]) -> Result<()> {
-        Ok(())
-    }
-
-    fn listen_for(&mut self, _commands: &[VoiceCommand]) {}
-
-    fn stop_listening(&mut self) {}
-}
-
-struct NoKeys;
-
-impl KeyPresser for NoKeys {
-    fn press_enter(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn clear_all_text(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn paste(&mut self) -> Result<()> {
-        Ok(())
-    }
-}
-
-struct Silent;
-
-impl SoundPlayer for Silent {
-    fn play_start(&self) {}
-    fn play_stop(&self) {}
-    fn play_cancel(&self) {}
-    fn play_listening_on(&self) {}
-    fn play_listening_off(&self) {}
 }

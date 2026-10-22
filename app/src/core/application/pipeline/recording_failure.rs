@@ -1,9 +1,9 @@
 //! What the pipeline does when the microphone fails mid-dictation, and what it stops
 //! after a failure of its own.
 
-use super::PipelineState;
 use crate::core::domain::{FailingPart, FailureNotice};
 
+use super::dictation::Dictation;
 use super::Pipeline;
 
 impl Pipeline {
@@ -11,22 +11,22 @@ impl Pipeline {
     /// would, delivering what was recorded before with the notice that part of it was
     /// lost; outside a dictation the failure is logged only.
     pub(super) fn recording_failed(&mut self, reason: &str) -> anyhow::Result<()> {
-        if !self.is_recording() {
+        let Some(dictation) = self.dictation.as_mut() else {
             log::info!("microphone failure outside a dictation ignored: {reason}");
             return Ok(());
-        }
+        };
         log::error!("recording failed: {reason}; the dictation ends here");
-        self.note_failure(FailureNotice::PartOfDictationLost(FailingPart::Microphone));
+        dictation.note_failure(FailureNotice::PartOfDictationLost(FailingPart::Microphone));
         self.stop_recording()
     }
 
-    /// Ends a cycle that delivered nothing on the overlay: a part lost means the whole
-    /// dictation was lost.
-    pub(super) fn end_empty_cycle_on_overlay(&mut self) {
-        if let Some(FailureNotice::PartOfDictationLost(part)) = self.pending_notice {
-            self.pending_notice = Some(FailureNotice::DictationLost(part));
+    /// Ends `dictation`, which delivered nothing, on the overlay: a part lost means the
+    /// whole dictation was lost.
+    pub(super) fn end_empty_cycle_on_overlay(&self, dictation: &mut Dictation) {
+        if let Some(FailureNotice::PartOfDictationLost(part)) = dictation.pending_notice {
+            dictation.pending_notice = Some(FailureNotice::DictationLost(part));
         }
-        self.end_cycle_on_overlay();
+        self.end_cycle_on_overlay(dictation);
     }
 
     /// Stops what a pipeline that ended with an error or a panic may have left running:
@@ -36,33 +36,27 @@ impl Pipeline {
         let guarded = |step: &mut dyn FnMut()| {
             let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(step));
         };
-        if let Some(session) = self.live_session.take() {
+        if let Some(session) = self.dictation.take().and_then(|dictation| dictation.live) {
             session.recording_end.signal();
         }
-        guarded(&mut || {
-            let _ = self.recorder.stop();
-        });
-        guarded(&mut || self.turn_listening_off());
+        guarded(&mut || self.stop_recorder_quietly("after a failure"));
+        guarded(&mut || self.voice.turn_listening_off());
         guarded(&mut || self.visual_indicator.hide());
-        self.state = PipelineState::Idle;
         guarded(&mut || self.publish_activity());
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::tests::doubles::transcribing;
+    use super::super::tests::PipelineUnderTest;
+    use super::super::Pipeline;
     use crate::core::application::audio_recorder::MockAudioRecorder;
     use crate::core::application::live_transcript_view::HiddenLiveTranscript;
-    use crate::core::application::pipeline::{Pipeline, PipelineConfig};
-    use crate::core::application::sound_player::MockSoundPlayer;
-    use crate::core::application::text_paster::MockTextPaster;
-    use crate::core::application::text_refiner::MockTextRefiner;
-    use crate::core::application::transcriber::MockTranscriber;
     use crate::core::application::visual_indicator::MockVisualIndicator;
-    use crate::core::application::{ChunkingCfg, PipelineInput};
+    use crate::core::application::PipelineInput;
     use crate::core::domain::{
-        AudioBuffer16k, CleanedText, FailingPart, FailureNotice, PttSignal, RawTranscript,
-        RecordingMode,
+        AudioBuffer16k, FailingPart, FailureNotice, PttSignal, RecordingMode,
     };
 
     const MICROPHONE_ERROR: &str = "the input device reported an error";
@@ -122,33 +116,12 @@ mod tests {
         overlay: MockVisualIndicator,
         mode: RecordingMode,
     ) -> Pipeline {
-        let mut transcriber = MockTranscriber::new();
-        transcriber
-            .expect_transcribe()
-            .returning(|_| Ok(Some(RawTranscript::new("hello world".to_owned()).unwrap())));
-        let mut refiner = MockTextRefiner::new();
-        refiner
-            .expect_refine()
-            .returning(|_| Ok(CleanedText::new("hello world".to_owned()).unwrap()));
-        let mut paster = MockTextPaster::new();
-        paster.expect_paste().times(..).returning(|_| Ok(()));
-        let mut sound = MockSoundPlayer::new();
-        sound.expect_play_start().times(..).return_const(());
-        sound.expect_play_stop().times(..).return_const(());
-        sound.expect_play_cancel().times(..).return_const(());
-        Pipeline::new(
-            Box::new(recorder),
-            Box::new(transcriber),
-            Box::new(refiner),
-            Box::new(paster),
-            Box::new(sound),
-            Box::new(overlay),
-            PipelineConfig {
-                min_press_ms: 200,
-                recording_mode: mode,
-                chunking: ChunkingCfg::default(),
-            },
-        )
+        PipelineUnderTest::new()
+            .recorder(recorder)
+            .transcriber(transcribing("hello world"))
+            .overlay(overlay)
+            .mode(mode)
+            .build()
     }
 
     fn one_second() -> AudioBuffer16k {

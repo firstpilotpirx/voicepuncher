@@ -10,8 +10,21 @@ fn read_lines(path: &std::path::Path) -> Vec<String> {
         .collect()
 }
 
+/// Every line of `files` holding one of `patterns`, as `path:line: forbidden 'pattern' — text`.
+fn forbidden_lines(files: &[std::path::PathBuf], patterns: &[&str]) -> Vec<String> {
+    let mut violations = Vec::new();
+    for path in files {
+        for (line_no, line) in read_lines(path).iter().enumerate() {
+            for pattern in patterns.iter().filter(|pattern| line.contains(*pattern)) {
+                let at = format!("{}:{}", path.display(), line_no + 1);
+                violations.push(format!("{at}: forbidden '{pattern}' — {}", line.trim()));
+            }
+        }
+    }
+    violations
+}
+
 #[test]
-#[expect(clippy::excessive_nesting, reason = "size baseline")]
 fn r1_domain_no_adapter_imports() {
     let forbidden_patterns = [
         "use crate::core::application",
@@ -26,31 +39,7 @@ fn r1_domain_no_adapter_imports() {
         "sherpa_onnx",
         "voicepuncher_copy_pool",
     ];
-
-    let mut violations: Vec<String> = Vec::new();
-
-    for entry in WalkDir::new("src/core/domain")
-        .into_iter()
-        .filter_map(std::result::Result::ok)
-        .filter(|e| e.file_type().is_file())
-        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("rs"))
-    {
-        let path = entry.path();
-        for (line_no, line) in read_lines(path).iter().enumerate() {
-            for pattern in &forbidden_patterns {
-                if line.contains(pattern) {
-                    violations.push(format!(
-                        "{}:{}: forbidden '{}' — {}",
-                        path.display(),
-                        line_no + 1,
-                        pattern,
-                        line.trim()
-                    ));
-                }
-            }
-        }
-    }
-
+    let violations = forbidden_lines(&rust_files("src/core/domain"), &forbidden_patterns);
     assert!(
         violations.is_empty(),
         "R1 violations:\n{}",
@@ -380,27 +369,8 @@ fn r8_no_ports_subfolder() {
 
 #[test]
 fn r10_no_retained_into_raw_under_visualfeedback_macos() {
-    let mut violations: Vec<String> = Vec::new();
-
-    for entry in WalkDir::new("src/adapters/secondary/visualfeedback/macos")
-        .into_iter()
-        .filter_map(std::result::Result::ok)
-        .filter(|e| e.file_type().is_file())
-        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("rs"))
-    {
-        let path = entry.path();
-        for (line_no, line) in read_lines(path).iter().enumerate() {
-            if line.contains("Retained::into_raw") {
-                violations.push(format!(
-                    "{}:{}: forbidden raw-pointer escape — {}",
-                    path.display(),
-                    line_no + 1,
-                    line.trim()
-                ));
-            }
-        }
-    }
-
+    let files = rust_files("src/adapters/secondary/visualfeedback/macos");
+    let violations = forbidden_lines(&files, &["Retained::into_raw"]);
     assert!(
         violations.is_empty(),
         "R10 violations — Retained::into_raw is banned under visualfeedback/macos:\n{}",
@@ -409,11 +379,6 @@ fn r10_no_retained_into_raw_under_visualfeedback_macos() {
 }
 
 #[test]
-#[expect(
-    clippy::too_many_lines,
-    clippy::excessive_nesting,
-    reason = "size baseline"
-)]
 fn r_core_no_atomic_register() {
     let forbidden_patterns = [
         "AtomicU8",
@@ -423,38 +388,11 @@ fn r_core_no_atomic_register() {
         "AtomicUsize",
         "AtomicU128",
     ];
-
-    let mut violations: Vec<String> = Vec::new();
-
-    for entry in WalkDir::new("src/core")
+    let files: Vec<_> = rust_files("src/core")
         .into_iter()
-        .filter_map(std::result::Result::ok)
-        .filter(|e| e.file_type().is_file())
-        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("rs"))
-    {
-        let path = entry.path();
-        let stem = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or_default();
-        if stem == "mod" {
-            continue;
-        }
-        for (line_no, line) in read_lines(path).iter().enumerate() {
-            for pattern in &forbidden_patterns {
-                if line.contains(pattern) {
-                    violations.push(format!(
-                        "{}:{}: forbidden '{}' — {}",
-                        path.display(),
-                        line_no + 1,
-                        pattern,
-                        line.trim()
-                    ));
-                }
-            }
-        }
-    }
-
+        .filter(|path| path.file_stem().and_then(|s| s.to_str()) != Some("mod"))
+        .collect();
+    let violations = forbidden_lines(&files, &forbidden_patterns);
     assert!(
         violations.is_empty(),
         "R-core-no-atomic-register violations:\n{}",
@@ -525,19 +463,7 @@ fn rust_files(root: &str) -> Vec<std::path::PathBuf> {
 
 #[test]
 fn r11_core_never_imports_the_runtime() {
-    let mut violations: Vec<String> = Vec::new();
-    for path in rust_files("src/core") {
-        for (line_no, line) in read_lines(&path).iter().enumerate() {
-            if line.contains("crate::runtime") {
-                violations.push(format!(
-                    "{}:{}: {}",
-                    path.display(),
-                    line_no + 1,
-                    line.trim()
-                ));
-            }
-        }
-    }
+    let violations = forbidden_lines(&rust_files("src/core"), &["crate::runtime"]);
     assert!(
         violations.is_empty(),
         "R11 violations: core imports the runtime\n{}",
@@ -545,9 +471,21 @@ fn r11_core_never_imports_the_runtime() {
     );
 }
 
+/// The core prints nothing: file mode's text and every error are printed by the binary.
+#[test]
+fn r14_core_prints_nothing() {
+    let violations = forbidden_lines(&rust_files("src/core"), &["print!(", "println!("]);
+    assert!(
+        violations.is_empty(),
+        "R14 violations: the core prints\n{}",
+        violations.join("\n")
+    );
+}
+
 /// The dictation pipeline of hotkey mode is assembled in `src/runtime/` only; `main.rs`
 /// assembles the one of file mode and nothing else does, and no file outside the adapters,
-/// the runtime and `main.rs` imports a secondary adapter.
+/// the runtime and the binary (`main.rs` and its module `menubar_app.rs`) imports a
+/// secondary adapter.
 #[test]
 #[expect(clippy::excessive_nesting, reason = "size baseline")]
 fn r12_only_the_runtime_assembles_the_hotkey_pipeline() {
@@ -556,8 +494,8 @@ fn r12_only_the_runtime_assembles_the_hotkey_pipeline() {
         if path.starts_with("src/runtime") || path.starts_with("src/core") {
             continue;
         }
-        let composes =
-            path.starts_with("src/adapters") || path == std::path::Path::new("src/main.rs");
+        let binary = ["src/main.rs", "src/menubar_app.rs"].map(std::path::Path::new);
+        let composes = path.starts_with("src/adapters") || binary.contains(&path.as_path());
         if !composes {
             for (line_no, line) in read_lines(&path).iter().enumerate() {
                 if line.contains("adapters::secondary") {

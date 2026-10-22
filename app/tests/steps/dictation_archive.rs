@@ -17,18 +17,24 @@ use voicepuncher::adapters::secondary::archiving::filesystem::{
 };
 use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
-use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig};
+use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use voicepuncher::core::application::{
-    AudioRecorder, ChunkingCfg, CommandSpotter, KeyPresser, PipelineInput, SoundPlayer, TextPaster,
-    TextRefiner, Transcriber, VisualIndicator,
+    AudioRecorder, ChunkingCfg, PipelineInput, SoundPlayer, TextPaster, TextRefiner, Transcriber,
+    VisualIndicator,
 };
 use voicepuncher::core::domain::{
     AudioBuffer16k, CleanedText, CommandPlacement, FailureNotice, PttSignal, RawTranscript,
-    RecordingMode, SpottingEvent, VoiceCommand,
+    SpottingEvent, VoiceCommand,
 };
 
+use crate::steps::quiet_voice_control::{NoKeys, QuietSpotter};
 use crate::steps::voice_control::pipeline_log;
 use crate::IntegrationWorld;
+mod doubles;
+use doubles::{
+    AnsweringTranscriber, FailingRefiner, NotingOverlay, NotingPaster, SentenceRefiner, Silent,
+    TakesRecorder,
+};
 
 const PHRASE: &str = "meeting moved to friday";
 const SECOND_PHRASE: &str = "call me back tomorrow";
@@ -144,27 +150,14 @@ impl ArchiveRun {
         pipeline_log();
         let (tx, rx) = mpsc::channel();
         let mut pipeline = Pipeline::new(
-            Box::new(TakesRecorder {
-                takes: Arc::clone(&self.takes),
-                in_chunks: self.in_chunks,
-                current: Vec::new(),
-                parts: None,
-            }),
-            Box::new(AnsweringTranscriber {
-                answers: Arc::clone(&self.answers),
-                fails: self.recognition_fails,
-            }),
-            self.refiner(),
-            Box::new(NotingPaster(Arc::clone(&self.events))),
-            Box::new(Silent),
-            Box::new(NotingOverlay(Arc::clone(&self.events))),
+            self.parts(),
             PipelineConfig {
                 min_press_ms: self.min_press.as_millis() as u64,
-                recording_mode: RecordingMode::Toggle,
                 chunking: ChunkingCfg {
                     chunk_threshold_secs: if self.in_chunks { 5 } else { 0 },
                     ..ChunkingCfg::default()
                 },
+                ..PipelineConfig::default()
             },
         )
         .with_archive(Box::new(FileSystemDictationArchive::new(
@@ -181,6 +174,25 @@ impl ArchiveRun {
         let thread = std::thread::spawn(move || pipeline.run(rx));
         self.pipeline_thread = Some(thread.thread().id());
         Ok(tx)
+    }
+
+    fn parts(&self) -> PipelineParts {
+        PipelineParts {
+            recorder: Box::new(TakesRecorder {
+                takes: Arc::clone(&self.takes),
+                in_chunks: self.in_chunks,
+                current: Vec::new(),
+                parts: None,
+            }),
+            transcriber: Box::new(AnsweringTranscriber {
+                answers: Arc::clone(&self.answers),
+                fails: self.recognition_fails,
+            }),
+            refiner: self.refiner(),
+            paster: Box::new(NotingPaster(Arc::clone(&self.events))),
+            sound_player: Box::new(Silent),
+            visual_indicator: Box::new(NotingOverlay(Arc::clone(&self.events))),
+        }
     }
 
     fn refiner(&self) -> Box<dyn TextRefiner> {
@@ -628,169 +640,4 @@ fn pasted_and_warned(world: &mut IntegrationWorld) -> Result<()> {
         bail!("the archive folder was writable");
     }
     Ok(())
-}
-
-/// Hands over the audio queued for each recording; recorded in chunks, it sends all parts
-/// but the last while the user speaks and the last one when the recording is flushed.
-struct TakesRecorder {
-    takes: Takes,
-    in_chunks: bool,
-    current: Vec<AudioBuffer16k>,
-    parts: Option<Sender<LiveChunk>>,
-}
-
-impl TakesRecorder {
-    fn send(&self, audio: &AudioBuffer16k) {
-        if let Some(parts) = &self.parts {
-            let _ = parts.send(LiveChunk { audio: audio.clone(), enqueued_at: Instant::now() });
-        }
-    }
-}
-
-impl AudioRecorder for TakesRecorder {
-    fn start(&mut self) -> Result<()> {
-        self.current = self.takes.lock().unwrap().pop_front().unwrap_or_default();
-        Ok(())
-    }
-
-    fn stop(&mut self) -> Result<AudioBuffer16k> {
-        self.parts = None;
-        Ok(joined(&self.current))
-    }
-
-    fn start_live_chunks(&mut self, _cfg: ChunkingCfg) -> Result<Option<Receiver<LiveChunk>>> {
-        if !self.in_chunks {
-            return Ok(None);
-        }
-        let (tx, rx) = mpsc::channel();
-        self.parts = Some(tx);
-        let spoken = self.current.len().saturating_sub(1);
-        for part in &self.current[..spoken] {
-            self.send(part);
-        }
-        Ok(Some(rx))
-    }
-
-    fn flush_live_chunks(&mut self) {
-        if let Some(last) = self.current.last() {
-            self.send(last);
-        }
-        // the transcription of the parts ends with the last one
-        self.parts = None;
-    }
-
-    fn recording(&mut self) -> Option<AudioBuffer16k> {
-        Some(joined(&self.current))
-    }
-}
-
-struct AnsweringTranscriber {
-    answers: Answers,
-    fails: bool,
-}
-
-impl Transcriber for AnsweringTranscriber {
-    fn transcribe(&mut self, _audio: &AudioBuffer16k) -> Result<Option<RawTranscript>> {
-        let answer = self.answers.lock().unwrap().pop_front();
-        if self.fails {
-            return Err(anyhow!("the speech recognition service does not answer"));
-        }
-        Ok(answer.map(RawTranscript::new).transpose()?)
-    }
-}
-
-struct SentenceRefiner;
-
-impl TextRefiner for SentenceRefiner {
-    fn refine(&mut self, raw: &RawTranscript) -> Result<CleanedText> {
-        Ok(CleanedText::new(as_sentence(raw.as_str()))?)
-    }
-}
-
-struct FailingRefiner;
-
-impl TextRefiner for FailingRefiner {
-    fn refine(&mut self, _raw: &RawTranscript) -> Result<CleanedText> {
-        Err(anyhow!("the text refinement service does not answer"))
-    }
-}
-
-struct NotingPaster(Events);
-
-impl TextPaster for NotingPaster {
-    fn paste(&mut self, text: &CleanedText) -> Result<()> {
-        self.0
-            .lock()
-            .unwrap()
-            .push(Event::Pasted(text.as_str().to_owned()));
-        Ok(())
-    }
-
-    fn leave_in_clipboard(&mut self, text: &CleanedText) -> Result<()> {
-        self.paste(text)
-    }
-}
-
-struct NotingOverlay(Events);
-
-impl VisualIndicator for NotingOverlay {
-    fn show_recording(&self) {}
-    fn show_recognizing_speech(&self) {}
-    fn show_refining_text(&self) {}
-    fn show_waiting_for_focus(&self) {}
-
-    fn hide(&self) {
-        self.0.lock().unwrap().push(Event::Hidden);
-    }
-
-    /// The Pasted sign takes itself down: the dictation ends on the overlay with it.
-    fn show_pasted(&self) {
-        self.hide();
-    }
-
-    fn show_failure_notice(&self, _notice: &FailureNotice) {
-        self.hide();
-    }
-}
-
-/// The command spotting service as the pipeline sees it; the scenario reports the commands
-/// straight into the pipeline's input channel.
-struct QuietSpotter;
-
-impl CommandSpotter for QuietSpotter {
-    fn probe(&self) -> Result<()> {
-        Ok(())
-    }
-
-    fn start_listening(&mut self, _commands: &[VoiceCommand]) -> Result<()> {
-        Ok(())
-    }
-
-    fn listen_for(&mut self, _commands: &[VoiceCommand]) {}
-
-    fn stop_listening(&mut self) {}
-}
-
-struct NoKeys;
-
-impl KeyPresser for NoKeys {
-    fn press_enter(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn clear_all_text(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn paste(&mut self) -> Result<()> {
-        Ok(())
-    }
-}
-
-struct Silent;
-
-impl SoundPlayer for Silent {
-    fn play_start(&self) {}
-    fn play_stop(&self) {}
-    fn play_cancel(&self) {}
 }
