@@ -140,7 +140,7 @@ filter = 'binary(cucumber_e2e)'
 run-extra-args = ["--tags", "@resilience and not @wip"]
 slow-timeout = { period = "60s", terminate-after = 7 }
 
-# chunked_transcription_it, 112 s measured: 4 min; @seams with the voice start timing, 252 s measured: 9 min
+# chunked_transcription_it, 120 s measured: 4 min; @seams, 88 s measured (the voice start timing moved to e2e-cues): 3 min
 [profile.e2e-seams]
 success-output = "immediate"
 
@@ -151,7 +151,16 @@ slow-timeout = { period = "60s", terminate-after = 4 }
 [[profile.e2e-seams.overrides]]
 filter = 'binary(cucumber_e2e)'
 run-extra-args = ["--tags", "@seams and not @wip"]
-slow-timeout = { period = "60s", terminate-after = 9 }
+slow-timeout = { period = "60s", terminate-after = 3 }
+
+# @cues, the voice start timing on an idle machine, 135 s measured: 5 min
+[profile.e2e-cues]
+success-output = "immediate"
+
+[[profile.e2e-cues.overrides]]
+filter = 'binary(cucumber_e2e)'
+run-extra-args = ["--tags", "@cues and not @wip"]
+slow-timeout = { period = "60s", terminate-after = 5 }
 
 # @bundle, the app-distribution scenarios of full-check's bundle stage, 26 s measured: default 2 min
 [profile.bundle]

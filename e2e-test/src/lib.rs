@@ -1,6 +1,7 @@
 pub mod concurrency;
 pub mod corpus;
 pub mod harness_args;
+pub mod machine_load;
 pub mod refinement_eval;
 pub mod scenario_filter;
 pub mod speech;

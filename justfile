@@ -58,7 +58,7 @@ e2e_smoke_stages := "e2e-smoke-voice e2e-smoke-refinement e2e-smoke-speech e2e-s
 # light phase first, as voice control held the most failures; in each phase the short stages first and the long
 # Gherkin runs last. `accuracy` stands for the accuracy stage full-check picks (_accuracy-stage)
 check_model_stages := "e2e-smoke-voice e2e-smoke-refinement refine-eval e2e-smoke-speech e2e-quick e2e-smoke-services"
-full_check_model_stages := "e2e-smoke-voice e2e-regression e2e-resilience e2e-smoke-refinement refine-eval e2e-bundle e2e-smoke-speech accuracy e2e-smoke-services e2e-seams"
+full_check_model_stages := "e2e-smoke-voice e2e-regression e2e-resilience e2e-smoke-refinement refine-eval e2e-bundle e2e-smoke-speech accuracy e2e-smoke-services e2e-seams e2e-cues"
 # The test binaries of the voice control smoke part, the most failing first; placed_commands_it is the command
 # spotting service's, the others the app's
 voice_smoke_binaries := "placed_commands_it voice_forms_it voice_samples_it commandspotting_websocket_it"
@@ -122,6 +122,10 @@ test_light_kws_port := env_var_or_default("VOICEPUNCHER_TEST_LIGHT_KWS_PORT", "2
 # command model, so it runs beside another run's heavy stages (dictation, refinement, seams, accuracy); every other
 # model stage is heavy (_lock-phases, _class-lock)
 light_stages := "e2e-smoke-voice e2e-regression e2e-resilience"
+# The model stages of the exclusive lock class: the start cue timing, which the spec bounds with the machine
+# otherwise idle, so its phase holds the machine lock exclusively and the quiet lock the other checks' build
+# stages share (_class-lock), always the last phase of a run
+exclusive_stages := "e2e-cues"
 # The environment of a run on one class's test ports; VOICEPUNCHER_TEST_PORTS names the prefix of the variables
 # that move them, for the messages of _start-model-servers-for-e2e
 heavy_ports := "env VOICEPUNCHER_STT_PORT=" + test_stt_port + " VOICEPUNCHER_COMMAND_STT_PORT=" + test_command_stt_port + " VOICEPUNCHER_LLM_PORT=" + test_llm_port + " VOICEPUNCHER_KWS_PORT=" + test_kws_port + " VOICEPUNCHER_TEST_PORTS=VOICEPUNCHER_TEST"
@@ -410,19 +414,19 @@ stage_inputs := '''
     e2e-test/tests/features/text_refinement.feature    e2e-smoke-refinement,refine-eval
     e2e-test/tests/steps/text_refinement/*             e2e-smoke-refinement,refine-eval
     e2e-test/tests/steps/refinement_service_stub.rs    e2e-smoke-refinement,refine-eval
-    command-spotting/*                                 e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-smoke-services,accuracy
-    app/src/adapters/secondary/commandspotting/*       e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-smoke-services,accuracy
-    app/src/adapters/secondary/keypressing/*           e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-smoke-services,accuracy
-    app/src/core/application/pipeline/voice_control.rs e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-smoke-services,accuracy
-    app/src/core/application/command_spotter.rs        e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-smoke-services,accuracy
-    app/src/core/application/key_presser.rs            e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-smoke-services,accuracy
-    app/src/core/domain/voice_command*.rs              e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-smoke-services,accuracy
-    app/src/core/domain/command_words.rs               e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-smoke-services,accuracy
-    app/src/core/domain/voice_start_timing.rs          e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-smoke-services,accuracy
-    e2e-test/src/voice_commands.rs                     e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,accuracy
-    e2e-test/tests/features/voice_control.feature      e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,accuracy
-    e2e-test/tests/steps/voice_control.rs              e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,accuracy
-    e2e-test/tests/steps/voice_control/*               e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,accuracy
+    command-spotting/*                                 e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
+    app/src/adapters/secondary/commandspotting/*       e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
+    app/src/adapters/secondary/keypressing/*           e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
+    app/src/core/application/pipeline/voice_control.rs e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
+    app/src/core/application/command_spotter.rs        e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
+    app/src/core/application/key_presser.rs            e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
+    app/src/core/domain/voice_command*.rs              e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
+    app/src/core/domain/command_words.rs               e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
+    app/src/core/domain/voice_start_timing.rs          e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
+    e2e-test/src/voice_commands.rs                     e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,accuracy
+    e2e-test/tests/features/voice_control.feature      e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,accuracy
+    e2e-test/tests/steps/voice_control.rs              e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,accuracy
+    e2e-test/tests/steps/voice_control/*               e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,accuracy
     e2e-test/tests/features/speech_recognition.feature e2e-smoke-speech,e2e-seams
     e2e-test/tests/steps/speech_recognition.rs         e2e-smoke-speech,e2e-seams
     e2e-test/tests/steps/speech_recognition/*          e2e-smoke-speech,e2e-seams
@@ -596,15 +600,16 @@ _stage-keys +stages:
         print "$stage ", $sha->hexdigest, "\n";
     }
 
-# Runs the named stages (private recipes without their `_`) in two phases. The stages before the first model
-# stage (`e2e*` or `refine-eval`) run one by one without the machine lock, each through the wrapper with a lock
-# directory of the run's own — the device `test` uses, borrowed: it only gives the stage the time limit
-# (MACHINE_LOCK_TIMEOUT, exit 124; the timeout message says `[machine-lock]`, though no machine lock is held; a
-# run killed with KILL leaves that directory, holding an empty tests.lock, in $TMPDIR, which macOS clears); fmt,
-# lint, build and build-e2e run at the utility QoS clamp. The rest runs in _model-stages, one phase per lock
-# class (_lock-phases): each under its class lock and the shared machine lock (_class-lock), on its class's test
-# ports, so a light phase runs beside another run's heavy one; when the caller already holds the machine lock,
-# in one phase at once. A failing stage ends the run before the next lock is requested.
+# Runs the named stages (private recipes without their `_`) in phases. The stages before the first model
+# stage (`e2e*` or `refine-eval`) run one by one without the machine lock, each through the wrapper on the quiet
+# lock in the shared mode (_quiet-lock): it gives the stage the time limit (MACHINE_LOCK_TIMEOUT, exit 124; the
+# timeout message says `[machine-lock]`, though no machine lock is held) and keeps it out of a running or
+# waiting e2e-cues stage; fmt, lint, build and build-e2e run at the utility QoS clamp. The rest runs in
+# _model-stages, one phase per lock class (_lock-phases): the light and heavy phases each under their class lock
+# and the shared machine lock, the exclusive phase under the machine lock and the quiet lock exclusively
+# (_class-lock), on the class's test ports, so a light phase runs beside another run's heavy one and the
+# exclusive phase has the machine alone; when the caller already holds the machine lock, in one phase at once.
+# A failing stage ends the run before the next lock is requested.
 # Ends with one table: each stage's time, each class's lock wait and hold, and adds the run to the stage journal
 # (_stage-journal-append; the caller names itself in VOICEPUNCHER_STAGES_RECIPE, full-check its accuracy choice in
 # VOICEPUNCHER_STAGES_ACCURACY); every stage's output is also copied to a log of the run, where the journal finds
@@ -623,7 +628,6 @@ _stages +stages:
     started=$(now)
     report=$(mktemp)
     run_log=$(mktemp)
-    stage_lock_dir=$(mktemp -d)
     export VOICEPUNCHER_STAGES_REPORT="$report"
     # The stages' output also goes to run_log, for the failed tests of the journal: behind that copy cargo and
     # nextest see no terminal, so they keep their colors only when this run's output is one
@@ -722,7 +726,7 @@ _stages +stages:
             STAGES_CALLER="$caller" STAGES_WORKTREE={{quote(justfile_directory())}} \
             {{just_executable()}} --justfile {{quote(justfile())}} _stage-journal-append \
             || echo "✗ the run was not added to the stage journal" >&2
-        rm -rf "$report" "$run_log" "$stage_lock_dir" "$keys" "$reuse"
+        rm -rf "$report" "$run_log" "$keys" "$reuse"
         exit "$code"
     }
     trap finish EXIT
@@ -744,7 +748,8 @@ _stages +stages:
         # `test` stage clamps only its own build phase (see _test)
         clamp=()
         case "$stage" in fmt|lint|build|bundle|build-e2e) clamp=(taskpolicy -c utility) ;; esac
-        run_phase ${clamp[@]+"${clamp[@]}"} env MACHINE_LOCK_DIR="$stage_lock_dir" {{locked}} "_$stage"
+        run_phase ${clamp[@]+"${clamp[@]}"} {{heavy_ports}} {{just_executable()}} --justfile {{quote(justfile())}} _quiet-lock \
+            {{just_executable()}} --justfile {{quote(justfile())}} "_$stage"
         mark="✓"
         [[ $status -eq 0 && -z "$interrupted" ]] || mark="✗"
         echo "stage $mark $stage $(since "$t0")" >>"$report"
@@ -790,19 +795,22 @@ _stages +stages:
     fi
 
 # The model stages split into one phase per lock class, `<class> <stage>…` per line: each phase keeps the order of
-# its stages, the phases come in the order of their first stage, a class without a stage prints nothing. `light`
-# are the stages light_stages names, every other model stage is `heavy` (see _class-lock)
+# its stages, the light and heavy phases come in the order of their first stage, the exclusive phase last, a class
+# without a stage prints nothing. `light` are the stages light_stages names, `exclusive` those of exclusive_stages,
+# every other model stage is `heavy` (see _class-lock)
 _lock-phases *stages:
     #!/usr/bin/env bash
     set -euo pipefail
-    heavy="" light="" first=""
+    heavy="" light="" exclusive="" first=""
     for stage in {{stages}}; do
         if [[ " {{light_stages}} " == *" $stage "* ]]; then light+=" $stage"; first=${first:-light}
+        elif [[ " {{exclusive_stages}} " == *" $stage "* ]]; then exclusive+=" $stage"
         else heavy+=" $stage"; first=${first:-heavy}; fi
     done
     print() { [[ -z "$2" ]] || echo "$1$2"; }
     if [[ "$first" == light ]]; then print light "$light"; print heavy "$heavy"
     else print heavy "$heavy"; print light "$light"; fi
+    print exclusive "$exclusive"
 
 # Runs a command under the lock of its class (_lock-phases), then under the machine lock in the shared mode:
 # two runs of one class take turns, a light and a heavy run overlap, and an exclusive run of the machine lock
@@ -811,6 +819,11 @@ _lock-phases *stages:
 # queues for its class. A class lock is a lock directory of its own beside the machine lock's; its deadline
 # covers the wait for the machine lock (MACHINE_LOCK_WAIT) plus the machine lock's deadline, which stays on the
 # command
+# The `exclusive` class takes no class lock: the machine lock exclusively (the outer wrapper, so the kit keeps
+# every shared phase out and lets this run go before new shared ones), then the quiet lock exclusively (the
+# inner wrapper, with the stage's deadline), so the other checks' build stages (_quiet-lock) end before the
+# stage times anything and none starts beside it. Machine lock first: holding the quiet lock while queuing for
+# the machine lock would stall every other check's builds for the queue's length
 [positional-arguments]
 _class-lock class +command:
     #!/usr/bin/env bash
@@ -819,9 +832,28 @@ _class-lock class +command:
     shift
     machine_dir="${MACHINE_LOCK_DIR:-$HOME/.cache/machine-lock}"
     deadline="${MACHINE_LOCK_TIMEOUT:-3600}"
+    if [[ "$class" == exclusive ]]; then
+        exec env MACHINE_LOCK_DIR="$machine_dir" MACHINE_LOCK_TIMEOUT="$(( MACHINE_LOCK_WAIT + deadline ))" \
+            {{quote(machine_lock)}} env MACHINE_LOCK_DIR="$machine_dir-voicepuncher-quiet" MACHINE_LOCK_TIMEOUT="$deadline" \
+            {{quote(machine_lock)}} "$@"
+    fi
     exec env MACHINE_LOCK_DIR="$machine_dir-voicepuncher-$class" MACHINE_LOCK_TIMEOUT="$(( MACHINE_LOCK_WAIT + deadline ))" \
         {{quote(machine_lock)}} env MACHINE_LOCK_DIR="$machine_dir" MACHINE_LOCK_TIMEOUT="$deadline" \
         {{quote(machine_lock)}} --shared "$@"
+
+# Runs a build stage of _stages (fmt, lint, test, metrics, build, bundle, build-e2e) under the quiet lock in the
+# shared mode: a lock directory beside the machine lock's that only the exclusive class takes exclusively, so the
+# builds of every check start at once beside everything but a running or waiting e2e-cues stage, which they wait
+# out (at most its hold). The wrapper also gives the stage its time limit (MACHINE_LOCK_TIMEOUT, exit 124); with
+# VOICEPUNCHER_NO_MACHINE_LOCK=1 (the hosted CI) the command runs as it is
+[positional-arguments]
+_quiet-lock +command:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    wrapper={{quote(machine_lock)}}
+    if [[ "$wrapper" == /usr/bin/env ]]; then exec "$@"; fi
+    machine_dir="${MACHINE_LOCK_DIR:-$HOME/.cache/machine-lock}"
+    exec env MACHINE_LOCK_DIR="$machine_dir-voicepuncher-quiet" "$wrapper" --shared "$@"
 
 # The model stages of one phase of _stages, run under its lock (VOICEPUNCHER_LOCK_CLASS): starts the services on
 # the test ports of that class, runs the stages with VOICEPUNCHER_E2E_SERVICES_HELD=1, so no E2E recipe starts or stops one, and stops them
@@ -1294,7 +1326,7 @@ _build:
 
 # E2E on real models: smoke + chunk seams + WER accuracy on 100 samples + refinement evaluation (~13 min)
 e2e:
-    @VOICEPUNCHER_STAGES_RECIPE=e2e {{just_executable()}} _stages {{e2e_smoke_stages}} e2e-seams e2e-bench refine-eval
+    @VOICEPUNCHER_STAGES_RECIPE=e2e {{just_executable()}} _stages {{e2e_smoke_stages}} e2e-seams e2e-cues e2e-bench refine-eval
 
 # Smoke test — services and models load, file mode runs and voice commands are spotted (@smoke scenarios), the adapters talk to the real services
 e2e-smoke:
@@ -1396,7 +1428,7 @@ _e2e-bundle: _require-nextest _require-models _require-corpus
     {{just_executable()}} --justfile {{quote(justfile())}} bundle
     cargo nextest run --profile e2e-bundle {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
-# Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words; and the start cue of each voice start, timed from the end of the command's words (~4 min)
+# Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words (~4 min)
 e2e-seams:
     @VOICEPUNCHER_STAGES_RECIPE=e2e-seams {{just_executable()}} _stages e2e-seams
 
@@ -1405,11 +1437,23 @@ _e2e-seams: _require-nextest _require-models _build
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
-    # The command spotting services for the voice start timing scenarios (@seams)
-    export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
-    export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
+    export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}"
     cargo nextest run --profile e2e-seams {{e2e_seams_tests}} {{rerun_filter}} {{fail_fast}}
     cargo nextest run --profile e2e-seams {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
+
+# Start cues: the start cue of each voice start, timed from the end of the command's words, on an idle machine — the stage holds the machine lock exclusively and keeps the other checks' build stages out (~2.5 min)
+e2e-cues:
+    @VOICEPUNCHER_STAGES_RECIPE=e2e-cues {{just_executable()}} _stages e2e-cues
+
+_e2e-cues: _require-nextest _require-models _build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
+    {{just_executable()}} _start-model-servers-for-e2e
+    # The command spotting services for the voice start timing scenarios (@cues)
+    export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
+    export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
+    cargo nextest run --profile e2e-cues {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
 # WER accuracy on a fixed sample of 100 recordings (50 per language), two at a time — fails if mean WER > 30 %, and no command in 20 recordings of ordinary speech (~3 min)
 e2e-bench:
@@ -1671,9 +1715,10 @@ _check-bundle app dmg:
     [[ -L "$mount/Applications" ]] || { echo "✗ $dmg holds no Applications shortcut" >&2; exit 1; }
     echo "✓ bundle stage: $app signed and verified with its engines and licenses, $dmg holds the app and the Applications shortcut"
 
-# Self-test of _class-lock, run by the `test` stage, on lock directories of its own: the lock wait is 6 h unless
-# the caller sets it, a light and a heavy run overlap, two runs of one class take turns, and an exclusive run of
-# the machine lock keeps both out
+# Self-test of _class-lock and _quiet-lock, run by the `test` stage, on lock directories of its own: the lock wait
+# is 6 h unless the caller sets it, a light and a heavy run overlap, two runs of one class take turns, an exclusive
+# run of the machine lock keeps both out, quiet builds overlap each other, and an exclusive-class run waits for
+# the quiet builds, keeps new ones out and keeps the light and heavy classes out
 _test-class-locks:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1709,6 +1754,23 @@ _test-class-locks:
     ! overlap machine light4 || fail "a light run overlapped an exclusive run"
     ! overlap machine heavy4 || fail "a heavy run overlapped an exclusive run"
     echo "  ✓ an exclusive run keeps both classes out"
+    quiet() { {{just_executable()}} --justfile {{quote(justfile())}} _quiet-lock "$@"; }
+    # ends_before <a> <b>: whether hold a let go before hold b got the lock
+    ends_before() { perl -e 'my ($a0, $a1) = split " ", `cat $ARGV[0]`; my ($b0, $b1) = split " ", `cat $ARGV[1]`; exit($a1 <= $b0 ? 0 : 1)' "$dir/$1" "$dir/$2"; }
+    hold quiet1 quiet & hold quiet2 quiet & wait
+    overlap quiet1 quiet2 || fail "two quiet builds took turns"
+    echo "  ✓ two quiet builds overlap"
+    hold quiet3 quiet & sleep 0.5
+    hold exclusive1 class exclusive & sleep 0.5
+    hold quiet4 quiet & wait
+    ends_before quiet3 exclusive1 || fail "an exclusive run did not wait for the quiet build before it"
+    ends_before exclusive1 quiet4 || fail "a quiet build started beside the exclusive run"
+    echo "  ✓ an exclusive run waits for the quiet builds and keeps new ones out"
+    hold exclusive2 class exclusive & sleep 0.5
+    hold light5 class light & hold heavy5 class heavy & wait
+    ! overlap exclusive2 light5 || fail "a light run overlapped an exclusive-class run"
+    ! overlap exclusive2 heavy5 || fail "a heavy run overlapped an exclusive-class run"
+    echo "  ✓ an exclusive-class run keeps the light and heavy classes out"
 
 # Self-test of _lock-phases, run by the `test` stage: the model stages split into one phase per lock class, each
 # keeping the stages' order, the phases in the order of their first stage; a stage light_stages does not name is
@@ -1729,14 +1791,14 @@ _test-lock-phases:
     expect "check: voice control first, then the short heavy stages" \
         $'light e2e-smoke-voice\nheavy e2e-smoke-refinement refine-eval e2e-smoke-speech e2e-quick e2e-smoke-services' \
         {{check_model_stages}}
-    expect "full-check: every voice control stage first, the seams last" \
-        $'light e2e-smoke-voice e2e-regression e2e-resilience\nheavy e2e-smoke-refinement refine-eval e2e-bundle e2e-smoke-speech accuracy e2e-smoke-services e2e-seams' \
+    expect "full-check: every voice control stage first, the seams last, then the cues with the machine alone" \
+        $'light e2e-smoke-voice e2e-regression e2e-resilience\nheavy e2e-smoke-refinement refine-eval e2e-bundle e2e-smoke-speech accuracy e2e-smoke-services e2e-seams\nexclusive e2e-cues' \
         {{full_check_model_stages}}
     sorted() { tr ' ' '\n' <<<"$*" | grep . | sort | tr '\n' ' '; }
     [[ $(sorted {{check_model_stages}}) == $(sorted e2e-smoke-speech e2e-smoke-refinement e2e-smoke-voice e2e-smoke-services e2e-quick refine-eval) ]] \
         || { echo "✗ check runs other stages than before: {{check_model_stages}}" >&2; exit 1; }
-    [[ $(sorted {{full_check_model_stages}}) == $(sorted e2e-smoke-speech e2e-smoke-refinement e2e-smoke-voice e2e-smoke-services e2e-regression e2e-seams e2e-resilience e2e-bundle accuracy refine-eval) ]] \
-        || { echo "✗ full-check runs other stages than before: {{full_check_model_stages}}" >&2; exit 1; }
+    [[ $(sorted {{full_check_model_stages}}) == $(sorted e2e-smoke-speech e2e-smoke-refinement e2e-smoke-voice e2e-smoke-services e2e-regression e2e-seams e2e-cues e2e-resilience e2e-bundle accuracy refine-eval) ]] \
+        || { echo "✗ full-check runs other stages than before and the cues: {{full_check_model_stages}}" >&2; exit 1; }
     [[ $(sorted {{e2e_smoke_stages}}) == $(sorted e2e-smoke-speech e2e-smoke-refinement e2e-smoke-voice e2e-smoke-services) && "{{e2e_smoke_stages}}" == e2e-smoke-voice* ]] \
         || { echo "✗ the smoke parts are not voice control first: {{e2e_smoke_stages}}" >&2; exit 1; }
     echo "  ✓ check and full-check run the same stages as before"

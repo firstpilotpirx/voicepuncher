@@ -360,9 +360,10 @@ Feature: voice-control
       When the user's recorded "start start" is followed at once by a sentence, and the dictation later ends
       Then the whole sentence, its first words included, is pasted without "start"
 
-  # Real-time sessions timed from the end of the command's words; @seams runs them in
-  # full-check, @serial keeps the other scenarios' requests from queuing ahead of them.
-  @serial @seams
+  # Real-time sessions timed from the end of the command's words; @cues runs them in
+  # full-check's e2e-cues stage with the machine otherwise idle, @serial keeps the other
+  # scenarios' requests from queuing ahead of them.
+  @serial @cues
   Rule: A voice start gives its start cue within 0.7 s
 
     Scenario: Start start followed by the dictation at once gives its cue at once

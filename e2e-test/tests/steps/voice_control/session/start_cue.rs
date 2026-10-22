@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 
+use voicepuncher_e2e_test::machine_load;
 use voicepuncher_e2e_test::voice_commands::{
     from_first_sound, silence, spoken_by, without_trailing_silence,
 };
@@ -192,11 +193,14 @@ fn sentence_at_once() -> Result<Vec<f32>> {
     Ok(from_first_sound(spoken_by(ENGLISH_VOICE, SENTENCE)?))
 }
 
+/// A cue over its bound fails naming what ran beside it: the spec bounds the cue on an
+/// idle machine, so the load at the failure tells a slow confirmation from a loaded machine.
 fn check_within(start: &MeasuredStart, bound_secs: f32) -> Result<()> {
     if !start.within(Duration::from_secs_f32(bound_secs)) {
         bail!(
-            "expected the start cue within {bound_secs} s of the end of the command's words; {}",
-            start.report()
+            "expected the start cue within {bound_secs} s of the end of the command's words; {}\n{}",
+            start.report(),
+            machine_load::report()
         );
     }
     Ok(())
@@ -335,9 +339,10 @@ fn most_recorded_within(
     if in_time * of < wanted * starts.len() {
         let reports: Vec<String> = starts.iter().map(MeasuredStart::report).collect();
         bail!(
-            "{in_time} of {} recorded starts gave the cue within {bound_secs} s:\n{}",
+            "{in_time} of {} recorded starts gave the cue within {bound_secs} s:\n{}\n{}",
             starts.len(),
-            reports.join("\n")
+            reports.join("\n"),
+            machine_load::report()
         );
     }
     Ok(())

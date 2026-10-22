@@ -20,7 +20,7 @@ The build stages of `_stages` run through the wrapper on `<machine lock dir>-voi
 
 ### 4. A late cue names its load
 
-When a cue misses its bound, or fewer than 9 of 10 recorded starts make it, the failure appends a load report sampled right then: the five busiest processes (`ps` by CPU share, pid and command) and every live holder of a lock under `~/.cache/machine-lock*` (checkout, command and mode from the kit's holder files; a holder whose process is gone is skipped). `e2e-test/src/machine_load.rs`, unit-tested on a scratch lock directory and sample `ps` rows; the cue steps only append it.
+When a cue misses its bound, or fewer than 9 of 10 recorded starts make it, the failure appends a load report sampled right then: the five busiest processes (`ps` by CPU share, pid and command) and every live holder of a lock under `~/.cache/machine-lock*` (checkout, command and mode from the kit's holder files; a holder whose process is gone is skipped). `e2e-test/src/machine_load.rs` with its module directory (`holders.rs`, `processes.rs`, `tests.rs`: the E2E crate's `src/` is at its directory budget), unit-tested on a scratch lock directory and sample `ps` rows; the cue steps only append it.
 
 ### 5. Light-phase cue scenarios: none
 
@@ -35,7 +35,7 @@ Three `just e2e-cues` runs while another worktree runs a check's build stages (`
 | Spec scenario / behavior | Level |
 |---|---|
 | The start cue is timed once the other checks' builds have ended | recipe self-tests `_test-class-locks` (an exclusive run waits for a shared quiet holder, keeps a new one out, excludes light and heavy) and `_test-lock-phases` (the exclusive phase, last); the runs of decision 6 |
-| A late start cue names what ran beside it | unit tests of `machine_load.rs`; the step's message is plain Rust |
+| A late start cue names what ran beside it | unit tests of `machine_load/tests.rs`; the step's message is plain Rust |
 | Start start followed by the dictation at once gives its cue at once | E2E `.feature` (`e2e-cues`), unchanged in meaning |
 | Start followed by the dictation at once gives its cue at once | E2E `.feature` (`e2e-cues`), unchanged |
 | Start said on its own gives its cue at once | E2E `.feature` (`e2e-cues`), unchanged |
@@ -55,6 +55,18 @@ No manual run: hotkey, recording, overlay, paste and permissions are untouched.
 - [~4 min of exclusive hold per `full-check`, after every shared holder] → it runs last; `kit land` runs one `full-check` per group.
 - [Another check's build stage waits while a cue stage runs] → at most the stage's hold, shown inside that stage's time.
 - [A user's `cargo watch` or standalone `just test` still loads the machine] → the failure names it.
+
+## Measurements
+
+Three `just e2e-cues` runs on 2026-10-22, each started a minute after `VOICEPUNCHER_REUSE_STAGES=0 just _stages fmt lint test metrics build build-e2e` in a scratch worktree with a cold `target/` (the build storm); other sessions' checks ran on the machine meanwhile. The storm's lint stage (clippy over the cold build, 381–429 s) held the quiet lock shared the whole time; the cue stage waited it out and timed nothing beside it:
+
+| Run | Exclusive lock wait | Hold | Stage | Cucumber run | Scenarios |
+|---|---|---|---|---|---|
+| 1 | 374 s | 269 s | 228 s (test binaries built) | 135 s | 8 of 8 passed |
+| 2 | 362 s | 150 s | 137 s | 134 s | 8 of 8 passed |
+| 3 | 381 s | 150 s | 138 s | 135 s | 8 of 8 passed |
+
+Every wait was the quiet lock (the `[machine-lock] held by … _lint` lines name the storm's lint); the machine lock was free. Nextest limits: `e2e-cues` 135 s measured, 5 min; `e2e-seams` alone (one run, heavy lock) 88 s of Gherkin and 120 s of `chunked_transcription_it`, 3 min and 4 min. The storm's lint found shellcheck SC2050 in `_quiet-lock` (a constant comparison): fixed in this change.
 
 ## Dependencies
 
