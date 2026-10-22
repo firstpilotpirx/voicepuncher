@@ -5,8 +5,8 @@ The audit of 2026-10-22 counted 146 `unsafe` sites in 24 files, almost all objc2
 ## What Changes
 
 - Every `unsafe` block, `unsafe fn` call site and `unsafe impl` carries a `// SAFETY:` comment of at most 3 lines stating the invariant and who upholds it; the missing ≈ 50 are written after reading each site.
-- clippy `undocumented_unsafe_blocks` and `multiple_unsafe_ops_per_block` as errors in `[workspace.lints]`; a rule of `app/tests/architecture.rs` requires a `SAFETY:` line above every `unsafe impl Send`/`Sync` and lists the allowed ones in an allowlist with the file and the reason, so a new one fails the test.
-- `cargo-geiger` count per crate in the metrics baseline (`adopt-static-analyzers`), so unsafe cannot grow unnoticed.
+- clippy `undocumented_unsafe_blocks` and `multiple_unsafe_ops_per_block` as errors in `[workspace.lints]`; a test of its own, `app/tests/unsafe_impls.rs` (`architecture.rs` may only shrink), requires a `SAFETY:` line above every `unsafe impl Send`/`Sync` and lists the allowed ones in an allowlist with the file and the reason, so a new one fails the test.
+- The `unsafe` count in the metrics baseline is `adopt-static-analyzers`' (cargo-geiger fails on this workspace), so unsafe cannot grow unnoticed.
 - `AGENTS.md` § Architecture rules states the rule.
 
 Current stage: PoC. Target stage: PoC.
@@ -22,13 +22,13 @@ Out of scope: removing `unsafe`; changing any behavior.
 
 ## Impact
 
-- `app/src/adapters/**` (comments), `app/src/adapters/main_queue.rs`, `Cargo.toml` lints, `app/tests/architecture.rs`, `AGENTS.md`.
+- `app/src/adapters/**` (comments), `app/src/adapters/main_queue.rs`, `Cargo.toml` lints, `app/tests/unsafe_impls.rs`, `app/tests/*_it.rs`, `AGENTS.md`.
 
 ## Open points
 
-- Whether a `SAFETY:` comment that merely restates "called on the main thread" is enough for AppKit getters, or the rule demands the `MainThreadMarker` in scope; proposed: the marker in scope wherever objc2 offers one, the comment only where it does not.
+- Whether a `SAFETY:` comment that merely restates "called on the main thread" is enough for AppKit getters, or the rule demands the `MainThreadMarker` in scope; decided: comments only; markers belong to `harden-overlay-thread-model` (design).
 
 ## Release
 
 SemVer: no release — comments and checks only.
-Target version: 0.35.0 (unchanged).
+Target version: 0.36.1 (unchanged).
