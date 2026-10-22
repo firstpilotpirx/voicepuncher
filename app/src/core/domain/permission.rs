@@ -12,18 +12,14 @@ pub enum Permission {
 }
 
 impl Permission {
-    pub const ALL: [Permission; 3] = [
-        Permission::Microphone,
-        Permission::Accessibility,
-        Permission::InputMonitoring,
-    ];
+    pub const ALL: [Self; 3] = [Self::Microphone, Self::Accessibility, Self::InputMonitoring];
 
     /// The name System Settings uses for it.
     pub fn name(self) -> &'static str {
         match self {
-            Permission::Microphone => "Microphone",
-            Permission::Accessibility => "Accessibility",
-            Permission::InputMonitoring => "Input Monitoring",
+            Self::Microphone => "Microphone",
+            Self::Accessibility => "Accessibility",
+            Self::InputMonitoring => "Input Monitoring",
         }
     }
 }
@@ -48,9 +44,9 @@ impl PermissionStatus {
     /// The status in words, as the log says it.
     pub fn words(self) -> &'static str {
         match self {
-            PermissionStatus::Granted => "granted",
-            PermissionStatus::Denied => "not granted",
-            PermissionStatus::NotDetermined => "not asked yet",
+            Self::Granted => "granted",
+            Self::Denied => "not granted",
+            Self::NotDetermined => "not asked yet",
         }
     }
 }

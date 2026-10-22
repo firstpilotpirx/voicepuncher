@@ -42,7 +42,7 @@ fn should_be_callable_multiple_times_in_sequence() {
     let texts = ["first", "second", "third"];
     // When
     for t in &texts {
-        let text = CleanedText::new(t.to_string()).unwrap();
+        let text = CleanedText::new((*t).to_string()).unwrap();
         let result = paster.paste(&text);
         // Then
         assert!(result.is_ok(), "paste of '{t}' should succeed");

@@ -1,0 +1,21 @@
+# Baseline of `voicepuncher-analyzers recipes`: the findings left, which may only shrink.
+# Rewritten by `just analyzers-baseline`; a rewrite that adds or raises an entry is reviewed like code.
+[findings]
+"shellcheck _accuracy-stage SC2053" = 1
+"shellcheck _lock-phases SC2043" = 1
+"shellcheck _model-stages SC2043" = 2
+"shellcheck _require-release-identity SC2157" = 1
+"shellcheck _smoke-part-filter SC2043" = 1
+"shellcheck _stages SC2013" = 1
+"shellcheck _stages SC2043" = 1
+"shellcheck _stages SC2086" = 4
+"shellcheck _test SC2086" = 1
+"shellcheck _test-lock-phases SC1007" = 2
+"shellcheck _test-lock-phases SC2193" = 2
+"shellcheck _test-stage-keys SC2086" = 1
+"shellcheck models SC2050" = 1
+"shellcheck run SC2043" = 1
+"shellcheck run SC2086" = 1
+"shellcheck start-model-servers SC2207" = 1
+"shellcheck stop-model-servers SC2013" = 1
+"shellcheck test SC2209" = 1

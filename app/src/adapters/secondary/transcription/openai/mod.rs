@@ -39,7 +39,7 @@ const DEADLINE_PER_AUDIO_SECOND: f32 = 0.5;
 pub const RECOVERY_WAIT: Duration = Duration::from_secs(30);
 
 /// Transcribes audio through a local speech recognition service that speaks the
-/// OpenAI Audio Transcriptions API (whisper.cpp `whisper-server`, Speaches, LocalAI),
+/// `OpenAI` Audio Transcriptions API (whisper.cpp `whisper-server`, Speaches, `LocalAI`),
 /// one request per copy of the service.
 pub struct OpenAiTranscriber {
     agent: ureq::Agent,

@@ -1,5 +1,10 @@
-//! Harness entry point for the slice and component `.feature` files: World and main() only.
+//! Harness entry point for the slice and component `.feature` files: World and `main()` only.
 
+#[allow(
+    clippy::needless_pass_by_ref_mut,
+    clippy::needless_pass_by_value,
+    reason = "cucumber fixes step signatures: the world by &mut, captures by value"
+)]
 mod steps;
 mod support;
 

@@ -6,7 +6,13 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-const MEMBERS: [&str; 4] = ["app", "command-spotting", "copy-pool", "e2e-test"];
+const MEMBERS: [&str; 5] = [
+    "analyzers",
+    "app",
+    "command-spotting",
+    "copy-pool",
+    "e2e-test",
+];
 
 /// The workspace root: the parent of the `app` package.
 pub fn root() -> PathBuf {

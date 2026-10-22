@@ -80,11 +80,11 @@ impl StatusItemState {
         match signal {
             OverlaySignal::Recording => self.dictation = Some(DictationStage::Recording),
             OverlaySignal::RecognizingSpeech => {
-                self.dictation = Some(DictationStage::RecognizingSpeech)
+                self.dictation = Some(DictationStage::RecognizingSpeech);
             }
             OverlaySignal::RefiningText => self.dictation = Some(DictationStage::RefiningText),
             OverlaySignal::WaitingForFocus => {
-                self.dictation = Some(DictationStage::WaitingForFocus)
+                self.dictation = Some(DictationStage::WaitingForFocus);
             }
             OverlaySignal::FailureNotice => self.dictation = Some(DictationStage::FailureNotice),
             OverlaySignal::Pasted | OverlaySignal::Hidden => self.dictation = None,
@@ -195,22 +195,22 @@ fn stage_icon(stage: DictationStage) -> IconState {
 impl IconState {
     pub fn picture(self) -> IconPicture {
         let symbol = match self {
-            IconState::Ready => "mic",
-            IconState::Recording => "mic.fill",
-            IconState::Processing => "waveform",
-            IconState::WaitingForFocus => "keyboard",
-            IconState::Listening => "ear",
-            IconState::CommandsUnavailable => "ear.trianglebadge.exclamationmark",
-            IconState::Warning => "exclamationmark.triangle",
-            IconState::Waiting => "hourglass",
-            IconState::Failed => "exclamationmark.triangle.fill",
+            Self::Ready => "mic",
+            Self::Recording => "mic.fill",
+            Self::Processing => "waveform",
+            Self::WaitingForFocus => "keyboard",
+            Self::Listening => "ear",
+            Self::CommandsUnavailable => "ear.trianglebadge.exclamationmark",
+            Self::Warning => "exclamationmark.triangle",
+            Self::Waiting => "hourglass",
+            Self::Failed => "exclamationmark.triangle.fill",
         };
-        let recording = self == IconState::Recording;
+        let recording = self == Self::Recording;
         IconPicture {
             symbol,
             template: !recording,
             red_dot: recording,
-            animated: self == IconState::Processing,
+            animated: self == Self::Processing,
         }
     }
 }
@@ -249,12 +249,12 @@ impl MenuEntry {
     /// The words of a chosen item; none for the lines and separators.
     pub fn title(self) -> Option<&'static str> {
         match self {
-            MenuEntry::Permissions => Some("Permissions…"),
-            MenuEntry::DownloadModels => Some("Download models…"),
-            MenuEntry::Services => Some("Services"),
-            MenuEntry::Settings => Some("Settings…"),
-            MenuEntry::Logs => Some("Open Logs Folder"),
-            MenuEntry::Quit => Some("Quit voicepuncher"),
+            Self::Permissions => Some("Permissions…"),
+            Self::DownloadModels => Some("Download models…"),
+            Self::Services => Some("Services"),
+            Self::Settings => Some("Settings…"),
+            Self::Logs => Some("Open Logs Folder"),
+            Self::Quit => Some("Quit voicepuncher"),
             _ => None,
         }
     }

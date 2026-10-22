@@ -122,7 +122,7 @@ pub trait Hear: Send + Sync {
     fn hear(&self, samples: &[f32], deadline: Duration) -> Result<Heard>;
 }
 
-/// A client of the speech recognition service (OpenAI Audio Transcriptions API), one
+/// A client of the speech recognition service (`OpenAI` Audio Transcriptions API), one
 /// confirmation per copy of the service.
 pub struct UtteranceTranscriber {
     pool: CopyPool,

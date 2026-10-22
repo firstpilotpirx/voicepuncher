@@ -222,7 +222,7 @@ impl Reloader {
 fn lock(observers: &Mutex<Observers>) -> MutexGuard<'_, Observers> {
     observers
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn tell(listener: &mut Option<ReloadListener>, report: ReloadReport) {
@@ -557,24 +557,25 @@ impl Supervisor {
         loop {
             let command = match pending.pop_front() {
                 Some(command) => command,
-                None => match self.next_command(&commands) {
-                    Some(command) => command,
-                    None => {
+                None => {
+                    if let Some(command) = self.next_command(&commands) {
+                        command
+                    } else {
                         self.check_gates();
                         continue;
                     }
-                },
+                }
             };
             match command {
                 Command::Reload(config, mut listener) => {
                     let reload = self.reload(*config, &mut listener, &commands, &mut pending);
-                    if let Wait::Stopped = reload {
+                    if matches!(reload, Wait::Stopped) {
                         return self.stop();
                     }
                 }
                 Command::Stop => return self.stop(),
                 Command::PipelineFailed { generation, reason } => {
-                    self.pipeline_failed(generation, reason)
+                    self.pipeline_failed(generation, reason);
                 }
             }
         }
@@ -618,7 +619,10 @@ impl Supervisor {
                 return Wait::Idle;
             }
         };
-        if let Wait::Stopped = self.wait_for_idle(listener, commands, pending) {
+        if matches!(
+            self.wait_for_idle(listener, commands, pending),
+            Wait::Stopped
+        ) {
             return Wait::Stopped;
         }
         if let Some(old) = self.pipeline.take() {
@@ -638,7 +642,7 @@ impl Supervisor {
     /// running pipeline keeps its settings until a later reload.
     #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn wait_for_services(
-        &mut self,
+        &self,
         commands: &Receiver<Command>,
         pending: &mut std::collections::VecDeque<Command>,
     ) -> Wait {
@@ -677,7 +681,10 @@ impl Supervisor {
         pending: &mut std::collections::VecDeque<Command>,
     ) -> Wait {
         self.change(RuntimeState::Restarting);
-        if let Wait::Stopped = self.wait_for_idle(listener, commands, pending) {
+        if matches!(
+            self.wait_for_idle(listener, commands, pending),
+            Wait::Stopped
+        ) {
             return Wait::Stopped;
         }
         if let Some(old) = self.pipeline.take() {
@@ -704,7 +711,7 @@ impl Supervisor {
     /// a stop arriving meanwhile ends the wait, a reload waits its turn.
     #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn wait_for_idle(
-        &mut self,
+        &self,
         listener: &mut Option<ReloadListener>,
         commands: &Receiver<Command>,
         pending: &mut std::collections::VecDeque<Command>,

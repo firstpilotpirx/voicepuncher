@@ -34,16 +34,20 @@ impl LoginItem for MacOsLoginItem {
         if !self.installed {
             return LoginItemStatus::Unavailable;
         }
-        // SAFETY: plain getters of the main app service; no argument to keep alive.
-        status_of(unsafe { SMAppService::mainAppService().status() })
+        // SAFETY: a plain getter of the main app service; no argument to keep alive.
+        let service = unsafe { SMAppService::mainAppService() };
+        // SAFETY: as above.
+        status_of(unsafe { service.status() })
     }
 
     fn register(&self) -> Result<(), String> {
         if !self.installed {
             return Err(UNAVAILABLE.to_owned());
         }
+        // SAFETY: a plain getter of the main app service; no argument to keep alive.
+        let service = unsafe { SMAppService::mainAppService() };
         // SAFETY: the main app service registers the bundle this process runs from.
-        unsafe { SMAppService::mainAppService().registerAndReturnError() }
+        unsafe { service.registerAndReturnError() }
             .map_err(|error| error.localizedDescription().to_string())
     }
 
@@ -51,8 +55,10 @@ impl LoginItem for MacOsLoginItem {
         if !self.installed {
             return Err(UNAVAILABLE.to_owned());
         }
+        // SAFETY: a plain getter of the main app service; no argument to keep alive.
+        let service = unsafe { SMAppService::mainAppService() };
         // SAFETY: as in `register`.
-        unsafe { SMAppService::mainAppService().unregisterAndReturnError() }
+        unsafe { service.unregisterAndReturnError() }
             .map_err(|error| error.localizedDescription().to_string())
     }
 }

@@ -299,7 +299,7 @@ fn holds_app_and_shortcut(world: &mut E2eWorld) -> Result<()> {
         shortcut.display()
     );
     let mut entries: Vec<String> = fs::read_dir(volume)?
-        .filter_map(|entry| entry.ok())
+        .filter_map(std::result::Result::ok)
         .map(|entry| entry.file_name().to_string_lossy().to_string())
         .filter(|name| !name.starts_with('.'))
         .collect();

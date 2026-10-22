@@ -117,6 +117,7 @@ impl BadgeView {
         self.ring.setHidden(!turning);
         if turning {
             let turn = endless_animation("transform.rotation.z", 0.0, -TAU, RING_TURN_SECS);
+            // SAFETY: an immutable framework constant, set before any Rust code runs.
             turn.setTimingFunction(Some(&timing(unsafe { kCAMediaTimingFunctionLinear })));
             self.ring
                 .addAnimation_forKey(&turn, Some(&NSString::from_str(RING_ANIMATION)));
@@ -139,6 +140,7 @@ fn build_glass(mtm: MainThreadMarker) -> Retained<NSVisualEffectView> {
     glass.setMaterial(NSVisualEffectMaterial::HUDWindow);
     glass.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
     glass.setState(NSVisualEffectState::Active);
+    // SAFETY: an immutable framework constant, set before any Rust code runs.
     if let Some(dark) = NSAppearance::appearanceNamed(unsafe { NSAppearanceNameDarkAqua }) {
         glass.setAppearance(Some(&dark));
     }
@@ -168,6 +170,7 @@ fn build_ring() -> Retained<CAShapeLayer> {
     let stroke = NSColor::colorWithWhite_alpha(1.0, RING_WHITE_ALPHA);
     ring.setStrokeColor(Some(&stroke.CGColor()));
     ring.setLineWidth(RING_WIDTH);
+    // SAFETY: an immutable framework constant, set before any Rust code runs.
     ring.setLineCap(unsafe { kCALineCapRound });
     ring.setStrokeEnd(RING_ARC);
     ring.setHidden(true);

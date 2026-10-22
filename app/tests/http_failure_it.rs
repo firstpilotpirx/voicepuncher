@@ -55,7 +55,7 @@ fn should_tell_a_reset_connection_as_dropped() {
                 stream.as_raw_fd(),
                 libc::SOL_SOCKET,
                 libc::SO_LINGER,
-                (&linger as *const libc::linger).cast(),
+                (&raw const linger).cast(),
                 std::mem::size_of::<libc::linger>() as libc::socklen_t,
             );
         }

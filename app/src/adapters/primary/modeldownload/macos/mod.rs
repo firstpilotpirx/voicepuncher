@@ -213,7 +213,9 @@ fn run(download: ModelDownload, cancel: &AtomicBool) {
     let summary = download.download_missing(
         &mut |event: &DownloadEvent| {
             if let DownloadEvent::Progress { received, total, .. } = event {
-                let mut last = last_progress.lock().unwrap_or_else(|e| e.into_inner());
+                let mut last = last_progress
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 let now = Instant::now();
                 let due = last.is_none_or(|at| now.duration_since(at) >= PROGRESS_EVERY);
                 if !due && received < total {
@@ -291,6 +293,7 @@ fn build_window(mtm: MainThreadMarker) -> Retained<NSWindow> {
             false,
         )
     };
+    // SAFETY: a Retained owns the window, so AppKit must not release it again on close.
     unsafe { window.setReleasedWhenClosed(false) };
     window.setTitle(&NSString::from_str(mapping::TITLE));
     window
@@ -319,6 +322,7 @@ fn content(mtm: MainThreadMarker, target: &WindowTarget, model: &WindowModel) ->
         let name = label(
             mtm,
             row.name,
+            // SAFETY: an immutable framework constant, set before any Rust code runs.
             NSFont::monospacedSystemFontOfSize_weight(12.0, unsafe { NSFontWeightMedium }),
         );
         name.setFrame(below_top(MARGIN, top, SIZE_X - MARGIN, 16.0));

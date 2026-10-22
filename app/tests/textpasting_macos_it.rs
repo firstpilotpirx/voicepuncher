@@ -231,7 +231,7 @@ fn should_make_a_second_run_wait_while_another_holds_the_pasteboard() {
     let path = dir.path().join("pasteboard.lock");
     let first_run = PasteboardLock::take_at(&path);
     let (taken_tx, taken_rx) = std::sync::mpsc::channel::<()>();
-    let second_path = path.clone();
+    let second_path = path;
     let second_run = std::thread::spawn(move || {
         let _lock = PasteboardLock::take_at(&second_path);
         taken_tx.send(()).unwrap();

@@ -2,7 +2,7 @@
 // One test is gated on VOICEPUNCHER_REFINEMENT_URL and refines a sentence through a
 // real text refinement service.
 
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::Write;
 use std::net::{TcpListener, TcpStream};
 use std::os::fd::AsRawFd;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -15,6 +15,10 @@ use voicepuncher::config::RefinementCfg;
 use voicepuncher::core::application::TextRefiner;
 use voicepuncher::core::domain::RawTranscript;
 use voicepuncher_copy_pool::{ServiceAddress, TEXT_REFINEMENT_COPY_OFFSET};
+
+#[path = "support/refinement_stub.rs"]
+mod refinement_stub;
+use refinement_stub::{read_request, reserve_port, respond, CapturedRequest};
 
 const MODELS: &str = r#"{"object":"list","data":[{"id":"qwen"}]}"#;
 const TRANSCRIPT: &str = "the docker image builds fine on staging";
@@ -31,12 +35,6 @@ impl StubReply {
     fn ok(body: &'static str) -> Self {
         Self { status: 200, body, delay: Duration::ZERO }
     }
-}
-
-struct CapturedRequest {
-    request_line: String,
-    authorization: Option<String>,
-    body: String,
 }
 
 /// Answers the startup model list, then serves exactly one chat request with `reply`.
@@ -65,44 +63,6 @@ fn spawn_stub(reply: StubReply) -> (RefinementCfg, mpsc::Receiver<CapturedReques
         ..RefinementCfg::default()
     };
     (cfg, rx)
-}
-
-fn read_request(stream: &mut TcpStream) -> Option<CapturedRequest> {
-    let mut reader = BufReader::new(stream.try_clone().unwrap());
-    let mut request_line = String::new();
-    if reader.read_line(&mut request_line).ok()? == 0 {
-        return None;
-    }
-    let (mut content_length, mut authorization) = (0usize, None);
-    loop {
-        let mut line = String::new();
-        reader.read_line(&mut line).ok()?;
-        let line = line.trim_end();
-        if line.is_empty() {
-            break;
-        }
-        let (name, value) = line.split_once(':')?;
-        match name.to_ascii_lowercase().as_str() {
-            "content-length" => content_length = value.trim().parse().ok()?,
-            "authorization" => authorization = Some(value.trim().to_owned()),
-            _ => {}
-        }
-    }
-    let mut body = vec![0u8; content_length];
-    reader.read_exact(&mut body).ok()?;
-    Some(CapturedRequest {
-        request_line: request_line.trim_end().to_owned(),
-        authorization,
-        body: String::from_utf8_lossy(&body).into_owned(),
-    })
-}
-
-fn respond(stream: &mut TcpStream, status: u16, body: &str) {
-    let response = format!(
-        "HTTP/1.1 {status} STUB\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-        body.len()
-    );
-    let _ = stream.write_all(response.as_bytes());
 }
 
 /// Answers the startup model list, then every chat request with `body` on a
@@ -162,7 +122,7 @@ fn reset(stream: TcpStream) {
             stream.as_raw_fd(),
             libc::SOL_SOCKET,
             libc::SO_LINGER,
-            (&linger as *const libc::linger).cast(),
+            (&raw const linger).cast(),
             std::mem::size_of::<libc::linger>() as libc::socklen_t,
         )
     };
@@ -370,10 +330,6 @@ fn should_send_the_request_twice_when_the_service_keeps_dropping_the_connection(
     assert_eq!(posts.load(Ordering::SeqCst), 2);
 }
 
-/// The service ports the fake copies' addresses take: their copies land 40 000 below, on
-/// 2001–8004, clear of the system's ephemeral ports (49152+) and of the user's services
-/// (8080–8085).
-const FAKE_SERVICE_PORTS: std::ops::Range<u16> = 42_000..48_000;
 const SHORT_RECOVERY_WAIT: Duration = Duration::from_secs(5);
 const COMES_BACK_AFTER: Duration = Duration::from_secs(3);
 const WAITING_FOR_A_COPY: &str = "no copy accepts connections — waiting";
@@ -408,41 +364,6 @@ fn free_copies(n: usize) -> (RefinementCfg, Vec<TcpListener>) {
             let cfg = RefinementCfg { base_url, ..RefinementCfg::default() };
             return (cfg, listeners);
         }
-    }
-}
-
-/// A port of `FAKE_SERVICE_PORTS` bound without listening for the life of the test process:
-/// connections to it are refused, so the pool looks for copies.
-fn reserve_port() -> u16 {
-    static NEXT: AtomicUsize = AtomicUsize::new(0);
-    let span = FAKE_SERVICE_PORTS.len();
-    let start = std::process::id() as usize * 7_919;
-    loop {
-        let index = (start + NEXT.fetch_add(1, Ordering::SeqCst)) % span;
-        let port = FAKE_SERVICE_PORTS.start + index as u16;
-        if bind_without_listening(port) {
-            return port;
-        }
-    }
-}
-
-fn bind_without_listening(port: u16) -> bool {
-    // SAFETY: plain socket calls on a zeroed sockaddr_in of the right length; a bound
-    // descriptor is never closed, so its port stays reserved until the process exits.
-    unsafe {
-        let fd = libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0);
-        assert!(fd >= 0, "socket: {}", std::io::Error::last_os_error());
-        let mut addr: libc::sockaddr_in = std::mem::zeroed();
-        let len = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
-        addr.sin_len = len as u8;
-        addr.sin_family = libc::AF_INET as libc::sa_family_t;
-        addr.sin_port = port.to_be();
-        addr.sin_addr.s_addr = u32::from(std::net::Ipv4Addr::LOCALHOST).to_be();
-        let bound = libc::bind(fd, (&raw const addr).cast(), len) == 0;
-        if !bound {
-            libc::close(fd);
-        }
-        bound
     }
 }
 
@@ -573,4 +494,33 @@ fn should_refine_once_a_copy_comes_back_after_every_copy_went_down() {
     );
     assert_eq!(posts.lock().unwrap().len(), 2);
     assert_eq!(logged_by_this_thread(WAITING_FOR_A_COPY), 1);
+}
+
+#[test]
+fn should_connect_while_every_copy_is_busy_refining() {
+    // Given: both copies are busy with a refinement that takes longer than the startup check
+    let (cfg, posts) = copies_with(vec![CopyTurn::Silent(Duration::from_secs(4))]);
+    let cfg = RefinementCfg { timeout_secs: 10, ..cfg };
+    let busy: Vec<_> = (0..2)
+        .map(|_| {
+            let cfg = cfg.clone();
+            thread::spawn(move || refine(cfg, TRANSCRIPT))
+        })
+        .collect();
+    while posts.lock().unwrap().len() < 2 {
+        thread::sleep(Duration::from_millis(20));
+    }
+    // When
+    let started = std::time::Instant::now();
+    let connected = OpenAiTextRefiner::connect(cfg);
+    // Then
+    assert!(connected.is_ok(), "{:?}", connected.err());
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "waited {:?}",
+        started.elapsed()
+    );
+    for refinement in busy {
+        refinement.join().unwrap().unwrap();
+    }
 }

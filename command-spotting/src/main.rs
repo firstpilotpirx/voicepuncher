@@ -24,7 +24,7 @@ struct Args {
     /// Directory of the sherpa-onnx keyword spotting model (zipformer gigaspeech).
     #[arg(long)]
     model_dir: PathBuf,
-    /// Silero voice activity detector model for sherpa-onnx (silero_vad.onnx).
+    /// Silero voice activity detector model for sherpa-onnx (`silero_vad.onnx`).
     #[arg(long)]
     vad_model: PathBuf,
     #[arg(long, default_value_t = 2)]
@@ -38,7 +38,7 @@ struct Args {
     /// Keyword lines to use in place of the built-in keywords.txt (for tuning).
     #[arg(long)]
     keywords_file: Option<PathBuf>,
-    /// Speech recognition service that confirms short utterances (OpenAI Audio
+    /// Speech recognition service that confirms short utterances (`OpenAI` Audio
     /// Transcriptions API on this machine); without it only the keywords count.
     #[arg(long)]
     transcription_url: Option<String>,

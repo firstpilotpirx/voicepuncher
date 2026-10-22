@@ -71,15 +71,14 @@ impl PermissionsWindow {
     pub fn install(mtm: MainThreadMarker, gate: Arc<PermissionsGate>) -> Self {
         let window = build_window(mtm);
         let target = WindowTarget::new(mtm);
+        // SAFETY: an immutable framework constant, set before any Rust code runs.
+        let active = unsafe { NSApplicationDidBecomeActiveNotification };
+        let (center, selector) = (
+            NSNotificationCenter::defaultCenter(),
+            sel!(appBecameActive:),
+        );
         // SAFETY: the target lives as long as the window state that holds both.
-        unsafe {
-            NSNotificationCenter::defaultCenter().addObserver_selector_name_object(
-                &target,
-                sel!(appBecameActive:),
-                Some(NSApplicationDidBecomeActiveNotification),
-                None,
-            );
-        }
+        unsafe { center.addObserver_selector_name_object(&target, selector, Some(active), None) };
         WINDOW.set(Some(Window {
             window,
             target,
@@ -264,6 +263,7 @@ fn build_window(mtm: MainThreadMarker) -> Retained<NSWindow> {
             false,
         )
     };
+    // SAFETY: a Retained owns the window, so AppKit must not release it again on close.
     unsafe { window.setReleasedWhenClosed(false) };
     window.setTitle(&NSString::from_str(mapping::TITLE));
     window.setLevel(FLOATING_LEVEL);
@@ -414,6 +414,7 @@ fn add_badge(mtm: MainThreadMarker, view: &NSView, shown: Shown, top: f64) {
             );
             spinner.setStyle(NSProgressIndicatorStyle::Spinning);
             spinner.setIndeterminate(true);
+            // SAFETY: a main-thread view built with a MainThreadMarker; a nil sender is allowed.
             unsafe { spinner.startAnimation(None) };
             view.addSubview(&spinner);
         }
@@ -432,6 +433,7 @@ fn add_badge(mtm: MainThreadMarker, view: &NSView, shown: Shown, top: f64) {
 }
 
 fn medium(size: f64) -> Retained<NSFont> {
+    // SAFETY: an immutable framework constant, set before any Rust code runs.
     NSFont::systemFontOfSize_weight(size, unsafe { NSFontWeightMedium })
 }
 
@@ -472,6 +474,7 @@ fn symbol_image(name: &str) -> Option<Retained<NSImage>> {
     let name = NSString::from_str(name);
     let image = NSImage::imageWithSystemSymbolName_accessibilityDescription(&name, Some(&name))?;
     let config =
+        // SAFETY: an immutable framework constant, set before any Rust code runs.
         NSImageSymbolConfiguration::configurationWithPointSize_weight(SYMBOL_SIZE, unsafe {
             objc2_app_kit::NSFontWeightRegular
         });

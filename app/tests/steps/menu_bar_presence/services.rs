@@ -132,7 +132,7 @@ fn user_opens_services(world: &mut IntegrationWorld) -> Result<()> {
     let statuses = run
         .actions
         .as_ref()
-        .and_then(|actions| actions.services())
+        .and_then(voicepuncher::adapters::primary::menubar::macos::actions::MenuActions::services)
         .context("the menu offers no Services submenu")?;
     run.service_menu = Some(
         statuses

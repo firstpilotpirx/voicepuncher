@@ -1,6 +1,6 @@
 ## Context
 
-`just lint` runs clippy with `-D warnings` and the size budgets of `enforce-size-and-complexity-budgets` (denied in `[workspace.lints]`, ratcheted in `app/tests/size_baseline.toml`). Nothing else looks at the code: clippy `pedantic` + `nursery` report ≈ 4 500 findings over all targets (≈ 1 500 of them `unwrap_used` in tests), and no tool measures cyclomatic complexity, duplication, dependencies, spelling or the shell of the `justfile`.
+`just lint` runs clippy with `-D warnings` and the size budgets of `enforce-size-and-complexity-budgets` (denied in `[workspace.lints]`, ratcheted in `app/tests/size_baseline.toml`). Nothing else looks at the code: clippy `pedantic` + `nursery` with the restriction lints of this change report ≈ 4 500 findings over all targets (≈ 1 500 of them the restriction lint `unwrap_used` in tests; the proposal's ≈ 2 060 counted the two groups alone), and no tool measures cyclomatic complexity, duplication, dependencies, spelling or the shell of the `justfile`.
 
 ## Goals / Non-Goals
 
@@ -41,11 +41,19 @@ The machine-applicable lints the proposal names as mechanical (`use_self`, `redu
 
 ### `cargo-geiger` is replaced by the own count
 
-`cargo geiger` 0.14 does not support Cargo workspaces with path dependencies well and scans every dependency for minutes; the unsafe count that is actionable here is the project's own, which `metrics` ratchets per crate. Dependency unsafe stays out of scope.
+`cargo geiger` 0.14 stops on this workspace (an I/O error on a file its dependency scan expects) and scans every dependency; the unsafe count that is actionable here is the project's own, which `metrics` ratchets per crate. Dependency unsafe stays out of scope.
+
+### Dependency findings
+
+`cargo deny` found advisories in `anyhow`, `rustls` and `webpki-roots`, updated here within their compatible versions (`anyhow` 1.0.103 in `command-spotting`); the three `zip` advisories stay ignored with a reason in `deny.toml`: `zip` 2.4 is a build dependency of `sherpa-onnx-sys` and the fix needs `zip` 9. `app` and `command-spotting` get `publish = false`, as the other members, so the license check skips the project's own crates. `cargo-semver-checks` 0.51 needs rustc 1.93, so it runs with `cargo +stable`.
 
 ### Tools pinned and installed by `just tools`
 
-`just tools` installs the pinned set (`cargo +stable install --locked <crate>@<version>`, `npm install -g jscpd@<version>`, `cpan` for Perl::Critic); `_require-tools` checks each version and prints the install command, installing nothing. Versions: cargo-machete 0.9.2, cargo-deny 0.20.2, cargo-semver-checks 0.51.0, typos-cli 1.51.1, rust-code-analysis-cli 0.0.25, jscpd 4.0.5, shellcheck 0.11.0 (Homebrew; checked, not installed), Perl::Critic 1.156.
+`just tools` installs the pinned set (`cargo +stable install --locked <crate>@<version>`, `npm install -g jscpd@<version>`, `cpan` for Perl::Critic); `_require-tools` checks each version and prints the install command, installing nothing. Versions: cargo-machete 0.9.2, cargo-deny 0.20.2, cargo-semver-checks 0.51.0, typos-cli 1.51.1, rust-code-analysis-cli 0.0.25, jscpd 4.0.5, shellcheck 0.11.0 (Homebrew; checked, not installed), Perl::Critic 1.156 (into `~/perl5`).
+
+### Production signatures
+
+The auditor's 131 `&mut` and 103 by-value parameters were ≈ 200 cucumber steps; of the rest, the four `&mut self` that were never mutated are fixed, and the ≈ 40 by-value parameters in production code (values moved into threads, `Arc`s, `Retained` handles) stay in the baseline: changing them is churn without a caller that gains.
 
 ## Test levels
 
@@ -55,7 +63,7 @@ The machine-applicable lints the proposal names as mechanical (`use_self`, `redu
 | A listed finding that shrank keeps passing | unit (`analyzers` baseline) |
 | A finding that is gone must leave the baseline | unit (`analyzers` baseline) |
 | A shell mistake in a recipe fails the lint stage | unit (`analyzers` recipes parse) and `just lint` |
-| A missing analyzer names its install command | `just lint` on this machine (`_require-tools`) |
+| A missing analyzer names its install command | `_require-tools` run by hand with a wrong pinned version (`just typos_version=9.9.9 _require-tools` printed `run 'just tools'` and exit 1) |
 | A new complex function fails the metrics | unit (`analyzers` metrics parse and baseline) |
 | Copy-pasted code fails the metrics | unit (`analyzers` jscpd parse and baseline) |
 | The report lists the worst functions and the modules | unit (`analyzers` report) and `just metrics` |
@@ -69,3 +77,7 @@ The machine-applicable lints the proposal names as mechanical (`use_self`, `redu
 ## Dependencies
 
 `enforce-size-and-complexity-budgets` (archived on `main`) supplies `clippy.toml`, `[workspace.lints]` and the ratchet pattern.
+
+## Related fix: the refiner connects while every copy is busy
+
+Batch landing 7 failed `refine-eval` with "text refinement service … had no free copy": `OpenAiTextRefiner::connect` leased a copy for its model-list check and gave up after 2 s, so a client that started while both `llama-server` copies refined (six evaluation scenarios at once) failed although the service ran. The check now asks a copy that takes requests, a free one first, without a lease: `llama-server` answers `/models` beside a running refinement. `textrefinement_openai_it` `should_connect_while_every_copy_is_busy_refining` reproduces it; the stub's HTTP plumbing moved to `app/tests/support/refinement_stub.rs` so the listed test file shrinks.

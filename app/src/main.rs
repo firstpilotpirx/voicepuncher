@@ -205,15 +205,11 @@ fn main() {
             cli: cli.clone(),
         }));
     }
-    signals::reload_on_hang_up(
-        config_path.clone(),
-        Box::new(move |cfg| cli.overlay(cfg)),
-        reloader,
-    )
-    .unwrap_or_else(|e| {
-        log::error!("{e:#}");
-        std::process::exit(2);
-    });
+    signals::reload_on_hang_up(config_path, Box::new(move |cfg| cli.overlay(cfg)), reloader)
+        .unwrap_or_else(|e| {
+            log::error!("{e:#}");
+            std::process::exit(2);
+        });
     // Quit in the menu stops the runtime and ends the process; run() never returns.
     let mut actions = MacosMenuActions::new(runtime, Box::new(settings), logs_folder())
         .with_permissions_window(Box::new(permissions::bring_to_front));

@@ -58,7 +58,9 @@ fn copy_into(mut stream: impl Read + Send + 'static, log: Arc<Mutex<RotatingFile
             match stream.read(&mut buffer) {
                 Ok(0) => break,
                 Ok(read) => {
-                    let mut log = log.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                    let mut log = log
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
                     let _ = log.write_all(&buffer[..read]);
                     let _ = log.flush();
                 }

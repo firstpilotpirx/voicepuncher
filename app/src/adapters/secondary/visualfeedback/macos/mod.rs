@@ -528,6 +528,8 @@ impl AudioLevelSource for MacosVisualIndicator {
     }
 }
 
+// SAFETY: only the screen watcher's observer is not Send; it is created on the main thread, AppKit
+// calls it there, and no method of the indicator touches it, so moving the indicator never uses it.
 unsafe impl Send for MacosVisualIndicator {}
 
 #[cfg(test)]

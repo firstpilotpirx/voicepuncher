@@ -14,14 +14,14 @@ impl HotkeyBinding {
         *self
             .0
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     pub fn rebind(&self, hotkey: HotKey) {
         *self
             .0
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = hotkey;
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = hotkey;
     }
 }
 
@@ -49,48 +49,48 @@ pub enum HotKey {
 
 impl HotKey {
     /// Every hotkey the listener supports, in the order the settings window offers them.
-    pub const ALL: [HotKey; 18] = [
-        HotKey::RightOption,
-        HotKey::RightControl,
-        HotKey::RightShift,
-        HotKey::RightCommand,
-        HotKey::LeftOption,
-        HotKey::LeftControl,
-        HotKey::Fn,
-        HotKey::CapsLock,
-        HotKey::Space,
-        HotKey::LeftOptionE,
-        HotKey::CmdE,
-        HotKey::F13,
-        HotKey::F14,
-        HotKey::F15,
-        HotKey::F16,
-        HotKey::F17,
-        HotKey::F18,
-        HotKey::F19,
+    pub const ALL: [Self; 18] = [
+        Self::RightOption,
+        Self::RightControl,
+        Self::RightShift,
+        Self::RightCommand,
+        Self::LeftOption,
+        Self::LeftControl,
+        Self::Fn,
+        Self::CapsLock,
+        Self::Space,
+        Self::LeftOptionE,
+        Self::CmdE,
+        Self::F13,
+        Self::F14,
+        Self::F15,
+        Self::F16,
+        Self::F17,
+        Self::F18,
+        Self::F19,
     ];
 
     /// The hotkey as a person reads it: "Right Option", "Cmd+E".
     pub fn human_name(self) -> &'static str {
         match self {
-            HotKey::RightOption => "Right Option",
-            HotKey::RightControl => "Right Control",
-            HotKey::RightShift => "Right Shift",
-            HotKey::RightCommand => "Right Command",
-            HotKey::LeftOption => "Left Option",
-            HotKey::LeftControl => "Left Control",
-            HotKey::Fn => "Fn",
-            HotKey::CapsLock => "Caps Lock",
-            HotKey::Space => "Space",
-            HotKey::CmdE => "Cmd+E",
-            HotKey::LeftOptionE => "Option+E",
-            HotKey::F13 => "F13",
-            HotKey::F14 => "F14",
-            HotKey::F15 => "F15",
-            HotKey::F16 => "F16",
-            HotKey::F17 => "F17",
-            HotKey::F18 => "F18",
-            HotKey::F19 => "F19",
+            Self::RightOption => "Right Option",
+            Self::RightControl => "Right Control",
+            Self::RightShift => "Right Shift",
+            Self::RightCommand => "Right Command",
+            Self::LeftOption => "Left Option",
+            Self::LeftControl => "Left Control",
+            Self::Fn => "Fn",
+            Self::CapsLock => "Caps Lock",
+            Self::Space => "Space",
+            Self::CmdE => "Cmd+E",
+            Self::LeftOptionE => "Option+E",
+            Self::F13 => "F13",
+            Self::F14 => "F14",
+            Self::F15 => "F15",
+            Self::F16 => "F16",
+            Self::F17 => "F17",
+            Self::F18 => "F18",
+            Self::F19 => "F19",
         }
     }
 }
@@ -98,24 +98,24 @@ impl HotKey {
 impl std::fmt::Display for HotKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            HotKey::RightOption => "RightOption",
-            HotKey::RightControl => "RightControl",
-            HotKey::RightShift => "RightShift",
-            HotKey::RightCommand => "RightCommand",
-            HotKey::LeftOption => "LeftOption",
-            HotKey::LeftControl => "LeftControl",
-            HotKey::Fn => "Fn",
-            HotKey::CapsLock => "CapsLock",
-            HotKey::Space => "Space",
-            HotKey::CmdE => "CmdE",
-            HotKey::LeftOptionE => "LeftOptionE",
-            HotKey::F13 => "F13",
-            HotKey::F14 => "F14",
-            HotKey::F15 => "F15",
-            HotKey::F16 => "F16",
-            HotKey::F17 => "F17",
-            HotKey::F18 => "F18",
-            HotKey::F19 => "F19",
+            Self::RightOption => "RightOption",
+            Self::RightControl => "RightControl",
+            Self::RightShift => "RightShift",
+            Self::RightCommand => "RightCommand",
+            Self::LeftOption => "LeftOption",
+            Self::LeftControl => "LeftControl",
+            Self::Fn => "Fn",
+            Self::CapsLock => "CapsLock",
+            Self::Space => "Space",
+            Self::CmdE => "CmdE",
+            Self::LeftOptionE => "LeftOptionE",
+            Self::F13 => "F13",
+            Self::F14 => "F14",
+            Self::F15 => "F15",
+            Self::F16 => "F16",
+            Self::F17 => "F17",
+            Self::F18 => "F18",
+            Self::F19 => "F19",
         };
         write!(f, "{s}")
     }
@@ -126,24 +126,24 @@ impl std::str::FromStr for HotKey {
 
     fn from_str(s: &str) -> anyhow::Result<Self> {
         match s {
-            "RightOption" => Ok(HotKey::RightOption),
-            "RightControl" => Ok(HotKey::RightControl),
-            "RightShift" => Ok(HotKey::RightShift),
-            "RightCommand" => Ok(HotKey::RightCommand),
-            "LeftOption" => Ok(HotKey::LeftOption),
-            "LeftControl" => Ok(HotKey::LeftControl),
-            "Fn" => Ok(HotKey::Fn),
-            "CapsLock" => Ok(HotKey::CapsLock),
-            "Space" => Ok(HotKey::Space),
-            "CmdE" => Ok(HotKey::CmdE),
-            "LeftOptionE" => Ok(HotKey::LeftOptionE),
-            "F13" => Ok(HotKey::F13),
-            "F14" => Ok(HotKey::F14),
-            "F15" => Ok(HotKey::F15),
-            "F16" => Ok(HotKey::F16),
-            "F17" => Ok(HotKey::F17),
-            "F18" => Ok(HotKey::F18),
-            "F19" => Ok(HotKey::F19),
+            "RightOption" => Ok(Self::RightOption),
+            "RightControl" => Ok(Self::RightControl),
+            "RightShift" => Ok(Self::RightShift),
+            "RightCommand" => Ok(Self::RightCommand),
+            "LeftOption" => Ok(Self::LeftOption),
+            "LeftControl" => Ok(Self::LeftControl),
+            "Fn" => Ok(Self::Fn),
+            "CapsLock" => Ok(Self::CapsLock),
+            "Space" => Ok(Self::Space),
+            "CmdE" => Ok(Self::CmdE),
+            "LeftOptionE" => Ok(Self::LeftOptionE),
+            "F13" => Ok(Self::F13),
+            "F14" => Ok(Self::F14),
+            "F15" => Ok(Self::F15),
+            "F16" => Ok(Self::F16),
+            "F17" => Ok(Self::F17),
+            "F18" => Ok(Self::F18),
+            "F19" => Ok(Self::F19),
             other => anyhow::bail!("unknown hotkey: {other}"),
         }
     }

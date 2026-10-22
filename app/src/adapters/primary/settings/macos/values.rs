@@ -111,8 +111,7 @@ pub fn display(field: &Field, value: &Value) -> String {
         (Control::PopUp(choices) | Control::Radio(choices), _) => options(choices, &[])
             .into_iter()
             .find(|choice| choice.value == *value)
-            .map(|choice| choice.title)
-            .unwrap_or_else(|| plain(value)),
+            .map_or_else(|| plain(value), |choice| choice.title),
         (Control::LanguageList, _) => languages_text(value),
         _ => plain(value),
     }

@@ -40,7 +40,7 @@ pub fn encode_wav(audio: &AudioBuffer16k) -> Result<Vec<u8>> {
     Ok(cursor.into_inner())
 }
 
-/// Builds the OpenAI Audio Transcriptions multipart body: text fields, then the WAV file.
+/// Builds the `OpenAI` Audio Transcriptions multipart body: text fields, then the WAV file.
 pub fn multipart_body(cfg: &TranscriptionCfg, wav: &[u8]) -> Vec<u8> {
     let mut body = Vec::with_capacity(wav.len() + 1024);
     push_field(&mut body, "model", &cfg.model);

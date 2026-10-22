@@ -46,7 +46,7 @@ impl ModelsFolder {
                 .and_then(|placed| placed.set_len(file.size_bytes))
                 .expect("a model file"),
             ModelKind::TarBz2 { folder: name } => {
-                std::fs::create_dir_all(folder.join(name)).expect("a model folder")
+                std::fs::create_dir_all(folder.join(name)).expect("a model folder");
             }
         }
     }
@@ -101,7 +101,7 @@ impl RuntimeRun {
     pub(crate) fn any_service_required(&self) -> bool {
         self.services
             .as_ref()
-            .is_some_and(|services| services.any_required())
+            .is_some_and(super::services::FakeServices::any_required)
     }
 
     /// Ready, with Starting services told on the way since the runtime last waited for models.

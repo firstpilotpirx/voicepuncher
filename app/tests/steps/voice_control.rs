@@ -765,7 +765,7 @@ fn restart_sound_alone(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     run.wait_since_mark(|e| *e == Event::Sound("restart"))?;
     run.never_since_mark(
-        |e| matches!(e, Event::Sound("cancel") | Event::Sound("start")),
+        |e| matches!(e, Event::Sound("cancel" | "start")),
         "a cancel or start sound played",
     )
 }

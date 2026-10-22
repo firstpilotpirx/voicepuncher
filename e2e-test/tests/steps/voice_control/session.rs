@@ -108,7 +108,7 @@ const SENT_AGAIN_RU: &str = "Купи молоко и хлеб по дороге
 
 /// Send, cancel, clear, send again — each with and without "please".
 fn session() -> Vec<Step> {
-    use Expected::*;
+    use Expected::{Cancelled, Cleared, Pasted, RecordingStarted, ReturnPressed};
     vec![
         Step::Command("start dictation", RecordingStarted),
         Step::Dictate(RUSSIAN_VOICE, SENT_RU),
@@ -293,7 +293,7 @@ impl HandsFreeSession {
             CommandVoice::Recorded { .. } => room_noise(COMMAND_PAUSE_SECS)?,
         };
         for step in session() {
-            if let CommandVoice::Recorded { long_pauses: true } = voice {
+            if matches!(voice, CommandVoice::Recorded { long_pauses: true }) {
                 self.hear(&room_noise(LONG_PAUSE_SECS)?)?;
             }
             match step {

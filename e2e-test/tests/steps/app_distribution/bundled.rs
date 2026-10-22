@@ -126,7 +126,7 @@ fn list_engine_folders(world: &mut E2eWorld) -> Result<()> {
     let folder = bundle(world)?.join(ENGINES_DIR);
     let mut listed: Vec<String> = fs::read_dir(&folder)
         .with_context(|| format!("{} is missing", folder.display()))?
-        .filter_map(|entry| entry.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|entry| entry.path().is_dir())
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
         .collect();
@@ -139,7 +139,7 @@ fn list_engine_folders(world: &mut E2eWorld) -> Result<()> {
     "there is one folder for the speech recognition engine, one for the text refinement engine and one for the command spotting service"
 )]
 fn one_folder_per_engine(world: &mut E2eWorld) -> Result<()> {
-    let mut expected: Vec<String> = ENGINES.iter().map(|engine| engine.to_string()).collect();
+    let mut expected: Vec<String> = ENGINES.iter().map(|engine| (*engine).to_string()).collect();
     expected.sort();
     ensure!(
         world.distribution.bundled.listed == expected,
@@ -304,7 +304,7 @@ fn list_licenses(world: &mut E2eWorld) -> Result<()> {
     let folder = bundle(world)?.join(LICENSES_DIR);
     world.distribution.bundled.listed = fs::read_dir(&folder)
         .with_context(|| format!("{} is missing", folder.display()))?
-        .filter_map(|entry| entry.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|entry| entry.metadata().is_ok_and(|meta| meta.len() > 0))
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
         .collect();

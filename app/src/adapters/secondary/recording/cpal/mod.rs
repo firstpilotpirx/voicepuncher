@@ -157,7 +157,7 @@ impl AudioRecorder for CpalAudioRecorder {
                 let mean_sq: f32 = mono_frames
                     .iter()
                     .map(|&s| {
-                        let f = s as f32 / 32_768.0;
+                        let f = f32::from(s) / 32_768.0;
                         f * f
                     })
                     .sum::<f32>()
@@ -301,9 +301,10 @@ impl AudioRecorder for CpalAudioRecorder {
 
 /// The samples `buffer` holds, without copying them when nothing else shares it.
 fn take_samples(buffer: Arc<Mutex<Vec<i16>>>) -> Vec<i16> {
-    Arc::try_unwrap(buffer)
-        .map(|m| m.into_inner().unwrap())
-        .unwrap_or_else(|arc| arc.lock().unwrap().clone())
+    Arc::try_unwrap(buffer).map_or_else(
+        |arc| arc.lock().unwrap().clone(),
+        |m| m.into_inner().unwrap(),
+    )
 }
 
 /// Puts `lead_in` before the samples `buffer` holds at `rate`; how long the lead-in lasts.
@@ -367,7 +368,7 @@ struct Resampler16k {
 
 impl Resampler16k {
     fn new(native_rate: u32) -> Result<Self> {
-        let ratio = AudioBuffer16k::SAMPLE_RATE_HZ as f64 / native_rate as f64;
+        let ratio = f64::from(AudioBuffer16k::SAMPLE_RATE_HZ) / f64::from(native_rate);
         let params = SincInterpolationParameters {
             sinc_len: RESAMPLER_SINC_LEN,
             f_cutoff: RESAMPLER_F_CUTOFF,
@@ -383,7 +384,10 @@ impl Resampler16k {
     fn resample(&mut self, mono_i16: &[i16]) -> Result<Vec<i16>> {
         self.inner.reset();
 
-        let input_f32: Vec<f32> = mono_i16.iter().map(|&s| s as f32 / I16_MAX_F32).collect();
+        let input_f32: Vec<f32> = mono_i16
+            .iter()
+            .map(|&s| f32::from(s) / I16_MAX_F32)
+            .collect();
         let total_frames = input_f32.len();
         let mut output_samples: Vec<f32> = Vec::with_capacity(
             ((total_frames as f64) * self.ratio).ceil() as usize + RESAMPLER_CHUNK_SIZE,

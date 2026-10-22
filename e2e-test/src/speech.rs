@@ -37,19 +37,19 @@ pub enum Lang {
 }
 
 impl Lang {
-    pub const ALL: [Lang; 2] = [Lang::Ru, Lang::En];
+    pub const ALL: [Self; 2] = [Self::Ru, Self::En];
 
     pub fn text(self) -> &'static str {
         match self {
-            Lang::Ru => TEXT_RU,
-            Lang::En => TEXT_EN,
+            Self::Ru => TEXT_RU,
+            Self::En => TEXT_EN,
         }
     }
 
     fn voice(self) -> &'static str {
         match self {
-            Lang::Ru => "Milena",
-            Lang::En => "Eddy",
+            Self::Ru => "Milena",
+            Self::En => "Eddy",
         }
     }
 }
@@ -71,25 +71,25 @@ pub enum Condition {
 }
 
 impl Condition {
-    pub const ALL: [Condition; 11] = [
-        Condition::Normal,
-        Condition::Slow,
-        Condition::Fast,
-        Condition::SentencePauses,
-        Condition::WordPauses,
-        Condition::NoiseLow,
-        Condition::NoiseHigh,
-        Condition::PhoneBand,
-        Condition::Quiet,
-        Condition::Clipped,
-        Condition::Dropouts,
+    pub const ALL: [Self; 11] = [
+        Self::Normal,
+        Self::Slow,
+        Self::Fast,
+        Self::SentencePauses,
+        Self::WordPauses,
+        Self::NoiseLow,
+        Self::NoiseHigh,
+        Self::PhoneBand,
+        Self::Quiet,
+        Self::Clipped,
+        Self::Dropouts,
     ];
 
     fn words_per_minute(self) -> u32 {
         match self {
-            Condition::Slow => 140,
-            Condition::Fast => 260,
-            Condition::WordPauses => 170,
+            Self::Slow => 140,
+            Self::Fast => 260,
+            Self::WordPauses => 170,
             _ => 190,
         }
     }
@@ -97,8 +97,8 @@ impl Condition {
     /// `say` input: the text with silence markers for the pause conditions.
     fn say_input(self, text: &str) -> String {
         match self {
-            Condition::SentencePauses => text.replace(". ", ". [[slnc 1500]] "),
-            Condition::WordPauses => text
+            Self::SentencePauses => text.replace(". ", ". [[slnc 1500]] "),
+            Self::WordPauses => text
                 .split_whitespace()
                 .map(|w| format!("{w} [[slnc 350]]"))
                 .collect::<Vec<_>>()
@@ -109,12 +109,12 @@ impl Condition {
 
     fn degrade(self, samples: &mut Vec<i16>) {
         match self {
-            Condition::NoiseLow => add_noise(samples, 0.01),
-            Condition::NoiseHigh => add_noise(samples, 0.05),
-            Condition::PhoneBand => phone_band(samples),
-            Condition::Quiet => gain(samples, 0.15),
-            Condition::Clipped => gain(samples, 6.0),
-            Condition::Dropouts => dropouts(samples),
+            Self::NoiseLow => add_noise(samples, 0.01),
+            Self::NoiseHigh => add_noise(samples, 0.05),
+            Self::PhoneBand => phone_band(samples),
+            Self::Quiet => gain(samples, 0.15),
+            Self::Clipped => gain(samples, 6.0),
+            Self::Dropouts => dropouts(samples),
             _ => {}
         }
     }
@@ -200,7 +200,7 @@ impl Rng {
 }
 
 fn clamp_i16(v: f32) -> i16 {
-    v.round().clamp(i16::MIN as f32, i16::MAX as f32) as i16
+    v.round().clamp(f32::from(i16::MIN), f32::from(i16::MAX)) as i16
 }
 
 /// Low-passed white noise (a pink-ish hum) at `amplitude` of full scale.
@@ -210,14 +210,14 @@ fn add_noise(samples: &mut [i16], amplitude: f32) {
     for s in samples.iter_mut() {
         let white = rng.next_unit() * 2.0 - 1.0;
         smooth = 0.8 * smooth + 0.2 * white;
-        let noise = smooth * 2.5 * amplitude * i16::MAX as f32;
-        *s = clamp_i16(*s as f32 + noise);
+        let noise = smooth * 2.5 * amplitude * f32::from(i16::MAX);
+        *s = clamp_i16(f32::from(*s) + noise);
     }
 }
 
 fn gain(samples: &mut [i16], factor: f32) {
     for s in samples.iter_mut() {
-        *s = clamp_i16(*s as f32 * factor);
+        *s = clamp_i16(f32::from(*s) * factor);
     }
 }
 
@@ -236,7 +236,7 @@ fn dropouts(samples: &mut [i16]) {
 
 /// Telephone line: 300–3400 Hz band, sampled at 8 kHz and back.
 fn phone_band(samples: &mut Vec<i16>) {
-    let mut x: Vec<f32> = samples.iter().map(|&s| s as f32).collect();
+    let mut x: Vec<f32> = samples.iter().map(|&s| f32::from(s)).collect();
     for _ in 0..2 {
         biquad(&mut x, Biquad::high_pass(300.0));
         biquad(&mut x, Biquad::low_pass(3400.0));

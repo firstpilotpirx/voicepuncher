@@ -31,11 +31,11 @@ pub enum JobKind {
 impl JobKind {
     /// A check of a running utterance: it waits its turn while another one waits for its answer.
     pub fn is_check(self) -> bool {
-        matches!(self, JobKind::Head | JobKind::Window | JobKind::Spotted)
+        matches!(self, Self::Head | Self::Window | Self::Spotted)
     }
 
     fn attempts(self) -> u32 {
-        if self == JobKind::Segment {
+        if self == Self::Segment {
             2
         } else {
             1
@@ -44,13 +44,13 @@ impl JobKind {
 
     fn name(self) -> &'static str {
         match self {
-            JobKind::Head => "head",
-            JobKind::Window => "window",
-            JobKind::Segment => "segment",
-            JobKind::Unheld => "unheld",
-            JobKind::Tail => "tail",
-            JobKind::Rehear => "rehear",
-            JobKind::Spotted => "spotted",
+            Self::Head => "head",
+            Self::Window => "window",
+            Self::Segment => "segment",
+            Self::Unheld => "unheld",
+            Self::Tail => "tail",
+            Self::Rehear => "rehear",
+            Self::Spotted => "spotted",
         }
     }
 }

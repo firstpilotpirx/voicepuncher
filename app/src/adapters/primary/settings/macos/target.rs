@@ -1,4 +1,4 @@
-//! The object AppKit calls when the user works a control or closes the window; it hands each
+//! The object `AppKit` calls when the user works a control or closes the window; it hands each
 //! call on as an [`Event`].
 
 use std::cell::OnceCell;
@@ -164,19 +164,17 @@ impl FormTarget {
 
     /// Makes `control` call `action` of this target, tagged with `tag`.
     pub fn wire(&self, control: &NSControl, action: Sel, tag: isize) {
-        // SAFETY: `action` is a method of this target taking the sender; the target lives
-        // as long as the window that holds the control.
-        unsafe {
-            control.setTarget(Some(self as &AnyObject));
-            control.setAction(Some(action));
-        }
+        // SAFETY: the target lives as long as the window that holds the control.
+        unsafe { control.setTarget(Some(self as &AnyObject)) };
+        // SAFETY: `action` is a method of this target taking the sender.
+        unsafe { control.setAction(Some(action)) };
         control.setTag(tag);
     }
 }
 
 /// The selectors of the target's methods, for [`FormTarget::wire`].
 pub mod actions {
-    use super::*;
+    use super::{sel, Sel};
 
     pub fn changed() -> Sel {
         sel!(changed:)

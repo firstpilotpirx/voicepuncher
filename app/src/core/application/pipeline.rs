@@ -69,7 +69,7 @@ type SharedTranscriber = Arc<Mutex<Box<dyn Transcriber>>>;
 fn lock_transcriber(transcriber: &SharedTranscriber) -> MutexGuard<'_, Box<dyn Transcriber>> {
     transcriber
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 pub struct Pipeline {
@@ -283,7 +283,7 @@ impl Pipeline {
     }
 
     fn step(&mut self, signal: PttSignal) -> anyhow::Result<()> {
-        use PipelineState::*;
+        use PipelineState::{Idle, Recording};
         log::info!("pipeline recv {signal:?} in state {:?}", self.state);
         let stops = matches!(
             (self.state, signal, self.cfg.recording_mode),
@@ -349,7 +349,7 @@ impl Pipeline {
                 std::thread::Builder::new()
                     .name("live-transcription".into())
                     .spawn(move || {
-                        run_live_worker(transcriber, chunk_rx, results_tx, live_transcript)
+                        run_live_worker(transcriber, chunk_rx, results_tx, live_transcript);
                     })
                     .expect("failed to spawn live transcription thread");
                 self.live_session = Some(LiveTranscriptionSession { results_rx, recording_end });
@@ -395,7 +395,13 @@ impl Pipeline {
                         );
                         match RawTranscript::new(self.without_command_words(&merged)) {
                             Ok(raw) => {
-                                self.run_refine_paste(raw, t_user_stop, drain_ms, stop_ms, merge_ms)
+                                self.run_refine_paste(
+                                    raw,
+                                    t_user_stop,
+                                    drain_ms,
+                                    stop_ms,
+                                    merge_ms,
+                                );
                             }
                             Err(e) => {
                                 log::warn!("live session: bad transcript: {e}");
@@ -530,7 +536,7 @@ impl Pipeline {
     }
 
     /// The text speech recognition returned for each chunk that had any.
-    fn transcribe_chunks(&mut self, chunks: &[AudioBuffer16k]) -> anyhow::Result<Vec<String>> {
+    fn transcribe_chunks(&self, chunks: &[AudioBuffer16k]) -> anyhow::Result<Vec<String>> {
         let mut transcriber = lock_transcriber(&self.transcriber);
         let mut texts = Vec::with_capacity(chunks.len());
         for chunk in chunks {
@@ -556,7 +562,7 @@ impl Pipeline {
         );
         match &insertion {
             Ok(Insertion::Pasted | Insertion::PastedAfterWait) => {
-                eprintln!("▸ {}", cleaned.as_str())
+                eprintln!("▸ {}", cleaned.as_str());
             }
             Ok(Insertion::LeftInClipboard(_)) => {}
             Err(e) => {

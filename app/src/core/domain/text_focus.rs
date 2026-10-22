@@ -69,21 +69,21 @@ pub enum TextFocus {
 impl TextFocus {
     pub fn of(probed: Result<Option<&FocusedElement>, &anyhow::Error>) -> Self {
         match probed {
-            Err(e) => TextFocus::Paste { seen: format!("unknown ({e})") },
-            Ok(None) => TextFocus::Paste { seen: "no focused element".to_owned() },
-            Ok(Some(el)) if el.is_surely_not_text() => TextFocus::Wait { seen: el.to_string() },
-            Ok(Some(el)) => TextFocus::Paste { seen: el.to_string() },
+            Err(e) => Self::Paste { seen: format!("unknown ({e})") },
+            Ok(None) => Self::Paste { seen: "no focused element".to_owned() },
+            Ok(Some(el)) if el.is_surely_not_text() => Self::Wait { seen: el.to_string() },
+            Ok(Some(el)) => Self::Paste { seen: el.to_string() },
         }
     }
 
     pub fn seen(&self) -> &str {
         match self {
-            TextFocus::Paste { seen } | TextFocus::Wait { seen } => seen,
+            Self::Paste { seen } | Self::Wait { seen } => seen,
         }
     }
 
     pub fn waits(&self) -> bool {
-        matches!(self, TextFocus::Wait { .. })
+        matches!(self, Self::Wait { .. })
     }
 }
 

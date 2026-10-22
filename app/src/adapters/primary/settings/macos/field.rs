@@ -14,41 +14,41 @@ pub enum Tab {
 }
 
 impl Tab {
-    pub const ALL: [Tab; 8] = [
-        Tab::General,
-        Tab::Dictation,
-        Tab::Refinement,
-        Tab::Sounds,
-        Tab::Paste,
-        Tab::Archive,
-        Tab::Logging,
-        Tab::Services,
+    pub const ALL: [Self; 8] = [
+        Self::General,
+        Self::Dictation,
+        Self::Refinement,
+        Self::Sounds,
+        Self::Paste,
+        Self::Archive,
+        Self::Logging,
+        Self::Services,
     ];
 
     pub fn title(self) -> &'static str {
         match self {
-            Tab::General => "General",
-            Tab::Dictation => "Dictation",
-            Tab::Refinement => "Refinement",
-            Tab::Sounds => "Sounds",
-            Tab::Paste => "Paste",
-            Tab::Archive => "Archive",
-            Tab::Logging => "Logging",
-            Tab::Services => "Services",
+            Self::General => "General",
+            Self::Dictation => "Dictation",
+            Self::Refinement => "Refinement",
+            Self::Sounds => "Sounds",
+            Self::Paste => "Paste",
+            Self::Archive => "Archive",
+            Self::Logging => "Logging",
+            Self::Services => "Services",
         }
     }
 
     /// The SF Symbol of the tab's toolbar item.
     pub fn symbol(self) -> &'static str {
         match self {
-            Tab::General => "gearshape",
-            Tab::Dictation => "waveform",
-            Tab::Refinement => "sparkles",
-            Tab::Sounds => "speaker.wave.2",
-            Tab::Paste => "doc.on.clipboard",
-            Tab::Archive => "archivebox",
-            Tab::Logging => "doc.text",
-            Tab::Services => "server.rack",
+            Self::General => "gearshape",
+            Self::Dictation => "waveform",
+            Self::Refinement => "sparkles",
+            Self::Sounds => "speaker.wave.2",
+            Self::Paste => "doc.on.clipboard",
+            Self::Archive => "archivebox",
+            Self::Logging => "doc.text",
+            Self::Services => "server.rack",
         }
     }
 }
@@ -119,7 +119,7 @@ pub const fn field(
 
 impl Field {
     /// The same field under the tab's `Show advanced` disclosure.
-    pub const fn advanced(self) -> Field {
-        Field { advanced: true, ..self }
+    pub const fn advanced(self) -> Self {
+        Self { advanced: true, ..self }
     }
 }

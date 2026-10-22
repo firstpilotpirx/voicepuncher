@@ -116,7 +116,7 @@ impl SettingsRun {
             if let (ApplyStatus::Applied, Some(pastes)) = (&s, &pastes) {
                 *when_applied.lock().unwrap() = Some(pastes());
             }
-            statuses.lock().unwrap().push(s)
+            statuses.lock().unwrap().push(s);
         });
         self.refusal = self.session()?.save(listener).err();
         Ok(())

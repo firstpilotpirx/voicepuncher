@@ -158,7 +158,7 @@ fn record_next(
             std::thread::sleep(RECORD_LAG);
             connections.lock().unwrap()[index]
                 .selections
-                .push(text.to_string())
+                .push(text.to_string());
         }
         Ok(Message::Binary(bytes)) => connections.lock().unwrap()[index].samples.extend(
             bytes
@@ -558,23 +558,24 @@ fn reserve_port() -> u16 {
 }
 
 fn bind_without_listening(port: u16) -> bool {
-    // SAFETY: plain socket calls on a zeroed sockaddr_in of the right length; a bound
-    // descriptor is never closed, so its port stays reserved until the process exits.
-    unsafe {
-        let fd = libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0);
-        assert!(fd >= 0, "socket: {}", std::io::Error::last_os_error());
-        let mut addr: libc::sockaddr_in = std::mem::zeroed();
-        let len = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
-        addr.sin_len = len as u8;
-        addr.sin_family = libc::AF_INET as libc::sa_family_t;
-        addr.sin_port = port.to_be();
-        addr.sin_addr.s_addr = u32::from(std::net::Ipv4Addr::LOCALHOST).to_be();
-        let bound = libc::bind(fd, (&raw const addr).cast(), len) == 0;
-        if !bound {
-            libc::close(fd);
-        }
-        bound
+    // SAFETY: a plain socket call with constant arguments.
+    let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) };
+    assert!(fd >= 0, "socket: {}", std::io::Error::last_os_error());
+    // SAFETY: sockaddr_in is plain data, valid when zeroed.
+    let mut addr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
+    let len = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+    addr.sin_len = len as u8;
+    addr.sin_family = libc::AF_INET as libc::sa_family_t;
+    addr.sin_port = port.to_be();
+    addr.sin_addr.s_addr = u32::from(std::net::Ipv4Addr::LOCALHOST).to_be();
+    // SAFETY: `addr` is a sockaddr_in of length `len`, alive for the call; a bound descriptor
+    // is never closed, so its port stays reserved until the process exits.
+    let bound = unsafe { libc::bind(fd, (&raw const addr).cast(), len) } == 0;
+    if !bound {
+        // SAFETY: `fd` is this function's own open descriptor, closed once.
+        unsafe { libc::close(fd) };
     }
+    bound
 }
 
 /// A stub service on `listener` that keeps every connection, recording what it receives.

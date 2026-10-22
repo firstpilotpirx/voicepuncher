@@ -16,8 +16,7 @@ pub struct FocusWaitCfg {
 }
 
 impl FocusWaitCfg {
-    pub const OFF: FocusWaitCfg =
-        FocusWaitCfg { timeout: Duration::ZERO, poll_interval: Duration::ZERO };
+    pub const OFF: Self = Self { timeout: Duration::ZERO, poll_interval: Duration::ZERO };
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

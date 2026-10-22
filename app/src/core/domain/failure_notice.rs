@@ -12,42 +12,42 @@ pub enum FailingPart {
 }
 
 impl FailingPart {
-    pub const ALL: [FailingPart; 5] = [
-        FailingPart::SpeechRecognition,
-        FailingPart::TextRefinement,
-        FailingPart::CommandSpotting,
-        FailingPart::Microphone,
-        FailingPart::Accessibility,
+    pub const ALL: [Self; 5] = [
+        Self::SpeechRecognition,
+        Self::TextRefinement,
+        Self::CommandSpotting,
+        Self::Microphone,
+        Self::Accessibility,
     ];
 
     /// The short uppercase name the overlay pill shows.
     pub fn short_name(self) -> &'static str {
         match self {
-            FailingPart::SpeechRecognition => "STT",
-            FailingPart::TextRefinement => "REFINE",
-            FailingPart::CommandSpotting => "VOICE",
-            FailingPart::Microphone => "MIC",
-            FailingPart::Accessibility => "ACCESS",
+            Self::SpeechRecognition => "STT",
+            Self::TextRefinement => "REFINE",
+            Self::CommandSpotting => "VOICE",
+            Self::Microphone => "MIC",
+            Self::Accessibility => "ACCESS",
         }
     }
 
     fn failure(self) -> &'static str {
         match self {
-            FailingPart::SpeechRecognition => "speech recognition failed",
-            FailingPart::TextRefinement => "text refinement failed",
-            FailingPart::CommandSpotting => "command spotting failed",
-            FailingPart::Microphone => "the microphone failed",
-            FailingPart::Accessibility => "Accessibility permission missing",
+            Self::SpeechRecognition => "speech recognition failed",
+            Self::TextRefinement => "text refinement failed",
+            Self::CommandSpotting => "command spotting failed",
+            Self::Microphone => "the microphone failed",
+            Self::Accessibility => "Accessibility permission missing",
         }
     }
 
     fn remedy(self) -> &'static str {
         match self {
-            FailingPart::SpeechRecognition
-            | FailingPart::TextRefinement
-            | FailingPart::CommandSpotting => "start the local services",
-            FailingPart::Microphone => "check the microphone and its permission",
-            FailingPart::Accessibility => "check the Accessibility permission",
+            Self::SpeechRecognition | Self::TextRefinement | Self::CommandSpotting => {
+                "start the local services"
+            }
+            Self::Microphone => "check the microphone and its permission",
+            Self::Accessibility => "check the Accessibility permission",
         }
     }
 
@@ -75,13 +75,13 @@ pub enum FailureNotice {
 impl FailureNotice {
     pub fn part(&self) -> Option<FailingPart> {
         match *self {
-            FailureNotice::DictationLost(part)
-            | FailureNotice::PartOfDictationLost(part)
-            | FailureNotice::PastedUnrefined(part) => Some(part),
-            FailureNotice::NotPasted(part) | FailureNotice::CommandFailed(_, part) => part,
-            FailureNotice::RecordingNotStarted => Some(FailingPart::Microphone),
-            FailureNotice::VoiceCommandsUnavailable => Some(FailingPart::CommandSpotting),
-            FailureNotice::PermissionRevoked(_) => None,
+            Self::DictationLost(part)
+            | Self::PartOfDictationLost(part)
+            | Self::PastedUnrefined(part) => Some(part),
+            Self::NotPasted(part) | Self::CommandFailed(_, part) => part,
+            Self::RecordingNotStarted => Some(FailingPart::Microphone),
+            Self::VoiceCommandsUnavailable => Some(FailingPart::CommandSpotting),
+            Self::PermissionRevoked(_) => None,
         }
     }
 
@@ -90,8 +90,8 @@ impl FailureNotice {
         let loss: String = self.loss();
         match (self.part(), self) {
             (Some(part), _) => format!("{loss}: {}", part.cause()),
-            (None, FailureNotice::NotPasted(_)) => format!("{loss}: pasting failed"),
-            (None, FailureNotice::PermissionRevoked(permission)) => {
+            (None, Self::NotPasted(_)) => format!("{loss}: pasting failed"),
+            (None, Self::PermissionRevoked(permission)) => {
                 format!("{loss}: {permission} permission was revoked")
             }
             (None, _) => loss,
@@ -106,16 +106,14 @@ impl FailureNotice {
 
     fn loss(&self) -> String {
         let loss: &str = match self {
-            FailureNotice::DictationLost(_) => "Dictation lost",
-            FailureNotice::PartOfDictationLost(_) => "Part of the dictation lost",
-            FailureNotice::PastedUnrefined(_) => "Pasted without refinement",
-            FailureNotice::NotPasted(_) => "Text not pasted",
-            FailureNotice::RecordingNotStarted => "Recording not started",
-            FailureNotice::CommandFailed(command, _) => {
-                return format!("\"{}\" failed", command.phrase())
-            }
-            FailureNotice::VoiceCommandsUnavailable => "Voice commands unavailable",
-            FailureNotice::PermissionRevoked(_) => "Dictation cancelled",
+            Self::DictationLost(_) => "Dictation lost",
+            Self::PartOfDictationLost(_) => "Part of the dictation lost",
+            Self::PastedUnrefined(_) => "Pasted without refinement",
+            Self::NotPasted(_) => "Text not pasted",
+            Self::RecordingNotStarted => "Recording not started",
+            Self::CommandFailed(command, _) => return format!("\"{}\" failed", command.phrase()),
+            Self::VoiceCommandsUnavailable => "Voice commands unavailable",
+            Self::PermissionRevoked(_) => "Dictation cancelled",
         };
         loss.to_owned()
     }

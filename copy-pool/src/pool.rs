@@ -38,12 +38,12 @@ pub enum PoolError {
 impl fmt::Display for PoolError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PoolError::NoFreeCopy { address, waited } => write!(
+            Self::NoFreeCopy { address, waited } => write!(
                 f,
                 "every copy of the service at {address} stayed busy for {} ms",
                 waited.as_millis()
             ),
-            PoolError::NoCopies { address } => {
+            Self::NoCopies { address } => {
                 write!(f, "no copy of the service at {address} accepts connections")
             }
         }

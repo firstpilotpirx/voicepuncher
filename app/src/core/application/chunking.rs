@@ -288,7 +288,7 @@ fn quiet_level(loudness: &[f32]) -> f32 {
 fn rms(samples: &[i16]) -> f32 {
     let mean_square = samples
         .iter()
-        .map(|&s| (s as f32 / 32_768.0).powi(2))
+        .map(|&s| (f32::from(s) / 32_768.0).powi(2))
         .sum::<f32>()
         / samples.len() as f32;
     mean_square.sqrt()
@@ -533,7 +533,7 @@ mod tests {
             state ^= state << 17;
             let unit = (state >> 40) as f32 / (1u64 << 24) as f32 * 2.0 - 1.0;
             let noise = unit * rms * 3f32.sqrt() * 32_768.0;
-            *s = (*s as f32 + noise).clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+            *s = (f32::from(*s) + noise).clamp(f32::from(i16::MIN), f32::from(i16::MAX)) as i16;
         }
     }
 

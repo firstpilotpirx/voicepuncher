@@ -73,6 +73,7 @@ fn remove(layer: &CALayer, key: &str) {
 fn there_and_back(key_path: &str, low: f64, half_secs: f64) -> Retained<CABasicAnimation> {
     let animation = endless_animation(key_path, 1.0, low, half_secs);
     animation.setAutoreverses(true);
+    // SAFETY: an immutable framework constant, set before any Rust code runs.
     animation.setTimingFunction(Some(&timing(unsafe {
         kCAMediaTimingFunctionEaseInEaseOut
     })));
@@ -96,10 +97,9 @@ pub(super) fn endless_animation(
     let from: &AnyObject = &from;
     let to: &AnyObject = &to;
     // SAFETY: both values are NSNumbers, the type the animated layer property takes.
-    unsafe {
-        animation.setFromValue(Some(from));
-        animation.setToValue(Some(to));
-    }
+    unsafe { animation.setFromValue(Some(from)) };
+    // SAFETY: as above.
+    unsafe { animation.setToValue(Some(to)) };
     animation.setDuration(secs);
     animation.setRepeatCount(f32::INFINITY);
     animation

@@ -31,6 +31,7 @@ define_class!(
 impl RebuildObserver {
     fn new(handler: Arc<dyn Fn() + Send + Sync + 'static>) -> Retained<Self> {
         let this = Self::alloc().set_ivars(RebuildObserverIvars { handler });
+        // SAFETY: `this` is a fresh allocation with its ivars set; NSObject's init takes it.
         unsafe { msg_send![super(this), init] }
     }
 }
@@ -43,24 +44,21 @@ impl ScreenWatcher {
     pub(super) fn install(handler: Arc<dyn Fn() + Send + Sync + 'static>) -> Self {
         let observer = RebuildObserver::new(handler);
 
-        let default_center = NSNotificationCenter::defaultCenter();
+        let (on_event, observed) = (sel!(onEvent:), observer.as_ref() as &AnyObject);
+        let center = NSNotificationCenter::defaultCenter();
+        // SAFETY: an immutable framework constant, set before any Rust code runs.
+        let screens = unsafe { NSApplicationDidChangeScreenParametersNotification };
+        // SAFETY: the watcher holds the observer and removes it in Drop, so it outlives its registration.
         unsafe {
-            default_center.addObserver_selector_name_object(
-                observer.as_ref() as &AnyObject,
-                sel!(onEvent:),
-                Some(NSApplicationDidChangeScreenParametersNotification),
-                None,
-            );
+            center.addObserver_selector_name_object(observed, on_event, Some(screens), None);
         }
 
-        let workspace_center = NSWorkspace::sharedWorkspace().notificationCenter();
+        let wake_center = NSWorkspace::sharedWorkspace().notificationCenter();
+        // SAFETY: an immutable framework constant, set before any Rust code runs.
+        let did_wake = unsafe { NSWorkspaceDidWakeNotification };
+        // SAFETY: as above: Drop removes the observer before the watcher releases it.
         unsafe {
-            workspace_center.addObserver_selector_name_object(
-                observer.as_ref() as &AnyObject,
-                sel!(onEvent:),
-                Some(NSWorkspaceDidWakeNotification),
-                None,
-            );
+            wake_center.addObserver_selector_name_object(observed, on_event, Some(did_wake), None);
         }
 
         Self { observer }
@@ -71,11 +69,11 @@ impl Drop for ScreenWatcher {
     fn drop(&mut self) {
         let observer_ref = self.observer.as_ref() as &AnyObject;
 
-        unsafe {
-            NSNotificationCenter::defaultCenter().removeObserver(observer_ref);
-        }
+        // SAFETY: removes the observer `install` added; the watcher still holds it here.
+        unsafe { NSNotificationCenter::defaultCenter().removeObserver(observer_ref) };
 
         let workspace_center = NSWorkspace::sharedWorkspace().notificationCenter();
+        // SAFETY: as above.
         unsafe {
             workspace_center.removeObserver(observer_ref);
         }

@@ -50,7 +50,7 @@ pub struct Form {
 
 impl Form {
     /// Makes `form` hear its controls and the status reports of its saves.
-    pub fn connect(form: &Rc<Form>) {
+    pub fn connect(form: &Rc<Self>) {
         form.target.connect(Box::new(Handler(Rc::downgrade(form))));
         SHOWN.with(|shown| shown.replace(Rc::downgrade(form)));
     }
@@ -76,7 +76,7 @@ impl Form {
                         matches!(status, ApplyStatus::Rejected(_)),
                     );
                 }
-            })
+            });
         });
         self.say(SAVED, false);
         let saved = self.session.borrow_mut().save(listener);
@@ -151,8 +151,10 @@ impl Form {
             Event::Reveal(tag) => self.with_control(tag, |control| {
                 reveal(&super::files::resolve(&string(&control.read())));
             }),
-            Event::AddExample => self.with_examples(|table| table.add()),
-            Event::RemoveExample => self.with_examples(|table| table.remove_selected()),
+            Event::AddExample => self.with_examples(super::examples::ExamplesTable::add),
+            Event::RemoveExample => {
+                self.with_examples(super::examples::ExamplesTable::remove_selected)
+            }
             Event::ToggleAdvanced(place) => self.toggle_advanced(place),
             Event::Save => {
                 if self.save() {
@@ -191,11 +193,11 @@ impl Form {
     fn changed(&self, tag: isize, stepped: bool) {
         self.with_control(tag, |control| match &control.widget {
             Widget::Number { text, stepper } if stepped => {
-                text.setStringValue(&NSString::from_str(&stepper.integerValue().to_string()))
+                text.setStringValue(&NSString::from_str(&stepper.integerValue().to_string()));
             }
             Widget::Number { text, stepper } => stepper.setDoubleValue(text.doubleValue()),
             Widget::Slider { slider, shown } => {
-                shown.setStringValue(&NSString::from_str(&two_decimals(slider.doubleValue())))
+                shown.setStringValue(&NSString::from_str(&two_decimals(slider.doubleValue())));
             }
             _ => {}
         });

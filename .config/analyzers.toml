@@ -1,0 +1,33 @@
+# What `voicepuncher-analyzers` checks (AGENTS.md § How to verify a change); baselines in .config/analyzers/
+
+[clippy]
+# Turned on as warnings in the ratchet run of `just lint`; the strict run (`-D warnings`) keeps the default lints
+warn = [
+    "clippy::pedantic",
+    "clippy::nursery",
+    "clippy::unwrap_used",
+    "clippy::expect_used",
+    "clippy::panic",
+    "clippy::undocumented_unsafe_blocks",
+]
+# Not counted under the test paths (clippy.toml allows them in #[test] and #[cfg(test)] code too)
+test_only_allowed = ["clippy::unwrap_used", "clippy::expect_used", "clippy::panic"]
+test_paths = ["analyzers/tests/", "app/tests/", "command-spotting/tests/", "copy-pool/tests/", "e2e-test/"]
+
+# Turned off for the project, each with its reason
+[clippy.allow]
+"clippy::must_use_candidate" = "a documentation lint for published libraries; this is an application"
+"clippy::missing_errors_doc" = "a documentation lint for published libraries; this is an application"
+"clippy::missing_panics_doc" = "a documentation lint for published libraries; this is an application"
+"clippy::return_self_not_must_use" = "a documentation lint for published libraries; this is an application"
+"clippy::missing_const_for_fn" = "const on every eligible function freezes signatures no caller needs const"
+"clippy::redundant_pub_crate" = "conflicts with the pub(crate) style inside private modules"
+"clippy::option_if_let_else" = "nursery lint whose map_or_else rewrites read worse than the if let"
+"clippy::significant_drop_tightening" = "nursery lint with known false positives on guards held on purpose"
+
+[metrics]
+members = ["analyzers", "app", "command-spotting", "copy-pool", "e2e-test"]
+# A function over this cyclomatic complexity is listed in .config/analyzers/metrics.toml (cognitive complexity is
+# gated by clippy's size budgets)
+cyclomatic_threshold = 10
+duplicate_min_tokens = 50

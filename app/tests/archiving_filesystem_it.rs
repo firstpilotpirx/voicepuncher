@@ -117,7 +117,7 @@ fn should_remove_the_oldest_entries_first() {
     }
     let mut archive = archive(dir.path(), entry_size * 2);
     // When
-    archive.keep(&entry(at_second(3), samples.clone())).unwrap();
+    archive.keep(&entry(at_second(3), samples)).unwrap();
     // Then
     assert_eq!(
         folder_names(dir.path()),

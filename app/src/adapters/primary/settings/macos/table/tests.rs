@@ -26,7 +26,10 @@ fn should_give_every_live_configuration_key_exactly_one_field() {
         .collect();
     let expected: BTreeSet<String> = configuration_keys().difference(&retired).cloned().collect();
     // When
-    let paths: Vec<String> = FIELDS.iter().map(|field| field.path()).collect();
+    let paths: Vec<String> = FIELDS
+        .iter()
+        .map(super::super::field::Field::path)
+        .collect();
     let unique: BTreeSet<String> = paths.iter().cloned().collect();
     // Then
     assert_eq!(unique.len(), paths.len(), "a key has two fields: {paths:?}");

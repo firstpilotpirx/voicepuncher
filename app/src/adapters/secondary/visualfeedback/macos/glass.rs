@@ -65,8 +65,8 @@ enum Surface {
 impl Surface {
     fn view(&self) -> &NSView {
         match self {
-            Surface::System(glass) => glass,
-            Surface::Fallback(effect) => effect,
+            Self::System(glass) => glass,
+            Self::Fallback(effect) => effect,
         }
     }
 }
@@ -98,6 +98,7 @@ impl GlassPanel {
         root.setWantsLayer(true);
         let shadow_view = layer_view(mtm);
         let shadow_mask = CAShapeLayer::new();
+        // SAFETY: an immutable framework constant, set before any Rust code runs.
         shadow_mask.setFillRule(unsafe { kCAFillRuleEvenOdd });
         if let Some(layer) = shadow_view.layer() {
             cast_shadow(&layer, shadow);
@@ -196,6 +197,7 @@ impl GlassPanel {
 
     /// Whether the content shows dark on milky glass rather than light on dark glass.
     pub(super) fn has_light_content(&self) -> bool {
+        // SAFETY: an immutable framework constant, set before any Rust code runs.
         let names = NSArray::from_slice(&[unsafe { NSAppearanceNameAqua }, unsafe {
             NSAppearanceNameDarkAqua
         }]);
@@ -203,6 +205,7 @@ impl GlassPanel {
             .content
             .effectiveAppearance()
             .bestMatchFromAppearancesWithNames(&names);
+        // SAFETY: an immutable framework constant, set before any Rust code runs.
         best.is_some_and(|name| &*name == unsafe { NSAppearanceNameAqua })
     }
 
@@ -255,8 +258,9 @@ impl GlassPanel {
 fn outside(whole: NSRect, glass: NSRect, corner_radius: f64) -> CFRetained<CGMutablePath> {
     let path = CGMutablePath::new();
     // SAFETY: a null transform is documented as "no transform"; the path is fresh and ours.
+    unsafe { CGMutablePath::add_rect(Some(&path), std::ptr::null(), whole) };
+    // SAFETY: as above.
     unsafe {
-        CGMutablePath::add_rect(Some(&path), std::ptr::null(), whole);
         CGMutablePath::add_rounded_rect(
             Some(&path),
             std::ptr::null(),
@@ -294,6 +298,7 @@ fn build_surface(mtm: MainThreadMarker, corner_radius: f64) -> Surface {
     effect.setMaterial(NSVisualEffectMaterial::HUDWindow);
     effect.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
     effect.setState(NSVisualEffectState::Active);
+    // SAFETY: an immutable framework constant, set before any Rust code runs.
     if let Some(dark) = NSAppearance::appearanceNamed(unsafe { NSAppearanceNameDarkAqua }) {
         effect.setAppearance(Some(&dark));
     }
@@ -324,6 +329,7 @@ fn cast_shadow(layer: &CALayer, shadow: ShadowStyle) {
 }
 
 fn round(layer: &CALayer, corner_radius: f64) {
+    // SAFETY: an immutable framework constant, set before any Rust code runs.
     layer.setCornerCurve(unsafe { kCACornerCurveContinuous });
     layer.setCornerRadius(corner_radius);
 }
@@ -335,6 +341,7 @@ fn layer_view(mtm: MainThreadMarker) -> Retained<NSView> {
 }
 
 fn click_through_window(mtm: MainThreadMarker, frame: NSRect) -> Retained<NSWindow> {
+    // SAFETY: a fresh main-thread allocation (mtm), initialised once with plain values.
     let window = unsafe {
         NSWindow::initWithContentRect_styleMask_backing_defer(
             mtm.alloc::<NSWindow>(),
@@ -344,6 +351,7 @@ fn click_through_window(mtm: MainThreadMarker, frame: NSRect) -> Retained<NSWind
             false,
         )
     };
+    // SAFETY: a Retained owns the window, so AppKit must not release it again on close.
     unsafe { window.setReleasedWhenClosed(false) };
     window.setLevel(OVERLAY_LEVEL);
     window.setOpaque(false);

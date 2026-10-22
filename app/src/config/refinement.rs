@@ -71,7 +71,7 @@ const DEFAULT_EXAMPLES: [(&str, &str); 8] = [
 ];
 
 /// A transcript and its expected normalization, shown to the model as an example.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RefinementExample {
     pub transcript: String,

@@ -37,8 +37,10 @@ struct SignWindow {
     badge: BadgeView,
 }
 
-// The window and its badge are only touched on the main thread: every use goes through the main queue.
+// SAFETY: the window and its badge are only touched on the main thread: every use goes through
+// the main queue.
 unsafe impl Send for SignWindow {}
+// SAFETY: as for Send: no use of the window or badge runs off the main queue.
 unsafe impl Sync for SignWindow {}
 
 /// The dictation sign next to the pointer, over every app and on every screen.
@@ -127,6 +129,7 @@ fn build_window(mtm: MainThreadMarker) -> SignWindow {
         origin: NSPoint { x: 0.0, y: 0.0 },
         size: NSSize { width: BADGE_SIZE, height: BADGE_SIZE },
     };
+    // SAFETY: a fresh main-thread allocation (mtm), initialised once with plain values.
     let window = unsafe {
         NSWindow::initWithContentRect_styleMask_backing_defer(
             mtm.alloc::<NSWindow>(),
@@ -136,6 +139,7 @@ fn build_window(mtm: MainThreadMarker) -> SignWindow {
             false,
         )
     };
+    // SAFETY: a Retained owns the window, so AppKit must not release it again on close.
     unsafe { window.setReleasedWhenClosed(false) };
     window.setLevel(SIGN_LEVEL);
     window.setOpaque(false);

@@ -5,7 +5,7 @@ The audit of 2026-10-22 counted 146 `unsafe` sites in 24 files, almost all objc2
 ## What Changes
 
 - Every `unsafe` block, `unsafe fn` call site and `unsafe impl` carries a `// SAFETY:` comment of at most 3 lines stating the invariant and who upholds it; the missing ≈ 50 are written after reading each site.
-- clippy `undocumented_unsafe_blocks` and `multiple_unsafe_ops_per_block` as errors in `[workspace.lints]`; a test of its own, `app/tests/unsafe_impls.rs` (`architecture.rs` may only shrink), requires a `SAFETY:` line above every `unsafe impl Send`/`Sync` and lists the allowed ones in an allowlist with the file and the reason, so a new one fails the test.
+- clippy `undocumented_unsafe_blocks` and `multiple_unsafe_ops_per_block` as errors in `[workspace.lints]`; a test of its own, `app/tests/unsafe_impls/` (`architecture.rs` may only shrink), requires a `SAFETY:` line above every `unsafe impl Send`/`Sync` and lists the allowed ones in an allowlist with the file and the reason, so a new one fails the test.
 - The `unsafe` count in the metrics baseline is `adopt-static-analyzers`' (cargo-geiger fails on this workspace), so unsafe cannot grow unnoticed.
 - `AGENTS.md` § Architecture rules states the rule.
 
@@ -22,7 +22,7 @@ Out of scope: removing `unsafe`; changing any behavior.
 
 ## Impact
 
-- `app/src/adapters/**` (comments), `app/src/adapters/main_queue.rs`, `Cargo.toml` lints, `app/tests/unsafe_impls.rs`, `app/tests/*_it.rs`, `AGENTS.md`.
+- `app/src/adapters/**` (comments), `app/src/adapters/main_queue.rs`, `Cargo.toml` lints, `app/tests/unsafe_impls/`, `app/tests/*_it.rs`, `AGENTS.md`.
 
 ## Open points
 

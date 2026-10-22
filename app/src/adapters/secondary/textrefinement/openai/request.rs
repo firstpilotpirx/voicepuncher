@@ -40,7 +40,7 @@ struct AnswerMessage {
     content: String,
 }
 
-/// Builds the OpenAI Chat Completions body: the configured prompt is the instruction,
+/// Builds the `OpenAI` Chat Completions body: the configured prompt is the instruction,
 /// each example is a delimited transcript answered with its normalization, and the
 /// transcript is delimited data in the last user message.
 pub fn chat_body(cfg: &RefinementCfg, transcript: &str) -> String {

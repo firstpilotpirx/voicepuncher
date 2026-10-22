@@ -40,45 +40,45 @@ pub struct SpokenCommand {
 
 impl VoiceCommand {
     /// Commands accepted while listening with no dictation running.
-    pub const STANDBY: [VoiceCommand; 4] = [
-        VoiceCommand::StartDictation,
-        VoiceCommand::PressEnter,
-        VoiceCommand::ClearAllText,
-        VoiceCommand::PasteText,
+    pub const STANDBY: [Self; 4] = [
+        Self::StartDictation,
+        Self::PressEnter,
+        Self::ClearAllText,
+        Self::PasteText,
     ];
 
     /// Commands accepted during a dictation; "press enter" there also ends it.
-    pub const DICTATING: [VoiceCommand; 4] = [
-        VoiceCommand::StopDictation,
-        VoiceCommand::CancelDictation,
-        VoiceCommand::RestartDictation,
-        VoiceCommand::PressEnter,
+    pub const DICTATING: [Self; 4] = [
+        Self::StopDictation,
+        Self::CancelDictation,
+        Self::RestartDictation,
+        Self::PressEnter,
     ];
 
     /// Every command, in the order of the spec.
-    pub const ALL: [VoiceCommand; 7] = [
-        VoiceCommand::StartDictation,
-        VoiceCommand::StopDictation,
-        VoiceCommand::CancelDictation,
-        VoiceCommand::RestartDictation,
-        VoiceCommand::PressEnter,
-        VoiceCommand::ClearAllText,
-        VoiceCommand::PasteText,
+    pub const ALL: [Self; 7] = [
+        Self::StartDictation,
+        Self::StopDictation,
+        Self::CancelDictation,
+        Self::RestartDictation,
+        Self::PressEnter,
+        Self::ClearAllText,
+        Self::PasteText,
     ];
 
     pub fn phrase(self) -> &'static str {
         match self {
-            VoiceCommand::StartDictation => "start dictation",
-            VoiceCommand::StopDictation => "stop dictation",
-            VoiceCommand::CancelDictation => "cancel dictation",
-            VoiceCommand::RestartDictation => "restart dictation",
-            VoiceCommand::PressEnter => "press enter",
-            VoiceCommand::ClearAllText => "clear all text",
-            VoiceCommand::PasteText => "paste text",
+            Self::StartDictation => "start dictation",
+            Self::StopDictation => "stop dictation",
+            Self::CancelDictation => "cancel dictation",
+            Self::RestartDictation => "restart dictation",
+            Self::PressEnter => "press enter",
+            Self::ClearAllText => "clear all text",
+            Self::PasteText => "paste text",
         }
     }
 
-    pub fn from_phrase(phrase: &str) -> Option<VoiceCommand> {
+    pub fn from_phrase(phrase: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|c| c.phrase() == phrase)
     }
 }

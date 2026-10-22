@@ -1,4 +1,4 @@
-//! The login item without AppKit: what the General tab's switch shows and what turning it
+//! The login item without `AppKit`: what the General tab's switch shows and what turning it
 //! does, and the one-time offer to start at login.
 
 use std::path::{Path, PathBuf};

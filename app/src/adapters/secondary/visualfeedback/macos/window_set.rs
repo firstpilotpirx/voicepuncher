@@ -118,12 +118,10 @@ impl WindowSet {
     }
 }
 
-// Safety: WindowSet is accessed exclusively on the main thread. All reads and
-// writes to the contained Retained<…> objects go through dispatch_async_f /
-// dispatch_after_f targeting the main queue, or directly inside functions that
-// require MainThreadMarker. The debug_assert in Drop enforces this at runtime
-// in debug builds.
+// SAFETY: the Retained<…> AppKit objects are only touched on the main thread, through main-queue
+// work or functions that take a MainThreadMarker; Drop asserts the main thread in debug builds.
 unsafe impl Send for WindowSet {}
+// SAFETY: as for Send: no AppKit object is read or written off the main thread.
 unsafe impl Sync for WindowSet {}
 
 impl Drop for WindowSet {

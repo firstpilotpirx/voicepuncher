@@ -1,5 +1,5 @@
-//! Integration tests for the settings window against AppKit: the system sounds it offers,
-//! and the real window built over a configuration file in a temporary folder. AppKit builds
+//! Integration tests for the settings window against `AppKit`: the system sounds it offers,
+//! and the real window built over a configuration file in a temporary folder. `AppKit` builds
 //! windows only on the main thread, and libtest runs each test on a thread of its own, so
 //! this harness (`harness = false`) answers cargo-nextest's listing and runs each test on the
 //! main thread.
@@ -354,6 +354,7 @@ fn should_draw_every_tab() {
     let folder = tempfile::tempdir().unwrap();
     let (_window, form) = open_form(folder.path(), &AppliedConfigs::default());
     std::fs::create_dir_all(&dir).unwrap();
+    // SAFETY: immutable framework constants, set before any Rust code runs.
     let appearance = std::env::var("VOICEPUNCHER_SETTINGS_SNAPSHOT_DARK")
         .map_or(unsafe { NSAppearanceNameAqua }, |_| unsafe {
             NSAppearanceNameDarkAqua

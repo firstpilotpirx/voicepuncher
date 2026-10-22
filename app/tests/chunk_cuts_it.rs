@@ -102,7 +102,7 @@ fn is_in_pause(clean: &[i16], cut: usize) -> bool {
         let samples = &clean[i * frame..((i + 1) * frame).min(clean.len())];
         let mean_square = samples
             .iter()
-            .map(|&s| (s as f32 / 32_768.0).powi(2))
+            .map(|&s| (f32::from(s) / 32_768.0).powi(2))
             .sum::<f32>()
             / samples.len().max(1) as f32;
         !samples.is_empty() && mean_square.sqrt() < SILENT_RMS

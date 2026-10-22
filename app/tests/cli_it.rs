@@ -89,7 +89,7 @@ fn fill(folder: &std::path::Path, missing: Option<&str>) {
                 .and_then(|placed| placed.set_len(file.size_bytes))
                 .unwrap(),
             ModelKind::TarBz2 { folder: name } => {
-                std::fs::create_dir_all(folder.join(name)).unwrap()
+                std::fs::create_dir_all(folder.join(name)).unwrap();
             }
         }
     }
@@ -268,7 +268,7 @@ fn should_offer_only_the_developer_options_each_saying_it_overrides_the_configur
         .filter_map(|arg| arg.get_long().map(str::to_owned))
         .collect();
     // Then
-    let mut sorted = options.clone();
+    let mut sorted = options;
     sorted.sort();
     assert_eq!(
         sorted,

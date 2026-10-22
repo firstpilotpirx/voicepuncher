@@ -10,7 +10,7 @@ use cucumber::World as _;
 
 use super::*;
 
-const FIXTURE: &str = r#"
+const FIXTURE: &str = r"
 @gates_fixture
 Feature: Gates fixture
 
@@ -34,7 +34,7 @@ Feature: Gates fixture
 
     Scenario: real keyboard fixture
       Given a step
-"#;
+";
 const UNGATED: &str = "ungated fixture";
 const VOICE_SAMPLES: &str = "voice samples fixture";
 const REAL_KEYBOARD: &str = "real keyboard fixture";

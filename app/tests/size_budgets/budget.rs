@@ -17,51 +17,51 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Kind; 8] = [
-        Kind::FunctionLines,
-        Kind::Parameters,
-        Kind::FileLines,
-        Kind::StructFields,
-        Kind::PublicMembers,
-        Kind::DirectoryLines,
-        Kind::Nesting,
-        Kind::Complexity,
+    pub const ALL: [Self; 8] = [
+        Self::FunctionLines,
+        Self::Parameters,
+        Self::FileLines,
+        Self::StructFields,
+        Self::PublicMembers,
+        Self::DirectoryLines,
+        Self::Nesting,
+        Self::Complexity,
     ];
 
     /// The largest measure within budget, or `None` for a kind only clippy measures.
     pub fn budget(self) -> Option<usize> {
         match self {
-            Kind::FunctionLines => Some(40),
-            Kind::Parameters => Some(5),
-            Kind::FileLines => Some(300),
-            Kind::StructFields => Some(12),
-            Kind::PublicMembers => Some(35),
-            Kind::DirectoryLines => Some(2000),
-            Kind::Nesting | Kind::Complexity => None,
+            Self::FunctionLines => Some(40),
+            Self::Parameters => Some(5),
+            Self::FileLines => Some(300),
+            Self::StructFields => Some(12),
+            Self::PublicMembers => Some(35),
+            Self::DirectoryLines => Some(2000),
+            Self::Nesting | Self::Complexity => None,
         }
     }
 
     /// The table of the baseline file that lists this kind's units.
     pub fn key(self) -> &'static str {
         match self {
-            Kind::FunctionLines => "function_lines",
-            Kind::Parameters => "parameters",
-            Kind::FileLines => "file_lines",
-            Kind::StructFields => "struct_fields",
-            Kind::PublicMembers => "public_members",
-            Kind::DirectoryLines => "directory_lines",
-            Kind::Nesting => "excessive_nesting",
-            Kind::Complexity => "cognitive_complexity",
+            Self::FunctionLines => "function_lines",
+            Self::Parameters => "parameters",
+            Self::FileLines => "file_lines",
+            Self::StructFields => "struct_fields",
+            Self::PublicMembers => "public_members",
+            Self::DirectoryLines => "directory_lines",
+            Self::Nesting => "excessive_nesting",
+            Self::Complexity => "cognitive_complexity",
         }
     }
 
     /// The clippy lint a size-baseline attribute names for this kind, when clippy measures it.
-    pub fn from_lint(lint: &str) -> Option<Kind> {
+    pub fn from_lint(lint: &str) -> Option<Self> {
         match lint {
-            "too_many_lines" => Some(Kind::FunctionLines),
-            "too_many_arguments" => Some(Kind::Parameters),
-            "excessive_nesting" => Some(Kind::Nesting),
-            "cognitive_complexity" => Some(Kind::Complexity),
+            "too_many_lines" => Some(Self::FunctionLines),
+            "too_many_arguments" => Some(Self::Parameters),
+            "excessive_nesting" => Some(Self::Nesting),
+            "cognitive_complexity" => Some(Self::Complexity),
             _ => None,
         }
     }
@@ -69,19 +69,19 @@ impl Kind {
     pub fn has_lint(self) -> bool {
         matches!(
             self,
-            Kind::FunctionLines | Kind::Parameters | Kind::Nesting | Kind::Complexity
+            Self::FunctionLines | Self::Parameters | Self::Nesting | Self::Complexity
         )
     }
 
     pub fn unit_name(self) -> &'static str {
         match self {
-            Kind::FunctionLines => "code lines",
-            Kind::Parameters => "parameters",
-            Kind::FileLines => "code lines",
-            Kind::StructFields => "fields",
-            Kind::PublicMembers => "public members",
-            Kind::DirectoryLines => "code lines",
-            Kind::Nesting | Kind::Complexity => "",
+            Self::FunctionLines => "code lines",
+            Self::Parameters => "parameters",
+            Self::FileLines => "code lines",
+            Self::StructFields => "fields",
+            Self::PublicMembers => "public members",
+            Self::DirectoryLines => "code lines",
+            Self::Nesting | Self::Complexity => "",
         }
     }
 }
@@ -100,7 +100,7 @@ impl Measures {
         *entry = (*entry).max(measure);
     }
 
-    pub fn merge(&mut self, other: Measures) {
+    pub fn merge(&mut self, other: Self) {
         for ((kind, id), measure) in other.units {
             self.record(kind, id, measure);
         }

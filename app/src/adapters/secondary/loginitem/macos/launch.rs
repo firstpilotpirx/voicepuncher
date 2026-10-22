@@ -57,8 +57,14 @@ fn current_launch_line() -> Option<&'static str> {
     // takes one and returns an autoreleased descriptor or nil. Both are plain
     // NSAppleEventDescriptor methods, called through msg_send so the typed bindings'
     // CoreServices feature is not needed.
+    #[expect(
+        clippy::multiple_unsafe_ops_per_block,
+        reason = "one msg_send!, two unsafe calls inside"
+    )]
     let event_id: u32 = unsafe { msg_send![&*event, eventID] };
+    #[expect(clippy::multiple_unsafe_ops_per_block, reason = "one msg_send!, two unsafe calls inside")]
     let property: Option<Retained<NSAppleEventDescriptor>> =
+        // SAFETY: as above.
         unsafe { msg_send![&*event, paramDescriptorForKeyword: PROPERTY] };
     launch_line(
         Some(event_id),

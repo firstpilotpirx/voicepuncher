@@ -38,28 +38,28 @@ pub enum RuntimeState {
 impl fmt::Display for RuntimeState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RuntimeState::Starting => write!(f, "starting"),
-            RuntimeState::Ready { hotkey, voice_control, .. } => write!(
+            Self::Starting => write!(f, "starting"),
+            Self::Ready { hotkey, voice_control, .. } => write!(
                 f,
                 "ready (hotkey {hotkey}, voice control {})",
                 if *voice_control { "on" } else { "off" }
             ),
-            RuntimeState::Restarting => write!(f, "restarting"),
-            RuntimeState::StartingServices { ready, total } => {
+            Self::Restarting => write!(f, "restarting"),
+            Self::StartingServices { ready, total } => {
                 write!(f, "starting services ({ready} of {total} ready)")
             }
-            RuntimeState::WaitingForPermissions { missing, .. } => {
+            Self::WaitingForPermissions { missing, .. } => {
                 let names: Vec<&str> = missing.iter().map(|p| p.name()).collect();
                 write!(f, "waiting for permissions: {}", names.join(", "))
             }
-            RuntimeState::WaitingForModels { folder, missing } => write!(
+            Self::WaitingForModels { folder, missing } => write!(
                 f,
                 "waiting for models in {}: {}",
                 folder.display(),
                 missing.join(", ")
             ),
-            RuntimeState::Stopped => write!(f, "stopped"),
-            RuntimeState::Failed(reason) => write!(f, "failed: {reason}"),
+            Self::Stopped => write!(f, "stopped"),
+            Self::Failed(reason) => write!(f, "failed: {reason}"),
         }
     }
 }

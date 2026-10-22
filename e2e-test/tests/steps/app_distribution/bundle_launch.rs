@@ -258,7 +258,7 @@ async fn copy_starts_services(world: &mut E2eWorld) -> Result<()> {
         launch.ready = services
             .iter()
             .zip(ready)
-            .map(|((name, _), ready)| (name.to_string(), ready))
+            .map(|((name, _), ready)| ((*name).to_string(), ready))
             .collect();
         Ok(())
     })

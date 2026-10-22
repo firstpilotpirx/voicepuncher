@@ -224,8 +224,8 @@ enum Answer {
 impl Answer {
     fn event(self) -> Option<SpottingEvent> {
         match self {
-            Answer::Event(event) => Some(event),
-            Answer::Synced(_) => None,
+            Self::Event(event) => Some(event),
+            Self::Synced(_) => None,
         }
     }
 }

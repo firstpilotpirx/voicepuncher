@@ -61,7 +61,7 @@ impl PhraseMatcher {
     }
 
     /// Selects the phrases of `self` and of `other`, each once, `self`'s first.
-    pub fn combined_with(&self, other: &PhraseMatcher) -> Self {
+    pub fn combined_with(&self, other: &Self) -> Self {
         let mut phrases = self.phrases.clone();
         for phrase in other.selected() {
             if !phrases.contains(phrase) {

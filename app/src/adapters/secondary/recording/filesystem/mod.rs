@@ -139,7 +139,7 @@ mod tests {
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(
-            msg.contains("2") || msg.contains("channel") || msg.contains("mono"),
+            msg.contains('2') || msg.contains("channel") || msg.contains("mono"),
             "unexpected error: {msg}"
         );
     }

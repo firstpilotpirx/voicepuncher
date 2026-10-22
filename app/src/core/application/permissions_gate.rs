@@ -31,7 +31,7 @@ impl PermissionReport {
     }
 
     /// The permissions granted in `earlier` and not granted now.
-    pub fn revoked_since(&self, earlier: &PermissionReport) -> Vec<Permission> {
+    pub fn revoked_since(&self, earlier: &Self) -> Vec<Permission> {
         self.missing()
             .into_iter()
             .filter(|p| earlier.status(*p) == PermissionStatus::Granted)

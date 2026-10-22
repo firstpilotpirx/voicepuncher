@@ -80,7 +80,9 @@ fn clocked_engine_on(
     delay: Duration,
     deadline: Option<Duration>,
 ) -> ClockedEngine {
-    let one_at_a_time = ENGINE_RUNS.lock().unwrap_or_else(|e| e.into_inner());
+    let one_at_a_time = ENGINE_RUNS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let engine = Engine::load(cfg)
         .expect("models load")
         .hearing(Arc::new(Clocked {

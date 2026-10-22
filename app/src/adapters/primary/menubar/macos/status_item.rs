@@ -175,6 +175,7 @@ fn reduce_motion() -> bool {
 /// a template image follows the menu bar's ink, the others are drawn in the label colour.
 fn icon_image(picture: IconPicture, frame: Option<f64>) -> Option<Retained<NSImage>> {
     let image = symbol(picture.symbol, frame).or_else(|| symbol(FALLBACK_SYMBOL, None))?;
+    // SAFETY: an immutable framework constant, set before any Rust code runs.
     let weight = unsafe { NSFontWeightRegular };
     let mut config =
         NSImageSymbolConfiguration::configurationWithPointSize_weight(POINT_SIZE, weight);
@@ -412,7 +413,7 @@ impl MenuTarget {
             .actions
             .borrow()
             .as_deref()
-            .and_then(|actions| actions.services());
+            .and_then(super::actions::MenuActions::services);
         item.setHidden(statuses.is_none());
         let Some(submenu) = item.submenu() else {
             return;

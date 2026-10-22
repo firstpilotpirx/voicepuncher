@@ -85,16 +85,16 @@ pub enum DownloadFailure {
 impl fmt::Display for DownloadFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DownloadFailure::NoInternet => write!(f, "no internet connection"),
-            DownloadFailure::ChecksumMismatch => write!(f, "checksum mismatch"),
-            DownloadFailure::Server(reason) => write!(f, "server: {reason}"),
-            DownloadFailure::Disk(reason) => write!(f, "disk: {reason}"),
+            Self::NoInternet => write!(f, "no internet connection"),
+            Self::ChecksumMismatch => write!(f, "checksum mismatch"),
+            Self::Server(reason) => write!(f, "server: {reason}"),
+            Self::Disk(reason) => write!(f, "disk: {reason}"),
         }
     }
 }
 
 /// What a download tells its observer, in order.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DownloadEvent {
     /// Nothing is fetched: `needed` bytes are missing, `free` are free.
     NotEnoughSpace {
@@ -135,7 +135,7 @@ pub trait DownloadObserver {
 
 impl<F: FnMut(&DownloadEvent)> DownloadObserver for F {
     fn event(&mut self, event: &DownloadEvent) {
-        self(event)
+        self(event);
     }
 }
 
@@ -353,7 +353,7 @@ impl ModelDownload {
                     received,
                     total: file.size_bytes,
                     bytes_per_s: rate(received.saturating_sub(from), started, clock.now()),
-                })
+                });
             };
             self.fetcher
                 .fetch(&self.address(file), sink.as_mut(), &mut tell, cancel)

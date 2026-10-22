@@ -70,7 +70,7 @@ fn serve(listener: TcpListener, behavior: &StubBehavior, recorded: &Mutex<Vec<St
         }
         match behavior {
             StubBehavior::Answer { content, finish_reason } => {
-                respond(&mut stream, &chat_answer(content, finish_reason))
+                respond(&mut stream, &chat_answer(content, finish_reason));
             }
             StubBehavior::AppendToTranscript { suffix } => {
                 let content = format!("{}{suffix}", last_transcript(&body));

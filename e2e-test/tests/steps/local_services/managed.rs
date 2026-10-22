@@ -206,7 +206,7 @@ fn established(port: u16) -> Vec<u32> {
 }
 
 /// The process's logger: it keeps every note and warning for the scenarios, and passes
-/// each line on to the logger RUST_LOG configures.
+/// each line on to the logger `RUST_LOG` configures.
 struct Lines {
     kept: Mutex<Vec<String>>,
     printed: env_logger::Logger,

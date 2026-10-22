@@ -18,7 +18,7 @@ impl RdevHotkeyListener {
 
 enum RdevTarget {
     Single(Key),
-    /// Chord: either modifier_a or modifier_b held, then key pressed.
+    /// Chord: either `modifier_a` or `modifier_b` held, then key pressed.
     Chord {
         modifier_a: Key,
         modifier_b: Key,
@@ -100,7 +100,7 @@ impl ChordState {
 /// The signal one key event means under the hotkey bound at that moment.
 fn classify(event: &EventType, hotkey: HotKey, chord: &mut ChordState) -> Option<PttSignal> {
     chord.follow(hotkey);
-    if let EventType::KeyPress(Key::Escape) = event {
+    if matches!(event, EventType::KeyPress(Key::Escape)) {
         return Some(PttSignal::Cancel);
     }
     match hotkey_to_rdev(hotkey) {

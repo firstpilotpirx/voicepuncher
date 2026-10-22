@@ -82,8 +82,10 @@ impl SettingsSession {
         self.edits
             .iter()
             .find(|(edited, _)| edited.path() == field.path())
-            .map(|(_, value)| value.clone())
-            .unwrap_or_else(|| shown_value(&self.saved, field))
+            .map_or_else(
+                || shown_value(&self.saved, field),
+                |(_, value)| value.clone(),
+            )
     }
 
     /// The entries a pop-up or a pair of radio buttons offers.

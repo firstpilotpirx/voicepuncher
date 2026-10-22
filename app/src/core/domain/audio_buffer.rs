@@ -17,7 +17,7 @@ impl AudioBuffer16k {
     }
 
     pub fn duration_ms(&self) -> u64 {
-        (self.0.len() as u64 * 1000) / Self::SAMPLE_RATE_HZ as u64
+        (self.0.len() as u64 * 1000) / u64::from(Self::SAMPLE_RATE_HZ)
     }
 }
 

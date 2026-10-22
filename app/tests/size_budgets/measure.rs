@@ -124,12 +124,11 @@ impl<'ast> Visit<'ast> for Visitor<'_> {
     fn visit_item_impl(&mut self, item: &'ast syn::ItemImpl) {
         self.check_suppressions(&item.attrs);
         let ty = type_name(&item.self_ty);
-        let segment = match &item.trait_ {
-            Some((_, path, _)) => format!("<{ty} as {}>", last_segment(path)),
-            None => {
-                self.count_public(&ty, &item.items);
-                ty
-            }
+        let segment = if let Some((_, path, _)) = &item.trait_ {
+            format!("<{ty} as {}>", last_segment(path))
+        } else {
+            self.count_public(&ty, &item.items);
+            ty
         };
         let in_trait_impl = std::mem::replace(&mut self.in_trait_impl, item.trait_.is_some());
         self.scope.push(segment);

@@ -1,4 +1,4 @@
-//! Work handed to the main queue, where AppKit draws: the overlay and the status item.
+//! Work handed to the main queue, where `AppKit` draws: the overlay and the status item.
 
 use std::ffi::c_void;
 
@@ -41,11 +41,10 @@ pub(crate) fn dispatch_to_main<F: FnOnce() + Send + 'static>(work: F) {
 
 /// Runs `work` on the main queue `delay_ms` from now.
 pub(crate) fn dispatch_to_main_after<F: FnOnce() + Send + 'static>(delay_ms: i64, work: F) {
-    // SAFETY: as in `dispatch_to_main`; `dispatch_time` only reads its arguments.
-    unsafe {
-        let when = dispatch_time(DISPATCH_TIME_NOW, delay_ms * NANOS_PER_MILLI);
-        dispatch_after_f(when, main_queue(), into_context(work), trampoline);
-    }
+    // SAFETY: `dispatch_time` only reads its arguments.
+    let when = unsafe { dispatch_time(DISPATCH_TIME_NOW, delay_ms * NANOS_PER_MILLI) };
+    // SAFETY: as in `dispatch_to_main`.
+    unsafe { dispatch_after_f(when, main_queue(), into_context(work), trampoline) };
 }
 
 unsafe extern "C" fn trampoline(context: *mut c_void) {

@@ -3,3 +3,8 @@ too-many-lines-threshold = 40
 too-many-arguments-threshold = 5
 excessive-nesting-threshold = 4
 cognitive-complexity-threshold = 15
+
+# unwrap/expect/panic are restriction lints counted outside test code only (.config/analyzers.toml)
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

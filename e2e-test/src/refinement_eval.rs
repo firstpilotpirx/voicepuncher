@@ -21,7 +21,7 @@ const MAX_CYRILLIC_SHIFT: f64 = 0.5;
 const COMMANDS_CATEGORY: &str = "commands";
 const OVERALL: &str = "all";
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct EvalItem {
     pub id: String,
     pub category: String,

@@ -56,7 +56,7 @@ pub(super) fn command_failed(command: VoiceCommand, error: &anyhow::Error) -> Fa
 fn accessibility_if_missing(error: &anyhow::Error) -> Option<FailingPart> {
     error
         .chain()
-        .any(|cause| cause.is::<AccessibilityMissing>())
+        .any(<(dyn std::error::Error + 'static)>::is::<AccessibilityMissing>)
         .then_some(FailingPart::Accessibility)
 }
 

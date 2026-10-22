@@ -122,11 +122,7 @@ pub fn download_headless(
         },
         &AtomicBool::new(false),
     );
-    if summary.all_present {
-        0
-    } else {
-        1
-    }
+    i32::from(!summary.all_present)
 }
 
 /// The line an event prints; progress only every 10 %.

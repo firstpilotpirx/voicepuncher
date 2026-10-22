@@ -50,15 +50,15 @@ impl Role {
     /// The service's name in the service scripts.
     fn name(self) -> &'static str {
         match self {
-            Role::Dictation => SPEECH_RECOGNITION,
-            Role::Commands => COMMAND_SPEECH_RECOGNITION,
+            Self::Dictation => SPEECH_RECOGNITION,
+            Self::Commands => COMMAND_SPEECH_RECOGNITION,
         }
     }
 
     fn label(self) -> &'static str {
         match self {
-            Role::Dictation => "speech recognition service for dictation",
-            Role::Commands => "speech recognition service for commands",
+            Self::Dictation => "speech recognition service for dictation",
+            Self::Commands => "speech recognition service for commands",
         }
     }
 }

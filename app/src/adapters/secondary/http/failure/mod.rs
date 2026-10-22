@@ -20,23 +20,23 @@ impl Failure {
     pub fn of(error: &ureq::Error) -> Self {
         match error {
             ureq::Error::Status(code, _) if *code >= 500 || *code == TOO_MANY_REQUESTS => {
-                Failure::Busy(*code)
+                Self::Busy(*code)
             }
-            ureq::Error::Status(..) => Failure::Other,
-            ureq::Error::Transport(_) if is_dropped_connection(error) => Failure::Dropped,
+            ureq::Error::Status(..) => Self::Other,
+            ureq::Error::Transport(_) if is_dropped_connection(error) => Self::Dropped,
             ureq::Error::Transport(transport) if io_errors(transport).any(is_timeout) => {
-                Failure::TimedOut
+                Self::TimedOut
             }
-            ureq::Error::Transport(_) => Failure::Other,
+            ureq::Error::Transport(_) => Self::Other,
         }
     }
 
     pub fn describe(self) -> String {
         match self {
-            Failure::Dropped => "dropped the connection".to_owned(),
-            Failure::TimedOut => "did not answer in time".to_owned(),
-            Failure::Busy(code) => format!("answered with an error (HTTP {code})"),
-            Failure::Other => "failed".to_owned(),
+            Self::Dropped => "dropped the connection".to_owned(),
+            Self::TimedOut => "did not answer in time".to_owned(),
+            Self::Busy(code) => format!("answered with an error (HTTP {code})"),
+            Self::Other => "failed".to_owned(),
         }
     }
 }

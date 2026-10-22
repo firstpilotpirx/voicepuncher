@@ -31,7 +31,7 @@ fn r1_domain_no_adapter_imports() {
 
     for entry in WalkDir::new("src/core/domain")
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.file_type().is_file())
         .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("rs"))
     {
@@ -78,7 +78,7 @@ fn r2_application_no_adapter_imports() {
 
     for entry in WalkDir::new("src/core/application")
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.file_type().is_file())
         .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("rs"))
     {
@@ -108,7 +108,7 @@ fn r2_application_no_adapter_imports() {
 fn leaf_adapter_dirs(root: &str) -> Vec<std::path::PathBuf> {
     WalkDir::new(root)
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.file_type().is_dir())
         .filter(|e| {
             let path = e.path();
@@ -127,7 +127,7 @@ fn leaf_adapter_dirs(root: &str) -> Vec<std::path::PathBuf> {
                 let has_deeper = WalkDir::new(path)
                     .max_depth(1)
                     .into_iter()
-                    .filter_map(|e| e.ok())
+                    .filter_map(std::result::Result::ok)
                     .any(|e| {
                         e.file_type().is_dir()
                             && e.path() != path
@@ -231,7 +231,7 @@ fn r5_domain_vos_have_test_blocks() {
 
     for entry in WalkDir::new("src/core/domain")
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.file_type().is_file())
         .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("rs"))
     {
@@ -274,7 +274,7 @@ fn r6_core_only_whitelisted_external_crates() {
 
     for entry in WalkDir::new("src/core")
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.file_type().is_file())
         .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("rs"))
     {
@@ -298,12 +298,8 @@ fn r6_core_only_whitelisted_external_crates() {
                 continue;
             }
             if let Some(caps) = use_re.captures(line) {
-                let first_segment = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-                let is_crate_name = first_segment
-                    .chars()
-                    .next()
-                    .map(|c| c.is_lowercase())
-                    .unwrap_or(false);
+                let first_segment = caps.get(1).map_or("", |m| m.as_str());
+                let is_crate_name = first_segment.chars().next().is_some_and(char::is_lowercase);
                 if is_crate_name && !allowed.contains(first_segment) {
                     violations.push(format!(
                         "{}:{}: disallowed external crate '{}' — {}",
@@ -376,7 +372,7 @@ fn r10_no_retained_into_raw_under_visualfeedback_macos() {
 
     for entry in WalkDir::new("src/adapters/secondary/visualfeedback/macos")
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.file_type().is_file())
         .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("rs"))
     {
@@ -420,7 +416,7 @@ fn r_core_no_atomic_register() {
 
     for entry in WalkDir::new("src/core")
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.file_type().is_file())
         .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("rs"))
     {
@@ -481,7 +477,7 @@ fn r9_every_primary_adapter_has_it() {
                 String::new()
             };
             let stem = if feature.is_empty() {
-                tech.clone()
+                tech
             } else {
                 format!("{feature}_{tech}")
             };
@@ -508,7 +504,7 @@ fn r9_every_primary_adapter_has_it() {
 fn rust_files(root: &str) -> Vec<std::path::PathBuf> {
     WalkDir::new(root)
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.file_type().is_file())
         .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("rs"))
         .map(|e| e.path().to_path_buf())

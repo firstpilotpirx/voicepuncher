@@ -45,11 +45,7 @@ pub(crate) fn edit_distance_rate<T: PartialEq>(reference: &[T], hypothesis: &[T]
     }
     for i in 1..=n {
         for j in 1..=m {
-            let cost = if reference[i - 1] == hypothesis[j - 1] {
-                0
-            } else {
-                1
-            };
+            let cost = usize::from(reference[i - 1] != hypothesis[j - 1]);
             dp[i][j] = (dp[i - 1][j] + 1)
                 .min(dp[i][j - 1] + 1)
                 .min(dp[i - 1][j - 1] + cost);

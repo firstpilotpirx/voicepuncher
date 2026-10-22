@@ -48,7 +48,7 @@ pub fn select_balanced(samples: Vec<Sample>, limit: usize) -> Vec<Sample> {
     let mut picked = vec![false; samples.len()];
     let mut remaining = limit.min(samples.len());
     while remaining > 0 {
-        for (_, q) in queues.iter_mut() {
+        for (_, q) in &mut queues {
             if remaining == 0 {
                 break;
             }

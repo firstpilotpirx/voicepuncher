@@ -60,7 +60,7 @@ define_class!(
         ) {
             let text = object
                 .and_then(|object| object.downcast_ref::<NSString>())
-                .map(|text| text.to_string())
+                .map(std::string::ToString::to_string)
                 .unwrap_or_default();
             let mut rows = self.ivars().rows.borrow_mut();
             let Some(example) = usize::try_from(row).ok().and_then(|row| rows.get_mut(row)) else {

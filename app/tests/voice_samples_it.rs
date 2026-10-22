@@ -141,7 +141,7 @@ fn groups(utterances: &[Utterance]) -> Vec<Vec<&Utterance>> {
                         && utterance.start - last.end < REPEAT_PAUSE_SECS
                 }) =>
             {
-                group.push(utterance)
+                group.push(utterance);
             }
             _ => groups.push(vec![utterance]),
         }

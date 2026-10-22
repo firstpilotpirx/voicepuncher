@@ -85,7 +85,7 @@ fn should_read_a_value_the_file_sets_and_nothing_for_one_it_does_not() {
     let set = document.get("hotkey", "min_press_ms");
     let unset = document.get("paste", "focus_wait_seconds");
     // Then
-    assert_eq!(set.and_then(|item| item.as_integer()), Some(200));
+    assert_eq!(set.and_then(toml_edit::Item::as_integer), Some(200));
     assert!(unset.is_none());
 }
 

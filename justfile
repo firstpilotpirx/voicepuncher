@@ -136,7 +136,7 @@ default:
 # build-e2e ran without it (see _stages). Incremental, no `cargo clean`
 # FAST (~8.5 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples + refinement evaluation
 check:
-    @VOICEPUNCHER_FAIL_FAST=1 VOICEPUNCHER_STAGES_RECIPE=check {{just_executable()}} _stages fmt lint test build build-e2e {{check_model_stages}}
+    @VOICEPUNCHER_FAIL_FAST=1 VOICEPUNCHER_STAGES_RECIPE=check {{just_executable()}} _stages fmt lint test metrics build build-e2e {{check_model_stages}}
 
 # Only the model stages take the machine lock, held ≈ 16.3 min with 100 recordings and ≈ 14.5 min with 10 (measured)
 # (see _stages). Incremental like `check`, no `cargo clean`: the clean build is `release`'s. Accuracy runs on 100
@@ -157,7 +157,7 @@ full-check: _require-models _require-corpus
     accuracy="accuracy: $count recordings ($stage) — $reason"
     echo "● $accuracy"
     VOICEPUNCHER_FAIL_FAST=1 VOICEPUNCHER_STAGES_RECIPE=full-check VOICEPUNCHER_STAGES_ACCURACY="$accuracy" \
-        {{just_executable()}} _stages fmt lint test build bundle build-e2e {{replace(full_check_model_stages, "accuracy", '"$stage"')}}
+        {{just_executable()}} _stages fmt lint test metrics build bundle build-e2e {{replace(full_check_model_stages, "accuracy", '"$stage"')}}
     echo "✓ full-check passed — $accuracy; before a release also walk through README.md § Release checklist (manual run)"
 
 # Summary of the stage journal for the runs since a date (2026-10-01) or a span (7d): per recipe and stage the
@@ -378,8 +378,14 @@ stage_inputs := '''
     app/packaging/*                                    e2e-bundle
     app/tests/architecture.rs                          code
     app/tests/size_budgets/*                           code
+    app/tests/unsafe_impls/*                           code
     app/tests/size_baseline.toml                       code
     clippy.toml                                        code
+    analyzers/*                                        code
+    .config/analyzers.toml                             code
+    .config/analyzers/*                                code
+    deny.toml                                          code
+    .typos.toml                                        code
     rustfmt.toml                                       code
     app/tests/cucumber_integration.rs                  code
     app/tests/features/*                               code
@@ -527,7 +533,7 @@ _stage-keys +stages:
     # builds its tests: the member, its `path = "../<member>"` dependencies and dev-dependencies, and from those on
     # their normal dependencies only (a dependency's dev-dependencies are not built for its dependents); every member
     # for one whose Cargo.toml sets `tests-read-every-member = true` under [package.metadata.stage-keys] (app: its
-    # size_budgets test measures every member's source)
+    # size_budgets and unsafe_impls tests read every member's source)
     my $read = sub { open my $fh, "<", "$root/$_[0]" or return ""; local $/; <$fh> };
     my @members = ($read->("Cargo.toml") =~ /^members\s*=\s*\[([^\]]*)\]/m ? $1 =~ /"([^"]+)"/g : ());
     my %member = map { $_ => 1 } @members;
@@ -972,6 +978,20 @@ _build-e2e: _require-nextest
     cargo nextest run {{placed_commands_tests}} --no-run
     cargo nextest run {{cucumber_e2e_tests}} --no-run
 
+# The static analyzers' pinned versions (`tools`, `_require-tools`)
+machete_version := "0.9.2"
+deny_version := "0.20.2"
+semver_checks_version := "0.51.0"
+typos_version := "1.51.1"
+rca_version := "0.0.25"
+jscpd_version := "4.0.5"
+perlcritic_version := "1.156"
+shellcheck_version := "0.11.0"
+# The ratcheted analyzers (analyzers/), run from the workspace root
+analyzers := "cargo run --quiet --package voicepuncher-analyzers --"
+# perlcritic lives in ~/perl5 (`tools`)
+perl_tools := 'export PATH="$HOME/perl5/bin:$PATH" PERL5LIB="$HOME/perl5/lib/perl5${PERL5LIB:+:$PERL5LIB}"'
+
 # Formatting check
 fmt:
     @{{locked}} _fmt
@@ -979,12 +999,82 @@ fmt:
 _fmt:
     cargo fmt --all -- --check
 
-# Clippy on the whole workspace, warnings are errors
+# Clippy on the whole workspace (warnings are errors) and every static analyzer against its baseline (AGENTS.md
+# § How to verify a change): the clippy groups, unused dependencies, the dependency policy, copy-pool's semver,
+# spelling, and shellcheck/perlcritic over the recipes; runs every analyzer, then fails on any that failed
 lint:
     @{{locked}} _lint
 
-_lint:
-    cargo clippy --workspace --all-targets -- -D warnings
+_lint: _require-tools
+    #!/usr/bin/env bash
+    set -euo pipefail
+    {{perl_tools}}
+    failed=()
+    analyzer() { # <name> <command>…: runs one analyzer, noting its failure
+        local name=$1
+        shift
+        echo "● $name"
+        "$@" || failed+=("$name")
+    }
+    analyzer clippy cargo clippy --workspace --all-targets -- -D warnings
+    analyzer clippy-groups {{analyzers}} clippy
+    analyzer machete cargo machete
+    analyzer deny cargo deny --log-level error check
+    analyzer semver cargo +stable semver-checks --package voicepuncher-copy-pool --baseline-rev origin/main
+    analyzer typos typos
+    analyzer recipes {{analyzers}} recipes
+    if (( ${#failed[@]} > 0 )); then
+        echo "✗ lint: ${failed[*]} failed — baselines in .config/analyzers/, rewritten by 'just analyzers-baseline'" >&2
+        exit 1
+    fi
+
+# Code metrics (AGENTS.md § How to verify a change): the 25 most complex functions, one row per module (functions,
+# lengths, complexity, unsafe/unwrap/clone, fan-in/out), import cycles and duplicated lines, ratcheted against
+# .config/analyzers/metrics.toml; a stage of `test`, unlocked like it
+metrics:
+    @{{locked}} _metrics
+
+_metrics: _require-tools
+    {{analyzers}} metrics
+
+# Rewrites the baselines of .config/analyzers/ from the code: to drop the findings fixed, or to list what a merge
+# of branches brought in; a rewrite that adds or raises an entry is reviewed like code
+analyzers-baseline: _require-tools
+    #!/usr/bin/env bash
+    set -euo pipefail
+    {{perl_tools}}
+    for tool in clippy recipes metrics; do {{analyzers}} "$tool" --write-baseline; done
+
+# Installs the pinned static analyzers `lint` and `metrics` need (shellcheck comes from Homebrew, checked only)
+tools:
+    cargo +stable install --locked cargo-machete@{{machete_version}} cargo-deny@{{deny_version}} cargo-semver-checks@{{semver_checks_version}} typos-cli@{{typos_version}} rust-code-analysis-cli@{{rca_version}}
+    npm install --global jscpd@{{jscpd_version}}
+    PERL_MM_USE_DEFAULT=1 PERL_MM_OPT="INSTALL_BASE=$HOME/perl5" PERL_MB_OPT="--install_base $HOME/perl5" PERL5LIB="$HOME/perl5/lib/perl5" cpan -T PETDANCE/Perl-Critic-{{perlcritic_version}}.tar.gz </dev/null
+
+# Each pinned analyzer at its version; names the command that installs it and installs nothing
+_require-tools:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    {{perl_tools}}
+    missing=0
+    want() { # <name> <version> <install command> <version command>…
+        local name=$1 version=$2 install=$3 got
+        shift 3
+        got=$("$@" 2>/dev/null | head -2 | tr '\n' ' ' || true)
+        if [[ " $got " != *[\ :v]"$version"[\ ]* ]]; then
+            echo "✗ $name $version not found (got '${got% }') — run '$install'" >&2
+            missing=1
+        fi
+    }
+    want cargo-machete {{machete_version}} "just tools" cargo machete --version
+    want cargo-deny {{deny_version}} "just tools" cargo deny --version
+    want cargo-semver-checks {{semver_checks_version}} "just tools" cargo +stable semver-checks --version
+    want typos {{typos_version}} "just tools" typos --version
+    want rust-code-analysis-cli {{rca_version}} "just tools" rust-code-analysis-cli --version
+    want jscpd {{jscpd_version}} "just tools" jscpd --version
+    want perlcritic {{perlcritic_version}} "just tools" perlcritic --version
+    want shellcheck {{shellcheck_version}} "brew install shellcheck" shellcheck --version
+    exit "$missing"
 
 # Rewrites app/tests/size_baseline.toml from the code (AGENTS.md § Architecture rules) by running `test` with
 # VOICEPUNCHER_WRITE_SIZE_BASELINE=1: to drop the entries of units back within budget, or to list the units a merge
@@ -997,7 +1087,7 @@ size-baseline:
 # says `[machine-lock]`). Departs from agent-kit `machine-lock.md` on purpose until the kit's exception lands.
 # Every test of the app, the command spotting service and the E2E harness under cargo-nextest, each within its time limit, unlocked (~1 min)
 test:
-    @VOICEPUNCHER_STAGES_RECIPE=test {{just_executable()}} _stages test
+    @VOICEPUNCHER_STAGES_RECIPE=test {{just_executable()}} _stages test metrics
 
 # The rerun takes the worktree's last record of the stage journal that ran a stage, its failed stage and its failed tests (or the
 # names given, in the journal's form: `<package>::<binary> <test>`, `scenario: <name>`), and runs that one stage

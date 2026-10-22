@@ -17,10 +17,10 @@ fn panic_line(info: &PanicHookInfo) -> String {
         .map(|text| (*text).to_owned())
         .or_else(|| payload.downcast_ref::<String>().cloned())
         .unwrap_or_else(|| "a value that is not text".to_owned());
-    let location = info
-        .location()
-        .map(|place| format!("{}:{}", place.file(), place.line()))
-        .unwrap_or_else(|| "an unknown place".to_owned());
+    let location = info.location().map_or_else(
+        || "an unknown place".to_owned(),
+        |place| format!("{}:{}", place.file(), place.line()),
+    );
     let thread = std::thread::current();
     let name = thread.name().unwrap_or("-");
     format!("panic: {message} at {location} on thread {name}")

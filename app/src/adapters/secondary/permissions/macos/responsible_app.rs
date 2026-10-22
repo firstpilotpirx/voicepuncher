@@ -25,9 +25,10 @@ pub fn parent_application() -> String {
         }
         pid = ppid;
     }
-    process_entry(parent)
-        .map(|(_, command)| executable_name(&command))
-        .unwrap_or_else(|| UNKNOWN_APP.into())
+    process_entry(parent).map_or_else(
+        || UNKNOWN_APP.into(),
+        |(_, command)| executable_name(&command),
+    )
 }
 
 /// The parent pid and the executable path of `pid`.

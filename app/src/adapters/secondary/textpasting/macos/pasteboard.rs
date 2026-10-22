@@ -1,4 +1,4 @@
-//! The general pasteboard through AppKit: the text a paste puts there, and a snapshot of every item with
+//! The general pasteboard through `AppKit`: the text a paste puts there, and a snapshot of every item with
 //! every type's data, so whatever the user had copied (text, an image, files) is put back after the paste.
 
 use anyhow::{bail, Result};
@@ -33,7 +33,7 @@ pub(super) fn write_text(text: &str) -> Result<ChangeCount> {
     Ok(pasteboard.changeCount())
 }
 
-/// Every item of the general pasteboard with every type's data, copied out of AppKit so it can cross threads.
+/// Every item of the general pasteboard with every type's data, copied out of `AppKit` so it can cross threads.
 pub(super) struct PasteboardSnapshot {
     items: Vec<ItemData>,
 }

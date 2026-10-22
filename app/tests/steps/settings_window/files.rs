@@ -79,7 +79,10 @@ pub fn every_key_has_one_field() -> Result<()> {
         })
         .filter(|path| !retired.contains(path))
         .collect();
-    let paths: Vec<String> = FIELDS.iter().map(|field| field.path()).collect();
+    let paths: Vec<String> = FIELDS
+        .iter()
+        .map(voicepuncher::adapters::primary::settings::macos::field::Field::path)
+        .collect();
     let fields: BTreeSet<String> = paths.iter().cloned().collect();
     ensure!(
         fields.len() == paths.len(),
@@ -93,7 +96,7 @@ pub fn every_key_has_one_field() -> Result<()> {
 pub fn no_field_edits_the_app_s_records() -> Result<()> {
     let edited: Vec<String> = FIELDS
         .iter()
-        .map(|field| field.path())
+        .map(voicepuncher::adapters::primary::settings::macos::field::Field::path)
         .filter(|path| KEPT.iter().any(|(s, k)| *path == format!("{s}.{k}")))
         .collect();
     ensure!(

@@ -806,12 +806,7 @@ impl Session<'_> {
             .or_else(|| self.tail_heard_while_running(last_window, end, utterance))
     }
 
-    fn apply_unheld(
-        &mut self,
-        heard: &Heard,
-        spotted: Spotted,
-        from: usize,
-    ) -> Option<ServerEvent> {
+    fn apply_unheld(&self, heard: &Heard, spotted: Spotted, from: usize) -> Option<ServerEvent> {
         let phrase = self.matcher.phrase_in(&heard.text)?;
         let (start, end) = match (heard.words.first(), heard.words.last()) {
             (Some(first), Some(last)) => (

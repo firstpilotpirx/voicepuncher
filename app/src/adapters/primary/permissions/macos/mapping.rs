@@ -113,8 +113,8 @@ pub fn button(shown: Shown) -> Option<RowButton> {
 impl RowButton {
     pub fn title(self) -> &'static str {
         match self {
-            RowButton::Request => "Request…",
-            RowButton::OpenSystemSettings => "Open System Settings",
+            Self::Request => "Request…",
+            Self::OpenSystemSettings => "Open System Settings",
         }
     }
 }

@@ -21,7 +21,7 @@ const OUTLINE_WIDTH: f64 = 1.0;
 /// Slider values are shown and kept to two decimals.
 const SLIDER_STEPS: f64 = 100.0;
 
-/// The AppKit views a field's value lives in.
+/// The `AppKit` views a field's value lives in.
 pub enum Widget {
     Switch(Retained<NSSwitch>),
     PopUp(Retained<NSPopUpButton>, RefCell<Vec<Choice>>),
@@ -77,7 +77,7 @@ impl FieldControl {
                     NSControlStateValueOn
                 } else {
                     NSControlStateValueOff
-                })
+                });
             }),
             Widget::Number { text, stepper } => {
                 text.setStringValue(&NSString::from_str(&plain(value)));
@@ -89,7 +89,7 @@ impl FieldControl {
             }
             Widget::Text(text) => text.setStringValue(&NSString::from_str(&plain(value))),
             Widget::Languages(text) => {
-                text.setStringValue(&NSString::from_str(&languages_text(value)))
+                text.setStringValue(&NSString::from_str(&languages_text(value)));
             }
             Widget::TextArea(view) => view.setString(&NSString::from_str(&plain(value))),
             Widget::Folder(path, text) => show_folder(path, text, &plain(value)),
@@ -139,14 +139,13 @@ impl FieldControl {
 /// Selects the choice holding `value`; a value none offers (a microphone that is not
 /// connected) is added under its own name, so the window never changes it unasked.
 fn select(popup: &NSPopUpButton, choices: &mut Vec<Choice>, value: &Value) {
-    let index = match choices.iter().position(|choice| choice.value == *value) {
-        Some(index) => index,
-        None => {
-            let title = plain(value);
-            popup.addItemWithTitle(&NSString::from_str(&title));
-            choices.push(Choice { title, value: value.clone() });
-            choices.len() - 1
-        }
+    let index = if let Some(index) = choices.iter().position(|choice| choice.value == *value) {
+        index
+    } else {
+        let title = plain(value);
+        popup.addItemWithTitle(&NSString::from_str(&title));
+        choices.push(Choice { title, value: value.clone() });
+        choices.len() - 1
     };
     popup.selectItemAtIndex(index as isize);
 }

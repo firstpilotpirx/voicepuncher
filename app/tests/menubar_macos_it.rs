@@ -1,5 +1,5 @@
 //! Integration tests for the status item in the macOS menu bar: the item itself, what its
-//! menu says, and the actions it runs against the real system. AppKit builds the item only on
+//! menu says, and the actions it runs against the real system. `AppKit` builds the item only on
 //! the main thread, and libtest runs each test on a thread of its own, so this harness
 //! (`harness = false`) answers cargo-nextest's listing and runs each test on the main thread.
 

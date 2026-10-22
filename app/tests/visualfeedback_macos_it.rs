@@ -1,4 +1,4 @@
-//! The macOS overlay on the main thread, where AppKit draws and the main queue runs. libtest
+//! The macOS overlay on the main thread, where `AppKit` draws and the main queue runs. libtest
 //! runs each test on a thread of its own, where no overlay can be built, so this harness
 //! (`harness = false`) answers cargo-nextest's listing and runs each test on the main thread.
 

@@ -34,6 +34,7 @@ pub(super) fn symbol_name(image: &NSImage) -> Option<String> {
 }
 
 fn medium(point_size: f64) -> Retained<NSImageSymbolConfiguration> {
+    // SAFETY: an immutable framework constant, set before any Rust code runs.
     let weight = unsafe { NSFontWeightMedium };
     NSImageSymbolConfiguration::configurationWithPointSize_weight(point_size, weight)
 }

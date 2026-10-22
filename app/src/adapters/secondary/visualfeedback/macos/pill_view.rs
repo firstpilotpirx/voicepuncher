@@ -197,8 +197,10 @@ impl PillView {
             set_breathing(&layer, breathing);
         }
         if items.contains(&PillItem::Spinner) {
+            // SAFETY: a main-thread view built with a MainThreadMarker; a nil sender is allowed.
             unsafe { self.spinner.startAnimation(None) };
         } else {
+            // SAFETY: a main-thread view built with a MainThreadMarker; a nil sender is allowed.
             unsafe { self.spinner.stopAnimation(None) };
         }
     }
@@ -277,9 +279,11 @@ fn visible_symbol(view: &NSImageView) -> Option<String> {
 }
 
 fn label_text(text: &str, colour: &NSColor) -> Retained<NSAttributedString> {
+    // SAFETY: an immutable framework constant, set before any Rust code runs.
     let weight = unsafe { NSFontWeightMedium };
     let font = NSFont::systemFontOfSize_weight(LABEL_FONT_SIZE, weight);
     let tracking = NSNumber::new_f64(LABEL_TRACKING);
+    // SAFETY: an immutable framework constant, set before any Rust code runs.
     let keys = unsafe {
         [
             NSFontAttributeName,

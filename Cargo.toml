@@ -1,5 +1,5 @@
 [workspace]
-members = ["app", "command-spotting", "copy-pool", "e2e-test"]
+members = ["analyzers", "app", "command-spotting", "copy-pool", "e2e-test"]
 resolver = "2"
 
 # Size and complexity budgets (AGENTS.md § Architecture rules; thresholds in clippy.toml). A unit over budget on
@@ -10,3 +10,5 @@ too_many_arguments = "deny"
 excessive_nesting = "deny"
 cognitive_complexity = "deny"
 type_complexity = "deny"
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "deny"

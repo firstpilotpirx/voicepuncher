@@ -1,0 +1,13 @@
+# Spelling check of `just lint` (typos-cli); words here are spelled as meant
+[default.extend-words]
+# A deliberately misspelled field in a config test
+thrads = "thrads"
+# The first bytes of "hello" in a partial-download test
+hel = "hel"
+# Licence names (CC BY-NC-ND) and the PNG plural (PNGs)
+ND = "ND"
+PN = "PN"
+# Speaches, a speech-to-text server named in the docs
+Speaches = "Speaches"
+# "look-alikes" in archived proposals
+alikes = "alikes"

@@ -9,8 +9,8 @@ pub enum RecordingMode {
 impl std::fmt::Display for RecordingMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RecordingMode::Hold => write!(f, "Hold"),
-            RecordingMode::Toggle => write!(f, "Toggle"),
+            Self::Hold => write!(f, "Hold"),
+            Self::Toggle => write!(f, "Toggle"),
         }
     }
 }

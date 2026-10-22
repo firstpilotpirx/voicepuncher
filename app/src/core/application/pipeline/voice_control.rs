@@ -838,7 +838,10 @@ mod tests {
         .map(|event| pipeline.handle(PipelineInput::Spotting(event)))
         .collect();
         // Then
-        assert!(results.iter().all(|r| r.is_ok()), "{results:?}");
+        assert!(
+            results.iter().all(std::result::Result::is_ok),
+            "{results:?}"
+        );
         assert!(!pipeline.is_recording());
         assert!(pipeline.listening());
         assert_eq!(

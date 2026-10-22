@@ -39,7 +39,7 @@ const IOHID_REQUEST_LISTEN_EVENT: u32 = 1;
 /// `kIOHIDAccessTypeGranted`, `kIOHIDAccessTypeDenied`; anything else is unknown.
 const IOHID_ACCESS_GRANTED: u32 = 0;
 const IOHID_ACCESS_DENIED: u32 = 1;
-/// `AVAuthorizationStatus`: NotDetermined 0, Restricted 1, Denied 2, Authorized 3.
+/// `AVAuthorizationStatus`: `NotDetermined` 0, Restricted 1, Denied 2, Authorized 3.
 const AV_AUTHORIZATION_NOT_DETERMINED: isize = 0;
 const AV_AUTHORIZATION_AUTHORIZED: isize = 3;
 
@@ -108,6 +108,10 @@ fn capture_device() -> &'static AnyClass {
 fn microphone_status() -> PermissionStatus {
     // SAFETY: `authorizationStatusForMediaType:` takes a media type constant and returns an
     // `NSInteger`; it opens no device.
+    #[expect(
+        clippy::multiple_unsafe_ops_per_block,
+        reason = "one msg_send!, two unsafe calls inside"
+    )]
     let status: isize =
         unsafe { msg_send![capture_device(), authorizationStatusForMediaType: AVMediaTypeAudio] };
     match status {
@@ -121,6 +125,10 @@ fn request_microphone() {
     // WHY: the answer arrives on an arbitrary thread; the status poll picks it up.
     let completion = RcBlock::new(|_granted: Bool| {});
     // SAFETY: the block is copied by AVFoundation and lives until it has run.
+    #[expect(
+        clippy::multiple_unsafe_ops_per_block,
+        reason = "one msg_send!, two unsafe calls inside"
+    )]
     unsafe {
         let _: () = msg_send![
             capture_device(),

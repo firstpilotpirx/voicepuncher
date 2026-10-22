@@ -51,9 +51,9 @@ pub enum MainButton {
 impl MainButton {
     pub fn title(self) -> &'static str {
         match self {
-            MainButton::Download => "Download",
-            MainButton::Cancel => "Cancel",
-            MainButton::Retry => "Retry",
+            Self::Download => "Download",
+            Self::Cancel => "Cancel",
+            Self::Retry => "Retry",
         }
     }
 }
@@ -171,7 +171,7 @@ impl WindowModel {
                 }
             }
             DownloadEvent::Failed { name, failure } => {
-                self.set(name, RowStatus::Failed(failure.clone()))
+                self.set(name, RowStatus::Failed(failure.clone()));
             }
             DownloadEvent::Cancelled(name) => self.set(name, RowStatus::Cancelled),
             DownloadEvent::AllPresent => {}

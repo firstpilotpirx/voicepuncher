@@ -1,5 +1,5 @@
 //! What the overlay pill shows in each state, as plain data: the SF Symbol, the English label,
-//! the colours, and the items left to right. AppKit drawing lives elsewhere.
+//! the colours, and the items left to right. `AppKit` drawing lives elsewhere.
 
 use crate::core::domain::level_history::{CAPACITY_BESIDE_SIGN, FULL_CAPACITY};
 use crate::core::domain::VoiceCommand;

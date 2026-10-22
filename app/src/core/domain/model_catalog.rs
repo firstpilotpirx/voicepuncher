@@ -121,7 +121,7 @@ pub struct ModelNeeds {
 
 impl ModelNeeds {
     /// Every model of the catalog.
-    pub const ALL: ModelNeeds = ModelNeeds { voice_control: true, refinement: true };
+    pub const ALL: Self = Self { voice_control: true, refinement: true };
 
     fn includes(self, used_by: ModelUse) -> bool {
         match used_by {

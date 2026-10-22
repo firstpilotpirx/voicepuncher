@@ -35,7 +35,7 @@ struct ModelEntry {
 }
 
 /// Corrects a raw transcript through a local text refinement service that speaks the
-/// OpenAI Chat Completions API (llama.cpp `llama-server`), run as one or several copies.
+/// `OpenAI` Chat Completions API (llama.cpp `llama-server`), run as one or several copies.
 pub struct OpenAiTextRefiner {
     agent: ureq::Agent,
     pool: CopyPool,
@@ -59,20 +59,22 @@ impl OpenAiTextRefiner {
         let address = ServiceAddress::parse(&base_url)
             .map_err(|e| anyhow!("text refinement service address {base_url}: {e}"))?
             .with_copy_offset(TEXT_REFINEMENT_COPY_OFFSET);
-        let pool = CopyPool::shared_at(address);
-        let lease = pool.lease(STARTUP_CHECK_TIMEOUT).map_err(|e| match e {
-            PoolError::NoCopies { .. } => {
-                anyhow!("text refinement service is not reachable at {base_url} — {START_HINT}")
-            }
-            PoolError::NoFreeCopy { .. } => {
-                anyhow!("text refinement service at {base_url} had no free copy — {START_HINT}")
-            }
-        })?;
+        let pool = CopyPool::shared_at(address.clone());
+        // The model list needs no lease: llama-server answers it beside a running
+        // refinement, so a client starting while every copy refines still connects.
+        let copies = pool.snapshot();
+        let Some(copy) = copies.iter().find(|c| !c.busy).or_else(|| copies.first()) else {
+            bail!("text refinement service is not reachable at {base_url} — {START_HINT}");
+        };
         let probe = ureq::AgentBuilder::new()
             .timeout(STARTUP_CHECK_TIMEOUT)
             .build();
-        let offered = offered_models(&probe, &base_url, lease.url(), &cfg.api_key)?;
-        lease.finished();
+        let offered = offered_models(
+            &probe,
+            &base_url,
+            &address.with_port(copy.port),
+            &cfg.api_key,
+        )?;
         if offered.len() > 1 && !offered.contains(&cfg.model) {
             bail!(
                 "text refinement service at {base_url} does not offer model '{}' — set \

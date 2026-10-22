@@ -18,10 +18,10 @@ impl ServiceKind {
     /// The service as the user reads it.
     pub fn name(self) -> &'static str {
         match self {
-            ServiceKind::CommandSpotting => "command spotting service",
-            ServiceKind::Dictation => "speech recognition service for dictation",
-            ServiceKind::Commands => "speech recognition service for commands",
-            ServiceKind::Refinement => "text refinement service",
+            Self::CommandSpotting => "command spotting service",
+            Self::Dictation => "speech recognition service for dictation",
+            Self::Commands => "speech recognition service for commands",
+            Self::Refinement => "text refinement service",
         }
     }
 }
@@ -68,21 +68,21 @@ pub enum ServiceState {
 impl ServiceState {
     /// Counted ready for dictation.
     pub fn is_ready(&self) -> bool {
-        matches!(self, ServiceState::Ready | ServiceState::Adopted)
+        matches!(self, Self::Ready | Self::Adopted)
     }
 }
 
 impl fmt::Display for ServiceState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ServiceState::Pending => f.write_str("Pending"),
-            ServiceState::Starting { .. } => f.write_str("Starting"),
-            ServiceState::Ready => f.write_str("Ready"),
-            ServiceState::Restarting { attempt, .. } => write!(f, "Restarting (try {attempt})"),
-            ServiceState::Failed(_) => f.write_str("Failed — see log"),
-            ServiceState::Adopted => f.write_str("Adopted"),
-            ServiceState::StoppedOutside => f.write_str("Stopped outside the app"),
-            ServiceState::Stopped => f.write_str("Stopped"),
+            Self::Pending => f.write_str("Pending"),
+            Self::Starting { .. } => f.write_str("Starting"),
+            Self::Ready => f.write_str("Ready"),
+            Self::Restarting { attempt, .. } => write!(f, "Restarting (try {attempt})"),
+            Self::Failed(_) => f.write_str("Failed — see log"),
+            Self::Adopted => f.write_str("Adopted"),
+            Self::StoppedOutside => f.write_str("Stopped outside the app"),
+            Self::Stopped => f.write_str("Stopped"),
         }
     }
 }

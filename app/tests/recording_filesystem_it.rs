@@ -77,7 +77,7 @@ fn should_fail_when_wav_is_stereo() {
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(
-        msg.contains("2") || msg.contains("channel") || msg.contains("mono"),
+        msg.contains('2') || msg.contains("channel") || msg.contains("mono"),
         "unexpected error: {msg}"
     );
 }
@@ -100,12 +100,11 @@ fn should_load_valid_16k_mono_16bit_wav() {
 #[test]
 fn should_skip_gracefully_when_test_wav_absent() {
     // Given
-    let path = match std::env::var("VOICEPUNCHER_TEST_WAV") {
-        Ok(p) => p,
-        Err(_) => {
-            eprintln!("GATED: VOICEPUNCHER_TEST_WAV not set, skipping");
-            return;
-        }
+    let path = if let Ok(p) = std::env::var("VOICEPUNCHER_TEST_WAV") {
+        p
+    } else {
+        eprintln!("GATED: VOICEPUNCHER_TEST_WAV not set, skipping");
+        return;
     };
     // When
     let mut recorder = FileSystemAudioRecorder::new(PathBuf::from(path));
@@ -117,12 +116,11 @@ fn should_skip_gracefully_when_test_wav_absent() {
 #[test]
 fn should_load_wav_and_return_audio_buffer() {
     // Given
-    let path = match std::env::var("VOICEPUNCHER_TEST_WAV") {
-        Ok(p) => p,
-        Err(_) => {
-            eprintln!("GATED: VOICEPUNCHER_TEST_WAV not set, skipping");
-            return;
-        }
+    let path = if let Ok(p) = std::env::var("VOICEPUNCHER_TEST_WAV") {
+        p
+    } else {
+        eprintln!("GATED: VOICEPUNCHER_TEST_WAV not set, skipping");
+        return;
     };
     let mut recorder = FileSystemAudioRecorder::new(PathBuf::from(path));
     recorder.start().expect("start should succeed");

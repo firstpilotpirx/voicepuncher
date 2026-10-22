@@ -203,12 +203,7 @@ impl StagesRun {
     /// takes itself down, after the stop.
     fn wait_until_over(&self) -> Result<Vec<Event>> {
         let deadline = Instant::now() + REACTION;
-        let ends = |e: &Event| {
-            matches!(
-                e,
-                Event::Overlay(Overlay::Hidden) | Event::Overlay(Overlay::PastedSign)
-            )
-        };
+        let ends = |e: &Event| matches!(e, Event::Overlay(Overlay::Hidden | Overlay::PastedSign));
         while !self.after_stop().iter().any(ends) {
             if Instant::now() >= deadline {
                 bail!("the overlay never hid; events: {:?}", self.events());

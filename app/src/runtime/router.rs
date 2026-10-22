@@ -56,7 +56,7 @@ impl SignalRouter {
     fn lock(&self) -> std::sync::MutexGuard<'_, Option<Sender<PipelineInput>>> {
         self.target
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 

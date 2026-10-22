@@ -42,7 +42,11 @@ fn engine() -> Option<MutexGuard<'static, Engine>> {
     ENGINE
         .get_or_init(|| load_engine().map(Mutex::new))
         .as_ref()
-        .map(|engine| engine.lock().unwrap_or_else(|e| e.into_inner()))
+        .map(|engine| {
+            engine
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        })
 }
 
 fn load_engine() -> Option<Engine> {
@@ -258,7 +262,7 @@ fn phrases_in_segments(events: &[ServerEvent]) -> Vec<PhraseInSegment> {
             // may decode it after the short pause that closed the segment.
             ServerEvent::Phrase { phrase, start, end, .. } => match (segment_start, last_segment) {
                 (None, Some(segment)) if *start <= segment.1 => {
-                    found.push((phrase.clone(), segment, (*start, *end)))
+                    found.push((phrase.clone(), segment, (*start, *end)));
                 }
                 _ => waiting.push((phrase.clone(), (*start, *end))),
             },
