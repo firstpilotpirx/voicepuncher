@@ -1,0 +1,13 @@
+prepared:
+  estimate: 5h
+  decisions:
+    - question: Explore before the run?
+      answer: No
+    - question: Where do the real-device tests (microphone, accessibility, windows) run?
+      answer: In full-check, with a _require-tcc guard naming the missing permission; the manual run covers them when the guard fails
+    - question: Tests that need a service or a model, when it is absent?
+      answer: A nextest filter excludes them and the recipe prints how many were skipped and why
+    - question: Ceremony tests without a real assertion?
+      answer: Give them a real assertion where possible; delete only those with nothing to check
+    - question: Step texts implemented in both harnesses?
+      answer: A shared steps crate used by both harnesses
