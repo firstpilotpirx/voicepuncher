@@ -135,14 +135,22 @@ fn should_give_the_spotted_phrase_kept_the_timing_of_the_confirmation_that_heard
     );
 }
 
-#[test]
-fn should_keep_a_segment_whose_wait_moved_to_another_confirmation_until_that_one() {
-    // Given
+/// A segment held under confirmation 1 whose wait moved to confirmation 2, asked after
+/// `between` ran.
+fn with_a_segment_moved_to_a_later_confirmation(between: impl FnOnce(&mut Outbox)) -> Outbox {
     let mut outbox = Outbox::default();
     outbox.asked(1, false);
     outbox.hold(1, vec![start(1.0), end(2.0)]);
+    between(&mut outbox);
     outbox.asked(2, false);
     outbox.transfer(1, 2);
+    outbox
+}
+
+#[test]
+fn should_keep_a_segment_whose_wait_moved_to_another_confirmation_until_that_one() {
+    // Given
+    let mut outbox = with_a_segment_moved_to_a_later_confirmation(|_| {});
     // When
     let first = outbox.resolve(1, false, Vec::new());
     let second = outbox.resolve(2, false, vec![phrase("press enter")]);
@@ -178,4 +186,24 @@ fn should_answer_a_sync_only_after_the_confirmations_asked_for_before_it() {
     // Then
     assert!(early.is_empty());
     assert_eq!(out, [end(2.0), ServerEvent::Synced { id: 7 }]);
+}
+
+#[test]
+fn should_keep_a_sync_waiting_for_a_segment_whose_wait_moved_to_a_confirmation_asked_after_it() {
+    // Given
+    let mut early = Vec::new();
+    let mut outbox = with_a_segment_moved_to_a_later_confirmation(|o| early = o.sync(7));
+    // When
+    let first = outbox.resolve(1, false, Vec::new());
+    let second = outbox.resolve(2, false, Vec::new());
+    // Then
+    assert!(early.is_empty());
+    assert!(
+        first.is_empty(),
+        "the sync was answered before the segment: {first:?}"
+    );
+    assert_eq!(
+        second,
+        [start(1.0), end(2.0), ServerEvent::Synced { id: 7 }]
+    );
 }

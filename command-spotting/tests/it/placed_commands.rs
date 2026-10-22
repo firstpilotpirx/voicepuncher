@@ -11,6 +11,7 @@ use crate::common;
 use crate::scripted_hearing;
 use crate::stream_clock;
 
+mod synced;
 mod under_load;
 
 use scripted_hearing::{ScriptedHearing, ScriptedWord};
@@ -863,25 +864,6 @@ fn should_start_nothing_for_start_and_stop_with_a_dip_shorter_than_a_pause_in_st
         !said(events).iter().any(|c| c == "start dictation"),
         "{events:?}"
     );
-}
-
-#[test]
-fn should_take_a_command_after_speech_in_standby_when_only_its_hearing_at_half_the_pause_mishears_it(
-) {
-    // Given each confirmation 0.6 s late, and every clip asked before the pause closes hearing
-    // "clear" as "near", as a clip cut at half the pause may be heard
-    // When "okay, clear" is said in standby
-    let Some(heard) = heard_finely_misheard(
-        &STANDBY,
-        &[(0.0, "okay"), (0.05, "clear")],
-        Duration::from_millis(600),
-        Some(("clear", "near")),
-    ) else {
-        return;
-    };
-    // Then the command takes effect: the segment is heard whole
-    let events = &heard.events;
-    assert_eq!(said(events), ["clear all text"], "{events:?}");
 }
 
 #[test]

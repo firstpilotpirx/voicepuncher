@@ -20,6 +20,8 @@ pub struct Outbox {
 
 struct Held {
     job: u64,
+    /// The job the segment was first held under: what a sync asked for after it waits for.
+    first_job: u64,
     events: Vec<ServerEvent>,
     resolved: bool,
 }
@@ -42,7 +44,8 @@ impl Outbox {
 
     /// Holds a closed segment's `events` until its confirmation `job` is resolved.
     pub fn hold(&mut self, job: u64, events: Vec<ServerEvent>) {
-        self.held.push_back(Held { job, events, resolved: false });
+        self.held
+            .push_back(Held { job, first_job: job, events, resolved: false });
     }
 
     /// Events of no confirmation: they go out after the segments still held, or at once.
@@ -77,22 +80,20 @@ impl Outbox {
 
     /// Drops from the segment `job` holds every spotted phrase but `phrase`: its
     /// confirmation heard that command, with `timing`, which the phrases kept take on.
-    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     pub fn keep_only_phrase(&mut self, job: u64, phrase: &str, timing: Option<Timing>) {
         if let Some(held) = self.held.iter_mut().find(|h| h.job == job) {
-            held.events.retain(|e| match e {
-                ServerEvent::Phrase { phrase: spotted, .. } => spotted == phrase,
+            held.events.retain_mut(|e| match e {
+                ServerEvent::Phrase { phrase: spotted, timing: kept, .. } => {
+                    *kept = timing;
+                    spotted == phrase
+                }
                 _ => true,
             });
-            for event in &mut held.events {
-                if let ServerEvent::Phrase { timing: kept, .. } = event {
-                    *kept = timing;
-                }
-            }
         }
     }
 
-    /// The segment `from` holds waits for the confirmation `to` instead.
+    /// The segment `from` holds waits for the confirmation `to` instead; a sync asked for
+    /// after `from` still waits for it.
     pub fn transfer(&mut self, from: u64, to: u64) {
         if let Some(held) = self.held.iter_mut().find(|h| h.job == from) {
             held.job = to;
@@ -134,12 +135,13 @@ impl Outbox {
     }
 
     fn answered_syncs(&mut self) -> Vec<ServerEvent> {
-        let oldest_pending = self.pending.first().copied();
+        // The oldest job still waited for: a pending confirmation, or the first job of a
+        // held segment whose wait moved to a later confirmation.
+        let moved = self.held.iter().map(|h| h.first_job);
+        let oldest_waited = self.pending.iter().copied().chain(moved).min();
         let mut out = Vec::new();
         while let Some(&(id, last)) = self.syncs.front() {
-            // Held segments belong to pending jobs, so no pending job up to `last` means
-            // nothing asked for before the sync still waits.
-            if matches!((last, oldest_pending), (Some(last), Some(oldest)) if oldest <= last) {
+            if matches!((last, oldest_waited), (Some(last), Some(oldest)) if oldest <= last) {
                 break;
             }
             self.syncs.pop_front();

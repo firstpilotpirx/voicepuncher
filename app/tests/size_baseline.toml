@@ -210,7 +210,6 @@
 "command-spotting/src/engine/confirming.rs::Session::apply_answer" = 0
 "command-spotting/src/engine/pause.rs::PauseWatch::hear" = 0
 "command-spotting/src/matcher/placed.rs::PhraseMatcher::anywhere" = 0
-"command-spotting/src/outbox.rs::Outbox::keep_only_phrase" = 0
 "e2e-test/src/concurrency.rs::map_concurrently" = 0
 "e2e-test/src/harness_args.rs::feature_names::walk" = 0
 "e2e-test/src/speech.rs::tests::should_synthesize_speech_longer_than_the_chunk_threshold_in_every_condition" = 0
