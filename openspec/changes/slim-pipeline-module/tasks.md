@@ -2,9 +2,9 @@
 
 ## 1. Ports without default bodies
 
-- [ ] 1.1 Remove the default bodies of `truncate_at`, `begin_with`, `recording` in `app/src/core/application/audio_recorder.rs`, of `show_command_sign`, `show_commands_unavailable`, `hide_commands_unavailable`, `live_transcript_view` in `visual_indicator.rs` and of `heard_since` in `command_spotter.rs`
-- [ ] 1.2 Implement them explicitly in every implementor the compiler names: `adapters/secondary/recording/{cpal,filesystem}`, `adapters/secondary/visualfeedback/macos`, `adapters/secondary/commandspotting/websocket`, `runtime/overlay.rs`, `main.rs`, `app/tests/steps/**`, `e2e-test/tests/steps/voice_control/{session,hands_free}.rs`
-- [ ] 1.3 `just test`; commit `refactor(ports): no default bodies on the recorder, overlay and spotter ports`
+- [x] 1.1 Remove the default bodies of `truncate_at`, `begin_with`, `recording` in `app/src/core/application/audio_recorder.rs`, of `show_command_sign`, `show_commands_unavailable`, `hide_commands_unavailable`, `live_transcript_view` in `visual_indicator.rs` and of `heard_since` in `command_spotter.rs`
+- [x] 1.2 Implement them explicitly in every implementor the compiler names: `adapters/secondary/recording/{cpal,filesystem}`, `adapters/secondary/visualfeedback/macos`, `adapters/secondary/commandspotting/websocket`, `runtime/overlay.rs`, `main.rs`, `app/tests/steps/**`, `e2e-test/tests/steps/voice_control/{session,hands_free}.rs`
+- [x] 1.3 `just test`; commit `refactor(ports): no default bodies on the recorder, overlay and spotter ports`
 
 ## 2. One constructor value
 
