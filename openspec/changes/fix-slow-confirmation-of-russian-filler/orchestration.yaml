@@ -1,1 +1,14 @@
 priority: high
+prepared:
+  estimate: 2h
+  decisions:
+    - question: Explore before the run?
+      answer: No; the investigation goes into the design.
+    - question: If slow confirmations come from repeated decoding (whisper stuck on repeats, temperature retry), what to do?
+      answer: Limit decoding (token cap from audio length / fewer retry passes) so non-command speech is answered fast.
+    - question: If the cause is GPU contention with a heavy stage beside it, what to do?
+      answer: Move e2e-resilience out of light_stages into the heavy class.
+    - question: Acceptance needs three green full-check runs of other changes; how to judge done?
+      answer: The change's own green group full-check plus a measurement under load in the design; the three runs are checked later in the stage journal.
+    - question: Target version?
+      answer: Next PATCH above main when the change starts.
