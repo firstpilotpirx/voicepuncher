@@ -1,10 +1,8 @@
-use std::io::{Read, Write};
-use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use voicepuncher::adapters::secondary::localservices::process::{HttpProbe, ProcessLauncher};
-use voicepuncher::core::application::{ProbeAnswer, ServiceLauncher, ServiceProbe, ServiceProcess};
+use voicepuncher::adapters::secondary::localservices::process::ProcessLauncher;
+use voicepuncher::core::application::{ServiceLauncher, ServiceProcess};
 use voicepuncher::core::domain::{ServiceKind, ServiceSpec};
 
 fn shell(script: &str, log_file: &Path) -> ServiceSpec {
@@ -124,79 +122,4 @@ fn should_refuse_to_start_a_missing_program() {
     assert!(started.is_err());
 }
 
-/// Serves every request on a free port with `respond(path)`: (status, body).
-fn server(respond: fn(&str) -> (u16, &'static str)) -> u16 {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    std::thread::spawn(move || {
-        for stream in listener.incoming() {
-            let Ok(mut stream) = stream else { continue };
-            let mut request = [0u8; 1024];
-            let read = stream.read(&mut request).unwrap_or(0);
-            let head = String::from_utf8_lossy(&request[..read]).to_string();
-            let path = head.split_whitespace().nth(1).unwrap_or("/").to_string();
-            let (status, body) = respond(&path);
-            let _ = write!(
-                stream,
-                "HTTP/1.1 {status} X\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                body.len()
-            );
-        }
-    });
-    port
-}
-
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
-
-#[test]
-fn should_find_nothing_on_a_closed_port() {
-    assert_eq!(
-        HttpProbe::new().answer(ServiceKind::Refinement, free_port()),
-        ProbeAnswer::Closed
-    );
-}
-
-#[test]
-fn should_take_a_healthy_service_as_ready() {
-    let port = server(|_| (200, "{\"status\":\"ok\"}"));
-    assert_eq!(
-        HttpProbe::new().answer(ServiceKind::Refinement, port),
-        ProbeAnswer::Ready
-    );
-}
-
-#[test]
-fn should_take_a_loading_service_as_busy() {
-    let port = server(|_| (503, "{\"error\":\"Loading model\"}"));
-    assert_eq!(
-        HttpProbe::new().answer(ServiceKind::Refinement, port),
-        ProbeAnswer::Busy
-    );
-}
-
-#[test]
-fn should_take_a_whisper_server_as_a_speech_recognition_service() {
-    let port = server(|path| match path {
-        "/health" => (200, "{\"status\":\"ok\"}"),
-        _ => (200, "<title>Whisper.cpp Server</title>"),
-    });
-    assert_eq!(
-        HttpProbe::new().answer(ServiceKind::Dictation, port),
-        ProbeAnswer::Ready
-    );
-}
-
-#[test]
-fn should_not_take_another_healthy_program_as_a_speech_recognition_service() {
-    let port = server(|_| (200, "{\"status\":\"ok\"}"));
-    assert_eq!(
-        HttpProbe::new().answer(ServiceKind::Commands, port),
-        ProbeAnswer::Busy
-    );
-}
+mod probe;

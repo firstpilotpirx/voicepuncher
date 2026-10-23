@@ -336,6 +336,15 @@ const REACHED_WITHIN: Duration = Duration::from_secs(120);
 const LOG_POLL: Duration = Duration::from_millis(20);
 /// What a copy logs for every request it takes, with the length of its audio.
 pub(super) const REQUEST_LOG_LINE: &str = "processing '";
+/// The file name of the warm-up the service scripts send each copy before it counts ready.
+pub(super) const WARM_UP_FILE: &str = "warm-up.wav'";
+
+/// The requests a copy's `log` shows from its clients, the warm-up left out: each one's line.
+pub(super) fn client_requests(log: &str) -> impl Iterator<Item = &str> {
+    log.split(REQUEST_LOG_LINE)
+        .skip(1)
+        .filter(|line| !line.starts_with(WARM_UP_FILE))
+}
 
 #[given("the service scripts started the speech recognition service for dictation as three copies")]
 async fn started_as_three(world: &mut E2eWorld) -> Result<()> {
@@ -615,19 +624,18 @@ fn requests_taken_by_copy(ports: &[u16]) -> Vec<Vec<usize>> {
     ports
         .iter()
         .map(|port| {
-            std::fs::read_to_string(
+            let log = std::fs::read_to_string(
                 services_dir("logs").join(format!("{SPEECH_RECOGNITION}-{port}.log")),
             )
-            .unwrap_or_default()
-            .split(REQUEST_LOG_LINE)
-            .skip(1)
-            .map(|line| {
-                line.split_once("' (")
-                    .and_then(|(_, rest)| rest.split(' ').next())
-                    .and_then(|samples| samples.parse().ok())
-                    .unwrap_or_default()
-            })
-            .collect()
+            .unwrap_or_default();
+            client_requests(&log)
+                .map(|line| {
+                    line.split_once("' (")
+                        .and_then(|(_, rest)| rest.split(' ').next())
+                        .and_then(|samples| samples.parse().ok())
+                        .unwrap_or_default()
+                })
+                .collect()
         })
         .collect()
 }
@@ -642,7 +650,7 @@ fn requests_taken(ports: &[u16]) -> usize {
             )
             .ok()
         })
-        .map(|text| text.matches(REQUEST_LOG_LINE).count())
+        .map(|text| client_requests(&text).count())
         .sum()
 }
 

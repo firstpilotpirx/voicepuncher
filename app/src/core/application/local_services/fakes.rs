@@ -141,24 +141,48 @@ impl ServiceProcess for FakeProcess {
     }
 }
 
-/// Answers per port what it was told; Closed by default.
+/// Answers per port what it was told, Closed by default; transcribes every warm-up except on
+/// the ports told to refuse it, and counts the warm-ups each port got.
 #[derive(Clone, Default)]
-pub struct FakeProbe(Arc<Mutex<HashMap<u16, ProbeAnswer>>>);
+pub struct FakeProbe {
+    answers: Arc<Mutex<HashMap<u16, ProbeAnswer>>>,
+    refusing: Arc<Mutex<Vec<u16>>>,
+    warm_ups: Arc<Mutex<HashMap<u16, usize>>>,
+}
 
 impl FakeProbe {
     pub fn set(&self, port: u16, answer: ProbeAnswer) {
-        self.0.lock().unwrap().insert(port, answer);
+        self.answers.lock().unwrap().insert(port, answer);
+    }
+
+    /// Whether the copy on `port` fails to transcribe its warm-up.
+    pub fn refuse_warm_up(&self, port: u16, refusing: bool) {
+        let mut ports = self.refusing.lock().unwrap();
+        ports.retain(|&p| p != port);
+        if refusing {
+            ports.push(port);
+        }
+    }
+
+    /// How many warm-ups the copy on `port` was sent.
+    pub fn warm_ups(&self, port: u16) -> usize {
+        *self.warm_ups.lock().unwrap().get(&port).unwrap_or(&0)
     }
 }
 
 impl ServiceProbe for FakeProbe {
     fn answer(&self, _kind: ServiceKind, port: u16) -> ProbeAnswer {
         *self
-            .0
+            .answers
             .lock()
             .unwrap()
             .get(&port)
             .unwrap_or(&ProbeAnswer::Closed)
+    }
+
+    fn warm_up(&self, _kind: ServiceKind, port: u16) -> Option<Duration> {
+        *self.warm_ups.lock().unwrap().entry(port).or_default() += 1;
+        (!self.refusing.lock().unwrap().contains(&port)).then_some(Duration::from_millis(400))
     }
 }
 

@@ -10,8 +10,7 @@ use anyhow::{anyhow, bail, ensure, Context, Result};
 use cucumber::{given, then, when};
 use voicepuncher_copy_pool::ServiceAddress;
 
-use crate::steps::off_thread;
-use crate::E2eWorld;
+use crate::{steps::off_thread, E2eWorld};
 
 mod app;
 mod confirmations;
@@ -20,6 +19,7 @@ mod hangs;
 mod managed;
 mod models;
 mod owned;
+mod warm_up;
 
 pub use managed::{capture_log, ManagedRun, Needed};
 pub use models::Role;

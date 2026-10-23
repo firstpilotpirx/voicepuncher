@@ -54,6 +54,13 @@ pub enum ProbeAnswer {
 /// Asks a service's port whether the service answers.
 pub trait ServiceProbe: Send + Sync {
     fn answer(&self, kind: ServiceKind, port: u16) -> ProbeAnswer;
+
+    /// Has a copy of a speech recognition service transcribe a short utterance, so its first
+    /// decode is behind it before a client's first request; how long that took, or `None` when
+    /// it did not transcribe it. A service that transcribes nothing needs no warm-up: zero.
+    fn warm_up(&self, _kind: ServiceKind, _port: u16) -> Option<Duration> {
+        Some(Duration::ZERO)
+    }
 }
 
 /// The time, and a pause; a test's clock moves on when it pauses.

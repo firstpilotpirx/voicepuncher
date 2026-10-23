@@ -17,7 +17,7 @@ use voicepuncher_e2e_test::voice_commands::{
 };
 
 use super::confirmations::{log_len, log_since_speech, ANSWERED, GIVEN_UP};
-use super::copies::{short_speech, transcribe, REQUEST_LOG_LINE};
+use super::copies::{client_requests, short_speech, transcribe};
 use super::{
     service_process, services, ScenarioServices, COMMAND_SPEECH_RECOGNITION, SPEECH_RECOGNITION,
 };
@@ -102,7 +102,7 @@ impl ScenarioServices {
 
     /// Starts each named service with the service scripts, one call per service, keeping what
     /// each start printed; a start that fails does not stop the others.
-    fn start_each(&mut self, names: &[&str]) -> Result<()> {
+    pub(super) fn start_each(&mut self, names: &[&str]) -> Result<()> {
         for name in names {
             let output = self.just(&["start-model-servers", name])?;
             self.starts.push(((*name).to_owned(), output));
@@ -314,7 +314,7 @@ fn confirmed_by_commands_service(world: &mut E2eWorld) -> Result<()> {
     let services = model_scenario(world)?;
     let dictation_log =
         std::fs::read_to_string(services.speech_log(Role::Dictation)).unwrap_or_default();
-    let dictation_requests = dictation_log.matches(REQUEST_LOG_LINE).count();
+    let dictation_requests = client_requests(&dictation_log).count();
     ensure!(
         dictation_requests == 0,
         "the speech recognition service for dictation answered {dictation_requests} confirmation request(s)"
@@ -327,7 +327,7 @@ fn confirmed_by_commands_service(world: &mut E2eWorld) -> Result<()> {
         "the speech recognition service for commands loaded {loaded}, not {COMMAND_MODEL}"
     );
     ensure!(
-        log.contains(REQUEST_LOG_LINE),
+        client_requests(&log).next().is_some(),
         "the speech recognition service for commands got no confirmation request"
     );
     confirmations_answered(services)

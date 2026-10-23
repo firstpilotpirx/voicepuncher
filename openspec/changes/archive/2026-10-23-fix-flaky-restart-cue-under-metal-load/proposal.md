@@ -38,4 +38,4 @@ Settled at preparation (`orchestration.yaml`): the warm-up lives in the service 
 ## Release
 
 SemVer: PATCH — the app counts a speech recognition copy it started as ready only after its first transcription, so the first dictation or command no longer waits for a cold copy.
-Target version: 0.37.5.
+Target version: 0.37.6.

@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: A copy of a speech recognition service is ready once it has transcribed speech
-The service scripts and the app SHALL count a copy of a speech recognition service they start as ready only after it answered the transcription of a short utterance, and SHALL report the copy ready together with how long that first transcription took, so the first request a client sends a copy never waits for the copy's first decode. A copy the app starts again after it stopped SHALL be warmed the same way before it counts ready. The checks of a running copy SHALL send it no speech.
+The service scripts and the app SHALL count a copy of a speech recognition service they start as ready only after it answered the transcription of a short utterance, and SHALL report the copy ready together with how long that first transcription took, so the first request a client sends a copy never waits for the copy's first decode. A copy the app starts again after it stopped SHALL be warmed the same way before it counts ready; a copy the scripts' supervisor starts again after a crash is warmed by its first request instead. The checks of a running copy SHALL send it no speech.
 
 #### Scenario: The service scripts report a copy ready after its first transcription
 - **GIVEN** no local service runs on the chosen ports

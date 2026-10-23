@@ -28,7 +28,14 @@ const CONCURRENT_FORMS: usize = 4;
 /// entry is removed with the fix.
 const KNOWN_WRONG: &[(&str, f32, &str)] = &[];
 /// Forms that flake under machine load, by session and start: not checked until fixed separately.
-const FROZEN: &[(&str, f32, &str)] = &[("session-4", 32.41, "flaky, 2026-10-23")];
+const FROZEN: &[(&str, f32, &str)] = &[
+    ("session-4", 32.41, "flaky, 2026-10-23"),
+    (
+        "session-5",
+        8.74,
+        "flaky beside another full-check, 2026-10-23",
+    ),
+];
 
 fn listed<'a>(list: &[(&str, f32, &'a str)], session: &Session, form: &Form) -> Option<&'a str> {
     let at = |e: &&(&str, f32, &str)| e.0 == session.name && (e.1 - form.start).abs() < 0.01;

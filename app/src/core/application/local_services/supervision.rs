@@ -187,12 +187,16 @@ impl Supervision {
         if let Some(exit) = self.exited() {
             return self.start_failed(senses.now, format!("exited ({exit})"));
         }
-        if senses.probe.answer(self.spec.kind, self.spec.port) == ProbeAnswer::Ready {
+        let warmed = (senses.probe.answer(self.spec.kind, self.spec.port) == ProbeAnswer::Ready)
+            .then(|| senses.probe.warm_up(self.spec.kind, self.spec.port))
+            .flatten();
+        if let Some(first_transcription) = warmed {
             let took = senses.now.duration_since(self.since);
             log::info!(
-                "services: {} ready in {:.1} s",
+                "services: {} ready in {:.1} s{}",
                 self.spec.label,
-                took.as_secs_f64()
+                took.as_secs_f64(),
+                transcription_note(first_transcription)
             );
             self.failed_starts = 0;
             self.failed_checks = 0;
@@ -298,6 +302,16 @@ impl Supervision {
         if let Some(mut process) = self.process.take() {
             process.kill();
         }
+    }
+}
+
+/// ", first transcription N ms" for a copy that was warmed up, nothing for a service that
+/// transcribes nothing.
+fn transcription_note(took: Duration) -> String {
+    if took.is_zero() {
+        String::new()
+    } else {
+        format!(", first transcription {} ms", took.as_millis())
     }
 }
 

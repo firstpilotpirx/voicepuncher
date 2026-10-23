@@ -28,7 +28,7 @@ A copy counts ready only after it transcribed `app/assets/warm-up.wav` ("hello t
 
 ### 3. App: a `warm_up` on the probe port, once per start
 
-`ServiceProbe` gets `warm_up(kind, port) -> bool`: for a speech recognition kind `HttpProbe` posts the embedded utterance with a 30 s answer limit; for the other kinds it is true at once. `watch_start` goes `Ready` only when the probe answers ready and the warm-up returned true; a false keeps `Starting`, so the next tick asks again until `READINESS_LIMIT` fails the start and restarts the copy, as a copy that never answered. Every spawn, the restarts included, passes `watch_start`, so a restarted copy is warmed too; `watch_owned` and the adopted checks keep calling `answer` only. The ready log line adds the first transcription's time. Rejected: a warm transcription inside `answer` (it runs every 5 s on every copy and would send speech beside the user's dictation).
+`ServiceProbe` gets `warm_up(kind, port) -> Option<Duration>` (the first transcription's time): for a speech recognition kind `HttpProbe` posts the embedded utterance with a 30 s answer limit; for the other kinds it is a zero time at once. `watch_start` goes `Ready` only when the probe answers ready and the warm-up returned a time; none keeps `Starting`, so the next tick asks again until `READINESS_LIMIT` fails the start and restarts the copy, as a copy that never answered. Every spawn, the restarts included, passes `watch_start`, so a restarted copy is warmed too; `watch_owned` and the adopted checks keep calling `answer` only. The ready log line adds the first transcription's time. Rejected: a warm transcription inside `answer` (it runs every 5 s on every copy and would send speech beside the user's dictation).
 
 ### 4. A missing cue names the confirmations cut short
 
@@ -49,7 +49,7 @@ None: no running change reworks the service start, the supervision or the cue st
 | The start cue is timed against warm copies | E2E (`e2e-cues`: the stage's services are started by the scripts, decision 2; the `@cues` scenarios run against them) |
 | A missing start cue names the confirmations cut short | unit (`stalled_copies` parser) + the `check_within` report |
 | The service scripts report a copy ready after its first transcription | E2E `local_services.feature` |
-| The app counts a started copy ready after its first transcription | unit (`supervision_tests.rs`) + adapter integration (`HttpProbe::warm_up` against a stub server) |
+| The app counts a started copy ready after its first transcription | unit (`supervision_tests.rs`) + adapter integration (`HttpProbe::warm_up` against a stub server, `app/tests/it/localservices_process/probe.rs`) |
 | A copy that cannot transcribe in time is not ready | unit (`supervision_tests.rs`) |
 | The check of a ready copy sends it no speech | unit (`supervision_tests.rs`) |
 | Start start followed by the dictation at once gives its cue at once | E2E `voice_control.feature`, unchanged |
@@ -68,4 +68,12 @@ None: no running change reworks the service start, the supervision or the cue st
 
 ## Series
 
-Filled by task 4.1.
+Ten `VOICEPUNCHER_REUSE_STAGES=0 just e2e-cues` runs, 2026-10-23 10:54–12:08, each from freshly started services (commit 349ab847). Every whisper copy reported its first transcription before ready: 1.0–1.1 s for dictation copies, 0.26 s for command copies.
+
+| Run | Result | Slowest cue | Note |
+|---|---|---|---|
+| 1, 2, 4, 5, 6, 8, 9, 10 | passed | under 0.7 s | — |
+| 3 | failed | "restart restart" followed by speech: 920 ms | busiest beside it: WindowServer 36 %, the installed voicepuncher.app's command spotting service 34 % (the user's app listening, outside the lock), AddressBookSourceSync 28 % |
+| 7 | failed | "start please" followed by speech: 986 ms | busiest beside it: WindowServer 65 %, WallpaperAerialsExtension 57 % (GPU), GoLand 40 % |
+
+No run gave "no start cue", and no confirmation was cut short on a cold copy: the failure this change fixes did not come back. The two late cues came beside desktop load the machine lock does not hold out (the user's own running app and its services, an animated wallpaper, an IDE), which the spec's "services otherwise idle" excludes and this change leaves out of scope; the 0.7 s bound and the 1 s budget stay. The literal bar of 10 passes in a row is not met: decided under the prepared change's rule (night note `--decided`), not widened.

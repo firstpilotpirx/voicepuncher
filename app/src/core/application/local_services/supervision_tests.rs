@@ -299,3 +299,83 @@ fn should_start_an_owned_service_again_at_once_when_asked() {
     assert!(harness.spawns.all()[0].killed);
     assert_eq!(harness.spawns.count(), 2);
 }
+
+/// A copy of the speech recognition service for commands, started and answering on its port.
+fn answering_speech_recognition_copy() -> Harness {
+    let mut harness = Harness::of(spec(ServiceKind::Commands, PORT));
+    harness.tick();
+    harness.answers(ProbeAnswer::Ready);
+    harness
+}
+
+#[test]
+fn should_count_a_started_speech_recognition_copy_ready_only_once_it_transcribed_its_warm_up() {
+    // Given
+    let mut harness = answering_speech_recognition_copy();
+    harness.probe.refuse_warm_up(PORT, true);
+    // When
+    harness.tick();
+    let before_transcribing = harness.state();
+    harness.probe.refuse_warm_up(PORT, false);
+    harness.after(0.1);
+    // Then
+    assert_eq!(before_transcribing, ServiceState::Starting { attempt: 1 });
+    assert_eq!(harness.state(), ServiceState::Ready);
+}
+
+#[test]
+fn should_start_again_a_copy_that_never_transcribes_its_warm_up_within_the_start_limit() {
+    // Given
+    let mut harness = answering_speech_recognition_copy();
+    harness.probe.refuse_warm_up(PORT, true);
+    // When
+    harness.tick();
+    harness.after(READINESS_LIMIT.as_secs_f64());
+    // Then
+    assert!(
+        matches!(harness.state(), ServiceState::Restarting { .. }),
+        "{:?}",
+        harness.state()
+    );
+}
+
+#[test]
+fn should_send_no_warm_up_to_a_ready_copy_when_checking_it() {
+    // Given
+    let mut harness = answering_speech_recognition_copy();
+    harness.tick();
+    assert_eq!(harness.state(), ServiceState::Ready);
+    let warm_ups = harness.probe.warm_ups(PORT);
+    // When
+    for _ in 0..4 {
+        harness.after(CHECK_INTERVAL.as_secs_f64());
+    }
+    // Then
+    assert_eq!(warm_ups, 1);
+    assert_eq!(harness.probe.warm_ups(PORT), 1);
+}
+
+#[test]
+fn should_warm_up_a_copy_started_again_after_it_exited() {
+    // Given
+    let mut harness = answering_speech_recognition_copy();
+    harness.tick();
+    harness.spawns.exit_last("code 1");
+    harness.tick();
+    harness.probe.refuse_warm_up(PORT, true);
+    // When
+    harness.after(FIRST_PAUSE.as_secs_f64());
+    harness.tick();
+    // Then
+    assert_eq!(harness.state(), ServiceState::Starting { attempt: 2 });
+    assert_eq!(harness.probe.warm_ups(PORT), 2);
+}
+
+#[test]
+fn should_name_the_first_transcription_time_in_the_ready_line_of_a_warmed_copy() {
+    assert_eq!(
+        transcription_note(Duration::from_millis(400)),
+        ", first transcription 400 ms"
+    );
+    assert_eq!(transcription_note(Duration::ZERO), "");
+}

@@ -2405,6 +2405,20 @@ start-model-servers *services:
     log_dir="{{services_log_dir}}"
     mkdir -p "$run_dir" "$log_dir"
     port_open() { nc -z 127.0.0.1 "$1" >/dev/null 2>&1; }
+    now_ms() { perl -MTime::HiRes=time -e 'printf "%d\n", time * 1000'; }
+    # whisper_ready <port>: the copy answered the transcription of the warm-up utterance. macOS
+    # builds a copy's Metal pipelines on its first decode, often for seconds, and not reliably
+    # once per machine (design of fix-flaky-restart-cue-under-metal-load): a copy counts ready
+    # only with that decode behind it, so no client's first request waits for it; the ready line
+    # names how long it took (ready_note)
+    whisper_ready() {
+        port_open "$1" || return 1
+        local began
+        began=$(now_ms)
+        curl -sf -o /dev/null --max-time 30 "http://127.0.0.1:$1/v1/audio/transcriptions" \
+            -F "file=@{{justfile_directory()}}/app/assets/warm-up.wav" -F response_format=json || return 1
+        ready_note=", first transcription $(( $(now_ms) - began )) ms"
+    }
     llama_ready() { curl -sf -o /dev/null --max-time 1 "http://127.0.0.1:{{llm_port}}/health"; }
     require_binary() {
         local binary=$1 formula=$2
@@ -2490,9 +2504,10 @@ start-model-servers *services:
         local pid=$!
         echo "$pid" >"$pid_file"
         echo "… starting $binary (pid $pid), log: $log_file"
+        ready_note=""
         for _ in $(seq 1 240); do
             if $ready; then
-                echo "✓ $label ready on port $port"
+                echo "✓ $label ready on port $port$ready_note"
                 return 0
             fi
             # A service that exits before it was ever ready cannot start: stop its supervisor
@@ -2564,7 +2579,7 @@ start-model-servers *services:
             # A copy list left from an earlier start would make the stop look for copies
             rm -f "$run_dir/whisper-server-$port.copies"
             whisper_args "$model" "$port" "$cores"
-            start_service whisper-server "$port" "$label" "port_open $port" - "${whisper_cmd[@]}"
+            start_service whisper-server "$port" "$label" "whisper_ready $port" - "${whisper_cmd[@]}"
             return 0
         fi
         local threads=$(( cores / copies > 0 ? cores / copies : 1 ))
@@ -2576,7 +2591,7 @@ start-model-servers *services:
         for i in "${!ports[@]}"; do
             whisper_args "$model" "${ports[$i]}" "$threads"
             start_service whisper-server "${ports[$i]}" "$label: copy $((i + 1)) of $copies" \
-                "port_open ${ports[$i]}" - "${whisper_cmd[@]}"
+                "whisper_ready ${ports[$i]}" - "${whisper_cmd[@]}"
         done
         trap - EXIT
         echo "✓ $label: $copies copies on ports ${ports[*]}, found by its clients from http://127.0.0.1:$port/v1"
