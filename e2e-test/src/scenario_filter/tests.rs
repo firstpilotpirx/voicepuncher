@@ -69,14 +69,26 @@ fn scenarios_run(command_line: &[&str], gates: Vec<Gate>) -> Vec<String> {
 /// The names of the fixture scenarios that ran, sorted, under this command line and the rerun
 /// names `rerun` (the value of the rerun variable, `None` when unset).
 fn scenarios_rerun(command_line: &[&str], gates: Vec<Gate>, rerun: Option<&str>) -> Vec<String> {
+    scenarios_filtered(command_line, gates, |filter| {
+        filter.rerun_only(scenario_names(
+            rerun.map(str::to_string).ok_or(VarError::NotPresent),
+        ))
+    })
+}
+
+/// The names of the fixture scenarios that ran, sorted, under this command line and the filter
+/// `split` returns, as `adjust` narrows it.
+fn scenarios_filtered(
+    command_line: &[&str],
+    gates: Vec<Gate>,
+    adjust: impl FnOnce(ScenarioFilter) -> ScenarioFilter,
+) -> Vec<String> {
     let dir = tempfile::tempdir().expect("temp dir");
     std::fs::write(dir.path().join("gates.feature"), FIXTURE).expect("fixture feature");
     let program = std::iter::once("harness");
     let opts = Opts::<_, _, _, Empty>::parse_from(program.chain(command_line.iter().copied()));
     let (opts, filter) = split(opts, gates);
-    let filter = filter.rerun_only(rerun_names(
-        rerun.map(str::to_string).ok_or(VarError::NotPresent),
-    ));
+    let filter = adjust(filter);
     let names = Arc::new(Mutex::new(Vec::new()));
     let recorded = Arc::clone(&names);
     futures::executor::block_on(
@@ -280,3 +292,5 @@ fn should_open_the_signing_identity_gate_when_the_variable_names_an_identity() {
     assert!(gate.is_open());
     assert_eq!(gate.line(), None);
 }
+
+mod frozen;

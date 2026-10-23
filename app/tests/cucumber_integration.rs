@@ -45,7 +45,8 @@ pub struct IntegrationWorld {
 }
 
 /// Runs the scenarios the command line selects (a rerun's names instead, when
-/// `VOICEPUNCHER_RERUN_SCENARIOS` holds any) that the gates admit: `@wip` never,
+/// `VOICEPUNCHER_RERUN_SCENARIOS` holds any) that the gates admit and that are not frozen
+/// (`VOICEPUNCHER_FROZEN_SCENARIOS`): `@wip` never,
 /// `@real_keyboard` only with `VOICEPUNCHER_REAL_KEYBOARD_IT` set.
 ///
 /// cucumber never gets the selection (`--name`, `--tags`, `CUCUMBER_FILTER_TAGS`): it would apply
@@ -68,9 +69,7 @@ fn main() {
     ];
     let (opts, filter) =
         scenario_filter::split(Opts::<_, _, _, Empty>::parse_from(command_line), gates);
-    let filter = filter.rerun_only(scenario_filter::rerun_names(std::env::var(
-        scenario_filter::RERUN_VARIABLE,
-    )));
+    let filter = filter.narrowed_by_environment();
     for line in filter.gated_lines() {
         eprintln!("{line}");
     }

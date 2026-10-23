@@ -69,10 +69,6 @@ smoke_parts_tests := "-p voicepuncher -p voicepuncher-command-spotting -p voicep
 e2e_seams_tests := "-p voicepuncher --test it"
 e2e_seams_modules := "chunked_transcription"
 cucumber_e2e_tests := "-p voicepuncher-e2e-test --test cucumber_e2e"
-# What `test` runs: every test target of the workspace but the E2E harness (one cargo call cannot pick targets
-# per package; a binary the filter excludes is not even listed)
-test_filter := "-E 'not binary_id(voicepuncher-e2e-test::cucumber_e2e)'"
-test_selection := "--workspace " + test_filter
 # A rerun's selection (just rerun-failed): added to every nextest call of the E2E recipes, whose calls may each
 # hold none of the failed tests; _test narrows its own selection with it
 rerun_filter := '${VOICEPUNCHER_RERUN_FILTER:+-E "$VOICEPUNCHER_RERUN_FILTER" --no-tests=pass}'
@@ -286,7 +282,7 @@ recognition_paths := '''
     e2e-test/src/concurrency.rs
     e2e-test/src/speech.rs
     e2e-test/src/voice_commands.rs
-    e2e-test/src/scenario_filter.rs
+    e2e-test/src/scenario_filter/mod.rs
     e2e-test/tests/cucumber_e2e.rs
     e2e-test/tests/steps/mod.rs
     e2e-test/tests/steps/file_transcription.rs
@@ -372,6 +368,7 @@ stage_inputs := '''
     clippy.toml                                        code
     analyzers/*                                        code
     .config/analyzers.toml                             code
+    .config/frozen-tests.toml                          none
     .config/analyzers/*                                code
     deny.toml                                          code
     .typos.toml                                        code
@@ -508,7 +505,7 @@ _stage-keys +stages:
         } }, $path);
         $text;
     };
-    my $volatile = qr/^(VOICEPUNCHER_STAGE.*|VOICEPUNCHER_REUSE_STAGES|VOICEPUNCHER_TEST_PORTS|VOICEPUNCHER_.*_PORT|VOICEPUNCHER_E2E_SERVICES_HELD|VOICEPUNCHER_FAIL_FAST|CARGO_TERM_.*)$/;
+    my $volatile = qr/^(VOICEPUNCHER_STAGE.*|VOICEPUNCHER_REUSE_STAGES|VOICEPUNCHER_TEST_PORTS|VOICEPUNCHER_.*_PORT|VOICEPUNCHER_E2E_SERVICES_HELD|VOICEPUNCHER_FAIL_FAST|VOICEPUNCHER_FROZEN_.*|CARGO_TERM_.*)$/;
     my ($variables, $runtime) = ("", "");
     for my $name (sort grep { /^(VOICEPUNCHER_|CUCUMBER_|RUSTFLAGS$|RUSTDOCFLAGS$|RUSTC_WRAPPER$|CARGO_BUILD_|CARGO_PROFILE_|CARGO_TARGET_|CARGO_ENCODED_RUSTFLAGS$|NEXTEST_PROFILE$|NEXTEST_RETRIES$|NEXTEST_TEST_THREADS$)/ && !/$volatile/ } keys %ENV) {
         my $value = $ENV{$name};
@@ -584,6 +581,92 @@ _stage-keys +stages:
         print "$stage ", $sha->hexdigest, "\n";
     }
 
+# The frozen tests (.config/frozen-tests.toml): tests that flaked outside the change that hit them, which no run
+# runs until a fix removes them. The effective list is this worktree's list and origin/main's (fetched first, so a
+# freeze pushed there holds at once; a failed fetch keeps the last fetched one), less the entries this branch
+# removed since its merge base, so the fixing branch runs the test again. `env` prints what _stages exports:
+# `filter <nextest filterset>` of the plain tests, `scenario <name>` per frozen scenario, and `say <line>` for the
+# lines it prints: how many tests are frozen and each entry frozen more than 7 days ago; `list` prints every entry; `plan` prints `<stage>\t<filterset>
+# \t<scenario names joined by \x1f>` per stage, for `frozen-tests run`. VOICEPUNCHER_STAGE_ROOT names another
+# repository and VOICEPUNCHER_FROZEN_TODAY the day (_test-frozen-tests)
+_frozen mode:
+    #!/usr/bin/env perl
+    use strict;
+    use warnings;
+    use Time::Local qw(timegm);
+    my $mode = '{{mode}}';
+    my $root = $ENV{VOICEPUNCHER_STAGE_ROOT} || {{quote(justfile_directory())}};
+    my $path = ".config/frozen-tests.toml";
+    my @git = ("git", "-C", $root);
+    if ($mode eq "env" && system(@git, "fetch", "--quiet", "origin", "main") != 0) {
+        print STDERR "● the frozen list of main could not be fetched: the last fetched one counts\n";
+    }
+    my $parse = sub {
+        my @entries;
+        for my $block (split /^\[\[frozen\]\]\s*$/m, $_[0] // "") {
+            my %entry = $block =~ /^\s*(\w+)\s*=\s*"((?:[^"\\]|\\.)*)"\s*$/mg;
+            push @entries, \%entry if defined $entry{test};
+        }
+        return @entries;
+    };
+    my $show = sub {
+        my $text = `git -C '$root' show '$_[0]:$path' 2>/dev/null`;
+        return $? == 0 ? $text : "";
+    };
+    my $local = -f "$root/$path" ? do { local $/; open my $fh, "<", "$root/$path" or die "✗ $path: $!\n"; <$fh> } : "";
+    my @local = $parse->($local);
+    my @main = $parse->($show->("origin/main"));
+    my $base = `git -C '$root' merge-base HEAD origin/main 2>/dev/null`;
+    chomp $base;
+    my %kept = map { $_->{test} => 1 } @local;
+    my %removed = map { $_->{test} => 1 } grep { !$kept{$_->{test}} } ($base ? $parse->($show->($base)) : ());
+    my (%seen, @frozen);
+    for my $entry (@local, @main) {
+        next if $seen{$entry->{test}}++ || $removed{$entry->{test}};
+        push @frozen, $entry;
+    }
+    my $selection = sub {
+        my (@tests, @scenarios);
+        for (@_) {
+            if ($_->{test} =~ /^scenario:\s*(.+)$/) { push @scenarios, $1; next }
+            my ($binary, $test) = $_->{test} =~ /^(\S+)\s+(.+)$/ or next;
+            push @tests, "(binary_id(=$binary) & test(=$test))";
+        }
+        return (join(" | ", @tests), @scenarios);
+    };
+    my $day = sub { my ($y, $m, $d) = $_[0] =~ /^(\d{4})-(\d\d)-(\d\d)$/ or return; timegm(0, 0, 0, $d, $m - 1, $y) };
+    my @now = localtime;
+    my $today = $day->($ENV{VOICEPUNCHER_FROZEN_TODAY} || sprintf("%04d-%02d-%02d", $now[5] + 1900, $now[4] + 1, $now[3]));
+    if ($mode eq "env") {
+        my ($filter, @scenarios) = $selection->(@frozen);
+        print "filter $filter\n" if $filter;
+        print "scenario $_\n" for @scenarios;
+        print "say ● frozen: ", scalar(@frozen), " test(s), not run (just frozen-tests)\n" if @frozen;
+        for (@frozen) {
+            my $since = $day->($_->{frozen} // "") or next;
+            my $days = int(($today - $since) / 86400);
+            print "say   ⚠ frozen for more than 7 days: $_->{test} (frozen $_->{frozen}, $days days)\n" if $days > 7;
+        }
+    } elsif ($mode eq "list") {
+        print "● no frozen test\n" unless @frozen;
+        for (@frozen) {
+            print "$_->{test}\n";
+            printf "    frozen %s in %s, stage %s, on %s; beside it: %s\n", map { $_ // "?" } @$_{qw(frozen recipe stage branch beside)};
+        }
+    } elsif ($mode eq "plan") {
+        my %stages;
+        push @{ $stages{ $_->{stage} // "" } }, $_ for @frozen;
+        for my $stage (sort keys %stages) {
+            die "✗ a frozen entry names no stage: $stages{$stage}[0]{test}\n" unless $stage;
+            my ($filter, @scenarios) = $selection->(@{ $stages{$stage} });
+            # Scenarios run inside their harness's test, which the selection must hold
+            $filter = join(" | ", grep { $_ } $filter, "binary(=cucumber_integration) | binary(=cucumber_e2e)") if @scenarios;
+            print join("\t", $stage, $filter, join("\x1f", @scenarios)), "\n";
+        }
+    } else {
+        die "✗ unknown mode $mode: env, list or plan\n";
+    }
+
 # Runs the named stages (private recipes without their `_`) in phases. The stages before the first model
 # stage (`e2e*` or `refine-eval`) run one by one without the machine lock, each through the wrapper on the quiet
 # lock in the shared mode (_quiet-lock): it gives the stage the time limit (MACHINE_LOCK_TIMEOUT, exit 124; the
@@ -614,6 +697,14 @@ _stages +stages:
     # The stages' output also goes to run_log, for the failed tests of the journal: behind that copy cargo and
     # nextest see no terminal, so they keep their colors only when this run's output is one
     [[ ! -t 1 || -n "${CARGO_TERM_COLOR:-}" ]] || export CARGO_TERM_COLOR=always
+    # The frozen tests (_frozen), once per run: a nested run and `frozen-tests run` keep what their caller set
+    if [[ -z "${VOICEPUNCHER_FROZEN_FILTER+set}" ]]; then
+        frozen=$({{just_executable()}} --justfile {{quote(justfile())}} _frozen env) || frozen=""
+        VOICEPUNCHER_FROZEN_FILTER=$(sed -n 's/^filter //p' <<<"$frozen")
+        VOICEPUNCHER_FROZEN_SCENARIOS=$(sed -n 's/^scenario //p' <<<"$frozen")
+        export VOICEPUNCHER_FROZEN_FILTER VOICEPUNCHER_FROZEN_SCENARIOS
+        sed -n 's/^say //p' <<<"$frozen"
+    fi
     caller=""
     if [[ "${MACHINE_LOCK_HELD:-}" == "${MACHINE_LOCK_DIR:-$HOME/.cache/machine-lock}/tests.lock" ]]; then
         caller=1
@@ -1143,6 +1234,78 @@ rerun-failed *names:
     fi
     exit "$status"
 
+# Freezes a test that failed outside the change whose check ran it (AGENTS.md § How to verify a change): adds its
+# entry to .config/frozen-tests.toml, commits it on this branch and pushes the same entry to main at once from a
+# scratch worktree of origin/main (again on a fresh main when another push won the race), so every worktree's next
+# run leaves it out (_frozen). `test` is the stage journal's name (`scenario: <name>` or `<package>::<binary>
+# <test>`), `recipe` and `stage` where it failed, `beside` what ran beside it (other sessions' runs, the lock holder)
+# Freeze a test that failed outside your change: it runs nowhere until a fix removes its entry; no change is filed
+[positional-arguments]
+freeze-test test recipe stage beside:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    root="${VOICEPUNCHER_STAGE_ROOT:-{{justfile_directory()}}}"
+    list=.config/frozen-tests.toml
+    [[ "$1" =~ ^scenario:\ .+$ || "$1" =~ ^[^[:space:]]+\ .+$ ]] \
+        || { echo "✗ \"$1\" is neither \`scenario: <name>\` nor \`<binary id> <test>\`" >&2; exit 1; }
+    for value in "$@"; do [[ "$value" != *'"'* ]] || { echo "✗ a value holds a double quote: $value" >&2; exit 1; }; done
+    branch=$(git -C "$root" rev-parse --abbrev-ref HEAD)
+    day="${VOICEPUNCHER_FROZEN_TODAY:-$(date +%Y-%m-%d)}"
+    entry=$(printf '[[frozen]]\ntest = "%s"\nfrozen = "%s"\nrecipe = "%s"\nstage = "%s"\nbeside = "%s"\nbranch = "%s"\n' "$1" "$day" "$2" "$3" "$4" "$branch")
+    # append <file>: adds the entry unless the file lists the test already
+    test="$1"
+    append() { ! grep -qxF "test = \"$test\"" "$1" 2>/dev/null || return 1; printf '\n%s\n' "$entry" >>"$1"; }
+    if append "$root/$list"; then
+        git -C "$root" add "$list"
+        git -C "$root" commit -q -m "test: freeze $test" -- "$list"
+        echo "✓ frozen on $branch: $test"
+    else
+        echo "● $branch lists it already: $test"
+    fi
+    scratch=$(mktemp -d)
+    trap 'git -C "$root" worktree remove --force "$scratch/main" 2>/dev/null || true; rm -rf "$scratch"' EXIT
+    for attempt in 1 2 3; do
+        git -C "$root" fetch -q origin main
+        git -C "$root" worktree remove --force "$scratch/main" 2>/dev/null || true
+        git -C "$root" worktree add -q --detach "$scratch/main" origin/main
+        mkdir -p "$scratch/main/.config"
+        if ! append "$scratch/main/$list"; then echo "● main lists it already"; exit 0; fi
+        git -C "$scratch/main" add "$list"
+        git -C "$scratch/main" commit -q -m "test: freeze $test"
+        if git -C "$scratch/main" push -q origin HEAD:main 2>/dev/null; then
+            echo "✓ frozen on main: every worktree's next run leaves it out"
+            exit 0
+        fi
+        echo "● main moved during the push (attempt $attempt): again on the fresh main"
+    done
+    echo "✗ the freeze could not reach main: push the entry of $list to main by hand" >&2
+    exit 1
+
+# Lists the frozen tests (.config/frozen-tests.toml merged with main's, _frozen); `run` runs only them, each in the
+# stage it failed in, with that stage's build, services, lock and limits, like a rerun: nothing is reused or
+# recorded as a pass. Journaled as `frozen-tests`
+# List the frozen tests, or `run` them alone to see whether a fix holds
+frozen-tests action="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    me=({{just_executable()}} --justfile {{quote(justfile())}})
+    action={{quote(action)}}
+    case "$action" in
+        "") "${me[@]}" _frozen list; exit 0 ;;
+        run) ;;
+        *) echo "✗ unknown action $action: none (list) or run" >&2; exit 1 ;;
+    esac
+    plan=$("${me[@]}" _frozen plan)
+    [[ -n "$plan" ]] || { echo "● no frozen test"; exit 0; }
+    status=0
+    while IFS=$'\t' read -r stage filter scenarios; do
+        echo "● frozen tests of $stage"
+        VOICEPUNCHER_STAGES_RECIPE=frozen-tests VOICEPUNCHER_FROZEN_FILTER="" VOICEPUNCHER_FROZEN_SCENARIOS="" \
+            VOICEPUNCHER_RERUN_FILTER="$filter" VOICEPUNCHER_RERUN_SCENARIOS="${scenarios//$'\x1f'/$'\n'}" \
+            NEXTEST_SUCCESS_OUTPUT=immediate "${me[@]}" _stages "$stage" </dev/null || status=$?
+    done <<<"$plan"
+    exit "$status"
+
 # One nextest run over the workspace's test targets (libs, bins, integration tests and the slice/component
 # harness; no doctests, as before) except the E2E harness, whose suites are the E2E recipes'. nextest runs up
 # to one test per core over all binaries, each test in a process of its own in its package directory, with
@@ -1162,7 +1325,7 @@ _test: _require-nextest
     for name in $(compgen -e | grep '^VOICEPUNCHER_'); do [[ -n "${!name}" ]] || unset "$name"; done
     # A rerun runs only its failed tests over the workspace, not the self-tests, and neither reuses nor records
     if [[ -n "${VOICEPUNCHER_RERUN_FILTER:-}" ]]; then
-        selection=(--workspace -E "not binary_id(voicepuncher-e2e-test::cucumber_e2e) & ($VOICEPUNCHER_RERUN_FILTER)" --no-tests=pass)
+        selection=(--workspace -E "$("${me[@]}" _test-filter)" --no-tests=pass)
         taskpolicy -c utility cargo nextest run "${selection[@]}" --no-run
         cargo nextest run "${selection[@]}"
         exit 0
@@ -1193,13 +1356,15 @@ _test: _require-nextest
     fi
     started=$(now)
     if [[ ${#packages[@]} -gt 0 ]]; then
-        taskpolicy -c utility cargo nextest run "${packages[@]}" {{test_filter}} --no-run
-        cargo nextest run "${packages[@]}" {{test_filter}}
+        filter=$("${me[@]}" _test-filter)
+        taskpolicy -c utility cargo nextest run "${packages[@]}" -E "$filter" --no-run
+        cargo nextest run "${packages[@]}" -E "$filter"
     else
         echo "↺ every package reused: no test runs"
     fi
     if [[ -n "$self" ]]; then
         "${me[@]}" _test-stage-keys
+        "${me[@]}" _test-frozen-tests
         "${me[@]}" _test-stage-order
         if [[ "${VOICEPUNCHER_NO_MACHINE_LOCK:-}" == 1 ]]; then
             echo "⊘ machine lock self-test skipped (VOICEPUNCHER_NO_MACHINE_LOCK=1)"
@@ -1299,7 +1464,8 @@ _e2e-smoke-part profile modules="": _require-nextest _require-models _build
     cargo nextest run --profile {{profile}} {{smoke_parts_tests}} -E "$filter" ${VOICEPUNCHER_RERUN_FILTER:+--no-tests=pass} {{fail_fast}}
 
 # The nextest filter of one smoke part: its test modules of the `it` binaries and the E2E harness, narrowed to a
-# rerun's selection when there is one (a second -E would widen it: nextest joins several with "or")
+# rerun's selection when there is one (a second -E would widen it: nextest joins several with "or"), without the
+# frozen tests (_frozen)
 _smoke-part-filter modules="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1310,6 +1476,9 @@ _smoke-part-filter modules="":
     filter+="binary(=cucumber_e2e)"
     if [[ -n "${VOICEPUNCHER_RERUN_FILTER:-}" ]]; then
         filter="($filter) & ($VOICEPUNCHER_RERUN_FILTER)"
+    fi
+    if [[ -n "${VOICEPUNCHER_FROZEN_FILTER:-}" ]]; then
+        filter="($filter) & not ($VOICEPUNCHER_FROZEN_FILTER)"
     fi
     printf '%s\n' "$filter"
 
@@ -1324,6 +1493,24 @@ _it-filter modules="":
     filter="binary(=it) & ($filter)"
     if [[ -n "${VOICEPUNCHER_RERUN_FILTER:-}" ]]; then
         filter="($filter) & ($VOICEPUNCHER_RERUN_FILTER)"
+    fi
+    if [[ -n "${VOICEPUNCHER_FROZEN_FILTER:-}" ]]; then
+        filter="($filter) & not ($VOICEPUNCHER_FROZEN_FILTER)"
+    fi
+    printf '%s\n' "$filter"
+
+# The nextest filter of `test`: every test target but the E2E harness (whose suites are the E2E recipes'), narrowed
+# to a rerun's selection and without the frozen tests, like a smoke part's (one cargo call cannot pick targets per
+# package; a binary the filter excludes is not even listed)
+_test-filter:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    filter="not binary_id(voicepuncher-e2e-test::cucumber_e2e)"
+    if [[ -n "${VOICEPUNCHER_RERUN_FILTER:-}" ]]; then
+        filter+=" & ($VOICEPUNCHER_RERUN_FILTER)"
+    fi
+    if [[ -n "${VOICEPUNCHER_FROZEN_FILTER:-}" ]]; then
+        filter+=" & not ($VOICEPUNCHER_FROZEN_FILTER)"
     fi
     printf '%s\n' "$filter"
 
@@ -1739,7 +1926,7 @@ _test-stage-order:
     [[ "{{voice_smoke_modules}}" == "placed_commands voice_forms "* ]] \
         || { echo "✗ the voice control part does not run placed_commands and voice_forms first: {{voice_smoke_modules}}" >&2; exit 1; }
     echo "  ✓ the voice control part runs its most failing modules first"
-    part() { {{just_executable()}} --justfile {{quote(justfile())}} _smoke-part-filter "$@"; }
+    part() { VOICEPUNCHER_FROZEN_FILTER='' {{just_executable()}} --justfile {{quote(justfile())}} _smoke-part-filter "$@"; }
     want='(binary(=it) & test(/^placed_commands::/)) | (binary(=it) & test(/^voice_forms::/)) | binary(=cucumber_e2e)'
     [[ $(VOICEPUNCHER_RERUN_FILTER= part "placed_commands voice_forms") == "$want" ]] \
         || { echo "✗ a smoke part does not select its modules and the harness in one call: $(part "placed_commands voice_forms")" >&2; exit 1; }
@@ -1748,7 +1935,7 @@ _test-stage-order:
     [[ $(VOICEPUNCHER_RERUN_FILTER='test(=x)' part "voice_forms") == '((binary(=it) & test(/^voice_forms::/)) | binary(=cucumber_e2e)) & (test(=x))' ]] \
         || { echo "✗ a rerun's filter widens a smoke part instead of narrowing it" >&2; exit 1; }
     echo "  ✓ a smoke part runs its modules beside the harness in one call, narrowed by a rerun"
-    seams() { {{just_executable()}} --justfile {{quote(justfile())}} _it-filter "$@"; }
+    seams() { VOICEPUNCHER_FROZEN_FILTER='' {{just_executable()}} --justfile {{quote(justfile())}} _it-filter "$@"; }
     [[ $(VOICEPUNCHER_RERUN_FILTER='' seams "chunked_transcription") == 'binary(=it) & (test(/^chunked_transcription::/))' ]] \
         || { echo "✗ the seams stage does not select its module of the it binary: $(seams "chunked_transcription")" >&2; exit 1; }
     [[ $(VOICEPUNCHER_RERUN_FILTER='test(=x)' seams "a b") == '(binary(=it) & (test(/^a::/) | test(/^b::/))) & (test(=x))' ]] \
@@ -1830,7 +2017,7 @@ _test-stage-keys:
     for stage in fmt test; do [[ $(key "$stage" "$after") == $(key "$stage" "$before") ]] || fail "a model file: $stage changed its key"; done
     echo "  ✓ a changed model file changes the model stages only"
     before=$(keys)
-    after=$(VOICEPUNCHER_STAGE_JOURNAL=/elsewhere VOICEPUNCHER_TEST_STT_PORT=1 VOICEPUNCHER_FAIL_FAST=1 keys)
+    after=$(VOICEPUNCHER_STAGE_JOURNAL=/elsewhere VOICEPUNCHER_TEST_STT_PORT=1 VOICEPUNCHER_FAIL_FAST=1 VOICEPUNCHER_FROZEN_FILTER='test(=x)' VOICEPUNCHER_FROZEN_SCENARIOS=x keys)
     [[ "$after" == "$before" ]] || fail "a volatile variable changed a key"
     echo "  ✓ volatile variables change no key"
     # The test stage's parts: one key per workspace member, over its own files, the members it depends on and
@@ -1864,6 +2051,93 @@ _test-stage-keys:
     expect "a command spotting edit reaches a member whose tests read every member" "test@command-spotting test@e2e-test test@app" "test@copy-pool test@justfile"
     put justfile "test: _test"
     expect "a justfile edit changes the self-tests' part" "$parts" ""
+
+# The frozen list (_frozen): on a scratch repository with a bare origin, the effective list merges the
+# branch's list with origin/main's and drops what the branch removed; the exports name each frozen test in the
+# form its runner reads; the count and the entries frozen for more than 7 days
+_test-frozen-tests:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    origin="$tmp/origin.git" repo="$tmp/repo" other="$tmp/other"
+    git init -q --bare -b main "$origin"
+    g() { local dir=$1; shift; git -C "$dir" -c user.name=t -c user.email=t@t "$@"; }
+    entry() { printf '[[frozen]]\ntest = "%s"\nfrozen = "%s"\nrecipe = "full-check"\nstage = "%s"\nbeside = "a check of another worktree"\nbranch = "feat/x"\n\n' "$@"; }
+    git clone -q "$origin" "$repo" 2>/dev/null
+    mkdir -p "$repo/.config"
+    { echo "# The frozen tests"; echo; entry "scenario: Old flake" 2026-10-10 e2e-smoke-voice; entry "voicepuncher::it placed_commands::should_spot" 2026-10-20 e2e-smoke-voice; } >"$repo/.config/frozen-tests.toml"
+    g "$repo" add -A
+    g "$repo" commit -qm base
+    g "$repo" push -q origin HEAD:main
+    g "$repo" switch -qc feat/fix
+    frozen() { VOICEPUNCHER_STAGE_ROOT="$repo" VOICEPUNCHER_FROZEN_TODAY=2026-10-23 {{just_executable()}} --justfile {{quote(justfile())}} _frozen "$@"; }
+    fail() { printf '✗ %s\n%s\n' "$1" "$out" >&2; exit 1; }
+    has() { grep -qxF -- "$2" <<<"$out" || fail "$1: no line \"$2\""; }
+    lacks() { ! grep -qF -- "$2" <<<"$out" || fail "$1: a line holds \"$2\""; }
+    out=$(frozen env)
+    has "the branch's list" "say ● frozen: 2 test(s), not run (just frozen-tests)"
+    has "a frozen scenario" "scenario Old flake"
+    has "a frozen plain test" "filter (binary_id(=voicepuncher::it) & test(=placed_commands::should_spot))"
+    has "an entry frozen 13 days ago" "say   ⚠ frozen for more than 7 days: scenario: Old flake (frozen 2026-10-10, 13 days)"
+    lacks "an entry frozen 3 days ago" "days: voicepuncher::it"
+    echo "  ✓ the list names each frozen test in its runner's form, and the entries frozen too long"
+    git clone -q "$origin" "$other" 2>/dev/null
+    entry "scenario: New flake" 2026-10-22 e2e-regression >>"$other/.config/frozen-tests.toml"
+    g "$other" commit -qam "freeze"
+    g "$other" push -q origin HEAD:main
+    out=$(frozen env)
+    has "a freeze pushed to main" "scenario New flake"
+    has "a freeze pushed to main" "say ● frozen: 3 test(s), not run (just frozen-tests)"
+    echo "  ✓ a freeze on main reaches a worktree whose list does not name it"
+    perl -0pi -e 's/\[\[frozen\]\]\ntest = "scenario: Old flake"[^\[]*//' "$repo/.config/frozen-tests.toml"
+    g "$repo" commit -qam "unfreeze"
+    out=$(frozen env)
+    lacks "an entry the branch removed" "Old flake"
+    has "an entry the branch removed" "say ● frozen: 2 test(s), not run (just frozen-tests)"
+    echo "  ✓ the branch that removes an entry runs that test although main lists it"
+    frozen_filter='(binary_id(=voicepuncher::it) & test(=placed_commands::should_spot))'
+    for recipe in "_smoke-part-filter placed_commands" "_it-filter chunked_transcription" "_test-filter"; do
+        read -r -a call <<<"$recipe"
+        out=$(VOICEPUNCHER_FROZEN_FILTER="$frozen_filter" {{just_executable()}} --justfile {{quote(justfile())}} "${call[@]}")
+        [[ "$out" == *"& not ($frozen_filter)" ]] || fail "$recipe leaves the frozen tests in its selection"
+        out=$(VOICEPUNCHER_FROZEN_FILTER="$frozen_filter" VOICEPUNCHER_RERUN_FILTER='test(=a)' {{just_executable()}} --justfile {{quote(justfile())}} "${call[@]}")
+        [[ "$out" == *"(test(=a))"*"& not ($frozen_filter)" ]] || fail "$recipe leaves the frozen tests in a rerun's selection"
+        out=$(VOICEPUNCHER_FROZEN_FILTER="" {{just_executable()}} --justfile {{quote(justfile())}} "${call[@]}")
+        [[ "$out" != *"not ("* ]] || fail "$recipe excludes something without a frozen test"
+    done
+    echo "  ✓ every nextest selection leaves the frozen tests out"
+    out=$(frozen list)
+    has "the list" "voicepuncher::it placed_commands::should_spot"
+    has "the list" "    frozen 2026-10-20 in full-check, stage e2e-smoke-voice, on feat/x; beside it: a check of another worktree"
+    has "the list" "scenario: New flake"
+    echo "  ✓ the list shows every frozen test with where, when and beside what it failed"
+    entry "scenario: Voice flake" 2026-10-21 e2e-smoke-voice >>"$repo/.config/frozen-tests.toml"
+    out=$(frozen plan)
+    has "the run plan" "$(printf 'e2e-regression\tbinary(=cucumber_integration) | binary(=cucumber_e2e)\tNew flake')"
+    has "the run plan" "$(printf 'e2e-smoke-voice\t(binary_id(=voicepuncher::it) & test(=placed_commands::should_spot)) | binary(=cucumber_integration) | binary(=cucumber_e2e)\tVoice flake')"
+    echo "  ✓ the frozen tests run in their stages, each with only its own tests"
+    g "$repo" checkout -q -- .config/frozen-tests.toml
+    entry "scenario: Moved main" 2026-10-23 e2e-cues >>"$other/.config/frozen-tests.toml"
+    g "$other" commit -qam "another freeze"
+    g "$other" push -q origin HEAD:main
+    VOICEPUNCHER_STAGE_ROOT="$repo" VOICEPUNCHER_FROZEN_TODAY=2026-10-23 {{just_executable()}} --justfile {{quote(justfile())}} freeze-test "scenario: Fresh flake" check e2e-smoke-speech "full-check of feat/y" >/dev/null
+    out=$(git -C "$repo" show HEAD:.config/frozen-tests.toml)
+    has "the freeze on the branch" 'test = "scenario: Fresh flake"'
+    has "the freeze on the branch" 'branch = "feat/fix"'
+    has "the freeze on the branch" 'frozen = "2026-10-23"'
+    has "the freeze on the branch" 'recipe = "check"'
+    has "the freeze on the branch" 'stage = "e2e-smoke-speech"'
+    has "the freeze on the branch" 'beside = "full-check of feat/y"'
+    out=$(git -C "$origin" show main:.config/frozen-tests.toml)
+    has "the freeze on main" 'test = "scenario: Fresh flake"'
+    has "the freeze on main" 'beside = "full-check of feat/y"'
+    has "the freeze on main" 'frozen = "2026-10-23"'
+    has "the freeze on main" 'recipe = "check"'
+    has "the freeze on main" 'stage = "e2e-smoke-speech"'
+    has "main keeps what moved it meanwhile" 'test = "scenario: Moved main"'
+    has "main keeps what moved it meanwhile" 'test = "scenario: Old flake"'
+    echo "  ✓ a freeze lands on the branch and on main at once"
 
 # ── Engines ── the pinned engines the bundle carries (app/packaging/engines.lock) ─────────────
 

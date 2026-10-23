@@ -1,3 +1,14 @@
+# The frozen tests: tests that failed in a check outside the change that ran it (a flake under load), which no
+# recipe runs until a fix removes their entry (AGENTS.md § How to verify a change). `just freeze-test` adds an
+# entry here and on main at once; `just frozen-tests` lists them, `just frozen-tests run` runs only them.
+#
+# [[frozen]]
+# test = "scenario: <name>"              # or "<package>::<binary> <test>", the stage journal's form
+# frozen = "2026-10-23"                  # the day it was frozen
+# recipe = "full-check"                  # the recipe it failed in
+# stage = "e2e-smoke-voice"              # the stage it failed in, where `frozen-tests run` runs it
+# beside = "<what ran beside it>"        # other sessions' runs, the [machine-lock] holder
+# branch = "<the branch whose check failed>"
 
 [[frozen]]
 test = "voicepuncher::it voice_forms::should_carry_out_every_recorded_way_of_saying_the_commands"

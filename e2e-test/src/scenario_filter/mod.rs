@@ -17,6 +17,9 @@ const REAL_KEYBOARD_TAG: &str = "real_keyboard";
 const WIP_TAG: &str = "wip";
 /// The scenario names a rerun selects, one per line (`just rerun-failed`).
 pub const RERUN_VARIABLE: &str = "VOICEPUNCHER_RERUN_SCENARIOS";
+/// The frozen scenario names, one per line, which no run runs (`.config/frozen-tests.toml`,
+/// exported by `just`'s `_stages`).
+pub const FROZEN_VARIABLE: &str = "VOICEPUNCHER_FROZEN_SCENARIOS";
 
 /// A tag whose scenarios run only while the gate is open.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,13 +122,48 @@ impl Selection {
 pub struct ScenarioFilter {
     selection: Selection,
     gates: Vec<Gate>,
+    frozen: Vec<String>,
 }
 
 impl ScenarioFilter {
-    /// Whether the scenario runs: its selection picks it and every gate admits it.
+    /// Whether the scenario runs: its selection picks it, every gate admits it and it is not
+    /// frozen. A frozen scenario the rest admits is named on stderr ([`Self::frozen_skip`]).
     pub fn runs(&self, feature: &Feature, rule: Option<&Rule>, scenario: &Scenario) -> bool {
+        if let Some(line) = self.frozen_skip(feature, rule, scenario) {
+            eprintln!("{line}");
+            return false;
+        }
+        self.admits(feature, rule, scenario)
+    }
+
+    /// The line naming the scenario as skipped because it is frozen ([`frozen_line`]), when the
+    /// selection and the gates admit it and the frozen list names it; `None` otherwise.
+    pub fn frozen_skip(
+        &self,
+        feature: &Feature,
+        rule: Option<&Rule>,
+        scenario: &Scenario,
+    ) -> Option<String> {
+        (self.frozen.contains(&scenario.name) && self.admits(feature, rule, scenario))
+            .then(|| frozen_line(&scenario.name))
+    }
+
+    fn admits(&self, feature: &Feature, rule: Option<&Rule>, scenario: &Scenario) -> bool {
         let tags = merged_tags(feature, rule, scenario);
         self.selection.selects(scenario, &tags) && self.gates.iter().all(|g| g.admits(&tags))
+    }
+
+    /// The filter narrowed by the environment: the rerun names of [`RERUN_VARIABLE`] and the
+    /// frozen names of [`FROZEN_VARIABLE`] (`std::env::var`).
+    #[must_use]
+    pub fn narrowed_by_environment(self) -> Self {
+        self.rerun_only(scenario_names(std::env::var(RERUN_VARIABLE)))
+            .without_frozen(scenario_names(std::env::var(FROZEN_VARIABLE)))
+    }
+
+    /// The frozen names, when given, never run, whatever selects them.
+    pub fn without_frozen(self, names: Option<Vec<String>>) -> Self {
+        Self { frozen: names.unwrap_or_default(), ..self }
     }
 
     /// A rerun's names, when given, replace the command line's selection; the gates still hold.
@@ -166,12 +204,20 @@ where
         (None, None) => Selection::Everything,
     };
     let opts = Opts { re_filter: None, tags_filter: None, parser, runner, writer, custom };
-    (opts, ScenarioFilter { selection, gates })
+    (
+        opts,
+        ScenarioFilter { selection, gates, frozen: Vec::new() },
+    )
 }
 
-/// The scenario names of a rerun from the value of [`RERUN_VARIABLE`] (`std::env::var`): its
-/// non-empty lines, or `None` when it is unset or holds none.
-pub fn rerun_names(value: Result<String, std::env::VarError>) -> Option<Vec<String>> {
+/// The line a harness prints for a frozen scenario it skips.
+pub fn frozen_line(name: &str) -> String {
+    format!("FROZEN: skipping scenario '{name}' (.config/frozen-tests.toml)")
+}
+
+/// The scenario names from the value of [`RERUN_VARIABLE`] or [`FROZEN_VARIABLE`]
+/// (`std::env::var`): its non-empty lines, or `None` when it is unset or holds none.
+pub fn scenario_names(value: Result<String, std::env::VarError>) -> Option<Vec<String>> {
     let names: Vec<String> = value
         .ok()?
         .lines()
