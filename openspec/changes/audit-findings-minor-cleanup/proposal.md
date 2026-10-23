@@ -4,34 +4,28 @@ The audit of 2026-10-22 left minor findings that fit no other change and should 
 
 ## What Changes
 
-- The first focus check runs at once, the poll interval applies between checks.
-- Outage dedupe uses one clock (the capture time mapped as the spotter already maps it).
-- The dead `channels` field, the duplicated doc lines, the unused parameter and the widget-to-match go; the `expect` on the view becomes a typed error.
-- Comments cite the archived path or the spec, never a change folder.
-- `address.rs` uses `url`.
-- One pinning rule for the workspace (`exact-versions.md`), stated in `AGENTS.md`, applied to every manifest; `rust-version` in every crate.
-- `.mailmap` joins the two author identities.
+- After an outage of the command spotting service, the replay start is computed on one clock: the moment of the loss is dated by stream position, as the ends of carried-out commands already are, so audio lost before the outage no longer shifts the replay past the speech said just before the loss. (The audit's `voice_control.rs` site moved into the spotter adapter; the audit's leading focus-check sleep in `text_insertion.rs` is not in the code — the first check already runs at once — so it is dropped.)
+- The duplicated doc line in `glass.rs`, the unused `_mtm` parameter of `status_line` and the widget built only to be matched in `settings/macos/build.rs` go; the `expect` on the text view there becomes an error the caller handles. (The dead `channels` field and the change-folder citations in `confirm.rs` are already gone.)
+- `copy-pool/src/address.rs` parses addresses with the `url` crate.
+- One pinning rule for the workspace: every dependency exact (`=x.y.z`) with `Cargo.lock` as the second lock, stated in `AGENTS.md` and applied to every manifest; `rust-version` in every crate.
+- `.mailmap` joins the author identities under firstpilotpirx <firstpilotpirx@gmail.com>.
 
 Current stage: PoC. Target stage: PoC.
 Scope: the sites named; no other behavior.
-Acceptance bar: each site changed as stated; `just test` and the `@smoke` E2E pass; the paste timing in the log shows the focus check without the leading sleep.
-Out of scope: anything another audit change names.
+Acceptance bar: each site changed as stated; `just check` passes; a unit test shows the replay after lost audio starts where the speech before the loss is.
+Out of scope: anything another audit change names; clippy `pedantic` in `lint` (the clippy ratchet already enables it); the non-main-thread exit in `runtime/mod.rs` (left to `slim-pipeline-module`).
 
 ## Capabilities
 
 ### Modified Capabilities
 
-- `text-insertion`: a focused element is pasted into without the leading wait.
+- `voice-control`: a command said just before the command spotting service went away still counts when audio was lost earlier.
 
 ## Impact
 
-- `app/src/core/application/text_insertion.rs`, `pipeline/voice_control.rs`, `app/src/adapters/**` sites named, `copy-pool/src/address.rs`, all `Cargo.toml`, `.mailmap`, `AGENTS.md`.
-
-## Open points
-
-- Pinning rule: exact (`=x.y.z`) everywhere with `Cargo.lock` as the second lock, or caret with the lockfile; proposed: exact everywhere, as two crates already do and `exact-versions.md` asks.
+- `app/src/adapters/secondary/commandspotting/websocket/{mod.rs,heard.rs}`, `visualfeedback/macos/glass.rs`, `menubar/macos/status_item.rs`, `settings/macos/build.rs`, `copy-pool/src/address.rs`, every `Cargo.toml`, `.mailmap`, `AGENTS.md`.
 
 ## Release
 
-SemVer: PATCH — the paste starts up to 100 ms sooner.
-Target version: 0.36.4 (next PATCH above `main` at merge; `kit version-check` corrects it).
+SemVer: PATCH — a command said before a command spotting outage is no longer missed after lost audio.
+Target version: 0.37.5 (next PATCH above `main` at merge; `kit version-check` corrects it).
