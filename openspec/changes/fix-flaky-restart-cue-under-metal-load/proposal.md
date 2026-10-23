@@ -8,7 +8,7 @@ The `justfile` warms nothing beyond readiness probes: a freshly started `whisper
 
 ## What Changes
 
-- The cue timing scenarios of `e2e-cues` never meet a copy of the speech recognition service for commands that is still compiling or loading: the stage (or its service start) warms every copy with a real decode before the first timed scenario, or the scenario proves the copies answer within their budget before timing the cue.
+- A copy of a speech recognition service counts ready only after it transcribed a short utterance: the service scripts (`just start-model-servers`, so every E2E stage and `e2e-cues` start on warm copies) and the app's own service start (so the user's first dictation and first command never wait for a copy's first decode) both warm every copy they start; the first transcription's time is reported with the copy's readiness.
 - The failure of a cut-short confirmation under the exclusive stage names the cause (copies stalled, the `MTLCompilerService` load) instead of only "no start cue", so the next such failure needs no log reading.
 - No change to the 0.7 s bound, the 1 s confirmation budget or any other bar of the specs.
 
@@ -21,21 +21,21 @@ Out of scope: the confirmation budget of the command spotting service, the other
 
 ### Modified Capabilities
 
-- `voice-control`: the start cue requirement keeps its bound; its E2E scenarios state that the services are warm before the cue is timed.
+- `voice-control`: the start cue requirement keeps its bound; it is timed on warm copies, and a missing cue names the confirmations cut short.
+- `local-services`: a copy of a speech recognition service is ready once it transcribed speech, in the service scripts and in the app.
 
 ## Impact
 
-- `justfile`: `e2e-cues` / `_e2e-cues`, `start-model-servers` or the copy readiness probe (a warm-up decode per copy).
-- `e2e-test/tests/steps/voice_control/session/start_cue.rs`, `e2e-test/tests/features/voice_control.feature` (warm-up step or background, failure text).
-- Possibly `copy-pool/` (a warm-up request through the pool) and the stage journal's failure diagnostics.
+- `justfile`: `start-model-servers` (the readiness of a whisper copy: a warm-up transcription), a committed warm-up utterance `app/assets/warm-up.wav`.
+- `app/src/core/application/local_services/` (the supervision counts a started copy ready after its warm-up), `app/src/adapters/secondary/localservices/process/probe.rs` (the warm-up request).
+- `e2e-test/tests/features/local_services.feature` (the scripts report a copy ready after its first transcription).
+- `e2e-test/tests/steps/voice_control/session/start_cue.rs`, `e2e-test/src/` (a missing cue's failure names the confirmations the command spotting service cut short and the machine's load).
 
 ## Open points
 
-- Where the warm-up lives: in the service start (every copy decodes a short utterance before it counts ready, which also helps the app's own first dictation) or in the E2E harness only (`Background` of the `@cues` scenarios). Proposed: the service start, so `check` and the app benefit too.
-- Whether `MTLCompilerService` compiles on every copy start or macOS caches the shaders: measure on the first and second start of a copy before choosing the warm-up's depth.
-- Whether the same stall explains the 2026-10-19 and 2026-10-20 failures (their logs are gone; the journal names only the scenario). Proposed: assume yes, verify with the 10-run series.
+Settled at preparation (`orchestration.yaml`): the warm-up lives in the service start, scripts and app alike; its depth comes from a measurement of the Metal shader cache (design); the 2026-10-19 and 2026-10-20 failures count as the same cause, verified by the 10-run series.
 
 ## Release
 
-SemVer: no release — test infrastructure and diagnostics only, no behavior change for the user.
-Target version: 0.37.3 (unchanged).
+SemVer: PATCH — the app counts a speech recognition copy it started as ready only after its first transcription, so the first dictation or command no longer waits for a cold copy.
+Target version: 0.37.5.
