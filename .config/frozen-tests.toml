@@ -1,0 +1,8 @@
+
+[[frozen]]
+test = "voicepuncher::it voice_forms::should_carry_out_every_recorded_way_of_saying_the_commands"
+frozen = "2026-10-23"
+recipe = "full-check"
+stage = "e2e-smoke-voice"
+beside = "other sessions' full-checks under machine-lock load, 2026-10-23; failed in several branches"
+branch = "chore/stop-filing-changes-for-flaky-tests"
