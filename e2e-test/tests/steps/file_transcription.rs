@@ -61,9 +61,7 @@ async fn transcribe_recording(world: &mut E2eWorld, refinement: String) -> Resul
     off_thread(world, move |world| {
         let recording = world.recording.as_deref().context("no recording")?;
         let output = transcribe(recording, world.config.as_deref(), refinement == "with")?;
-        world.exit_status = Some(output.status);
-        world.stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-        world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        world.note_app_output(&output);
         Ok(())
     })
     .await

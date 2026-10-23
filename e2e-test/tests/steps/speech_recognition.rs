@@ -115,8 +115,7 @@ async fn start_app(world: &mut E2eWorld) -> Result<()> {
             .output()
             .with_context(|| format!("failed to spawn {:?}", cmd.get_program()))?;
         world.elapsed = Some(started.elapsed());
-        world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-        world.exit_status = Some(output.status);
+        world.note_app_output(&output);
         Ok(())
     })
     .await
@@ -227,8 +226,8 @@ fn no_repeated_phrase(world: &mut E2eWorld) -> Result<()> {
     let repeated = repeated_phrases(spoken, &world.stdout);
     if !repeated.is_empty() {
         bail!(
-            "phrases repeated at a chunk seam: {repeated:?}\n  printed: {}",
-            world.stdout
+            "phrases repeated at a chunk seam: {repeated:?}\n  {}",
+            world.printed_and_log()
         );
     }
     Ok(())
@@ -240,9 +239,9 @@ fn few_missing_words(world: &mut E2eWorld) -> Result<()> {
     let missing = missing_word_share(spoken, &world.stdout);
     if missing > MAX_MISSING_WORD_SHARE {
         bail!(
-            "{:.0} % of the spoken words are missing\n  printed: {}",
+            "{:.0} % of the spoken words are missing\n  {}",
             missing * 100.0,
-            world.stdout
+            world.printed_and_log()
         );
     }
     Ok(())
@@ -254,8 +253,8 @@ fn no_dropped_phrase(world: &mut E2eWorld) -> Result<()> {
     let dropped = dropped_phrase_len(spoken, &world.stdout);
     if dropped > MAX_DROPPED_PHRASE_WORDS {
         bail!(
-            "a phrase of {dropped} spoken words is missing\n  printed: {}",
-            world.stdout
+            "a phrase of {dropped} spoken words is missing\n  {}",
+            world.printed_and_log()
         );
     }
     Ok(())

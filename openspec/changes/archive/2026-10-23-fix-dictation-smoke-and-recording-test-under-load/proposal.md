@@ -14,7 +14,7 @@ Neither test is in the scope of `fix-flaky-output-limit-refinement-scenario`, wh
 
 Current stage: PoC. Target stage: PoC.
 Scope: `e2e-test/tests/features/speech_recognition.feature` and its steps, the smoke stage's service start in the `justfile`; `app/tests/it/recording_cpal/synthetic.rs` and the stand-in recorder it drives.
-Acceptance bar: `just e2e-smoke` passes 3 times in a row with `just e2e-regression` from another worktree running beside it; the recording test passes 20 times in a row inside `just test`; `just test` and `just check` green.
+Acceptance bar: `just e2e-smoke` passes 3 times in a row with `just e2e-regression` from another worktree running beside it; the recording test passes 20 times in a row inside `just test`; `just test` and `just check` green. The 3-run smoke series beside `just e2e-regression` moved to `fix-copies-shared-scenario-under-load` (the user's decision of 2026-10-23: its first run failed on that change's local-services scenario, the speech stage itself passed beside the regression run).
 Out of scope: the app's speech recognition deadlines and retries; the command service's stalls (`fix-flaky-restart-cue-under-metal-load`); the real-service tests of the command spotting service (`fix-placed-commands-real-service-under-load`).
 
 ## Capabilities
@@ -34,5 +34,5 @@ Out of scope: the app's speech recognition deadlines and retries; the command se
 
 ## Release
 
-SemVer: no release — test and recipe changes only; PATCH (0.37.4) when the recording adapter loses samples.
-Target version: 0.37.3.
+SemVer: PATCH — the recording adapter's capture ring grows from 2 s to 10 s of audio, a behavior change of the app; the rest is tests and recipes.
+Target version: 0.37.4.

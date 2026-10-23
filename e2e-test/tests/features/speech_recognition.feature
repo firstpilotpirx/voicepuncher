@@ -3,7 +3,7 @@ Feature: speech-recognition
 
   Rule: Transcription through a local speech recognition service
 
-    @smoke
+    @smoke @serial
     Scenario: App starts without a local model file
       Given the speech recognition service is running
       And no speech recognition model is on disk for the app
@@ -42,14 +42,14 @@ Feature: speech-recognition
 
   Rule: Spoken language follows the configuration
 
-    @smoke
+    @smoke @serial
     Scenario: Short Russian speech is never transcribed as Korean
       Given the service detects the spoken language automatically and the user's languages are Russian and English
       And a recording file of a short Russian phrase
       When the user transcribes the recording file without refinement
       Then the printed text is the phrase in Russian, with no Korean characters
 
-    @smoke
+    @smoke @serial
     Scenario: English speech stays English with automatic detection
       Given the service detects the spoken language automatically and the user's languages are Russian and English
       And a recording file of a short English phrase
@@ -58,7 +58,7 @@ Feature: speech-recognition
 
   Rule: Known recognition hallucinations are discarded
 
-    @smoke
+    @smoke @serial
     Scenario Outline: Silence produces a lone "you"
       Given a recording of silence lasting <seconds> seconds
       And the service detects the spoken language automatically
@@ -87,7 +87,7 @@ Feature: speech-recognition
 
   Rule: Long recordings are transcribed in chunks
 
-    @smoke
+    @smoke @serial
     Scenario Outline: Recording file longer than the chunk threshold
       Given a recording file of <language> speech longer than the chunk threshold
       When the user transcribes the recording file without refinement
@@ -167,14 +167,14 @@ Feature: speech-recognition
 
   Rule: The configured prompt steers recognition
 
-    @smoke
+    @smoke @serial
     Scenario: A domain term named in the prompt is recognized
       Given the configured prompt names a domain term that speech recognition misses without it
       And a recording file of a Russian sentence that says the term
       When the user transcribes the recording file without refinement
       Then the printed text holds the term as written in the prompt
 
-    @smoke
+    @smoke @serial
     Scenario: The prompt holds in every window of a long chunk
       Given the configured prompt names a domain term that speech recognition misses without it
       And a recording is transcribed as one chunk however long it is
@@ -184,7 +184,7 @@ Feature: speech-recognition
 
   Rule: Text of one request never steers another
 
-    @smoke
+    @smoke @serial
     Scenario: A dictation does not echo the previous one
       Given the configured prompt names a domain term that speech recognition misses without it
       And the user transcribed a recording file of a Russian sentence

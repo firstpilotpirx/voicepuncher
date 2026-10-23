@@ -7,7 +7,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use rtrb::{Producer, RingBuffer};
-use voicepuncher::adapters::secondary::recording::cpal::capture::{on_frames, CaptureHealth};
+use voicepuncher::adapters::secondary::recording::cpal::capture::{
+    on_frames, CaptureHealth, RING_SECONDS,
+};
 use voicepuncher::adapters::secondary::recording::cpal::{CpalAudioRecorder, Source};
 use voicepuncher::core::application::chunking::ChunkingCfg;
 use voicepuncher::core::application::{AudioRecorder, PipelineInput};
@@ -109,22 +111,31 @@ fn should_keep_every_sample_of_a_long_dictation_in_order_on_a_busy_machine() {
     // Given a minute of rising audio, delivered in real time, and half the cores busy
     let seconds = 60;
     let audio = ramp(seconds * NATIVE_RATE as usize, 0.9);
-    let (mut recorder, mut feeder) = stand_in(2 * NATIVE_RATE as usize);
+    let (mut recorder, mut feeder) = stand_in(RING_SECONDS * NATIVE_RATE as usize);
     let stop_hogs = Arc::new(AtomicBool::new(false));
     let hogs = cpu_hogs(&stop_hogs);
     // When
+    let started = Instant::now();
     recorder.start().unwrap();
     feed(&mut feeder, &audio, 1);
     let recording = recorder.stop().unwrap();
+    let delivery = started.elapsed();
     stop_hogs.store(true, Ordering::Relaxed);
     hogs.into_iter().for_each(|hog| hog.join().unwrap());
-    // Then the whole minute is there, rising all the way
+    // Then nothing was dropped, and the whole minute is there, rising all the way
+    let dropped = feeder.health.dropped_samples();
+    let report = format!(
+        "{} ms of audio dropped; the minute took {:.1} s to deliver",
+        dropped * 1_000 / NATIVE_RATE as usize,
+        delivery.as_secs_f64()
+    );
+    assert_eq!(dropped, 0, "{report}");
     assert_eq!(
         recording.samples().len(),
-        seconds * NATIVE_RATE as usize / RATIO
+        seconds * NATIVE_RATE as usize / RATIO,
+        "{report}"
     );
     assert_in_order(recording.samples());
-    assert_eq!(feeder.health.dropped_samples(), 0);
 }
 
 /// A resampled ramp rises all the way; a drop or a swap would show as a fall.
@@ -137,10 +148,11 @@ fn assert_in_order(samples: &[i16]) {
 
 #[test]
 fn should_keep_audio_delivered_while_the_recording_is_held_up() {
-    // Given a second of audio delivered before the recorder could take any
-    let (mut recorder, mut feeder) = stand_in(2 * NATIVE_RATE as usize);
-    let whole = ramp(NATIVE_RATE as usize + FRAME * 10, 0.9);
-    let (held_up, after) = whole.split_at(NATIVE_RATE as usize);
+    // Given five seconds of audio delivered before the recorder could take any
+    let held_up_samples = 5 * NATIVE_RATE as usize;
+    let (mut recorder, mut feeder) = stand_in(RING_SECONDS * NATIVE_RATE as usize);
+    let whole = ramp(held_up_samples + FRAME * 10, 0.9);
+    let (held_up, after) = whole.split_at(held_up_samples);
     held_up.chunks(FRAME).for_each(|frame| feeder.push(frame));
     // When
     recorder.start().unwrap();

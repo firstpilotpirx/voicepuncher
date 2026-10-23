@@ -38,6 +38,8 @@ pub struct E2eWorld {
         Option<voicepuncher_e2e_test::refinement_service_stub::RefinementServiceStub>,
     pub refinement_report: Option<voicepuncher_e2e_test::refinement_eval::Report>,
     pub stdout: String,
+    /// The app's log; after a file-mode run in which a copy of the speech recognition
+    /// service sent no answer in time, the machine's load follows it.
     pub stderr: String,
     /// The log file of a hotkey-mode run, which logs nothing to a piped error output
     pub app_log: String,
@@ -68,6 +70,27 @@ impl E2eWorld {
             .as_ref()
             .expect("workdir was just created")
             .path())
+    }
+
+    /// Keeps the app's output of a file-mode run; when its log shows a copy of the speech
+    /// recognition service that sent no answer in time, the machine's load now follows the log.
+    pub fn note_app_output(&mut self, output: &std::process::Output) {
+        self.exit_status = Some(output.status);
+        self.stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        self.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        if let Some(load) = voicepuncher_e2e_test::unanswered_copies::load_beside(
+            &self.stderr,
+            voicepuncher_e2e_test::machine_load::report,
+        ) {
+            self.stderr.push('\n');
+            self.stderr.push_str(&load);
+        }
+    }
+
+    /// The printed text and the app's log (with the machine's load behind an unanswered
+    /// copy), for a failure about the printed text.
+    pub fn printed_and_log(&self) -> String {
+        format!("printed: {}\nstderr:\n{}", self.stdout, self.stderr)
     }
 }
 

@@ -7,5 +7,6 @@ pub mod refinement_service_stub;
 pub mod scenario_filter;
 pub mod speech;
 pub mod speech_cache;
+pub mod unanswered_copies;
 pub mod voice_commands;
 pub mod wer;

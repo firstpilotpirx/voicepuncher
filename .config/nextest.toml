@@ -45,6 +45,12 @@ priority = 40
 filter = '(package(voicepuncher) & binary(it) & (test(/^textpasting_macos::/)))'
 test-group = "pasteboard"
 
+# The minute of dictation fed in real time beside CPU hogs: its 10 ms paces overshoot under load (73–84 s
+# measured inside `just test`): 3 min
+[[profile.default.overrides]]
+filter = 'test(=recording_cpal::synthetic::should_keep_every_sample_of_a_long_dictation_in_order_on_a_busy_machine)'
+slow-timeout = { period = "60s", terminate-after = 3 }
+
 # The tests that drive the real command spotting service run one at a time too, so one confirmation
 # service never gets the utterances of several test processes at once
 [[profile.default.overrides]]
@@ -61,7 +67,8 @@ test-group = "command-spotting-models"
 # @smoke scenarios. Each part runs its service binaries and its harness in one nextest call, side by side, the
 # harness captured like the binaries (_e2e-smoke-part). Service binaries: default 2 min a test (voice_forms 34 s measured)
 
-# @smoke of speech recognition, file transcription and every capability without a part of its own (the dictation archive), 30 s measured: 2 min
+# @smoke of speech recognition, file transcription and every capability without a part of its own (the dictation archive),
+# its recording files transcribed one at a time (@serial), 36 s measured, 57 s beside a light-class run: 2 min
 [profile.e2e-smoke-speech]
 success-output = "immediate"
 

@@ -43,3 +43,5 @@ No running change reworks the capture ring, the harness or these scenarios (the 
 - [The smoke-speech stage passes half its 2 min limit] → set the limit to twice its longest run in apply.
 - [The series loses samples with no drop counted] → the cause is outside the ring; a `scope` call.
 - [A silence chunk alone passes 18.75 s under a light run] → the 3-run series shows it; the deadline stays out of scope, the finding is filed.
+
+Results (2026-10-22): `e2e-smoke-speech` with the serial file transcriptions: the harness test 35.6 s alone and 56.7 s beside `just e2e-regression` (the stage 61 s with its service start), so the limit stays 2 min (twice 56.7 s is under it); the busy-machine recording test 20 of 20 runs inside `just test` passed, longest 85.2 s (limit 3 min); the smoke series beside `just e2e-regression`: run 1 failed on the local-services copies scenario (filed as `fix-copies-shared-scenario-under-load`, § Dependencies), the series runs again once that fix is on `main`.

@@ -4,8 +4,10 @@
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then};
 
+use voicepuncher_e2e_test::machine_load;
 use voicepuncher_e2e_test::speech::{write_wav, Lang};
 use voicepuncher_e2e_test::speech_cache::{synthesized, SayRequest};
+use voicepuncher_e2e_test::unanswered_copies::load_beside;
 
 use crate::steps::file_transcription::transcribe;
 use crate::E2eWorld;
@@ -73,10 +75,11 @@ fn transcribed_first_sentence(world: &mut E2eWorld) -> Result<()> {
     write_wav(&path, &russian(FIRST_SENTENCE)?)?;
     let output = transcribe(&path, world.config.as_deref(), false)?;
     if !output.status.success() {
+        let log = String::from_utf8_lossy(&output.stderr);
+        let load = load_beside(&log, machine_load::report).unwrap_or_default();
         bail!(
-            "the first dictation failed ({}): {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
+            "the first dictation failed ({}): {log}\n{load}",
+            output.status
         );
     }
     Ok(())

@@ -15,8 +15,9 @@ use rtrb::{Consumer, Producer, RingBuffer};
 
 use super::devices;
 
-/// How much audio the ring holds before its reader must have taken it.
-pub const RING_SECONDS: usize = 2;
+/// How much audio the ring holds before its reader must have taken it: a drain thread
+/// held up for several seconds on a busy machine still loses nothing.
+pub const RING_SECONDS: usize = 10;
 
 /// What the input callback reports, read from any thread.
 pub struct CaptureHealth {

@@ -5,7 +5,7 @@ Feature: file-transcription
 
     # Without refinement, silence of 1, 10 and 60 s runs in speech_recognition.feature,
     # "Silence produces a lone "you"", whose steps also fail on a startup failure.
-    @smoke
+    @smoke @serial
     Scenario Outline: Silence is processed without a startup failure
       Given a recording of silence lasting <seconds> seconds
       When the user transcribes the recording file <refinement> refinement

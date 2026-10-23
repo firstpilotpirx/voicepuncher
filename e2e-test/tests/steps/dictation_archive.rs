@@ -77,9 +77,7 @@ async fn transcribe_recording(world: &mut E2eWorld) -> Result<()> {
             cmd.arg(NO_ARCHIVE_FLAG);
         }
         let output = cmd.output().context("failed to run the app")?;
-        world.exit_status = Some(output.status);
-        world.stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-        world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        world.note_app_output(&output);
         world.archive.home = Some(home);
         Ok(())
     })

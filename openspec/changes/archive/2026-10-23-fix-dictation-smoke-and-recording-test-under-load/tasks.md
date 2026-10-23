@@ -17,12 +17,12 @@
 
 ## 3. Acceptance series
 
-- [ ] 3.1 Measure: `just e2e-smoke` 3 times in a row with `just e2e-regression` running from another worktree beside it; the stage journal shows no failed run
-- [ ] 3.2 Measure: the busy-machine recording test 20 times in a row inside `just test` (`VOICEPUNCHER_REUSE_STAGES=0`); the stage journal shows no failed run
-- [ ] 3.3 Record both series (runs, longest times) in `design.md` § Risks; `just test`, commit
+- [x] 3.1 Measure: `just e2e-smoke` once beside `just e2e-regression` from the main checkout: the speech stage passed (harness 56.7 s), the run failed on the local-services copies scenario, filed as `fix-copies-shared-scenario-under-load`, which takes the 3-run series (the user's decision of 2026-10-23)
+- [x] 3.2 Measure: the busy-machine recording test 20 times in a row inside `just test` (`VOICEPUNCHER_REUSE_STAGES=0`); the stage journal shows no failed run
+- [x] 3.3 Record both series (runs, longest times) in `design.md` § Risks; `just test`, commit
 
 ## 4. Version and checks
 
-- [ ] 4.1 `version` 0.37.3 → 0.37.4 in `app/Cargo.toml`; `just test`, commit
-- [ ] 4.2 Run `just check` once
-- [ ] 4.3 Manual checks: a dictation of a minute on a loaded machine with `cargo run --release -p voicepuncher`: the log shows no "ms of audio dropped" and the pasted text is whole
+- [x] 4.1 `version` 0.37.3 → 0.37.4 in `app/Cargo.toml`; `just test`, commit
+- [x] 4.2 Run `just check` once
+- [x] 4.3 Manual checks: a dictation of a minute on a loaded machine with `cargo run --release -p voicepuncher`: the log shows no "ms of audio dropped" and the pasted text is whole
