@@ -349,8 +349,7 @@ fn releases_too_soon(world: &mut IntegrationWorld) -> Result<()> {
     run.send(PipelineInput::Hotkey(PttSignal::Released))
 }
 
-#[when("the command spotting service stays away for longer than 5 seconds")]
-fn spotting_stays_away(world: &mut IntegrationWorld) -> Result<()> {
+pub(crate) fn spotting_stays_away(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     run.mark_action();
     run.send(PipelineInput::SpottingLost)?;

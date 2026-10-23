@@ -17,35 +17,6 @@ fn loaded_copy(hearing: ScriptedHearing) -> Arc<dyn Hear> {
 }
 
 #[test]
-fn should_hear_a_stop_right_after_the_last_dictated_word_under_load() {
-    // Given a dictation, confirmed by a copy that decodes every confirmation for 1.2 s
-    // When "stop" is said right after the last word
-    let Some(events) = heard_in_time_by(
-        &DICTATING,
-        "We meet on Friday at ten stop",
-        SLOW_HEARING,
-        loaded_copy,
-    ) else {
-        return;
-    };
-    // Then the stop is carried out
-    assert_eq!(carried_out(&events), ["stop dictation"], "{events:?}");
-}
-
-#[test]
-fn should_carry_out_the_same_chain_under_load() {
-    // Given a dictation, confirmed by a copy that decodes every confirmation for 1.2 s
-    let listening: Vec<&str> = DICTATING.into_iter().chain(["start dictation"]).collect();
-    // When "stop enter start" is said
-    let Some(events) = heard_in_time_by(&listening, CHAIN_SENTENCE, SLOW_HEARING, loaded_copy)
-    else {
-        return;
-    };
-    // Then the chain is carried out as on an idle machine
-    assert_eq!(carried_out(&events), CHAIN, "{events:?}");
-}
-
-#[test]
 fn should_hear_a_clip_a_copy_decodes_past_the_idle_budget() {
     // Given the hearing of the real-service tests, confirming with a copy that decodes every
     // confirmation for 1.2 s, as the shared service does beside another check
@@ -88,28 +59,55 @@ fn scripted_with_pauses(parts: &[(&str, f32)]) -> (Vec<f32>, Vec<ScriptedWord>) 
     (stream, script)
 }
 
-#[test]
-fn should_restart_before_a_short_pause_and_more_speech_under_load() {
-    // Given a dictation, confirmed by a copy that decodes every confirmation for 1.2 s
-    let Some(cfg) = engine_cfg(None) else {
-        return;
-    };
-    let (stream, script) = scripted_with_pauses(&[
-        (BEFORE_RESTART, PAUSE_SECS),
-        ("Restart", SHORT_PAUSE_SECS),
-        (AFTER_RESTART, PAUSE_SECS),
-    ]);
-    let hearing = ScriptedHearing { stream: stream.clone(), script, completes_cut_words: false };
-    let engine = clocked_engine(&cfg, loaded_copy(hearing), SLOW_HEARING, None);
-    let mut session = engine.engine.session().unwrap();
-    session.listen_for(&owned(&DICTATING)).unwrap();
-    // When "restart" is said, then about 0.4 s of silence and another sentence
-    let events = fed_as_spoken(&mut session, &engine.clock, &stream);
-    // Then the restart is reported
-    let restarts = phrases(&events)
-        .into_iter()
-        .chain(carried_out(&events))
-        .filter(|phrase| phrase == "restart dictation")
-        .count();
-    assert_eq!(restarts, 1, "{events:?}");
+mod needs_kws_models {
+    use super::*;
+
+    #[test]
+    fn should_hear_a_stop_right_after_the_last_dictated_word_under_load() {
+        // Given a dictation, confirmed by a copy that decodes every confirmation for 1.2 s
+        // When "stop" is said right after the last word
+        let events = heard_in_time_by(
+            &DICTATING,
+            "We meet on Friday at ten stop",
+            SLOW_HEARING,
+            loaded_copy,
+        );
+        // Then the stop is carried out
+        assert_eq!(carried_out(&events), ["stop dictation"], "{events:?}");
+    }
+
+    #[test]
+    fn should_carry_out_the_same_chain_under_load() {
+        // Given a dictation, confirmed by a copy that decodes every confirmation for 1.2 s
+        let listening: Vec<&str> = DICTATING.into_iter().chain(["start dictation"]).collect();
+        // When "stop enter start" is said
+        let events = heard_in_time_by(&listening, CHAIN_SENTENCE, SLOW_HEARING, loaded_copy);
+        // Then the chain is carried out as on an idle machine
+        assert_eq!(carried_out(&events), CHAIN, "{events:?}");
+    }
+
+    #[test]
+    fn should_restart_before_a_short_pause_and_more_speech_under_load() {
+        // Given a dictation, confirmed by a copy that decodes every confirmation for 1.2 s
+        let cfg = engine_cfg(None);
+        let (stream, script) = scripted_with_pauses(&[
+            (BEFORE_RESTART, PAUSE_SECS),
+            ("Restart", SHORT_PAUSE_SECS),
+            (AFTER_RESTART, PAUSE_SECS),
+        ]);
+        let hearing =
+            ScriptedHearing { stream: stream.clone(), script, completes_cut_words: false };
+        let engine = clocked_engine(&cfg, loaded_copy(hearing), SLOW_HEARING, None);
+        let mut session = engine.engine.session().unwrap();
+        session.listen_for(&owned(&DICTATING)).unwrap();
+        // When "restart" is said, then about 0.4 s of silence and another sentence
+        let events = fed_as_spoken(&mut session, &engine.clock, &stream);
+        // Then the restart is reported
+        let restarts = phrases(&events)
+            .into_iter()
+            .chain(carried_out(&events))
+            .filter(|phrase| phrase == "restart dictation")
+            .count();
+        assert_eq!(restarts, 1, "{events:?}");
+    }
 }

@@ -11,7 +11,7 @@ use crate::core::domain::{AccessibilityMissing, CleanedText};
 mod pasteboard;
 mod restore;
 
-use pasteboard::{ChangeCount, PasteboardSnapshot};
+use pasteboard::{Board, ChangeCount, PasteboardSnapshot};
 use restore::PendingRestore;
 
 /// The time the pasteboard gets to publish the text before Cmd+V reads it.
@@ -25,6 +25,8 @@ pub struct MacOsTextPaster {
     press_paste: fn() -> Result<()>,
     /// The restore the last paste left waiting; finished by the next paste and when the paster drops.
     pending: Option<PendingRestore>,
+    /// The pasteboard the paste writes: the general one, except in tests.
+    board: Board,
 }
 
 impl MacOsTextPaster {
@@ -34,13 +36,27 @@ impl MacOsTextPaster {
             trusted: process_is_trusted_for_accessibility,
             press_paste: Self::post_cmd_v,
             pending: None,
+            board: Board::default(),
         }
     }
 
     /// A paster that sends `press_paste` instead of Cmd+V and needs no accessibility trust: for tests of
     /// what a paste does to the clipboard.
     pub fn with_paste_keystroke(restore_delay_ms: u64, press_paste: fn() -> Result<()>) -> Self {
-        Self { restore_delay_ms, trusted: || true, press_paste, pending: None }
+        Self {
+            restore_delay_ms,
+            trusted: || true,
+            press_paste,
+            pending: None,
+            board: Board::default(),
+        }
+    }
+
+    /// The same paster on the pasteboard named `name` instead of the general one: for tests that must not
+    /// touch the user's clipboard.
+    #[must_use]
+    pub fn with_pasteboard(self, name: &str) -> Self {
+        Self { board: Board::named(name), ..self }
     }
 
     fn ensure_trusted(&self) -> Result<()> {
@@ -74,7 +90,7 @@ fn restore_unless_copied_over(
     user_clipboard: &PasteboardSnapshot,
     pasted_change_count: ChangeCount,
 ) {
-    if pasteboard::change_count() != pasted_change_count {
+    if user_clipboard.board().change_count() != pasted_change_count {
         log::info!("clipboard changed after the paste; not restored");
         return;
     }
@@ -88,8 +104,8 @@ impl TextPaster for MacOsTextPaster {
         self.ensure_trusted()?;
         // The previous paste's restore runs first, so this snapshot holds the user's clipboard.
         drop(self.pending.take());
-        let user_clipboard = PasteboardSnapshot::take();
-        let pasted_change_count: ChangeCount = pasteboard::write_text(text.as_str())?;
+        let user_clipboard = PasteboardSnapshot::take(&self.board);
+        let pasted_change_count: ChangeCount = pasteboard::write_text(&self.board, text.as_str())?;
         std::thread::sleep(PASTEBOARD_SETTLE_DELAY);
 
         if let Err(error) = (self.press_paste)() {

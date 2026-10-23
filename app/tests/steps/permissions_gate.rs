@@ -247,8 +247,7 @@ fn transcript_printed(world: &mut IntegrationWorld) -> Result<()> {
     run(world).printed()
 }
 
-#[then("no permission is checked")]
-fn no_permission_checked(world: &mut IntegrationWorld) -> Result<()> {
+pub(crate) fn no_permission_checked(world: &mut IntegrationWorld) -> Result<()> {
     let checks = run(world).permissions().checks();
     if checks != 0 {
         bail!("the permissions were checked {checks} times");

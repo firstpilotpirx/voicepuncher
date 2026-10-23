@@ -1,13 +1,14 @@
 //! Commands said without a pause around them, heard by the real keyword spotter, voice
 //! activity detector and speech recognition service for commands, on speech synthesized
-//! with macOS `say`. Gated on the model paths and the URL of the speech recognition service
-//! for commands the justfile exports, so the engine confirms as the command spotting service
-//! does.
+//! with macOS `say`. Needs the models (`needs_kws_models`), and the tests on the real speech
+//! recognition service for commands need it too (`needs_command_stt`), so the engine confirms
+//! as the command spotting service does.
 
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use crate::common;
+use crate::kws_models::kws_models;
 use crate::scripted_hearing;
 use crate::stream_clock;
 
@@ -19,6 +20,7 @@ use stream_clock::{samples, Clocked, StreamClock};
 use voicepuncher_command_spotting::confirm::{Hear, Heard, TimedWord, UtteranceTranscriber};
 use voicepuncher_command_spotting::engine::{Engine, EngineCfg, Session, SAMPLE_RATE};
 use voicepuncher_command_spotting::protocol::{Placement, ServerEvent};
+use voicepuncher_test_steps::required_env;
 
 const STANDBY: [&str; 3] = ["start dictation", "press enter", "clear all text"];
 const DICTATING: [&str; 4] = [
@@ -96,19 +98,11 @@ fn clocked_engine_on(
 }
 
 /// The engine confirming with the real speech recognition service for commands.
-fn engine() -> Option<ClockedEngine> {
-    let Ok(url) = std::env::var("VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL") else {
-        eprintln!("GATED: VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL not set, skipping");
-        return None;
-    };
-    let cfg = engine_cfg(None)?;
+fn engine() -> ClockedEngine {
+    let url = required_env("VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL");
+    let cfg = engine_cfg(None);
     let hearing = real_hearing(&url);
-    Some(clocked_engine(
-        &cfg,
-        hearing,
-        REAL_HEARING,
-        Some(REAL_DEADLINE),
-    ))
+    clocked_engine(&cfg, hearing, REAL_HEARING, Some(REAL_DEADLINE))
 }
 
 /// The speech recognition service for commands at `url`, as the real-service tests hear with
@@ -119,20 +113,12 @@ fn real_hearing(url: &str) -> Arc<dyn Hear> {
 }
 
 /// The engine config, confirming with the speech recognition service at `transcription_url`
-/// when given; none without the models.
-fn engine_cfg(transcription_url: Option<String>) -> Option<EngineCfg> {
-    let (Ok(model_dir), Ok(vad_model)) = (
-        std::env::var("VOICEPUNCHER_KWS_MODEL_DIR"),
-        std::env::var("VOICEPUNCHER_KWS_VAD_MODEL"),
-    ) else {
-        eprintln!(
-            "GATED: VOICEPUNCHER_KWS_MODEL_DIR / VOICEPUNCHER_KWS_VAD_MODEL not set, skipping"
-        );
-        return None;
-    };
-    Some(EngineCfg {
-        model_dir: model_dir.into(),
-        vad_model: vad_model.into(),
+/// when given.
+fn engine_cfg(transcription_url: Option<String>) -> EngineCfg {
+    let (model_dir, vad_model) = kws_models();
+    EngineCfg {
+        model_dir,
+        vad_model,
         threads: 2,
         min_silence_secs: MIN_SILENCE_SECS,
         save_speech_dir: None,
@@ -140,7 +126,7 @@ fn engine_cfg(transcription_url: Option<String>) -> Option<EngineCfg> {
         transcription_url,
         max_command_secs: 3.0,
         confirmation_deadline: CONFIRMATION_DEADLINE,
-    })
+    }
 }
 
 /// `words` spoken by `say`, without any pause.
@@ -200,101 +186,6 @@ fn command(names: &[&str], placement: Placement) -> (Vec<String>, Placement) {
     (names.iter().map(|n| (*n).to_owned()).collect(), placement)
 }
 
-#[test]
-fn should_hear_a_stop_right_after_the_last_dictated_word() {
-    let Some(engine) = engine() else { return };
-    let events = heard(
-        &engine,
-        &DICTATING,
-        &speech("We meet on Friday at ten stop"),
-    );
-    assert_eq!(
-        commands(&events),
-        [command(&["stop dictation"], Placement::Tail)]
-    );
-}
-
-#[test]
-fn should_hear_enter_right_after_other_speech() {
-    let Some(engine) = engine() else { return };
-    let events = heard(&engine, &STANDBY, &speech("Okay, press enter"));
-    // A phrase for the whole utterance would fail the app's pause rule here: only a
-    // command placed at the end counts.
-    assert_eq!(
-        commands(&events),
-        [command(&["press enter"], Placement::Tail)],
-        "{events:?}"
-    );
-}
-
-#[test]
-fn should_hear_start_opening_an_utterance_and_place_it_before_the_speech() {
-    let Some(engine) = engine() else { return };
-    let audio = speech("Start, the meeting moved to Friday at ten");
-    let events = heard(&engine, &STANDBY, &audio);
-    assert_eq!(
-        commands(&events),
-        [command(&["start dictation"], Placement::Head)]
-    );
-    let end = events
-        .iter()
-        .find_map(|e| match e {
-            ServerEvent::Command { end, .. } => Some(*end),
-            _ => None,
-        })
-        .unwrap();
-    assert!(end < PAUSE_SECS + 1.2, "start ends at {end}");
-}
-
-#[test]
-fn should_hear_a_doubled_stop_in_the_middle_of_speech() {
-    let Some(engine) = engine() else { return };
-    let events = heard(
-        &engine,
-        &DICTATING,
-        &speech("We move the meeting to Friday stop stop and some more words here"),
-    );
-    assert_eq!(
-        commands(&events),
-        [command(&["stop dictation"], Placement::Anywhere)]
-    );
-}
-
-#[test]
-fn should_hear_a_chain_of_commands() {
-    let Some(engine) = engine() else { return };
-    let events = heard(&engine, &DICTATING, &speech("That is all, stop enter"));
-    assert_eq!(
-        commands(&events),
-        [command(
-            &["stop dictation", "press enter"],
-            Placement::Anywhere
-        )]
-    );
-}
-
-#[test]
-fn should_hear_a_stop_after_a_short_breath_as_an_utterance_of_its_own() {
-    let Some(engine) = engine() else { return };
-    // `say` ends a phrase with about 0.4 s of its own silence: the breath is cut from the
-    // last sound to the next.
-    let audio: Vec<f32> = sound_only(speech("We meet on Friday"))
-        .into_iter()
-        .chain(silence(BREATH_SECS))
-        .chain(sound_only(speech("stop dictation")))
-        .collect();
-    let events = heard(&engine, &DICTATING, &audio);
-    let starts = events
-        .iter()
-        .filter(|e| matches!(e, ServerEvent::SpeechStart { .. }))
-        .count();
-    assert_eq!(starts, 2, "two utterances expected: {events:?}");
-    assert!(
-        phrases(&events).contains(&"stop dictation".to_owned()),
-        "{events:?}"
-    );
-}
-
 /// `sentence` said word by word by `say`, between pauses, and where each word lies.
 fn scripted(sentence: &str) -> (Vec<f32>, Vec<ScriptedWord>) {
     scripted_utterances(&[sentence])
@@ -324,7 +215,7 @@ fn scripted_utterances(utterances: &[&str]) -> (Vec<f32>, Vec<ScriptedWord>) {
 
 /// Every event for `sentence`, fed as it is spoken, while the service listens for `phrases`
 /// and each confirmation comes back `delay` later in the speech.
-fn heard_in_time(phrases: &[&str], sentence: &str, delay: Duration) -> Option<Vec<ServerEvent>> {
+fn heard_in_time(phrases: &[&str], sentence: &str, delay: Duration) -> Vec<ServerEvent> {
     heard_in_time_by(phrases, sentence, delay, |hearing| Arc::new(hearing))
 }
 
@@ -334,15 +225,15 @@ fn heard_in_time_by(
     sentence: &str,
     delay: Duration,
     hearing: impl FnOnce(ScriptedHearing) -> Arc<dyn Hear>,
-) -> Option<Vec<ServerEvent>> {
-    let cfg = engine_cfg(None)?;
+) -> Vec<ServerEvent> {
+    let cfg = engine_cfg(None);
     let (stream, script) = scripted(sentence);
     let scripted = ScriptedHearing { stream: stream.clone(), script, completes_cut_words: false };
     let engine = clocked_engine(&cfg, hearing(scripted), delay, None);
     let mut session = engine.engine.session().unwrap();
     let phrases: Vec<String> = phrases.iter().map(|p| (*p).to_owned()).collect();
     session.listen_for(&phrases).unwrap();
-    Some(dbg!(fed_as_spoken(&mut session, &engine.clock, &stream)))
+    dbg!(fed_as_spoken(&mut session, &engine.clock, &stream))
 }
 
 /// Every event the session reports for `audio` fed frame by frame on `clock`, each
@@ -393,8 +284,8 @@ fn fed_in_frames(
 fn heard_with_dictation_started_at_first_pause(
     utterances: &[&str],
     delay: Duration,
-) -> Option<Vec<ServerEvent>> {
-    let cfg = engine_cfg(None)?;
+) -> Vec<ServerEvent> {
+    let cfg = engine_cfg(None);
     let (stream, script) = scripted_utterances(utterances);
     let first_words = utterances[0].split_whitespace().count();
     let switch_at =
@@ -404,7 +295,7 @@ fn heard_with_dictation_started_at_first_pause(
     let mut session = engine.engine.session().unwrap();
     session.listen_for(&owned(&STANDBY)).unwrap();
     let mut dictating = false;
-    Some(dbg!(fed_as_spoken_while(
+    dbg!(fed_as_spoken_while(
         &mut session,
         &engine.clock,
         &stream,
@@ -414,17 +305,14 @@ fn heard_with_dictation_started_at_first_pause(
                 session.listen_for(&owned(&DICTATING)).unwrap();
             }
         }
-    )))
+    ))
 }
 
 /// Every event for `utterances` said while dictating, fed as they are spoken, with each
 /// confirmation `delay` late in the speech; the session moves to the standby phrases once the stop
 /// is reported, as the app does when the stop ends its dictation.
-fn heard_with_standby_once_stopped(
-    utterances: &[&str],
-    delay: Duration,
-) -> Option<Vec<ServerEvent>> {
-    let cfg = engine_cfg(None)?;
+fn heard_with_standby_once_stopped(utterances: &[&str], delay: Duration) -> Vec<ServerEvent> {
+    let cfg = engine_cfg(None);
     let (mut stream, script) = scripted_utterances(utterances);
     // Silence after the last word, while the late confirmations come back.
     stream.extend(vec![0.0; 2 * samples(delay)]);
@@ -433,7 +321,7 @@ fn heard_with_standby_once_stopped(
     let mut session = engine.engine.session().unwrap();
     session.listen_for(&owned(&DICTATING)).unwrap();
     let mut stopped = false;
-    Some(dbg!(fed_as_spoken_while(
+    dbg!(fed_as_spoken_while(
         &mut session,
         &engine.clock,
         &stream,
@@ -443,7 +331,7 @@ fn heard_with_standby_once_stopped(
                 session.listen_for(&owned(&STANDBY)).unwrap();
             }
         },
-    )))
+    ))
 }
 
 fn owned(phrases: &[&str]) -> Vec<String> {
@@ -457,22 +345,6 @@ fn times_carried_out(events: &[ServerEvent], phrase: &str) -> usize {
         .flat_map(|(names, _)| names.clone())
         .filter(|name| name == phrase)
         .count()
-}
-
-#[test]
-fn should_restart_once_in_a_dictation_while_confirmations_come_back_slowly() {
-    let Some(events) = heard_in_time(
-        &DICTATING,
-        "We moved the weekly meeting to Friday restart restart and the notes begin here with a few more words for everyone",
-        SLOW_HEARING,
-    ) else {
-        return;
-    };
-    assert_eq!(
-        times_carried_out(&events, "restart dictation"),
-        1,
-        "{events:?}"
-    );
 }
 
 /// The commands carried out, in order, whether said in one chain or in several.
@@ -492,24 +364,12 @@ const CHAIN: [&str; 3] = ["stop dictation", "press enter", "start dictation"];
 /// so nextest runs them in processes of their own at the same time.
 fn assert_chain_carried_out(hearing: Duration) {
     let listening: Vec<&str> = DICTATING.into_iter().chain(["start dictation"]).collect();
-    let Some(events) = heard_in_time(&listening, CHAIN_SENTENCE, hearing) else {
-        return;
-    };
+    let events = heard_in_time(&listening, CHAIN_SENTENCE, hearing);
     assert_eq!(
         carried_out(&events),
         CHAIN,
         "hearing in {hearing:?}: {events:?}"
     );
-}
-
-#[test]
-fn should_carry_out_the_chain_when_confirmations_come_back_at_once() {
-    assert_chain_carried_out(Duration::ZERO);
-}
-
-#[test]
-fn should_carry_out_the_same_chain_when_confirmations_come_back_slowly() {
-    assert_chain_carried_out(SLOW_HEARING);
 }
 
 /// How long a busy machine keeps the threads that hear waiting for the processor.
@@ -525,37 +385,6 @@ impl<H: Hear> Hear for Starved<H> {
     }
 }
 
-#[test]
-fn should_carry_out_the_same_chain_on_a_busy_machine() {
-    // Given a dictation, each confirmation 2 s late, on a machine so busy that the threads
-    // that hear wait for the processor while the speech goes on
-    let listening: Vec<&str> = DICTATING.into_iter().chain(["start dictation"]).collect();
-    // When "stop enter start" is said
-    let Some(events) = heard_in_time_by(&listening, CHAIN_SENTENCE, SLOW_HEARING, |hearing| {
-        Arc::new(Starved(hearing))
-    }) else {
-        return;
-    };
-    // Then the chain is carried out as on an idle machine
-    assert_eq!(carried_out(&events), CHAIN, "{events:?}");
-}
-
-#[test]
-fn should_keep_a_start_confirmed_after_the_dictation_began_a_start() {
-    let Some(events) = heard_with_dictation_started_at_first_pause(
-        &[
-            "start dictation",
-            "and the notes begin here with a few more words",
-        ],
-        SLOW_HEARING,
-    ) else {
-        return;
-    };
-    let said = said(&events);
-    assert!(said.iter().any(|c| c == "start dictation"), "{events:?}");
-    assert!(!said.iter().any(|c| c == "restart dictation"), "{events:?}");
-}
-
 /// Every command reported, alone or placed, in order.
 fn said(events: &[ServerEvent]) -> Vec<String> {
     events
@@ -566,22 +395,6 @@ fn said(events: &[ServerEvent]) -> Vec<String> {
             _ => Vec::new(),
         })
         .collect()
-}
-
-#[test]
-fn should_keep_a_start_said_right_after_a_slowly_confirmed_stop_a_start() {
-    // Given a dictation running, every confirmation 2.5 s late
-    // When "stop dictation" is said and then, before its confirmation, "start"
-    let Some(events) =
-        heard_with_standby_once_stopped(&["stop dictation", "start"], SLOWER_HEARING)
-    else {
-        return;
-    };
-    // Then the dictation ends and a new one starts: the spotter's report of the stop and
-    // its confirmation are one command
-    let mut said = said(&events);
-    said.dedup();
-    assert_eq!(said, ["stop dictation", "start dictation"], "{events:?}");
 }
 
 /// A hearing that answers each clip of a segment `first` and its steady clip `steady`, each
@@ -623,8 +436,8 @@ impl Hear for HearsFirstThenSteady {
 
 /// The events of "restart" said alone in a dictation, heard by `hearing`, and how long after
 /// the end of the word the first phrase came out.
-fn restart_alone_heard_by(hearing: Arc<HearsFirstThenSteady>) -> Option<(Vec<ServerEvent>, f32)> {
-    let cfg = engine_cfg(None)?;
+fn restart_alone_heard_by(hearing: Arc<HearsFirstThenSteady>) -> (Vec<ServerEvent>, f32) {
+    let cfg = engine_cfg(None);
     // The default voice, as the keyword spotter hears its "restart".
     let word = sound_only(common::spoken_by(None, "Restart"));
     let mut stream = silence(PAUSE_SECS);
@@ -646,50 +459,7 @@ fn restart_alone_heard_by(hearing: Arc<HearsFirstThenSteady>) -> Option<(Vec<Ser
     let after = first_phrase_at.map_or(f32::MAX, |at| {
         at.saturating_sub(said_end) as f32 / SAMPLE_RATE as f32
     });
-    Some((events, after))
-}
-
-#[test]
-fn should_report_a_restart_misheard_at_first_one_hearing_after_its_pause() {
-    // Given "restart" said alone in a dictation, its segment heard first as another word and
-    // its steady clip as "restart", each answer 0.6 s after it is asked
-    let delay = Duration::from_millis(600);
-    let hearing = Arc::new(HearsFirstThenSteady {
-        first: "Restocked.",
-        steady: "Restart!",
-        delay,
-        steady_clips: Mutex::new(0),
-    });
-    // When
-    let Some((events, after)) = restart_alone_heard_by(hearing) else {
-        return;
-    };
-    // Then the restart comes out sooner than two hearings in a row after the pause that
-    // closes it: the keyword spotter reports the trigger up to 0.2 s after that pause
-    assert_eq!(phrases(&events), ["restart dictation"], "{events:?}");
-    let two_hearings = MIN_SILENCE_SECS + 2.0 * delay.as_secs_f32();
-    assert!(
-        after < two_hearings,
-        "restart out {after:.2}s after the word, two hearings take {two_hearings:.2}s: {events:?}"
-    );
-}
-
-#[test]
-fn should_report_a_restart_heard_at_first_once_and_drop_its_early_second_hearing() {
-    // Given "restart" said alone in a dictation, heard as "restart" by both hearings
-    let hearing = Arc::new(HearsFirstThenSteady {
-        first: "Restart.",
-        steady: "Restart!",
-        delay: Duration::from_millis(600),
-        steady_clips: Mutex::new(0),
-    });
-    // When
-    let Some((events, _)) = restart_alone_heard_by(Arc::clone(&hearing)) else {
-        return;
-    };
-    // Then the second hearing was asked at once, and the restart is reported once
-    assert_eq!(*hearing.steady_clips.lock().unwrap(), 1, "{events:?}");
-    assert_eq!(phrases(&events), ["restart dictation"], "{events:?}");
+    (events, after)
 }
 
 /// 10 ms: frames this short time an event to within 10 ms.
@@ -737,7 +507,7 @@ struct FinelyHeard {
 /// Every event for `words`, each said by `say` after the gap of seconds given with it and fed
 /// in 10 ms frames as it is spoken, while the service listens for `phrases` and each
 /// confirmation comes back `delay` later in the speech.
-fn heard_finely(phrases: &[&str], words: &[(f32, &str)], delay: Duration) -> Option<FinelyHeard> {
+fn heard_finely(phrases: &[&str], words: &[(f32, &str)], delay: Duration) -> FinelyHeard {
     heard_finely_misheard(phrases, words, delay, None)
 }
 
@@ -749,8 +519,8 @@ fn heard_finely_misheard(
     words: &[(f32, &str)],
     delay: Duration,
     mishears: Option<(&'static str, &'static str)>,
-) -> Option<FinelyHeard> {
-    let cfg = engine_cfg(None)?;
+) -> FinelyHeard {
+    let cfg = engine_cfg(None);
     let mut stream = silence(PAUSE_SECS);
     let mut script = Vec::new();
     for (gap, word) in words {
@@ -806,107 +576,303 @@ fn heard_finely_misheard(
         .iter()
         .map(|&asked| secs_after_end(asked))
         .collect();
-    Some(FinelyHeard {
+    FinelyHeard {
         events,
         said_after: said_at.map(secs_after_end),
         asked_after,
         last_word_secs,
         said_end_secs: said_end as f32 / SAMPLE_RATE as f32,
-    })
-}
-
-#[test]
-fn should_report_start_said_alone_in_standby_sooner_than_one_hearing_after_its_pause() {
-    // Given each confirmation 0.6 s late
-    let delay = Duration::from_millis(600);
-    // When "start" is said alone in standby
-    let Some(heard) = heard_finely(&STANDBY, &[(0.0, "start")], delay) else {
-        return;
-    };
-    // Then the start comes out well before one hearing after the pause that closes it
-    let events = &heard.events;
-    assert_eq!(
-        said(events).first().map(String::as_str),
-        Some("start dictation"),
-        "{events:?}"
-    );
-    let one_hearing_after_pause = MIN_SILENCE_SECS + delay.as_secs_f32();
-    let after = heard.said_after.unwrap_or(f32::MAX);
-    assert!(
-        after < one_hearing_after_pause - MIN_SILENCE_SECS / 4.0,
-        "start out {after:.2}s after the word, one hearing after the pause is \
-         {one_hearing_after_pause:.2}s: {events:?}"
-    );
-}
-
-#[test]
-fn should_start_nothing_for_start_and_stop_with_a_dip_shorter_than_a_pause_in_standby() {
-    // Given each confirmation 0.6 s late
-    // When "start", a dip shorter than a pause and "stop" are said in standby
-    let Some(heard) = heard_finely(
-        &STANDBY,
-        // With the quiet ends of the words: past half a pause, short of a whole one.
-        &[(0.0, "start"), (0.15, "stop")],
-        Duration::from_millis(600),
-    ) else {
-        return;
-    };
-    // Then no dictation starts: the hearing asked at the dip is dropped
-    let events = &heard.events;
-    assert!(
-        heard
-            .asked_after
-            .iter()
-            .any(|&after| after < -heard.last_word_secs),
-        "no clip asked during the dip: {:?}, {events:?}",
-        heard.asked_after
-    );
-    assert!(
-        !said(events).iter().any(|c| c == "start dictation"),
-        "{events:?}"
-    );
-}
-
-#[test]
-fn should_end_a_start_closed_by_please_where_please_ends() {
-    // Given each confirmation 0.3 s late
-    // When "start dictation please" is said in standby
-    let Some(heard) = heard_finely(
-        &STANDBY,
-        &[(0.0, "start"), (0.0, "dictation"), (0.0, "please")],
-        Duration::from_millis(300),
-    ) else {
-        return;
-    };
-    // Then a start a check placed ends no sooner than "please" does: the dictation after it
-    // holds none of it
-    let events = &heard.events;
-    assert!(!said(events).is_empty(), "no start: {events:?}");
-    for event in events {
-        if let ServerEvent::Command { end, .. } = event {
-            assert!(
-                *end >= heard.said_end_secs - 0.05,
-                "start ends at {end:.2}s, \"please\" at {:.2}s: {events:?}",
-                heard.said_end_secs
-            );
-        }
     }
 }
 
-#[test]
-fn should_hear_no_utterance_in_a_dictation_before_its_pause_ends() {
-    // Given each confirmation 0.6 s late
-    // When a short word is said alone in a dictation
-    let Some(heard) = heard_finely(&DICTATING, &[(0.0, "Friday")], Duration::from_millis(600))
-    else {
-        return;
-    };
-    // Then nothing is asked before most of the pause has passed
-    assert!(!heard.asked_after.is_empty(), "{:?}", heard.events);
-    let earliest = heard.asked_after.iter().copied().fold(f32::MAX, f32::min);
-    assert!(
-        earliest > MIN_SILENCE_SECS * 0.75,
-        "a clip asked {earliest:.2}s after the word: {:?}",
-        heard.events
-    );
+mod needs_kws_models {
+    use super::*;
+
+    #[test]
+    fn should_restart_once_in_a_dictation_while_confirmations_come_back_slowly() {
+        let events = heard_in_time(
+            &DICTATING,
+            "We moved the weekly meeting to Friday restart restart and the notes begin here with a few more words for everyone",
+            SLOW_HEARING,
+        );
+        assert_eq!(
+            times_carried_out(&events, "restart dictation"),
+            1,
+            "{events:?}"
+        );
+    }
+
+    #[test]
+    fn should_carry_out_the_chain_when_confirmations_come_back_at_once() {
+        assert_chain_carried_out(Duration::ZERO);
+    }
+
+    #[test]
+    fn should_carry_out_the_same_chain_when_confirmations_come_back_slowly() {
+        assert_chain_carried_out(SLOW_HEARING);
+    }
+
+    #[test]
+    fn should_carry_out_the_same_chain_on_a_busy_machine() {
+        // Given a dictation, each confirmation 2 s late, on a machine so busy that the threads
+        // that hear wait for the processor while the speech goes on
+        let listening: Vec<&str> = DICTATING.into_iter().chain(["start dictation"]).collect();
+        // When "stop enter start" is said
+        let events = heard_in_time_by(&listening, CHAIN_SENTENCE, SLOW_HEARING, |hearing| {
+            Arc::new(Starved(hearing))
+        });
+        // Then the chain is carried out as on an idle machine
+        assert_eq!(carried_out(&events), CHAIN, "{events:?}");
+    }
+
+    #[test]
+    fn should_keep_a_start_confirmed_after_the_dictation_began_a_start() {
+        let events = heard_with_dictation_started_at_first_pause(
+            &[
+                "start dictation",
+                "and the notes begin here with a few more words",
+            ],
+            SLOW_HEARING,
+        );
+        let said = said(&events);
+        assert!(said.iter().any(|c| c == "start dictation"), "{events:?}");
+        assert!(!said.iter().any(|c| c == "restart dictation"), "{events:?}");
+    }
+
+    #[test]
+    fn should_keep_a_start_said_right_after_a_slowly_confirmed_stop_a_start() {
+        // Given a dictation running, every confirmation 2.5 s late
+        // When "stop dictation" is said and then, before its confirmation, "start"
+        let events = heard_with_standby_once_stopped(&["stop dictation", "start"], SLOWER_HEARING);
+        // Then the dictation ends and a new one starts: the spotter's report of the stop and
+        // its confirmation are one command
+        let mut said = said(&events);
+        said.dedup();
+        assert_eq!(said, ["stop dictation", "start dictation"], "{events:?}");
+    }
+
+    #[test]
+    fn should_report_a_restart_misheard_at_first_one_hearing_after_its_pause() {
+        // Given "restart" said alone in a dictation, its segment heard first as another word and
+        // its steady clip as "restart", each answer 0.6 s after it is asked
+        let delay = Duration::from_millis(600);
+        let hearing = Arc::new(HearsFirstThenSteady {
+            first: "Restocked.",
+            steady: "Restart!",
+            delay,
+            steady_clips: Mutex::new(0),
+        });
+        // When
+        let (events, after) = restart_alone_heard_by(hearing);
+        // Then the restart comes out sooner than two hearings in a row after the pause that
+        // closes it: the keyword spotter reports the trigger up to 0.2 s after that pause
+        assert_eq!(phrases(&events), ["restart dictation"], "{events:?}");
+        let two_hearings = MIN_SILENCE_SECS + 2.0 * delay.as_secs_f32();
+        assert!(
+            after < two_hearings,
+            "restart out {after:.2}s after the word, two hearings take {two_hearings:.2}s: {events:?}"
+        );
+    }
+
+    #[test]
+    fn should_report_a_restart_heard_at_first_once_and_drop_its_early_second_hearing() {
+        // Given "restart" said alone in a dictation, heard as "restart" by both hearings
+        let hearing = Arc::new(HearsFirstThenSteady {
+            first: "Restart.",
+            steady: "Restart!",
+            delay: Duration::from_millis(600),
+            steady_clips: Mutex::new(0),
+        });
+        // When
+        let (events, _) = restart_alone_heard_by(Arc::clone(&hearing));
+        // Then the second hearing was asked at once, and the restart is reported once
+        assert_eq!(*hearing.steady_clips.lock().unwrap(), 1, "{events:?}");
+        assert_eq!(phrases(&events), ["restart dictation"], "{events:?}");
+    }
+
+    #[test]
+    fn should_report_start_said_alone_in_standby_sooner_than_one_hearing_after_its_pause() {
+        // Given each confirmation 0.6 s late
+        let delay = Duration::from_millis(600);
+        // When "start" is said alone in standby
+        let heard = heard_finely(&STANDBY, &[(0.0, "start")], delay);
+        // Then the start comes out well before one hearing after the pause that closes it
+        let events = &heard.events;
+        assert_eq!(
+            said(events).first().map(String::as_str),
+            Some("start dictation"),
+            "{events:?}"
+        );
+        let one_hearing_after_pause = MIN_SILENCE_SECS + delay.as_secs_f32();
+        let after = heard.said_after.unwrap_or(f32::MAX);
+        assert!(
+            after < one_hearing_after_pause - MIN_SILENCE_SECS / 4.0,
+            "start out {after:.2}s after the word, one hearing after the pause is \
+             {one_hearing_after_pause:.2}s: {events:?}"
+        );
+    }
+
+    #[test]
+    fn should_start_nothing_for_start_and_stop_with_a_dip_shorter_than_a_pause_in_standby() {
+        // Given each confirmation 0.6 s late
+        // When "start", a dip shorter than a pause and "stop" are said in standby
+        let heard = heard_finely(
+            &STANDBY,
+            // With the quiet ends of the words: past half a pause, short of a whole one.
+            &[(0.0, "start"), (0.15, "stop")],
+            Duration::from_millis(600),
+        );
+        // Then no dictation starts: the hearing asked at the dip is dropped
+        let events = &heard.events;
+        assert!(
+            heard
+                .asked_after
+                .iter()
+                .any(|&after| after < -heard.last_word_secs),
+            "no clip asked during the dip: {:?}, {events:?}",
+            heard.asked_after
+        );
+        assert!(
+            !said(events).iter().any(|c| c == "start dictation"),
+            "{events:?}"
+        );
+    }
+
+    #[test]
+    fn should_end_a_start_closed_by_please_where_please_ends() {
+        // Given each confirmation 0.3 s late
+        // When "start dictation please" is said in standby
+        let heard = heard_finely(
+            &STANDBY,
+            &[(0.0, "start"), (0.0, "dictation"), (0.0, "please")],
+            Duration::from_millis(300),
+        );
+        // Then a start a check placed ends no sooner than "please" does: the dictation after it
+        // holds none of it
+        let events = &heard.events;
+        assert!(!said(events).is_empty(), "no start: {events:?}");
+        for event in events {
+            if let ServerEvent::Command { end, .. } = event {
+                assert!(
+                    *end >= heard.said_end_secs - 0.05,
+                    "start ends at {end:.2}s, \"please\" at {:.2}s: {events:?}",
+                    heard.said_end_secs
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn should_hear_no_utterance_in_a_dictation_before_its_pause_ends() {
+        // Given each confirmation 0.6 s late
+        // When a short word is said alone in a dictation
+        let heard = heard_finely(&DICTATING, &[(0.0, "Friday")], Duration::from_millis(600));
+        // Then nothing is asked before most of the pause has passed
+        assert!(!heard.asked_after.is_empty(), "{:?}", heard.events);
+        let earliest = heard.asked_after.iter().copied().fold(f32::MAX, f32::min);
+        assert!(
+            earliest > MIN_SILENCE_SECS * 0.75,
+            "a clip asked {earliest:.2}s after the word: {:?}",
+            heard.events
+        );
+    }
+
+    mod needs_command_stt {
+        use super::*;
+
+        #[test]
+        fn should_hear_a_stop_right_after_the_last_dictated_word() {
+            let engine = engine();
+            let events = heard(
+                &engine,
+                &DICTATING,
+                &speech("We meet on Friday at ten stop"),
+            );
+            assert_eq!(
+                commands(&events),
+                [command(&["stop dictation"], Placement::Tail)]
+            );
+        }
+
+        #[test]
+        fn should_hear_enter_right_after_other_speech() {
+            let engine = engine();
+            let events = heard(&engine, &STANDBY, &speech("Okay, press enter"));
+            // A phrase for the whole utterance would fail the app's pause rule here: only a
+            // command placed at the end counts.
+            assert_eq!(
+                commands(&events),
+                [command(&["press enter"], Placement::Tail)],
+                "{events:?}"
+            );
+        }
+
+        #[test]
+        fn should_hear_start_opening_an_utterance_and_place_it_before_the_speech() {
+            let engine = engine();
+            let audio = speech("Start, the meeting moved to Friday at ten");
+            let events = heard(&engine, &STANDBY, &audio);
+            assert_eq!(
+                commands(&events),
+                [command(&["start dictation"], Placement::Head)]
+            );
+            let end = events
+                .iter()
+                .find_map(|e| match e {
+                    ServerEvent::Command { end, .. } => Some(*end),
+                    _ => None,
+                })
+                .unwrap();
+            assert!(end < PAUSE_SECS + 1.2, "start ends at {end}");
+        }
+
+        #[test]
+        fn should_hear_a_doubled_stop_in_the_middle_of_speech() {
+            let engine = engine();
+            let events = heard(
+                &engine,
+                &DICTATING,
+                &speech("We move the meeting to Friday stop stop and some more words here"),
+            );
+            assert_eq!(
+                commands(&events),
+                [command(&["stop dictation"], Placement::Anywhere)]
+            );
+        }
+
+        #[test]
+        fn should_hear_a_chain_of_commands() {
+            let engine = engine();
+            let events = heard(&engine, &DICTATING, &speech("That is all, stop enter"));
+            assert_eq!(
+                commands(&events),
+                [command(
+                    &["stop dictation", "press enter"],
+                    Placement::Anywhere
+                )]
+            );
+        }
+
+        #[test]
+        fn should_hear_a_stop_after_a_short_breath_as_an_utterance_of_its_own() {
+            let engine = engine();
+            // `say` ends a phrase with about 0.4 s of its own silence: the breath is cut from the
+            // last sound to the next.
+            let audio: Vec<f32> = sound_only(speech("We meet on Friday"))
+                .into_iter()
+                .chain(silence(BREATH_SECS))
+                .chain(sound_only(speech("stop dictation")))
+                .collect();
+            let events = heard(&engine, &DICTATING, &audio);
+            let starts = events
+                .iter()
+                .filter(|e| matches!(e, ServerEvent::SpeechStart { .. }))
+                .count();
+            assert_eq!(starts, 2, "two utterances expected: {events:?}");
+            assert!(
+                phrases(&events).contains(&"stop dictation".to_owned()),
+                "{events:?}"
+            );
+        }
+    }
 }

@@ -20,9 +20,9 @@ use crate::steps::off_thread;
 use crate::E2eWorld;
 
 mod copies;
-mod hands_free;
-mod outages;
-mod session;
+pub(crate) mod hands_free;
+pub(crate) mod outages;
+pub(crate) mod session;
 
 pub use session::HandsFreeSession;
 
@@ -122,8 +122,7 @@ fn long_listening(world: &mut E2eWorld) {
     world.listened_before_secs = LONG_LISTENING_SECS;
 }
 
-#[given("voice control is turned on")]
-fn voice_control_on(world: &mut E2eWorld) {
+pub(crate) fn voice_control_on(world: &mut E2eWorld) {
     world.voice_control = true;
 }
 
@@ -344,8 +343,7 @@ async fn speaks_the_sample(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[when("the app starts")]
-async fn app_starts(world: &mut E2eWorld) -> Result<()> {
+pub(crate) async fn app_starts(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, move |world| {
         let url = world
             .command_spotting_url

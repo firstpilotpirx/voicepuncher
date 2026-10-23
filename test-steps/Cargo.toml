@@ -1,0 +1,13 @@
+[package]
+name = "voicepuncher-test-steps"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+description = "What the test harnesses share: the needs a test states and the Gherkin steps both harnesses use"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = "=1.0.103"

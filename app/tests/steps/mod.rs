@@ -13,6 +13,7 @@ pub mod processing_stages;
 mod push_to_talk;
 pub mod quiet_voice_control;
 pub mod settings_window;
+pub mod shared;
 pub mod speech_recognition;
 pub mod text_insertion;
 pub mod visual_feedback;

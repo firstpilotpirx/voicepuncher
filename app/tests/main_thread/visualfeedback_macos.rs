@@ -21,20 +21,8 @@ use crate::{main_thread, Test};
 
 pub const TESTS: &[Test] = &[
     (
-        "should_implement_visual_indicator_trait",
-        should_implement_visual_indicator_trait,
-    ),
-    (
-        "should_drop_window_set_without_panic",
-        should_drop_window_set_without_panic,
-    ),
-    (
-        "should_preserve_recording_state_after_manual_rebuild",
-        should_preserve_recording_state_after_manual_rebuild,
-    ),
-    (
-        "should_skip_rebuild_when_topology_identical",
-        should_skip_rebuild_when_topology_identical,
+        "should_keep_the_recording_pill_when_the_screens_are_unchanged",
+        should_keep_the_recording_pill_when_the_screens_are_unchanged,
     ),
     (
         "waveform_tick_cancels_on_hide",
@@ -146,8 +134,6 @@ pub const TESTS: &[Test] = &[
     ),
 ];
 
-fn implements_visual_indicator<T: VisualIndicator>() {}
-
 fn pump_run_loop(secs: f64) {
     use objc2_foundation::{NSDate, NSRunLoop};
     let run_loop = NSRunLoop::currentRunLoop();
@@ -170,28 +156,16 @@ fn pump_until(limit: Duration, condition: impl Fn() -> bool) {
     }
 }
 
-fn should_implement_visual_indicator_trait() {
-    implements_visual_indicator::<MacosVisualIndicator>();
-}
-
-fn should_drop_window_set_without_panic() {
-    let mtm = main_thread();
-    let indicator = MacosVisualIndicator::initialize(mtm, Arc::new(AtomicU32::new(0)));
-    drop(indicator);
-}
-
-fn should_preserve_recording_state_after_manual_rebuild() {
+fn should_keep_the_recording_pill_when_the_screens_are_unchanged() {
     let mtm = main_thread();
     let indicator = MacosVisualIndicator::initialize(mtm, Arc::new(AtomicU32::new(0)));
     indicator.show_recording();
-    indicator.rebuild_window_set(mtm);
-}
-
-fn should_skip_rebuild_when_topology_identical() {
-    let mtm = main_thread();
-    let indicator = MacosVisualIndicator::initialize(mtm, Arc::new(AtomicU32::new(0)));
+    // When the window set is rebuilt twice over the same screens
     indicator.rebuild_window_set(mtm);
     indicator.rebuild_window_set(mtm);
+    // Then
+    pump_until(DRAWN_LIMIT, || indicator.first_shows_recording());
+    assert!(indicator.is_pill_visible() && indicator.first_shows_recording());
 }
 
 fn waveform_tick_cancels_on_hide() {

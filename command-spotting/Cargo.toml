@@ -23,4 +23,5 @@ voicepuncher-copy-pool = { path = "../copy-pool" }
 ureq = { version = "=2.12.1", default-features = false }
 
 [dev-dependencies]
+voicepuncher-test-steps = { path = "../test-steps" }
 tempfile = "=3.27.0"

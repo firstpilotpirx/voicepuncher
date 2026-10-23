@@ -1,7 +1,8 @@
 // Integration test for MacOsKeyPresser.
-// Gated: set VOICEPUNCHER_REAL_KEYBOARD_IT=1 to post real key events and watch them through
-// an rdev event tap (needs Accessibility and Input Monitoring, a GUI session and the
-// keyboard to itself). Skips cleanly when the env var is unset.
+// Posts real key events into the focused app and watches them through an rdev event tap
+// (needs Accessibility and Input Monitoring, a GUI session and the keyboard to itself): only
+// `just test-real-keyboard` runs it, which sets VOICEPUNCHER_REAL_KEYBOARD_IT=1
+// (`needs_real_keyboard`).
 
 use std::sync::mpsc;
 use std::time::Duration;
@@ -10,6 +11,7 @@ use rdev::{listen, EventType, Key};
 
 use voicepuncher::adapters::secondary::keypressing::macos::MacOsKeyPresser;
 use voicepuncher::core::application::KeyPresser;
+use voicepuncher_test_steps::required_env;
 
 const TAP_INSTALL_GRACE: Duration = Duration::from_millis(800);
 const KEY_TIMEOUT: Duration = Duration::from_secs(2);
@@ -34,21 +36,22 @@ fn keys_seen(keys: &mpsc::Receiver<Key>, count: usize) -> Vec<Key> {
         .collect()
 }
 
-#[test]
-fn should_press_return_then_select_all_and_delete() {
-    if std::env::var("VOICEPUNCHER_REAL_KEYBOARD_IT").is_err() {
-        eprintln!("GATED: VOICEPUNCHER_REAL_KEYBOARD_IT not set, skipping");
-        return;
+mod needs_real_keyboard {
+    use super::*;
+
+    #[test]
+    fn should_press_return_then_select_all_and_delete() {
+        // Given
+        required_env("VOICEPUNCHER_REAL_KEYBOARD_IT");
+        let keys = watch_keys();
+        let mut presser = MacOsKeyPresser::new();
+        // When
+        presser.press_enter().unwrap();
+        presser.clear_all_text().unwrap();
+        // Then
+        assert_eq!(
+            keys_seen(&keys, 3),
+            [Key::Return, Key::KeyA, Key::Backspace]
+        );
     }
-    // Given
-    let keys = watch_keys();
-    let mut presser = MacOsKeyPresser::new();
-    // When
-    presser.press_enter().unwrap();
-    presser.clear_all_text().unwrap();
-    // Then
-    assert_eq!(
-        keys_seen(&keys, 3),
-        [Key::Return, Key::KeyA, Key::Backspace]
-    );
 }

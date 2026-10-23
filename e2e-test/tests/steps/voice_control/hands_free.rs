@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
-use cucumber::{given, then, when};
+use cucumber::when;
 
 use voicepuncher::adapters::secondary::commandspotting::websocket::AudioStream;
 use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
@@ -164,8 +164,7 @@ fn next_frame(frame_due: Instant) -> Instant {
     next
 }
 
-#[given("listening is on")]
-fn listening_on(world: &mut E2eWorld) -> Result<()> {
+pub(crate) fn listening_on(world: &mut E2eWorld) -> Result<()> {
     let url = world
         .command_spotting_url
         .clone()
@@ -196,8 +195,7 @@ async fn dictate_and_send(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[then("the sentence is pasted into the focused app")]
-fn sentence_pasted(world: &mut E2eWorld) -> Result<()> {
+pub(crate) fn sentence_pasted(world: &mut E2eWorld) -> Result<()> {
     let hands_free = world.hands_free.as_ref().context("listening is not on")?;
     let events = hands_free.events();
     if !events.contains(&Event::Pasted(SENTENCE.to_owned())) {
@@ -206,8 +204,7 @@ fn sentence_pasted(world: &mut E2eWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("the Return key is pressed after it")]
-fn return_after_paste(world: &mut E2eWorld) -> Result<()> {
+pub(crate) fn return_after_paste(world: &mut E2eWorld) -> Result<()> {
     let hands_free = world.hands_free.as_ref().context("listening is not on")?;
     let pasted = hands_free.position(|e| matches!(e, Event::Pasted(_)));
     let entered = hands_free.position(|e| *e == Event::ReturnPressed);

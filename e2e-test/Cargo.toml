@@ -12,6 +12,10 @@ workspace = true
 path = "src/lib.rs"
 crate-type = ["lib"]
 
+[[bin]]
+name = "tcc-probe"
+path = "src/bin/tcc_probe.rs"
+
 [[test]]
 name = "cucumber_e2e"
 harness = false
@@ -27,6 +31,7 @@ cucumber = "=0.23.0"
 regex = "=1.12.3"
 
 [dev-dependencies]
+voicepuncher-test-steps = { path = "../test-steps" }
 env_logger = "=0.11.10"
 log = "=0.4.29"
 voicepuncher-command-spotting = { path = "../command-spotting" }

@@ -29,6 +29,8 @@ use voicepuncher::adapters::secondary::loginitem::macos::MacOsLoginItem;
 use voicepuncher::config::Config;
 use voicepuncher::core::application::{InputDevices, LoginItem, LoginItemStatus};
 
+use voicepuncher_test_steps::required_env;
+
 use crate::{main_thread, Test};
 
 pub const TESTS: &[Test] = &[
@@ -49,7 +51,7 @@ pub const TESTS: &[Test] = &[
         should_mark_a_refused_value_and_leave_the_file_unchanged,
     ),
     (
-        "should_bring_the_open_window_to_the_front_instead_of_a_second_one",
+        "needs_desktop::should_bring_the_open_window_to_the_front_instead_of_a_second_one",
         should_bring_the_open_window_to_the_front_instead_of_a_second_one,
     ),
     (
@@ -73,7 +75,7 @@ pub const TESTS: &[Test] = &[
 
 /// The configuration file every window test starts from.
 const RIGHT_COMMAND: &str = "# my hotkey\n[hotkey]\nkey = \"RightCommand\"\nmin_press_ms = 150\n";
-/// Where `should_draw_every_tab` writes its pictures; unset, it draws nothing.
+/// Where `should_draw_every_tab` writes its pictures; unset, a temporary folder.
 const SNAPSHOT_DIR: &str = "VOICEPUNCHER_SETTINGS_SNAPSHOT";
 
 /// Counts what the window's saves told the app to apply.
@@ -290,20 +292,10 @@ fn should_register_the_login_item_when_the_switch_turns_on_without_a_save() {
     form.window.close();
 }
 
-/// Showing a window takes the screen: only with `VOICEPUNCHER_WINDOWS_IT` set.
-fn windows_allowed() -> bool {
-    if std::env::var("VOICEPUNCHER_WINDOWS_IT").is_err() {
-        eprintln!("GATED: VOICEPUNCHER_WINDOWS_IT not set, skipping");
-        return false;
-    }
-    true
-}
-
+/// Showing a window takes the screen: only the it-real stage runs it (`needs_desktop`).
 fn should_bring_the_open_window_to_the_front_instead_of_a_second_one() {
-    if !windows_allowed() {
-        return;
-    }
     // Given
+    required_env("VOICEPUNCHER_DESKTOP_IT");
     let folder = tempfile::tempdir().unwrap();
     std::fs::write(folder.path().join("config.toml"), RIGHT_COMMAND).unwrap();
     let mtm = main_thread();
@@ -318,13 +310,12 @@ fn should_bring_the_open_window_to_the_front_instead_of_a_second_one() {
     first.window.close();
 }
 
-/// Draws each tab into `$VOICEPUNCHER_SETTINGS_SNAPSHOT/<tab>.png`, to compare the window
-/// with the design; does nothing without that folder.
+/// Draws each tab into a picture `<tab>.png`, in `$VOICEPUNCHER_SETTINGS_SNAPSHOT` to compare
+/// the window with the design, else in a temporary folder; every picture is written.
 fn should_draw_every_tab() {
-    let Some(dir) = std::env::var_os(SNAPSHOT_DIR).map(PathBuf::from) else {
-        eprintln!("GATED: {SNAPSHOT_DIR} not set, skipping");
-        return;
-    };
+    let scratch = tempfile::tempdir().unwrap();
+    let dir =
+        std::env::var_os(SNAPSHOT_DIR).map_or_else(|| scratch.path().to_owned(), PathBuf::from);
     let folder = tempfile::tempdir().unwrap();
     let (_window, form) = open_form(folder.path(), &AppliedConfigs::default());
     std::fs::create_dir_all(&dir).unwrap();
@@ -357,6 +348,8 @@ fn should_draw_every_tab() {
         .unwrap();
         let path = dir.join(format!("{}.png", tab.tab.title().to_lowercase()));
         std::fs::write(&path, png.to_vec()).unwrap();
+        let written = std::fs::metadata(&path).unwrap().len();
+        assert!(written > 0, "{} is empty", path.display());
     }
     form.window.close();
 }

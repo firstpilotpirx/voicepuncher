@@ -333,15 +333,13 @@ fn voice_control_off(world: &mut IntegrationWorld) {
     run(world).voice_control = false;
 }
 
-#[given("voice control is turned on")]
-fn voice_control_on(world: &mut IntegrationWorld) {
+pub(crate) fn voice_control_on(world: &mut IntegrationWorld) {
     run(world).voice_control = true;
 }
 
 #[given("no dictation runs")]
 fn no_dictation_given(_world: &mut IntegrationWorld) {}
 
-#[given("listening is on")]
 pub(crate) fn listening_on_given(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     run.voice_control = true;
@@ -378,8 +376,7 @@ fn phrase_said(world: &mut IntegrationWorld, phrase: String) -> Result<()> {
     run.say_alone(&phrase)
 }
 
-#[when("the app starts")]
-fn app_starts(world: &mut IntegrationWorld) {
+pub(crate) fn app_starts(world: &mut IntegrationWorld) {
     let run = run(world);
     run.start_when();
     run.inputs = Some(run.start_pipeline());
@@ -536,8 +533,7 @@ fn service_went_away(world: &mut IntegrationWorld) -> Result<()> {
 }
 
 #[given("the command spotting service went away and is back")]
-#[given("the command spotting service went away during it and is back")]
-fn service_went_away_and_is_back(world: &mut IntegrationWorld) -> Result<()> {
+pub(crate) fn service_went_away_and_is_back(world: &mut IntegrationWorld) -> Result<()> {
     service_went_away(world)?;
     let run = run(world);
     run.send(PipelineInput::SpottingBack)?;
@@ -574,8 +570,7 @@ fn nothing_pasted_before_end(world: &mut IntegrationWorld) -> Result<()> {
     run.wait_since_mark(|e| matches!(e, Event::Pasted(_)))
 }
 
-#[then("no listening sound played after the app started")]
-fn no_listening_sound_after_start(world: &mut IntegrationWorld) -> Result<()> {
+pub(crate) fn no_listening_sound_after_start(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     std::thread::sleep(SETTLE);
     let events = run.events();
@@ -669,8 +664,7 @@ fn no_sound(world: &mut IntegrationWorld) -> Result<()> {
     run(world).never_since_mark(|e| matches!(e, Event::Sound(_)), "a sound played")
 }
 
-#[then("the sentence is pasted into the focused app")]
-fn sentence_pasted(world: &mut IntegrationWorld) -> Result<()> {
+pub(crate) fn sentence_pasted(world: &mut IntegrationWorld) -> Result<()> {
     let pasted = run(world).pasted()?;
     if !pasted.contains(SENTENCE) {
         bail!("pasted {pasted:?}, expected the sentence {SENTENCE:?}");
@@ -743,8 +737,7 @@ fn restarted_with_another_sentence(world: &mut IntegrationWorld, restart: String
 }
 
 #[then("only the other sentence is pasted")]
-#[then("only the other sentence is pasted, its first words included")]
-fn only_other_sentence(world: &mut IntegrationWorld) -> Result<()> {
+pub(crate) fn only_other_sentence(world: &mut IntegrationWorld) -> Result<()> {
     let pasted = run(world).pasted()?;
     let command_word = pasted
         .to_lowercase()
@@ -975,8 +968,7 @@ fn no_text_pasted(world: &mut IntegrationWorld) -> Result<()> {
     run(world).never_since_mark(|e| matches!(e, Event::Pasted(_)), "text was pasted")
 }
 
-#[then("the Return key is pressed in the focused app")]
-fn return_pressed(world: &mut IntegrationWorld) -> Result<()> {
+pub(crate) fn return_pressed(world: &mut IntegrationWorld) -> Result<()> {
     run(world).wait_for(|e| *e == Event::ReturnPressed)?;
     Ok(())
 }
@@ -1041,8 +1033,7 @@ fn text_pasted_first(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("the Return key is pressed after it")]
-fn return_after_paste(world: &mut IntegrationWorld) -> Result<()> {
+pub(crate) fn return_after_paste(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     let pasted_at = run.wait_for(|e| matches!(e, Event::Pasted(_)))?;
     let return_at = run.wait_for(|e| *e == Event::ReturnPressed)?;
@@ -1081,8 +1072,13 @@ fn stay_away(run: &mut VoiceRun) -> Result<()> {
     run.send(PipelineInput::SpottingStillAway)
 }
 
-#[given("the overlay is hidden")]
-fn overlay_hidden_given(_world: &mut IntegrationWorld) {}
+pub(crate) fn overlay_hidden_given(world: &mut IntegrationWorld) -> Result<()> {
+    let events = run(world).events();
+    if events.contains(&SIGN_SHOWN) {
+        bail!("the overlay already shows a sign: {events:?}");
+    }
+    Ok(())
+}
 
 #[given("the overlay shows the recording sign")]
 fn overlay_recording_given(world: &mut IntegrationWorld) -> Result<()> {
@@ -1090,8 +1086,7 @@ fn overlay_recording_given(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
-#[given("the overlay shows that voice commands do not work")]
-fn sign_shown_given(world: &mut IntegrationWorld) -> Result<()> {
+pub(crate) fn sign_shown_given(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     stay_away(run)?;
     run.wait_for(|e| *e == SIGN_SHOWN)?;

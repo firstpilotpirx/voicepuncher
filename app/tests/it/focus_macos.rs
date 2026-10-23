@@ -3,44 +3,41 @@
 // must report as an error (the app then pastes at once), never panic on.
 
 use voicepuncher::adapters::secondary::focus::macos::MacOsFocusProbe;
+use voicepuncher::adapters::secondary::permissions::macos::process_is_trusted_for_accessibility;
 use voicepuncher::core::application::FocusProbe;
+use voicepuncher_test_steps::required_env;
 
 #[test]
-fn should_answer_without_panicking() {
-    // Given
-    let probe = MacOsFocusProbe::new();
-
+fn should_answer_with_an_ax_error_unless_trusted_for_accessibility() {
     // When
-    let result = probe.focused_element();
-
+    let answer = MacOsFocusProbe::new().focused_element();
     // Then
-    match result {
-        Ok(Some(element)) => assert!(!element.role.is_empty()),
-        Ok(None) => {}
+    match answer {
         Err(e) => assert!(e.to_string().starts_with("AX error"), "{e}"),
+        Ok(element) => assert!(
+            process_is_trusted_for_accessibility()
+                && element.as_ref().is_none_or(|e| !e.role.is_empty()),
+            "{element:?}"
+        ),
     }
 }
 
-#[test]
-fn should_report_the_role_of_the_focused_element() {
-    if std::env::var("VOICEPUNCHER_REAL_AX_IT").is_err() {
-        eprintln!("GATED: VOICEPUNCHER_REAL_AX_IT not set, skipping");
-        return;
+mod needs_desktop {
+    use super::*;
+
+    #[test]
+    fn should_report_the_role_of_the_focused_element() {
+        // Given
+        required_env("VOICEPUNCHER_DESKTOP_IT");
+        let probe = MacOsFocusProbe::new();
+
+        // When
+        let element = probe
+            .focused_element()
+            .expect("Accessibility granted to the test binary?");
+
+        // Then
+        let element = element.expect("some element has keyboard focus while the test runs");
+        assert!(element.role.starts_with("AX"), "{element:?}");
     }
-
-    // Given
-    let probe = MacOsFocusProbe::new();
-
-    // When
-    let element = probe
-        .focused_element()
-        .expect("Accessibility granted to the test binary?");
-
-    // Then
-    let element = element.expect("some element has keyboard focus while the test runs");
-    assert!(element.role.starts_with("AX"), "{element:?}");
-    eprintln!(
-        "focused: {element} (in web content: {})",
-        element.in_web_content
-    );
 }

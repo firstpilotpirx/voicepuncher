@@ -96,36 +96,3 @@ fn should_load_valid_16k_mono_16bit_wav() {
     assert_eq!(audio.samples().len(), samples.len());
     assert!(!audio.is_empty());
 }
-
-#[test]
-fn should_skip_gracefully_when_test_wav_absent() {
-    // Given
-    let path = if let Ok(p) = std::env::var("VOICEPUNCHER_TEST_WAV") {
-        p
-    } else {
-        eprintln!("GATED: VOICEPUNCHER_TEST_WAV not set, skipping");
-        return;
-    };
-    // When
-    let mut recorder = FileSystemAudioRecorder::new(PathBuf::from(path));
-    let result = recorder.start();
-    // Then
-    assert!(result.is_ok());
-}
-
-#[test]
-fn should_load_wav_and_return_audio_buffer() {
-    // Given
-    let path = if let Ok(p) = std::env::var("VOICEPUNCHER_TEST_WAV") {
-        p
-    } else {
-        eprintln!("GATED: VOICEPUNCHER_TEST_WAV not set, skipping");
-        return;
-    };
-    let mut recorder = FileSystemAudioRecorder::new(PathBuf::from(path));
-    recorder.start().expect("start should succeed");
-    // When
-    let audio = recorder.stop().expect("stop should return audio buffer");
-    // Then
-    assert!(!audio.is_empty());
-}

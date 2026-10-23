@@ -190,28 +190,14 @@ mod tests {
     }
 
     #[test]
-    fn should_not_panic_when_playing_stop_sound_with_valid_name() {
-        // Given
-        let player = MacosSoundPlayer::new("", "Pop", "");
-        // When / Then
-        player.play_stop();
-    }
-
-    #[test]
-    fn should_not_panic_when_both_sounds_are_empty() {
+    fn should_play_nothing_when_both_sounds_are_empty() {
         // Given
         let player = MacosSoundPlayer::new("", "", "");
-        // When / Then
+        // When
         player.play_start();
         player.play_stop();
-    }
-
-    #[test]
-    fn should_not_panic_when_sound_name_does_not_exist() {
-        // Given — unknown name; afplay will fail but we ignore errors
-        let player = MacosSoundPlayer::new("NonExistentSoundXYZ", "", "");
-        // When / Then
-        player.play_start();
+        // Then
+        assert_eq!(afplay_children(), Vec::<String>::new());
     }
 
     /// The children of this test process that still play or wait to be reaped: `afplay`, or a

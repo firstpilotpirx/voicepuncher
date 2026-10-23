@@ -241,12 +241,13 @@ mod tests {
 
     #[test]
     fn should_trace_nothing_without_an_archive() {
-        // Given a recorder that fails the test when asked for its recording
-        let mut pipeline = pipeline_over(MockAudioRecorder::new());
+        // Given, then: the recorder is never asked for its recording
+        let mut recorder = MockAudioRecorder::new();
+        recorder.expect_recording().never();
+        let mut pipeline = pipeline_over(recorder);
         let dictation = pipeline.new_dictation(DictationStart::HotkeyToggled);
         // When
         pipeline.close_trace(dictation, DictationOutcome::Pasted, &[]);
-        // Then the recorder was never asked for its recording
     }
 
     #[test]

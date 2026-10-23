@@ -262,8 +262,7 @@ fn whole_sentence_pasted(world: &mut E2eWorld, command_word: String) -> Result<(
     Ok(())
 }
 
-#[then("only the other sentence is pasted, its first words included")]
-fn only_other_sentence(world: &mut E2eWorld) -> Result<()> {
+pub(crate) fn only_other_sentence(world: &mut E2eWorld) -> Result<()> {
     let pasted = session_of(world)?.last_pasted()?;
     let pasted_words = words(&pasted);
     let earlier_kept = words(BEFORE_RESTART)

@@ -3286,6 +3286,7 @@ dependencies = [
  "url",
  "voicepuncher-copy-pool",
  "voicepuncher-e2e-test",
+ "voicepuncher-test-steps",
  "walkdir",
 ]
 
@@ -3314,6 +3315,7 @@ dependencies = [
  "tungstenite",
  "ureq",
  "voicepuncher-copy-pool",
+ "voicepuncher-test-steps",
 ]
 
 [[package]]
@@ -3343,6 +3345,14 @@ dependencies = [
  "voicepuncher",
  "voicepuncher-command-spotting",
  "voicepuncher-copy-pool",
+ "voicepuncher-test-steps",
+]
+
+[[package]]
+name = "voicepuncher-test-steps"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
 ]
 
 [[package]]

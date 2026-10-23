@@ -18,6 +18,7 @@ use voicepuncher::config::TranscriptionCfg;
 use voicepuncher::core::application::Transcriber;
 use voicepuncher::core::domain::AudioBuffer16k;
 use voicepuncher_copy_pool::ServiceAddress;
+use voicepuncher_test_steps::required_env;
 
 struct StubReply {
     status: u16,
@@ -609,26 +610,15 @@ fn should_transcribe_on_first_attempt_after_service_reset_idle_connection() {
     );
 }
 
-/// The real service's URL and the corpus's first recording with its manifest entry, or `None`
-/// (with a GATED message) when the service URL, the corpus or its manifest is missing.
-fn real_service_and_first_corpus_sample() -> Option<(String, serde_json::Value, AudioBuffer16k)> {
-    let Ok(base_url) = std::env::var("VOICEPUNCHER_TRANSCRIPTION_URL") else {
-        eprintln!("GATED: VOICEPUNCHER_TRANSCRIPTION_URL not set, skipping");
-        return None;
-    };
-    let Ok(corpus) = std::env::var("VOICEPUNCHER_BENCH_CORPUS") else {
-        eprintln!("GATED: VOICEPUNCHER_BENCH_CORPUS not set, skipping");
-        return None;
-    };
-    let Ok(manifest) = std::fs::read_to_string(PathBuf::from(&corpus).join("manifest.jsonl"))
-    else {
-        eprintln!("GATED: no manifest.jsonl in VOICEPUNCHER_BENCH_CORPUS, skipping");
-        return None;
-    };
+/// The real service's URL and the corpus's first recording with its manifest entry.
+fn real_service_and_first_corpus_sample() -> (String, serde_json::Value, AudioBuffer16k) {
+    let base_url = required_env("VOICEPUNCHER_TRANSCRIPTION_URL");
+    let corpus = required_env("VOICEPUNCHER_BENCH_CORPUS");
+    let manifest = std::fs::read_to_string(PathBuf::from(&corpus).join("manifest.jsonl")).unwrap();
     let first: serde_json::Value = serde_json::from_str(manifest.lines().next().unwrap()).unwrap();
     let wav = PathBuf::from(&corpus).join(first["path"].as_str().unwrap());
     let audio = FileSystemAudioRecorder::load(&wav).unwrap();
-    Some((base_url, first, audio))
+    (base_url, first, audio)
 }
 
 fn transcribe_through_real_service(base_url: &str, audio: &AudioBuffer16k) -> String {
@@ -666,23 +656,6 @@ fn under_high_noise(speech: &AudioBuffer16k) -> AudioBuffer16k {
         })
         .collect();
     AudioBuffer16k::new(noisy)
-}
-
-#[test]
-fn should_transcribe_corpus_sample_through_real_service() {
-    // Given — gated on a running service and the corpus
-    let Some((base_url, first, audio)) = real_service_and_first_corpus_sample() else {
-        return;
-    };
-    // When
-    let text = transcribe_through_real_service(&base_url, &audio).to_lowercase();
-    // Then
-    let reference = first["reference"].as_str().unwrap();
-    let last_word = reference.split_whitespace().last().unwrap();
-    assert!(
-        text.contains(last_word),
-        "expected '{last_word}' in '{text}'"
-    );
 }
 
 /// Answers the requests in turn with `answers` (the last one repeats) and passes each
@@ -766,20 +739,6 @@ fn should_keep_a_transcript_of_a_fixed_language_whatever_the_service_detects() {
     assert_eq!(transcript.as_deref(), Some("네, 좋아요."));
     next_request(&requests);
     assert!(requests.recv_timeout(NO_MORE_REQUESTS_WITHIN).is_err());
-}
-
-#[test]
-fn should_transcribe_the_same_noisy_recording_to_the_same_text_twice() {
-    // Given — gated on a running service and the corpus
-    let Some((base_url, _, speech)) = real_service_and_first_corpus_sample() else {
-        return;
-    };
-    let noisy = under_high_noise(&speech);
-    // When
-    let first = transcribe_through_real_service(&base_url, &noisy);
-    let second = transcribe_through_real_service(&base_url, &noisy);
-    // Then
-    assert_eq!(first, second);
 }
 
 /// What one fake copy does with one request.
@@ -1217,4 +1176,39 @@ fn should_transcribe_the_first_of_two_waiting_requests_first_when_its_wait_ran_o
         [body_length(FIRST_SAMPLES), body_length(SECOND_SAMPLES)],
         "the copy took the second request before the first one"
     );
+}
+
+mod needs_stt {
+    use super::*;
+
+    mod needs_corpus {
+        use super::*;
+
+        #[test]
+        fn should_transcribe_corpus_sample_through_real_service() {
+            // Given a running service and the corpus
+            let (base_url, first, audio) = real_service_and_first_corpus_sample();
+            // When
+            let text = transcribe_through_real_service(&base_url, &audio).to_lowercase();
+            // Then
+            let reference = first["reference"].as_str().unwrap();
+            let last_word = reference.split_whitespace().last().unwrap();
+            assert!(
+                text.contains(last_word),
+                "expected '{last_word}' in '{text}'"
+            );
+        }
+
+        #[test]
+        fn should_transcribe_the_same_noisy_recording_to_the_same_text_twice() {
+            // Given a running service and the corpus
+            let (base_url, _, speech) = real_service_and_first_corpus_sample();
+            let noisy = under_high_noise(&speech);
+            // When
+            let first = transcribe_through_real_service(&base_url, &noisy);
+            let second = transcribe_through_real_service(&base_url, &noisy);
+            // Then
+            assert_eq!(first, second);
+        }
+    }
 }

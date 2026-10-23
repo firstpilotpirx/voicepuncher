@@ -14,6 +14,7 @@ use voicepuncher::core::domain::VoiceCommand;
 use voicepuncher_e2e_test::concurrency::map_concurrently;
 use voicepuncher_e2e_test::speech::read_wav;
 use voicepuncher_e2e_test::voice_commands::carried_out_by_app;
+use voicepuncher_test_steps::required_env;
 
 const SAMPLE_RATE_HZ: f32 = 16_000.0;
 /// Recording kept around a labelled stretch, so its first and last sounds are whole.
@@ -61,23 +62,16 @@ struct Session {
     forms: Vec<Form>,
 }
 
-fn sessions() -> Option<(String, Vec<Session>)> {
-    let (Ok(url), Ok(root)) = (
-        std::env::var("VOICEPUNCHER_COMMAND_SPOTTING_URL"),
-        std::env::var("VOICEPUNCHER_VOICE_SAMPLES"),
-    ) else {
-        eprintln!(
-            "GATED: VOICEPUNCHER_COMMAND_SPOTTING_URL or VOICEPUNCHER_VOICE_SAMPLES not set, skipping"
-        );
-        return None;
-    };
+fn sessions() -> (String, Vec<Session>) {
+    let url = required_env("VOICEPUNCHER_COMMAND_SPOTTING_URL");
+    let root = required_env("VOICEPUNCHER_VOICE_SAMPLES");
     let mut dirs: Vec<PathBuf> = std::fs::read_dir(&root)
-        .ok()?
+        .unwrap()
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| p.join("forms.jsonl").is_file() && p.with_extension("wav").is_file())
         .collect();
     dirs.sort();
-    Some((url, dirs.iter().map(|dir| load(dir)).collect()))
+    (url, dirs.iter().map(|dir| load(dir)).collect())
 }
 
 fn load(dir: &Path) -> Session {
@@ -126,44 +120,52 @@ fn heard(url: &str, session: &Session, form: &Form) -> Vec<String> {
         .collect()
 }
 
-#[test]
-fn should_carry_out_every_recorded_way_of_saying_the_commands() {
-    let Some((url, all)) = sessions() else { return };
-    let checked: Vec<(&Session, &Form)> = all
-        .iter()
-        .flat_map(|session| {
-            session
-                .forms
+mod needs_kws {
+    use super::*;
+
+    mod needs_voice_samples {
+        use super::*;
+
+        #[test]
+        fn should_carry_out_every_recorded_way_of_saying_the_commands() {
+            let (url, all) = sessions();
+            let checked: Vec<(&Session, &Form)> = all
                 .iter()
-                .filter(|f| !f.unclear && listed(FROZEN, session, f).is_none())
-                .map(move |form| (session, form))
-        })
-        .collect();
-    let carried_out = map_concurrently(&checked, CONCURRENT_FORMS, |(session, form)| {
-        heard(&url, session, form)
-    });
-    let counted = checked.len();
-    let mut wrong = Vec::new();
-    for ((session, form), commands) in checked.iter().zip(carried_out) {
-        let known = listed(KNOWN_WRONG, session, form);
-        let report = format!(
-            "{} at {:.2}s, {}, said {:?} ({}): carried out {commands:?}, expected {:?}",
-            session.name, form.start, form.state, form.said, form.note, form.commands
-        );
-        match (commands == form.commands, known) {
-            (true, None) => {}
-            (false, None) => wrong.push(report),
-            (false, Some(why)) => eprintln!("known wrong ({why}): {report}"),
-            (true, Some(why)) => wrong.push(format!(
-                "{report} — goes right now: remove it from KNOWN_WRONG ({why})"
-            )),
+                .flat_map(|session| {
+                    session
+                        .forms
+                        .iter()
+                        .filter(|f| !f.unclear && listed(FROZEN, session, f).is_none())
+                        .map(move |form| (session, form))
+                })
+                .collect();
+            let carried_out = map_concurrently(&checked, CONCURRENT_FORMS, |(session, form)| {
+                heard(&url, session, form)
+            });
+            let counted = checked.len();
+            let mut wrong = Vec::new();
+            for ((session, form), commands) in checked.iter().zip(carried_out) {
+                let known = listed(KNOWN_WRONG, session, form);
+                let report = format!(
+                    "{} at {:.2}s, {}, said {:?} ({}): carried out {commands:?}, expected {:?}",
+                    session.name, form.start, form.state, form.said, form.note, form.commands
+                );
+                match (commands == form.commands, known) {
+                    (true, None) => (),
+                    (false, None) => wrong.push(report),
+                    (false, Some(why)) => eprintln!("known wrong ({why}): {report}"),
+                    (true, Some(why)) => wrong.push(format!(
+                        "{report} — goes right now: remove it from KNOWN_WRONG ({why})"
+                    )),
+                }
+            }
+            assert!(counted > 0, "no labelled forms found");
+            assert!(
+                wrong.is_empty(),
+                "{} of {counted} recorded forms went wrong:\n{}",
+                wrong.len(),
+                wrong.join("\n")
+            );
         }
     }
-    assert!(counted > 0, "no labelled forms found");
-    assert!(
-        wrong.is_empty(),
-        "{} of {counted} recorded forms went wrong:\n{}",
-        wrong.len(),
-        wrong.join("\n")
-    );
 }

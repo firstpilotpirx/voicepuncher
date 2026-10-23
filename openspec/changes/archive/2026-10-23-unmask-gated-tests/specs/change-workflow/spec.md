@@ -46,7 +46,7 @@ The tests that use the real microphone, the Accessibility API and windows on the
 - **GIVEN** the process running the full check lacks Accessibility permission
 - **WHEN** the full check reaches the desktop stage
 - **THEN** the stage runs no desktop test and names Accessibility as missing
-- **AND** the stage table shows the stage as skipped with the number of tests left out
+- **AND** the stage table shows the stage as skipped and the run prints the number of tests left out
 - **AND** the run goes on and the stage is not recorded as a pass
 
 #### Scenario: Key presses into the focused app stay out of the full check

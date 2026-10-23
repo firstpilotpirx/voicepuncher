@@ -94,8 +94,7 @@ fn speech_recognition_stalls(world: &mut E2eWorld) -> Result<()> {
 }
 
 #[given("the command spotting service went away and was started again")]
-#[given("the command spotting service went away during it and is back")]
-async fn command_spotting_restarted(world: &mut E2eWorld) -> Result<()> {
+pub(crate) async fn command_spotting_restarted(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let services = scenario_services(world)?;
         let pid = services
@@ -137,8 +136,7 @@ fn back_after_loss(events: &[Event]) -> Option<usize> {
         .map(|back| lost + back)
 }
 
-#[given("the overlay is hidden")]
-fn overlay_hidden(world: &mut E2eWorld) -> Result<()> {
+pub(crate) fn overlay_hidden(world: &mut E2eWorld) -> Result<()> {
     let events = hands_free(world)?.events();
     if events.contains(&Event::CommandsUnavailableShown) {
         bail!("the overlay already shows a sign: {events:?}");
@@ -148,8 +146,7 @@ fn overlay_hidden(world: &mut E2eWorld) -> Result<()> {
 
 /// Holds what restarts the command spotting service, kills the service and lets it start
 /// again only after `STAYS_AWAY`; waits until the app has it back.
-#[when("the command spotting service stays away for longer than 5 seconds")]
-async fn command_spotting_stays_away(world: &mut E2eWorld) -> Result<()> {
+pub(crate) async fn command_spotting_stays_away(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let services = scenario_services(world)?;
         let supervisor = services
@@ -256,8 +253,7 @@ fn dictation_pasted(world: &mut E2eWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("the Return key is pressed in the focused app")]
-fn return_pressed(world: &mut E2eWorld) -> Result<()> {
+pub(crate) fn return_pressed(world: &mut E2eWorld) -> Result<()> {
     let events = hands_free(world)?.events();
     ensure!(
         events.contains(&Event::ReturnPressed),
@@ -267,8 +263,7 @@ fn return_pressed(world: &mut E2eWorld) -> Result<()> {
 }
 
 /// The one listening-on sound is the app's start; the outage played none.
-#[then("no listening sound played after the app started")]
-fn no_listening_sound_after_start(world: &mut E2eWorld) -> Result<()> {
+pub(crate) fn no_listening_sound_after_start(world: &mut E2eWorld) -> Result<()> {
     let events = hands_free(world)?.events();
     let on_sounds = events
         .iter()
@@ -281,8 +276,7 @@ fn no_listening_sound_after_start(world: &mut E2eWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("the overlay shows that voice commands do not work")]
-fn sign_shown(world: &mut E2eWorld) -> Result<()> {
+pub(crate) fn sign_shown(world: &mut E2eWorld) -> Result<()> {
     let events = hands_free(world)?.events();
     let lost = events.iter().position(|e| *e == Event::SpottingLost);
     let shown = events

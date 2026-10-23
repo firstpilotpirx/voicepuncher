@@ -220,8 +220,7 @@ fn app_started_ready(world: &mut E2eWorld) -> Result<()> {
     expect_success(world)
 }
 
-#[then("the raw transcript is pasted")]
-fn raw_pasted(world: &mut E2eWorld) -> Result<()> {
+pub(crate) fn raw_pasted(world: &mut E2eWorld) -> Result<()> {
     expect_raw_transcript_pasted(world)
 }
 

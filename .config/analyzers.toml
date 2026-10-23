@@ -12,7 +12,7 @@ warn = [
 ]
 # Not counted under the test paths (clippy.toml allows them in #[test] and #[cfg(test)] code too)
 test_only_allowed = ["clippy::unwrap_used", "clippy::expect_used", "clippy::panic"]
-test_paths = ["analyzers/tests/", "app/tests/", "command-spotting/tests/", "copy-pool/tests/", "e2e-test/"]
+test_paths = ["analyzers/tests/", "app/tests/", "command-spotting/tests/", "copy-pool/tests/", "e2e-test/", "test-steps/"]
 
 # Turned off for the project, each with its reason
 [clippy.allow]
@@ -26,7 +26,7 @@ test_paths = ["analyzers/tests/", "app/tests/", "command-spotting/tests/", "copy
 "clippy::significant_drop_tightening" = "nursery lint with known false positives on guards held on purpose"
 
 [metrics]
-members = ["analyzers", "app", "command-spotting", "copy-pool", "e2e-test"]
+members = ["analyzers", "app", "command-spotting", "copy-pool", "e2e-test", "test-steps"]
 # A function over this cyclomatic complexity is listed in .config/analyzers/metrics.toml (cognitive complexity is
 # gated by clippy's size budgets)
 cyclomatic_threshold = 10

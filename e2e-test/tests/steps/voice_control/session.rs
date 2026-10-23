@@ -25,7 +25,7 @@ use voicepuncher::core::domain::{AudioBuffer16k, CleanedText, FailureNotice, Voi
 use voicepuncher_e2e_test::speech::read_wav;
 use voicepuncher_e2e_test::voice_commands::spoken_by;
 
-mod speech_after_start;
+pub(crate) mod speech_after_start;
 mod start_cue;
 
 pub(super) use speech_after_start::{recorded_form, until_last_sound, users_quiet_restart};

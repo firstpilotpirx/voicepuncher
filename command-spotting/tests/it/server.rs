@@ -1,10 +1,9 @@
 //! The real service on a loopback port, with a speech recognition service that never
-//! answers: the connection must keep answering the app. Gated on the model paths the
-//! justfile exports.
+//! answers: the connection must keep answering the app. Needs the models the justfile finds
+//! (`needs_kws_models`).
 
 use std::io::Read;
 use std::net::{TcpListener, TcpStream};
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -13,6 +12,7 @@ use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Message, WebSocket};
 
 use crate::common;
+use crate::kws_models::kws_models;
 
 use voicepuncher_command_spotting::engine::{Engine, EngineCfg, SAMPLE_RATE};
 use voicepuncher_command_spotting::server;
@@ -56,19 +56,11 @@ fn speech_recognition_that_never_answers() -> u16 {
     port
 }
 
-fn engine_cfg(transcription_url: String) -> Option<EngineCfg> {
-    let (Ok(model_dir), Ok(vad_model)) = (
-        std::env::var("VOICEPUNCHER_KWS_MODEL_DIR"),
-        std::env::var("VOICEPUNCHER_KWS_VAD_MODEL"),
-    ) else {
-        eprintln!(
-            "GATED: VOICEPUNCHER_KWS_MODEL_DIR / VOICEPUNCHER_KWS_VAD_MODEL not set, skipping"
-        );
-        return None;
-    };
-    Some(EngineCfg {
-        model_dir: PathBuf::from(model_dir),
-        vad_model: PathBuf::from(vad_model),
+fn engine_cfg(transcription_url: String) -> EngineCfg {
+    let (model_dir, vad_model) = kws_models();
+    EngineCfg {
+        model_dir,
+        vad_model,
         threads: 2,
         min_silence_secs: 0.3,
         save_speech_dir: None,
@@ -76,17 +68,17 @@ fn engine_cfg(transcription_url: String) -> Option<EngineCfg> {
         transcription_url: Some(transcription_url),
         max_command_secs: 3.0,
         confirmation_deadline: CONFIRMATION_DEADLINE,
-    })
+    }
 }
 
 /// The service on a free port, confirming with the speech recognition service on `stt_port`.
-fn start_service(stt_port: u16) -> Option<u16> {
-    let cfg = engine_cfg(format!("http://127.0.0.1:{stt_port}/v1"))?;
+fn start_service(stt_port: u16) -> u16 {
+    let cfg = engine_cfg(format!("http://127.0.0.1:{stt_port}/v1"));
     let engine = Arc::new(Engine::load(&cfg).expect("models load"));
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     std::thread::spawn(move || server::serve(listener, engine));
-    Some(port)
+    port
 }
 
 fn connect(port: u16) -> WebSocket<MaybeTlsStream<TcpStream>> {
@@ -188,40 +180,9 @@ fn longest_pong_gap(
     longest.max(last_answer.elapsed())
 }
 
-#[test]
-fn should_keep_answering_the_app_while_a_confirmation_hangs() {
-    // Given
-    lines();
-    let Some(port) = start_service(speech_recognition_that_never_answers()) else {
-        return;
-    };
-    let mut socket = connect(port);
-    let audio = speech_then_silence();
-    let speech = Duration::from_secs_f32(audio.len() as f32 / SAMPLE_RATE as f32);
-    // When the app keeps streaming past the wait for the confirmation
-    let gap = longest_pong_gap(&mut socket, &audio, speech + WATCH_PAST_SPEECH);
-    // Then
-    assert!(
-        gap <= MAX_PONG_GAP,
-        "the service went {gap:?} without answering a ping"
-    );
-    let given_up: Vec<String> = lines()
-        .0
-        .lock()
-        .unwrap()
-        .iter()
-        .filter(|l| l.contains("given up after"))
-        .cloned()
-        .collect();
-    assert!(
-        !given_up.is_empty(),
-        "no hung confirmation was logged as given up"
-    );
-}
-
 /// The code and reason the service closes the connection with, once `sent` went out.
-fn closed_after(sent: &[Message]) -> Option<(CloseCode, String)> {
-    let port = start_service(speech_recognition_that_never_answers())?;
+fn closed_after(sent: &[Message]) -> (CloseCode, String) {
+    let port = start_service(speech_recognition_that_never_answers());
     let mut socket = handshake(port);
     for message in sent {
         socket.send(message.clone()).unwrap();
@@ -229,7 +190,7 @@ fn closed_after(sent: &[Message]) -> Option<(CloseCode, String)> {
     let deadline = Instant::now() + CLOSE_LIMIT;
     while Instant::now() < deadline {
         match socket.read() {
-            Ok(Message::Close(Some(frame))) => return Some((frame.code, frame.reason.to_string())),
+            Ok(Message::Close(Some(frame))) => return (frame.code, frame.reason.to_string()),
             Ok(Message::Close(None)) => {
                 panic!("the service closed the connection without a reason")
             }
@@ -241,56 +202,78 @@ fn closed_after(sent: &[Message]) -> Option<(CloseCode, String)> {
     panic!("the service did not close the connection within {CLOSE_LIMIT:?}")
 }
 
-#[test]
-fn should_refuse_an_app_of_another_protocol_version() {
-    // When
-    let Some((code, reason)) = closed_after(&[Message::text(r#"{"type":"hello","version":1}"#)])
-    else {
-        return;
-    };
-    // Then
-    assert_eq!(code, CloseCode::Policy);
-    assert!(
-        reason.contains("version 1") && reason.contains("version 2"),
-        "{reason}"
-    );
-}
+mod needs_kws_models {
+    use super::*;
 
-#[test]
-fn should_refuse_an_app_that_does_not_say_its_protocol_version_first() {
-    // When
-    let Some((code, reason)) = closed_after(&[Message::text(r#"{"phrases":["press enter"]}"#)])
-    else {
-        return;
-    };
-    // Then
-    assert_eq!(code, CloseCode::Policy);
-    assert!(
-        reason.contains("version 1") && reason.contains("version 2"),
-        "{reason}"
-    );
-}
+    #[test]
+    fn should_keep_answering_the_app_while_a_confirmation_hangs() {
+        // Given
+        lines();
+        let port = start_service(speech_recognition_that_never_answers());
+        let mut socket = connect(port);
+        let audio = speech_then_silence();
+        let speech = Duration::from_secs_f32(audio.len() as f32 / SAMPLE_RATE as f32);
+        // When the app keeps streaming past the wait for the confirmation
+        let gap = longest_pong_gap(&mut socket, &audio, speech + WATCH_PAST_SPEECH);
+        // Then
+        assert!(
+            gap <= MAX_PONG_GAP,
+            "the service went {gap:?} without answering a ping"
+        );
+        let given_up: Vec<String> = lines()
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|l| l.contains("given up after"))
+            .cloned()
+            .collect();
+        assert!(
+            !given_up.is_empty(),
+            "no hung confirmation was logged as given up"
+        );
+    }
 
-#[test]
-fn should_close_a_malformed_message_with_its_reason() {
-    // When
-    let Some((code, reason)) = closed_after(&[Message::text(HELLO), Message::text("{nonsense")])
-    else {
-        return;
-    };
-    // Then
-    assert_eq!(code, CloseCode::Invalid);
-    assert!(reason.contains("malformed message"), "{reason}");
-}
+    #[test]
+    fn should_refuse_an_app_of_another_protocol_version() {
+        // When
+        let (code, reason) = closed_after(&[Message::text(r#"{"type":"hello","version":1}"#)]);
+        // Then
+        assert_eq!(code, CloseCode::Policy);
+        assert!(
+            reason.contains("version 1") && reason.contains("version 2"),
+            "{reason}"
+        );
+    }
 
-#[test]
-fn should_close_an_audio_frame_of_partial_samples_with_its_reason() {
-    // When
-    let partial = Message::binary(vec![0u8; 5]);
-    let Some((code, reason)) = closed_after(&[Message::text(HELLO), partial]) else {
-        return;
-    };
-    // Then
-    assert_eq!(code, CloseCode::Invalid);
-    assert!(reason.contains("5 bytes"), "{reason}");
+    #[test]
+    fn should_refuse_an_app_that_does_not_say_its_protocol_version_first() {
+        // When
+        let (code, reason) = closed_after(&[Message::text(r#"{"phrases":["press enter"]}"#)]);
+        // Then
+        assert_eq!(code, CloseCode::Policy);
+        assert!(
+            reason.contains("version 1") && reason.contains("version 2"),
+            "{reason}"
+        );
+    }
+
+    #[test]
+    fn should_close_a_malformed_message_with_its_reason() {
+        // When
+        let (code, reason) = closed_after(&[Message::text(HELLO), Message::text("{nonsense")]);
+        // Then
+        assert_eq!(code, CloseCode::Invalid);
+        assert!(reason.contains("malformed message"), "{reason}");
+    }
+
+    #[test]
+    fn should_close_an_audio_frame_of_partial_samples_with_its_reason() {
+        // When
+        let partial = Message::binary(vec![0u8; 5]);
+        let (code, reason) = closed_after(&[Message::text(HELLO), partial]);
+        // Then
+        assert_eq!(code, CloseCode::Invalid);
+        assert!(reason.contains("5 bytes"), "{reason}");
+    }
 }

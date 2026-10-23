@@ -2,6 +2,7 @@
 
 mod common;
 mod engine;
+mod kws_models;
 mod placed_commands;
 mod scripted_hearing;
 mod server;

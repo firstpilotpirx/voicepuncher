@@ -28,8 +28,8 @@ fn heard_alone_then_synced(
     utterance: &str,
     delay: Duration,
     hearing: impl FnOnce(ScriptedHearing, Arc<StreamClock>, usize) -> Arc<dyn Hear>,
-) -> Option<Vec<ServerEvent>> {
-    let cfg = engine_cfg(None)?;
+) -> Vec<ServerEvent> {
+    let cfg = engine_cfg(None);
     let (mut stream, script) = scripted(utterance);
     let said_end = script.last().map_or(0, |w| w.said.end);
     // Long enough for the confirmations to come back while it is fed.
@@ -54,7 +54,7 @@ fn heard_alone_then_synced(
     engine.clock.release_all();
     events.extend(session.settle());
     eprintln!("{events:?}");
-    Some(events)
+    events
 }
 
 /// Asserts that `events` report `command` and no other, before the sync is answered.
@@ -76,48 +76,48 @@ fn assert_said_before_synced(events: &[ServerEvent], command: &str) {
     );
 }
 
-#[test]
-fn should_report_a_command_whose_first_hearing_is_empty_under_load_before_answering_a_sync() {
-    // Given each confirmation 0.6 s late and every clip asked before the pause after the
-    // speech closes heard empty, as clips cut short under load are
-    // When "clear text please" is said alone in standby and a sync is asked right after it
-    let Some(events) = heard_alone_then_synced(
-        "clear text please",
-        Duration::from_millis(600),
-        |hearing, clock, said_end| {
-            Arc::new(EmptyBefore {
-                hearing,
-                clock,
-                heard_right_from: said_end + samples(Duration::from_secs_f32(PAUSE_SECS)),
-            })
-        },
-    ) else {
-        return;
-    };
-    // Then the command is reported, and before the sync is answered
-    assert_said_before_synced(&events, "clear all text");
-}
+mod needs_kws_models {
+    use super::*;
 
-#[test]
-fn should_report_a_command_misheard_at_half_the_pause_before_answering_a_sync() {
-    // Given each confirmation 0.6 s late, and every clip asked before the pause closes hearing
-    // "clear" as "near", as a clip cut at half the pause may be heard
-    // When "okay, clear" is said in standby and a sync is asked right after it
-    let Some(events) = heard_alone_then_synced(
-        "okay clear",
-        Duration::from_millis(600),
-        |hearing, clock, said_end| {
-            Arc::new(NotedHearing {
-                hearing,
-                clock,
-                asked: Mutex::new(Vec::new()),
-                mishears: Some(("clear", "near")),
-                heard_right_from: said_end + samples(Duration::from_secs_f32(MIN_SILENCE_SECS)),
-            })
-        },
-    ) else {
-        return;
-    };
-    // Then the command takes effect, the segment heard whole, before the sync is answered
-    assert_said_before_synced(&events, "clear all text");
+    #[test]
+    fn should_report_a_command_whose_first_hearing_is_empty_under_load_before_answering_a_sync() {
+        // Given each confirmation 0.6 s late and every clip asked before the pause after the
+        // speech closes heard empty, as clips cut short under load are
+        // When "clear text please" is said alone in standby and a sync is asked right after it
+        let events = heard_alone_then_synced(
+            "clear text please",
+            Duration::from_millis(600),
+            |hearing, clock, said_end| {
+                Arc::new(EmptyBefore {
+                    hearing,
+                    clock,
+                    heard_right_from: said_end + samples(Duration::from_secs_f32(PAUSE_SECS)),
+                })
+            },
+        );
+        // Then the command is reported, and before the sync is answered
+        assert_said_before_synced(&events, "clear all text");
+    }
+
+    #[test]
+    fn should_report_a_command_misheard_at_half_the_pause_before_answering_a_sync() {
+        // Given each confirmation 0.6 s late, and every clip asked before the pause closes hearing
+        // "clear" as "near", as a clip cut at half the pause may be heard
+        // When "okay, clear" is said in standby and a sync is asked right after it
+        let events = heard_alone_then_synced(
+            "okay clear",
+            Duration::from_millis(600),
+            |hearing, clock, said_end| {
+                Arc::new(NotedHearing {
+                    hearing,
+                    clock,
+                    asked: Mutex::new(Vec::new()),
+                    mishears: Some(("clear", "near")),
+                    heard_right_from: said_end + samples(Duration::from_secs_f32(MIN_SILENCE_SECS)),
+                })
+            },
+        );
+        // Then the command takes effect, the segment heard whole, before the sync is answered
+        assert_said_before_synced(&events, "clear all text");
+    }
 }

@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
+use objc2_app_kit::NSPasteboard;
 use rdev::{simulate, EventType, Key};
 
 use voicepuncher::adapters::primary::ptt::rdev::RdevHotkeyListener;
@@ -14,7 +15,6 @@ use voicepuncher::adapters::secondary::textpasting::macos::MacOsTextPaster;
 use voicepuncher::core::application::{HotkeyListener, TextPaster};
 use voicepuncher::core::domain::{CleanedText, HotKey, HotkeyBinding, PttSignal};
 
-use crate::support::pasteboard_lock::PasteboardLock;
 use crate::IntegrationWorld;
 
 const TAP_INSTALL_GRACE: Duration = Duration::from_millis(800);
@@ -42,9 +42,9 @@ fn hotkey_pressed_twice(world: &mut IntegrationWorld) -> Result<()> {
 
 #[given("the app pasted text into the focused app")]
 fn app_pasted_text(world: &mut IntegrationWorld) -> Result<()> {
-    // Held until the paste's restore (PASTE_DELAY_MS) is done within POST_PASTE_SETTLE
-    let _pasteboard_lock = PasteboardLock::take();
-    let mut paster = MacOsTextPaster::new(PASTE_DELAY_MS);
+    // A pasteboard of its own, so the user's clipboard is never written
+    let own = NSPasteboard::pasteboardWithUniqueName().name().to_string();
+    let mut paster = MacOsTextPaster::new(PASTE_DELAY_MS).with_pasteboard(&own);
     paster.paste(&CleanedText::new("voicepuncher-it-paste".to_owned())?)?;
     std::thread::sleep(POST_PASTE_SETTLE);
     drain(signals(world)?);

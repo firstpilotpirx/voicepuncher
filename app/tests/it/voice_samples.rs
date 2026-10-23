@@ -15,6 +15,7 @@ use voicepuncher::core::domain::{SpokenCommand, VoiceCommand, VoiceCommandRecogn
 use voicepuncher_e2e_test::concurrency::map_concurrently;
 use voicepuncher_e2e_test::speech::read_wav;
 use voicepuncher_e2e_test::voice_commands::SYNC_ANSWER_LIMIT;
+use voicepuncher_test_steps::required_env;
 
 const SAMPLE_RATE_HZ: f32 = 16_000.0;
 const FRAME_SAMPLES: usize = 1_600;
@@ -43,23 +44,16 @@ struct Session {
     utterances: Vec<Utterance>,
 }
 
-fn sessions() -> Option<(String, Vec<Session>)> {
-    let (Ok(url), Ok(root)) = (
-        std::env::var("VOICEPUNCHER_COMMAND_SPOTTING_URL"),
-        std::env::var("VOICEPUNCHER_VOICE_SAMPLES"),
-    ) else {
-        eprintln!(
-            "GATED: VOICEPUNCHER_COMMAND_SPOTTING_URL or VOICEPUNCHER_VOICE_SAMPLES not set, skipping"
-        );
-        return None;
-    };
+fn sessions() -> (String, Vec<Session>) {
+    let url = required_env("VOICEPUNCHER_COMMAND_SPOTTING_URL");
+    let root = required_env("VOICEPUNCHER_VOICE_SAMPLES");
     let mut dirs: Vec<PathBuf> = std::fs::read_dir(&root)
-        .ok()?
+        .unwrap()
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| p.join("manifest.jsonl").is_file() && p.with_extension("wav").is_file())
         .collect();
     dirs.sort();
-    Some((url, dirs.iter().map(|dir| load(dir)).collect()))
+    (url, dirs.iter().map(|dir| load(dir)).collect())
 }
 
 fn load(dir: &Path) -> Session {
@@ -158,64 +152,82 @@ fn distance(group: &[&Utterance], at: f32) -> f32 {
     (start - at).max(at - end).max(0.0)
 }
 
-#[test]
-#[expect(clippy::too_many_lines, reason = "size baseline")]
-fn should_recognize_every_recorded_command_of_the_user() {
-    let Some((url, sessions)) = sessions() else {
-        return;
-    };
-    let mut misses = Vec::new();
-    let mut extras = Vec::new();
-    let mut counted = 0;
-    let recognized = map_concurrently(&sessions, CONCURRENT_SESSIONS, |session| {
-        recognized_in(&url, session)
-    });
-    for (session, recognized) in sessions.iter().zip(recognized) {
-        let groups = groups(&session.utterances);
-        let mut heard = vec![0usize; groups.len()];
-        for (at, command) in recognized {
-            let nearest = groups
-                .iter()
-                .enumerate()
-                .filter(|(index, g)| {
-                    VoiceCommand::from_phrase(&g[0].command) == Some(command)
-                        && heard[*index] < g.len()
-                        && distance(g, at) <= PLACEMENT_TOLERANCE_SECS
-                })
-                .min_by(|(_, a), (_, b)| distance(a, at).total_cmp(&distance(b, at)));
-            match nearest {
-                Some((index, _)) => heard[index] += 1,
-                None => extras.push(format!("{}: {command:?} at {at:.2}s", session.name)),
-            }
-        }
-        for (group, heard) in groups.iter().zip(heard) {
-            if group.iter().all(|u| u.unclear) {
-                continue;
-            }
-            counted += 1;
-            if heard != 1 {
-                misses.push(format!(
-                    "{}/{} at {:.2}s said {:?} ({}) ×{}: recognized {heard}",
-                    session.name,
-                    group[0].file,
-                    group[0].start,
-                    group[0].said,
-                    group[0].note,
-                    group.len(),
-                ));
-            }
+/// Compares what was recognized in `session` with its utterances, noting each missed and each
+/// unexpected command; returns how many clear commands the session holds.
+fn compare_session(
+    session: &Session,
+    recognized: Vec<(f32, VoiceCommand)>,
+    misses: &mut Vec<String>,
+    extras: &mut Vec<String>,
+) -> usize {
+    let groups = groups(&session.utterances);
+    let mut heard = vec![0usize; groups.len()];
+    for (at, command) in recognized {
+        let nearest = groups
+            .iter()
+            .enumerate()
+            .filter(|(index, g)| {
+                VoiceCommand::from_phrase(&g[0].command) == Some(command)
+                    && heard[*index] < g.len()
+                    && distance(g, at) <= PLACEMENT_TOLERANCE_SECS
+            })
+            .min_by(|(_, a), (_, b)| distance(a, at).total_cmp(&distance(b, at)));
+        match nearest {
+            Some((index, _)) => heard[index] += 1,
+            None => extras.push(format!("{}: {command:?} at {at:.2}s", session.name)),
         }
     }
-    assert!(
-        counted > 0,
-        "no recorded commands found in {sessions:?}",
-        sessions = sessions.len()
-    );
-    assert!(
-        misses.is_empty() && extras.is_empty(),
-        "{} of {counted} recorded commands missed:\n{}\nunexpected commands:\n{}",
-        misses.len(),
-        misses.join("\n"),
-        extras.join("\n")
-    );
+    let clear = groups
+        .iter()
+        .zip(heard)
+        .filter(|(g, _)| g.iter().any(|u| !u.unclear));
+    let mut counted = 0;
+    for (group, heard) in clear {
+        counted += 1;
+        if heard != 1 {
+            misses.push(miss(&session.name, group, heard));
+        }
+    }
+    counted
+}
+
+/// A recorded command recognized `heard` times instead of once.
+fn miss(session: &str, group: &[&Utterance], heard: usize) -> String {
+    let Utterance { file, start, said, note, .. } = group[0];
+    let n = group.len();
+    format!("{session}/{file} at {start:.2}s said {said:?} ({note}) ×{n}: recognized {heard}")
+}
+
+mod needs_kws {
+    use super::*;
+
+    mod needs_voice_samples {
+        use super::*;
+
+        #[test]
+        fn should_recognize_every_recorded_command_of_the_user() {
+            let (url, sessions) = sessions();
+            let mut misses = Vec::new();
+            let mut extras = Vec::new();
+            let mut counted = 0;
+            let recognized = map_concurrently(&sessions, CONCURRENT_SESSIONS, |session| {
+                recognized_in(&url, session)
+            });
+            for (session, recognized) in sessions.iter().zip(recognized) {
+                counted += compare_session(session, recognized, &mut misses, &mut extras);
+            }
+            assert!(
+                counted > 0,
+                "no recorded commands found in {sessions:?}",
+                sessions = sessions.len()
+            );
+            assert!(
+                misses.is_empty() && extras.is_empty(),
+                "{} of {counted} recorded commands missed:\n{}\nunexpected commands:\n{}",
+                misses.len(),
+                misses.join("\n"),
+                extras.join("\n")
+            );
+        }
+    }
 }

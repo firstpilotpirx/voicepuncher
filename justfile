@@ -58,7 +58,7 @@ e2e_smoke_stages := "e2e-smoke-voice e2e-smoke-refinement e2e-smoke-speech e2e-s
 # voice control first, as it held the most failures; then the short stages and the long Gherkin runs last, the
 # start cues at the very end. `accuracy` stands for the accuracy stage full-check picks (_accuracy-stage)
 check_model_stages := "e2e-smoke-voice e2e-smoke-refinement refine-eval e2e-smoke-speech e2e-quick e2e-smoke-services"
-full_check_model_stages := "e2e-smoke-voice e2e-regression e2e-resilience e2e-smoke-refinement refine-eval e2e-bundle e2e-smoke-speech accuracy e2e-smoke-services e2e-seams e2e-cues"
+full_check_model_stages := "e2e-smoke-voice e2e-regression e2e-resilience e2e-smoke-refinement refine-eval e2e-bundle e2e-smoke-speech accuracy e2e-smoke-services e2e-seams it-real e2e-cues"
 # The test modules of the voice control smoke part, the most failing first: every member's integration tests
 # build into its one `it` binary (tests/it/<module>.rs), so a part names modules; placed_commands is the command
 # spotting service's, the others the app's
@@ -694,7 +694,7 @@ _frozen mode:
     }
 
 # Runs the named stages (private recipes without their `_`) in phases. The stages before the first model
-# stage (`e2e*` or `refine-eval`) run one by one without the machine lock, each through the wrapper on the quiet
+# stage (`e2e*`, `refine-eval` or `it-real`, which takes the screen and the microphone) run one by one without the machine lock, each through the wrapper on the quiet
 # lock in the shared mode (_quiet-lock): it gives the stage the time limit (MACHINE_LOCK_TIMEOUT, exit 124; the
 # timeout message says `[machine-lock]`, though no machine lock is held) and keeps it out of another run's
 # running or waiting model stages; fmt, lint, build and build-e2e run at the utility QoS clamp. The rest runs in
@@ -763,7 +763,7 @@ _stages +stages:
     }
     unlocked="" model=""
     for stage in {{stages}}; do
-        if [[ -n "$model" || "$stage" == e2e* || "$stage" == refine-eval ]]; then
+        if [[ -n "$model" || "$stage" == e2e* || "$stage" == refine-eval || "$stage" == it-real ]]; then
             model+=" $stage"
         else
             unlocked+=" $stage"
@@ -779,7 +779,7 @@ _stages +stages:
     # The pass records of the stages that passed and whose key held through the run
     record_passes() {
         local passed now_keys stage key seconds record
-        passed=$(awk '$1 == "stage" && $2 == "✓" { print $3 }' "$report")
+        passed=$({{just_executable()}} --justfile {{quote(justfile())}} _passed-stages "$report")
         [[ -n "$passed" && -s "$keys" && -z "$rerun" ]] || return 0
         now_keys=$({{just_executable()}} --justfile {{quote(justfile())}} _stage-keys $passed) || return 0
         while read -r stage key; do
@@ -944,10 +944,11 @@ _model-stages +stages:
     trap 'exit 143' TERM
     trap 'exit 130' INT
     trap 'exit 129' HUP
-    # e2e-resilience and e2e-bundle start services of their own on ports of their own: alone, they need none of these
+    # e2e-resilience and e2e-bundle start services of their own on ports of their own, it-real needs none: alone,
+    # they need none of these; services a caller holds are its to stop
     own_services=1
-    for stage in {{stages}}; do [[ " e2e-resilience e2e-bundle " == *" $stage "* ]] || own_services=""; done
-    if [[ -z "$own_services" ]]; then
+    for stage in {{stages}}; do [[ " e2e-resilience e2e-bundle it-real " == *" $stage "* ]] || own_services=""; done
+    if [[ -z "$own_services" && -z "${VOICEPUNCHER_E2E_SERVICES_HELD:-}" ]]; then
         # Set before the start: the markers of the services it starts exist before they do
         services=up
         {{just_executable()}} _start-model-servers-for-e2e
@@ -958,11 +959,11 @@ _model-stages +stages:
         t0=$(now)
         status=0
         {{just_executable()}} "_$stage" || status=$?
-        mark="✓"
-        [[ $status -eq 0 ]] || mark="✗"
+        # Exit 77: the stage skipped itself (it-real without a permission); the run goes on, no pass is recorded
+        case $status in 0) mark="✓" ;; 77) mark="–" ;; *) mark="✗" ;; esac
         echo "stage $mark $stage $(since "$t0")" >>"$report"
         current=""
-        [[ $status -eq 0 ]] || exit "$status"
+        [[ $mark != "✗" ]] || exit "$status"
     done
 
 # Appends the record of one _stages run to the stage journal, from what _stages hands over in STAGES_* and the
@@ -986,7 +987,7 @@ _stage-journal-append:
     while (<$report>) {
         my ($kind, @fields) = split;
         next unless defined $kind;
-        if ($kind eq "stage") { $rows{$fields[1]} = [$fields[0] eq "✓" ? "passed" : "failed", $fields[2] + 0] }
+        if ($kind eq "stage") { $rows{$fields[1]} = [$fields[0] eq "✓" ? "passed" : $fields[0] eq "–" ? "skipped" : "failed", $fields[2] + 0] }
         elsif ($kind eq "reused") { $rows{$fields[0]} = ["reused", undef, $fields[1]] }
         elsif ($kind =~ /^(?:requested|locked|returned)$/) {
             push @classes, $fields[0] if $kind eq "requested" && !exists $marks{$fields[0]};
@@ -1434,8 +1435,8 @@ _test: _require-nextest
     fi
     started=$(now)
     if [[ ${#packages[@]} -gt 0 ]]; then
-        filter=$("${me[@]}" _test-filter)
-        taskpolicy -c utility cargo nextest run "${packages[@]}" -E "$filter" --no-run
+        taskpolicy -c utility cargo nextest run "${packages[@]}" -E "not binary_id(voicepuncher-e2e-test::cucumber_e2e)" --no-run
+        filter=$(VOICEPUNCHER_GATES_TARGETS="${packages[*]}" "${me[@]}" _test-filter)
         cargo nextest run "${packages[@]}" -E "$filter"
     else
         echo "↺ every package reused: no test runs"
@@ -1443,7 +1444,9 @@ _test: _require-nextest
     if [[ -n "$self" ]]; then
         "${me[@]}" _test-stage-keys
         "${me[@]}" _test-frozen-tests
+        "${me[@]}" _test-gates
         "${me[@]}" _test-stage-order
+        "${me[@]}" _test-stage-skip
         "${me[@]}" _test-stage-times
         "${me[@]}" _test-named-run
         if [[ "${VOICEPUNCHER_NO_MACHINE_LOCK:-}" == 1 ]]; then
@@ -1560,7 +1563,7 @@ _smoke-part-filter modules="":
     if [[ -n "${VOICEPUNCHER_FROZEN_FILTER:-}" ]]; then
         filter="($filter) & not ($VOICEPUNCHER_FROZEN_FILTER)"
     fi
-    printf '%s\n' "$filter"
+    {{just_executable()}} --justfile {{quote(justfile())}} _gated-filter "${VOICEPUNCHER_GATES_TARGETS:-{{smoke_parts_tests}}}" "$filter"
 
 # The nextest filter of the test modules of the `it` binaries a stage runs on their own, narrowed like a smoke part's
 _it-filter modules="":
@@ -1577,7 +1580,7 @@ _it-filter modules="":
     if [[ -n "${VOICEPUNCHER_FROZEN_FILTER:-}" ]]; then
         filter="($filter) & not ($VOICEPUNCHER_FROZEN_FILTER)"
     fi
-    printf '%s\n' "$filter"
+    {{just_executable()}} --justfile {{quote(justfile())}} _gated-filter "${VOICEPUNCHER_GATES_TARGETS:-{{e2e_seams_tests}}}" "$filter"
 
 # The nextest filter of `test`: every test target but the E2E harness (whose suites are the E2E recipes'), narrowed
 # to a rerun's selection and without the frozen tests, like a smoke part's (one cargo call cannot pick targets per
@@ -1592,7 +1595,109 @@ _test-filter:
     if [[ -n "${VOICEPUNCHER_FROZEN_FILTER:-}" ]]; then
         filter+=" & not ($VOICEPUNCHER_FROZEN_FILTER)"
     fi
-    printf '%s\n' "$filter"
+    {{just_executable()}} --justfile {{quote(justfile())}} _gated-filter "${VOICEPUNCHER_GATES_TARGETS:---workspace}" "$filter"
+
+# The needs a test can state (test-steps/src/needs.rs): `<need> <condition> <reason>` per line, the test living in a
+# module named after the need, so its nextest name holds `<need>::`. The condition is a variable that must be set and
+# not empty (several joined with `+` must all be), or `file:<path with $VARIABLES>` that must exist. A need whose
+# condition fails is closed: _gated-filter leaves its tests out and counts them
+test_needs := '''
+    needs_stt            VOICEPUNCHER_TRANSCRIPTION_URL                          no speech recognition service (the model stages start one)
+    needs_command_stt    VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL                  no speech recognition service for commands (the model stages start one)
+    needs_kws            VOICEPUNCHER_COMMAND_SPOTTING_URL                       no command spotting service (the model stages start one)
+    needs_kws_models     VOICEPUNCHER_KWS_MODEL_DIR+VOICEPUNCHER_KWS_VAD_MODEL   no command spotting models (just models)
+    needs_voice_samples  VOICEPUNCHER_VOICE_SAMPLES                              no recordings of the user's voice (~/.voicepuncher/voice-samples)
+    needs_corpus         file:$VOICEPUNCHER_BENCH_CORPUS/manifest.jsonl          no corpus (just corpus, or VOICEPUNCHER_BENCH_CORPUS)
+    needs_desktop        VOICEPUNCHER_DESKTOP_IT                                 the microphone, Accessibility and window tests run in the it-real stage
+    needs_real_keyboard  VOICEPUNCHER_REAL_KEYBOARD_IT                           key presses into the focused app run only in test-real-keyboard
+    needs_hang_probe     VOICEPUNCHER_HANG_PROBE                                 the hang probe runs only when armed (VOICEPUNCHER_HANG_PROBE=1)
+'''
+
+# The closed needs of this environment (test_needs), one `<need> <reason>` per line
+_gates:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    while read -r need condition reason; do
+        [[ -n "$need" ]] || continue
+        open=1
+        if [[ "$condition" == file:* ]]; then
+            path=$(eval "printf '%s' \"${condition#file:}\"" 2>/dev/null || true)
+            [[ -f "$path" ]] || open=""
+        else
+            IFS=+ read -ra variables <<<"$condition"
+            for variable in "${variables[@]}"; do [[ -n "${!variable:-}" ]] || open=""; done
+        fi
+        [[ -n "$open" ]] || printf '%s %s\n' "$need" "$reason"
+    done <<<{{quote(test_needs)}}
+
+# `_gated-filter "<cargo target args>" "<filterset>"`: prints the filterset without the tests of the closed needs
+# (_gates) and, on stderr, one `● skipped N test(s): <need> — <reason>` line per closed need with a test in the
+# selection, counted by `cargo nextest list` (VOICEPUNCHER_GATES_LISTED: a file of listed names instead, for the
+# self-test). A test that runs with its need missing fails (required_env), so nothing is ever skipped green
+_gated-filter targets filter:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    closed=$({{just_executable()}} --justfile {{quote(justfile())}} _gates)
+    if [[ -z "$closed" ]]; then printf '%s\n' {{quote(filter)}}; exit 0; fi
+    needs=""
+    while read -r need _; do needs+="${needs:+ | }test(/${need}::/)"; done <<<"$closed"
+    if [[ -n "${VOICEPUNCHER_GATES_LISTED:-}" ]]; then
+        listed=$(cat "$VOICEPUNCHER_GATES_LISTED")
+    else
+        listed=$(cargo nextest list {{targets}} -E "({{filter}}) & ($needs)" --message-format oneline 2>/dev/null || true)
+    fi
+    while read -r need reason; do
+        count=$(grep -c -- "${need}::" <<<"$listed" || true)
+        (( count == 0 )) || echo "● skipped $count test(s): $need — $reason" >&2
+    done <<<"$closed"
+    printf '(%s) & not (%s)\n' {{quote(filter)}} "$needs"
+
+# Runs a command with every need of test_needs met, for the self-tests that compare selections whole
+[positional-arguments]
+_all-needs-met +command:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    corpus=$(mktemp -d)
+    trap 'rm -rf "$corpus"' EXIT
+    touch "$corpus/manifest.jsonl"
+    env VOICEPUNCHER_TRANSCRIPTION_URL=u VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL=u VOICEPUNCHER_COMMAND_SPOTTING_URL=u \
+        VOICEPUNCHER_KWS_MODEL_DIR=d VOICEPUNCHER_KWS_VAD_MODEL=v VOICEPUNCHER_VOICE_SAMPLES=s VOICEPUNCHER_BENCH_CORPUS="$corpus" \
+        VOICEPUNCHER_DESKTOP_IT=1 VOICEPUNCHER_REAL_KEYBOARD_IT=1 VOICEPUNCHER_HANG_PROBE=1 "$@"
+
+# Self-test of the needs: closed needs filtered out and counted, open ones left in
+_test-gates:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    fail() { printf '✗ %s\n%s\n' "$1" "$out" >&2; exit 1; }
+    has() { grep -qF -- "$2" <<<"$out" || fail "$1: no \"$2\""; }
+    lacks() { ! grep -qF -- "$2" <<<"$out" || fail "$1: holds \"$2\""; }
+    printf '%s\n' "voicepuncher::it transcription_openai::needs_stt::should_transcribe" \
+        "voicepuncher::it voice_samples::needs_kws::needs_voice_samples::should_spot" \
+        "voicepuncher::it voice_samples::needs_kws::needs_voice_samples::should_spot_more" >"$tmp/listed"
+    me=({{just_executable()}} --justfile {{quote(justfile())}})
+    gated() { "${me[@]}" _all-needs-met env "$@" VOICEPUNCHER_GATES_LISTED="$tmp/listed" "${me[@]}" _gated-filter "--workspace" "binary(=it)" 2>&1; }
+    out=$(gated)
+    [[ "$out" == "binary(=it)" ]] || fail "every need open: the filter as it was"
+    echo "  ✓ with every need met the filter stays as it was"
+    out=$(gated VOICEPUNCHER_TRANSCRIPTION_URL= VOICEPUNCHER_VOICE_SAMPLES=)
+    has "closed needs" "(binary(=it)) & not (test(/needs_stt::/) | test(/needs_voice_samples::/))"
+    has "the services' count" "● skipped 1 test(s): needs_stt — no speech recognition service (the model stages start one)"
+    has "the recordings' count" "● skipped 2 test(s): needs_voice_samples — no recordings of the user's voice"
+    lacks "an open need" "needs_kws::/"
+    echo "  ✓ a closed need is filtered out and counted with its reason"
+    out=$(gated VOICEPUNCHER_KWS_VAD_MODEL= VOICEPUNCHER_BENCH_CORPUS="$tmp/none")
+    has "one of two variables unset" "test(/needs_kws_models::/)"
+    has "a missing file" "test(/needs_corpus::/)"
+    lacks "no test of a closed need in the selection" "● skipped 0"
+    echo "  ✓ a need closes when one of its variables is empty or its file is missing"
+    for builder in _test-filter "_it-filter chunked_transcription" "_smoke-part-filter placed_commands"; do
+        read -ra call <<<"$builder"
+        out=$("${me[@]}" _all-needs-met env VOICEPUNCHER_HANG_PROBE= VOICEPUNCHER_GATES_LISTED="$tmp/listed" "${me[@]}" "${call[@]}" 2>&1)
+        has "$builder" "not (test(/needs_hang_probe::/))"
+    done
+    echo "  ✓ every filterset builder leaves the closed needs out"
 
 # The scenarios beyond the smoke set (@regression): voice control and the 20-run refinement series under load, run by full-check right after e2e-smoke so it still runs the whole set
 e2e-regression:
@@ -1690,12 +1795,53 @@ _e2e-bench: _require-nextest _require-models _require-corpus _build
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" \
         cargo nextest run --profile e2e-bench {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
-# Manual: @real_keyboard scenarios drive the real hotkey + paste — needs Accessibility and Input Monitoring for the terminal, a GUI session, hands off the keyboard
+# The desktop tests (`needs_desktop`): the real microphone, the Accessibility API and windows on screen, alone on
+# the machine like a model stage (full-check runs it before e2e-cues); without Microphone or Accessibility for the
+# app running it, it names the missing permission, counts the tests it leaves out and skips (exit 77). Key presses
+# into the focused app stay in test-real-keyboard
+it-real:
+    @VOICEPUNCHER_STAGES_RECIPE=it-real {{just_executable()}} _stages it-real
+
+_it-real: _require-nextest
+    #!/usr/bin/env bash
+    set -euo pipefail
+    me=({{just_executable()}} --justfile {{quote(justfile())}})
+    targets=(-p voicepuncher --test it --test main_thread)
+    filter={{quote(it_real_filter)}}
+    [[ -z "${VOICEPUNCHER_RERUN_FILTER:-}" ]] || filter+=" & ($VOICEPUNCHER_RERUN_FILTER)"
+    [[ -z "${VOICEPUNCHER_FROZEN_FILTER:-}" ]] || filter+=" & not ($VOICEPUNCHER_FROZEN_FILTER)"
+    if ! "${me[@]}" _require-tcc; then
+        # The count of the desktop tests left out, as _gated-filter prints it for a closed need
+        VOICEPUNCHER_DESKTOP_IT="" "${me[@]}" _gated-filter "${targets[*]}" "$filter" >/dev/null
+        exit 77
+    fi
+    VOICEPUNCHER_DESKTOP_IT=1 cargo nextest run "${targets[@]}" -E "$filter" {{fail_fast}}
+
+# The desktop tests it-real runs: never the ones that press keys in the focused app (test-real-keyboard runs those)
+it_real_filter := "test(/::needs_desktop::/) & not test(/::needs_real_keyboard::/)"
+
+# Whether this process has the permissions the desktop tests need (Microphone, Accessibility, Input Monitoring):
+# names each one missing and the app to grant it to, and fails. VOICEPUNCHER_TCC_PROBE replaces the probe (self-test)
+_require-tcc:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    probe=${VOICEPUNCHER_TCC_PROBE:-}
+    if [[ -z "$probe" ]]; then
+        cargo build -q -p voicepuncher-e2e-test --bin tcc-probe
+        probe="$(cargo metadata --format-version 1 --no-deps | perl -MJSON::PP -0e 'print decode_json(<>)->{target_directory}')/debug/tcc-probe"
+    fi
+    if ! missing=$("$probe"); then
+        while read -r line; do echo "⊘ $line: the desktop tests are skipped (grant it in System Settings › Privacy & Security, or run just it-real by hand)"; done <<<"$missing"
+        exit 1
+    fi
+
+# Manual: @real_keyboard scenarios drive the real hotkey + paste, and the key presser's test (`needs_real_keyboard`) presses Return, Cmd+A and Backspace in the focused app — needs Accessibility and Input Monitoring for the terminal, a GUI session, hands off the keyboard
 test-real-keyboard:
     @{{locked}} _test-real-keyboard
 
 _test-real-keyboard: _require-nextest
-    VOICEPUNCHER_REAL_KEYBOARD_IT=1 cargo nextest run --profile real-keyboard -p voicepuncher --test cucumber_integration --no-capture
+    VOICEPUNCHER_REAL_KEYBOARD_IT=1 cargo nextest run --profile real-keyboard -p voicepuncher --test cucumber_integration --test it \
+        -E 'binary(cucumber_integration) | test(/::needs_real_keyboard::/)' --no-capture
 
 # ── Release ── after the merge, on a clean checkout of origin/main ──────────
 
@@ -2027,13 +2173,13 @@ _test-stage-order:
     check="{{check_model_stages}}" full="{{full_check_model_stages}}"
     [[ "$check" == "e2e-smoke-voice "* ]] \
         || { echo "✗ check does not run voice control first: $check" >&2; exit 1; }
-    [[ "$full" == "e2e-smoke-voice e2e-regression e2e-resilience "* && "$full" == *" e2e-seams e2e-cues" ]] \
-        || { echo "✗ full-check does not run voice control first and the seams and the cues last: $full" >&2; exit 1; }
+    [[ "$full" == "e2e-smoke-voice e2e-regression e2e-resilience "* && "$full" == *" e2e-seams it-real e2e-cues" ]] \
+        || { echo "✗ full-check does not run voice control first, then the seams, the desktop tests and the cues last: $full" >&2; exit 1; }
     echo "  ✓ check and full-check run voice control first, full-check the cues last"
     sorted() { tr ' ' '\n' <<<"$*" | grep . | sort | tr '\n' ' '; }
     [[ $(sorted {{check_model_stages}}) == $(sorted e2e-smoke-speech e2e-smoke-refinement e2e-smoke-voice e2e-smoke-services e2e-quick refine-eval) ]] \
         || { echo "✗ check runs other stages than before: {{check_model_stages}}" >&2; exit 1; }
-    [[ $(sorted {{full_check_model_stages}}) == $(sorted e2e-smoke-speech e2e-smoke-refinement e2e-smoke-voice e2e-smoke-services e2e-regression e2e-seams e2e-cues e2e-resilience e2e-bundle accuracy refine-eval) ]] \
+    [[ $(sorted {{full_check_model_stages}}) == $(sorted e2e-smoke-speech e2e-smoke-refinement e2e-smoke-voice e2e-smoke-services e2e-regression e2e-seams it-real e2e-cues e2e-resilience e2e-bundle accuracy refine-eval) ]] \
         || { echo "✗ full-check runs other stages than before and the cues: {{full_check_model_stages}}" >&2; exit 1; }
     [[ $(sorted {{e2e_smoke_stages}}) == $(sorted e2e-smoke-speech e2e-smoke-refinement e2e-smoke-voice e2e-smoke-services) && "{{e2e_smoke_stages}}" == e2e-smoke-voice* ]] \
         || { echo "✗ the smoke parts are not voice control first: {{e2e_smoke_stages}}" >&2; exit 1; }
@@ -2041,7 +2187,9 @@ _test-stage-order:
     [[ "{{voice_smoke_modules}}" == "placed_commands voice_forms "* ]] \
         || { echo "✗ the voice control part does not run placed_commands and voice_forms first: {{voice_smoke_modules}}" >&2; exit 1; }
     echo "  ✓ the voice control part runs its most failing modules first"
-    part() { VOICEPUNCHER_FROZEN_FILTER='' {{just_executable()}} --justfile {{quote(justfile())}} _smoke-part-filter "$@"; }
+    # Every need met (_all-needs-met), so the selections are compared without the closed needs' exclusion
+    open_needs=({{just_executable()}} --justfile {{quote(justfile())}} _all-needs-met)
+    part() { VOICEPUNCHER_FROZEN_FILTER='' "${open_needs[@]}" {{just_executable()}} --justfile {{quote(justfile())}} _smoke-part-filter "$@"; }
     want='(binary(=it) & test(/^placed_commands::/)) | (binary(=it) & test(/^voice_forms::/)) | binary(=cucumber_e2e)'
     [[ $(VOICEPUNCHER_RERUN_FILTER= part "placed_commands voice_forms") == "$want" ]] \
         || { echo "✗ a smoke part does not select its modules and the harness in one call: $(part "placed_commands voice_forms")" >&2; exit 1; }
@@ -2050,7 +2198,7 @@ _test-stage-order:
     [[ $(VOICEPUNCHER_RERUN_FILTER='test(=x)' part "voice_forms") == '((binary(=it) & test(/^voice_forms::/)) | binary(=cucumber_e2e)) & (test(=x))' ]] \
         || { echo "✗ a rerun's filter widens a smoke part instead of narrowing it" >&2; exit 1; }
     echo "  ✓ a smoke part runs its modules beside the harness in one call, narrowed by a rerun"
-    seams() { VOICEPUNCHER_FROZEN_FILTER='' {{just_executable()}} --justfile {{quote(justfile())}} _it-filter "$@"; }
+    seams() { VOICEPUNCHER_FROZEN_FILTER='' "${open_needs[@]}" {{just_executable()}} --justfile {{quote(justfile())}} _it-filter "$@"; }
     [[ $(VOICEPUNCHER_RERUN_FILTER='' seams "chunked_transcription") == 'binary(=it) & (test(/^chunked_transcription::/))' ]] \
         || { echo "✗ the seams stage does not select its module of the it binary: $(seams "chunked_transcription")" >&2; exit 1; }
     [[ $(VOICEPUNCHER_RERUN_FILTER='test(=x)' seams "a b") == '(binary(=it) & (test(/^a::/) | test(/^b::/))) & (test(=x))' ]] \
@@ -2062,6 +2210,58 @@ _test-stage-order:
     [[ $(env -u VOICEPUNCHER_NO_MACHINE_LOCK -u MACHINE_LOCK {{just_executable()}} --justfile {{quote(justfile())}} --evaluate machine_lock) == */.claude/bin/with-machine-lock ]] \
         || { echo "✗ the machine lock is not the agent-kit lock by default" >&2; exit 1; }
     echo "  ✓ VOICEPUNCHER_NO_MACHINE_LOCK=1 runs the recipes without the lock (CI)"
+
+# Self-test of a skipped stage (run by the `test` stage): a model stage that exits 77 (it-real without a
+# permission) shows `–` in the report, the run goes on to the next stage, and the journal records it `skipped`;
+# a skipped stage is no pass, as only `✓` rows get a pass record (_stages). The two probe stages below stand in
+# for real ones; the services count as held, so none starts
+_test-stage-skip:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    me=({{just_executable()}} --justfile {{quote(justfile())}})
+    dir=$(mktemp -d)
+    trap 'rm -rf "$dir"' EXIT
+    fail() { echo "✗ $1" >&2; cat "$dir/report" >&2; exit 1; }
+    : >"$dir/report"
+    VOICEPUNCHER_E2E_SERVICES_HELD=1 VOICEPUNCHER_STAGES_REPORT="$dir/report" \
+        "${me[@]}" _model-stages stage-probe-skipped stage-probe-passed >/dev/null 2>&1 \
+        || fail "a stage exiting 77 failed the model stages"
+    grep -q '^stage – stage-probe-skipped ' "$dir/report" || fail "a stage exiting 77 is not marked skipped"
+    grep -q '^stage ✓ stage-probe-passed ' "$dir/report" || fail "the stage after a skipped one did not run"
+    echo "  ✓ a stage exiting 77 is skipped and the run goes on"
+    printf 'x\n' >"$dir/log"
+    VOICEPUNCHER_STAGE_JOURNAL="$dir/journal" VOICEPUNCHER_STAGES_REPORT="$dir/report" STAGES_LOG="$dir/log" \
+        STAGES_LIST="stage-probe-skipped stage-probe-passed" STAGES_STARTED=1 STAGES_ENDED=2 STAGES_EXIT=0 \
+        STAGES_INTERRUPTED="" STAGES_CALLER="" STAGES_WORKTREE={{quote(justfile_directory())}} "${me[@]}" _stage-journal-append
+    grep -q '{"name":"stage-probe-skipped","result":"skipped"' "$dir/journal" || fail "the journal does not record the skip: $(cat "$dir/journal")"
+    echo "  ✓ the journal records a stage exiting 77 as skipped"
+    [[ "$("${me[@]}" _passed-stages "$dir/report")" == stage-probe-passed ]] || fail "a skipped stage would get a pass record"
+    echo "  ✓ a skipped stage gets no pass record"
+    printf '#!/bin/sh\necho "Accessibility not granted to Terminal"\nexit 1\n' >"$dir/probe"
+    chmod +x "$dir/probe"
+    if out=$(VOICEPUNCHER_TCC_PROBE="$dir/probe" "${me[@]}" _require-tcc 2>&1); then fail "a missing permission passed _require-tcc"; fi
+    [[ "$out" == *"⊘ Accessibility not granted to Terminal"* ]] || fail "_require-tcc does not name the permission: $out"
+    echo "  ✓ a missing permission is named and fails the desktop tests' guard"
+    filter={{quote(it_real_filter)}}
+    [[ "$filter" == *"not test(/::needs_real_keyboard::/)"* ]] || fail "it-real would press keys in the focused app"
+    echo "  ✓ it-real leaves out the tests that press keys"
+    echo "voicepuncher::it focus_macos::needs_desktop::should_report" >"$dir/listed"
+    status=0
+    out=$(VOICEPUNCHER_TCC_PROBE="$dir/probe" VOICEPUNCHER_GATES_LISTED="$dir/listed" "${me[@]}" _it-real 2>&1) || status=$?
+    [[ $status == 77 ]] || fail "it-real without a permission exited $status, not 77: $out"
+    [[ "$out" == *"● skipped 1 test(s): needs_desktop"* ]] || fail "it-real does not count the tests it left out: $out"
+    echo "  ✓ it-real without a permission exits 77 and counts the desktop tests left out"
+
+# The stages of a stage report that passed, which alone get a pass record: never a failed or skipped one
+_passed-stages report:
+    @awk '$1 == "stage" && $2 == "✓" { print $3 }' {{quote(report)}}
+
+# Probes of _test-stage-skip: a stage that skips itself and one that passes
+_stage-probe-skipped:
+    @exit 77
+
+_stage-probe-passed:
+    @true
 
 # The named runs' expected behaviour (test-one, rerun-failed; run by the `test` stage): how names become a
 # selection, which names a run's log shows as ran, and which stage and journal name test-one runs under
@@ -2246,13 +2446,16 @@ _test-frozen-tests:
     has "an entry the branch removed" "say ● frozen: 2 test(s), not run (just frozen-tests)"
     echo "  ✓ the branch that removes an entry runs that test although main lists it"
     frozen_filter='(binary_id(=voicepuncher::it) & test(=placed_commands::should_spot))'
+    # Every need met (_all-needs-met), so no closed need's exclusion follows the frozen one
+    open_needs=({{just_executable()}} --justfile {{quote(justfile())}} _all-needs-met)
     for recipe in "_smoke-part-filter placed_commands" "_it-filter chunked_transcription" "_test-filter"; do
         read -r -a call <<<"$recipe"
-        out=$(VOICEPUNCHER_FROZEN_FILTER="$frozen_filter" {{just_executable()}} --justfile {{quote(justfile())}} "${call[@]}")
+        call=("${open_needs[@]}" {{just_executable()}} --justfile {{quote(justfile())}} "${call[@]}")
+        out=$(VOICEPUNCHER_FROZEN_FILTER="$frozen_filter" "${call[@]}")
         [[ "$out" == *"& not ($frozen_filter)" ]] || fail "$recipe leaves the frozen tests in its selection"
-        out=$(VOICEPUNCHER_FROZEN_FILTER="$frozen_filter" VOICEPUNCHER_RERUN_FILTER='test(=a)' {{just_executable()}} --justfile {{quote(justfile())}} "${call[@]}")
+        out=$(VOICEPUNCHER_FROZEN_FILTER="$frozen_filter" VOICEPUNCHER_RERUN_FILTER='test(=a)' "${call[@]}")
         [[ "$out" == *"(test(=a))"*"& not ($frozen_filter)" ]] || fail "$recipe leaves the frozen tests in a rerun's selection"
-        out=$(VOICEPUNCHER_FROZEN_FILTER="" {{just_executable()}} --justfile {{quote(justfile())}} "${call[@]}")
+        out=$(VOICEPUNCHER_FROZEN_FILTER="" "${call[@]}")
         [[ "$out" != *"not ("* ]] || fail "$recipe excludes something without a frozen test"
     done
     echo "  ✓ every nextest selection leaves the frozen tests out"

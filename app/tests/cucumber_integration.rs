@@ -6,8 +6,6 @@
     reason = "cucumber fixes step signatures: the world by &mut, captures by value"
 )]
 mod steps;
-#[path = "it/support/mod.rs"]
-mod support;
 
 use std::path::Path;
 use std::sync::mpsc::Receiver;

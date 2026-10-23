@@ -25,9 +25,6 @@ command-spotting-models = { max-threads = 1 }
 # its own, so several run at once (6: 49–53 s for `just test` over three runs, against 52–74 s with 4
 # and 93 s with 2)
 command-spotting-engine = { max-threads = 6 }
-# The tests that write the real general pasteboard run one at a time: they share that one pasteboard. Runs
-# of other checkouts are kept apart by the pasteboard file lock the tests take (app/tests/support)
-pasteboard = { max-threads = 1 }
 
 [[profile.default.overrides]]
 filter = '(package(voicepuncher-command-spotting) & binary(it) & (test(/^engine::/) | test(/^placed_commands::/)))'
@@ -40,10 +37,6 @@ priority = 50
 [[profile.default.overrides]]
 filter = 'test(should_log_a_copy_hung_with_the_time_waited_only_past_twice_its_time_limit) | (package(voicepuncher) & binary(it) & (test(/^commandspotting_reconnect::/) | test(/^commandspotting_client::/))) | (package(voicepuncher-command-spotting) & binary(it) & (test(/^server::/)))'
 priority = 40
-
-[[profile.default.overrides]]
-filter = '(package(voicepuncher) & binary(it) & (test(/^textpasting_macos::/)))'
-test-group = "pasteboard"
 
 # The minute of dictation fed in real time beside CPU hogs: its 10 ms paces overshoot under load (73–84 s
 # measured inside `just test`): 3 min

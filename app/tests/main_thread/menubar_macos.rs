@@ -15,6 +15,8 @@ use voicepuncher::adapters::primary::menubar::macos::status_item::MacosStatusIte
 use voicepuncher::core::domain::{HotKey, RecordingMode};
 use voicepuncher::runtime::{RuntimeObserver, RuntimeState};
 
+use voicepuncher_test_steps::required_env;
+
 use crate::{main_thread, Test};
 
 pub const TESTS: &[Test] = &[
@@ -35,7 +37,7 @@ pub const TESTS: &[Test] = &[
         should_keep_an_existing_logs_folder_and_its_files,
     ),
     (
-        "should_show_the_logs_folder_in_the_file_browser",
+        "needs_desktop::should_show_the_logs_folder_in_the_file_browser",
         should_show_the_logs_folder_in_the_file_browser,
     ),
     (
@@ -118,20 +120,10 @@ fn should_keep_an_existing_logs_folder_and_its_files() {
     );
 }
 
-/// Opening a file or a folder shows a window: only with `VOICEPUNCHER_WINDOWS_IT` set.
-fn windows_allowed() -> bool {
-    if std::env::var("VOICEPUNCHER_WINDOWS_IT").is_err() {
-        eprintln!("GATED: VOICEPUNCHER_WINDOWS_IT not set, skipping");
-        return false;
-    }
-    true
-}
-
+/// Opening a folder shows a window: only the it-real stage runs it (`needs_desktop`).
 fn should_show_the_logs_folder_in_the_file_browser() {
-    if !windows_allowed() {
-        return;
-    }
     // Given
+    required_env("VOICEPUNCHER_DESKTOP_IT");
     let home = tempfile::tempdir().unwrap();
     let logs = home.path().join("logs");
     // When

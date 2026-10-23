@@ -10,7 +10,7 @@
 "app/src/adapters/primary/permissions/macos/mod.rs::add_row" = 45
 "app/src/adapters/primary/permissions/macos/mod.rs::content" = 48
 "app/src/adapters/primary/settings/macos/layout.rs::tab_view" = 49
-"app/src/adapters/secondary/commandspotting/websocket/mod.rs::Stream::reach_for_service" = 44
+"app/src/adapters/secondary/commandspotting/websocket/mod.rs::Stream::reach_for_service" = 43
 "app/src/adapters/secondary/modelfetch/http/mod.rs::<HttpModelFetcher as ModelFetcher>::fetch" = 53
 "app/src/adapters/secondary/textrefinement/openai/mod.rs::OpenAiTextRefiner::attempt" = 43
 "app/src/adapters/secondary/transcription/openai/mod.rs::OpenAiTranscriber::post_with_retries" = 60
@@ -23,14 +23,13 @@
 "app/tests/it/architecture.rs::r6_core_only_whitelisted_external_crates" = 52
 "app/tests/it/architecture.rs::r9_every_primary_adapter_has_it" = 44
 "app/tests/it/chunk_cuts.rs::should_cut_most_chunk_seams_of_synthesized_speech_in_a_pause" = 49
-"app/tests/it/chunked_transcription.rs::should_merge_chunked_speech_without_repeating_or_dropping_a_phrase" = 52
+"app/tests/it/chunked_transcription.rs::needs_stt::should_merge_chunked_speech_without_repeating_or_dropping_a_phrase" = 49
 "app/tests/it/cli.rs::should_offer_only_the_developer_options_each_saying_it_overrides_the_configuration" = 48
 "app/tests/it/commandspotting_reconnect.rs::should_be_back_within_seconds_once_the_service_answers_after_a_long_outage" = 59
 "app/tests/it/commandspotting_websocket.rs::recognized_from_microphone" = 41
 "app/tests/it/config_loader.rs::should_round_trip_full_example_toml" = 48
 "app/tests/it/modelfetch_http.rs::serve" = 54
 "app/tests/it/transcription_openai.rs::spawn_copy" = 44
-"app/tests/it/voice_samples.rs::should_recognize_every_recorded_command_of_the_user" = 57
 "app/tests/steps/app_runtime.rs::<StandInAssembler as PipelineAssembler>::assemble" = 41
 "app/tests/steps/speech_recognition.rs::differing_overlap" = 60
 "command-spotting/src/engine.rs::Session::watch_running" = 48
@@ -40,7 +39,7 @@
 "command-spotting/src/engine/pause.rs::PauseWatch::hear" = 42
 "command-spotting/src/matcher/placed.rs::tests::should_find_a_chain_of_commands_anywhere" = 50
 "command-spotting/tests/it/placed_commands.rs::heard_finely_misheard" = 62
-"e2e-test/tests/cucumber_e2e.rs::main" = 55
+"e2e-test/tests/cucumber_e2e.rs::main" = 53
 "e2e-test/tests/steps/app_distribution/bundle_launch.rs::copy_starts_services" = 72
 "e2e-test/tests/steps/local_services.rs::<ScenarioServices as Drop>::drop" = 46
 "e2e-test/tests/steps/local_services.rs::start_failed" = 43
@@ -73,11 +72,11 @@
 "app/src/adapters/primary/permissions/macos/mod.rs" = 431
 "app/src/adapters/primary/ptt/rdev/mod.rs" = 370
 "app/src/adapters/primary/settings/macos/table.rs" = 312
-"app/src/adapters/secondary/commandspotting/websocket/mod.rs" = 335
+"app/src/adapters/secondary/commandspotting/websocket/mod.rs" = 334
 "app/src/adapters/secondary/localservices/catalog/mod.rs" = 514
 "app/src/adapters/secondary/localservices/catalog/tests.rs" = 416
 "app/src/adapters/secondary/textrefinement/openai/mod.rs" = 318
-"app/src/adapters/secondary/transcription/openai/mod.rs" = 357
+"app/src/adapters/secondary/transcription/openai/mod.rs" = 328
 "app/src/adapters/secondary/visualfeedback/macos/glass.rs" = 315
 "app/src/adapters/secondary/visualfeedback/macos/mod.rs" = 429
 "app/src/adapters/secondary/visualfeedback/macos/pill_content.rs" = 407
@@ -95,9 +94,9 @@
 "app/src/runtime/mod.rs" = 896
 "app/tests/it/architecture.rs" = 510
 "app/tests/it/commandspotting_reconnect.rs" = 512
-"app/tests/it/commandspotting_websocket.rs" = 421
+"app/tests/it/commandspotting_websocket.rs" = 419
 "app/tests/it/textrefinement_openai.rs" = 434
-"app/tests/it/transcription_openai.rs" = 977
+"app/tests/it/transcription_openai.rs" = 970
 "app/tests/main_thread/settings_macos.rs" = 325
 "app/tests/main_thread/visualfeedback_macos.rs" = 699
 "app/tests/steps/app_logging.rs" = 312
@@ -115,16 +114,16 @@
 "command-spotting/src/engine.rs" = 551
 "command-spotting/src/engine/confirming.rs" = 951
 "command-spotting/src/matcher/placed.rs" = 568
-"command-spotting/tests/it/engine.rs" = 1060
-"command-spotting/tests/it/placed_commands.rs" = 733
+"command-spotting/tests/it/engine.rs" = 1044
+"command-spotting/tests/it/placed_commands.rs" = 694
 "e2e-test/src/harness_args.rs" = 397
 "e2e-test/src/refinement_eval.rs" = 395
 "e2e-test/src/speech.rs" = 403
 "e2e-test/tests/steps/app_distribution.rs" = 718
 "e2e-test/tests/steps/app_distribution/bundle_launch.rs" = 372
 "e2e-test/tests/steps/local_services.rs" = 538
-"e2e-test/tests/steps/local_services/copies.rs" = 659
-"e2e-test/tests/steps/speech_recognition.rs" = 399
+"e2e-test/tests/steps/local_services/copies.rs" = 579
+"e2e-test/tests/steps/speech_recognition.rs" = 398
 "e2e-test/tests/steps/voice_control.rs" = 361
 "e2e-test/tests/steps/voice_control/session.rs" = 375
 
@@ -147,10 +146,10 @@
 "app/src/adapters/secondary/visualfeedback/macos" = 2787
 "app/src/core/application" = 3485
 "app/src/core/domain" = 2810
-"app/tests/it" = 6179
+"app/tests/it" = 6082
 "app/tests/steps" = 7326
-"command-spotting/tests/it" = 2119
-"e2e-test/tests/steps" = 2366
+"command-spotting/tests/it" = 2050
+"e2e-test/tests/steps" = 2361
 
 [excessive_nesting]
 "app/src/adapters/primary/modeldownload/macos/mapping.rs::WindowModel::rechecked" = 0
@@ -171,9 +170,9 @@
 "app/tests/it/architecture.rs::r6_core_only_whitelisted_external_crates" = 0
 "app/tests/it/architecture.rs::r7_adapters_in_feature_tech_structure" = 0
 "app/tests/it/chunk_cuts.rs::should_cut_most_chunk_seams_of_synthesized_speech_in_a_pause" = 0
-"app/tests/it/chunked_transcription.rs::should_merge_chunked_speech_without_repeating_or_dropping_a_phrase" = 0
+"app/tests/it/chunked_transcription.rs::needs_stt::should_merge_chunked_speech_without_repeating_or_dropping_a_phrase" = 0
 "app/tests/it/commandspotting_websocket.rs::Listening::next_command" = 0
-"app/tests/it/commandspotting_websocket.rs::should_recognize_stop_dictation_and_press_enter_said_with_a_short_pause_in_real_time" = 0
+"app/tests/it/commandspotting_websocket.rs::needs_kws::should_recognize_stop_dictation_and_press_enter_said_with_a_short_pause_in_real_time" = 0
 "app/tests/it/textrefinement_openai.rs::spawn_copy" = 0
 "app/tests/it/textrefinement_openai.rs::spawn_resetting_stub" = 0
 "app/tests/it/transcription_openai.rs::spawn_copy" = 0

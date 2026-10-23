@@ -500,8 +500,7 @@ fn part_lost(world: &mut IntegrationWorld) -> Result<()> {
     )
 }
 
-#[then("the raw transcript is pasted")]
-fn raw_pasted(world: &mut IntegrationWorld) -> Result<()> {
+pub(crate) fn raw_pasted(world: &mut IntegrationWorld) -> Result<()> {
     let events = run(world).wait_until_over()?;
     if pasted(&events) != [RAW_TRANSCRIPT] {
         bail!("expected the raw transcript pasted; events: {events:?}");

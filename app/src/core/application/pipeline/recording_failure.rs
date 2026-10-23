@@ -141,7 +141,7 @@ mod tests {
     }
 
     /// A dictation in `mode` that records `audio` and loses its microphone, expecting `notice`.
-    fn failed_mid_dictation(
+    fn expect_notice_mid_dictation(
         audio: AudioBuffer16k,
         notice: FailureNotice,
         mode: RecordingMode,
@@ -159,13 +159,13 @@ mod tests {
     #[test]
     fn should_end_the_dictation_with_what_was_recorded_and_the_microphone_notice() {
         let notice = FailureNotice::PartOfDictationLost(FailingPart::Microphone);
-        failed_mid_dictation(one_second(), notice, RecordingMode::Toggle);
+        expect_notice_mid_dictation(one_second(), notice, RecordingMode::Toggle);
     }
 
     #[test]
     fn should_announce_the_dictation_lost_when_nothing_was_recorded() {
         let notice = FailureNotice::DictationLost(FailingPart::Microphone);
-        failed_mid_dictation(
+        expect_notice_mid_dictation(
             AudioBuffer16k::new(Vec::new()),
             notice,
             RecordingMode::Toggle,
@@ -175,7 +175,7 @@ mod tests {
     #[test]
     fn should_ignore_the_hold_mode_release_after_the_failure() {
         let notice = FailureNotice::PartOfDictationLost(FailingPart::Microphone);
-        let mut pipeline = failed_mid_dictation(one_second(), notice, RecordingMode::Hold);
+        let mut pipeline = expect_notice_mid_dictation(one_second(), notice, RecordingMode::Hold);
         pipeline
             .handle(PipelineInput::Hotkey(PttSignal::Released))
             .unwrap();
