@@ -4,7 +4,7 @@ Overnight 2026-10-22/23 the orchestrator finished one change in about 9 hours: t
 
 ## What Changes
 
-- `.claude/kit.yaml`: `launch.max_running: 7` (unset now, so kit's default 3 applies).
+- `.claude/kit.yaml`: `launch.max_running: 7` (unset now, so kit's default applies: 3 overnight, 7 in current kit; written out so a later default cannot change it).
 - `.claude/kit.yaml`: `landing.max_batch: 7` (4 now), so up to 7 branches merge through one landing group and one `full-check`.
 - Supersedes the open PR #302, which sets `max_running: 5`: close it.
 
@@ -25,7 +25,7 @@ Out of scope: kit's own behavior (blocked changes holding slots, stall handling)
 
 ## Open points
 
-- Whether kit accepts `max_batch` above 4: proposed 7, lowered to kit's maximum if it refuses.
+- Whether kit accepts `max_batch` above 4: resolved in design — kit checks only a minimum, so 7 stands.
 - Whether 7 parallel changes overload the machine lock queue: proposed to measure with `just stage-times` after the first night.
 
 ## Release

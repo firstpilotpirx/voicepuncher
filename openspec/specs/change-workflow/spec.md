@@ -7,7 +7,7 @@ How a change branch lands on main: through the landing queue, in groups checked 
 
 ### Requirement: Branches land in groups through the landing queue
 
-A change branch that changed a build input SHALL join the landing queue after its own `just check` passed, instead of being refused for being behind `main`. The queue leader SHALL merge up to four queued branches onto `main`, run one `just full-check` on the combined state and land every member of a passing group; a failing group SHALL be split until the failing branch is found, and the other members SHALL land.
+A change branch that changed a build input SHALL join the landing queue after its own `just check` passed, instead of being refused for being behind `main`. The queue leader SHALL merge up to seven queued branches onto `main`, run one `just full-check` on the combined state and land every member of a passing group; a failing group SHALL be split until the failing branch is found, and the other members SHALL land.
 
 #### Scenario: A checked branch behind main joins the queue
 
@@ -22,6 +22,13 @@ A change branch that changed a build input SHALL join the landing queue after it
 - **WHEN** the queue leader lands the group
 - **THEN** one `just full-check` runs on the three branches merged onto `main`
 - **AND** all three land on `main` once it passes
+
+#### Scenario: Seven queued branches land as one group
+
+- **GIVEN** seven queued branches, each with a passing `just check`
+- **WHEN** the queue leader forms the next group
+- **THEN** the group holds all seven branches
+- **AND** an eighth queued branch waits for the next group
 
 #### Scenario: A red group lands its green members
 
@@ -280,3 +287,19 @@ The integration tests of a workspace member SHALL build into one test binary, be
 - **WHEN** the test suite runs after the move
 - **THEN** that test still runs one at a time, in a process of its own, within its time limit
 - **AND** the suite runs the same tests as before the move
+
+### Requirement: Up to seven changes run at once
+
+The orchestrator SHALL run up to seven changes of this project at once, each in its own session and worktree; a change past that limit SHALL wait until a running change ends.
+
+#### Scenario: Seven ready changes start together
+
+- **GIVEN** seven ready changes and none running
+- **WHEN** the orchestrator asks which changes it may launch
+- **THEN** all seven are launchable
+
+#### Scenario: An eighth change waits for a free slot
+
+- **GIVEN** seven running changes and one more ready change
+- **WHEN** the orchestrator asks which changes it may launch
+- **THEN** the eighth change is not launchable until a running change ends

@@ -19,6 +19,8 @@ panel:
     - {name: whisper-server, url: "http://127.0.0.1:8081"}
     - {name: llama-server, url: "http://127.0.0.1:8080"}
     - {name: voicepuncher-command-spotting, url: "http://127.0.0.1:8082"}
+launch:
+  max_running: 7
 landing:
   batch: true
-  max_batch: 4
+  max_batch: 7
