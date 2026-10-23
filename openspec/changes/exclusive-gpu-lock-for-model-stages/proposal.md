@@ -16,37 +16,36 @@ The user wants every test and check stage that uses the GPU or a model engine to
 
 ## What Changes
 
-- Every stage that uses the GPU or a model engine (`whisper-server`, `whisper-server-commands`, `llama-server`, `voicepuncher-command-spotting` with sherpa-onnx) — the model stages of `check` and `full-check`, the E2E, benchmark and `rerun-failed` recipes — takes one exclusive GPU lock: no model stage of one run ever overlaps a model stage of another run on the machine.
-- The light/heavy split of `split-machine-lock` goes: no class runs beside another; the current lock is extended (or replaced by one exclusive lock) rather than a second parallel mechanism added.
-- Builds, `fmt`, `lint`, `just test`, `metrics` and `just release` stay unlocked and keep running in every session at once.
-- The stage journal and `just stage-times` show the GPU lock's wait and hold, so an overlap can be ruled out from the journal.
-- Tests frozen as load flakes in the sessions of 2026-10-22..23 (among them `voice_forms` frozen whole) are unfrozen and pass.
+`run-e2e-alone-on-the-machine` (#307, merged 2026-10-23 after this change was filed) already removed the light/heavy split: every model stage of a run runs in one phase under the machine lock held exclusively, and builds and tests of other runs wait while it runs. This change does what is left of the user's request:
+
+- Every model stage that uses the GPU or a model engine stays under that one exclusive lock; no second mechanism is added.
+- The stage journal records, for each lock a run held, when the hold began, and `just stage-times` reports whether two runs' model-stage holds overlapped (none, or each overlapping pair), so an overlap can be ruled out from the journal.
+- Builds, `fmt`, `lint`, `metrics` and `just release` keep running in every session at once (unchanged).
+- Tests frozen as load flakes in the sessions of 2026-10-22..23 (among them `voice_forms` frozen whole) are unfrozen when they pass under the exclusive lock; one that fails with the machine to itself is not a load flake and stays frozen, named in `tasks.md`.
 
 Current stage: PoC. Target stage: PoC.
-Scope: the machine lock and its classes in the `justfile`, the lock wait/hold in the stage journal, the frozen load-flake tests, and the AGENTS.md text describing lock classes.
-Acceptance bar: the journal shows no two model stages of different runs overlapping; `e2e-smoke-voice` passes in every `full-check` over at least the first 20 runs after landing (`just stage-times`); every unfrozen test passes; builds and unit tests still start without waiting for the lock.
-Out of scope: the app's own runtime behavior; speeding the model stages up; the number of changes the orchestrator runs at once.
+Scope: the stage journal's lock records and `just stage-times`, `.config/frozen-tests.toml`, the AGENTS.md text on the journal.
+Acceptance bar: `just stage-times` reports no overlapping model-stage holds; every unfrozen test passes in a run of its stage; `e2e-smoke-voice` passes in every `full-check` over at least the first 20 runs after landing (measured after the merge with `just stage-times`); builds and unit tests still start without waiting for the lock when no model stage runs.
+Out of scope: the app's own runtime behavior; speeding the model stages up; the number of changes the orchestrator runs at once; fixing a test that fails with the machine to itself.
 
 ## Capabilities
 
 ### Modified Capabilities
 
-- `change-workflow`: model stages of checks run under one exclusive GPU lock; the light/heavy lock classes are removed.
+- `change-workflow`: the stage journal shows when each lock hold began, and the stage summary reports overlapping holds.
 
 ## Impact
 
-- `justfile` (`light_stages`, `exclusive_stages`, lock recipes, `_stages`), the stage journal and `just stage-times`.
-- `AGENTS.md` § How to verify a change (Lock classes) and § Workflow (parallel changes).
+- `justfile` (`_stage-journal-append`, `stage-times`, a new self-test), the stage journal.
+- `AGENTS.md` § How to verify a change (Lock classes, the stage journal).
 - Tests frozen as load flakes in `app/`, `command-spotting/`, `e2e-test/`.
 
 ## Open points
 
-- Whether the `e2e-cues` quiet lock (builds wait while cue timing runs) stays as it is — proposed: keep it.
-- Whether `full-check` holds the GPU lock once for all its model stages or takes it per stage — proposed: once per run, so a run's stages are not interleaved with another run's.
-- Total check time rises because parallel model phases are gone — proposed: accept it, a red check costs a full rerun.
-- How to find every test frozen as a load flake — proposed: search the branches merged since 2026-10-22 for freeze markers and list them in `tasks.md`.
+- Settled by `run-e2e-alone-on-the-machine`: the quiet lock stays; a run holds the lock once for all its model stages; the longer total check time is accepted.
+- How to find every test frozen as a load flake: every entry of `.config/frozen-tests.toml` on `main` is dated 2026-10-23 and marked a load flake; all of them are candidates.
 
 ## Release
 
 SemVer: no release — only the test tooling changes, the app's behavior does not.
-Target version: 0.37.4.
+Target version: unchanged.
