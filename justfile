@@ -54,9 +54,9 @@ services_run_dir := home_directory() / ".voicepuncher/run"
 command_spotting_build := "-p voicepuncher-command-spotting"
 # The stages of the smoke set, one per capability (_e2e-smoke-part)
 e2e_smoke_stages := "e2e-smoke-voice e2e-smoke-refinement e2e-smoke-speech e2e-smoke-services"
-# The model stages of check and full-check in the order that shows a failure soonest (fail-fast-stage-order): the
-# light phase first, as voice control held the most failures; in each phase the short stages first and the long
-# Gherkin runs last. `accuracy` stands for the accuracy stage full-check picks (_accuracy-stage)
+# The model stages of check and full-check in the order that shows a failure soonest (fail-fast-stage-order):
+# voice control first, as it held the most failures; then the short stages and the long Gherkin runs last, the
+# start cues at the very end. `accuracy` stands for the accuracy stage full-check picks (_accuracy-stage)
 check_model_stages := "e2e-smoke-voice e2e-smoke-refinement refine-eval e2e-smoke-speech e2e-quick e2e-smoke-services"
 full_check_model_stages := "e2e-smoke-voice e2e-regression e2e-resilience e2e-smoke-refinement refine-eval e2e-bundle e2e-smoke-speech accuracy e2e-smoke-services e2e-seams e2e-cues"
 # The test modules of the voice control smoke part, the most failing first: every member's integration tests
@@ -105,31 +105,15 @@ export MACHINE_LOCK_WAIT := env_var_or_default("MACHINE_LOCK_WAIT", "21600")
 # The service ports of every run under the lock: apart from the defaults above, which the user's own services
 # hold, and from their copies 10000 above (18082–18089); these copies listen on 38082–38089, below the free
 # ports (49152+) the @local_services and @resilience steps take. A locked run starts every service it tests
-# here and never reuses one it did not start (_start-model-servers-for-e2e). The heavy lock class and every
-# locked recipe outside it use these ports
+# here and never reuses one it did not start (_start-model-servers-for-e2e)
 test_stt_port := env_var_or_default("VOICEPUNCHER_TEST_STT_PORT", "28081")
 test_command_stt_port := env_var_or_default("VOICEPUNCHER_TEST_COMMAND_STT_PORT", "28085")
 test_llm_port := env_var_or_default("VOICEPUNCHER_TEST_LLM_PORT", "28080")
 test_kws_port := env_var_or_default("VOICEPUNCHER_TEST_KWS_PORT", "28082")
-# The ports of the light lock class, which runs beside a heavy one, so neither touches the other's services;
-# copies on 37082–37089
-test_light_stt_port := env_var_or_default("VOICEPUNCHER_TEST_LIGHT_STT_PORT", "27081")
-test_light_command_stt_port := env_var_or_default("VOICEPUNCHER_TEST_LIGHT_COMMAND_STT_PORT", "27085")
-test_light_llm_port := env_var_or_default("VOICEPUNCHER_TEST_LIGHT_LLM_PORT", "27080")
-test_light_kws_port := env_var_or_default("VOICEPUNCHER_TEST_LIGHT_KWS_PORT", "27082")
-# The model stages of the light lock class: voice control, which streams audio in real time and runs the small
-# command model, so it runs beside another run's heavy stages (dictation, refinement, seams, accuracy); every other
-# model stage is heavy (_lock-phases, _class-lock)
-light_stages := "e2e-smoke-voice e2e-regression e2e-resilience"
-# The model stages of the exclusive lock class: the start cue timing, which the spec bounds with the machine
-# otherwise idle, so its phase holds the machine lock exclusively and the quiet lock the other checks' build
-# stages share (_class-lock), always the last phase of a run
-exclusive_stages := "e2e-cues"
-# The environment of a run on one class's test ports; VOICEPUNCHER_TEST_PORTS names the prefix of the variables
-# that move them, for the messages of _start-model-servers-for-e2e
-heavy_ports := "env VOICEPUNCHER_STT_PORT=" + test_stt_port + " VOICEPUNCHER_COMMAND_STT_PORT=" + test_command_stt_port + " VOICEPUNCHER_LLM_PORT=" + test_llm_port + " VOICEPUNCHER_KWS_PORT=" + test_kws_port + " VOICEPUNCHER_TEST_PORTS=VOICEPUNCHER_TEST"
-light_ports := "env VOICEPUNCHER_STT_PORT=" + test_light_stt_port + " VOICEPUNCHER_COMMAND_STT_PORT=" + test_light_command_stt_port + " VOICEPUNCHER_LLM_PORT=" + test_light_llm_port + " VOICEPUNCHER_KWS_PORT=" + test_light_kws_port + " VOICEPUNCHER_TEST_PORTS=VOICEPUNCHER_TEST_LIGHT"
-locked := heavy_ports + " " + quote(machine_lock) + " " + quote(just_executable()) + " --justfile " + quote(justfile())
+# The environment of a run on the test ports; VOICEPUNCHER_TEST_PORTS names the prefix of the variables that move
+# them, for the messages of _start-model-servers-for-e2e
+test_ports := "env VOICEPUNCHER_STT_PORT=" + test_stt_port + " VOICEPUNCHER_COMMAND_STT_PORT=" + test_command_stt_port + " VOICEPUNCHER_LLM_PORT=" + test_llm_port + " VOICEPUNCHER_KWS_PORT=" + test_kws_port + " VOICEPUNCHER_TEST_PORTS=VOICEPUNCHER_TEST"
+locked := test_ports + " " + quote(machine_lock) + " " + quote(just_executable()) + " --justfile " + quote(justfile())
 
 # List all recipes
 default:
@@ -603,14 +587,12 @@ _stage-keys +stages:
 # Runs the named stages (private recipes without their `_`) in phases. The stages before the first model
 # stage (`e2e*` or `refine-eval`) run one by one without the machine lock, each through the wrapper on the quiet
 # lock in the shared mode (_quiet-lock): it gives the stage the time limit (MACHINE_LOCK_TIMEOUT, exit 124; the
-# timeout message says `[machine-lock]`, though no machine lock is held) and keeps it out of a running or
-# waiting e2e-cues stage; fmt, lint, build and build-e2e run at the utility QoS clamp. The rest runs in
-# _model-stages, one phase per lock class (_lock-phases): the light and heavy phases each under their class lock
-# and the shared machine lock, the exclusive phase under the machine lock and the quiet lock exclusively
-# (_class-lock), on the class's test ports, so a light phase runs beside another run's heavy one and the
-# exclusive phase has the machine alone; when the caller already holds the machine lock, in one phase at once.
-# A failing stage ends the run before the next lock is requested.
-# Ends with one table: each stage's time, each class's lock wait and hold, and adds the run to the stage journal
+# timeout message says `[machine-lock]`, though no machine lock is held) and keeps it out of another run's
+# running or waiting model stages; fmt, lint, build and build-e2e run at the utility QoS clamp. The rest runs in
+# _model-stages, in one phase under the machine lock and the quiet lock exclusively (_e2e-lock), on the test
+# ports, so the model stages have the machine alone: no other run's model, build or test stage runs beside them;
+# when the caller already holds the machine lock, under that lock.
+# Ends with one table: each stage's time, the lock wait and hold, and adds the run to the stage journal
 # (_stage-journal-append; the caller names itself in VOICEPUNCHER_STAGES_RECIPE, full-check its accuracy choice in
 # VOICEPUNCHER_STAGES_ACCURACY); every stage's output is also copied to a log of the run, where the journal finds
 # the failed tests. Two checks of one worktree must not overlap: the lock no longer keeps their builds apart.
@@ -705,7 +687,8 @@ _stages +stages:
                 reused) row "↺" "$a" "reused — $(reused_line "$b")" ;;
             esac
         done <"$report"
-        # One row per lock class the run asked for: its wait and its hold, or the wait it gave up after
+        # One row per lock the run asked for (e2e, or machine when the caller held it): its wait and its hold, or
+        # the wait it gave up after
         for class in $(awk '$1 == "requested" { print $2 }' "$report"); do
             mark() { awk -v k="$1" -v c="$class" '$1 == k && $2 == c { print $3 }' "$report" | tail -1; }
             requested=$(mark requested) locked=$(mark locked) returned=$(mark returned)
@@ -748,7 +731,7 @@ _stages +stages:
         # `test` stage clamps only its own build phase (see _test)
         clamp=()
         case "$stage" in fmt|lint|build|bundle|build-e2e) clamp=(taskpolicy -c utility) ;; esac
-        run_phase ${clamp[@]+"${clamp[@]}"} {{heavy_ports}} {{just_executable()}} --justfile {{quote(justfile())}} _quiet-lock \
+        run_phase ${clamp[@]+"${clamp[@]}"} {{test_ports}} {{just_executable()}} --justfile {{quote(justfile())}} _quiet-lock \
             {{just_executable()}} --justfile {{quote(justfile())}} "_$stage"
         mark="✓"
         [[ $status -eq 0 && -z "$interrupted" ]] || mark="✗"
@@ -758,93 +741,52 @@ _stages +stages:
     done
     for stage in $model; do ! reuse_stage "$stage" || true; done
     [[ -n "$to_run" ]] || exit 0
-    # phase <class> <stage>…: runs the stages in _model-stages under the lock of their class (the caller's
-    # machine lock as it is), marking in the report when it asked for the lock and when it returned
+    # phase <class> <stage>…: runs the stages in _model-stages under the e2e lock (the caller's machine lock as it
+    # is), marking in the report when it asked for the lock and when it returned
     phase() {
-        local class=$1 ports lock
+        local class=$1 lock
         shift
-        case "$class" in
-            light) ports=({{light_ports}}) ;;
-            *) ports=({{heavy_ports}}) ;;
-        esac
         if [[ -n "$caller" ]]; then
             echo "● $(date +%H:%M:%S) the caller holds the machine lock: $*"
             lock=()
         else
             echo "→ $(date +%H:%M:%S) waiting for the $class lock: $*"
-            lock=({{just_executable()}} --justfile {{quote(justfile())}} _class-lock "$class")
+            lock=({{just_executable()}} --justfile {{quote(justfile())}} _e2e-lock)
         fi
         phase_class=$class
         echo "requested $class $(now)" >>"$report"
-        run_phase "${ports[@]}" VOICEPUNCHER_LOCK_CLASS="$class" ${lock[@]+"${lock[@]}"} \
+        run_phase {{test_ports}} VOICEPUNCHER_LOCK_CLASS="$class" ${lock[@]+"${lock[@]}"} \
             {{just_executable()}} --justfile {{quote(justfile())}} _model-stages "$@"
         echo "returned $class $(now)" >>"$report"
         phase_class=""
         [[ $status -eq 0 ]] || exit "$status"
         [[ -z "$interrupted" ]] || exit 130
     }
-    # The caller's machine lock already keeps every other run out: one phase on the heavy ports, as before
-    if [[ -n "$caller" ]]; then
-        phase machine $to_run
-    else
-        # Read first: a stage must not read the phase list as its input
-        phases=$({{just_executable()}} --justfile {{quote(justfile())}} _lock-phases $to_run)
-        while read -r class stages <&3; do
-            phase "$class" $stages
-        done 3<<<"$phases"
-    fi
+    # Every model stage in one phase: the caller's machine lock already keeps every other run out; otherwise the
+    # e2e lock gives the run the machine alone
+    if [[ -n "$caller" ]]; then phase machine $to_run; else phase e2e $to_run; fi
 
-# The model stages split into one phase per lock class, `<class> <stage>…` per line: each phase keeps the order of
-# its stages, the light and heavy phases come in the order of their first stage, the exclusive phase last, a class
-# without a stage prints nothing. `light` are the stages light_stages names, `exclusive` those of exclusive_stages,
-# every other model stage is `heavy` (see _class-lock)
-_lock-phases *stages:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    heavy="" light="" exclusive="" first=""
-    for stage in {{stages}}; do
-        if [[ " {{light_stages}} " == *" $stage "* ]]; then light+=" $stage"; first=${first:-light}
-        elif [[ " {{exclusive_stages}} " == *" $stage "* ]]; then exclusive+=" $stage"
-        else heavy+=" $stage"; first=${first:-heavy}; fi
-    done
-    print() { [[ -z "$2" ]] || echo "$1$2"; }
-    if [[ "$first" == light ]]; then print light "$light"; print heavy "$heavy"
-    else print heavy "$heavy"; print light "$light"; fi
-    print exclusive "$exclusive"
-
-# Runs a command under the lock of its class (_lock-phases), then under the machine lock in the shared mode:
-# two runs of one class take turns, a light and a heavy run overlap, and an exclusive run of the machine lock
-# (another project, a standalone recipe) still has the machine alone, as the kit lets a waiting exclusive run go
-# before new shared runs. The class lock comes first, so a run never holds the shared machine lock while it
-# queues for its class. A class lock is a lock directory of its own beside the machine lock's; its deadline
-# covers the wait for the machine lock (MACHINE_LOCK_WAIT) plus the machine lock's deadline, which stays on the
-# command
-# The `exclusive` class takes no class lock: the machine lock exclusively (the outer wrapper, so the kit keeps
-# every shared phase out and lets this run go before new shared ones), then the quiet lock exclusively (the
-# inner wrapper, with the stage's deadline), so the other checks' build stages (_quiet-lock) end before the
-# stage times anything and none starts beside it. Machine lock first: holding the quiet lock while queuing for
-# the machine lock would stall every other check's builds for the queue's length
+# Runs a command, the model stages of one _stages run, alone on the machine: the machine lock exclusively (the
+# outer wrapper, so the kit keeps every other run's model stages and every exclusive run out and lets this run go
+# before new shared ones), then the quiet lock exclusively (the inner wrapper, with the stage's deadline), so the
+# other runs' build and test stages (_quiet-lock) end before the first model stage starts and none starts beside
+# them. Machine lock first: holding the quiet lock while queuing for the machine lock would stall every other
+# check's builds for the queue's length. The outer deadline covers the wait for the quiet lock
+# (MACHINE_LOCK_WAIT) plus the inner deadline
 [positional-arguments]
-_class-lock class +command:
+_e2e-lock +command:
     #!/usr/bin/env bash
     set -euo pipefail
-    class=$1
-    shift
     machine_dir="${MACHINE_LOCK_DIR:-$HOME/.cache/machine-lock}"
     deadline="${MACHINE_LOCK_TIMEOUT:-3600}"
-    if [[ "$class" == exclusive ]]; then
-        exec env MACHINE_LOCK_DIR="$machine_dir" MACHINE_LOCK_TIMEOUT="$(( MACHINE_LOCK_WAIT + deadline ))" \
-            {{quote(machine_lock)}} env MACHINE_LOCK_DIR="$machine_dir-voicepuncher-quiet" MACHINE_LOCK_TIMEOUT="$deadline" \
-            {{quote(machine_lock)}} "$@"
-    fi
-    exec env MACHINE_LOCK_DIR="$machine_dir-voicepuncher-$class" MACHINE_LOCK_TIMEOUT="$(( MACHINE_LOCK_WAIT + deadline ))" \
-        {{quote(machine_lock)}} env MACHINE_LOCK_DIR="$machine_dir" MACHINE_LOCK_TIMEOUT="$deadline" \
-        {{quote(machine_lock)}} --shared "$@"
+    exec env MACHINE_LOCK_DIR="$machine_dir" MACHINE_LOCK_TIMEOUT="$(( MACHINE_LOCK_WAIT + deadline ))" \
+        {{quote(machine_lock)}} env MACHINE_LOCK_DIR="$machine_dir-voicepuncher-quiet" MACHINE_LOCK_TIMEOUT="$deadline" \
+        {{quote(machine_lock)}} "$@"
 
 # Runs a build stage of _stages (fmt, lint, test, metrics, build, bundle, build-e2e) under the quiet lock in the
-# shared mode: a lock directory beside the machine lock's that only the exclusive class takes exclusively, so the
-# builds of every check start at once beside everything but a running or waiting e2e-cues stage, which they wait
-# out (at most its hold). The wrapper also gives the stage its time limit (MACHINE_LOCK_TIMEOUT, exit 124); with
+# shared mode: a lock directory beside the machine lock's that only the model stages take exclusively (_e2e-lock),
+# so the builds and tests of every run start at once beside each other but never beside another run's running or
+# waiting model stages, which they wait out (at most their hold). The wrapper also gives the stage its time limit (MACHINE_LOCK_TIMEOUT, exit 124); with
 # VOICEPUNCHER_NO_MACHINE_LOCK=1 (the hosted CI) the command runs as it is
 [positional-arguments]
 _quiet-lock +command:
@@ -936,7 +878,7 @@ _stage-journal-append:
     }
     my @stages = map { my $row = $rows{$_}; $row ? [$_, @$row] : [$_, "skipped", undef] } split " ", $env{LIST};
     my $round = sub { defined $_[0] ? sprintf("%.1f", $_[0]) + 0 : undef };
-    # Per lock class its wait and hold; lock_wait and lock_held are their sums (a hold is missing when the lock
+    # Per lock (the e2e lock; light, heavy and exclusive in older runs) its wait and hold; lock_wait and lock_held are their sums (a hold is missing when the lock
     # was never taken)
     my ($wait, $held, @locks);
     if ($env{CALLER} && grep { defined $marks{$_}{locked} } @classes) { ($wait, $held) = ("caller", "caller") }
@@ -1116,15 +1058,15 @@ size-baseline:
     VOICEPUNCHER_WRITE_SIZE_BASELINE=1 {{just_executable()}} test
 
 # Runs without the machine-wide lock, as an unlocked stage of _stages (which records it in the stage journal): it
-# uses no shared service, port, GPU or exclusive device. A lock directory of the run's own only gives it the wrapper's time limit (MACHINE_LOCK_TIMEOUT, exit 124; the timeout message
-# says `[machine-lock]`). Departs from agent-kit `machine-lock.md` on purpose until the kit's exception lands.
-# Every test of the app, the command spotting service and the E2E harness under cargo-nextest, each within its time limit, unlocked (~1 min)
+# uses no shared service, port, GPU or exclusive device. The quiet lock in the shared mode (_quiet-lock) gives it the wrapper's time limit (MACHINE_LOCK_TIMEOUT, exit 124; the timeout message
+# says `[machine-lock]`) and makes it wait out another run's model stages, which have the machine alone (_e2e-lock). Departs from agent-kit `machine-lock.md` on purpose until the kit's exception lands.
+# Every test of the app, the command spotting service and the E2E harness under cargo-nextest, each within its time limit, without the machine lock (~1 min)
 test:
     @VOICEPUNCHER_STAGES_RECIPE=test {{just_executable()}} _stages test metrics
 
 # The rerun takes the worktree's last record of the stage journal that ran a stage, its failed stage and its failed tests (or the
 # names given, in the journal's form: `<package>::<binary> <test>`, `scenario: <name>`), and runs that one stage
-# with them alone — same build, services, lock class, test ports and time limits, never reused and never recorded as a
+# with them alone — same build, services, lock, test ports and time limits, never reused and never recorded as a
 # pass — then fails naming any of
 # them that never ran. Journaled as `rerun-failed`, never the change's passing check
 # After a failure: rerun only the failed tests and scenarios of the last run, in their stage; once green, run the stage's recipe or the check whole once
@@ -1258,11 +1200,11 @@ _test: _require-nextest
     fi
     if [[ -n "$self" ]]; then
         "${me[@]}" _test-stage-keys
-        "${me[@]}" _test-lock-phases
+        "${me[@]}" _test-stage-order
         if [[ "${VOICEPUNCHER_NO_MACHINE_LOCK:-}" == 1 ]]; then
             echo "⊘ machine lock self-test skipped (VOICEPUNCHER_NO_MACHINE_LOCK=1)"
         else
-            "${me[@]}" _test-class-locks
+            "${me[@]}" _test-e2e-locks
         fi
     fi
     # The pass records of the parts that ran, when what they read held through the run
@@ -1729,85 +1671,63 @@ _check-bundle app dmg:
     [[ -L "$mount/Applications" ]] || { echo "✗ $dmg holds no Applications shortcut" >&2; exit 1; }
     echo "✓ bundle stage: $app signed and verified with its engines and licenses, $dmg holds the app and the Applications shortcut"
 
-# Self-test of _class-lock and _quiet-lock, run by the `test` stage, on lock directories of its own: the lock wait
-# is 6 h unless the caller sets it, a light and a heavy run overlap, two runs of one class take turns, an exclusive
-# run of the machine lock keeps both out, quiet builds overlap each other, and an exclusive-class run waits for
-# the quiet builds, keeps new ones out and keeps the light and heavy classes out
-_test-class-locks:
+# Self-test of _e2e-lock and _quiet-lock, run by the `test` stage, on lock directories of its own: the lock wait
+# is 6 h unless the caller sets it, two model phases take turns, an exclusive run of the machine lock keeps a model
+# phase out, quiet builds overlap each other, and a model phase waits for the quiet builds and keeps new ones out
+_test-e2e-locks:
     #!/usr/bin/env bash
     set -euo pipefail
     dir=$(mktemp -d)
     trap 'rm -rf "$dir"' EXIT
     export MACHINE_LOCK_DIR="$dir/machine-lock" MACHINE_LOCK_PRIORITY=normal
-    now() { perl -MTime::HiRes=time -e 'printf "%.2f", time'; }
     # hold <name> <lock…>: holds the lock 1.5 s, writing when it got it and when it let go to <name>
     hold() {
         local name=$1
         shift
         "$@" sh -c "perl -MTime::HiRes=time -e 'printf \"%.2f \", time' >$dir/$name; sleep 1.5; perl -MTime::HiRes=time -e 'printf \"%.2f\n\", time' >>$dir/$name"
     }
-    class() { {{just_executable()}} --justfile {{quote(justfile())}} _class-lock "$@"; }
+    e2e() { {{just_executable()}} --justfile {{quote(justfile())}} _e2e-lock "$@"; }
+    quiet() { {{just_executable()}} --justfile {{quote(justfile())}} _quiet-lock "$@"; }
     # overlap <a> <b>: whether the two holds overlapped in time
     overlap() { perl -e 'my ($a0, $a1) = split " ", `cat $ARGV[0]`; my ($b0, $b1) = split " ", `cat $ARGV[1]`; exit(($a0 < $b1 && $b0 < $a1) ? 0 : 1)' "$dir/$1" "$dir/$2"; }
+    # ends_before <a> <b>: whether hold a let go before hold b got the lock
+    ends_before() { perl -e 'my ($a0, $a1) = split " ", `cat $ARGV[0]`; my ($b0, $b1) = split " ", `cat $ARGV[1]`; exit($a1 <= $b0 ? 0 : 1)' "$dir/$1" "$dir/$2"; }
     fail() { echo "✗ $1" >&2; for f in "$dir"/[a-z]*; do [[ -f "$f" ]] && echo "  $(basename "$f"): $(cat "$f")" >&2; done; exit 1; }
     wait_default=$(env -u MACHINE_LOCK_WAIT {{just_executable()}} --justfile {{quote(justfile())}} --evaluate MACHINE_LOCK_WAIT 2>/dev/null || true)
     [[ "$wait_default" == 21600 ]] || fail "the lock wait defaults to '$wait_default', not 21600 s (6 h)"
     wait_set=$(MACHINE_LOCK_WAIT=5 {{just_executable()}} --justfile {{quote(justfile())}} --evaluate MACHINE_LOCK_WAIT 2>/dev/null || true)
     [[ "$wait_set" == 5 ]] || fail "a caller's lock wait 5 became '$wait_set'"
     echo "  ✓ the lock wait is 6 h unless the caller sets it"
-    hold light1 class light & hold heavy1 class heavy & wait
-    overlap light1 heavy1 || fail "a light and a heavy run took turns"
-    echo "  ✓ a light and a heavy run overlap"
-    hold light2 class light & hold light3 class light & wait
-    ! overlap light2 light3 || fail "two light runs overlapped"
-    hold heavy2 class heavy & hold heavy3 class heavy & wait
-    ! overlap heavy2 heavy3 || fail "two heavy runs overlapped"
-    echo "  ✓ two runs of one class take turns"
+    hold e2e1 e2e & hold e2e2 e2e & wait
+    ! overlap e2e1 e2e2 || fail "two model phases overlapped"
+    echo "  ✓ two model phases take turns"
     hold machine {{quote(machine_lock)}} & sleep 0.5
-    hold light4 class light & hold heavy4 class heavy & wait
-    ! overlap machine light4 || fail "a light run overlapped an exclusive run"
-    ! overlap machine heavy4 || fail "a heavy run overlapped an exclusive run"
-    echo "  ✓ an exclusive run keeps both classes out"
-    quiet() { {{just_executable()}} --justfile {{quote(justfile())}} _quiet-lock "$@"; }
-    # ends_before <a> <b>: whether hold a let go before hold b got the lock
-    ends_before() { perl -e 'my ($a0, $a1) = split " ", `cat $ARGV[0]`; my ($b0, $b1) = split " ", `cat $ARGV[1]`; exit($a1 <= $b0 ? 0 : 1)' "$dir/$1" "$dir/$2"; }
+    hold e2e3 e2e & wait
+    ! overlap machine e2e3 || fail "a model phase overlapped an exclusive run of the machine lock"
+    echo "  ✓ an exclusive run of the machine lock keeps a model phase out"
     hold quiet1 quiet & hold quiet2 quiet & wait
     overlap quiet1 quiet2 || fail "two quiet builds took turns"
     echo "  ✓ two quiet builds overlap"
     hold quiet3 quiet & sleep 0.5
-    hold exclusive1 class exclusive & sleep 0.5
+    hold e2e4 e2e & sleep 0.5
     hold quiet4 quiet & wait
-    ends_before quiet3 exclusive1 || fail "an exclusive run did not wait for the quiet build before it"
-    ends_before exclusive1 quiet4 || fail "a quiet build started beside the exclusive run"
-    echo "  ✓ an exclusive run waits for the quiet builds and keeps new ones out"
-    hold exclusive2 class exclusive & sleep 0.5
-    hold light5 class light & hold heavy5 class heavy & wait
-    ! overlap exclusive2 light5 || fail "a light run overlapped an exclusive-class run"
-    ! overlap exclusive2 heavy5 || fail "a heavy run overlapped an exclusive-class run"
-    echo "  ✓ an exclusive-class run keeps the light and heavy classes out"
+    ends_before quiet3 e2e4 || fail "a model phase did not wait for the quiet build before it"
+    ends_before e2e4 quiet4 || fail "a quiet build started beside a model phase"
+    echo "  ✓ a model phase waits for the quiet builds and keeps new ones out"
 
-# Self-test of _lock-phases, run by the `test` stage: the model stages split into one phase per lock class, each
-# keeping the stages' order, the phases in the order of their first stage; a stage light_stages does not name is
-# heavy; a class without a stage prints no phase
-_test-lock-phases:
+# Self-test of the model stages' order, run by the `test` stage: check and full-check run voice control first and
+# full-check the cues last, the same stages as before the reorder; the smoke and seams selections
+_test-stage-order:
     #!/usr/bin/env bash
     set -euo pipefail
-    phases() { {{just_executable()}} --justfile {{quote(justfile())}} _lock-phases "$@"; }
-    expect() {
-        local what=$1 want=$2 got
-        shift 2
-        got=$(phases "$@")
-        [[ "$got" == "$want" ]] || { printf '✗ %s\nwant:\n%s\ngot:\n%s\n' "$what" "$want" "$got" >&2; exit 1; }
-        echo "  ✓ $what"
-    }
-    # check and full-check (fail-fast-stage-order): the light phase first, voice control holding the most failures;
-    # in each phase the short stages first, the long Gherkin runs last; the same stages as before the reorder
-    expect "check: voice control first, then the short heavy stages" \
-        $'light e2e-smoke-voice\nheavy e2e-smoke-refinement refine-eval e2e-smoke-speech e2e-quick e2e-smoke-services' \
-        {{check_model_stages}}
-    expect "full-check: every voice control stage first, the seams last, then the cues with the machine alone" \
-        $'light e2e-smoke-voice e2e-regression e2e-resilience\nheavy e2e-smoke-refinement refine-eval e2e-bundle e2e-smoke-speech accuracy e2e-smoke-services e2e-seams\nexclusive e2e-cues' \
-        {{full_check_model_stages}}
+    # check and full-check (fail-fast-stage-order): voice control first, holding the most failures; the short
+    # stages next, the long Gherkin runs last, and the cues, which time the start cue, at the very end
+    check="{{check_model_stages}}" full="{{full_check_model_stages}}"
+    [[ "$check" == "e2e-smoke-voice "* ]] \
+        || { echo "✗ check does not run voice control first: $check" >&2; exit 1; }
+    [[ "$full" == "e2e-smoke-voice e2e-regression e2e-resilience "* && "$full" == *" e2e-seams e2e-cues" ]] \
+        || { echo "✗ full-check does not run voice control first and the seams and the cues last: $full" >&2; exit 1; }
+    echo "  ✓ check and full-check run voice control first, full-check the cues last"
     sorted() { tr ' ' '\n' <<<"$*" | grep . | sort | tr '\n' ' '; }
     [[ $(sorted {{check_model_stages}}) == $(sorted e2e-smoke-speech e2e-smoke-refinement e2e-smoke-voice e2e-smoke-services e2e-quick refine-eval) ]] \
         || { echo "✗ check runs other stages than before: {{check_model_stages}}" >&2; exit 1; }
@@ -1834,10 +1754,6 @@ _test-lock-phases:
     [[ $(VOICEPUNCHER_RERUN_FILTER='test(=x)' seams "a b") == '(binary(=it) & (test(/^a::/) | test(/^b::/))) & (test(=x))' ]] \
         || { echo "✗ a rerun's filter widens the seams stage instead of narrowing it" >&2; exit 1; }
     echo "  ✓ a stage of it modules selects them, narrowed by a rerun"
-    expect "a light first stage runs its phase first" $'light e2e-resilience\nheavy e2e-seams' e2e-resilience e2e-seams
-    expect "an unknown stage is heavy" "heavy e2e-something-new" e2e-something-new
-    expect "only light stages give one phase" "light e2e-regression" e2e-regression
-    expect "no stage, no phase" ""
     lock() { {{just_executable()}} --justfile {{quote(justfile())}} --evaluate machine_lock; }
     [[ $(VOICEPUNCHER_NO_MACHINE_LOCK=1 MACHINE_LOCK=/elsewhere lock) == /usr/bin/env ]] \
         || { echo "✗ VOICEPUNCHER_NO_MACHINE_LOCK=1 does not run the recipes without the lock: $(VOICEPUNCHER_NO_MACHINE_LOCK=1 lock)" >&2; exit 1; }

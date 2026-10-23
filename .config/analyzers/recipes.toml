@@ -3,7 +3,6 @@
 [findings]
 "shellcheck _accuracy-stage SC2053" = 1
 "shellcheck _it-filter SC2043" = 1
-"shellcheck _lock-phases SC2043" = 1
 "shellcheck _model-stages SC2043" = 2
 "shellcheck _require-release-identity SC2157" = 1
 "shellcheck _smoke-part-filter SC2043" = 1
@@ -11,8 +10,8 @@
 "shellcheck _stages SC2043" = 1
 "shellcheck _stages SC2086" = 4
 "shellcheck _test SC2086" = 1
-"shellcheck _test-lock-phases SC1007" = 2
-"shellcheck _test-lock-phases SC2193" = 2
+"shellcheck _test-stage-order SC1007" = 2
+"shellcheck _test-stage-order SC2193" = 2
 "shellcheck _test-stage-keys SC2086" = 1
 "shellcheck models SC2050" = 1
 "shellcheck run SC2043" = 1
