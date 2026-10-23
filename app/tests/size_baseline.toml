@@ -30,7 +30,6 @@
 "app/tests/it/config_loader.rs::should_round_trip_full_example_toml" = 48
 "app/tests/it/modelfetch_http.rs::serve" = 54
 "app/tests/it/transcription_openai.rs::spawn_copy" = 44
-"app/tests/it/voice_forms.rs::should_carry_out_every_recorded_way_of_saying_the_commands" = 42
 "app/tests/it/voice_samples.rs::should_recognize_every_recorded_command_of_the_user" = 57
 "app/tests/steps/app_runtime.rs::<StandInAssembler as PipelineAssembler>::assemble" = 41
 "app/tests/steps/speech_recognition.rs::differing_overlap" = 60

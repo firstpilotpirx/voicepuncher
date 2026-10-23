@@ -103,26 +103,59 @@ fn content_length(reader: &mut BufReader<TcpStream>) -> usize {
     }
 }
 
-/// Listeners on the first two copy ports of a service address nothing listens on.
+/// The service ports a two-copies test may take: `WINDOW_SLOTS` of them, `WINDOW_STEP` apart
+/// from `FIRST_WINDOW_BASE`, so the copy ports of two tests never overlap (two tests that
+/// pick one slot see it at the bind). Below the ephemeral ports, which macOS hands out in
+/// sequence, so no `127.0.0.1:0` of another test lands in a window, and apart from every
+/// port the project's services and checks use (design of fix-load-sensitive-confirm-tests).
+const FIRST_WINDOW_BASE: u16 = 30_000;
+const WINDOW_SLOTS: u16 = 625;
+const WINDOW_STEP: u16 = 8;
+
+/// Listeners on the first two copy ports of a service address nothing listens on, in a
+/// copy-port window of this test's own.
 fn two_copies() -> (String, TcpListener, TcpListener) {
-    loop {
-        let base = TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
-        let url = format!("http://127.0.0.1:{base}/v1");
-        let ports = voicepuncher_copy_pool::ServiceAddress::parse(&url)
-            .unwrap()
-            .copy_ports();
-        if let (Ok(first), Ok(second)) = (
-            TcpListener::bind(("127.0.0.1", ports[0])),
-            TcpListener::bind(("127.0.0.1", ports[1])),
-        ) {
-            return (url, first, second);
-        }
+    let first_slot = u16::try_from(std::process::id() % u32::from(WINDOW_SLOTS)).unwrap();
+    (0..WINDOW_SLOTS)
+        .map(|n| FIRST_WINDOW_BASE + ((first_slot + n) % WINDOW_SLOTS) * WINDOW_STEP)
+        .find_map(|base| {
+            let url = format!("http://127.0.0.1:{base}/v1");
+            let ports = voicepuncher_copy_pool::ServiceAddress::parse(&url)
+                .unwrap()
+                .copy_ports();
+            let first = TcpListener::bind(("127.0.0.1", ports[0])).ok()?;
+            let second = TcpListener::bind(("127.0.0.1", ports[1])).ok()?;
+            Some((url, first, second))
+        })
+        .unwrap()
+}
+
+#[test]
+fn should_give_each_two_copies_test_a_window_of_copy_ports_of_its_own() {
+    // Given two tests that serve two copies each, at the same time
+    let (first_url, _first_a, _first_b) = two_copies();
+    let (second_url, _second_a, _second_b) = two_copies();
+    let address = |url: &str| voicepuncher_copy_pool::ServiceAddress::parse(url).unwrap();
+    let (first, second) = (address(&first_url), address(&second_url));
+    // Then neither pool can find the other's copies
+    let overlap: Vec<u16> = first
+        .copy_ports()
+        .into_iter()
+        .filter(|port| second.copy_ports().contains(port))
+        .collect();
+    assert!(overlap.is_empty(), "{overlap:?}");
+    // And no port lies where `127.0.0.1:0` hands ports out, in sequence, to any program
+    let ports = [first.port(), second.port()]
+        .into_iter()
+        .chain(first.copy_ports())
+        .chain(second.copy_ports());
+    for port in ports {
+        assert!(port < EPHEMERAL_PORTS, "{port}");
     }
 }
+
+/// Where macOS hands out the ports of `127.0.0.1:0` (`net.inet.ip.portrange.first`).
+const EPHEMERAL_PORTS: u16 = 49_152;
 
 #[test]
 fn should_send_a_confirmation_refused_by_its_copy_to_the_other_copy() {
