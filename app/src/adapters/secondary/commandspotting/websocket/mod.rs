@@ -340,11 +340,11 @@ impl Stream {
             std::thread::sleep(AWAY_WAIT);
             return;
         }
-        let (lost_at, replay_from) = (
-            outage.lost_at,
-            self.timings
-                .replay_start(outage.lost_at, self.last_command_end),
-        );
+        // The loss dated by stream position, as the command ends and the replay are.
+        let lost_at = outage.lost_at;
+        let replay_from = self
+            .timings
+            .replay_start(heard::dated(&self.heard, lost_at), self.last_command_end);
         match self.reconnect(replay_from) {
             Ok((client, replayed)) => {
                 self.session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);

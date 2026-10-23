@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use url::{Position, Url};
+
 /// The copies of a speech recognition service listen this far above the service's own port.
 pub const SPEECH_RECOGNITION_COPY_OFFSET: u32 = 10_000;
 /// The copies of the text refinement service listen this far above its port: apart from
@@ -41,21 +43,20 @@ impl std::error::Error for AddressError {}
 impl ServiceAddress {
     pub fn parse(url: &str) -> Result<Self, AddressError> {
         let invalid = || AddressError(url.to_owned());
-        let (scheme, rest) = url.split_once("://").ok_or_else(invalid)?;
-        let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
-        let (host, port) = match authority.rsplit_once(':') {
-            Some((host, port)) if !port.ends_with(']') => {
-                (host, port.parse().map_err(|_| invalid())?)
-            }
-            _ => (authority, HTTP_PORT),
+        let parsed = Url::parse(url).map_err(|_| invalid())?;
+        let host = parsed
+            .host_str()
+            .filter(|host| !host.is_empty())
+            .ok_or_else(invalid)?;
+        // `url` writes "/" for an address without a path; callers append their own.
+        let path = match &parsed[Position::BeforePath..] {
+            "/" if !url.ends_with('/') => "",
+            path => path,
         };
-        if host.is_empty() {
-            return Err(invalid());
-        }
         Ok(Self {
-            scheme: scheme.to_owned(),
+            scheme: parsed.scheme().to_owned(),
             host: host.to_owned(),
-            port,
+            port: parsed.port_or_known_default().unwrap_or(HTTP_PORT),
             path: path.to_owned(),
             copy_offset: SPEECH_RECOGNITION_COPY_OFFSET,
         })
@@ -130,6 +131,13 @@ mod tests {
         let address = ServiceAddress::parse("http://localhost").unwrap();
         assert_eq!(address.port(), 80);
         assert_eq!(address.with_port(10081), "http://localhost:10081");
+    }
+
+    #[test]
+    fn should_take_the_known_port_of_the_scheme_when_the_address_names_none() {
+        let address = ServiceAddress::parse("https://localhost/v1").unwrap();
+        assert_eq!(address.port(), 443);
+        assert_eq!(address.with_port(10444), "https://localhost:10444/v1");
     }
 
     #[test]

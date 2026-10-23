@@ -50,8 +50,8 @@ pub fn control(parts: &Parts, field: &'static Field, tag: isize) -> FieldControl
         Control::Radio(choices) => radio(parts, choices, tag),
         Control::Number { unit, .. } => number(parts, unit, tag),
         Control::Slider { min, max } => slider(parts, min, max, tag),
-        Control::Text | Control::Address(_) => text(parts, tag, Widget::Text),
-        Control::LanguageList => text(parts, tag, Widget::Languages),
+        Control::Text | Control::Address(_) => text(parts, tag, Widget::Text, ""),
+        Control::LanguageList => text(parts, tag, Widget::Languages, LANGUAGES_PLACEHOLDER),
         Control::TextArea => text_area(parts, field),
         Control::Folder => folder(parts, tag),
         Control::Examples => examples(parts),
@@ -147,13 +147,14 @@ fn slider(parts: &Parts, min: f64, max: f64, tag: isize) -> Built {
     )
 }
 
-fn text(parts: &Parts, tag: isize, widget: fn(Retained<NSTextField>) -> Widget) -> Built {
+/// Makes the widget of a text field.
+type TextWidget = fn(Retained<NSTextField>) -> Widget;
+
+fn text(parts: &Parts, tag: isize, widget: TextWidget, placeholder: &str) -> Built {
     let text = NSTextField::textFieldWithString(&NSString::new(), parts.mtm);
     width(&text, TEXT_WIDTH);
     parts.target.wire(&text, Action::CHANGED, tag);
-    if matches!(widget(text.clone()), Widget::Languages(_)) {
-        text.setPlaceholderString(Some(&NSString::from_str(LANGUAGES_PLACEHOLDER)));
-    }
+    text.setPlaceholderString(Some(&NSString::from_str(placeholder)));
     (view_of(&text), view_of(&text), widget(text))
 }
 
@@ -167,10 +168,12 @@ fn text_area(parts: &Parts, field: &Field) -> Built {
     scroll.setBorderType(NSBorderType::BezelBorder);
     width(&scroll, TEXT_WIDTH);
     height_of(&scroll, height);
-    let view = scroll
+    let held = scroll
         .documentView()
-        .and_then(|view| view.downcast::<NSTextView>().ok())
-        .expect("a scrollable text view holds a text view");
+        .and_then(|view| view.downcast::<NSTextView>().ok());
+    // AppKit's scrollable text view holds one; should it not, the field gets its own.
+    let view = held.unwrap_or_else(|| NSTextView::new(parts.mtm));
+    scroll.setDocumentView(Some(&view));
     view.setRichText(false);
     (view_of(&scroll), view_of(&scroll), Widget::TextArea(view))
 }

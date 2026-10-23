@@ -141,7 +141,6 @@
 "clippy::collection_is_never_read command-spotting/tests/it/server.rs" = 1
 "clippy::default_trait_access app/src/adapters/secondary/commandspotting/websocket/client.rs" = 1
 "clippy::default_trait_access command-spotting/tests/it/server.rs" = 2
-"clippy::expect_used app/src/adapters/primary/settings/macos/build.rs" = 1
 "clippy::expect_used app/src/adapters/primary/settings/macos/values.rs" = 4
 "clippy::expect_used app/src/adapters/secondary/textrefinement/openai/request.rs" = 1
 "clippy::expect_used app/src/runtime/mod.rs" = 1

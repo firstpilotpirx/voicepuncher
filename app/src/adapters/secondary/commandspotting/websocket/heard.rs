@@ -2,6 +2,7 @@
 //! after a "start" can begin the recording that starts only once the command is heard.
 
 use std::collections::VecDeque;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use crate::core::domain::AudioBuffer16k;
@@ -65,6 +66,23 @@ impl HeardAudio {
         }
     }
 
+    /// The stream date of the sample captured at `captured` — the inverse of
+    /// [`Self::captured_at`]: behind the clock once audio was lost.
+    pub fn dated_at(&self, captured: Instant) -> Instant {
+        let position = match self.blocks.iter().find(|b| b.captured_at >= captured) {
+            Some(block) => block.end.saturating_sub(Self::position(
+                block.captured_at.saturating_duration_since(captured),
+            )),
+            None => match self.blocks.back() {
+                Some(last) => {
+                    last.end + Self::position(captured.saturating_duration_since(last.captured_at))
+                }
+                None => return captured,
+            },
+        };
+        self.audio_start + Self::span(position)
+    }
+
     fn position(since_audio_start: Duration) -> usize {
         (since_audio_start.as_nanos() / u128::from(SAMPLE_NANOS)) as usize
     }
@@ -103,9 +121,20 @@ impl HeardAudio {
     }
 }
 
+/// The stream date of the moment `captured`, as `heard` holds it; that moment itself when
+/// the held audio cannot be read.
+pub fn dated(heard: &Mutex<HeardAudio>, captured: Instant) -> Instant {
+    heard
+        .lock()
+        .map_or(captured, |heard| heard.dated_at(captured))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// One second of 16 kHz samples.
+    const SECOND: usize = AudioBuffer16k::SAMPLE_RATE_HZ as usize;
 
     #[test]
     fn should_give_the_audio_heard_since_a_moment() {
@@ -155,6 +184,56 @@ mod tests {
         let captured = heard.captured_at(start + Duration::from_millis(750));
         // Then
         assert_eq!(captured, start + Duration::from_millis(750));
+    }
+
+    #[test]
+    fn should_date_a_capture_moment_by_its_stream_position_after_audio_was_lost() {
+        // Given one second heard, three seconds that never arrived, then one more second
+        let start = Instant::now();
+        let mut heard = HeardAudio::new(start);
+        heard.push(&vec![0.0; SECOND], start + Duration::from_secs(1));
+        heard.push(&vec![0.0; SECOND], start + Duration::from_secs(5));
+        // When the moment the last sample was captured is dated
+        let dated = heard.dated_at(start + Duration::from_secs(5));
+        // Then it lies where that sample stands in the stream
+        assert_eq!(dated, start + Duration::from_secs(2));
+    }
+
+    #[test]
+    fn should_replay_the_speech_before_a_loss_after_audio_was_lost_earlier() {
+        // Given one second heard, three seconds that never arrived, then two more seconds
+        let start = Instant::now();
+        let mut heard = HeardAudio::new(start);
+        heard.push(&vec![0.0; SECOND], start + Duration::from_secs(1));
+        heard.push(&vec![0.0; 2 * SECOND], start + Duration::from_secs(6));
+        // When the service is lost as the last sample is captured and the replay reaches
+        // back to the sample captured one second before the loss
+        let second_before_loss = heard.dated_at(start + Duration::from_secs(5));
+        let (_, samples) = heard.replay_from(second_before_loss);
+        // Then the second before the loss is sent again
+        assert_eq!(samples.len(), SECOND);
+    }
+
+    #[test]
+    fn should_start_the_replay_five_seconds_before_a_loss_after_audio_was_lost_earlier() {
+        // Given one second heard, three seconds that never arrived, then six more seconds
+        let start = Instant::now();
+        let held = Mutex::new(HeardAudio::new(start));
+        let mut heard = held.lock().unwrap();
+        heard.push(&vec![0.0; SECOND], start + Duration::from_secs(1));
+        heard.push(&vec![0.0; 6 * SECOND], start + Duration::from_secs(10));
+        drop(heard);
+        // When the service is lost as the last sample is captured, after a command that
+        // ended at the stream date of four seconds
+        let lost_at = start + Duration::from_secs(10);
+        let timings = super::super::link::LinkTimings::default();
+        let from_loss = timings.replay_start(dated(&held, lost_at), None);
+        let after_command =
+            timings.replay_start(dated(&held, lost_at), Some(start + Duration::from_secs(4)));
+        // Then the five seconds before the loss are sent again, or those after the command
+        let heard = held.lock().unwrap();
+        assert_eq!(heard.replay_from(from_loss).1.len(), 5 * SECOND);
+        assert_eq!(heard.replay_from(after_command).1.len(), 3 * SECOND);
     }
 
     #[test]

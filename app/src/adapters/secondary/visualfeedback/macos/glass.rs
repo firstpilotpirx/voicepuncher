@@ -370,7 +370,6 @@ pub(super) fn every_space() -> NSWindowCollectionBehavior {
         | NSWindowCollectionBehavior::FullScreenAuxiliary
 }
 
-/// The window frame around `glass`, with room for the shadow.
 /// The window around `glass`: the shadow's room beside and under it, `room_above` above it.
 fn around(glass: NSRect, room_above: f64) -> NSRect {
     NSRect {

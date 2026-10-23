@@ -5,7 +5,7 @@ The audit of 2026-10-22 left minor findings that fit no other change and should 
 ## What Changes
 
 - After an outage of the command spotting service, the replay start is computed on one clock: the moment of the loss is dated by stream position, as the ends of carried-out commands already are, so audio lost before the outage no longer shifts the replay past the speech said just before the loss. (The audit's `voice_control.rs` site moved into the spotter adapter; the audit's leading focus-check sleep in `text_insertion.rs` is not in the code — the first check already runs at once — so it is dropped.)
-- The duplicated doc line in `glass.rs`, the unused `_mtm` parameter of `status_line` and the widget built only to be matched in `settings/macos/build.rs` go; the `expect` on the text view there becomes an error the caller handles. (The dead `channels` field and the change-folder citations in `confirm.rs` are already gone.)
+- The duplicated doc line in `glass.rs` and the widget built only to be matched in `settings/macos/build.rs` go; the `expect` on the text view there gives way to a text view of the field's own when AppKit holds none (an error path would raise the cyclomatic ratchet of `control`). The `_mtm` of `status_line` stays: it proves the call runs on the main thread. (The dead `channels` field and the change-folder citations in `confirm.rs` are already gone.)
 - `copy-pool/src/address.rs` parses addresses with the `url` crate.
 - One pinning rule for the workspace: every dependency exact (`=x.y.z`) with `Cargo.lock` as the second lock, stated in `AGENTS.md` and applied to every manifest; `rust-version` in every crate.
 - `.mailmap` joins the author identities under firstpilotpirx <firstpilotpirx@gmail.com>.
@@ -23,9 +23,9 @@ Out of scope: anything another audit change names; clippy `pedantic` in `lint` (
 
 ## Impact
 
-- `app/src/adapters/secondary/commandspotting/websocket/{mod.rs,heard.rs}`, `visualfeedback/macos/glass.rs`, `menubar/macos/status_item.rs`, `settings/macos/build.rs`, `copy-pool/src/address.rs`, every `Cargo.toml`, `.mailmap`, `AGENTS.md`.
+- `app/src/adapters/secondary/commandspotting/websocket/{mod.rs,heard.rs}`, `visualfeedback/macos/glass.rs`, `settings/macos/build.rs`, `copy-pool/src/address.rs`, every `Cargo.toml`, `.mailmap`, `AGENTS.md`.
 
 ## Release
 
 SemVer: PATCH — a command said before a command spotting outage is no longer missed after lost audio.
-Target version: 0.37.5 (next PATCH above `main` at merge; `kit version-check` corrects it).
+Target version: 0.37.7 (next PATCH above `main` at merge; `kit version-check` corrects it).

@@ -20,7 +20,7 @@ Every dependency in every manifest is pinned `=x.y.z` at the version `Cargo.lock
 
 | Scenario | Level |
 |---|---|
-| "stop dictation" said during a short outage ends the dictation | E2E `.feature` (existing, `@resilience`) |
-| Speech sent again after an outage begins before the loss when microphone audio was lost earlier | unit (`heard.rs`, `link.rs` replay start) |
+| "stop dictation" said during a short outage ends the dictation | component `.feature` (existing, `app/tests/features/component/voice_control.feature`) |
+| Speech sent again after an outage begins before the loss when microphone audio was lost earlier | unit (`heard.rs`: the loss dated through `dated`, then `LinkTimings::replay_start`, as `reach_for_service` does) |
 
 The address parsing keeps its unit tests in `address.rs`; the settings, overlay and menu bar edits change no behavior and are covered by `just test` and the build.
