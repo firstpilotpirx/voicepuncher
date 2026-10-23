@@ -1,0 +1,7 @@
+depends_on:
+  - change: fix-slow-confirmation-of-russian-filler
+    why: names light_stages
+  - change: run-only-the-red-test-in-tdd
+    why: names _stages
+  - change: stop-filing-changes-for-flaky-tests
+    why: names _stages
