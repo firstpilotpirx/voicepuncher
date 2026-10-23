@@ -56,6 +56,16 @@ Feature: local-services
       When several transcription requests arrive at once
       Then every request gets its transcript, and each of the three copies transcribed some of them
 
+    Scenario: Requests that arrive at once are shared by the copies while the machine is busy
+      Given the service scripts started the speech recognition service for dictation without a number of copies, and another run keeps the machine's processor busy
+      When several transcription requests arrive at once
+      Then every request gets its transcript within the time the queued transcriptions take on the busy machine, and each of the three copies transcribed some of them
+
+    Scenario: A request without a transcript names the machine's load
+      Given the service scripts started the speech recognition service for dictation without a number of copies
+      When several transcription requests arrive at once and one of them gets no transcript in time
+      Then the failure names that request, the copies it waited on and the busiest processes on the machine
+
     Scenario: Requests wait their turn when every copy is busy
       Given the speech recognition service for dictation runs as two copies, both busy with long speech
       When two more requests arrive one after another

@@ -10,13 +10,9 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, ensure, Context, Result};
 use cucumber::{given, then, when};
 
-use voicepuncher::adapters::secondary::transcription::openai::OpenAiTranscriber;
-use voicepuncher::config::TranscriptionCfg;
-use voicepuncher::core::application::Transcriber;
 use voicepuncher::core::domain::AudioBuffer16k;
 use voicepuncher_copy_pool::{CopyPool, Finish, Ran, ServiceAddress};
 use voicepuncher_e2e_test::speech::{synthesize, Condition, Lang};
-use voicepuncher_e2e_test::speech_cache::{synthesized, SayRequest};
 
 use super::{
     alive, answers, any_process, pgrep, services, services_dir, wait_until, ScenarioServices,
@@ -25,11 +21,13 @@ use super::{
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
-/// How many copies the service scripts start when no number is set.
-const DEFAULT_COPIES: usize = 3;
+mod shared;
+
+use shared::{ensure_all_answered, unanswered_at_once, BusyProcessor};
+pub(super) use shared::{short_speech, transcribe};
+
 /// "Several copies" in the scenarios: the fewest that can share requests.
 const SEVERAL_COPIES: u32 = 2;
-const REQUESTS_AT_ONCE: usize = 9;
 /// "Three copies" in the scenarios.
 const THREE_COPIES: u32 = 3;
 const COPY_BACK_WITHIN: Duration = Duration::from_secs(30);
@@ -43,9 +41,6 @@ const BETWEEN_REQUESTS: Duration = Duration::from_millis(200);
 /// Silence added to each request sent after the first, so the copies' logs tell them apart
 /// by the length of their audio: a tenth of a second.
 const PADDING_SAMPLES: usize = 1_600;
-/// What a copy logs for every request it transcribes.
-const TRANSCRIBED_LOG_LINE: &str = "whisper_vad: detected";
-const SHORT_UTTERANCE: &str = "press enter";
 
 /// What the copy scenarios sent and saw: the long requests that keep the copies busy and
 /// the requests sent after them, each ending with the moment it was answered.
@@ -57,6 +52,8 @@ pub struct PoolRun {
     /// the copies' logs, in the order seen.
     reached: Option<JoinHandle<Vec<(Instant, usize)>>>,
     unanswered: Option<Vec<String>>,
+    /// The processes keeping every core busy while the requests are shared.
+    busy: Option<BusyProcessor>,
     copy_killed: Option<Instant>,
     taken: Option<TakenPort>,
     /// The copies the client found from the service address.
@@ -103,63 +100,11 @@ fn found_copies(url: &str) -> Result<Vec<u16>> {
     Ok(pool.snapshot().iter().map(|copy| copy.port).collect())
 }
 
-/// The transcript the service at `url` gives for `samples`, through the app's own client.
-pub(super) fn transcribe(url: &str, samples: Vec<i16>) -> Result<String> {
-    let mut client = OpenAiTranscriber::connect(TranscriptionCfg {
-        base_url: url.to_owned(),
-        ..TranscriptionCfg::default()
-    })?;
-    let transcript = client.transcribe(&AudioBuffer16k::new(samples))?;
-    Ok(transcript
-        .map(|t| t.as_str().to_owned())
-        .unwrap_or_default())
-}
-
-/// Each of `count` short requests sent at once to `url` that got no transcript, numbered from 1,
-/// with its error chain or "empty transcript".
-fn unanswered_at_once(url: &str, count: usize) -> Result<Vec<String>> {
-    let speech = short_speech()?;
-    let requests: Vec<_> = (0..count)
-        .map(|_| {
-            let (url, speech) = (url.to_owned(), speech.clone());
-            std::thread::spawn(move || transcribe(&url, speech))
-        })
-        .collect();
-    Ok(requests
-        .into_iter()
-        .enumerate()
-        .filter_map(|(index, request)| {
-            let failure = match request.join() {
-                Ok(Ok(text)) if !text.is_empty() => return None,
-                Ok(Ok(_)) => "empty transcript".to_owned(),
-                Ok(Err(error)) => format!("{error:#}"),
-                Err(_) => "its thread panicked".to_owned(),
-            };
-            Some(format!("request {}: {failure}", index + 1))
-        })
-        .collect())
-}
-
-/// Fails naming every request in `unanswered` when any of `sent` got no transcript.
-fn ensure_all_answered(unanswered: &[String], sent: usize, when: &str) -> Result<()> {
-    ensure!(
-        unanswered.is_empty(),
-        "{} of {sent} requests got no transcript{when}:\n{}",
-        unanswered.len(),
-        unanswered.join("\n")
-    );
-    Ok(())
-}
-
-pub(super) fn short_speech() -> Result<Vec<i16>> {
-    synthesized(&SayRequest { voice: None, words_per_minute: None, text: SHORT_UTTERANCE })
-}
-
 fn long_speech() -> Result<Vec<i16>> {
     synthesize(Lang::En, Condition::Normal, 0.0)
 }
 
-fn started_with(world: &mut E2eWorld, copies: Option<u32>) -> Result<()> {
+pub(super) fn started_with(world: &mut E2eWorld, copies: Option<u32>) -> Result<()> {
     let mut services = ScenarioServices::with_copies(copies)?;
     services.start_speech_recognition()?;
     let started = services.started.as_ref().expect("just started it");
@@ -185,19 +130,6 @@ async fn started_as_copies(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| started_with(world, Some(SEVERAL_COPIES))).await
 }
 
-#[when("several transcription requests arrive at once")]
-async fn requests_at_once(world: &mut E2eWorld) -> Result<()> {
-    off_thread(world, |world| {
-        let services = services(world)?;
-        services.pool.unanswered = Some(unanswered_at_once(
-            &services.transcription_url(),
-            REQUESTS_AT_ONCE,
-        )?);
-        Ok(())
-    })
-    .await
-}
-
 #[when("one copy exits on its own")]
 async fn copy_dies(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
@@ -218,33 +150,6 @@ async fn copy_dies(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[then("every request gets its transcript, and each of the three copies transcribed some of them")]
-fn shared_by_copies(world: &mut E2eWorld) -> Result<()> {
-    let services = services(world)?;
-    let unanswered = services
-        .pool
-        .unanswered
-        .as_deref()
-        .context("no requests were sent")?;
-    ensure_all_answered(unanswered, REQUESTS_AT_ONCE, "")?;
-    ensure!(
-        services.copy_ports.len() == DEFAULT_COPIES,
-        "{} copies run, not {DEFAULT_COPIES}: {:?}",
-        services.copy_ports.len(),
-        services.copy_ports
-    );
-    for port in &services.copy_ports {
-        let log = services_dir("logs").join(format!("{SPEECH_RECOGNITION}-{port}.log"));
-        let text =
-            std::fs::read_to_string(&log).with_context(|| format!("log {}", log.display()))?;
-        ensure!(
-            text.contains(TRANSCRIBED_LOG_LINE),
-            "the copy on port {port} transcribed none of the requests"
-        );
-    }
-    Ok(())
-}
-
 #[then("the service keeps answering transcription requests, and that copy answers again within 30 seconds")]
 async fn copy_came_back(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
@@ -252,7 +157,8 @@ async fn copy_came_back(world: &mut E2eWorld) -> Result<()> {
         let port = *services.copy_ports.first().context("no copies")?;
         let killed = services.pool.copy_killed.context("no copy was killed")?;
         let down = !answers(port);
-        let unanswered = unanswered_at_once(&services.transcription_url(), REQUESTS_WHILE_DOWN)?;
+        let unanswered =
+            unanswered_at_once(&services.transcription_url(), REQUESTS_WHILE_DOWN, None)?;
         let when = if down {
             " while a copy was down (it was down when they were sent)"
         } else {

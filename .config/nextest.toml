@@ -95,14 +95,14 @@ filter = 'binary(cucumber_e2e)'
 run-extra-args = ["--tags", "@smoke and @voice_control and not @wip"]
 slow-timeout = { period = "60s", terminate-after = 5 }
 
-# @smoke of local services, 83 s measured: 3 min
+# @smoke of local services, 119 s measured (with the two shared-copies scenarios under load): 4 min
 [profile.e2e-smoke-services]
 success-output = "immediate"
 
 [[profile.e2e-smoke-services.overrides]]
 filter = 'binary(cucumber_e2e)'
 run-extra-args = ["--tags", "@smoke and @local_services and not @wip"]
-slow-timeout = { period = "60s", terminate-after = 3 }
+slow-timeout = { period = "60s", terminate-after = 4 }
 
 # @regression, the voice control scenarios beyond the smoke set, 23 s measured: default 2 min
 [profile.e2e-regression]

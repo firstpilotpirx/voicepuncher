@@ -12,29 +12,18 @@ use crate::core::application::transcriber::Transcriber;
 use crate::core::application::transcript_filter::strip_whisper_hallucinations;
 use crate::core::domain::{AudioBuffer16k, RawTranscript};
 
+mod deadline;
 mod language;
 mod request;
 
+pub use deadline::longest_wait;
+use deadline::{request_deadline, RETRY_PAUSES, SLOW_RETRIES, SLOW_RETRY_PAUSE};
 use language::{retry_language, TranscriptionResponse};
 use request::{encode_wav, multipart_body, normalize_transcript};
 
 const TRANSCRIPTIONS_PATH: &str = "audio/transcriptions";
 const SLOW_REQUEST_LOG_MS: u128 = 600;
 const START_HINT: &str = "start it with 'just start-model-servers'";
-/// Pauses before each new attempt when the service refuses or drops the connection
-/// before it answers (a busy service resets connections it has no room for).
-const RETRY_PAUSES: [Duration; 3] = [
-    Duration::from_millis(200),
-    Duration::from_millis(400),
-    Duration::from_millis(800),
-];
-/// New attempts after a request the service did not answer in time or answered with an
-/// error; each goes to another copy than the one still working on the abandoned one.
-const SLOW_RETRIES: u32 = 2;
-const SLOW_RETRY_PAUSE: Duration = Duration::from_millis(200);
-/// The wait for one request: this, plus half the length of its audio.
-const DEADLINE_BASE: Duration = Duration::from_secs(5);
-const DEADLINE_PER_AUDIO_SECOND: f32 = 0.5;
 /// How long a request waits for a copy to come back once no copy accepts connections: the
 /// app restarts a copy that died after 1 s, and loading its model takes a few seconds more.
 pub const RECOVERY_WAIT: Duration = Duration::from_secs(30);
@@ -49,6 +38,8 @@ pub struct OpenAiTranscriber {
     /// Numbers the requests, for the log: `request=<n>`.
     requests: u64,
     recovery_wait: Duration,
+    /// A deadline every request takes instead of the one its audio length gives; test clients.
+    request_deadline: Option<Duration>,
 }
 
 /// Why one attempt brought no answer.
@@ -97,13 +88,26 @@ impl OpenAiTranscriber {
             );
         }
         let agent = agent::fresh_connections(Duration::from_secs(cfg.timeout_secs));
-        Ok(Self { agent, pool, cfg, requests: 0, recovery_wait: RECOVERY_WAIT })
+        Ok(Self {
+            agent,
+            pool,
+            cfg,
+            requests: 0,
+            recovery_wait: RECOVERY_WAIT,
+            request_deadline: None,
+        })
     }
 
     /// The same transcriber, waiting `wait` instead of [`RECOVERY_WAIT`] for a copy to come
     /// back.
     pub fn with_recovery_wait(self, wait: Duration) -> Self {
         Self { recovery_wait: wait, ..self }
+    }
+
+    /// The same transcriber, giving every request `deadline` whatever its audio length: for
+    /// a test whose copies are busy with other work.
+    pub fn with_request_deadline(self, deadline: Duration) -> Self {
+        Self { request_deadline: Some(deadline), ..self }
     }
 
     /// Transcribes `audio`, again in the user's first language when the service heard a
@@ -129,7 +133,11 @@ impl OpenAiTranscriber {
         audio: &AudioBuffer16k,
     ) -> Result<TranscriptionResponse> {
         self.requests += 1;
-        let deadline = request_deadline(audio, Duration::from_secs(self.cfg.timeout_secs));
+        let deadline = request_deadline(
+            audio,
+            Duration::from_secs(self.cfg.timeout_secs),
+            self.request_deadline,
+        );
         log::debug!(
             "speech recognition: request={} audio={}ms deadline={}ms",
             self.requests,
@@ -304,19 +312,6 @@ fn ports_list(ports: &[u16]) -> String {
     ports.join(", ")
 }
 
-/// The longest one recording or chunk may take with every retry, each attempt at its
-/// longest deadline `timeout`: what a stopped dictation may wait for its last chunk.
-pub fn longest_wait(timeout: Duration) -> Duration {
-    timeout * (1 + SLOW_RETRIES) + SLOW_RETRY_PAUSE * SLOW_RETRIES + RETRY_PAUSES.iter().sum()
-}
-
-/// How long one request may take: a few seconds for a short recording, more for long
-/// audio, never more than `timeout`.
-fn request_deadline(audio: &AudioBuffer16k, timeout: Duration) -> Duration {
-    let audio_secs = audio.duration_ms() as f32 / 1_000.0;
-    (DEADLINE_BASE + Duration::from_secs_f32(audio_secs * DEADLINE_PER_AUDIO_SECOND)).min(timeout)
-}
-
 impl Transcriber for OpenAiTranscriber {
     fn transcribe(&mut self, audio: &AudioBuffer16k) -> Result<Option<RawTranscript>> {
         let started = Instant::now();
@@ -386,40 +381,5 @@ mod tests {
             "{message}"
         );
         assert!(message.contains("just start-model-servers"), "{message}");
-    }
-
-    #[test]
-    fn should_wait_a_few_seconds_for_a_short_recording() {
-        let five_seconds = AudioBuffer16k::new(vec![0; 5 * 16_000]);
-        assert_eq!(
-            request_deadline(&five_seconds, Duration::from_secs(60)),
-            Duration::from_millis(7_500)
-        );
-    }
-
-    #[test]
-    fn should_wait_longer_for_a_long_chunk() {
-        let chunk = AudioBuffer16k::new(vec![0; 32 * 16_000]);
-        assert_eq!(
-            request_deadline(&chunk, Duration::from_secs(60)),
-            Duration::from_secs(21)
-        );
-    }
-
-    #[test]
-    fn should_wait_every_attempt_and_pause_at_the_longest() {
-        assert_eq!(
-            longest_wait(Duration::from_secs(60)),
-            Duration::from_millis(181_800)
-        );
-    }
-
-    #[test]
-    fn should_never_wait_longer_than_the_configured_timeout() {
-        let chunk = AudioBuffer16k::new(vec![0; 32 * 16_000]);
-        assert_eq!(
-            request_deadline(&chunk, Duration::from_secs(10)),
-            Duration::from_secs(10)
-        );
     }
 }
