@@ -45,6 +45,22 @@ fn should_carry_out_the_same_chain_under_load() {
     assert_eq!(carried_out(&events), CHAIN, "{events:?}");
 }
 
+#[test]
+fn should_hear_a_clip_a_copy_decodes_past_the_idle_budget() {
+    // Given the hearing of the real-service tests, confirming with a copy that decodes every
+    // confirmation for 1.2 s, as the shared service does beside another check
+    let (stream, script) = scripted("stop dictation");
+    let hearing = ScriptedHearing { stream: stream.clone(), script, completes_cut_words: false };
+    let url = scripted_copy::serve(hearing, LOADED_DECODING);
+    // When it hears the speech
+    let heard = real_hearing(&url).hear(&stream, REAL_DEADLINE).unwrap();
+    // Then every word is heard: the confirmation is not cut short at the idle budget
+    assert_eq!(
+        heard.text.split_whitespace().collect::<Vec<_>>(),
+        ["stop", "dictation"]
+    );
+}
+
 /// The speech of the E2E scenario "Restart, a short pause, then speech that starts like
 /// another word": a dictated sentence, then "Restart", a short pause and another sentence.
 const BEFORE_RESTART: &str = "Weather is sunny in Berlin today";

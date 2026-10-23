@@ -19,14 +19,6 @@ beside = "other sessions' full-checks under machine-lock load, 2026-10-23; faile
 branch = "chore/stop-filing-changes-for-flaky-tests"
 
 [[frozen]]
-test = "voicepuncher-command-spotting::it placed_commands::should_hear_start_opening_an_utterance_and_place_it_before_the_speech"
-frozen = "2026-10-23"
-recipe = "full-check"
-stage = "e2e-smoke-voice"
-beside = "other sessions' full-checks under machine-lock load, 2026-10-23; failed in several branches"
-branch = "chore/stop-filing-changes-for-flaky-tests"
-
-[[frozen]]
 test = "scenario: The user's recorded restart restart followed by the new dictation at once"
 frozen = "2026-10-23"
 recipe = "full-check"
@@ -119,14 +111,6 @@ test = "scenario: Start please followed by the dictation at once gives its cue a
 frozen = "2026-10-23"
 recipe = "e2e-cues"
 stage = "e2e-cues"
-beside = "flaky on 2026-10-23 under other sessions' checks and machine-lock load"
-branch = "chore/stop-filing-changes-for-flaky-tests"
-
-[[frozen]]
-test = "voicepuncher-command-spotting::it placed_commands::should_hear_a_chain_of_commands"
-frozen = "2026-10-23"
-recipe = "full-check"
-stage = "e2e-smoke-voice"
 beside = "flaky on 2026-10-23 under other sessions' checks and machine-lock load"
 branch = "chore/stop-filing-changes-for-flaky-tests"
 
@@ -251,23 +235,7 @@ beside = "flaky on 2026-10-23 under other sessions' checks and machine-lock load
 branch = "chore/stop-filing-changes-for-flaky-tests"
 
 [[frozen]]
-test = "voicepuncher-command-spotting::it placed_commands::should_hear_a_doubled_stop_in_the_middle_of_speech"
-frozen = "2026-10-23"
-recipe = "full-check"
-stage = "e2e-smoke-voice"
-beside = "flaky on 2026-10-23 under other sessions' checks and machine-lock load"
-branch = "chore/stop-filing-changes-for-flaky-tests"
-
-[[frozen]]
 test = "scenario: Start start followed by the dictation at once"
-frozen = "2026-10-23"
-recipe = "full-check"
-stage = "e2e-smoke-voice"
-beside = "flaky on 2026-10-23 under other sessions' checks and machine-lock load"
-branch = "chore/stop-filing-changes-for-flaky-tests"
-
-[[frozen]]
-test = "voicepuncher-command-spotting::it placed_commands::should_hear_enter_right_after_other_speech"
 frozen = "2026-10-23"
 recipe = "full-check"
 stage = "e2e-smoke-voice"

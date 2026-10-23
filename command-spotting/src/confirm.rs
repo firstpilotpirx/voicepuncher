@@ -1,7 +1,6 @@
 //! Confirms short utterances with the speech recognition service: what was said, in full,
 //! decides whether the utterance is a command phrase.
 
-use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -10,40 +9,15 @@ use serde::Deserialize;
 use voicepuncher_copy_pool::{CopyPool, Finish, Ran};
 
 mod pace;
+mod recent_audio;
 mod request;
 
 use pace::Pace;
+pub use recent_audio::RecentAudio;
 use request::{multipart_body, wav, BOUNDARY};
 
 /// How long a copy cut short may take to answer its health check before it counts as stalled.
 const HEALTH_WAIT: Duration = Duration::from_millis(300);
-
-/// The last seconds of a connection's audio, by absolute sample position.
-pub struct RecentAudio {
-    samples: VecDeque<f32>,
-    first: usize,
-    capacity: usize,
-}
-
-impl RecentAudio {
-    pub fn new(capacity: usize) -> Self {
-        Self { samples: VecDeque::with_capacity(capacity), first: 0, capacity }
-    }
-
-    pub fn push(&mut self, frame: &[f32]) {
-        self.samples.extend(frame.iter().copied());
-        let excess = self.samples.len().saturating_sub(self.capacity);
-        self.samples.drain(..excess);
-        self.first += excess;
-    }
-
-    /// The samples from `start` to `end` that are still held.
-    pub fn between(&self, start: usize, end: usize) -> Vec<f32> {
-        let from = start.saturating_sub(self.first).min(self.samples.len());
-        let to = end.saturating_sub(self.first).min(self.samples.len());
-        self.samples.range(from..to.max(from)).copied().collect()
-    }
-}
 
 /// A word the speech recognition service heard, with its times in the audio sent.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -133,6 +107,12 @@ impl UtteranceTranscriber {
         let pool = CopyPool::shared(base_url)
             .map_err(|e| anyhow!("speech recognition service address {base_url}: {e}"))?;
         Ok(Self { pool, pace: Pace::default() })
+    }
+
+    /// As `new`, with a decoding budget never below `floor`: for a caller whose result must
+    /// not depend on how loaded the service is, such as tests sharing it with other runs.
+    pub fn with_decoding_floor(base_url: &str, floor: Duration) -> Result<Self> {
+        Ok(Self { pace: Pace::with_floor(floor), ..Self::new(base_url)? })
     }
 
     /// What was said in `samples` (16 kHz mono), with each word's times; the wait for a

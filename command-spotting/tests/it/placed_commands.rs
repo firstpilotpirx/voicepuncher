@@ -97,18 +97,25 @@ fn clocked_engine_on(
 
 /// The engine confirming with the real speech recognition service for commands.
 fn engine() -> Option<ClockedEngine> {
-    let Ok(transcription_url) = std::env::var("VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL") else {
+    let Ok(url) = std::env::var("VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL") else {
         eprintln!("GATED: VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL not set, skipping");
         return None;
     };
     let cfg = engine_cfg(None)?;
-    let hearing = UtteranceTranscriber::new(&transcription_url).expect("service address");
+    let hearing = real_hearing(&url);
     Some(clocked_engine(
         &cfg,
-        Arc::new(hearing),
+        hearing,
         REAL_HEARING,
         Some(REAL_DEADLINE),
     ))
+}
+
+/// The speech recognition service for commands at `url`, as the real-service tests hear with
+/// it: never cut short before `REAL_DEADLINE`, as the shared service may decode past the
+/// budget of an idle machine while other runs load it.
+fn real_hearing(url: &str) -> Arc<dyn Hear> {
+    Arc::new(UtteranceTranscriber::with_decoding_floor(url, REAL_DEADLINE).expect("address"))
 }
 
 /// The engine config, confirming with the speech recognition service at `transcription_url`
@@ -194,7 +201,6 @@ fn command(names: &[&str], placement: Placement) -> (Vec<String>, Placement) {
 }
 
 #[test]
-#[ignore = "frozen: flakes beside another full-check (2026-10-22, e2e-smoke-voice); fixed separately"]
 fn should_hear_a_stop_right_after_the_last_dictated_word() {
     let Some(engine) = engine() else { return };
     let events = heard(
@@ -222,7 +228,6 @@ fn should_hear_enter_right_after_other_speech() {
 }
 
 #[test]
-#[ignore = "frozen: flakes beside another full-check (2026-10-23, e2e-smoke-voice); fixed separately"]
 fn should_hear_start_opening_an_utterance_and_place_it_before_the_speech() {
     let Some(engine) = engine() else { return };
     let audio = speech("Start, the meeting moved to Friday at ten");
@@ -256,7 +261,6 @@ fn should_hear_a_doubled_stop_in_the_middle_of_speech() {
 }
 
 #[test]
-#[ignore = "frozen: flakes beside another full-check (2026-10-22, e2e-smoke-voice); fixed separately"]
 fn should_hear_a_chain_of_commands() {
     let Some(engine) = engine() else { return };
     let events = heard(&engine, &DICTATING, &speech("That is all, stop enter"));
@@ -338,9 +342,7 @@ fn heard_in_time_by(
     let mut session = engine.engine.session().unwrap();
     let phrases: Vec<String> = phrases.iter().map(|p| (*p).to_owned()).collect();
     session.listen_for(&phrases).unwrap();
-    let events = fed_as_spoken(&mut session, &engine.clock, &stream);
-    eprintln!("{events:?}");
-    Some(events)
+    Some(dbg!(fed_as_spoken(&mut session, &engine.clock, &stream)))
 }
 
 /// Every event the session reports for `audio` fed frame by frame on `clock`, each
@@ -402,14 +404,17 @@ fn heard_with_dictation_started_at_first_pause(
     let mut session = engine.engine.session().unwrap();
     session.listen_for(&owned(&STANDBY)).unwrap();
     let mut dictating = false;
-    let events = fed_as_spoken_while(&mut session, &engine.clock, &stream, |session, fed, _| {
-        if !dictating && fed >= switch_at {
-            dictating = true;
-            session.listen_for(&owned(&DICTATING)).unwrap();
+    Some(dbg!(fed_as_spoken_while(
+        &mut session,
+        &engine.clock,
+        &stream,
+        |session, fed, _| {
+            if !dictating && fed >= switch_at {
+                dictating = true;
+                session.listen_for(&owned(&DICTATING)).unwrap();
+            }
         }
-    });
-    eprintln!("{events:?}");
-    Some(events)
+    )))
 }
 
 /// Every event for `utterances` said while dictating, fed as they are spoken, with each
@@ -428,7 +433,7 @@ fn heard_with_standby_once_stopped(
     let mut session = engine.engine.session().unwrap();
     session.listen_for(&owned(&DICTATING)).unwrap();
     let mut stopped = false;
-    let events = fed_as_spoken_while(
+    Some(dbg!(fed_as_spoken_while(
         &mut session,
         &engine.clock,
         &stream,
@@ -438,9 +443,7 @@ fn heard_with_standby_once_stopped(
                 session.listen_for(&owned(&STANDBY)).unwrap();
             }
         },
-    );
-    eprintln!("{events:?}");
-    Some(events)
+    )))
 }
 
 fn owned(phrases: &[&str]) -> Vec<String> {

@@ -34,6 +34,7 @@ const STUCK_REPEATING_CHARS: usize = 120;
 #[derive(Debug)]
 pub struct Pace {
     window: Duration,
+    floor: Duration,
     recent: Mutex<VecDeque<(Instant, Duration)>>,
 }
 
@@ -46,11 +47,16 @@ impl Default for Pace {
 impl Pace {
     /// A pace set by the confirmations of the last `window`.
     pub fn remembering(window: Duration) -> Self {
-        Self { window, recent: Mutex::new(VecDeque::new()) }
+        Self { window, floor: FLOOR, recent: Mutex::new(VecDeque::new()) }
+    }
+
+    /// A pace of the last `WINDOW` whose budget is never below `floor`.
+    pub fn with_floor(floor: Duration) -> Self {
+        Self { floor, ..Self::default() }
     }
 
     /// The decoding budget of the next confirmation whose deadline is `deadline`: twice the
-    /// slowest confirmation of the window, at least `FLOOR`, never past the deadline.
+    /// slowest confirmation of the window, at least its floor, never past the deadline.
     pub fn budget(&self, deadline: Duration) -> Duration {
         let mut recent = self.recent.lock().unwrap_or_else(PoisonError::into_inner);
         Self::forget_old(&mut recent, self.window);
@@ -59,7 +65,7 @@ impl Pace {
             .map(|(_, took)| *took)
             .max()
             .unwrap_or(Duration::ZERO);
-        (slowest * SLACK).max(FLOOR).min(deadline)
+        (slowest * SLACK).max(self.floor).min(deadline)
     }
 
     /// A copy answered ordinary speech in `took`; an answer stuck repeating is never noted, as
@@ -142,6 +148,15 @@ mod tests {
         std::thread::sleep(millis(80));
         pace.note(millis(300));
         assert_eq!(pace.budget(DEADLINE), FLOOR);
+    }
+
+    #[test]
+    fn should_give_its_own_floor_before_any_confirmation_never_past_the_deadline() {
+        assert_eq!(
+            Pace::with_floor(millis(2_500)).budget(DEADLINE),
+            millis(2_500)
+        );
+        assert_eq!(Pace::with_floor(millis(60_000)).budget(DEADLINE), DEADLINE);
     }
 
     #[test]
