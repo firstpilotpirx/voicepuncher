@@ -126,3 +126,11 @@ recipe = "test"
 stage = "test"
 beside = "flaky on 2026-10-23 under other sessions' checks and machine-lock load"
 branch = "chore/stop-filing-changes-for-flaky-tests"
+
+[[frozen]]
+test = "voicepuncher-command-spotting::it placed_commands::under_load::should_carry_out_the_same_chain_under_load"
+frozen = "2026-10-23"
+recipe = "test"
+stage = "test"
+beside = "flaky on 2026-10-23 under other sessions' checks and machine-lock load"
+branch = "chore/stop-filing-changes-for-flaky-tests"
