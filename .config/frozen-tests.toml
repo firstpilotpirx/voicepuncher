@@ -94,3 +94,11 @@ recipe = "rerun-failed"
 stage = "e2e-smoke-services"
 beside = "flaky on 2026-10-23 under other sessions' checks and machine-lock load"
 branch = "chore/stop-filing-changes-for-flaky-tests"
+
+[[frozen]]
+test = "scenario: Restart restart followed by the new dictation at once gives its cue at once"
+frozen = "2026-10-23"
+recipe = "e2e-cues"
+stage = "e2e-cues"
+beside = "flaky on 2026-10-23 under other sessions' checks and machine-lock load"
+branch = "chore/stop-filing-changes-for-flaky-tests"
