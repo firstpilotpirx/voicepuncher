@@ -86,3 +86,11 @@ recipe = "e2e-regression"
 stage = "e2e-regression"
 beside = "flaky on 2026-10-23 under other sessions' checks and machine-lock load"
 branch = "chore/stop-filing-changes-for-flaky-tests"
+
+[[frozen]]
+test = "scenario: The service scripts report a copy ready after its first transcription"
+frozen = "2026-10-23"
+recipe = "rerun-failed"
+stage = "e2e-smoke-services"
+beside = "flaky on 2026-10-23 under other sessions' checks and machine-lock load"
+branch = "chore/stop-filing-changes-for-flaky-tests"
