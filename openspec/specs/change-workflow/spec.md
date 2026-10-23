@@ -337,7 +337,7 @@ A TDD Red step SHALL run only the new test that is meant to fail, through the on
 
 ### Requirement: E2E stages run alone on the machine
 
-Every model stage of a stage run (`check`, `full-check`, the E2E recipes) SHALL hold the machine-wide test lock exclusively, so no two runs run model stages at once, and the build and test stages of every other run, standalone `just test` included, SHALL not run while it holds it. The stage table and the stage journal SHALL show the wait for that lock and its hold.
+Every model stage of a stage run (`check`, `full-check`, the E2E recipes) SHALL hold the machine-wide test lock exclusively, so no two runs run model stages at once, and the build and test stages of every other run, standalone `just test` included, SHALL not run while it holds it. The stage table and the stage journal SHALL show the wait for that lock and its hold, and the journal SHALL record when each hold began. The stage summary (`just stage-times`) SHALL report whether the model-stage holds of two runs overlapped: that none did, or each overlapping pair of runs.
 
 #### Scenario: Two runs' model stages take turns
 
@@ -368,6 +368,19 @@ Every model stage of a stage run (`check`, `full-check`, the E2E recipes) SHALL 
 
 - **WHEN** a run with model stages ends
 - **THEN** its stage table and its journal line show how long it waited for the lock and how long it held it
+- **AND** its journal line shows when the hold began
+
+#### Scenario: The stage summary finds no overlap between runs that took turns
+
+- **GIVEN** journal lines of runs whose model-stage holds followed one another
+- **WHEN** the user summarizes the stage journal
+- **THEN** the summary says that no two runs' model-stage holds overlapped
+
+#### Scenario: The stage summary names overlapping runs
+
+- **GIVEN** journal lines of two runs whose model-stage holds overlapped
+- **WHEN** the user summarizes the stage journal
+- **THEN** the summary names both runs, by branch and start time, and how long they overlapped
 
 ### Requirement: Up to seven changes run at once
 

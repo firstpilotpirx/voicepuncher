@@ -148,7 +148,7 @@ full-check: _require-models _require-corpus
 # Summary of the stage journal for the runs since a date (2026-10-01) or a span (7d): per recipe and stage the
 # runs, median, total and failures, the runs that reused an earlier pass (left out of the times) and the time
 # they saved (the seconds of the passes they reused), with the total saved; the lock
-# wait; the failed tests, most first; runs and time per branch (a change's branch is <type>/<change>, so per change)
+# wait; whether two runs' e2e lock holds overlapped (each overlapping pair); the failed tests, most first; runs and time per branch (a change's branch is <type>/<change>, so per change)
 stage-times $since="30d":
     #!/usr/bin/env perl
     use strict;
@@ -189,7 +189,8 @@ stage-times $since="30d":
     }
     unless (@runs) { print "no runs since $period in $path\n"; exit 0 }
     $results{$_->{result}}++ for @runs;
-    my (@keys, %stages, @waits, %tests, @branches, %branches, $saved, $reused);
+    my (@keys, %stages, @waits, %tests, @branches, %branches, $saved, $reused, @holds);
+    my $untimed = 0;
     for my $run (@runs) {
         for my $stage (@{ $run->{stages} }) {
             next if $stage->{result} eq "skipped";
@@ -208,6 +209,11 @@ stage-times $since="30d":
             $row->{failed}++ if $stage->{result} eq "failed";
         }
         push @waits, $run->{lock_wait} if defined $run->{lock_wait} && $run->{lock_wait} =~ /^[\d.]+$/;
+        for my $lock (grep { ($_->{class} // "") eq "e2e" && defined $_->{held} } @{ $run->{locks} || [] }) {
+            my $at = $epoch->($lock->{locked} // "");
+            if (defined $at) { push @holds, [$at, $at + $lock->{held}, $run] }
+            else { $untimed++ }
+        }
         $tests{$_}++ for @{ $run->{failed_tests} };
         my $branch = $run->{branch} // "(none)";
         push @branches, $branch unless $branches{$branch};
@@ -234,6 +240,26 @@ stage-times $since="30d":
         my $total = 0;
         $total += $_ for @waits;
         printf "\nlock wait: %d runs, median %s, total %s\n", scalar @waits, $span->($median->(@waits)), $span->($total);
+    }
+    # Two runs' e2e holds overlap when they share more than 1 s (the marks are rounded to 0.1 s); older lines name
+    # no hold start and are only counted
+    if (@holds || $untimed) {
+        my @overlaps;
+        @holds = sort { $a->[0] <=> $b->[0] } @holds;
+        for my $i (0 .. $#holds) {
+            for my $j ($i + 1 .. $#holds) {
+                last if $holds[$j][0] >= $holds[$i][1];
+                my $shared = ($holds[$i][1] < $holds[$j][1] ? $holds[$i][1] : $holds[$j][1]) - $holds[$j][0];
+                push @overlaps, [$holds[$i][2], $holds[$j][2], $shared] if $shared > 1;
+            }
+        }
+        my $older = $untimed ? sprintf(", %d older holds without a start time", $untimed) : "";
+        if (@overlaps) {
+            printf "\ne2e lock overlaps: %d of %d holds%s\n", scalar @overlaps, scalar @holds, $older;
+            printf "  %s %s ↔ %s %s: %s\n", $_->[0]{branch} // "(none)", $_->[0]{started}, $_->[1]{branch} // "(none)", $_->[1]{started},
+                $span->($_->[2]) for @overlaps;
+        }
+        else { printf "\ne2e lock overlaps: none (%d holds%s)\n", scalar @holds, $older }
     }
     if (%tests) {
         print "\nfailed tests:\n";
@@ -969,8 +995,9 @@ _stage-journal-append:
     }
     my @stages = map { my $row = $rows{$_}; $row ? [$_, @$row] : [$_, "skipped", undef] } split " ", $env{LIST};
     my $round = sub { defined $_[0] ? sprintf("%.1f", $_[0]) + 0 : undef };
-    # Per lock (the e2e lock; light, heavy and exclusive in older runs) its wait and hold; lock_wait and lock_held are their sums (a hold is missing when the lock
-    # was never taken)
+    my $iso = sub { my $at = strftime("%Y-%m-%dT%H:%M:%S%z", localtime $_[0]); $at =~ s/(\d\d)(\d\d)$/$1:$2/; $at };
+    # Per lock (the e2e lock; light, heavy and exclusive in older runs) its wait, hold and when the hold began
+    # (locked); lock_wait and lock_held are their sums (a hold and its start are missing when the lock was never taken)
     my ($wait, $held, @locks);
     if ($env{CALLER} && grep { defined $marks{$_}{locked} } @classes) { ($wait, $held) = ("caller", "caller") }
     else {
@@ -979,7 +1006,7 @@ _stage-journal-append:
             my $end = $m->{returned} // $env{ENDED};
             my $w = $round->(($m->{locked} // $end) - $m->{requested});
             my $h = defined $m->{locked} ? $round->($end - $m->{locked}) : undef;
-            push @locks, { class => $class, wait => $w, held => $h };
+            push @locks, { class => $class, wait => $w, held => $h, defined $m->{locked} ? (locked => $iso->($m->{locked})) : () };
             $wait = $round->(($wait // 0) + $w);
             $held = $round->(($held // 0) + $h) if defined $h;
         }
@@ -1007,8 +1034,7 @@ _stage-journal-append:
         +{ map { $_ => $record->{$_} } qw(commit branch worktree finished seconds) };
     };
     my $git = sub { my $out = `git -C "$env{WORKTREE}" @_ 2>/dev/null`; chomp $out; length $out ? $out : undef };
-    my $started = strftime("%Y-%m-%dT%H:%M:%S%z", localtime $env{STARTED});
-    $started =~ s/(\d\d)(\d\d)$/$1:$2/;
+    my $started = $iso->($env{STARTED});
     my $result = $env{EXIT} eq "0" ? "passed" : $env{INTERRUPTED} ? "interrupted" : "failed";
     my @record = (
         started => $started,
@@ -1418,6 +1444,7 @@ _test: _require-nextest
         "${me[@]}" _test-stage-keys
         "${me[@]}" _test-frozen-tests
         "${me[@]}" _test-stage-order
+        "${me[@]}" _test-stage-times
         "${me[@]}" _test-named-run
         if [[ "${VOICEPUNCHER_NO_MACHINE_LOCK:-}" == 1 ]]; then
             echo "⊘ machine lock self-test skipped (VOICEPUNCHER_NO_MACHINE_LOCK=1)"
@@ -1910,6 +1937,41 @@ _check-bundle app dmg:
     [[ -d "$mount/voicepuncher.app" ]] || { echo "✗ $dmg holds no voicepuncher.app" >&2; exit 1; }
     [[ -L "$mount/Applications" ]] || { echo "✗ $dmg holds no Applications shortcut" >&2; exit 1; }
     echo "✓ bundle stage: $app signed and verified with its engines and licenses, $dmg holds the app and the Applications shortcut"
+
+# Self-test of the lock records in the stage journal and of `stage-times`' overlap report, run by the `test`
+# stage, on a scratch journal: a journal line names when its hold began; two runs whose e2e holds overlap are
+# named as a pair, a run that took its turn is not; without an overlap the report says none
+_test-stage-times:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    me=({{just_executable()}} --justfile {{quote(justfile())}})
+    fail() { printf '✗ %s\n%s\n' "$1" "$out" >&2; exit 1; }
+    has() { grep -qF -- "$2" <<<"$out" || fail "$1: no line holding \"$2\""; }
+    lacks() { ! grep -qF -- "$2" <<<"$out" || fail "$1: a line holds \"$2\""; }
+    printf 'requested e2e 1000.0\nlocked e2e 1005.0\nreturned e2e 1100.0\n' >"$tmp/report"
+    : >"$tmp/log"
+    TZ=UTC VOICEPUNCHER_STAGE_JOURNAL="$tmp/appended.jsonl" VOICEPUNCHER_STAGES_REPORT="$tmp/report" \
+        STAGES_LOG="$tmp/log" STAGES_LIST="e2e-smoke" STAGES_STARTED=990 STAGES_ENDED=1110 STAGES_EXIT=0 \
+        STAGES_INTERRUPTED="" STAGES_CALLER="" STAGES_WORKTREE="$tmp" "${me[@]}" _stage-journal-append
+    out=$(cat "$tmp/appended.jsonl")
+    has "the journal line" '"locks":[{"class":"e2e","held":95,"locked":"1970-01-01T00:16:45+00:00","wait":5}]'
+    echo "  ✓ a journal line names when its lock hold began"
+    run() { printf '{"started":"%s","branch":"%s","recipe":"check","result":"passed","seconds":%s,"stages":[],"failed_tests":[],"locks":[{"class":"e2e","locked":"%s","held":%s,"wait":1}]}\n' "$@"; }
+    {
+        run 2026-10-23T10:00:00+02:00 fix/a 700 2026-10-23T10:01:00+02:00 600
+        run 2026-10-23T10:05:00+02:00 fix/b 700 2026-10-23T10:09:00+02:00 300
+        run 2026-10-23T10:20:00+02:00 fix/c 700 2026-10-23T10:21:00+02:00 300
+    } >"$tmp/journal.jsonl"
+    out=$(VOICEPUNCHER_STAGE_JOURNAL="$tmp/journal.jsonl" "${me[@]}" stage-times 2020-01-01)
+    has "an overlap" "fix/a 2026-10-23T10:00:00+02:00 ↔ fix/b 2026-10-23T10:05:00+02:00: 2m 00s"
+    lacks "a run that took its turn" "fix/c 2026-10-23T10:20"
+    echo "  ✓ the summary names the runs whose holds overlapped"
+    grep -v fix/b "$tmp/journal.jsonl" >"$tmp/turns.jsonl"
+    out=$(VOICEPUNCHER_STAGE_JOURNAL="$tmp/turns.jsonl" "${me[@]}" stage-times 2020-01-01)
+    has "runs that took turns" "e2e lock overlaps: none (2 holds)"
+    echo "  ✓ the summary says no holds overlapped when the runs took turns"
 
 # Self-test of _e2e-lock and _quiet-lock, run by the `test` stage, on lock directories of its own: the lock wait
 # is 6 h unless the caller sets it, two model phases take turns, an exclusive run of the machine lock keeps a model
