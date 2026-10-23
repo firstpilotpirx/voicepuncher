@@ -54,3 +54,11 @@ recipe = "full-check"
 stage = "e2e-regression"
 beside = "other sessions' full-checks under machine-lock load, 2026-10-23; failed in several branches"
 branch = "chore/stop-filing-changes-for-flaky-tests"
+
+[[frozen]]
+test = "scenario: A request without a transcript names the machine's load"
+frozen = "2026-10-23"
+recipe = "e2e-smoke"
+stage = "e2e-smoke-services"
+beside = "flaky on 2026-10-23 under other sessions' checks and machine-lock load"
+branch = "chore/stop-filing-changes-for-flaky-tests"
