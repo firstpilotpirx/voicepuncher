@@ -166,3 +166,11 @@ recipe = "test"
 stage = "test"
 beside = "flaky on 2026-10-23 under other sessions' checks and machine-lock load"
 branch = "chore/stop-filing-changes-for-flaky-tests"
+
+[[frozen]]
+test = "voicepuncher-command-spotting confirm::tests::under_load::should_keep_the_budget_after_an_answer_stuck_repeating"
+frozen = "2026-10-23"
+recipe = "test"
+stage = "test"
+beside = "flaky on 2026-10-23 under other sessions' checks and machine-lock load"
+branch = "chore/stop-filing-changes-for-flaky-tests"
