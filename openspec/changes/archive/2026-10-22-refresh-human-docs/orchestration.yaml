@@ -1,0 +1,4 @@
+depends_on:
+  - change: fix-restart-misheard-after-short-pause
+    why: the full check of this branch fails only on the voice control scenario that fix repairs; the branch waits for it before kit land
+autonomy: auto

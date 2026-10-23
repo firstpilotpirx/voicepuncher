@@ -11,7 +11,7 @@
 | `docs/` | Documentation (ubiquitous language, architecture, E2E benchmark design) |
 | `dist/` | Gitignored output of `just bundle` and `just dmg`: `voicepuncher.app`, `voicepuncher-vX.Y.Z.dmg` and its `.sha256` |
 | `Cargo.toml` | Cargo workspace (members: `app`, `command-spotting`, `copy-pool`, `e2e-test`) |
-| `justfile` | Task runner — all checks (`check`, `e2e`, `release-check`), setup (`models`, `corpus`), benchmarks (`bench`) |
+| `justfile` | Task runner — the checks (`just check`, `just full-check`, `just test`, the E2E recipes), setup (`just models`, `just corpus`, `just engines`), packaging and release (`just bundle`, `just dmg`, `just release`), benchmarks (`just bench`) |
 
 ## App structure (`app/`)
 
@@ -48,6 +48,12 @@
 | `app/src/adapters/secondary/textpasting/macos/` | Secondary adapter | `MacOsTextPaster` — pastes text via `arboard` + `CGEventPost` |
 | `app/src/adapters/secondary/textpasting/stdio/` | Secondary adapter | `StdioTextPaster` — writes text to stdout (file mode / E2E) |
 | `app/src/adapters/secondary/soundplaying/macos/` | Secondary adapter | `MacosSoundPlayer` — plays start/stop sounds via macOS `afplay` |
+| `app/src/adapters/secondary/commandspotting/websocket/` | Secondary adapter | `WebSocketCommandSpotter` — streams the microphone to the command spotting service over its loopback WebSocket and feeds its spotting events into the pipeline; reconnects when the service is away |
+| `app/src/adapters/secondary/keypressing/macos/` | Secondary adapter | `MacOsKeyPresser` — the key presses of the voice commands (Enter, Cmd+A, Cmd+V) via `CGEventPost` |
+| `app/src/adapters/secondary/focus/macos/` | Secondary adapter | `MacOsFocusProbe` — whether a text input has the focus, through the accessibility API |
+| `app/src/adapters/secondary/visualfeedback/macos/` | Secondary adapter | `MacosVisualIndicator` — the overlay: the signs (dictation, command, pasted, failure notices), the level waveform and the live transcript near the pointer |
+| `app/src/adapters/secondary/archiving/filesystem/` | Secondary adapter | `FileSystemDictationArchive` — keeps each dictation as a folder (`audio.wav`, `entry.json`) under the archive folder |
+| `app/src/adapters/secondary/http/` | Adapter helper | What the clients of the local HTTP services share: the failure classes and the copy pool client |
 | `app/src/adapters/secondary/logging/file/` | Secondary adapter | `RotatingFileWriter`, `TeeWriter` — the app's log file `~/.voicepuncher/logs/voicepuncher.log`, size-rotated and teed to a terminal; the launch header and the panic hook |
 | `app/src/adapters/secondary/localservices/process/` | Secondary adapter | `ProcessLauncher` — starts a service as a child process in its own process group, its output in a rotating log file; `HttpProbe` — asks a service's port and `/health` whether it is ready |
 | `app/src/adapters/secondary/localservices/catalog/` | Secondary adapter | `needed` — the services a configuration needs, with the `justfile`'s commands, copy ports, thread split, engine and model lookup |

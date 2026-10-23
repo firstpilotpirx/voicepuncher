@@ -373,12 +373,15 @@ _accuracy-stage base="origin/main":
 # (e2e-quick, e2e-bench), and `none` makes the file feed no stage at all. A file no line names feeds every stage,
 # so a new file is never left out: name a file here only when the stages it does not feed are certain. The app's
 # core, its wiring, the transcription adapter, the macOS adapters (the E2E scenarios run the app binary), the
-# shared E2E code, the Cargo files, .config and this justfile stay unnamed
+# shared E2E code, the Cargo files, .config and this justfile stay unnamed. docs/, AGENTS.md and README.md feed the
+# code stages because the docs check (app/tests/it/docs_check/) reads them
 stage_inputs := '''
     openspec/*                                         none
-    docs/*                                             none
+    docs/*                                             code
     .claude/*                                          none
     .github/*                                          none
+    AGENTS.md                                          code
+    README.md                                          code
     *.md                                               none
     app/packaging/*                                    e2e-bundle
     app/tests/size_baseline.toml                       code

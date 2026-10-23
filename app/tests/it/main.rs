@@ -14,6 +14,7 @@ mod commandspotting_stall;
 mod commandspotting_websocket;
 mod config_document;
 mod config_loader;
+mod docs_check;
 mod focus_macos;
 mod http_failure;
 mod keypressing_macos;

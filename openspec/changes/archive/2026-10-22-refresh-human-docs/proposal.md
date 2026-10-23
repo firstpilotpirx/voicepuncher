@@ -7,7 +7,7 @@ The documents agents read stay accurate and the documents only people read have 
 - `overview.md` and `context.md` are rewritten from the code as it is (the four services, the copy pool, the command spotting protocol, the runtime and the overlay) and cut to what `project-map.md` and the specs do not already say; the C4 diagrams match the module tree.
 - `CHANGELOG.md` is either generated from the GitHub Releases (one entry per version, the changes named) by a `just changelog` recipe run at release, or replaced by a pointer to the Releases page — decided in design; it never again lags by hand.
 - `docs/e2e-benchmark-design.md` (related work) is headed as the implemented original design and names the files that exist today instead of eight that are gone.
-- `AGENTS.md` names `copy-pool` and calls the repository a workspace of crates, not a single crate; every claim in `AGENTS.md`, `README.md` and `docs/` that names a recipe, a file or a port is checked by a test (`app/tests/docs_it.rs` or a `kit` command) that fails when the named thing does not exist.
+- `AGENTS.md` names `copy-pool` and calls the repository a workspace of crates, not a single crate; every claim in `AGENTS.md`, `README.md` and `docs/` that names a recipe, a file or a port is checked by a test (`app/tests/it/docs_check/` or a `kit` command) that fails when the named thing does not exist.
 
 Current stage: PoC. Target stage: PoC.
 Scope: `docs/architecture/*.md`, `docs/project-map.md`, `docs/e2e-benchmark-design.md`, `CHANGELOG.md`, `AGENTS.md` lines 5 and 17, `README.md`, the docs check.

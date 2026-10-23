@@ -3,6 +3,10 @@
 > Captures the architectural decisions behind honest end-to-end testing and the
 > `--input-file` mode. This document is the source of truth for why things are
 > structured the way they are.
+>
+> **Status:** the original design, implemented. The file names below are the
+> ones that exist today; `docs/project-map.md` maps the whole E2E crate, and the
+> E2E scenarios are Gherkin features run by `e2e-test/tests/cucumber_e2e.rs`.
 
 ---
 
@@ -81,13 +85,13 @@ No log lines on stdout in file mode — logs stay on stderr (controlled by `--lo
 
 ### Architecture compliance
 
-Both new adapters live in `adapters/secondary/`:
-- `file_audio_reader.rs` — implements `AudioRecorder` port, reads file and returns `AudioBuffer16k`
-- `stdout_text_paster.rs` — implements `TextPaster` port, writes to stdout
+Both adapters live under `app/src/adapters/secondary/`:
+- `recording/filesystem/` — `FileSystemAudioRecorder` implements the `AudioRecorder` port, reads the file and returns `AudioBuffer16k`
+- `textpasting/stdio/` — `StdioTextPaster` implements the `TextPaster` port, writes to stdout
 
-Each requires a matching `*_it.rs` integration test (R4 architecture rule):
-- `tests/file_audio_reader_it.rs`
-- `tests/stdout_text_paster_it.rs`
+Each has a matching integration test module in `app/tests/it/` (R4 architecture rule):
+- `app/tests/it/recording_filesystem.rs`
+- `app/tests/it/textpasting_stdio.rs`
 
 ---
 
@@ -98,11 +102,12 @@ voicepuncher/
 ├── app/             ← binary + library; no E2E here
 ├── e2e-test/        ← separate Rust crate, drives the built binary
 │   ├── Cargo.toml
-│   └── tests/
-│       ├── pipeline_accuracy_test.rs   ← WER/CER N×N matrix
-│       └── smoke_test.rs               ← basic sanity (binary runs, exits 0)
-├── docs/
-└── scripts/
+│   ├── tests/
+│   │   ├── cucumber_e2e.rs          ← the Gherkin harness
+│   │   ├── features/                ← one .feature per capability (@smoke, @accuracy, …)
+│   │   └── steps/                   ← step definitions per capability
+│   └── scripts/                     ← bench.py (model matrix), download_corpus.py
+└── docs/
 ```
 
 **Why a separate crate, not `app/tests/`:**
@@ -165,7 +170,7 @@ This isolates whisper contribution from LLM contribution.
 | `VOICEPUNCHER_BENCH_MODELS_DIR` | `~/.voicepuncher` | Root for benchmark model files |
 
 Tests that require models are skipped (not failed) when the env vars are absent —
-same pattern as `whispercpp_transcriber_it.rs` and `llamacpp_text_refiner_it.rs`.
+same pattern as `app/tests/it/transcription_openai.rs` and `app/tests/it/textrefinement_openai.rs`.
 
 ### WER/CER computation
 
@@ -238,12 +243,12 @@ Run manually on a developer machine or on a self-hosted runner with models pre-c
 
 | What | Where | Status |
 |---|---|---|
-| `--input-file` CLI flag | `app/src/cli.rs` | to implement |
-| `FileAudioReader` secondary adapter | `app/src/adapters/secondary/file_audio_reader.rs` | to implement |
-| `StdoutTextPaster` secondary adapter | `app/src/adapters/secondary/stdout_text_paster.rs` | to implement |
-| Integration tests for new adapters | `app/tests/file_audio_reader_it.rs`, `app/tests/stdout_text_paster_it.rs` | to implement |
-| Single-shot pipeline path in `main.rs` | `app/src/main.rs` | to implement |
-| `e2e-test/` crate scaffold | repo root | to implement |
-| `e2e-test/tests/smoke_test.rs` | `e2e-test/` | to implement |
-| `e2e-test/tests/pipeline_accuracy_test.rs` | `e2e-test/` | to implement |
-| Corpus download script | `e2e-test/scripts/download_corpus.py` | to implement |
+| `--input-file` CLI flag | `app/src/adapters/primary/cli/` | done |
+| `FileSystemAudioRecorder` secondary adapter | `app/src/adapters/secondary/recording/filesystem/` | done |
+| `StdioTextPaster` secondary adapter | `app/src/adapters/secondary/textpasting/stdio/` | done |
+| Integration tests for the adapters | `app/tests/it/recording_filesystem.rs`, `app/tests/it/textpasting_stdio.rs` | done |
+| Single-shot pipeline path in `main.rs` | `app/src/main.rs` | done |
+| `e2e-test/` crate scaffold | repo root | done |
+| Smoke scenarios | `e2e-test/tests/features/` (`@smoke`) | done |
+| Accuracy scenarios (WER over the corpus) | `e2e-test/tests/features/` (`@accuracy`) | done |
+| Corpus download script | `e2e-test/scripts/download_corpus.py` | done |

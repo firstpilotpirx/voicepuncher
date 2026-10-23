@@ -3,8 +3,7 @@
 
 mod walk;
 
-use std::fs;
-use std::path::Path;
+use std::{fs, path::Path};
 use walk::undeclared_in;
 
 /// The members whose `tests/` directory holds integration tests, as seen from the app's directory.
