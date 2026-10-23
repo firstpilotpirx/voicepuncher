@@ -46,3 +46,11 @@ recipe = "full-check"
 stage = "e2e-resilience"
 beside = "other sessions' full-checks under machine-lock load, 2026-10-23; failed in several branches"
 branch = "chore/stop-filing-changes-for-flaky-tests"
+
+[[frozen]]
+test = "scenario: A chain of commands takes effect in order"
+frozen = "2026-10-23"
+recipe = "full-check"
+stage = "e2e-regression"
+beside = "other sessions' full-checks under machine-lock load, 2026-10-23; failed in several branches"
+branch = "chore/stop-filing-changes-for-flaky-tests"
