@@ -174,3 +174,11 @@ recipe = "test"
 stage = "test"
 beside = "flaky on 2026-10-23 under other sessions' checks and machine-lock load"
 branch = "chore/stop-filing-changes-for-flaky-tests"
+
+[[frozen]]
+test = "scenario: Restart, a short pause, then the new dictation"
+frozen = "2026-10-23"
+recipe = "full-check"
+stage = "e2e-smoke-voice"
+beside = "flaky on 2026-10-23 under other sessions' checks and machine-lock load"
+branch = "chore/stop-filing-changes-for-flaky-tests"
