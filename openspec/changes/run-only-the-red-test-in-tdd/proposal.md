@@ -23,11 +23,11 @@ Out of scope: `just check` / `full-check` and their stages.
 
 - `AGENTS.md`, `justfile` (a one-test recipe, e.g. `just test-one <filter>`), agent-kit `tdd` skill and its rule.
 
-## Open points
+## Decisions
 
-- The Green step: proposed — run the same one test until green, then the tests of the touched package (`test@<member>`) once; the full `just test` once per task group, not after every edit.
-- Whether a one-test run goes into the stage journal: proposed yes, as recipe `test-one`, never counted as the change's passing check.
-- The agent-kit `tdd` skill lives in agent-kit: proposed to file that part there when this change runs.
+- The Green step: the same one test until green; `just test` (which runs only the packages whose inputs changed) once per task group, not after every edit.
+- A one-test run goes into the stage journal as recipe `test-one`, never counted as a pass or the change's passing check.
+- The agent-kit `tdd` skill part lands as an agent-kit PR within this change.
 
 ## Release
 
