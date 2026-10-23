@@ -44,3 +44,56 @@ fn should_carry_out_the_same_chain_under_load() {
     // Then the chain is carried out as on an idle machine
     assert_eq!(carried_out(&events), CHAIN, "{events:?}");
 }
+
+/// The speech of the E2E scenario "Restart, a short pause, then speech that starts like
+/// another word": a dictated sentence, then "Restart", a short pause and another sentence.
+const BEFORE_RESTART: &str = "Weather is sunny in Berlin today";
+const AFTER_RESTART: &str = "Coffee machine on the third floor is broken";
+/// The pause after "Restart": longer than the one that ends an utterance.
+const SHORT_PAUSE_SECS: f32 = 0.4;
+
+/// Each part's words said one by one, each part followed by its pause, after a pause; and
+/// where each word lies.
+fn scripted_with_pauses(parts: &[(&str, f32)]) -> (Vec<f32>, Vec<ScriptedWord>) {
+    let mut stream = silence(PAUSE_SECS);
+    let mut script = Vec::new();
+    for (words, pause_secs) in parts {
+        for word in words.split_whitespace() {
+            let said = sound_only(speech(word));
+            script.push(ScriptedWord {
+                text: word.to_owned(),
+                said: stream.len()..stream.len() + said.len(),
+            });
+            stream.extend(said);
+            stream.extend(silence(WORD_GAP_SECS));
+        }
+        stream.extend(silence(*pause_secs));
+    }
+    (stream, script)
+}
+
+#[test]
+fn should_restart_before_a_short_pause_and_more_speech_under_load() {
+    // Given a dictation, confirmed by a copy that decodes every confirmation for 1.2 s
+    let Some(cfg) = engine_cfg(None) else {
+        return;
+    };
+    let (stream, script) = scripted_with_pauses(&[
+        (BEFORE_RESTART, PAUSE_SECS),
+        ("Restart", SHORT_PAUSE_SECS),
+        (AFTER_RESTART, PAUSE_SECS),
+    ]);
+    let hearing = ScriptedHearing { stream: stream.clone(), script, completes_cut_words: false };
+    let engine = clocked_engine(&cfg, loaded_copy(hearing), SLOW_HEARING, None);
+    let mut session = engine.engine.session().unwrap();
+    session.listen_for(&owned(&DICTATING)).unwrap();
+    // When "restart" is said, then about 0.4 s of silence and another sentence
+    let events = fed_as_spoken(&mut session, &engine.clock, &stream);
+    // Then the restart is reported
+    let restarts = phrases(&events)
+        .into_iter()
+        .chain(carried_out(&events))
+        .filter(|phrase| phrase == "restart dictation")
+        .count();
+    assert_eq!(restarts, 1, "{events:?}");
+}

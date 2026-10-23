@@ -999,6 +999,11 @@ When the speech recognition service for commands answers its confirmations slowl
 - **WHEN** the user says "that is all stop enter start"
 - **THEN** the command spotting service reports "stop dictation", "press enter" and "start dictation", in that order
 
+#### Scenario: A restart before a short pause and more speech under load
+- **GIVEN** voice control runs, a dictation is on, and the speech recognition service for commands takes over a second for every confirmation, as under machine load
+- **WHEN** the user says "restart", pauses for about 0.4 s and says another sentence
+- **THEN** the command spotting service reports "restart dictation"
+
 ### Requirement: Every event of audio accepted before a sync is out before the sync is answered
 When an app asks the command spotting service to confirm that every event of the audio it sent so far is out (a sync), the service SHALL answer only after it has reported every speech segment closed in that audio, also a segment whose confirmation it had to ask again — because the first hearing came back empty, cut short under load or misheard — after the sync arrived; an app that closes the connection on that answer SHALL have received every command said in that audio.
 
