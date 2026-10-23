@@ -32,4 +32,4 @@ Out of scope: the other flaky scenarios of the audit of 2026-10-21 and `fix-clea
 ## Release
 
 SemVer: PATCH — a bug fix of the command spotting service or its test, no new capability.
-Target version: 0.37.3.
+Target version: 0.37.5.

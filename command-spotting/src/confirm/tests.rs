@@ -27,7 +27,7 @@ fn serve_copy(listener: TcpListener, answer: &'static str, decoding: Duration) -
     let counter = Arc::clone(&requests);
     thread::spawn(move || {
         for stream in listener.incoming() {
-            answer_request(stream.unwrap(), answer, &[decoding], &counter);
+            answer_request(stream.unwrap(), &[(decoding, answer)], &counter);
         }
     });
     requests
@@ -41,25 +41,36 @@ fn serve_live_copy_paced(
     answer: &'static str,
     decodings: Vec<Duration>,
 ) -> Arc<AtomicUsize> {
+    serve_live_copy_scripted(
+        listener,
+        decodings.into_iter().map(|d| (d, answer)).collect(),
+    )
+}
+
+/// As `serve_live_copy_paced`, the n-th transcription answered after the decoding and with
+/// the answer of the n-th entry of `script` (the last one once they run out).
+fn serve_live_copy_scripted(
+    listener: TcpListener,
+    script: Vec<(Duration, &'static str)>,
+) -> Arc<AtomicUsize> {
     let requests = Arc::new(AtomicUsize::new(0));
     let counter = Arc::clone(&requests);
-    let decodings = Arc::new(decodings);
+    let script = Arc::new(script);
     thread::spawn(move || {
         for stream in listener.incoming() {
             let counter = Arc::clone(&counter);
-            let decodings = Arc::clone(&decodings);
-            thread::spawn(move || answer_request(stream.unwrap(), answer, &decodings, &counter));
+            let script = Arc::clone(&script);
+            thread::spawn(move || answer_request(stream.unwrap(), &script, &counter));
         }
     });
     requests
 }
 
-/// Answers a health check at once, and the n-th transcription with `answer` after the n-th
-/// of `decodings` (the last one once they run out).
+/// Answers a health check at once, and the n-th transcription after the decoding and with
+/// the answer of the n-th entry of `script` (the last one once they run out).
 fn answer_request(
     mut stream: TcpStream,
-    answer: &'static str,
-    decodings: &[Duration],
+    script: &[(Duration, &'static str)],
     counter: &AtomicUsize,
 ) {
     let mut reader = BufReader::new(stream.try_clone().unwrap());
@@ -73,7 +84,8 @@ fn answer_request(
     } else {
         let n = counter.fetch_add(1, Ordering::SeqCst);
         reader.read_exact(&mut vec![0u8; length]).unwrap();
-        thread::sleep(decodings[n.min(decodings.len() - 1)]);
+        let (decoding, answer) = script[n.min(script.len() - 1)];
+        thread::sleep(decoding);
         answer
     };
     let reply = format!(

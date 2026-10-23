@@ -181,10 +181,9 @@ impl UtteranceTranscriber {
         left: Duration,
     ) -> Option<Result<Heard>> {
         match ran {
-            Ran::Answered(Ok(Posted::Answer(answer))) => {
-                self.pace.note(sent.took);
-                Some(heard_from(&answer))
-            }
+            Ran::Answered(Ok(Posted::Answer(answer))) => Some(
+                heard_from(&answer).inspect(|heard| self.pace.note_answer(sent.took, &heard.text)),
+            ),
             Ran::Answered(Ok(Posted::Refused(e))) => {
                 log::warn!(
                     "confirmation refused by copy {}: sending it to another copy ({e:#})",
@@ -195,7 +194,7 @@ impl UtteranceTranscriber {
             Ran::Answered(Ok(Posted::TimedOut(url))) if sent.budget < sent.left => {
                 let nothing = cut_short(&url, sent.budget, left);
                 if nothing.is_some() {
-                    self.pace.note(sent.budget);
+                    self.pace.note_cut_short();
                 }
                 nothing.map(Ok)
             }

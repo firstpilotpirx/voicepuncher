@@ -96,3 +96,61 @@ fn should_cut_a_confirmation_short_at_its_deadline_however_slow_the_recent_answe
         "took {took:?}"
     );
 }
+
+#[test]
+fn should_keep_the_budget_after_confirmations_cut_short() {
+    // Given a copy that answered its recent confirmations quickly, then decodes each later
+    // one for 2.5 s, as speech stuck repeating does, and the first of them was cut short
+    let (transcriber, _) = transcriber_of_live_copy(vec![
+        Duration::ZERO,
+        Duration::ZERO,
+        Duration::from_millis(2_500),
+    ]);
+    warmed_up(&transcriber, Duration::from_secs(3));
+    let (first, _) = timed(&transcriber, Duration::from_secs(3));
+    assert_eq!(first.unwrap(), Heard::default());
+    for _ in 0..2 {
+        // When
+        let (heard, took) = timed(&transcriber, Duration::from_secs(3));
+        // Then each is cut short after about 1.5 s, the budget never raised past it
+        assert_eq!(heard.unwrap(), Heard::default());
+        assert!(
+            took >= Duration::from_millis(1_400) && took < Duration::from_millis(1_900),
+            "took {took:?}"
+        );
+    }
+}
+
+/// What speech recognition answers when it gets stuck repeating: one word over and over, far
+/// longer than any speech of a confirmation's length.
+fn stuck_repeating() -> &'static str {
+    let text = " E-e".repeat(60);
+    Box::leak(format!(r#"{{"text":"{text}","segments":[]}}"#).into_boxed_str())
+}
+
+#[test]
+fn should_keep_the_budget_after_an_answer_stuck_repeating() {
+    // Given a copy that took close to a second for its recent confirmations, as under load,
+    // then answered one after 1.6 s stuck repeating, and decodes the next one for 2.5 s
+    let loaded = Duration::from_millis(950);
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/v1", listener.local_addr().unwrap());
+    serve_live_copy_scripted(
+        listener,
+        vec![
+            (loaded, PRESS_ENTER),
+            (loaded, PRESS_ENTER),
+            (Duration::from_millis(1_600), stuck_repeating()),
+            (Duration::from_millis(2_500), PRESS_ENTER),
+        ],
+    );
+    let transcriber = UtteranceTranscriber::new(&url).unwrap();
+    warmed_up(&transcriber, Duration::from_secs(3));
+    let (repeating, _) = timed(&transcriber, Duration::from_secs(3));
+    assert!(repeating.unwrap().text.len() > 120);
+    // When
+    let (heard, took) = timed(&transcriber, Duration::from_secs(3));
+    // Then it is cut short after the 1.9 s the ordinary answers give, not heard at 2.5 s
+    assert_eq!(heard.unwrap(), Heard::default());
+    assert!(took < Duration::from_millis(2_300), "took {took:?}");
+}

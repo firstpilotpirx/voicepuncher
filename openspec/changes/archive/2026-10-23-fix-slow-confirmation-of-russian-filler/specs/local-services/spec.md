@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Speech that is no command is confirmed quickly
-The speech recognition service for commands SHALL answer the command spotting service's confirmation of any utterance up to 2.5 seconds in under 2 seconds when it is otherwise idle, also for speech in another language that makes speech recognition repeat itself, so a confirmation never waits out its deadline and never holds up the commands said after it. A confirmation the speech recognition service has not answered within its decoding budget SHALL be cut short: the command spotting service takes its utterance as no command, does not send it again, and the copy that held it takes the next confirmation at once. The decoding budget SHALL follow the pace of the service's recent answers to ordinary speech: 1 second when they came back quickly, longer when the last few took long, as under machine load, and never past the confirmation's deadline, so speech that decodes slowly because the machine is busy is heard in full while speech that decodes long because speech recognition repeats itself is still cut short. A confirmation cut short and an answer of speech recognition stuck repeating SHALL NOT lengthen the budget, since neither shows that the machine is busy.
+The speech recognition service for commands SHALL answer the command spotting service's confirmation of any utterance up to 2.5 seconds in under 2 seconds when it is otherwise idle, also for speech in another language that makes speech recognition repeat itself, so a confirmation never waits out its deadline and never holds up the commands said after it. A confirmation the speech recognition service has not answered within its decoding budget SHALL be cut short: the command spotting service takes its utterance as no command, does not send it again, and the copy that held it takes the next confirmation at once. The decoding budget SHALL follow the pace of the service's recent answers to ordinary speech: 1 second when they came back quickly, longer when the last few took long, as under machine load, and never past the confirmation's deadline, so speech that decodes slowly because the machine is busy is heard in full while speech that decodes long because speech recognition repeats itself is still cut short. A confirmation cut short SHALL lengthen the budget to 1.5 seconds and no further, however many are cut short and whatever budget they were cut at, and an answer of speech recognition stuck repeating SHALL NOT lengthen the budget, so speech stuck repeating never raises the budget past the time a confirmation of it may take.
 
 #### Scenario: Russian speech that makes speech recognition repeat itself
 - **GIVEN** voice control runs and the speech recognition service for commands is otherwise idle
@@ -30,10 +30,10 @@ The speech recognition service for commands SHALL answer the command spotting se
 - **WHEN** the command spotting service sends an utterance the copy keeps decoding past the deadline
 - **THEN** the confirmation ends at the deadline as a failed confirmation, not later and never as an utterance heard as no command
 
-#### Scenario: Speech cut short does not lengthen the budget
+#### Scenario: Speech cut short does not lengthen the budget past 1.5 seconds
 - **GIVEN** the speech recognition service for commands runs as one copy, which answered its recent confirmations quickly, and the last confirmation was cut short after 1 second
-- **WHEN** the command spotting service sends an utterance the copy keeps decoding for 1.5 seconds
-- **THEN** that confirmation is cut short after about 1 second as well
+- **WHEN** the command spotting service sends two more utterances the copy keeps decoding for 2.5 seconds each
+- **THEN** each of them is cut short after about 1.5 seconds
 
 #### Scenario: An answer stuck repeating does not lengthen the budget
 - **GIVEN** the speech recognition service for commands runs as one copy, which took close to a second for each of its recent confirmations, as under machine load, and then answered one confirmation after 1.6 seconds with speech recognition stuck repeating one word

@@ -40,6 +40,8 @@ const ANSWERED_WITHIN: Duration = Duration::from_secs(2);
 pub(super) const ANSWERED: &str = " answered in ";
 /// What it logs for a confirmation that waited out its deadline.
 pub(super) const GIVEN_UP: &str = " given up after ";
+/// What it logs for a confirmation cut short after its decoding budget.
+const CUT_SHORT: &str = "confirmation cut short after ";
 
 #[given("voice control runs and the speech recognition service for commands is otherwise idle")]
 async fn voice_control_on_idle_service(world: &mut E2eWorld) -> Result<()> {
@@ -129,6 +131,11 @@ fn confirmed_quickly(world: &mut E2eWorld) -> Result<()> {
     ensure!(
         *slowest < ANSWERED_WITHIN,
         "a confirmation took {slowest:?}, not under {ANSWERED_WITHIN:?}; all: {times:?}\n{log}"
+    );
+    // The times stay in the stage log, so a run under load measures the margin to the bound
+    eprintln!(
+        "confirmations of the Russian speech: slowest {slowest:?}, {} cut short; all: {times:?}",
+        log.matches(CUT_SHORT).count()
     );
     Ok(())
 }

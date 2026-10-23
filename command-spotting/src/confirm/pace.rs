@@ -18,6 +18,16 @@ const WINDOW: Duration = Duration::from_secs(10);
 /// The budget beyond the slowest recent confirmation: speech stuck repeating takes several
 /// times an ordinary confirmation, a loaded copy only somewhat longer than its last ones.
 const SLACK: u32 = 2;
+/// The budget after a confirmation cut short, whatever budget it was cut at: a copy slowed by
+/// load (ordinary answers of 0.5–1.2 s) is then heard in full and sets the pace by its
+/// answers, while speech stuck repeating (1.7–1.8 s idle) is cut again well under the 2 s a
+/// confirmation of it may take; noting the budget it was cut at raised the budget past the
+/// repetition (fix-slow-confirmation-of-russian-filler, design.md).
+const AFTER_CUT_SHORT: Duration = Duration::from_millis(1_500);
+/// An answer longer than this is speech recognition stuck repeating, which sets no pace: a
+/// confirmation holds at most 2.5 s of speech, answered in 12–40 characters, while a loop is
+/// whisper's whole window of 219 tokens (fix-slow-confirmation-of-russian-filler, design.md).
+const STUCK_REPEATING_CHARS: usize = 120;
 
 /// The times of the confirmations of the last `window`, and the decoding budget they give
 /// the next one.
@@ -52,12 +62,24 @@ impl Pace {
         (slowest * SLACK).max(FLOOR).min(deadline)
     }
 
-    /// A confirmation took `took`: the time a copy answered in, or the budget a live copy was
-    /// cut short at.
+    /// A copy answered ordinary speech in `took`; an answer stuck repeating is never noted, as
+    /// it shows nothing of how busy the machine is.
     pub fn note(&self, took: Duration) {
         let mut recent = self.recent.lock().unwrap_or_else(PoisonError::into_inner);
         Self::forget_old(&mut recent, self.window);
         recent.push_back((Instant::now(), took));
+    }
+
+    /// A copy answered `text` in `took`: noted unless it is speech stuck repeating.
+    pub fn note_answer(&self, took: Duration, text: &str) {
+        if text.len() <= STUCK_REPEATING_CHARS {
+            self.note(took);
+        }
+    }
+
+    /// A confirmation was cut short: the budget is `AFTER_CUT_SHORT` for the window, at least.
+    pub fn note_cut_short(&self) {
+        self.note(AFTER_CUT_SHORT / SLACK);
     }
 
     fn forget_old(recent: &mut VecDeque<(Instant, Duration)>, window: Duration) {
@@ -123,16 +145,27 @@ mod tests {
     }
 
     #[test]
+    fn should_give_the_same_budget_after_any_number_of_confirmations_cut_short() {
+        let pace = Pace::default();
+        for _ in 0..3 {
+            pace.note_cut_short();
+        }
+        assert_eq!(pace.budget(DEADLINE), AFTER_CUT_SHORT);
+    }
+
+    #[test]
+    fn should_take_no_pace_from_an_answer_stuck_repeating() {
+        let pace = Pace::default();
+        pace.note_answer(millis(1_800), &" E-e".repeat(60));
+        assert_eq!(pace.budget(DEADLINE), FLOOR);
+        pace.note_answer(millis(900), " press enter");
+        assert_eq!(pace.budget(DEADLINE), millis(1_800));
+    }
+
+    #[test]
     fn should_never_pass_the_deadline() {
         let pace = Pace::default();
         pace.note(millis(2_000));
         assert_eq!(pace.budget(DEADLINE), DEADLINE);
-    }
-
-    #[test]
-    fn should_raise_the_budget_after_a_confirmation_cut_short_at_the_floor() {
-        let pace = Pace::default();
-        pace.note(FLOOR);
-        assert_eq!(pace.budget(DEADLINE), FLOOR * 2);
     }
 }
