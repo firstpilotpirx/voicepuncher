@@ -214,3 +214,11 @@ recipe = "full-check"
 stage = "e2e-smoke-refinement"
 beside = "flaky on 2026-10-23 under other sessions' checks and machine-lock load"
 branch = "chore/stop-filing-changes-for-flaky-tests"
+
+[[frozen]]
+test = "scenario: Service stops between recordings"
+frozen = "2026-10-23"
+recipe = "full-check"
+stage = "e2e-smoke-refinement"
+beside = "flaky on 2026-10-23 under other sessions' checks and machine-lock load"
+branch = "chore/stop-filing-changes-for-flaky-tests"
