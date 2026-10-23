@@ -1155,6 +1155,15 @@ size-baseline:
 test:
     @VOICEPUNCHER_STAGES_RECIPE=test {{just_executable()}} _stages test metrics
 
+# Runs only the named tests and slice/component scenarios in the `test` stage (_named-run): the TDD Red and Green
+# steps (AGENTS.md § TDD), with the test stage's build, nextest config and time limits, unlocked; journaled as
+# `test-one`, never reused and never a pass. A name is a bare test name (every test whose name holds it),
+# `<package>::<binary> <test>` or `scenario: <name>`; one that never ran fails the run
+# TDD Red/Green: run only the named tests or scenarios (e.g. `just test-one should_reject_empty_chunk`), in seconds
+[positional-arguments]
+test-one +names:
+    @{{just_executable()}} --justfile {{quote(justfile())}} _named-run test-one test "$@"
+
 # The rerun takes the worktree's last record of the stage journal that ran a stage, its failed stage and its failed tests (or the
 # names given, in the journal's form: `<package>::<binary> <test>`, `scenario: <name>`), and runs that one stage
 # with them alone — same build, services, lock, test ports and time limits, never reused and never recorded as a
@@ -1165,8 +1174,8 @@ test:
 rerun-failed *names:
     #!/usr/bin/env bash
     set -euo pipefail
-    plan=$(mktemp) log=$(mktemp)
-    trap 'rm -f "$plan" "$log"' EXIT
+    plan=$(mktemp)
+    trap 'rm -f "$plan"' EXIT
     STAGES_WORKTREE={{quote(justfile_directory())}} perl -MJSON::PP -e '
         my ($journal, $worktree, @names) = ($ENV{VOICEPUNCHER_STAGE_JOURNAL}, $ENV{STAGES_WORKTREE}, @ARGV);
         my $last;
@@ -1194,45 +1203,88 @@ rerun-failed *names:
             ($stage) = map { $_->{name} } grep { $_->{result} eq "failed" } @stages;
         }
         @names = @{ $last->{failed_tests} } unless @names;
-        my (@tests, @scenarios, $harness);
-        for my $name (@names) {
-            if ($name =~ /^scenario:\s*(.+)$/) { push @scenarios, $1; next }
-            my ($binary, $test) = $name =~ /^(\S+)\s+(.+)$/ or die "✗ \"$name\" is neither `<package>::<binary> <test>` nor `scenario: <name>`\n";
-            $harness = 1 if $binary =~ /::cucumber_(?:integration|e2e)$/;
-            push @tests, "(binary_id(=$binary) & test(=$test))";
-        }
-        # Scenarios named by hand, without their harness test: every harness test of the stage runs, each only them
-        push @tests, "binary(=cucumber_integration)", "binary(=cucumber_e2e)" if @scenarios && !$harness;
         print "run $stage\n";
-        print "filter ", join(" | ", @tests), "\n";
-        print "scenario $_\n" for @scenarios;
         print "name $_\n" for @names;
         printf "● rerun of %s: stage %s, %s\n", $what, $stage, @names ? scalar(@names) . " test(s)" : "no named test, so the whole stage";
     ' -- "$@" >"$plan"
-    grep -v '^\(run\|filter\|scenario\|name\) ' "$plan" || true
+    grep -v '^\(run\|name\) ' "$plan" || true
     stage=$(sed -n 's/^run //p' "$plan")
     [[ -n "$stage" ]] || exit 0
-    filter=$(sed -n 's/^filter //p' "$plan")
-    scenarios=$(sed -n 's/^scenario //p' "$plan")
+    names=()
+    while IFS= read -r name; do names+=("$name"); done < <(sed -n 's/^name //p' "$plan")
+    {{just_executable()}} --justfile {{quote(justfile())}} _named-run rerun-failed "$stage" ${names[@]+"${names[@]}"}
+
+# Runs one stage with only the named tests and scenarios (_named-selection) — never reused and never recorded as a
+# pass, journaled under the caller's recipe name — then fails naming any of them that never ran (_named-missing).
+# No names: the whole stage. VOICEPUNCHER_NAMED_RUN_PLAN=1 prints the stage, the recipe and the selection instead
+[positional-arguments]
+_named-run recipe stage *names:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    recipe=$1 stage=$2
+    shift 2
+    me=({{just_executable()}} --justfile {{quote(justfile())}})
+    plan=$("${me[@]}" _named-selection "$@")
+    filter=$(sed -n 's/^filter //p' <<<"$plan")
+    scenarios=$(sed -n 's/^scenario //p' <<<"$plan")
+    if [[ -n "${VOICEPUNCHER_NAMED_RUN_PLAN:-}" ]]; then
+        printf 'recipe %s\nstage %s\n%s\n' "$recipe" "$stage" "$plan"
+        exit 0
+    fi
+    log=$(mktemp)
+    trap 'rm -f "$log"' EXIT
     status=0
-    VOICEPUNCHER_STAGES_RECIPE=rerun-failed VOICEPUNCHER_RERUN_FILTER="$filter" VOICEPUNCHER_RERUN_SCENARIOS="$scenarios" \
-        NEXTEST_SUCCESS_OUTPUT=immediate {{just_executable()}} --justfile {{quote(justfile())}} _stages "$stage" \
+    VOICEPUNCHER_STAGES_RECIPE="$recipe" VOICEPUNCHER_RERUN_FILTER="$filter" VOICEPUNCHER_RERUN_SCENARIOS="$scenarios" \
+        NEXTEST_SUCCESS_OUTPUT=immediate "${me[@]}" _stages "$stage" \
         > >(tee "$log") 2> >(tee -a "$log" >&2) || status=$?
     wait
-    # Every name must have run: nextest's result line of the test, or the scenario's line in the harness output
-    missing=$(sed -n 's/^name //p' "$plan" | RERUN_LOG="$log" perl -ne '
-        BEGIN { open my $fh, "<", $ENV{RERUN_LOG} or die; local $/; ($log = <$fh>) =~ s/\e\[[0-9;]*[A-Za-z]//g }
-        chomp; my $name = $_;
-        my $seen = $name =~ /^scenario:\s*(.+)$/
-            ? $log =~ /^\s*(?:Scenario|Scenario Outline|Example):\s*\Q$1\E\s*$/m
-            : $log =~ /^\s*(?:PASS|FAIL|FLAKY|TIMEOUT|SIG\w+|ABORT)\s+\[[^\]]*\]\s+(?:\(\s*\d+\/\d+\)\s+)?\Q$name\E\s*$/m;
-        print "  $name\n" unless $seen;
-    ')
+    missing=$("${me[@]}" _named-missing "$log" "$@")
     if [[ -n "$missing" ]]; then
-        printf '✗ never ran in this rerun:\n%s\n' "$missing" >&2
+        printf '✗ never ran in this %s:\n%s\n' "$recipe" "$missing" >&2
         [[ $status -ne 0 ]] || status=1
     fi
     exit "$status"
+
+# The selection of the named tests and scenarios, one line each: `filter <nextest filterset>`, `scenario <name>`,
+# `name <name>`. A name is `<package>::<binary> <test>` (that test of that binary), `scenario: <name>` (that
+# scenario, in every harness test of the stage unless a harness test is named too) or a bare name without spaces
+# (every test whose name holds it)
+[positional-arguments]
+_named-selection *names:
+    #!/usr/bin/env perl
+    use strict; use warnings;
+    my (@tests, @scenarios, $harness);
+    for my $name (@ARGV) {
+        if ($name =~ /^scenario:\s*(.+)$/) { push @scenarios, $1; next }
+        if ($name =~ /^\S+$/) { push @tests, "test($name)"; next }
+        my ($binary, $test) = $name =~ /^(\S+)\s+(.+)$/
+            or die "✗ \"$name\" is neither `<package>::<binary> <test>`, `scenario: <name>` nor a bare test name\n";
+        $harness = 1 if $binary =~ /::cucumber_(?:integration|e2e)$/;
+        push @tests, "(binary_id(=$binary) & test(=$test))";
+    }
+    push @tests, "binary(=cucumber_integration)", "binary(=cucumber_e2e)" if @scenarios && !$harness;
+    print "filter ", join(" | ", @tests), "\n" if @tests;
+    print "scenario $_\n" for @scenarios;
+    print "name $_\n" for @ARGV;
+
+# The named tests and scenarios a run's log shows no sign of, one `  <name>` line each: an exact name needs
+# nextest's result line of that test, a bare name a result line whose test name holds it, a scenario its line in
+# the harness output
+[positional-arguments]
+_named-missing log *names:
+    #!/usr/bin/env perl
+    use strict; use warnings;
+    my $path = shift @ARGV;
+    open my $fh, "<", $path or die "✗ no log $path\n";
+    my $log = do { local $/; <$fh> };
+    $log =~ s/\e\[[0-9;]*[A-Za-z]//g;
+    my $result = qr/^\s*(?:PASS|FAIL|FLAKY|TIMEOUT|SIG\w+|ABORT)\s+\[[^\]]*\]\s+(?:\(\s*\d+\/\d+\)\s+)?/m;
+    for my $name (@ARGV) {
+        my $seen = $name =~ /^scenario:\s*(.+)$/ ? $log =~ /^\s*(?:Scenario|Scenario Outline|Example):\s*\Q$1\E\s*$/m
+            : $name =~ /^\S+$/ ? $log =~ /${result}\S+\s+\S*\Q$name\E\S*\s*$/m
+            : $log =~ /${result}\Q$name\E\s*$/m;
+        print "  $name\n" unless $seen;
+    }
 
 # Freezes a test that failed outside the change whose check ran it (AGENTS.md § How to verify a change): adds its
 # entry to .config/frozen-tests.toml, commits it on this branch and pushes the same entry to main at once from a
@@ -1366,6 +1418,7 @@ _test: _require-nextest
         "${me[@]}" _test-stage-keys
         "${me[@]}" _test-frozen-tests
         "${me[@]}" _test-stage-order
+        "${me[@]}" _test-named-run
         if [[ "${VOICEPUNCHER_NO_MACHINE_LOCK:-}" == 1 ]]; then
             echo "⊘ machine lock self-test skipped (VOICEPUNCHER_NO_MACHINE_LOCK=1)"
         else
@@ -1947,6 +2000,40 @@ _test-stage-order:
     [[ $(env -u VOICEPUNCHER_NO_MACHINE_LOCK -u MACHINE_LOCK {{just_executable()}} --justfile {{quote(justfile())}} --evaluate machine_lock) == */.claude/bin/with-machine-lock ]] \
         || { echo "✗ the machine lock is not the agent-kit lock by default" >&2; exit 1; }
     echo "  ✓ VOICEPUNCHER_NO_MACHINE_LOCK=1 runs the recipes without the lock (CI)"
+
+# The named runs' expected behaviour (test-one, rerun-failed; run by the `test` stage): how names become a
+# selection, which names a run's log shows as ran, and which stage and journal name test-one runs under
+[positional-arguments]
+_test-named-run:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    me=({{just_executable()}} --justfile {{quote(justfile())}})
+    expect() {
+        local what=$1 want=$2 got=$3
+        [[ "$got" == "$want" ]] || { printf '✗ %s\nwant:\n%s\ngot:\n%s\n' "$what" "$want" "$got" >&2; exit 1; }
+        echo "  ✓ $what"
+    }
+    expect "a bare name selects the tests whose name holds it" \
+        $'filter test(should_reject_empty_chunk)\nname should_reject_empty_chunk' \
+        "$("${me[@]}" _named-selection should_reject_empty_chunk)"
+    expect "an exact name selects that test of that binary" \
+        $'filter (binary_id(=voicepuncher::it) & test(=chunk::should_x))\nname voicepuncher::it chunk::should_x' \
+        "$("${me[@]}" _named-selection 'voicepuncher::it chunk::should_x')"
+    expect "a scenario name selects the harnesses, each running only it" \
+        $'filter binary(=cucumber_integration) | binary(=cucumber_e2e)\nscenario A paste lands\nname scenario: A paste lands' \
+        "$("${me[@]}" _named-selection 'scenario: A paste lands')"
+    log=$(mktemp)
+    trap 'rm -f "$log"' EXIT
+    printf '%s\n' '        PASS [   0.012s] (1/2) voicepuncher::it chunk::tests::should_reject_empty_chunk' \
+        '        FAIL [   0.020s] (2/2) voicepuncher::it chunk::should_x' '  Scenario: A paste lands' >"$log"
+    expect "a run shows the bare, exact and scenario names it ran" "" \
+        "$("${me[@]}" _named-missing "$log" should_reject_empty 'voicepuncher::it chunk::should_x' 'scenario: A paste lands')"
+    expect "a run names the bare, exact and scenario names it never ran" \
+        $'  should_vanish\n  voicepuncher::it chunk::should\n  scenario: A paste' \
+        "$("${me[@]}" _named-missing "$log" should_vanish 'voicepuncher::it chunk::should' 'scenario: A paste')"
+    expect "test-one runs the test stage alone, journaled as test-one, with only its names" \
+        $'recipe test-one\nstage test\nfilter test(should_x)\nname should_x' \
+        "$(VOICEPUNCHER_NAMED_RUN_PLAN=1 "${me[@]}" test-one should_x)"
 
 # The stage keys' expected behaviour (run by the `test` stage): in a scratch git repository laid out like this
 # one, a stage's key changes with a file it reads (tracked, untracked or deleted, committed or not) and with its

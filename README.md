@@ -461,7 +461,8 @@ All checks run through [`just`](https://github.com/casey/just) (`brew install ju
 
 | Command | What it runs | Time | When |
 |---|---|---|---|
-| `just test` | unit + architecture + integration tests under cargo-nextest, each within its time limit | ~1 min | after every edit |
+| `just test-one <name>...` | only the named tests or slice/component scenarios, in the `test` stage | seconds after the build | TDD Red and Green |
+| `just test` | unit + architecture + integration tests under cargo-nextest, each within its time limit | ~1 min | once per task group |
 | `just check` | fmt, clippy, `test`, release build, E2E smoke, WER accuracy on 10 samples, refinement evaluation | ~8.5 min (machine lock ≈ 7.3 min) | often while developing, before every commit you push |
 | `just full-check` | fmt, clippy, `test`, release build, the bundle (`bundle`: the disk image built and mounted, the bundle's Info.plist and signature checked, then the bundled engines checked, then the `app_distribution.feature` scenarios with the signing guards; no machine lock), E2E smoke, chunk seams, outages (`e2e-resilience`), the bundled engines (`e2e-bundle`: a copy of the bundle starts every service from its own engines on the Metal GPU), WER accuracy on a fixed sample of 100 recordings (or 10, below), refinement evaluation | ~15.5–17.5 min (machine lock ≈ 14.5 min with 10 recordings, ≈ 16.3 min with 100) | before merging a branch and before every release |
 

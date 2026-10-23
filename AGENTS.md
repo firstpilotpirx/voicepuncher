@@ -29,7 +29,7 @@ Every feature, bug fix and behavior change runs through all stages below, in ord
 | 2 | Propose | `/opsx:propose "<idea>"` creates every artifact in one go. Artifact by artifact instead: `/opsx:new`, then `/opsx:continue` once per artifact (proposal → specs → design → tasks), or `/opsx:ff` for the rest | `openspec validate <name>` passes and `openspec status --change <name>` shows every artifact done |
 | 3 | Approval | show the proposal to the user | the user approved it — **stop and wait**; no code before this |
 | 4 | Branch | `git fetch origin && git switch -c <type>/<name> origin/main` (`feat`, `fix`, `chore`) | |
-| 5 | Apply | `/opsx:apply`, test-first (§ TDD) | every task in `tasks.md` is checked; `just test` after every edit; one Conventional Commit after every task group; `just check` once, after the last group, when the branch changed a build input |
+| 5 | Apply | `/opsx:apply`, test-first (§ TDD) | every task in `tasks.md` is checked; `just test-one` on the new test at Red and Green, `just test` once per task group; one Conventional Commit after every task group; `just check` once, after the last group, when the branch changed a build input |
 | 6 | Verify | `/opsx:verify`; then the `spec-test-reviewer` subagent once, only for a change that is not small (`~/.claude/rules-custom/openspec.md`: more than one added or modified requirement, or more than 10 tasks) (§ Gherkin) | no CRITICAL issues; for a reviewed change, `RESULT: PASS` — fix every PARTIAL, CONTRADICTS, UNTRACED, ORPHAN and CONFLICT entry and rerun it only when the fix touched tests or OpenSpec documents |
 | 7 | Archive | `/opsx:archive`, then commit | specs merged into `openspec/specs/`, change moved to `openspec/changes/archive/` |
 | 8 | Own check | `just check` (from stage 5), only when the branch changed a build input; never `just full-check` on the branch alone | passes on the final commit |
@@ -59,9 +59,11 @@ CLI: `openspec list` (changes), `openspec list --specs`, `openspec status --chan
 
 Every behavior change in stage 5 is test-first (`tdd` skill):
 
-1. **Red** — write the test for the new behavior and run it; it fails because the behavior is missing.
-2. **Green** — write the smallest code that makes it pass; `just test` is green.
-3. **Refactor** — clean up with every test green.
+1. **Red** — write the test for the new behavior and run only it: `just test-one <name>` (a bare test name, `<package>::<binary> <test>` or `scenario: <name>` for a slice/component scenario; seconds, not the suite); it fails because the behavior is missing. Never run `just test` for Red.
+2. **Green** — write the smallest code that makes it pass; rerun the same `just test-one` until it is green.
+3. **Refactor** — clean up, the same `just test-one` green; then `just test` once per task group, before its commit (it runs only the packages whose inputs changed).
+
+`just test-one` runs the `test` stage with only the named tests, under its time limits and without the lock; it fails on a name that never ran (a typo never looks green), is journaled as `test-one` and is never a pass or the change's passing check. E2E scenarios need services: they run in their E2E recipe, and `just rerun-failed` after a failure.
 
 - **Bug fix:** first write a test that reproduces the bug and watch it fail, before touching the code under test. Commit that failing test on its own (`test: reproduce <bug>` — the commit message states it is intentionally red), then fix it in the next commit. The red commit proves the bug existed; the green one proves the fix.
 - A test that passes on its first run proves nothing: change it until it fails for the expected reason, then go green.
@@ -96,7 +98,8 @@ All checks are `just` recipes (see `justfile`; no other scripts). A change is "v
 
 | When | Command | What it runs |
 |---|---|---|
-| After every edit | `just test` (~1 min, without the machine-wide lock) | unit + architecture + integration tests, then `metrics` (below) |
+| At TDD Red and Green (§ TDD) | `just test-one <name>...` (seconds after the build, without the machine-wide lock) | only the named tests and slice/component scenarios |
+| Once per task group, before its commit | `just test` (~1 min, without the machine-wide lock) | unit + architecture + integration tests, then `metrics` (below) |
 | Once per change, after the last task group and before verify (and after `kit sync-base` when its last line names it) | `just check` (~8.5 min; machine lock held ≈ 7.3 min) | fmt, `lint` (clippy `-D warnings` and the static analyzers, below), `test`, `metrics`, release build, E2E smoke, WER accuracy on 10 samples, refinement evaluation; incremental, the machine lock only for the model stages |
 | Once per landing group (`kit land` runs it on the group's combined state), before a release | `just full-check` (~15.5–17.5 min; machine lock held ≈ 14.5 min with 10 recordings, ≈ 16.3 min with 100) | everything in `check` (incremental, no `cargo clean`), plus the rest of the voice control scenarios and the 20-run refinement series (`e2e-regression`), the chunk seams (`e2e-seams`: seam sweep and seam matrix), the start cues (`e2e-cues`: the start cue of each voice start timed on an idle machine, last), the outages (`e2e-resilience`: services paused, killed and restarted while voice control runs, on ports of their own) and the bundled engines (`e2e-bundle`: a copy of the bundle starts every service from its own engines, on ports of its own, with nothing but `/usr/bin:/bin` on `$PATH`, and the engines must run on Metal; `just bundle-smoke` runs the bundle stage and it), with WER accuracy on a fixed sample of 100 recordings when the branch changes the recognition path, else on 10 (below) |
 | Before merging a change to hotkey, recording, overlay, paste, permissions | manual run by the user | `README.md` § Release checklist |
