@@ -34,3 +34,12 @@ stage = "test"
 beside = "other sessions builds and tests under load; logged 2 hung attempts instead of 1"
 branch = "chore/tame-confirming-special-cases"
 
+
+[[frozen]]
+test = "scenario: Restart restart followed by the new dictation at once gives its cue at once"
+frozen = "2026-10-24"
+recipe = "full-check"
+stage = "e2e-cues"
+beside = "nothing else locked; a full-check of fix/improve-recording-pill-look (overlay constants only), 735 ms vs 700 ms"
+branch = "fix/improve-recording-pill-look"
+
