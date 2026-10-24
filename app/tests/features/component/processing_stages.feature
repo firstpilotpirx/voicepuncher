@@ -1,7 +1,7 @@
 # The pipeline runs on its own thread with stand-ins: the recorder hands over one second of
 # audio (and, for a dictation transcribed while the user speaks, a part during the recording
-# and the last part at the stop), the speech recognition and text refinement stand-ins take a
-# moment and note when they start and finish, and the overlay, paster and focus probe record
+# and the last part at the stop), the speech recognition stand-in takes a moment and notes
+# when it starts and finishes, and the overlay, paster and focus probe record
 # what they were asked to do. The Pasted sign takes itself down after half a second, so a
 # scenario checks that the overlay ends a pasted dictation on it. The steps block while they
 # watch the pipeline, so @serial keeps other scenarios from stalling them.
@@ -29,31 +29,24 @@ Feature: processing-stages
       Given the user records a dictation with no speech in it
       When the user ends the recording with the hotkey
       Then the overlay shows the speech recognition stage, then hides
-      And the text refinement stage is not shown
 
-  Rule: The overlay shows text refinement until the corrected text is ready
+  Rule: The transcript is pasted right after speech recognition
 
-    Scenario: Text refinement follows speech recognition
-      Given text refinement is enabled
-      When the user ends a dictation with speech in it
-      Then the overlay shows the speech recognition stage, then the text refinement stage until the corrected text is ready
-      And the overlay shows the Pasted sign once the text is pasted, then hides
-
-    Scenario: With text refinement disabled only speech recognition is shown
-      Given text refinement is disabled
+    Scenario: Speech recognition is followed by the paste
+      Given the user records a dictation with the hotkey
       When the user ends a dictation with speech in it
       Then the overlay shows the speech recognition stage from the stop until the transcript is ready
-      And the text refinement stage is not shown
+      And no other processing stage is shown
       And the overlay shows the Pasted sign once the text is pasted, then hides
 
-    Scenario: Text held back for focus shows the wait after text refinement
+    Scenario: Text held back for focus shows the wait after speech recognition
       Given no text input has focus
       When the user ends a dictation with speech in it
-      Then the overlay shows the speech recognition stage, then the text refinement stage, then the wait for focus
+      Then the overlay shows the speech recognition stage, then the wait for focus
 
-  Rule: The processing stages show no text window
+  Rule: Speech recognition shows no text window
 
-    Scenario: Refinement shows no raw transcript
-      Given text refinement is enabled
+    Scenario: Speech recognition shows no transcript
+      Given the user records a dictation with the hotkey
       When the user ends a dictation with speech in it
-      Then the overlay shows the text refinement stage with no text window under it
+      Then the overlay shows the speech recognition stage with no text window under it

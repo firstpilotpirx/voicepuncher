@@ -105,10 +105,6 @@ mod tests {
             .return_const(());
         overlay.expect_show_pasted().times(..).return_const(());
         overlay
-            .expect_show_refining_text()
-            .times(..)
-            .return_const(());
-        overlay
     }
 
     fn pipeline(

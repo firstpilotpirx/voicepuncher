@@ -1,5 +1,5 @@
 //! `dev-tools stages <stage>…`: runs the named stages (the `justfile`'s private recipes without their `_`) in
-//! phases. The stages before the first model stage (`e2e*`, `refine-eval` or `it-real`, which takes the screen
+//! phases. The stages before the first model stage (`e2e*` or `it-real`, which takes the screen
 //! and the microphone) run one by one under the quiet lock in the shared mode, which gives each its time limit
 //! and keeps it out of another run's model stages; fmt, lint, build, bundle and build-e2e run at the utility quality of service
 //! clamp. The rest runs in `model-stages`, in one phase under the e2e lock (or the caller's machine lock), on the
@@ -36,7 +36,7 @@ const CLAMPED: [&str; 5] = ["fmt", "lint", "build", "bundle", "build-e2e"];
 
 /// Whether a stage is a model stage: it and every stage after it run under the e2e lock.
 pub fn is_model(stage: &str) -> bool {
-    stage.starts_with("e2e") || stage == "refine-eval" || stage == "it-real"
+    stage.starts_with("e2e") || stage == "it-real"
 }
 
 /// Appends a line to the run's report.

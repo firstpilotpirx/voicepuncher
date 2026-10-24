@@ -12,7 +12,6 @@ use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 
 use voicepuncher::adapters::secondary::commandspotting::websocket::AudioStream;
-use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::adapters::secondary::transcription::openai::OpenAiTranscriber;
 use voicepuncher::config::TranscriptionCfg;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
@@ -204,7 +203,6 @@ impl std::fmt::Debug for HandsFreeSession {
 }
 
 impl HandsFreeSession {
-    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn start(spotting_url: String, transcription_url: String) -> Result<Self> {
         let events = Events::default();
         let cues = Cues::default();
@@ -234,7 +232,6 @@ impl HandsFreeSession {
             PipelineParts {
                 recorder: Box::new(recorder),
                 transcriber: Box::new(transcriber),
-                refiner: Box::new(PassthroughTextRefiner),
                 paster: Box::new(RecordingPaster(Arc::clone(&events))),
                 sound_player: Box::new(RecordingSounds(Arc::clone(&events), Arc::clone(&cues))),
                 visual_indicator: Box::new(NoOverlay),

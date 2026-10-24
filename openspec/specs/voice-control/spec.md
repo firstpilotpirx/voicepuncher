@@ -23,7 +23,7 @@ While listening and no dictation runs, the system SHALL start a dictation when t
 - **AND** the overlay shows processing until the sentence is pasted, then hides
 
 ### Requirement: "stop dictation" ends a dictation and pastes its text
-During a dictation, the system SHALL end the dictation when the user says "stop dictation", then transcribe, refine and paste the text as a push-to-talk recording does. The spoken words "stop dictation" SHALL NOT appear in the pasted text. Listening SHALL stay on afterwards.
+During a dictation, the system SHALL end the dictation when the user says "stop dictation", then transcribe and paste the text as a push-to-talk recording does. The spoken words "stop dictation" SHALL NOT appear in the pasted text. Listening SHALL stay on afterwards.
 
 #### Scenario: Saying stop dictation pastes the dictated text
 - **GIVEN** a dictation runs
@@ -67,7 +67,7 @@ While listening and no dictation runs, the system SHALL select all and delete in
 - **AND** the overlay shows the clear sign for about a second, then hides
 
 ### Requirement: Commands are carried out in the order spoken
-The system SHALL carry out commands in the order they were spoken. A command spoken while the previous dictation is still being transcribed, refined or pasted SHALL wait until that text is pasted.
+The system SHALL carry out commands in the order they were spoken. A command spoken while the previous dictation is still being transcribed or pasted SHALL wait until that text is pasted.
 
 #### Scenario: Press enter right after stop dictation follows the paste
 - **GIVEN** a dictation runs

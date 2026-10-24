@@ -9,7 +9,6 @@ use crate::runtime::RuntimeState;
 pub enum DictationStage {
     Recording,
     RecognizingSpeech,
-    RefiningText,
     WaitingForFocus,
     FailureNotice,
 }
@@ -29,7 +28,6 @@ pub struct StatusItemState {
 pub enum OverlaySignal {
     Recording,
     RecognizingSpeech,
-    RefiningText,
     WaitingForFocus,
     Pasted,
     Hidden,
@@ -82,7 +80,6 @@ impl StatusItemState {
             OverlaySignal::RecognizingSpeech => {
                 self.dictation = Some(DictationStage::RecognizingSpeech);
             }
-            OverlaySignal::RefiningText => self.dictation = Some(DictationStage::RefiningText),
             OverlaySignal::WaitingForFocus => {
                 self.dictation = Some(DictationStage::WaitingForFocus);
             }
@@ -132,7 +129,6 @@ impl StatusItemState {
         match self.dictation {
             Some(DictationStage::Recording) => self.recording_line(),
             Some(DictationStage::RecognizingSpeech) => "Recognizing speech…".into(),
-            Some(DictationStage::RefiningText) => "Refining text…".into(),
             Some(DictationStage::WaitingForFocus) => "Waiting for a text field…".into(),
             Some(DictationStage::FailureNotice) | None => self.standby_line(),
         }
@@ -186,7 +182,7 @@ impl StatusItemState {
 fn stage_icon(stage: DictationStage) -> IconState {
     match stage {
         DictationStage::Recording => IconState::Recording,
-        DictationStage::RecognizingSpeech | DictationStage::RefiningText => IconState::Processing,
+        DictationStage::RecognizingSpeech => IconState::Processing,
         DictationStage::WaitingForFocus => IconState::WaitingForFocus,
         DictationStage::FailureNotice => IconState::Warning,
     }

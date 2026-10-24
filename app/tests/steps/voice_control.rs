@@ -15,7 +15,6 @@ use std::time::{Duration, Instant};
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 
-use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use voicepuncher::core::application::PipelineInput;
 use voicepuncher::core::domain::{CommandPlacement, PttSignal, SpottingEvent, VoiceCommand};
@@ -163,7 +162,6 @@ impl VoiceRun {
                     speech: Arc::clone(&self.speech),
                     cut: Arc::clone(&self.cut),
                 }),
-                refiner: Box::new(PassthroughTextRefiner),
                 paster: Box::new(RecordingPaster(Arc::clone(&self.events))),
                 sound_player: Box::new(RecordingSounds(Arc::clone(&self.events))),
                 visual_indicator: Box::new(RecordingOverlay(Arc::clone(&self.events))),

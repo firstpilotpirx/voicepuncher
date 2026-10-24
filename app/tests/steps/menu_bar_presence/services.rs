@@ -16,7 +16,8 @@ use super::run;
 use crate::IntegrationWorld;
 
 const DICTATION_COPIES: [u16; 3] = [18082, 18083, 18084];
-const REFINEMENT: u16 = 8080;
+const COMMANDS: u16 = 8085;
+const COMMAND_SPOTTING: u16 = 8082;
 
 /// The services the scenario sets and the restarts the menu asked for.
 #[derive(Default)]
@@ -85,8 +86,10 @@ fn services_starting(world: &mut IntegrationWorld, ready: usize, total: usize) {
         .state_changed(&RuntimeState::StartingServices { ready, total });
 }
 
-#[given("the app started the speech recognition service for dictation and adopted the text refinement service")]
-fn dictation_started_refinement_adopted(world: &mut IntegrationWorld) {
+#[given(
+    "the app started the speech recognition service for dictation and adopted the one for commands"
+)]
+fn dictation_started_commands_adopted(world: &mut IntegrationWorld) {
     let mut statuses: Vec<ServiceStatus> = DICTATION_COPIES
         .iter()
         .enumerate()
@@ -102,24 +105,24 @@ fn dictation_started_refinement_adopted(world: &mut IntegrationWorld) {
         })
         .collect();
     statuses.push(status(
-        ServiceKind::Refinement,
-        "text refinement".into(),
-        REFINEMENT,
+        ServiceKind::Commands,
+        "commands".into(),
+        COMMANDS,
         ServiceState::Adopted,
         false,
     ));
     with_services(world, statuses);
 }
 
-#[given("the app started the text refinement service and it is Failed")]
-fn refinement_failed(world: &mut IntegrationWorld) {
+#[given("the app started the command spotting service and it is Failed")]
+fn command_spotting_failed(world: &mut IntegrationWorld) {
     let failed = ServiceState::Failed("exited 5 times".into());
     with_services(
         world,
         vec![status(
-            ServiceKind::Refinement,
-            "text refinement".into(),
-            REFINEMENT,
+            ServiceKind::CommandSpotting,
+            "command spotting".into(),
+            COMMAND_SPOTTING,
             failed,
             true,
         )],
@@ -146,11 +149,11 @@ fn user_opens_services(world: &mut IntegrationWorld) -> Result<()> {
 #[when("the user chooses Restart for it")]
 fn user_restarts(world: &mut IntegrationWorld) -> Result<()> {
     let actions = run(world).actions.as_ref().context("no menu actions")?;
-    actions.restart_service(REFINEMENT);
+    actions.restart_service(COMMAND_SPOTTING);
     Ok(())
 }
 
-#[then("it lists the dictation copies as Ready and the text refinement service as Adopted")]
+#[then("it lists the dictation copies as Ready and the speech recognition service for commands as Adopted")]
 fn lists_states(world: &mut IntegrationWorld) -> Result<()> {
     let menu = service_menu(world)?;
     let ready = menu
@@ -163,7 +166,7 @@ fn lists_states(world: &mut IntegrationWorld) -> Result<()> {
         .count();
     let adopted = menu
         .iter()
-        .any(|(port, line, _)| *port == REFINEMENT && line == "Text refinement — Adopted");
+        .any(|(port, line, _)| *port == COMMANDS && line == "Commands — Adopted");
     if ready != DICTATION_COPIES.len() || !adopted {
         bail!("the Services submenu lists {menu:?}");
     }
@@ -188,7 +191,7 @@ fn restart_for_dictation_only(world: &mut IntegrationWorld) -> Result<()> {
 fn started_again(world: &mut IntegrationWorld) -> Result<()> {
     let view = run(world).services_view.as_ref().context("no services")?;
     let restarted = view.restarted.lock().unwrap().clone();
-    if restarted != [REFINEMENT] {
+    if restarted != [COMMAND_SPOTTING] {
         bail!("the menu asked to restart {restarted:?}");
     }
     Ok(())

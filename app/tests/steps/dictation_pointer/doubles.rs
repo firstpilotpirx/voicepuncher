@@ -4,7 +4,7 @@ use super::{
     bail, record, Arc, AtomicBool, AudioBuffer16k, AudioRecorder, ChunkingCfg, CleanedText,
     DictationSignState, Event, Events, FailureNotice, FocusProbe, FocusedElement, LiveChunk,
     Ordering, Overlay, PointerSignView, RawTranscript, Receiver, Result, Sign, SoundPlayer,
-    TextPaster, TextRefiner, Transcriber, VisualIndicator, SENTENCE, SERVICE_TIME,
+    TextPaster, Transcriber, VisualIndicator, SENTENCE, SERVICE_TIME,
 };
 use voicepuncher::core::application::live_transcript_view::{
     HiddenLiveTranscript, LiveTranscriptView,
@@ -33,10 +33,6 @@ impl VisualIndicator for NotingOverlay {
 
     fn show_recognizing_speech(&self) {
         record(&self.0, Event::Overlay(Overlay::RecognizingSpeech));
-    }
-
-    fn show_refining_text(&self) {
-        record(&self.0, Event::Overlay(Overlay::RefiningText));
     }
 
     fn show_pasted(&self) {
@@ -103,15 +99,6 @@ impl Transcriber for SlowTranscriber {
             bail!("connection refused");
         }
         Ok(Some(RawTranscript::new(SENTENCE.to_owned())?))
-    }
-}
-
-pub(super) struct SlowRefiner;
-
-impl TextRefiner for SlowRefiner {
-    fn refine(&mut self, raw: &RawTranscript) -> Result<CleanedText> {
-        std::thread::sleep(SERVICE_TIME);
-        Ok(CleanedText::new(raw.as_str().to_owned())?)
     }
 }
 

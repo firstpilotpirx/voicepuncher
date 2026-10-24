@@ -29,7 +29,7 @@ From launch until it quits, the app SHALL show a status item in the system menu 
 - **THEN** the status item shows the failed icon and the app exits as before
 
 ### Requirement: The icon mirrors the dictation
-While the runtime is ready, the icon SHALL mirror the stage of the dictation as the overlay shows it: recording — a filled microphone with a red dot; recognizing speech and refining text — a waveform; waiting for a text field — a keyboard; pasted — the ready icon again; a failure notice — a warning triangle for as long as the notice shows, then the ready icon. A command sign SHALL leave the icon as it is.
+While the runtime is ready, the icon SHALL mirror the stage of the dictation as the overlay shows it: recording — a filled microphone with a red dot; recognizing speech — a waveform; waiting for a text field — a keyboard; pasted — the ready icon again; a failure notice — a warning triangle for as long as the notice shows, then the ready icon. A command sign SHALL leave the icon as it is.
 
 #### Scenario: A recording shows the recording icon
 - **GIVEN** the runtime is ready
@@ -37,7 +37,7 @@ While the runtime is ready, the icon SHALL mirror the stage of the dictation as 
 - **THEN** the status item shows the recording icon
 
 #### Scenario: The icon follows every stage of a dictation
-- **GIVEN** text refinement is enabled and a button has keyboard focus
+- **GIVEN** a button has keyboard focus
 - **WHEN** the user records a dictation with speech in it, ends it and then clicks into a text field
 - **THEN** the status item shows the recording icon, then the waveform, then the keyboard, then the ready icon after the paste
 
@@ -174,13 +174,13 @@ While the runtime starts its services, the status item SHALL show the waiting ic
 When the app manages its services, the menu SHALL offer a Services submenu that lists every service with its state in words — Ready, Starting, Restarting (with the try), Failed, Adopted, Stopped outside the app — and, for each, Restart, offered only for a service the app started, and Open Log, which shows the service's log file.
 
 #### Scenario: The services are listed with their states
-- **GIVEN** the app started the speech recognition service for dictation and adopted the text refinement service
+- **GIVEN** the app started the speech recognition service for dictation and adopted the one for commands
 - **WHEN** the user opens the Services submenu
-- **THEN** it lists the dictation copies as Ready and the text refinement service as Adopted
+- **THEN** it lists the dictation copies as Ready and the speech recognition service for commands as Adopted
 - **AND** Restart is offered for the dictation copies only
 
 #### Scenario: Restart from the menu
-- **GIVEN** the app started the text refinement service and it is Failed
+- **GIVEN** the app started the command spotting service and it is Failed
 - **WHEN** the user chooses Restart for it
 - **THEN** the app starts it again
 

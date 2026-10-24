@@ -106,7 +106,7 @@ async fn start_app(world: &mut E2eWorld) -> Result<()> {
             Some(config) => cmd.arg("--config").arg(config),
             None => cmd.args(["--config", NO_CONFIG]),
         };
-        cmd.arg("--input-file").arg(&recording).arg("--no-llm");
+        cmd.arg("--input-file").arg(&recording);
         if let Some(url) = &world.transcription_url {
             cmd.args(["--transcription-url", url]);
         }

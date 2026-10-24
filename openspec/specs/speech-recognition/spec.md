@@ -11,7 +11,7 @@ The system SHALL obtain every raw transcript from the configured speech recognit
 
 #### Scenario: Recording is transcribed by the service
 - **WHEN** the user finishes a recording while the speech recognition service is running
-- **THEN** the transcript the service returns is passed on for refinement and pasting
+- **THEN** the transcript the service returns is passed on for pasting
 
 #### Scenario: App starts without a local model file
 - **WHEN** the user starts the app with no speech recognition model on disk and the service running
@@ -75,18 +75,18 @@ The system SHALL discard a transcript that consists only of a known recognition 
 
 #### Scenario: Speech containing "you" is kept
 - **WHEN** the service returns a transcript in which "you" appears together with other words
-- **THEN** the transcript is passed on for refinement and pasting
+- **THEN** the transcript is passed on for pasting
 
 #### Scenario: Hallucination after speech is removed and the speech is kept
 - **GIVEN** the service returns a transcript of spoken sentences followed by a subscription call such as "Thanks for watching."
 - **WHEN** the user finishes the recording
-- **THEN** the spoken sentences are passed on for refinement and pasting
+- **THEN** the spoken sentences are passed on for pasting
 - **AND** the subscription call is not
 
 #### Scenario: Marker inside speech is removed and the speech is kept
 - **GIVEN** the service returns a transcript of spoken words with a blank-audio or music marker among them
 - **WHEN** the user finishes the recording
-- **THEN** the spoken words are passed on for refinement and pasting, without the marker
+- **THEN** the spoken words are passed on for pasting, without the marker
 
 ### Requirement: Long recordings are transcribed in chunks
 The system SHALL split a dictation or a recording file longer than the chunk threshold into overlapping chunks, transcribe each through the service, and merge the results without duplicating words at the seams, even when the service transcribes the overlapping audio differently in the two chunks. Where two chunks share no words, the merge SHALL keep every word of both. A chunk SHALL end in a pause of the speech when the seconds before the chunk threshold hold one, judged against the recording's own background level. No chunk, its overlap included, SHALL be longer than the chunk threshold.
@@ -186,7 +186,7 @@ The system SHALL send the recording again, up to 3 more times with a growing pau
 #### Scenario: Service is briefly busy
 - **GIVEN** the speech recognition service drops the first two connections and then answers normally
 - **WHEN** the user finishes a recording
-- **THEN** the transcript the service returns is passed on for refinement and pasting, and each of the two dropped attempts is logged
+- **THEN** the transcript the service returns is passed on for pasting, and each of the two dropped attempts is logged
 
 #### Scenario: Drop reported as an invalid argument
 - **GIVEN** the speech recognition service drops the connection after the recording was sent
@@ -234,7 +234,7 @@ The system SHALL treat an empty transcript from the speech recognition service a
 
 #### Scenario: Service hears no speech
 - **GIVEN** the speech recognition service returns no text for a recording
-- **WHEN** the user transcribes the recording file without refinement
+- **WHEN** the user transcribes the recording file
 - **THEN** no text is produced and the app does not report a failure
 
 ### Requirement: Recording after a long pause reaches the service at once
@@ -244,7 +244,7 @@ The system SHALL send a recording to the speech recognition service on a connect
 - **GIVEN** a recording was transcribed
 - **AND** the speech recognition service has since reset the connection that recording used
 - **WHEN** the user finishes the next recording
-- **THEN** its transcript is passed on for refinement and pasting, and no dropped attempt is logged
+- **THEN** its transcript is passed on for pasting, and no dropped attempt is logged
 
 ### Requirement: Audio without speech never stops the speech recognition service
 The speech recognition service SHALL answer a request whose audio holds no speech with an empty transcript and SHALL keep answering later requests, in every answer format the system asks for, including the detailed format the command spotting service uses to confirm commands.

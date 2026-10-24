@@ -13,11 +13,11 @@ use cucumber::{given, then, when};
 use toml::Value;
 
 use voicepuncher::adapters::primary::menubar::macos::applier::RuntimeApplier;
-use voicepuncher::adapters::primary::settings::macos::field::{Choices, Field};
+use voicepuncher::adapters::primary::settings::macos::field::{Choices, Field, Tab};
 use voicepuncher::adapters::primary::settings::macos::session::{
     status_text, ApplyStatus, ConfigApplier, Refusal, SessionParts, SettingsSession, StatusListener,
 };
-use voicepuncher::adapters::primary::settings::macos::table::find;
+use voicepuncher::adapters::primary::settings::macos::table::{find, FIELDS};
 use voicepuncher::adapters::primary::settings::macos::values::display;
 use voicepuncher::config::Config;
 use voicepuncher::core::application::InputDevices;
@@ -183,19 +183,14 @@ fn file_with_min_press(world: &mut IntegrationWorld) {
     settings(world).write(files::VALID_MIN_PRESS);
 }
 
-#[given("the configuration file turns refinement on")]
-fn file_refinement_on(world: &mut IntegrationWorld) {
-    settings(world).write(files::REFINEMENT_ON);
-}
-
 #[given("a configuration file with comments above and beside its options")]
 fn file_with_comments(world: &mut IntegrationWorld) {
     settings(world).write(files::COMMENTED);
 }
 
-#[given("a configuration file with refinement examples")]
-fn file_with_examples(world: &mut IntegrationWorld) {
-    settings(world).write(files::WITH_EXAMPLES);
+#[given("a configuration file that still holds the retired text refinement settings")]
+fn file_with_retired_settings(world: &mut IntegrationWorld) {
+    settings(world).write(files::WITH_RETIRED);
 }
 
 #[given("no configuration file exists")]
@@ -215,20 +210,8 @@ fn hotkey_on_command_line(world: &mut IntegrationWorld) {
         .push(|config| config.hotkey.key = COMMAND_LINE_HOTKEY);
 }
 
-#[given("the app was started with refinement turned off on the command line")]
-fn no_llm_on_command_line(world: &mut IntegrationWorld) {
-    settings(world)
-        .command_line
-        .push(|config| config.refinement.enabled = false);
-}
-
 #[given("the app runs from its configuration file with the first hotkey and the first start sound")]
 fn app_runs_first(world: &mut IntegrationWorld) -> Result<()> {
-    app_runs_from(world, files::FIRST_SETTINGS)
-}
-
-#[given("the app runs from its configuration file with refinement off")]
-fn app_runs_unrefined(world: &mut IntegrationWorld) -> Result<()> {
     app_runs_from(world, files::FIRST_SETTINGS)
 }
 
@@ -282,13 +265,6 @@ fn pick_hotkey_and_sound(world: &mut IntegrationWorld) -> Result<()> {
 fn pick_hotkey(world: &mut IntegrationWorld) -> Result<()> {
     let run = settings(world);
     run.edit("hotkey", "key", text("F19"))?;
-    run.save()
-}
-
-#[when("the user switches refinement on and saves")]
-fn switch_refinement_on(world: &mut IntegrationWorld) -> Result<()> {
-    let run = settings(world);
-    run.edit("refinement", "enabled", Value::Boolean(true))?;
     run.save()
 }
 
@@ -413,23 +389,15 @@ fn says_applied_after_the_paste(world: &mut IntegrationWorld) -> Result<()> {
 #[then("the next dictation starts with the second hotkey and plays the second start sound")]
 fn next_dictation_second(world: &mut IntegrationWorld) -> Result<()> {
     let app = app_runtime::run(world);
-    let (sound, _) = app.newest_setup().context("no pipeline was assembled")?;
+    let sound = app
+        .newest_start_sound()
+        .context("no pipeline was assembled")?;
     ensure!(sound == SECOND_START_SOUND, "plays {sound}");
     ensure!(
         app.hotkey_records(SECOND_HOTKEY),
         "the second hotkey started no recording"
     );
     app.finish_dictation(SECOND_HOTKEY)
-}
-
-#[then("the next dictation is refined")]
-fn next_dictation_refined(world: &mut IntegrationWorld) -> Result<()> {
-    settings(world).wait_for_status(|s| *s == ApplyStatus::Applied)?;
-    let app = app_runtime::run(world);
-    let (_, refines) = app.newest_setup().context("no pipeline was assembled")?;
-    ensure!(refines, "the newest pipeline does not refine");
-    ensure!(app.hotkey_records(FIRST_HOTKEY), "no dictation started");
-    app.finish_dictation(FIRST_HOTKEY)
 }
 
 #[then("the app was not relaunched")]
@@ -568,10 +536,43 @@ fn comments_kept(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("the refinement examples in the file are unchanged")]
-fn examples_kept(world: &mut IntegrationWorld) -> Result<()> {
+#[then("the retired text refinement settings in the file are unchanged")]
+fn retired_settings_kept(world: &mut IntegrationWorld) -> Result<()> {
     let file = settings(world).file()?;
-    ensure!(file.contains(files::EXAMPLES_BLOCK), "file:\n{file}");
+    ensure!(file.contains(files::RETIRED_BLOCK), "file:\n{file}");
+    Ok(())
+}
+
+#[then("the tabs are General, Dictation, Sounds, Paste, Archive, Logging and Services")]
+fn tabs_listed(_world: &mut IntegrationWorld) -> Result<()> {
+    let titles: Vec<&str> = Tab::ALL.iter().map(|tab| tab.title()).collect();
+    ensure!(
+        titles
+            == [
+                "General",
+                "Dictation",
+                "Sounds",
+                "Paste",
+                "Archive",
+                "Logging",
+                "Services"
+            ],
+        "tabs {titles:?}"
+    );
+    Ok(())
+}
+
+#[then("no control names text refinement")]
+fn no_refinement_control(_world: &mut IntegrationWorld) -> Result<()> {
+    let named: Vec<String> = FIELDS
+        .iter()
+        .filter(|field| {
+            let words = format!("{} {}", field.path(), field.label).to_lowercase();
+            words.contains("refine") || words.contains("llm")
+        })
+        .map(Field::path)
+        .collect();
+    ensure!(named.is_empty(), "controls name text refinement: {named:?}");
     Ok(())
 }
 
@@ -600,18 +601,6 @@ fn closes_quietly(world: &mut IntegrationWorld) -> Result<()> {
 #[then("a note under it names F13 as the hotkey the command line set for this run")]
 fn hotkey_note(world: &mut IntegrationWorld) -> Result<()> {
     note_for(world, "hotkey.key", COMMAND_LINE_HOTKEY.human_name())
-}
-
-#[then("the refinement switch is on")]
-fn refinement_switch_on(world: &mut IntegrationWorld) -> Result<()> {
-    let shown = settings(world).shown("refinement", "enabled")?;
-    ensure!(shown == "On", "shows {shown}");
-    Ok(())
-}
-
-#[then("a note under it says the command line turned refinement off for this run")]
-fn refinement_note(world: &mut IntegrationWorld) -> Result<()> {
-    note_for(world, "refinement.enabled", "Off")
 }
 
 fn note_for(world: &mut IntegrationWorld, path: &str, value: &str) -> Result<()> {

@@ -26,17 +26,11 @@ pub struct E2eWorld {
     pub workdir: Option<tempfile::TempDir>,
     pub recording: Option<PathBuf>,
     pub spoken: Option<voicepuncher_e2e_test::speech::Lang>,
-    /// A transcript the user dictates without a recording, refined as the app refines it.
-    pub dictated: Option<&'static str>,
     pub exit_status: Option<ExitStatus>,
     pub corpus: Vec<voicepuncher_e2e_test::corpus::Sample>,
     pub word_error_rates: Vec<f64>,
     pub config: Option<PathBuf>,
     pub transcription_url: Option<String>,
-    pub refinement_url: Option<String>,
-    pub refinement_stub:
-        Option<voicepuncher_e2e_test::refinement_service_stub::RefinementServiceStub>,
-    pub refinement_report: Option<voicepuncher_e2e_test::refinement_eval::Report>,
     pub stdout: String,
     /// The app's log; after a file-mode run in which a copy of the speech recognition
     /// service sent no answer in time, the machine's load follows it.

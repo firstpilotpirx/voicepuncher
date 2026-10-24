@@ -4,8 +4,8 @@
 use anyhow::{bail, Result};
 use voicepuncher_test_steps::{shared_steps, SharedSteps};
 
+use super::file_transcription;
 use super::voice_control::{self, hands_free, outages, session::speech_after_start};
-use super::{file_transcription, text_refinement};
 use crate::E2eWorld;
 
 shared_steps!(E2eWorld);
@@ -62,10 +62,6 @@ impl SharedSteps for E2eWorld {
 
     async fn return_pressed(&mut self) -> Result<()> {
         outages::return_pressed(self)
-    }
-
-    async fn the_raw_transcript_is_pasted(&mut self) -> Result<()> {
-        text_refinement::raw_pasted(self)
     }
 
     async fn the_sentence_is_pasted(&mut self) -> Result<()> {

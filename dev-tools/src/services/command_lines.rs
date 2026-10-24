@@ -46,23 +46,6 @@ pub fn whisper_args(model: &str, port: &str, threads: &str, vad: &str) -> Vec<St
     ])
 }
 
-/// The `llama-server` arguments: one slot, so a request gets the whole context, as the former in-process engine
-/// did.
-pub fn llama_args(model: &str, port: &str) -> Vec<String> {
-    owned(&[
-        "-m",
-        model,
-        "--host",
-        "127.0.0.1",
-        "--port",
-        port,
-        "-c",
-        "4096",
-        "-np",
-        "1",
-    ])
-}
-
 /// The command spotting service's arguments; `--save-speech-dir` follows when `VOICEPUNCHER_KWS_SAVE_SPEECH_DIR`
 /// is set.
 pub fn command_spotting_args(

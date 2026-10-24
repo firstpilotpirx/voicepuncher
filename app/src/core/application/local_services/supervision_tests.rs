@@ -5,6 +5,7 @@ use crate::core::application::local_services::fakes::{
     spec, FakeClock, FakeLauncher, FakeProbe, Spawns,
 };
 use crate::core::application::local_services::Clock;
+use crate::core::application::pipeline::tests::doubles::captured_log;
 use crate::core::domain::{ServiceKind, ServiceState};
 
 const PORT: u16 = 8080;
@@ -19,7 +20,7 @@ struct Harness {
 
 impl Harness {
     fn new() -> Self {
-        Self::of(spec(ServiceKind::Refinement, PORT))
+        Self::of(spec(ServiceKind::CommandSpotting, PORT))
     }
 
     fn of(spec: ServiceSpec) -> Self {
@@ -75,6 +76,7 @@ impl Harness {
 #[test]
 fn should_adopt_a_service_that_already_answers() {
     // Given
+    let log = captured_log();
     let mut harness = Harness::new();
     harness.answers(ProbeAnswer::Ready);
     // When
@@ -83,6 +85,7 @@ fn should_adopt_a_service_that_already_answers() {
     assert_eq!(harness.state(), ServiceState::Adopted);
     assert!(!harness.unit.status().owned);
     assert_eq!(harness.spawns.count(), 0);
+    assert_eq!(log.lines_starting_with("services: adopted").len(), 1);
 }
 
 #[test]
@@ -259,15 +262,15 @@ fn should_report_an_adopted_service_that_stops_answering_and_adopt_it_again() {
 #[test]
 fn should_fail_a_service_with_a_missing_model_without_a_start() {
     // Given
-    let mut missing = spec(ServiceKind::Refinement, PORT);
-    missing.problem = Some("model qwen.gguf not found in /models".into());
+    let mut missing = spec(ServiceKind::CommandSpotting, PORT);
+    missing.problem = Some("model ggml-small.bin not found in /models".into());
     let mut harness = Harness::of(missing);
     // When
     harness.tick();
     // Then
     assert_eq!(
         harness.state(),
-        ServiceState::Failed("model qwen.gguf not found in /models".into())
+        ServiceState::Failed("model ggml-small.bin not found in /models".into())
     );
     assert_eq!(harness.spawns.count(), 0);
 }

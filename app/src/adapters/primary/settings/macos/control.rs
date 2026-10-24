@@ -11,7 +11,6 @@ use objc2_app_kit::{
 use objc2_foundation::{NSString, NSURL};
 use toml::Value;
 
-use super::examples::ExamplesTable;
 use super::field::Field;
 use super::files::resolve;
 use super::values::{languages_text, languages_value, Choice};
@@ -32,7 +31,6 @@ pub enum Widget {
     Languages(Retained<NSTextField>),
     TextArea(Retained<NSTextView>),
     Folder(Retained<NSPathControl>, RefCell<String>),
-    Examples(ExamplesTable),
 }
 
 /// One field's control in the window.
@@ -93,7 +91,6 @@ impl FieldControl {
             }
             Widget::TextArea(view) => view.setString(&NSString::from_str(&plain(value))),
             Widget::Folder(path, text) => show_folder(path, text, &plain(value)),
-            Widget::Examples(table) => table.show(value),
         }
     }
 
@@ -117,7 +114,6 @@ impl FieldControl {
             Widget::Languages(text) => languages_value(&text.stringValue().to_string()),
             Widget::TextArea(view) => Value::String(view.string().to_string()),
             Widget::Folder(_, text) => Value::String(text.borrow().clone()),
-            Widget::Examples(table) => table.read(),
         }
     }
 

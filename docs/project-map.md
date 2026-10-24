@@ -25,7 +25,6 @@
 | `app/src/core/application/audio_recorder.rs` | Port | `AudioRecorder` trait |
 | `app/src/core/application/hotkey_listener.rs` | Port | `HotkeyListener` trait |
 | `app/src/core/application/transcriber.rs` | Port | `Transcriber` trait |
-| `app/src/core/application/text_refiner.rs` | Port | `TextRefiner` trait |
 | `app/src/core/application/text_paster.rs` | Port | `TextPaster` trait |
 | `app/src/core/application/sound_player.rs` | Port | `SoundPlayer` trait |
 | `app/src/core/application/permission_probe.rs` | Port | `PermissionProbe` trait |
@@ -43,8 +42,6 @@
 | `app/src/adapters/secondary/recording/cpal/` | Secondary adapter | `CpalAudioRecorder` — records microphone via `cpal` |
 | `app/src/adapters/secondary/recording/filesystem/` | Secondary adapter | `FileSystemAudioRecorder` — reads WAV file (file mode + E2E) |
 | `app/src/adapters/secondary/transcription/openai/` | Secondary adapter | `OpenAiTranscriber` — sends audio to the local speech recognition service (OpenAI Audio Transcriptions API, loopback only) |
-| `app/src/adapters/secondary/textrefinement/openai/` | Secondary adapter | `OpenAiTextRefiner` — sends the raw transcript to the local text refinement service (OpenAI Chat Completions API, loopback only) |
-| `app/src/adapters/secondary/textrefinement/passthrough/` | Secondary adapter | `PassthroughTextRefiner` — pastes the raw transcript (refinement off, the default) |
 | `app/src/adapters/secondary/textpasting/macos/` | Secondary adapter | `MacOsTextPaster` — pastes text via `arboard` + `CGEventPost` |
 | `app/src/adapters/secondary/textpasting/stdio/` | Secondary adapter | `StdioTextPaster` — writes text to stdout (file mode / E2E) |
 | `app/src/adapters/secondary/soundplaying/macos/` | Secondary adapter | `MacosSoundPlayer` — plays start/stop sounds via macOS `afplay` |
@@ -61,7 +58,7 @@
 | `app/src/adapters/secondary/modelfetch/http/` | Secondary adapter | `HttpModelFetcher` — fetches a model file over HTTPS with `ureq`, resuming a part with a Range request |
 | `app/src/adapters/secondary/modelfetch/fs/` | Secondary adapter | `FsModelStore`, `FsDiskSpace` — the models folder: presence, `NAME.part` files and their sha256, placing, archive extraction, free space |
 | `app/src/adapters/secondary/permissions/macos/` | Secondary adapter | `MacOsPermissionProbe` — macOS TCC status, requests, deep links and the responsible app |
-| `app/src/config.rs`, `app/src/config/` | Config | TOML config loading with `serde`; `Config` is the root struct; `[transcription]` and `[whisper]` migration error in `config/transcription.rs`, `[refinement]` and `[llm]` migration error in `config/refinement.rs`, loopback check in `config/loopback.rs`; `config/document.rs` — `ConfigDocument`, the file as `toml_edit` keeps it, so a Save changes only the edited keys |
+| `app/src/config.rs`, `app/src/config/` | Config | TOML config loading with `serde`; `Config` is the root struct; `[transcription]` and `[whisper]` migration error in `config/transcription.rs`, retired `[refinement]` and `[llm]` sections ignored with one warning in `config.rs`, loopback check in `config/loopback.rs`; `config/document.rs` — `ConfigDocument`, the file as `toml_edit` keeps it, so a Save changes only the edited keys |
 | `app/src/main.rs` | Composition root | Wires adapters + use cases into a runnable; no business logic |
 | `app/packaging/` | Packaging | Sources of the application bundle: `Info.plist` template (version filled in by `just bundle`), `icons/` (`icon-1024.png` and `voicepuncher.iconset/`, turned into `.icns` by `iconutil`), `dmg-background.png`; `engines.lock` (the pinned engines: source, version and sha256 of each file, the license sources), `licenses/` (licenses no engine source carries: ONNX Runtime's) and the gitignored `engines/` that `just engines` stages (one folder per engine, `licenses/`); checked by `app/tests/it/packaging.rs` |
 | `app/tests/it/architecture.rs` | Architecture test | Import-graph assertions (layer dependency rule, naming rules, structure rules); `test_layout.rs` beside it keeps every integration test inside `tests/it/` |

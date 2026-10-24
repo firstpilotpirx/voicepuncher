@@ -7,8 +7,6 @@ set dotenv-load
 # the start and _require-models then fail with "Run 'just models' or set it in .env")
 dictation_model_file := "ggml-large-v3-turbo-q5_0.bin"
 command_model_file := "ggml-small.bin"
-# Text refinement model (llama-server)
-refinement_model_file := "Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 find_model := 'find ~/.voicepuncher -maxdepth 2 -name "$1" 2>/dev/null | head -1'
 # Speech recognition service for dictation (what the app uses)
 export VOICEPUNCHER_WHISPER_MODEL := env_var_or_default("VOICEPUNCHER_WHISPER_MODEL", shell(find_model, dictation_model_file))
@@ -16,7 +14,6 @@ export VOICEPUNCHER_WHISPER_MODEL := env_var_or_default("VOICEPUNCHER_WHISPER_MO
 export VOICEPUNCHER_COMMAND_WHISPER_MODEL := env_var_or_default("VOICEPUNCHER_COMMAND_WHISPER_MODEL", shell(find_model, command_model_file))
 # Voice activity detection model of the speech recognition service: the newest Silero model found
 export VOICEPUNCHER_VAD_MODEL := env_var_or_default("VOICEPUNCHER_VAD_MODEL", `find ~/.voicepuncher -maxdepth 2 -name 'ggml-silero-*.bin' -exec ls -t {} + 2>/dev/null | head -1`)
-export VOICEPUNCHER_LLM_MODEL := env_var_or_default("VOICEPUNCHER_LLM_MODEL", shell(find_model, refinement_model_file))
 # Command spotting service (voice control): sherpa-onnx keyword spotting model directory and its Silero VAD
 export VOICEPUNCHER_KWS_MODEL_DIR := env_var_or_default("VOICEPUNCHER_KWS_MODEL_DIR", `find ~/.voicepuncher -maxdepth 2 -type d -name 'sherpa-onnx-kws-*' -exec ls -td {} + 2>/dev/null | head -1`)
 # The user's own recorded voice commands (never committed): tests run on them when they exist
@@ -31,19 +28,18 @@ export VOICEPUNCHER_BENCH_CORPUS := env_var_or_default("VOICEPUNCHER_BENCH_CORPU
 # point the tests at them; each speech recognition service runs as copies on the ports 10000 above its own
 stt_url := "http://127.0.0.1:" + env_var_or_default("VOICEPUNCHER_STT_PORT", "8081") + "/v1"
 command_stt_url := "http://127.0.0.1:" + env_var_or_default("VOICEPUNCHER_COMMAND_STT_PORT", "8085") + "/v1"
-llm_url := "http://127.0.0.1:" + env_var_or_default("VOICEPUNCHER_LLM_PORT", "8080") + "/v1"
 kws_url := "ws://127.0.0.1:" + env_var_or_default("VOICEPUNCHER_KWS_PORT", "8082")
 
 # The cargo selections the model stages build, shared by their recipes and `_build-e2e`, which builds them
 # before the machine lock: another package or feature selection would build other artifacts
 command_spotting_build := "-p voicepuncher-command-spotting"
 # The stages of the smoke set, one per capability (_e2e-smoke-part)
-e2e_smoke_stages := "e2e-smoke-voice e2e-smoke-refinement e2e-smoke-speech e2e-smoke-services"
+e2e_smoke_stages := "e2e-smoke-voice e2e-smoke-speech e2e-smoke-services"
 # The model stages of check and full-check in the order that shows a failure soonest (fail-fast-stage-order):
 # voice control first, as it held the most failures; then the short stages and the long Gherkin runs last, the
 # start cues at the very end. `accuracy` stands for the accuracy stage full-check picks (dev-tools accuracy-stage)
-check_model_stages := "e2e-smoke-voice e2e-smoke-refinement refine-eval e2e-smoke-speech e2e-quick e2e-smoke-services"
-full_check_model_stages := "e2e-smoke-voice e2e-regression e2e-resilience e2e-smoke-refinement refine-eval e2e-bundle e2e-smoke-speech accuracy e2e-smoke-services e2e-seams it-real e2e-cues"
+check_model_stages := "e2e-smoke-voice e2e-smoke-speech e2e-quick e2e-smoke-services"
+full_check_model_stages := "e2e-smoke-voice e2e-regression e2e-resilience e2e-bundle e2e-smoke-speech accuracy e2e-smoke-services e2e-seams it-real e2e-cues"
 # The test modules of the voice control smoke part, the most failing first: every member's integration tests
 # build into its one `it` binary (tests/it/<module>.rs), so a part names modules; placed_commands is the command
 # spotting service's, the others the app's
@@ -100,7 +96,7 @@ default:
 
 # Only the model stages take the machine lock, held ≈ 7.3 min (measured), after the code checks, the build and
 # build-e2e ran without it (see _stages). Incremental, no `cargo clean`
-# FAST (~8.5 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples + refinement evaluation
+# FAST (~8.5 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples
 check:
     @VOICEPUNCHER_FAIL_FAST=1 VOICEPUNCHER_STAGES_RECIPE=check {{just_executable()}} _stages fmt lint test metrics build build-e2e {{check_model_stages}}
 
@@ -108,7 +104,7 @@ check:
 # (see _stages). Incremental like `check`, no `cargo clean`: the clean build is `release`'s. Accuracy runs on 100
 # recordings when the branch changes the recognition path (recognition_paths), on main itself or when that cannot
 # be told, else on 10 (dev-tools accuracy-stage); VOICEPUNCHER_ACCURACY_SAMPLE=100 forces 100
-# FULL (~15.5–17.5 min), run before merging: code checks + the bundle + E2E (the whole voice control set, seams, outages and the bundled engines included) + accuracy on 100 or 10 samples + refinement evaluation
+# FULL (~15.5–17.5 min), run before merging: code checks + the bundle + E2E (the whole voice control set, seams, outages and the bundled engines included) + accuracy on 100 or 10 samples
 full-check: _require-models _require-corpus _dev-tools
     #!/usr/bin/env bash
     set -euo pipefail
@@ -143,14 +139,14 @@ stage-times since="30d": _dev-tools
 # the `say` voices); the VOICEPUNCHER_*, CUCUMBER_*, Rust and Cargo build variables but the volatile ones (journal,
 # reports, ports, the lock, colours), so a probe or a forced sample never reuses a pass. A model stage also hashes
 # what it runs on outside the repository: the size and mtime of every file or directory such a variable names
-# (models, corpus, voice samples) and of the whisper-server and llama-server binaries; for it a Cargo file's `version = "…"` lines of the workspace's own
+# (models, corpus, voice samples) and of the whisper-server binary; for it a Cargo file's `version = "…"` lines of the workspace's own
 # packages do not count (no model stage reads the version). An input this misses (another program on the PATH,
 # a system library) is a reason to run with VOICEPUNCHER_REUSE_STAGES=0. The test stage's parts (_test) have keys
 # too: `test@<member>` over the code inputs but the files of members its tests do not build (`test@members` names
 # one per workspace member). VOICEPUNCHER_STAGE_ROOT names another repository
 
 # Runs the named stages (private recipes without their `_`) in phases (dev-tools stages): the stages before the
-# first model stage (`e2e*`, `refine-eval` or `it-real`) one by one under the quiet lock in the shared mode, which
+# first model stage (`e2e*` or `it-real`) one by one under the quiet lock in the shared mode, which
 # gives each its time limit and keeps it out of another run's model stages; the rest in one phase under the e2e
 # lock (the machine lock, then the quiet lock, both exclusively; or the caller's machine lock), on the test
 # ports. A stage that passed before on the same inputs (its key has a pass record) is reused (↺); build and
@@ -309,19 +305,13 @@ frozen-tests action="": _dev-tools
 _test: _require-nextest _dev-tools
     @{{dev_tools}} test-stage
 
-# Run the app for real use with one command: download missing models, restart the services (the command spotting service is rebuilt), build and start the app with voice control; extra arguments go to the app; text refinement is off unless they hold `--llm`, and only then are its model and llama-server needed (`just run --llm`)
+# Run the app for real use with one command: download missing models, restart the services (the command spotting service is rebuilt), build and start the app with voice control; extra arguments go to the app
 run *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    services="whisper-server whisper-server-commands voicepuncher-command-spotting"
-    refinement=no
-    for arg in {{args}}; do
-        [[ "$arg" == --llm ]] && refinement=yes
-    done
-    [[ "$refinement" == yes ]] && services="$services llama-server"
-    just models "$refinement"
+    just models
     just stop-model-servers
-    just start-model-servers $services
+    just start-model-servers
     cargo run --release -p voicepuncher -- --voice-control {{args}}
 
 # Build the release binary
@@ -331,9 +321,9 @@ build: _dev-tools
 _build:
     cargo build --release
 
-# E2E on real models: smoke + chunk seams + WER accuracy on 100 samples + refinement evaluation (~13 min)
+# E2E on real models: smoke + chunk seams + WER accuracy on 100 samples (~13 min)
 e2e:
-    @VOICEPUNCHER_STAGES_RECIPE=e2e {{just_executable()}} _stages {{e2e_smoke_stages}} e2e-seams e2e-cues e2e-bench refine-eval
+    @VOICEPUNCHER_STAGES_RECIPE=e2e {{just_executable()}} _stages {{e2e_smoke_stages}} e2e-seams e2e-cues e2e-bench
 
 # Smoke test — services and models load, file mode runs and voice commands are spotted (@smoke scenarios), the adapters talk to the real services
 e2e-smoke:
@@ -341,10 +331,9 @@ e2e-smoke:
 
 # The smoke set split by capability, one stage each, so a stage whose inputs did not change is reused on its
 # own (stage_inputs): speech recognition, file transcription and every capability without a part of its own
-# (the dictation archive: a part of 6 s cost more than it saved), text refinement, voice control and local
+# (the dictation archive: a part of 6 s cost more than it saved), voice control and local
 # services. Each part's scenario selection and limits are its profile's (.config/nextest.toml)
 _e2e-smoke-speech: (_e2e-smoke-part "e2e-smoke-speech" "transcription_openai")
-_e2e-smoke-refinement: (_e2e-smoke-part "e2e-smoke-refinement" "textrefinement_openai")
 _e2e-smoke-voice: (_e2e-smoke-part "e2e-smoke-voice" voice_smoke_modules)
 _e2e-smoke-services: (_e2e-smoke-part "e2e-smoke-services")
 
@@ -359,14 +348,14 @@ _e2e-smoke-part profile modules="": _require-nextest _require-models _build _dev
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
-    export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
+    export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
     export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
     filter=$({{dev_tools}} filter smoke "{{modules}}")
     cargo nextest run --profile {{profile}} {{smoke_parts_tests}} -E "$filter" ${VOICEPUNCHER_RERUN_FILTER:+--no-tests=pass} {{fail_fast}}
 
 # The closed needs of this environment (test_needs), one `<need> <reason>` per line
 
-# The scenarios beyond the smoke set (@regression): voice control and the 20-run refinement series under load, run by full-check right after e2e-smoke so it still runs the whole set
+# The scenarios beyond the smoke set (@regression): voice control under load, run by full-check right after e2e-smoke so it still runs the whole set
 e2e-regression:
     @VOICEPUNCHER_STAGES_RECIPE=e2e-regression {{just_executable()}} _stages e2e-regression
 
@@ -375,7 +364,7 @@ _e2e-regression: _require-nextest _require-models _build
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
-    export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
+    export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
     export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
     cargo nextest run --profile e2e-regression {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
@@ -388,20 +377,8 @@ _e2e-quick: _require-nextest _require-models _require-corpus _build
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
-    VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" VOICEPUNCHER_BENCH_LIMIT=10 \
+    VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" VOICEPUNCHER_BENCH_LIMIT=10 \
         cargo nextest run --profile e2e-quick {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
-
-# Text refinement on the live services: dictated commands, normalization, evaluation per category (@refinement) (~30 s)
-refine-eval:
-    @VOICEPUNCHER_STAGES_RECIPE=refine-eval {{just_executable()}} _stages refine-eval
-
-_refine-eval: _require-nextest _require-models _build
-    #!/usr/bin/env bash
-    set -euo pipefail
-    trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
-    {{just_executable()}} _start-model-servers-for-e2e
-    VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" \
-        cargo nextest run --profile refine-eval {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
 # Outages: services that hang, die and come back while voice control runs (@resilience), each scenario on service ports of its own, so the shared services are never touched (~4 min)
 e2e-resilience:
@@ -411,7 +388,7 @@ _e2e-resilience: _require-nextest _require-models _build
     cargo nextest run --profile e2e-resilience {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
 # The bundled engines: a copy of dist/voicepuncher.app launched outside the build folder with nothing but the system
-# folders on $PATH starts every service from its own engines, on ports of its own; a transcription, a refinement and
+# folders on $PATH starts every service from its own engines, on ports of its own; a transcription and
 # the command spotting service's health through them, and Metal in the engines' logs (@bundle_engines, ~1 min)
 bundle-smoke:
     @VOICEPUNCHER_STAGES_RECIPE=bundle-smoke {{just_executable()}} _stages bundle e2e-bundle
@@ -459,7 +436,7 @@ _e2e-bench: _require-nextest _require-models _require-corpus _build
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
-    VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_REFINEMENT_URL="{{llm_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" \
+    VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" \
         cargo nextest run --profile e2e-bench {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
 # The desktop tests (`needs_desktop`): the real microphone, the Accessibility API and windows on screen, alone on
@@ -546,7 +523,7 @@ bundle: _require-signing-identity engines
     engines={{quote(engines_dir)}}
     rm -rf "$app" && mkdir -p "$app/Contents/MacOS/engines" "$app/Contents/Resources"
     cp target/release/voicepuncher "$app/Contents/MacOS/voicepuncher"
-    for engine in whisper llama command-spotting; do cp -R "$engines/$engine" "$app/Contents/MacOS/engines/"; done
+    for engine in whisper command-spotting; do cp -R "$engines/$engine" "$app/Contents/MacOS/engines/"; done
     cp -R "$engines/licenses" "$app/Contents/Resources/licenses"
     iconutil -c icns {{quote(packaging_dir / "icons/voicepuncher.iconset")}} -o "$app/Contents/Resources/voicepuncher.icns"
     cp {{quote(packaging_dir / "Info.plist")}} "$app/Contents/Info.plist"
@@ -694,25 +671,24 @@ _start-model-servers-for-e2e: _dev-tools
 _stop-model-servers-for-e2e: _dev-tools
     @{{dev_tools}} model-servers-for-e2e stop
 
-# Start the speech recognition services for dictation (whisper-server) and for commands (whisper-server-commands), text refinement (llama-server) and command spotting (voicepuncher-command-spotting), or only the named ones; one that already answers on its port is skipped
+# Start the speech recognition services for dictation (whisper-server) and for commands (whisper-server-commands) and command spotting (voicepuncher-command-spotting), or only the named ones; one that already answers on its port is skipped
 start-model-servers *services: _dev-tools
     @{{dev_tools}} start-model-servers {{services}}
 
-# Stop the services that start-model-servers launched (all, or the named ones: whisper-server, whisper-server-commands, llama-server, voicepuncher-command-spotting); services started by hand keep running
+# Stop the services that start-model-servers launched (all, or the named ones: whisper-server, whisper-server-commands, voicepuncher-command-spotting); services started by hand keep running
 stop-model-servers *services: _dev-tools
     @{{dev_tools}} stop-model-servers {{services}}
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
-# Download default models into ~/.voicepuncher/models (whisper large-v3-turbo q5_0 ~550 MB for dictation, whisper small ~460 MB for commands, Silero VAD ~1 MB, Qwen3-4B-Instruct-2507 ~2.5 GB, keyword spotting ~20 MB, Silero VAD for sherpa-onnx ~1 MB)
-models refinement="yes":
+# Download default models into ~/.voicepuncher/models (whisper large-v3-turbo q5_0 ~550 MB for dictation, whisper small ~460 MB for commands, Silero VAD ~1 MB, keyword spotting ~20 MB, Silero VAD for sherpa-onnx ~1 MB)
+models:
     #!/usr/bin/env bash
     set -euo pipefail
     # The app's own download: every file of its model catalog, pinned and checked by sha256,
-    # resumed from a part left by an interrupted run; the refinement model is skipped with no
+    # resumed from a part left by an interrupted run
     cargo build --release -p voicepuncher
     args=(--download-models --models-dir ~/.voicepuncher/models)
-    [[ "{{refinement}}" == no ]] && args+=(--no-llm)
     target/release/voicepuncher "${args[@]}"
 
 # Download benchmark corpus — idempotent, ~500 MB, one-time setup
@@ -724,7 +700,7 @@ corpus max_samples="50":
 
 # ── Model comparison ── not a gate; only when changing a model, decoding params or the prompt
 
-# Full benchmark — all Whisper × LLM combos on the full corpus
+# Full benchmark — every Whisper model on the full corpus
 bench: _dev-tools
     @MACHINE_LOCK_TIMEOUT=14400 {{locked}} _bench
 
@@ -742,12 +718,11 @@ _bench-smoke:
 
 # ── Guards ── fail fast instead of letting E2E tests skip silently (GATED) ────
 
-_require-models refinement="yes":
+_require-models:
     #!/usr/bin/env bash
     set -euo pipefail
     # Defaults are found by exact file name (see the settings at the top); a default that is not on disk is empty
-    for entry in VOICEPUNCHER_WHISPER_MODEL={{dictation_model_file}} VOICEPUNCHER_COMMAND_WHISPER_MODEL={{command_model_file}} \
-        VOICEPUNCHER_LLM_MODEL={{refinement_model_file}}; do
+    for entry in VOICEPUNCHER_WHISPER_MODEL={{dictation_model_file}} VOICEPUNCHER_COMMAND_WHISPER_MODEL={{command_model_file}}; do
         var=${entry%%=*} path="${!var:-}"
         if [[ -z "$path" || ! -f "$path" ]]; then
             echo "✗ $var: no model file (got '${path}', default ${entry#*=} in ~/.voicepuncher or ~/.voicepuncher/models). Run 'just models' or set it in .env" >&2
@@ -756,7 +731,6 @@ _require-models refinement="yes":
     done
     echo "whisper (dictation): $VOICEPUNCHER_WHISPER_MODEL"
     echo "whisper (commands):  $VOICEPUNCHER_COMMAND_WHISPER_MODEL"
-    echo "llm:                 $VOICEPUNCHER_LLM_MODEL"
 
 # The test runner every test recipe uses, pinned like .config/nextest.toml's nextest-version; installs nothing
 _require-nextest:

@@ -1,8 +1,8 @@
 //! `dev-tools start-model-servers [service…]`: starts the speech recognition services for dictation and for
-//! commands, the text refinement service and the command spotting service, or only the named ones; one that
+//! commands and the command spotting service, or only the named ones; one that
 //! already answers on its port is skipped.
 
-use super::command_lines::{command_spotting_args, llama_args, whisper_args};
+use super::command_lines::{command_spotting_args, whisper_args};
 use super::launch::{self, Service};
 use super::ready::{port_open, Ready};
 use super::{copy_ports, outcome, selected, unknown, Settings, Speech, Step, Stop, MAX_COPIES};
@@ -30,7 +30,6 @@ pub fn start(settings: &Settings, services: &[String]) -> Step {
         match service.as_str() {
             "whisper-server" => start_whisper(settings, &settings.dictation)?,
             "whisper-server-commands" => start_whisper(settings, &settings.commands)?,
-            "llama-server" => start_llama(settings)?,
             "voicepuncher-command-spotting" => start_command_spotting(settings)?,
             _ => return Err(unknown(&service)),
         }
@@ -148,31 +147,6 @@ fn whisper_service(
         health: None,
         command,
     }
-}
-
-/// The text refinement service.
-fn start_llama(settings: &Settings) -> Step {
-    require_binary("llama-server", "llama.cpp")?;
-    let port = settings.llm_port;
-    if port_open(port) {
-        println!(
-            "✓ text refinement service already running at {}",
-            settings.llm_url()
-        );
-        return Ok(());
-    }
-    let model = require_model("VOICEPUNCHER_LLM_MODEL")?;
-    let mut command = vec!["llama-server".to_string()];
-    command.extend(llama_args(&model, &port.to_string()));
-    let service = Service {
-        binary: "llama-server".into(),
-        port,
-        label: "text refinement service".into(),
-        ready: Ready::Llama { port },
-        health: Some(format!("http://127.0.0.1:{port}/health")),
-        command,
-    };
-    launch::start(settings, &service)
 }
 
 /// The command spotting service, built first.

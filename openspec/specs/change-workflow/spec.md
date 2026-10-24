@@ -477,7 +477,7 @@ A test that needs a service, a model, recordings or the desktop SHALL never pass
 
 #### Scenario: The unit run leaves out the tests that need the services and says so
 
-- **GIVEN** no speech recognition, command spotting or text refinement service is running for the run
+- **GIVEN** no speech recognition or command spotting service is running for the run
 - **WHEN** the developer runs the unit and integration tests
 - **THEN** the tests that need those services do not run
 - **AND** the run prints how many tests it left out for each missing need

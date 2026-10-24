@@ -34,8 +34,6 @@ mod soundplaying_macos;
 mod test_layout;
 mod textpasting_macos;
 mod textpasting_stdio;
-mod textrefinement_openai;
-mod textrefinement_passthrough;
 mod transcription_openai;
 mod unsafe_impls;
 mod voice_forms;

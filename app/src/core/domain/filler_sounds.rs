@@ -1,3 +1,5 @@
+use super::{CleanedText, RawTranscript};
+
 /// Hesitation sounds a dictation never means to write, in lowercase without hyphens.
 const FILLER_SOUNDS: [&str; 13] = [
     "э", "ээ", "эээ", "эм", "мм", "ммм", "um", "umm", "uh", "uhm", "hmm", "er", "erm",
@@ -37,6 +39,18 @@ pub fn without_filler_sounds(text: &str) -> String {
         }
     }
     kept.join(" ")
+}
+
+/// The text a dictation pastes: `raw` without its filler sounds, or `raw` as returned
+/// when it holds nothing but filler sounds; `None` only when `raw` cannot be pasted at all.
+pub fn text_to_paste(raw: &RawTranscript) -> Option<CleanedText> {
+    let spoken = without_filler_sounds(raw.as_str());
+    let text = if spoken.is_empty() {
+        raw.as_str().to_owned()
+    } else {
+        spoken
+    };
+    CleanedText::new(text).ok()
 }
 
 #[cfg(test)]
@@ -81,5 +95,31 @@ mod tests {
     #[test]
     fn should_leave_nothing_of_a_sound_only_transcript() {
         assert_eq!(without_filler_sounds("Э-э, эм..."), "");
+    }
+
+    fn pasted(transcript: &str) -> String {
+        let raw = RawTranscript::new(transcript.to_owned()).unwrap();
+        text_to_paste(&raw).unwrap().as_str().to_owned()
+    }
+
+    #[test]
+    fn should_paste_the_transcript_without_its_filler_sounds() {
+        assert_eq!(
+            pasted("Эм, давай, э-э, созвонимся завтра утром."),
+            "давай, созвонимся завтра утром."
+        );
+    }
+
+    #[test]
+    fn should_paste_a_transcript_without_filler_sounds_unchanged() {
+        assert_eq!(
+            pasted("переведи это на английский пожалуйста"),
+            "переведи это на английский пожалуйста"
+        );
+    }
+
+    #[test]
+    fn should_paste_a_filler_only_transcript_as_it_was_returned() {
+        assert_eq!(pasted("Э-э, эм..."), "Э-э, эм...");
     }
 }

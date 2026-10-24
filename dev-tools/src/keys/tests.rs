@@ -1,5 +1,5 @@
-//! The keys as the former Perl runner computed them for a fixture repository (golden values), and how edits
-//! move them.
+//! The keys for a fixture repository (golden values, first those the former Perl runner computed), and how
+//! edits move them.
 
 use super::{compute, Inputs};
 use std::collections::BTreeMap;
@@ -10,7 +10,7 @@ const TOOLCHAIN: &str = "rustc 1.88.0 (fake)\nhost: aarch64-apple-darwin\ncargo 
 const TABLE: &str = "openspec/*                                     none
 docs/*                                         code
 *.md                                           none
-app/src/adapters/secondary/textrefinement/*    e2e-smoke-refinement,refine-eval,accuracy
+app/src/adapters/secondary/transcription/*     e2e-smoke-speech,accuracy
 command-spotting/*                             e2e-smoke-voice,accuracy
 ";
 const MODEL: &str = "/tmp/voicepuncher-dev-tools-golden.bin";
@@ -21,7 +21,7 @@ const FILES: [(&str, &str); 18] = [
     ("app/Cargo.toml", "[package]\nname = \"voicepuncher\"\nversion = \"1.0.0\"\n\n[dependencies]\nvoicepuncher-copy-pool = { path = \"../copy-pool\" }\n\n[dev-dependencies]\nvoicepuncher-e2e-test = { path = \"../e2e-test\" }"),
     ("app/src/main.rs", "fn main() {}"),
     ("app/src/a file.rs", "pub fn spaced() {}"),
-    ("app/src/adapters/secondary/textrefinement/openai/client.rs", "fn refine() {}"),
+    ("app/src/adapters/secondary/transcription/openai/client.rs", "fn transcribe() {}"),
     ("command-spotting/Cargo.toml", "[package]\nname = \"voicepuncher-command-spotting\"\n\n[dependencies]\nvoicepuncher-copy-pool = { path = \"../copy-pool\" }"),
     ("command-spotting/src/main.rs", "fn main() {}"),
     ("copy-pool/Cargo.toml", "[package]\nname = \"voicepuncher-copy-pool\""),
@@ -36,50 +36,46 @@ const FILES: [(&str, &str); 18] = [
     ("ignored/x.txt", "ignored"),
 ];
 
-const GOLDEN: [(&str, &str); 11] = [
+const GOLDEN: [(&str, &str); 10] = [
     (
         "fmt",
-        "9db772183a8622d255937ba6bcc6b0e761a90531d184be6fe356dfeab164567f",
+        "03b5edc5f83536c032d2e82255a967f1ae9eaa66e2b7eab709b0c62038becacb",
     ),
     (
         "test",
-        "99fbcb63f7df0219488931c4f449b58679eeac6340b01d9662b9e1908014a945",
+        "d6938136858384a0a3cf1d17e1092f15c9dae698660c0f6ff40e61279b9330d3",
     ),
     (
         "e2e-smoke-voice",
-        "28f57c50c6af0b9f90d448e4a6f228b35ff2cd981ebb9ab5663865351848d9d0",
+        "f2e617fc8da912a511fc3c360fa4375692d0cea6919b5b152044d2ca2850fcb9",
     ),
     (
-        "e2e-smoke-refinement",
-        "69295a77a8848542c4a7706000a7cfb1d900ed7e1f9dbe1d5b43ab3fbcc4b6fe",
-    ),
-    (
-        "refine-eval",
-        "6a788299c7b6fe52fc489a6aaed447ba17445d5ce382af1420311df565ce61d4",
+        "e2e-smoke-speech",
+        "9e88053a5a129f0322c50c84d5cee3d2bf1efbbc5b5913a704b26fbc444981a1",
     ),
     (
         "e2e-quick",
-        "ad73d555e264073f6a79500fe67bf8f8543d5b8336e11b1a4f1fb6c3ecd8268b",
+        "12cb424a0cfc5118136e3b5166ed0536ff146f62456d3cdbeae6273938f32a81",
     ),
     (
         "e2e-bench",
-        "ad3641ac868f5432a114198d8f5ca571f041bf68fc750de455d4da166321ad8b",
+        "45432507279b82d7c0976deac6b79b7375f29d15cbfad3372fd44938e83045fc",
     ),
     (
         "test@app",
-        "2ef8c195d96fdedb8865828da8d488cb5aa399815a3c468b9e8622e6d8c76a4f",
+        "e11252b7436128f12605f67ddb739ed611deb06dbc1bcffe680e62e953f53d20",
     ),
     (
         "test@command-spotting",
-        "e938e79aa79bb1a5ac4e16a61fc9090996ee192a1d7c30b568d442faf74bb428",
+        "7708417eeb8f01835bcbe370e747e166db75961ec773e3ae93863a05729b8f87",
     ),
     (
         "test@copy-pool",
-        "ec5b55e4c5d434315c6b193c03c52ff5312fb971017a4f95fba29896d0d6da5c",
+        "a2413127ab699f20715ac59bd4e440cb95150cf35ecca332d3f9b5189b6fd31f",
     ),
     (
         "test@e2e-test",
-        "4325a88e54e70a8b4654cf6d9bd06e8d5017b6e8a872853eaaaaf3f897bec645",
+        "92972d27eb1c5376fee63bde452e057f65add80235ade4741151407b284ce96c",
     ),
 ];
 
@@ -145,7 +141,7 @@ fn inputs() -> Inputs {
         ("RUSTFLAGS", "-Dwarnings"),
         ("CUCUMBER_TAGS", "x"),
         ("CARGO_TERM_COLOR", "always"),
-        ("VOICEPUNCHER_LLM_MODEL", MODEL),
+        ("VOICEPUNCHER_WHISPER_MODEL", MODEL),
         ("NEXTEST_PROFILE", "ci"),
         ("OTHER", "1"),
         ("HOME", "/Users/x"),
@@ -153,7 +149,7 @@ fn inputs() -> Inputs {
     .into_iter()
     .map(|(name, value)| (name.to_string(), value.to_string()))
     .collect();
-    let servers: [(&str, Option<PathBuf>); 2] = [("whisper-server", None), ("llama-server", None)];
+    let servers: [(&str, Option<PathBuf>); 1] = [("whisper-server", None)];
     Inputs::new(TOOLCHAIN.into(), &env, &servers, TABLE.into())
 }
 
@@ -165,19 +161,18 @@ fn keys(root: &Path, stages: &[&str]) -> BTreeMap<String, String> {
         .collect()
 }
 
-const STAGES: [&str; 8] = [
+const STAGES: [&str; 7] = [
     "fmt",
     "test",
     "e2e-smoke-voice",
-    "e2e-smoke-refinement",
-    "refine-eval",
+    "e2e-smoke-speech",
     "e2e-quick",
     "e2e-bench",
     "test@members",
 ];
 
 #[test]
-fn should_compute_the_keys_the_former_runner_computed() {
+fn should_compute_the_golden_keys_of_the_fixture() {
     model_file();
     let repo = fixture();
     let found = keys(repo.path(), &STAGES);

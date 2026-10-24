@@ -50,7 +50,6 @@ pub struct ScenarioServices {
     /// The port of the speech recognition service for commands, passed on every call of the
     /// service scripts, so they never stop or reuse the shared one.
     command_stt_port: u16,
-    llm_port: u16,
     kws_port: u16,
     speech_model: Option<PathBuf>,
     /// Whether the dictation and commands model variables are removed from the scripts'
@@ -101,7 +100,6 @@ impl ScenarioServices {
         Ok(Self {
             stt_port: free_speech_recognition_port()?,
             command_stt_port: free_speech_recognition_port()?,
-            llm_port: free_port()?,
             kws_port: free_port()?,
             speech_model: None,
             default_speech_model: false,
@@ -244,7 +242,6 @@ impl ScenarioServices {
                 "VOICEPUNCHER_COMMAND_STT_PORT",
                 self.command_stt_port.to_string(),
             )
-            .env("VOICEPUNCHER_LLM_PORT", self.llm_port.to_string())
             .env("VOICEPUNCHER_KWS_PORT", self.kws_port.to_string());
         if let Some(home) = &self.home {
             just.env("HOME", home.path());
@@ -338,7 +335,6 @@ impl Drop for ScenarioServices {
             for (binary, port) in [
                 (SPEECH_RECOGNITION, self.stt_port),
                 (SPEECH_RECOGNITION, self.command_stt_port),
-                ("llama-server", self.llm_port),
                 ("voicepuncher-command-spotting", self.kws_port),
             ] {
                 let _ =
@@ -520,7 +516,7 @@ async fn user_stops_service(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[then("the speech recognition service for dictation answers and nothing answers on the ports of the speech recognition service for commands, the text refinement service and the command spotting service")]
+#[then("the speech recognition service for dictation answers and nothing answers on the ports of the speech recognition service for commands and the command spotting service")]
 fn only_speech_recognition_answers(world: &mut E2eWorld) -> Result<()> {
     let services = services(world)?;
     let started = services.started.as_ref().context("nothing was started")?;
@@ -537,10 +533,6 @@ fn only_speech_recognition_answers(world: &mut E2eWorld) -> Result<()> {
     ensure!(
         !answers(services.command_stt_port),
         "a speech recognition service for commands was started too"
-    );
-    ensure!(
-        !answers(services.llm_port),
-        "a text refinement service was started too"
     );
     ensure!(
         !answers(services.kws_port),

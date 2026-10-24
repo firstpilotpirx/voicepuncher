@@ -7,12 +7,12 @@ use serde::ser::{Serialize, SerializeMap, Serializer};
 use super::utc_time::UtcTime;
 use super::ArchiveSetup;
 use crate::core::application::dictation_archive::{
-    ArchiveEntry, DictationOutcome, DictationStart, RefinementOutcome, StageTiming,
+    ArchiveEntry, DictationOutcome, DictationStart, StageTiming,
 };
 use crate::core::domain::AudioBuffer16k;
 
 /// Version of the `entry.json` layout; bump it when a field changes meaning or goes away.
-const ENTRY_FORMAT: u32 = 1;
+const ENTRY_FORMAT: u32 = 2;
 pub(super) const AUDIO_FILE: &str = "audio.wav";
 pub(super) const ENTRY_FILE: &str = "entry.json";
 const AUDIO_CHANNELS: u16 = 1;
@@ -51,18 +51,16 @@ fn entry_json(entry: &ArchiveEntry, setup: &ArchiveSetup) -> Result<String> {
         chunks: &entry.chunk_texts,
         raw_transcript: entry.raw_transcript.as_deref(),
         pasted_text: entry.pasted_text.as_deref(),
-        refinement: entry.refinement.map(refinement_name),
         outcome: outcome_name(entry.outcome),
         lost_chunks: entry.lost_chunks,
         timings_ms: Timings(&entry.timings),
         dictation_model: &setup.dictation_model,
-        refinement_model: setup.refinement_model.as_deref(),
         app_version: &setup.app_version,
     };
     Ok(serde_json::to_string_pretty(&file)?)
 }
 
-/// The `entry.json` layout, format 1.
+/// The `entry.json` layout, format 2: format 1 without `refinement` and `refinement_model`.
 #[derive(serde::Serialize)]
 struct EntryFile<'a> {
     format: u32,
@@ -72,12 +70,10 @@ struct EntryFile<'a> {
     chunks: &'a [String],
     raw_transcript: Option<&'a str>,
     pasted_text: Option<&'a str>,
-    refinement: Option<&'static str>,
     outcome: &'static str,
     lost_chunks: usize,
     timings_ms: Timings<'a>,
     dictation_model: &'a str,
-    refinement_model: Option<&'a str>,
     app_version: &'a str,
 }
 
@@ -109,14 +105,6 @@ fn start_name(start: DictationStart) -> &'static str {
     }
 }
 
-fn refinement_name(refinement: RefinementOutcome) -> &'static str {
-    match refinement {
-        RefinementOutcome::Refined => "refined",
-        RefinementOutcome::Off => "off",
-        RefinementOutcome::FellBack => "fell_back",
-    }
-}
-
 fn outcome_name(outcome: DictationOutcome) -> &'static str {
     match outcome {
         DictationOutcome::Pasted => "pasted",
@@ -142,12 +130,11 @@ mod tests {
             chunk_texts: vec!["hello".into(), "world".into()],
             raw_transcript: Some("hello world".into()),
             pasted_text: Some("Hello world.".into()),
-            refinement: Some(RefinementOutcome::FellBack),
             outcome: DictationOutcome::LeftInClipboard,
             lost_chunks: 1,
             timings: vec![
                 StageTiming { stage: "transcribe", ms: 420 },
-                StageTiming { stage: "refine", ms: 90 },
+                StageTiming { stage: "paste", ms: 90 },
             ],
         }
     }
@@ -155,7 +142,6 @@ mod tests {
     fn sample_setup() -> ArchiveSetup {
         ArchiveSetup {
             dictation_model: "ggml-large-v3-turbo-q5_0.bin".into(),
-            refinement_model: None,
             app_version: "0.11.0".into(),
         }
     }
@@ -170,19 +156,17 @@ mod tests {
         // Then
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
         let expected = serde_json::json!({
-            "format": 1,
+            "format": 2,
             "started_at": "2026-10-19T10:42:05.123Z",
             "start": "hotkey_toggled",
             "audio": {"file": "audio.wav", "duration_ms": 1500},
             "chunks": ["hello", "world"],
             "raw_transcript": "hello world",
             "pasted_text": "Hello world.",
-            "refinement": "fell_back",
             "outcome": "left_in_clipboard",
             "lost_chunks": 1,
-            "timings_ms": {"transcribe": 420, "refine": 90},
+            "timings_ms": {"transcribe": 420, "paste": 90},
             "dictation_model": "ggml-large-v3-turbo-q5_0.bin",
-            "refinement_model": null,
             "app_version": "0.11.0",
         });
         assert_eq!(value, expected);
@@ -197,17 +181,16 @@ mod tests {
         let json = entry_json(&entry, &setup).unwrap();
         // Then
         let transcribe = json.find("\"transcribe\"").unwrap();
-        let refine = json.find("\"refine\"").unwrap();
-        assert!(transcribe < refine);
+        let paste = json.find("\"paste\"").unwrap();
+        assert!(transcribe < paste);
     }
 
     #[test]
-    fn should_write_null_for_missing_texts_and_refinement() {
+    fn should_write_null_for_missing_texts() {
         // Given
         let entry = ArchiveEntry {
             raw_transcript: None,
             pasted_text: None,
-            refinement: None,
             outcome: DictationOutcome::SpeechRecognitionFailed,
             ..sample_entry()
         };
@@ -217,7 +200,6 @@ mod tests {
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert!(value["raw_transcript"].is_null());
         assert!(value["pasted_text"].is_null());
-        assert!(value["refinement"].is_null());
         assert_eq!(value["outcome"], "speech_recognition_failed");
     }
 }

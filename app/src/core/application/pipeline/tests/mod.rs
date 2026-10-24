@@ -2,7 +2,7 @@
 //! sees (the pasted text, the overlay, the activity) and on the log line the manual run reads.
 
 mod activity;
-pub(super) mod doubles;
+pub(crate) mod doubles;
 mod overlay;
 mod processing;
 mod recording;
@@ -29,13 +29,11 @@ fn too_short() -> AudioBuffer16k {
 pub(super) struct PipelineUnderTest {
     recorder: Option<MockAudioRecorder>,
     transcriber: Option<MockTranscriber>,
-    refiner: Option<MockTextRefiner>,
     paster: Option<MockTextPaster>,
     sounds: Option<MockSoundPlayer>,
     overlay: Option<MockVisualIndicator>,
     cfg: PipelineConfig,
     activity: Option<Box<dyn PipelineActivitySink>>,
-    refinement_shown: bool,
 }
 
 impl PipelineUnderTest {
@@ -43,13 +41,11 @@ impl PipelineUnderTest {
         Self {
             recorder: None,
             transcriber: None,
-            refiner: None,
             paster: None,
             sounds: None,
             overlay: None,
             cfg: PipelineConfig { min_press_ms: 200, ..PipelineConfig::default() },
             activity: None,
-            refinement_shown: true,
         }
     }
 
@@ -60,11 +56,6 @@ impl PipelineUnderTest {
 
     pub(super) fn transcriber(mut self, transcriber: MockTranscriber) -> Self {
         self.transcriber = Some(transcriber);
-        self
-    }
-
-    pub(super) fn refiner(mut self, refiner: MockTextRefiner) -> Self {
-        self.refiner = Some(refiner);
         self
     }
 
@@ -98,17 +89,11 @@ impl PipelineUnderTest {
         self
     }
 
-    pub(super) fn without_refinement_stage(mut self) -> Self {
-        self.refinement_shown = false;
-        self
-    }
-
     pub(super) fn build(self) -> Pipeline {
         let mut pipeline = Pipeline::new(
             PipelineParts {
                 recorder: Box::new(self.recorder.unwrap_or_else(|| recording(one_second()))),
                 transcriber: Box::new(self.transcriber.unwrap_or_else(|| transcribing("hello"))),
-                refiner: Box::new(self.refiner.unwrap_or_else(echoing_refiner)),
                 paster: Box::new(self.paster.unwrap_or_else(pasting)),
                 sound_player: Box::new(self.sounds.unwrap_or_else(quiet_sounds)),
                 visual_indicator: Box::new(self.overlay.unwrap_or_else(quiet_overlay)),
@@ -117,9 +102,6 @@ impl PipelineUnderTest {
         );
         if let Some(sink) = self.activity {
             pipeline = pipeline.with_activity_sink(sink);
-        }
-        if !self.refinement_shown {
-            pipeline = pipeline.without_text_refinement_stage();
         }
         pipeline
     }

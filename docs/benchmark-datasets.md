@@ -1,11 +1,11 @@
 # Speech Benchmark Datasets
 
-> Reference for the N×N pipeline benchmark: which datasets to use, how to download them,
+> Reference for the model benchmark: which datasets to use, how to download them,
 > what transcription format to expect, and how to compute WER/CER.
 
 ## Overview
 
-The benchmark runs every combination of (whisper model × LLM correction model) against a fixed
+The benchmark runs every Whisper model against a fixed
 corpus of audio files with ground-truth transcriptions, then produces a WER/CER table.
 The datasets below cover the two target languages (Russian, English) and the relevant duration
 buckets for voicepuncher: short clips (2–30 s), medium (30 s–3 min), and long (3–10 min).
@@ -238,9 +238,9 @@ No mature WER crate exists (as of 2025). Options:
 
 ---
 
-## N×N Benchmark Structure
+## Benchmark Structure
 
-The goal is a table of (whisper_model × llm_model) → WER/CER per dataset/language.
+The goal is a table of whisper_model → WER/CER per dataset/language.
 
 ```
 bench/
@@ -251,26 +251,21 @@ bench/
 │   ├── golos_farfield_test.jsonl
 │   └── ...
 ├── models/
-│   ├── whisper/                    # symlinks or paths to .bin files
-│   └── llm/                        # symlinks or paths to .gguf files
-├── run_bench.py                    # runs pipeline for each (whisper × llm) combo
+│   └── whisper/                    # symlinks or paths to .bin files
+├── run_bench.py                    # runs pipeline for each Whisper model
 └── results/
     └── YYYY-MM-DD_HH-MM/
-        ├── raw.jsonl               # per-clip: model combo, reference, hypothesis, wer, cer
-        └── summary.md              # pivot table: model combo → avg WER/CER per dataset
+        ├── raw.jsonl               # per-clip: model, reference, hypothesis, wer, cer
+        └── summary.md              # pivot table: model → avg WER/CER per dataset
 ```
 
 ### Expected output (summary.md excerpt)
 
-| Whisper model | LLM model | FLEURS RU WER | FLEURS EN WER | LibriSpeech WER | GOLOS WER |
-|---|---|---|---|---|---|
-| large-v3-turbo | Qwen2.5-1.5B | 0.082 | 0.031 | 0.028 | 0.104 |
-| large-v3-turbo | Qwen2.5-3B | 0.071 | 0.027 | 0.025 | 0.091 |
-| large-v3-turbo | none (raw) | 0.095 | 0.038 | 0.033 | 0.119 |
-| small | Qwen2.5-1.5B | 0.143 | 0.062 | 0.054 | 0.187 |
+| Whisper model | FLEURS RU WER | FLEURS EN WER | LibriSpeech WER | GOLOS WER |
+|---|---|---|---|---|
+| large-v3-turbo | 0.095 | 0.038 | 0.033 | 0.119 |
 
-The "none (raw)" row shows whisper output without LLM correction — this is the control that
-measures LLM contribution.
+The layout is illustrative: one row per Whisper model, one WER column per dataset.
 
 ---
 

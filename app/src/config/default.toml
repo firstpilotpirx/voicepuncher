@@ -42,24 +42,6 @@ chunk_overlap_secs = 2
 # Seconds before a chunk's end searched for a pause to cut at.
 vad_lookback_secs = 5
 
-[refinement]
-# Turn on to clean each transcript with the local text refinement service.
-# The instruction and examples it sends are built into the app (system_prompt and examples
-# here override them).
-enabled = false
-# Address of the text refinement service; it must be on this Mac.
-base_url = "http://127.0.0.1:8080/v1"
-# Model name sent with every request; the local service ignores it.
-model = "local"
-# Sent as a bearer token when not empty.
-api_key = ""
-# Sampling temperature of refinement; 0.0 keeps it predictable.
-temperature = 0.0
-# Upper bound for the cleaned text's length, in tokens.
-max_tokens = 512
-# Seconds one refinement request may take.
-timeout_secs = 30
-
 [paste]
 # Milliseconds before the clipboard gets its previous content back after a paste.
 clipboard_restore_delay_ms = 120
@@ -114,8 +96,6 @@ manage = true
 dictation_copies = 3
 # Copies of the speech recognition service for commands, 1 to 4.
 command_copies = 3
-# Copies of the text refinement service, 1 to 4.
-refinement_copies = 2
 # Copies of the command spotting service, 1 to 4.
 command_spotting_copies = 2
 # The folder the models are downloaded to.

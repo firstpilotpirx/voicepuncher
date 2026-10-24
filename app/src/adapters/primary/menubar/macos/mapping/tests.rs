@@ -38,7 +38,6 @@ fn should_show_each_dictation_stage() {
     let cases = [
         (DictationStage::Recording, IconState::Recording),
         (DictationStage::RecognizingSpeech, IconState::Processing),
-        (DictationStage::RefiningText, IconState::Processing),
         (DictationStage::WaitingForFocus, IconState::WaitingForFocus),
         (DictationStage::FailureNotice, IconState::Warning),
     ];
@@ -157,13 +156,6 @@ fn should_name_every_other_state_in_words() {
         ),
         (
             state(
-                Some(DictationStage::RefiningText),
-                ready(RecordingMode::Hold, false),
-            ),
-            "Refining text…",
-        ),
-        (
-            state(
                 Some(DictationStage::WaitingForFocus),
                 ready(RecordingMode::Hold, false),
             ),
@@ -239,10 +231,6 @@ fn should_follow_each_overlay_signal() {
             Some(DictationStage::RecognizingSpeech),
         ),
         (
-            OverlaySignal::RefiningText,
-            Some(DictationStage::RefiningText),
-        ),
-        (
             OverlaySignal::WaitingForFocus,
             Some(DictationStage::WaitingForFocus),
         ),
@@ -256,7 +244,7 @@ fn should_follow_each_overlay_signal() {
     for (signal, expected) in cases {
         // Given
         let mut shown = state(
-            Some(DictationStage::RefiningText),
+            Some(DictationStage::RecognizingSpeech),
             ready(RecordingMode::Hold, false),
         );
         // When
@@ -421,13 +409,13 @@ fn should_show_a_service_that_cannot_start_as_failed() {
     let failed = state(
         None,
         Some(RuntimeState::Failed(
-            "text refinement service: model missing".into(),
+            "command spotting service: model missing".into(),
         )),
     );
     assert_eq!(failed.icon(), IconState::Failed);
     assert_eq!(
         failed.status_line(),
-        "Failed: text refinement service: model missing"
+        "Failed: command spotting service: model missing"
     );
 }
 
@@ -451,13 +439,13 @@ fn should_list_a_service_with_its_state_in_words_and_restart_only_owned_ones() {
         ServiceState::Ready,
         true,
     );
-    let adopted = service("text refinement service", ServiceState::Adopted, false);
+    let adopted = service("command spotting service", ServiceState::Adopted, false);
     // When / Then
     assert_eq!(
         service_line(&copy),
         "Speech recognition service for dictation: copy 1 of 3 — Ready"
     );
-    assert_eq!(service_line(&adopted), "Text refinement service — Adopted");
+    assert_eq!(service_line(&adopted), "Command spotting service — Adopted");
     assert!(offers_restart(&copy));
     assert!(!offers_restart(&adopted));
 }

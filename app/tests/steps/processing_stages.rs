@@ -1,5 +1,5 @@
 //! Drives the real pipeline on its own thread and watches, in one ordered log, which
-//! processing stage the overlay shows while speech recognition and text refinement run.
+//! processing stage the overlay shows while speech recognition runs.
 
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
@@ -8,12 +8,11 @@ use std::time::{Duration, Instant};
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 
-use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use voicepuncher::core::application::{
     AudioRecorder, ChunkingCfg, FocusProbe, FocusWaitCfg, PipelineInput, SoundPlayer, TextPaster,
-    TextRefiner, Transcriber, VisualIndicator,
+    Transcriber, VisualIndicator,
 };
 use voicepuncher::core::domain::{
     AudioBuffer16k, CleanedText, FailureNotice, FocusedElement, PttSignal, RawTranscript,
@@ -24,8 +23,7 @@ use crate::steps::quiet_voice_control::{NoKeys, QuietSpotter};
 use crate::IntegrationWorld;
 mod doubles;
 use doubles::{
-    FocusOnButton, NotingOverlay, NotingPaster, NotingRefiner, NotingTranscriber, PartsRecorder,
-    Silent,
+    FocusOnButton, NotingOverlay, NotingPaster, NotingTranscriber, PartsRecorder, Silent,
 };
 
 const SENTENCE: &str = "Meeting moved to Friday.";
@@ -47,8 +45,6 @@ enum Event {
     RecordingStarted,
     TranscriptionStarted,
     TranscriptionFinished,
-    RefinementStarted,
-    RefinementFinished,
     Pasted,
     Overlay(Overlay),
 }
@@ -57,7 +53,6 @@ enum Event {
 enum Overlay {
     Recording,
     RecognizingSpeech,
-    RefiningText,
     WaitingForFocus,
     PastedSign,
     Hidden,
@@ -75,7 +70,6 @@ fn record(events: &Events, event: Event) {
 #[derive(Default)]
 pub struct StagesRun {
     events: Events,
-    refinement_off: bool,
     no_speech: bool,
     in_parts: bool,
     no_text_focus: bool,
@@ -115,11 +109,6 @@ impl StagesRun {
 
     fn parts(&self) -> PipelineParts {
         let events = &self.events;
-        let refiner: Box<dyn TextRefiner> = if self.refinement_off {
-            Box::new(PassthroughTextRefiner)
-        } else {
-            Box::new(NotingRefiner(Arc::clone(events)))
-        };
         PipelineParts {
             recorder: Box::new(PartsRecorder {
                 events: Arc::clone(events),
@@ -130,7 +119,6 @@ impl StagesRun {
                 events: Arc::clone(events),
                 no_speech: self.no_speech,
             }),
-            refiner,
             paster: Box::new(NotingPaster(Arc::clone(events))),
             sound_player: Box::new(Silent),
             visual_indicator: Box::new(NotingOverlay { events: Arc::clone(events) }),
@@ -149,9 +137,6 @@ impl StagesRun {
                 ..PipelineConfig::default()
             },
         );
-        if self.refinement_off {
-            pipeline = pipeline.without_text_refinement_stage();
-        }
         if self.no_text_focus {
             pipeline = pipeline.with_focus_wait(
                 Box::new(FocusOnButton),
@@ -277,7 +262,6 @@ fn recognition_covers_transcription(events: &[Event]) -> Result<()> {
 }
 
 #[given("the user records a dictation with the hotkey")]
-#[given("text refinement is enabled")]
 fn records_with_hotkey(world: &mut IntegrationWorld) -> Result<()> {
     run(world).start_recording()
 }
@@ -300,13 +284,6 @@ fn records_in_parts(world: &mut IntegrationWorld) -> Result<()> {
 fn records_no_speech(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     run.no_speech = true;
-    run.start_recording()
-}
-
-#[given("text refinement is disabled")]
-fn refinement_disabled(world: &mut IntegrationWorld) -> Result<()> {
-    let run = run(world);
-    run.refinement_off = true;
     run.start_recording()
 }
 
@@ -354,38 +331,12 @@ fn recognition_then_hidden(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("the text refinement stage is not shown")]
-fn refinement_not_shown(world: &mut IntegrationWorld) -> Result<()> {
+#[then("no other processing stage is shown")]
+fn no_other_stage(world: &mut IntegrationWorld) -> Result<()> {
     let events = run(world).wait_until_over()?;
-    if events.contains(&Event::Overlay(Overlay::RefiningText)) {
-        bail!("text refinement was shown: {events:?}");
-    }
-    Ok(())
-}
-
-#[then(
-    "the overlay shows the speech recognition stage, then the text refinement stage until the corrected text is ready"
-)]
-fn recognition_then_refinement(world: &mut IntegrationWorld) -> Result<()> {
-    let events = run(world).wait_until_over()?;
-    recognition_covers_transcription(&events)?;
-    let transcribed = last_position(&events, Event::TranscriptionFinished)?;
-    let shown = position(&events, Event::Overlay(Overlay::RefiningText))?;
-    let started = position(&events, Event::RefinementStarted)?;
-    let finished = position(&events, Event::RefinementFinished)?;
-    if !(transcribed < shown && shown < started) {
-        bail!("text refinement not shown between the transcript and its start: {events:?}");
-    }
-    let next_signal = events[shown + 1..]
-        .iter()
-        .position(|e| matches!(e, Event::Overlay(_)))
-        .map(|at| at + shown + 1);
-    if next_signal.is_some_and(|next| next < finished) {
-        bail!("the overlay left text refinement before the text was ready: {events:?}");
-    }
     let shown = overlay(&events);
-    if shown[..2] != [Overlay::RecognizingSpeech, Overlay::RefiningText] {
-        bail!("expected speech recognition, then text refinement; overlay: {shown:?}");
+    if shown != [Overlay::RecognizingSpeech, Overlay::PastedSign] {
+        bail!("expected speech recognition, then the Pasted sign; overlay: {shown:?}");
     }
     Ok(())
 }
@@ -405,34 +356,27 @@ fn pasted_sign_after_paste(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("the overlay shows the text refinement stage with no text window under it")]
-fn refinement_without_text_window(world: &mut IntegrationWorld) -> Result<()> {
+#[then("the overlay shows the speech recognition stage with no text window under it")]
+fn recognition_without_text_window(world: &mut IntegrationWorld) -> Result<()> {
     let events = run(world).wait_until_over()?;
-    // WHY: the overlay is handed no text with the refinement stage, so it has none to show
-    // under the pill
-    position(&events, Event::Overlay(Overlay::RefiningText))?;
+    // WHY: the overlay is handed no text with the speech recognition stage, so it has none to
+    // show under the pill
+    position(&events, Event::Overlay(Overlay::RecognizingSpeech))?;
     Ok(())
 }
 
-#[then(
-    "the overlay shows the speech recognition stage, then the text refinement stage, then the wait for focus"
-)]
-fn stages_then_focus_wait(world: &mut IntegrationWorld) -> Result<()> {
+#[then("the overlay shows the speech recognition stage, then the wait for focus")]
+fn recognition_then_focus_wait(world: &mut IntegrationWorld) -> Result<()> {
     let events = run(world).wait_until_over()?;
+    recognition_covers_transcription(&events)?;
     let shown = overlay(&events);
     let expected = [
         Overlay::RecognizingSpeech,
-        Overlay::RefiningText,
         Overlay::WaitingForFocus,
         Overlay::Hidden,
     ];
     if shown != expected {
         bail!("expected {expected:?}; overlay: {shown:?}");
-    }
-    let refined = position(&events, Event::RefinementFinished)?;
-    let waiting = position(&events, Event::Overlay(Overlay::WaitingForFocus))?;
-    if waiting < refined {
-        bail!("the wait for focus was shown before the text was refined: {events:?}");
     }
     Ok(())
 }

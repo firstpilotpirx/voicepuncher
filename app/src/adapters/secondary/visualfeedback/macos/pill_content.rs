@@ -48,9 +48,6 @@ pub(super) const COMMANDS_UNAVAILABLE_SIGN: SignLook =
 const RECOGNIZING_SIGN: SignLook =
     SignLook { symbol: "ear", label: "Recognizing", tint: IconTint::Content };
 
-const REFINING_SIGN: SignLook =
-    SignLook { symbol: "sparkles", label: "Refining text", tint: IconTint::Content };
-
 const WAITING_SIGN: SignLook =
     SignLook { symbol: "keyboard", label: "Click a text field", tint: IconTint::Content };
 
@@ -59,7 +56,6 @@ const WAITING_SIGN: SignLook =
 pub(super) fn state_sign(state: OverlayState) -> Option<SignLook> {
     match state {
         OverlayState::RecognizingSpeech => Some(RECOGNIZING_SIGN),
-        OverlayState::RefiningText => Some(REFINING_SIGN),
         OverlayState::WaitingForFocus => Some(WAITING_SIGN),
         OverlayState::FailureNotice(notice) => Some(SignLook {
             symbol: FAILURE_SYMBOL,
@@ -90,10 +86,9 @@ pub(super) fn glass_tint(state: OverlayState) -> GlassTint {
     match state {
         OverlayState::WaitingForFocus => GlassTint::Waiting,
         OverlayState::FailureNotice(_) => GlassTint::Failure,
-        OverlayState::Hidden
-        | OverlayState::Recording
-        | OverlayState::RecognizingSpeech
-        | OverlayState::RefiningText => GlassTint::Clear,
+        OverlayState::Hidden | OverlayState::Recording | OverlayState::RecognizingSpeech => {
+            GlassTint::Clear
+        }
     }
 }
 
@@ -211,7 +206,6 @@ mod tests {
     /// Widths of the longest labels, as a label sized to fit them at the pill's font measures
     /// on macOS.
     const RECOGNIZING_LABEL: f64 = 86.0;
-    const REFINING_TEXT_LABEL: f64 = 89.0;
     const CLICK_A_TEXT_FIELD_LABEL: f64 = 112.5;
     const ACCESS_LABEL: f64 = 59.0;
     const RESTART_LABEL: f64 = 53.0;
@@ -227,14 +221,6 @@ mod tests {
         assert_eq!(
             state_sign(OverlayState::RecognizingSpeech),
             Some(look("ear", "Recognizing", IconTint::Content))
-        );
-    }
-
-    #[test]
-    fn should_show_sparkles_and_refining_text_for_text_refinement() {
-        assert_eq!(
-            state_sign(OverlayState::RefiningText),
-            Some(look("sparkles", "Refining text", IconTint::Content))
         );
     }
 
@@ -301,7 +287,6 @@ mod tests {
     fn should_sign_a_failure_with_the_triangle_and_the_failing_part_short_name() {
         let expected = [
             (FailingPart::SpeechRecognition, "STT"),
-            (FailingPart::TextRefinement, "REFINE"),
             (FailingPart::CommandSpotting, "VOICE"),
             (FailingPart::Microphone, "MIC"),
             (FailingPart::Accessibility, "ACCESS"),
@@ -339,7 +324,6 @@ mod tests {
         let expected = [
             (OverlayState::Recording, GlassTint::Clear),
             (OverlayState::RecognizingSpeech, GlassTint::Clear),
-            (OverlayState::RefiningText, GlassTint::Clear),
             (OverlayState::WaitingForFocus, GlassTint::Waiting),
             (OverlayState::FailureNotice(notice), GlassTint::Failure),
             (OverlayState::Hidden, GlassTint::Clear),
@@ -362,7 +346,6 @@ mod tests {
         let others = [
             OverlayState::Hidden,
             OverlayState::RecognizingSpeech,
-            OverlayState::RefiningText,
             OverlayState::WaitingForFocus,
         ];
         for state in others {
@@ -430,7 +413,6 @@ mod tests {
         let full_waveform = [RECORD_RING_SIZE, waveform_width(FULL_CAPACITY)];
         let short_waveform = [RECORD_RING_SIZE, waveform_width(CAPACITY_BESIDE_SIGN)];
         let recognizing = [ICON_BOX, RECOGNIZING_LABEL, SPINNER_SIZE];
-        let refining = [ICON_BOX, REFINING_TEXT_LABEL, SPINNER_SIZE];
         let waiting = [ICON_BOX, CLICK_A_TEXT_FIELD_LABEL];
         let failure = [ICON_BOX, ACCESS_LABEL];
         let command = [ICON_BOX, RESTART_LABEL];
@@ -446,10 +428,6 @@ mod tests {
             (
                 PillKind::Processing,
                 row_beside_unavailable_sign(PillKind::Processing, &recognizing),
-            ),
-            (
-                PillKind::Processing,
-                row_beside_unavailable_sign(PillKind::Processing, &refining),
             ),
             (
                 PillKind::Sign,

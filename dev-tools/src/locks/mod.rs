@@ -28,7 +28,7 @@ pub const DEFAULT_WAIT: u64 = 21_600;
 /// The stage deadline, unless the caller sets `MACHINE_LOCK_TIMEOUT`.
 const DEFAULT_DEADLINE: u64 = 3600;
 /// The test ports every locked run starts its services on.
-pub const TEST_PORTS: [(&str, &str, &str); 4] = [
+pub const TEST_PORTS: [(&str, &str, &str); 3] = [
     (
         "VOICEPUNCHER_STT_PORT",
         "VOICEPUNCHER_TEST_STT_PORT",
@@ -38,11 +38,6 @@ pub const TEST_PORTS: [(&str, &str, &str); 4] = [
         "VOICEPUNCHER_COMMAND_STT_PORT",
         "VOICEPUNCHER_TEST_COMMAND_STT_PORT",
         "28085",
-    ),
-    (
-        "VOICEPUNCHER_LLM_PORT",
-        "VOICEPUNCHER_TEST_LLM_PORT",
-        "28080",
     ),
     (
         "VOICEPUNCHER_KWS_PORT",

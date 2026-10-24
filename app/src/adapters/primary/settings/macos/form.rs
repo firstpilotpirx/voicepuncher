@@ -151,10 +151,6 @@ impl Form {
             Event::Reveal(tag) => self.with_control(tag, |control| {
                 reveal(&super::files::resolve(&string(&control.read())));
             }),
-            Event::AddExample => self.with_examples(super::examples::ExamplesTable::add),
-            Event::RemoveExample => {
-                self.with_examples(super::examples::ExamplesTable::remove_selected)
-            }
             Event::ToggleAdvanced(place) => self.toggle_advanced(place),
             Event::Save => {
                 if self.save() {
@@ -241,19 +237,6 @@ impl Form {
     fn with_control(&self, tag: isize, act: impl FnOnce(&FieldControl)) {
         if let Some(control) = usize::try_from(tag).ok().and_then(|t| self.controls.get(t)) {
             act(control);
-        }
-    }
-
-    fn with_examples(&self, act: impl FnOnce(&super::examples::ExamplesTable)) {
-        let table = self
-            .controls
-            .iter()
-            .find_map(|control| match &control.widget {
-                Widget::Examples(table) => Some(table),
-                _ => None,
-            });
-        if let Some(table) = table {
-            act(table);
         }
     }
 

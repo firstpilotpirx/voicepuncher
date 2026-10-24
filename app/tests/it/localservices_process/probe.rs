@@ -43,7 +43,7 @@ fn free_port() -> u16 {
 #[test]
 fn should_find_nothing_on_a_closed_port() {
     assert_eq!(
-        HttpProbe::new().answer(ServiceKind::Refinement, free_port()),
+        HttpProbe::new().answer(ServiceKind::CommandSpotting, free_port()),
         ProbeAnswer::Closed
     );
 }
@@ -52,7 +52,7 @@ fn should_find_nothing_on_a_closed_port() {
 fn should_take_a_healthy_service_as_ready() {
     let port = server(|_| (200, "{\"status\":\"ok\"}"));
     assert_eq!(
-        HttpProbe::new().answer(ServiceKind::Refinement, port),
+        HttpProbe::new().answer(ServiceKind::CommandSpotting, port),
         ProbeAnswer::Ready
     );
 }
@@ -61,7 +61,7 @@ fn should_take_a_healthy_service_as_ready() {
 fn should_take_a_loading_service_as_busy() {
     let port = server(|_| (503, "{\"error\":\"Loading model\"}"));
     assert_eq!(
-        HttpProbe::new().answer(ServiceKind::Refinement, port),
+        HttpProbe::new().answer(ServiceKind::CommandSpotting, port),
         ProbeAnswer::Busy
     );
 }
@@ -166,7 +166,7 @@ fn should_send_nothing_to_a_service_that_transcribes_nothing() {
     // Given
     let (port, received) = stub(200);
     // When
-    let warmed = HttpProbe::new().warm_up(ServiceKind::Refinement, port);
+    let warmed = HttpProbe::new().warm_up(ServiceKind::CommandSpotting, port);
     // Then
     assert_eq!(warmed, Some(Duration::ZERO));
     assert!(received.recv_timeout(Duration::from_millis(300)).is_err());

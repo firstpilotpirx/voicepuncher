@@ -1,9 +1,9 @@
 //! The stand-ins of the dictation archive scenarios.
 
 use super::{
-    anyhow, as_sentence, joined, mpsc, Answers, AudioBuffer16k, AudioRecorder, ChunkingCfg,
-    CleanedText, Event, Events, FailureNotice, Instant, LiveChunk, RawTranscript, Receiver, Result,
-    Sender, SoundPlayer, Takes, TextPaster, TextRefiner, Transcriber, VisualIndicator,
+    anyhow, joined, mpsc, Answers, AudioBuffer16k, AudioRecorder, ChunkingCfg, CleanedText, Event,
+    Events, FailureNotice, Instant, LiveChunk, RawTranscript, Receiver, Result, Sender,
+    SoundPlayer, Takes, TextPaster, Transcriber, VisualIndicator,
 };
 
 /// Hands over the audio queued for each recording; recorded in chunks, it sends all parts
@@ -77,22 +77,6 @@ impl Transcriber for AnsweringTranscriber {
     }
 }
 
-pub(super) struct SentenceRefiner;
-
-impl TextRefiner for SentenceRefiner {
-    fn refine(&mut self, raw: &RawTranscript) -> Result<CleanedText> {
-        Ok(CleanedText::new(as_sentence(raw.as_str()))?)
-    }
-}
-
-pub(super) struct FailingRefiner;
-
-impl TextRefiner for FailingRefiner {
-    fn refine(&mut self, _raw: &RawTranscript) -> Result<CleanedText> {
-        Err(anyhow!("the text refinement service does not answer"))
-    }
-}
-
 pub(super) struct NotingPaster(pub(super) Events);
 
 impl TextPaster for NotingPaster {
@@ -114,7 +98,6 @@ pub(super) struct NotingOverlay(pub(super) Events);
 impl VisualIndicator for NotingOverlay {
     fn show_recording(&self) {}
     fn show_recognizing_speech(&self) {}
-    fn show_refining_text(&self) {}
     fn show_waiting_for_focus(&self) {}
 
     fn hide(&self) {

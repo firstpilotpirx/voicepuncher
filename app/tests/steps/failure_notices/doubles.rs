@@ -4,7 +4,7 @@ use super::{
     bail, mpsc, record, AccessibilityMissing, AudioBuffer16k, AudioRecorder, ChunkingCfg,
     CleanedText, CommandSpotter, Event, Events, FailureNotice, Instant, KeyPresser, LiveChunk,
     RawTranscript, Receiver, Recognition, Result, Setup, Shown, SoundPlayer, TextPaster,
-    TextRefiner, Transcriber, VisualIndicator, VoiceCommand, RAW_TRANSCRIPT, REFINED_TEXT,
+    Transcriber, VisualIndicator, VoiceCommand, RAW_TRANSCRIPT,
 };
 
 /// Hands over one second of audio at the stop; for a long dictation it sends one part while
@@ -92,19 +92,6 @@ impl Transcriber for ScriptedTranscriber {
     }
 }
 
-pub(super) struct ScriptedRefiner {
-    pub(super) fails: bool,
-}
-
-impl TextRefiner for ScriptedRefiner {
-    fn refine(&mut self, _raw: &RawTranscript) -> Result<CleanedText> {
-        if self.fails {
-            bail!("connection refused");
-        }
-        Ok(CleanedText::new(REFINED_TEXT.to_owned())?)
-    }
-}
-
 pub(super) struct ScriptedPaster {
     pub(super) events: Events,
     pub(super) fails: bool,
@@ -132,10 +119,6 @@ impl VisualIndicator for NotingOverlay {
     }
 
     fn show_recognizing_speech(&self) {
-        record(&self.0, Event::Overlay(Shown::Stage));
-    }
-
-    fn show_refining_text(&self) {
         record(&self.0, Event::Overlay(Shown::Stage));
     }
 

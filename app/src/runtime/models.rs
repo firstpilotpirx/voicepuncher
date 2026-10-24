@@ -25,10 +25,7 @@ pub trait ModelsGate: Send {
 
 /// The parts of the app `config` turns on, for the model catalog.
 pub fn needs_of(config: &Config) -> ModelNeeds {
-    ModelNeeds {
-        voice_control: config.voice_control.enabled,
-        refinement: config.refinement.enabled,
-    }
+    ModelNeeds { voice_control: config.voice_control.enabled }
 }
 
 /// The models folder on this machine, the older folders and the variables naming a model.
@@ -167,7 +164,6 @@ mod tests {
         // Given
         let home = tempfile::tempdir().unwrap();
         let mut config = Config::default();
-        config.refinement.enabled = false;
         config.voice_control.enabled = false;
         // When
         let missing = CatalogModels::new(home.path(), HashMap::new()).missing(&config);
@@ -189,7 +185,6 @@ mod tests {
             .map(|var| (var.to_string(), named.display().to_string()))
             .collect();
         let mut config = Config::default();
-        config.refinement.enabled = false;
         config.voice_control.enabled = false;
         // When
         let missing = CatalogModels::new(home.path(), env).missing(&config);

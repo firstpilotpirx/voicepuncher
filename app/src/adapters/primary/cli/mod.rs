@@ -34,13 +34,6 @@ pub struct Cli {
 
     #[arg(
         long,
-        value_name = "URL",
-        help = "Text refinement service address; overrides the configuration for this run ([refinement].base_url)"
-    )]
-    pub refinement_url: Option<String>,
-
-    #[arg(
-        long,
         value_name = "DIR",
         help = "Keep each dictation in this folder, also in file mode; overrides the configuration for this run ([archive])"
     )]
@@ -58,18 +51,6 @@ pub struct Cli {
         help = "File mode: transcribe a WAV file and print the text to stdout (no hotkey, no windows)"
     )]
     pub input_file: Option<PathBuf>,
-
-    #[arg(
-        long,
-        help = "Skip text refinement (wins over --llm); overrides the configuration for this run"
-    )]
-    pub no_llm: bool,
-
-    #[arg(
-        long,
-        help = "Refine each transcript through the text refinement service; overrides the configuration for this run"
-    )]
-    pub llm: bool,
 
     #[arg(
         long,
@@ -107,9 +88,6 @@ impl Cli {
         if let Some(url) = &self.transcription_url {
             cfg.transcription.base_url = url.clone();
         }
-        if let Some(url) = &self.refinement_url {
-            cfg.refinement.base_url = url.clone();
-        }
         if let Some(dir) = &self.archive_dir {
             cfg.archive.dir = dir.clone();
             cfg.archive.enabled = true;
@@ -119,12 +97,6 @@ impl Cli {
         }
         if self.voice_control {
             cfg.voice_control.enabled = true;
-        }
-        if self.llm {
-            cfg.refinement.enabled = true;
-        }
-        if self.no_llm {
-            cfg.refinement.enabled = false;
         }
     }
 }
@@ -145,7 +117,6 @@ mod tests {
         assert!(cli.config.is_none());
         assert!(cli.hotkey.is_none());
         assert!(cli.transcription_url.is_none());
-        assert!(cli.refinement_url.is_none());
         assert!(cli.archive_dir.is_none());
         assert!(!cli.no_archive);
     }
@@ -157,12 +128,9 @@ mod tests {
             config: None,
             hotkey: Some(HotKey::F18),
             transcription_url: Some("http://localhost:9000/v1".into()),
-            refinement_url: Some("http://localhost:9090/v1".into()),
             archive_dir: Some(PathBuf::from("/tmp/dictations")),
             no_archive: false,
             input_file: None,
-            no_llm: false,
-            llm: false,
             voice_control: false,
             download_models: false,
             models_dir: None,
@@ -173,7 +141,6 @@ mod tests {
         // Then
         assert_eq!(cfg.hotkey.key, HotKey::F18);
         assert_eq!(cfg.transcription.base_url, "http://localhost:9000/v1");
-        assert_eq!(cfg.refinement.base_url, "http://localhost:9090/v1");
         assert_eq!(cfg.archive.dir, PathBuf::from("/tmp/dictations"));
     }
 
@@ -183,68 +150,6 @@ mod tests {
         let cli = Cli::parse_from(["voicepuncher", "--input-file", "/tmp/test.wav"]);
         // Then
         assert_eq!(cli.input_file, Some(PathBuf::from("/tmp/test.wav")));
-    }
-
-    #[test]
-    fn should_parse_no_llm_flag() {
-        // Given / When
-        let cli = Cli::parse_from(["voicepuncher", "--no-llm"]);
-        // Then
-        assert!(cli.no_llm);
-    }
-
-    #[test]
-    fn should_parse_llm_flag() {
-        // Given / When
-        let cli = Cli::parse_from(["voicepuncher", "--llm"]);
-        // Then
-        assert!(cli.llm);
-    }
-
-    #[test]
-    fn should_turn_refinement_on_with_llm() {
-        // Given
-        let cli = Cli::parse_from(["voicepuncher", "--llm"]);
-        let mut cfg = Config::default();
-        // When
-        cli.overlay(&mut cfg);
-        // Then
-        assert!(cfg.refinement.enabled);
-    }
-
-    #[test]
-    fn should_keep_refinement_on_from_config_without_flags() {
-        // Given
-        let cli = Cli::parse_from(["voicepuncher"]);
-        let mut cfg = Config::default();
-        cfg.refinement.enabled = true;
-        // When
-        cli.overlay(&mut cfg);
-        // Then
-        assert!(cfg.refinement.enabled);
-    }
-
-    #[test]
-    fn should_turn_refinement_off_with_no_llm_over_config() {
-        // Given
-        let cli = Cli::parse_from(["voicepuncher", "--no-llm"]);
-        let mut cfg = Config::default();
-        cfg.refinement.enabled = true;
-        // When
-        cli.overlay(&mut cfg);
-        // Then
-        assert!(!cfg.refinement.enabled);
-    }
-
-    #[test]
-    fn should_turn_refinement_off_with_no_llm_over_llm() {
-        // Given
-        let cli = Cli::parse_from(["voicepuncher", "--llm", "--no-llm"]);
-        let mut cfg = Config::default();
-        // When
-        cli.overlay(&mut cfg);
-        // Then
-        assert!(!cfg.refinement.enabled);
     }
 
     #[test]

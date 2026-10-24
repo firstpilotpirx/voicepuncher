@@ -73,7 +73,7 @@ fn term_after_first_window(world: &mut E2eWorld) -> Result<()> {
 fn transcribed_first_sentence(world: &mut E2eWorld) -> Result<()> {
     let path = world.workdir()?.join("first.wav");
     write_wav(&path, &russian(FIRST_SENTENCE)?)?;
-    let output = transcribe(&path, world.config.as_deref(), false)?;
+    let output = transcribe(&path, world.config.as_deref())?;
     if !output.status.success() {
         let log = String::from_utf8_lossy(&output.stderr);
         let load = load_beside(&log, machine_load::report).unwrap_or_default();

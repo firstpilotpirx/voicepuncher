@@ -7,7 +7,7 @@ use voicepuncher::core::domain::{ServiceKind, ServiceSpec};
 
 fn shell(script: &str, log_file: &Path) -> ServiceSpec {
     ServiceSpec {
-        kind: ServiceKind::Refinement,
+        kind: ServiceKind::CommandSpotting,
         label: "test service".into(),
         program: PathBuf::from("/bin/sh"),
         args: vec!["-c".into(), script.into()],

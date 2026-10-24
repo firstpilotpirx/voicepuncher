@@ -5,7 +5,6 @@
 pub enum Tab {
     General,
     Dictation,
-    Refinement,
     Sounds,
     Paste,
     Archive,
@@ -14,10 +13,9 @@ pub enum Tab {
 }
 
 impl Tab {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 7] = [
         Self::General,
         Self::Dictation,
-        Self::Refinement,
         Self::Sounds,
         Self::Paste,
         Self::Archive,
@@ -29,7 +27,6 @@ impl Tab {
         match self {
             Self::General => "General",
             Self::Dictation => "Dictation",
-            Self::Refinement => "Refinement",
             Self::Sounds => "Sounds",
             Self::Paste => "Paste",
             Self::Archive => "Archive",
@@ -43,7 +40,6 @@ impl Tab {
         match self {
             Self::General => "gearshape",
             Self::Dictation => "waveform",
-            Self::Refinement => "sparkles",
             Self::Sounds => "speaker.wave.2",
             Self::Paste => "doc.on.clipboard",
             Self::Archive => "archivebox",
@@ -84,7 +80,6 @@ pub enum Control {
     TextArea,
     LanguageList,
     Folder,
-    Examples,
 }
 
 /// One option of the configuration file on its tab.

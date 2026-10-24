@@ -11,7 +11,6 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 
-use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::adapters::secondary::visualfeedback::quiet::QuietVisualIndicator;
 use voicepuncher::config::Config;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
@@ -211,7 +210,6 @@ impl PipelineAssembler for StandInAssembler {
             PipelineParts {
                 recorder: Box::new(SilentRecorder),
                 transcriber: Box::new(NoSpeech),
-                refiner: Box::new(PassthroughTextRefiner),
                 paster: Box::new(NoPaste),
                 sound_player: Box::new(Silent),
                 visual_indicator: Box::new(QuietVisualIndicator),

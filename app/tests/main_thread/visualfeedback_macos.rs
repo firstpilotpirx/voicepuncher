@@ -57,10 +57,6 @@ pub const TESTS: &[Test] = &[
         should_show_each_processing_stage_with_its_icon_and_label,
     ),
     (
-        "should_show_no_text_window_while_refining",
-        should_show_no_text_window_while_refining,
-    ),
-    (
         "should_show_the_wait_for_focus_without_a_text_window",
         should_show_the_wait_for_focus_without_a_text_window,
     ),
@@ -355,26 +351,6 @@ fn should_show_each_processing_stage_with_its_icon_and_label() {
     assert_eq!(overlay.first_icon_symbol().as_deref(), Some("ear"));
     assert_eq!(overlay.first_label_value().as_deref(), Some("Recognizing"));
     assert_eq!(overlay.first_text_window_value(), None);
-    overlay.show_refining_text();
-    pump_run_loop(DRAWN_SECS);
-    assert_eq!(overlay.first_icon_symbol().as_deref(), Some("sparkles"));
-    assert_eq!(
-        overlay.first_label_value().as_deref(),
-        Some("Refining text")
-    );
-    overlay.hide();
-    pump_run_loop(DRAWN_SECS);
-}
-
-fn should_show_no_text_window_while_refining() {
-    let overlay = overlay_with_notice_lasting(SHORT_NOTICE);
-    overlay.show_refining_text();
-    pump_run_loop(DRAWN_SECS);
-    assert_eq!(
-        overlay.first_label_value().as_deref(),
-        Some("Refining text")
-    );
-    assert_eq!(overlay.first_text_window_value(), None);
     overlay.hide();
     pump_run_loop(DRAWN_SECS);
 }
@@ -448,9 +424,6 @@ fn should_take_the_text_window_away_when_the_recording_ends() {
     pump_run_loop(DRAWN_SECS);
     // Then
     assert_eq!(overlay.first_text_window_value(), None, "while recognizing");
-    overlay.show_refining_text();
-    pump_run_loop(DRAWN_SECS);
-    assert_eq!(overlay.first_text_window_value(), None, "while refining");
     overlay.show_pasted();
     pump_run_loop(DRAWN_SECS);
     assert_eq!(overlay.first_text_window_value(), None, "with Pasted");

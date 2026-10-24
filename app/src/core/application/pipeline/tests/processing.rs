@@ -14,18 +14,10 @@ fn dictate(pipeline: PipelineUnderTest) -> Vec<String> {
 }
 
 #[test]
-fn should_paste_the_refined_text_after_the_stop() {
+fn should_paste_the_transcript_without_its_filler_sounds_after_the_stop() {
     assert_eq!(
-        dictate(PipelineUnderTest::new().refiner(refining_to("Hello."))),
-        ["Hello."]
-    );
-}
-
-#[test]
-fn should_paste_the_raw_transcript_when_refinement_fails() {
-    assert_eq!(
-        dictate(PipelineUnderTest::new().refiner(refinement_down())),
-        ["hello"]
+        dictate(PipelineUnderTest::new().transcriber(transcribing("Эм, hello, э-э, world."))),
+        ["hello, world."]
     );
 }
 
@@ -84,10 +76,7 @@ fn should_log_the_stop_to_paste_line_with_every_stage_and_the_total() {
     // Then
     let lines = log.lines_starting_with("stop→paste: ");
     let line = lines.last().expect("a stop→paste line");
-    assert_eq!(
-        stage_names(line),
-        ["stop", "transcribe", "refine", "paste", "total"]
-    );
+    assert_eq!(stage_names(line), ["stop", "transcribe", "paste", "total"]);
 }
 
 #[test]
@@ -95,7 +84,7 @@ fn should_run_once_and_return_the_pasted_text() {
     // Given
     let mut pipeline = PipelineUnderTest::new()
         .recorder(idle_recorder())
-        .refiner(refining_to("Hello."))
+        .transcriber(transcribing("um Hello."))
         .build();
     // When
     let pasted = pipeline.run_once(one_second()).unwrap();
@@ -104,21 +93,6 @@ fn should_run_once_and_return_the_pasted_text() {
         pasted.map(|text| text.as_str().to_owned()).as_deref(),
         Some("Hello.")
     );
-}
-
-#[test]
-fn should_run_once_and_paste_the_raw_transcript_when_refinement_fails() {
-    // Given
-    let (paster, texts) = noting_paster();
-    let mut pipeline = PipelineUnderTest::new()
-        .recorder(idle_recorder())
-        .refiner(refinement_down())
-        .paster(paster)
-        .build();
-    // When
-    pipeline.run_once(one_second()).unwrap();
-    // Then
-    assert_eq!(seen(&texts), ["hello"]);
 }
 
 #[test]

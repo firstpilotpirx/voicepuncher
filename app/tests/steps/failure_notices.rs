@@ -8,12 +8,11 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, bail, Context, Result};
 use cucumber::{given, then, when};
 
-use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use voicepuncher::core::application::{
     AudioRecorder, ChunkingCfg, CommandSpotter, KeyPresser, PipelineInput, SoundPlayer, TextPaster,
-    TextRefiner, Transcriber, VisualIndicator,
+    Transcriber, VisualIndicator,
 };
 use voicepuncher::core::domain::{
     AccessibilityMissing, AudioBuffer16k, CleanedText, FailingPart, FailureNotice, PttSignal,
@@ -25,12 +24,11 @@ use crate::IntegrationWorld;
 mod doubles;
 mod microphone;
 use doubles::{
-    NotingOverlay, PartsRecorder, QuietSpotter, ScriptedKeys, ScriptedPaster, ScriptedRefiner,
-    ScriptedTranscriber, Silent,
+    NotingOverlay, PartsRecorder, QuietSpotter, ScriptedKeys, ScriptedPaster, ScriptedTranscriber,
+    Silent,
 };
 
 const RAW_TRANSCRIPT: &str = "meeting moved to friday";
-const REFINED_TEXT: &str = "Meeting moved to Friday.";
 /// Longest a pipeline reaction may take in these scenarios.
 const REACTION: Duration = Duration::from_secs(3);
 /// How soon after the stop the failure notice must show.
@@ -71,19 +69,10 @@ enum Recognition {
     FailsOnFirstPart,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-enum Refinement {
-    #[default]
-    Answers,
-    Fails,
-    Off,
-}
-
 /// How the stand-ins behave in a scenario.
 #[derive(Debug, Default, Clone, Copy)]
 struct Setup {
     recognition: Recognition,
-    refinement: Refinement,
     paste_fails: bool,
     microphone_fails: bool,
     long_dictation: bool,
@@ -220,11 +209,6 @@ impl NoticesRun {
 
 fn start_pipeline(events: &Events, setup: Setup) -> Sender<PipelineInput> {
     let (tx, rx) = mpsc::channel();
-    let refiner: Box<dyn TextRefiner> = match setup.refinement {
-        Refinement::Off => Box::new(PassthroughTextRefiner),
-        Refinement::Answers => Box::new(ScriptedRefiner { fails: false }),
-        Refinement::Fails => Box::new(ScriptedRefiner { fails: true }),
-    };
     let threshold = if setup.long_dictation {
         LONG_DICTATION_THRESHOLD_SECS
     } else {
@@ -234,7 +218,6 @@ fn start_pipeline(events: &Events, setup: Setup) -> Sender<PipelineInput> {
         PipelineParts {
             recorder: Box::new(PartsRecorder::new(Arc::clone(events), setup)),
             transcriber: Box::new(ScriptedTranscriber::new(setup.recognition)),
-            refiner,
             paster: Box::new(ScriptedPaster {
                 events: Arc::clone(events),
                 fails: setup.paste_fails,
@@ -247,9 +230,6 @@ fn start_pipeline(events: &Events, setup: Setup) -> Sender<PipelineInput> {
             ..PipelineConfig::default()
         },
     );
-    if setup.refinement == Refinement::Off {
-        pipeline = pipeline.without_text_refinement_stage();
-    }
     if setup.voice_control {
         pipeline = pipeline.with_voice_control(
             Box::new(QuietSpotter { down: setup.spotting_down }),
@@ -333,16 +313,6 @@ fn recognition_fails_on_one_part(world: &mut IntegrationWorld) {
     let run = run(world);
     run.setup.recognition = Recognition::FailsOnFirstPart;
     run.setup.long_dictation = true;
-}
-
-#[given("text refinement is on and its service is down")]
-fn refinement_down(world: &mut IntegrationWorld) {
-    run(world).setup.refinement = Refinement::Fails;
-}
-
-#[given("text refinement is turned off")]
-fn refinement_off(world: &mut IntegrationWorld) {
-    run(world).setup.refinement = Refinement::Off;
 }
 
 #[given("pasting fails")]
@@ -486,8 +456,8 @@ fn dictation_lost(world: &mut IntegrationWorld) -> Result<()> {
 #[then("the speech recorded before the failure is pasted")]
 fn other_parts_pasted(world: &mut IntegrationWorld) -> Result<()> {
     let events = run(world).wait_until_over()?;
-    if pasted(&events) != [REFINED_TEXT] {
-        bail!("expected {REFINED_TEXT:?} pasted; events: {events:?}");
+    if pasted(&events) != [RAW_TRANSCRIPT] {
+        bail!("expected {RAW_TRANSCRIPT:?} pasted; events: {events:?}");
     }
     Ok(())
 }
@@ -497,22 +467,6 @@ fn part_lost(world: &mut IntegrationWorld) -> Result<()> {
     expect_notice(
         world,
         FailureNotice::PartOfDictationLost(FailingPart::SpeechRecognition),
-    )
-}
-
-pub(crate) fn raw_pasted(world: &mut IntegrationWorld) -> Result<()> {
-    let events = run(world).wait_until_over()?;
-    if pasted(&events) != [RAW_TRANSCRIPT] {
-        bail!("expected the raw transcript pasted; events: {events:?}");
-    }
-    Ok(())
-}
-
-#[then("the overlay shows a failure notice that the text was pasted without refinement")]
-fn pasted_unrefined(world: &mut IntegrationWorld) -> Result<()> {
-    expect_notice(
-        world,
-        FailureNotice::PastedUnrefined(FailingPart::TextRefinement),
     )
 }
 

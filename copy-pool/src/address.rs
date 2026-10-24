@@ -6,9 +6,6 @@ use url::{Position, Url};
 
 /// The copies of a speech recognition service listen this far above the service's own port.
 pub const SPEECH_RECOGNITION_COPY_OFFSET: u32 = 10_000;
-/// The copies of the text refinement service listen this far above its port: apart from
-/// every speech recognition copy, though the default ports lie within four of each other.
-pub const TEXT_REFINEMENT_COPY_OFFSET: u32 = 40_000;
 /// The copies of the command spotting service listen this far above its port.
 pub const COMMAND_SPOTTING_COPY_OFFSET: u32 = 41_000;
 /// The most copies one service runs; the service scripts keep to it.
@@ -170,22 +167,20 @@ mod tests {
         let services = [
             ports("http://127.0.0.1:8081/v1", SPEECH_RECOGNITION_COPY_OFFSET),
             ports("http://127.0.0.1:8085/v1", SPEECH_RECOGNITION_COPY_OFFSET),
-            ports("http://127.0.0.1:8080/v1", TEXT_REFINEMENT_COPY_OFFSET),
             ports("ws://127.0.0.1:8082", COMMAND_SPOTTING_COPY_OFFSET),
         ];
         let all: Vec<u16> = services.iter().flatten().copied().collect();
         let distinct: std::collections::HashSet<u16> = all.iter().copied().collect();
-        assert_eq!(all.len(), 16);
+        assert_eq!(all.len(), 12);
         assert_eq!(distinct.len(), all.len(), "{services:?}");
-        assert_eq!(services[2], (48081..=48084).collect::<Vec<u16>>());
-        assert_eq!(services[3], (49083..=49086).collect::<Vec<u16>>());
+        assert_eq!(services[2], (49083..=49086).collect::<Vec<u16>>());
     }
 
     #[test]
     fn should_have_no_copy_ports_where_the_offset_fits_neither_above_nor_below() {
         let address = ServiceAddress::parse("http://127.0.0.1:28080/v1")
             .unwrap()
-            .with_copy_offset(TEXT_REFINEMENT_COPY_OFFSET);
+            .with_copy_offset(40_000);
         assert!(address.copy_ports().is_empty());
     }
 

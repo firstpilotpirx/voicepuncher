@@ -97,7 +97,6 @@ pub(super) struct RecordingIndicator(
 impl VisualIndicator for RecordingIndicator {
     fn show_recording(&self) {}
     fn show_recognizing_speech(&self) {}
-    fn show_refining_text(&self) {}
     fn show_pasted(&self) {
         self.0.lock().unwrap().push(Event::PastedSignShown);
     }

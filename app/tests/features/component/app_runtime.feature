@@ -5,7 +5,7 @@ Feature: app-runtime
 
     Scenario: Every service answers
       Given a valid configuration with voice control off
-      And the speech recognition service and the text refinement service answer
+      And the speech recognition service answers
       When the runtime starts
       Then the dictation pipeline runs with that configuration
       And the runtime state is Ready with voice control off

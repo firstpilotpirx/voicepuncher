@@ -15,11 +15,10 @@ use tempfile::TempDir;
 use voicepuncher::adapters::secondary::archiving::filesystem::{
     ArchiveSetup, FileSystemDictationArchive,
 };
-use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use voicepuncher::core::application::{
-    AudioRecorder, ChunkingCfg, PipelineInput, SoundPlayer, TextPaster, TextRefiner, Transcriber,
+    AudioRecorder, ChunkingCfg, PipelineInput, SoundPlayer, TextPaster, Transcriber,
     VisualIndicator,
 };
 use voicepuncher::core::domain::{
@@ -31,10 +30,7 @@ use crate::steps::quiet_voice_control::{NoKeys, QuietSpotter};
 use crate::steps::voice_control::pipeline_log;
 use crate::IntegrationWorld;
 mod doubles;
-use doubles::{
-    AnsweringTranscriber, FailingRefiner, NotingOverlay, NotingPaster, SentenceRefiner, Silent,
-    TakesRecorder,
-};
+use doubles::{AnsweringTranscriber, NotingOverlay, NotingPaster, Silent, TakesRecorder};
 
 const PHRASE: &str = "meeting moved to friday";
 const SECOND_PHRASE: &str = "call me back tomorrow";
@@ -43,7 +39,6 @@ const STITCHED_CHUNKS: &str = "one two three four five six seven eight nine";
 /// What speech recognition hears of "start", then "stop" said with nothing in between.
 const ONLY_COMMAND_WORDS: &str = "Start stop.";
 const DICTATION_MODEL: &str = "ggml-large-v3-turbo-q5_0.bin";
-const REFINEMENT_MODEL: &str = "Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
 const ARCHIVE_SIZE_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const ENTRY_FILE: &str = "entry.json";
 const AUDIO_FILE: &str = "audio.wav";
@@ -63,14 +58,6 @@ const STOP_AFTER: Duration = Duration::from_secs(2);
 const MIN_PRESS: Duration = Duration::from_secs(5);
 const SAMPLES_PER_PART: usize = AudioBuffer16k::SAMPLE_RATE_HZ as usize;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-enum Refinement {
-    #[default]
-    Works,
-    Off,
-    Fails,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Event {
     Pasted(String),
@@ -88,7 +75,6 @@ type Answers = Arc<Mutex<VecDeque<String>>>;
 pub struct ArchiveRun {
     folder: Option<TempDir>,
     unwritable: bool,
-    refinement: Refinement,
     recognition_fails: bool,
     voice_control: bool,
     in_chunks: bool,
@@ -165,9 +151,6 @@ impl ArchiveRun {
             ARCHIVE_SIZE_LIMIT_BYTES,
             archive_setup(),
         )));
-        if self.refinement == Refinement::Off {
-            pipeline = pipeline.without_text_refinement_stage();
-        }
         if self.voice_control {
             pipeline = pipeline.with_voice_control(Box::new(QuietSpotter), Box::new(NoKeys));
         }
@@ -188,18 +171,9 @@ impl ArchiveRun {
                 answers: Arc::clone(&self.answers),
                 fails: self.recognition_fails,
             }),
-            refiner: self.refiner(),
             paster: Box::new(NotingPaster(Arc::clone(&self.events))),
             sound_player: Box::new(Silent),
             visual_indicator: Box::new(NotingOverlay(Arc::clone(&self.events))),
-        }
-    }
-
-    fn refiner(&self) -> Box<dyn TextRefiner> {
-        match self.refinement {
-            Refinement::Works => Box::new(SentenceRefiner),
-            Refinement::Off => Box::new(PassthroughTextRefiner),
-            Refinement::Fails => Box::new(FailingRefiner),
         }
     }
 
@@ -399,16 +373,8 @@ fn entry_folders(dir: &Path) -> Result<Vec<PathBuf>> {
 fn archive_setup() -> ArchiveSetup {
     ArchiveSetup {
         dictation_model: DICTATION_MODEL.to_owned(),
-        refinement_model: Some(REFINEMENT_MODEL.to_owned()),
         app_version: env!("CARGO_PKG_VERSION").to_owned(),
     }
-}
-
-/// The text refinement service's answer: the phrase as a sentence.
-fn as_sentence(raw: &str) -> String {
-    let mut chars = raw.chars();
-    let first = chars.next().map(|c| c.to_uppercase().collect::<String>());
-    format!("{}{}.", first.unwrap_or_default(), chars.as_str())
 }
 
 fn joined(parts: &[AudioBuffer16k]) -> AudioBuffer16k {
@@ -427,20 +393,6 @@ fn run(world: &mut IntegrationWorld) -> &mut ArchiveRun {
 #[given("the archive is on")]
 fn archive_on(world: &mut IntegrationWorld) -> Result<()> {
     run(world).turn_archive_on()
-}
-
-#[given("the archive is on and text refinement is turned off")]
-fn archive_on_refinement_off(world: &mut IntegrationWorld) -> Result<()> {
-    let run = run(world);
-    run.refinement = Refinement::Off;
-    run.turn_archive_on()
-}
-
-#[given("the archive is on and the text refinement service fails")]
-fn archive_on_refinement_fails(world: &mut IntegrationWorld) -> Result<()> {
-    let run = run(world);
-    run.refinement = Refinement::Fails;
-    run.turn_archive_on()
 }
 
 #[given("the archive is on and the speech recognition service fails")]
@@ -462,7 +414,7 @@ fn archive_unwritable(world: &mut IntegrationWorld) -> Result<()> {
     run(world).make_archive_unwritable()
 }
 
-#[when("the user dictates a phrase with the hotkey and it is pasted after text refinement")]
+#[when("the user dictates a phrase with the hotkey and it is pasted")]
 #[when("the user dictates a phrase")]
 fn dictates_phrase(world: &mut IntegrationWorld) -> Result<()> {
     run(world).dictate_with_hotkey(1, &[PHRASE])
@@ -529,15 +481,14 @@ fn restarted_dictation_entry(world: &mut IntegrationWorld) -> Result<()> {
 }
 
 #[then(
-    "a new archive entry holds the audio of the dictation, the raw transcript speech recognition returned, and the refined text that was pasted"
+    "a new archive entry holds the audio of the dictation, the raw transcript speech recognition returned, and the text that was pasted"
 )]
 fn entry_with_audio_and_texts(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     let entry = run.only_entry()?;
     entry.expect_audio(run.dictated(0)?)?;
     entry.expect("raw_transcript", PHRASE)?;
-    entry.expect("pasted_text", as_sentence(PHRASE))?;
-    entry.expect("refinement", "refined")?;
+    entry.expect("pasted_text", PHRASE)?;
     entry.expect("outcome", "pasted")?;
     entry.expect("start", "hotkey_toggled")
 }
@@ -563,22 +514,19 @@ fn two_entries(world: &mut IntegrationWorld) -> Result<()> {
         entry.expect_audio(run.dictated(number)?)?;
         entry.expect("chunks", vec![phrase])?;
         entry.expect("raw_transcript", phrase)?;
-        entry.expect("pasted_text", as_sentence(phrase))?;
+        entry.expect("pasted_text", phrase)?;
     }
     Ok(())
 }
 
-#[then("its entry says refinement was off and the pasted text equals the raw transcript")]
-fn refinement_off_entry(world: &mut IntegrationWorld) -> Result<()> {
+#[then("its entry names no text refinement model and no refinement outcome")]
+fn entry_without_refinement(world: &mut IntegrationWorld) -> Result<()> {
     let entry = run(world).only_entry()?;
-    entry.expect("refinement", "off")?;
-    entry.expect_pasted_raw_transcript()
-}
-
-#[then("its entry says refinement fell back and the pasted text equals the raw transcript")]
-fn refinement_fell_back_entry(world: &mut IntegrationWorld) -> Result<()> {
-    let entry = run(world).only_entry()?;
-    entry.expect("refinement", "fell_back")?;
+    for key in ["refinement", "refinement_model"] {
+        if entry.json.get(key).is_some() {
+            bail!("the entry still has {key:?}: {}", entry.json);
+        }
+    }
     entry.expect_pasted_raw_transcript()
 }
 
@@ -614,13 +562,12 @@ fn no_entry(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("its entry says it started by voice and names the app version and the models")]
+#[then("its entry says it started by voice and names the app version and the dictation model")]
 fn voice_started_entry(world: &mut IntegrationWorld) -> Result<()> {
     let entry = run(world).only_entry()?;
     entry.expect("start", "voice")?;
     entry.expect("app_version", env!("CARGO_PKG_VERSION"))?;
     entry.expect("dictation_model", DICTATION_MODEL)?;
-    entry.expect("refinement_model", REFINEMENT_MODEL)?;
     entry.expect("outcome", "pasted")
 }
 
@@ -633,7 +580,7 @@ fn pasted_and_warned(world: &mut IntegrationWorld) -> Result<()> {
             .iter()
             .any(|line| line.starts_with(NOT_ARCHIVED_WARNING)))
     })?;
-    if run.pasted() != [as_sentence(PHRASE)] {
+    if run.pasted() != [PHRASE] {
         bail!("the phrase was not pasted as usual: {:?}", run.events());
     }
     if !run.unwritable {

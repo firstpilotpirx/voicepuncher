@@ -100,7 +100,6 @@ pub fn watched_ports(settings: &Settings, prefix: &str) -> Vec<Watched> {
                 .map(|port| watched(port, &copy, variable)),
         );
     }
-    ports.push(watched(settings.llm_port, "llama-server", "LLM_PORT"));
     ports.push(watched(
         settings.kws_port,
         "voicepuncher-command-spotting",
@@ -138,20 +137,12 @@ pub fn testing_lines(settings: &Settings) -> Vec<String> {
         .into_iter()
         .map(|speech| testing_copies(settings, speech))
         .collect();
-    for (port, binary, model_var) in [
-        (settings.llm_port, "llama-server", "VOICEPUNCHER_LLM_MODEL"),
-        (
-            settings.kws_port,
-            "voicepuncher-command-spotting",
-            "VOICEPUNCHER_KWS_MODEL_DIR",
-        ),
-    ] {
-        let model = basename(&std::env::var(model_var).unwrap_or_default());
-        let pid = pid_of(settings, binary, port);
-        lines.push(format!(
-            "● testing {binary} on port {port}: {model}, pid {pid}"
-        ));
-    }
+    let (port, binary) = (settings.kws_port, "voicepuncher-command-spotting");
+    let model = basename(&std::env::var("VOICEPUNCHER_KWS_MODEL_DIR").unwrap_or_default());
+    let pid = pid_of(settings, binary, port);
+    lines.push(format!(
+        "● testing {binary} on port {port}: {model}, pid {pid}"
+    ));
     lines
 }
 

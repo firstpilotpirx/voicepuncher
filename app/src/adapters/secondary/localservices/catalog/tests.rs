@@ -34,14 +34,13 @@ impl Home {
         for file in [
             DICTATION_MODEL,
             COMMAND_MODEL,
-            REFINEMENT_MODEL,
             KWS_VAD_MODEL,
             "ggml-silero-v5.1.2.bin",
         ] {
             home.touch(&models.join(file));
         }
         fs::create_dir_all(models.join("sherpa-onnx-kws-zipformer")).unwrap();
-        for engine in [WHISPER, LLAMA, COMMAND_SPOTTING] {
+        for engine in [WHISPER, COMMAND_SPOTTING] {
             home.touch(&home.path().join("bin").join(engine));
         }
         home
@@ -79,15 +78,16 @@ fn kinds_and_ports(specs: &[ServiceSpec]) -> Vec<(ServiceKind, u16)> {
     specs.iter().map(|spec| (spec.kind, spec.port)).collect()
 }
 
+mod adoption;
 mod command_lines;
 
-const ALL: Needs = Needs { refinement: true, voice_control: true };
+const ALL: Needs = Needs { voice_control: true };
 
 #[test]
-fn should_need_the_dictation_copies_and_refinement_when_voice_control_is_off() {
+fn should_need_only_the_dictation_copies_when_voice_control_is_off() {
     // Given
     let home = Home::complete();
-    let needs = Needs { refinement: true, voice_control: false };
+    let needs = Needs { voice_control: false };
     // When
     let specs = needed(&Config::default(), needs, &home.machine(), &NOTHING_RUNS);
     // Then
@@ -97,19 +97,9 @@ fn should_need_the_dictation_copies_and_refinement_when_voice_control_is_off() {
             (ServiceKind::Dictation, 18082),
             (ServiceKind::Dictation, 18083),
             (ServiceKind::Dictation, 18084),
-            (ServiceKind::Refinement, 48081),
-            (ServiceKind::Refinement, 48082),
         ]
     );
     assert!(specs.iter().all(|spec| spec.problem.is_none()), "{specs:?}");
-}
-
-#[test]
-fn should_need_no_refinement_service_when_refinement_is_off() {
-    let home = Home::complete();
-    let needs = Needs { refinement: false, voice_control: false };
-    let specs = needed(&Config::default(), needs, &home.machine(), &NOTHING_RUNS);
-    assert!(specs.iter().all(|spec| spec.kind == ServiceKind::Dictation));
 }
 
 #[test]
@@ -158,78 +148,38 @@ fn should_split_the_cores_between_the_copies() {
 }
 
 #[test]
-fn should_take_a_speech_recognition_service_as_the_scripts_run_it() {
-    // Given: the scripts run one copy on the service's own port
-    let home = Home::complete();
-    // When
-    let specs = needed(
-        &Config::default(),
-        ALL,
-        &home.machine(),
-        &Answering(vec![8081]),
-    );
-    // Then
-    let dictation: Vec<u16> = specs
-        .iter()
-        .filter(|spec| spec.kind == ServiceKind::Dictation)
-        .map(|spec| spec.port)
-        .collect();
-    assert_eq!(dictation, vec![8081]);
-}
-
-#[test]
-fn should_run_one_configured_refinement_copy_on_the_service_port() {
+fn should_run_one_configured_command_spotting_copy_on_the_service_port() {
     // Given
     let home = Home::complete();
     let mut cfg = Config::default();
-    cfg.services.refinement_copies = 1;
+    cfg.services.command_spotting_copies = 1;
     // When
     let specs = needed(&cfg, ALL, &home.machine(), &NOTHING_RUNS);
     // Then
-    let refinement: Vec<(u16, &str)> = specs
+    let spotting: Vec<(u16, &str)> = specs
         .iter()
-        .filter(|spec| spec.kind == ServiceKind::Refinement)
+        .filter(|spec| spec.kind == ServiceKind::CommandSpotting)
         .map(|spec| (spec.port, spec.label.as_str()))
         .collect();
-    assert_eq!(refinement, vec![(8080, "text refinement service")]);
+    assert_eq!(spotting, vec![(8082, "command spotting service")]);
 }
 
 #[test]
-fn should_label_each_refinement_copy() {
+fn should_label_each_command_spotting_copy() {
     let home = Home::complete();
     let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
     let labels: Vec<&str> = specs
         .iter()
-        .filter(|spec| spec.kind == ServiceKind::Refinement)
+        .filter(|spec| spec.kind == ServiceKind::CommandSpotting)
         .map(|spec| spec.label.as_str())
         .collect();
     assert_eq!(
         labels,
         vec![
-            "text refinement service: copy 1 of 2",
-            "text refinement service: copy 2 of 2"
+            "command spotting service: copy 1 of 2",
+            "command spotting service: copy 2 of 2"
         ]
     );
-}
-
-#[test]
-fn should_take_a_refinement_service_as_the_scripts_run_it() {
-    // Given: the scripts run one llama-server on the service's own port
-    let home = Home::complete();
-    // When
-    let specs = needed(
-        &Config::default(),
-        ALL,
-        &home.machine(),
-        &Answering(vec![8080]),
-    );
-    // Then
-    let refinement: Vec<u16> = specs
-        .iter()
-        .filter(|spec| spec.kind == ServiceKind::Refinement)
-        .map(|spec| spec.port)
-        .collect();
-    assert_eq!(refinement, vec![8080]);
 }
 
 #[test]
@@ -280,26 +230,29 @@ fn should_log_each_service_to_a_file_named_by_its_program_and_port() {
     let logs: Vec<PathBuf> = specs.iter().map(|spec| spec.log_file.clone()).collect();
     let in_logs = home.path().join(".voicepuncher/logs");
     assert!(logs.contains(&in_logs.join("whisper-server-18082.log")));
-    assert!(logs.contains(&in_logs.join("llama-server-48081.log")));
     assert!(logs.contains(&in_logs.join("voicepuncher-command-spotting-49083.log")));
 }
 
 #[test]
-fn should_name_the_refinement_model_it_looked_for_when_it_is_not_on_disk() {
+fn should_name_the_command_model_it_looked_for_when_it_is_not_on_disk() {
     // Given
     let home = Home::complete();
-    fs::remove_file(home.models().join(REFINEMENT_MODEL)).unwrap();
+    let missing = home.path().join("elsewhere/ggml-commands.bin");
+    let mut machine = home.machine();
+    machine.env.insert(
+        "VOICEPUNCHER_COMMAND_WHISPER_MODEL".into(),
+        missing.display().to_string(),
+    );
     // When
-    let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
+    let specs = needed(&Config::default(), ALL, &machine, &NOTHING_RUNS);
     // Then
-    let refinement = specs
+    let commands = specs
         .iter()
-        .find(|spec| spec.kind == ServiceKind::Refinement)
+        .find(|spec| spec.kind == ServiceKind::Commands)
         .unwrap();
-    let problem = refinement.problem.as_deref().unwrap();
-    assert!(problem.contains(REFINEMENT_MODEL), "{problem}");
+    let problem = commands.problem.as_deref().unwrap();
     assert!(
-        problem.contains(&home.models().display().to_string()),
+        problem.contains(&missing.display().to_string()),
         "{problem}"
     );
 }
@@ -308,35 +261,35 @@ fn should_name_the_refinement_model_it_looked_for_when_it_is_not_on_disk() {
 fn should_name_a_missing_engine_with_how_to_get_it() {
     // Given
     let home = Home::complete();
-    fs::remove_file(home.path().join("bin").join(LLAMA)).unwrap();
+    fs::remove_file(home.path().join("bin").join(WHISPER)).unwrap();
     // When
     let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
     // Then
-    let problem = specs.last().unwrap().problem.clone().unwrap();
-    assert!(problem.contains("llama-server not found"), "{problem}");
-    assert!(problem.contains("VOICEPUNCHER_LLAMA_BINARY"), "{problem}");
+    let problem = specs[0].problem.clone().unwrap();
+    assert!(problem.contains("whisper-server not found"), "{problem}");
+    assert!(problem.contains("VOICEPUNCHER_WHISPER_BINARY"), "{problem}");
 }
 
 #[test]
 fn should_find_an_engine_from_the_environment_then_the_bundle_then_the_path() {
     // Given
     let home = Home::complete();
-    let bundled = home.path().join("app/engines/llama/llama-server");
-    let chosen = home.path().join("elsewhere/llama-server");
+    let bundled = home.path().join("app/engines/whisper/whisper-server");
+    let chosen = home.path().join("elsewhere/whisper-server");
     home.touch(&bundled);
     home.touch(&chosen);
     let mut machine = home.machine();
     let lookup_program = |machine: &Machine| {
         needed(&Config::default(), ALL, machine, &NOTHING_RUNS)
             .into_iter()
-            .find(|spec| spec.kind == ServiceKind::Refinement)
+            .find(|spec| spec.kind == ServiceKind::Dictation)
             .unwrap()
             .program
     };
     // When
     let from_bundle = lookup_program(&machine);
     machine.env.insert(
-        "VOICEPUNCHER_LLAMA_BINARY".into(),
+        "VOICEPUNCHER_WHISPER_BINARY".into(),
         chosen.display().to_string(),
     );
     let from_env = lookup_program(&machine);
@@ -350,11 +303,7 @@ fn should_take_every_engine_from_its_folder_in_the_bundle_before_the_path() {
     // Given
     let home = Home::complete();
     let engines = home.path().join("app/engines");
-    for (folder, program) in [
-        ("whisper", WHISPER),
-        ("llama", LLAMA),
-        ("command-spotting", COMMAND_SPOTTING),
-    ] {
+    for (folder, program) in [("whisper", WHISPER), ("command-spotting", COMMAND_SPOTTING)] {
         home.touch(&engines.join(folder).join(program));
     }
     // When
@@ -403,28 +352,31 @@ fn should_name_a_bundled_engine_with_the_version_of_its_folder() {
 fn should_name_a_homebrew_engine_with_the_version_of_its_cellar_folder() {
     // Given
     let home = Home::complete();
-    let installed = home.path().join("Cellar/llama.cpp/0.7.0/bin").join(LLAMA);
+    let installed = home
+        .path()
+        .join("Cellar/whisper-cpp/1.7.6/bin")
+        .join(WHISPER);
     home.touch(&installed);
-    let linked = home.path().join("bin").join(LLAMA);
+    let linked = home.path().join("bin").join(WHISPER);
     fs::remove_file(&linked).unwrap();
     std::os::unix::fs::symlink(&installed, &linked).unwrap();
     // When
     let origin = engine_origin(&linked, &home.machine());
     // Then
-    assert_eq!(origin.to_string(), "llama-server 0.7.0 from $PATH");
+    assert_eq!(origin.to_string(), "whisper-server 1.7.6 from $PATH");
 }
 
 #[test]
 fn should_name_an_engine_of_unknown_version_by_where_it_came_from() {
     // Given
     let home = Home::complete();
-    let chosen = home.path().join("elsewhere").join(LLAMA);
+    let chosen = home.path().join("elsewhere").join(WHISPER);
     home.touch(&chosen);
     let built = home.path().join("app").join(COMMAND_SPOTTING);
     home.touch(&built);
     let mut machine = home.machine();
     machine.env.insert(
-        "VOICEPUNCHER_LLAMA_BINARY".into(),
+        "VOICEPUNCHER_WHISPER_BINARY".into(),
         chosen.display().to_string(),
     );
     // When
@@ -433,12 +385,20 @@ fn should_name_an_engine_of_unknown_version_by_where_it_came_from() {
     // Then
     assert_eq!(
         from_env.to_string(),
-        "llama-server (version unknown) from VOICEPUNCHER_LLAMA_BINARY"
+        "whisper-server (version unknown) from VOICEPUNCHER_WHISPER_BINARY"
     );
     assert_eq!(
         from_build.to_string(),
         "voicepuncher-command-spotting (version unknown) from the build folder"
     );
+}
+
+/// The command spotting service as `needed` starts it on the home's machine.
+fn spotting_spec(home: &Home) -> ServiceSpec {
+    needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS)
+        .into_iter()
+        .find(|spec| spec.kind == ServiceKind::CommandSpotting)
+        .unwrap()
 }
 
 #[test]
@@ -449,12 +409,8 @@ fn should_find_the_command_spotting_service_built_next_to_the_app() {
     let built = home.path().join("app").join(COMMAND_SPOTTING);
     home.touch(&built);
     // When
-    let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
+    let spotting = spotting_spec(&home);
     // Then
-    let spotting = specs
-        .iter()
-        .find(|spec| spec.kind == ServiceKind::CommandSpotting)
-        .unwrap();
     assert_eq!(spotting.program, built);
 }
 
@@ -498,12 +454,8 @@ fn should_use_the_newest_of_two_keyword_spotting_models() {
     let past = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
     fs::File::open(&older).unwrap().set_modified(past).unwrap();
     // When
-    let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
+    let spotting = spotting_spec(&home);
     // Then
-    let spotting = specs
-        .iter()
-        .find(|spec| spec.kind == ServiceKind::CommandSpotting)
-        .unwrap();
     assert!(
         spotting.args.contains(&newer.display().to_string()),
         "{:?}",

@@ -34,12 +34,6 @@ pub fn stop(settings: &Settings, services: &[String], out: &mut dyn Write) -> St
                     out,
                 );
             }
-            "llama-server" => stop_service(
-                settings,
-                ["llama-server", "text refinement service"],
-                settings.llm_port,
-                out,
-            ),
             "voicepuncher-command-spotting" => stop_service(
                 settings,
                 ["voicepuncher-command-spotting", "command spotting service"],

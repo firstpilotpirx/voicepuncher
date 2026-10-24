@@ -1,5 +1,5 @@
 //! When a service counts ready: something answers on its port, and for a speech recognition service the copy
-//! transcribed the warm-up utterance; for the text refinement service its health check answers.
+//! transcribed the warm-up utterance.
 
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
@@ -11,8 +11,6 @@ use std::time::{Duration, Instant};
 pub enum Ready {
     /// A speech recognition copy: its port answers and it transcribed the warm-up utterance.
     Whisper { port: u32, warm_up: PathBuf },
-    /// The text refinement service: its health check answers.
-    Llama { port: u32 },
     /// Anything answers on the port.
     Port { port: u32 },
 }
@@ -23,9 +21,6 @@ impl Ready {
     pub fn check(&self) -> Option<String> {
         match self {
             Self::Whisper { port, warm_up } => whisper_ready(*port, warm_up),
-            Self::Llama { port } => {
-                curl_ok(&format!("http://127.0.0.1:{port}/health"), "1").then(String::new)
-            }
             Self::Port { port } => port_open(*port).then(String::new),
         }
     }

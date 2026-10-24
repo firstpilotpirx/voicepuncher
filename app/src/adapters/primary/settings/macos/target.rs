@@ -19,8 +19,6 @@ pub enum Event {
     Play(isize),
     Choose(isize),
     Reveal(isize),
-    AddExample,
-    RemoveExample,
     ToggleAdvanced(isize),
     Save,
     Revert,
@@ -91,16 +89,6 @@ define_class!(
         #[unsafe(method(reveal:))]
         fn reveal(&self, sender: Option<&AnyObject>) {
             self.send_tagged(Event::Reveal, sender);
-        }
-
-        #[unsafe(method(addExample:))]
-        fn add_example(&self, _sender: Option<&AnyObject>) {
-            self.send(Event::AddExample);
-        }
-
-        #[unsafe(method(removeExample:))]
-        fn remove_example(&self, _sender: Option<&AnyObject>) {
-            self.send(Event::RemoveExample);
         }
 
         #[unsafe(method(toggleAdvanced:))]
@@ -190,8 +178,6 @@ impl Action {
     pub const PLAY: Self = Self(c"play:");
     pub const CHOOSE: Self = Self(c"choose:");
     pub const REVEAL: Self = Self(c"reveal:");
-    pub const ADD_EXAMPLE: Self = Self(c"addExample:");
-    pub const REMOVE_EXAMPLE: Self = Self(c"removeExample:");
     pub const TOGGLE_ADVANCED: Self = Self(c"toggleAdvanced:");
     pub const SAVE: Self = Self(c"save:");
     pub const REVERT: Self = Self(c"revert:");

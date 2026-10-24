@@ -20,7 +20,6 @@ pub mod pipeline_input;
 pub mod sound_player;
 pub mod text_insertion;
 pub mod text_paster;
-pub mod text_refiner;
 pub mod transcriber;
 pub mod transcript_filter;
 pub mod visual_indicator;
@@ -31,8 +30,7 @@ pub use audio_recorder::AudioRecorder;
 pub use chunking::ChunkingCfg;
 pub use command_spotter::CommandSpotter;
 pub use dictation_archive::{
-    ArchiveEntry, DictationArchive, DictationOutcome, DictationStart, RefinementOutcome,
-    StageTiming,
+    ArchiveEntry, DictationArchive, DictationOutcome, DictationStart, StageTiming,
 };
 pub use focus_probe::FocusProbe;
 pub use hotkey_listener::HotkeyListener;
@@ -57,6 +55,5 @@ pub use text_insertion::{
     hotkey_pressed_during_wait, insert_text, FocusWaitCfg, Insertion, WaitEnd,
 };
 pub use text_paster::TextPaster;
-pub use text_refiner::TextRefiner;
 pub use transcriber::Transcriber;
 pub use visual_indicator::VisualIndicator;

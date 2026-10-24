@@ -46,7 +46,7 @@ fn ensure_loopback_with_schemes(setting: &str, base_url: &str, schemes: &[&str])
 mod tests {
     use super::*;
 
-    const SETTING: &str = "refinement.base_url";
+    const SETTING: &str = "transcription.base_url";
 
     #[test]
     fn should_accept_loopback_hosts() {

@@ -1,8 +1,7 @@
 use std::time::{Instant, SystemTime};
 
 use crate::core::application::{
-    ArchiveEntry, DictationArchive, DictationOutcome, DictationStart, Insertion, RefinementOutcome,
-    StageTiming,
+    ArchiveEntry, DictationArchive, DictationOutcome, DictationStart, Insertion, StageTiming,
 };
 use crate::core::domain::{AudioBuffer16k, CleanedText, RawTranscript, RecordingMode};
 
@@ -18,7 +17,6 @@ pub(super) struct DictationTrace {
     chunk_texts: Vec<String>,
     raw_transcript: Option<String>,
     pasted_text: Option<String>,
-    refinement: Option<RefinementOutcome>,
     lost_chunks: usize,
 }
 
@@ -31,7 +29,6 @@ impl DictationTrace {
             chunk_texts: Vec::new(),
             raw_transcript: None,
             pasted_text: None,
-            refinement: None,
             lost_chunks: 0,
         }
     }
@@ -49,7 +46,6 @@ impl DictationTrace {
             chunk_texts: self.chunk_texts,
             raw_transcript: self.raw_transcript,
             pasted_text: self.pasted_text,
-            refinement: self.refinement,
             outcome,
             lost_chunks: self.lost_chunks,
             timings: timings.to_vec(),
@@ -99,27 +95,13 @@ impl Dictation {
         }
     }
 
-    /// What went to text refinement and what came back to paste, if anything; `refining`
-    /// says whether text refinement was on.
-    pub(super) fn trace_refinement(
-        &mut self,
-        raw: &RawTranscript,
-        pasted: Option<(&CleanedText, bool)>,
-        refining: bool,
-    ) {
+    /// The stitched transcript and the text made of it to paste, if any.
+    pub(super) fn trace_transcript(&mut self, raw: &RawTranscript, pasted: Option<&CleanedText>) {
         let Some(trace) = self.trace.as_mut() else {
             return;
         };
         trace.raw_transcript = Some(raw.as_str().to_owned());
-        let Some((text, fell_back)) = pasted else {
-            return;
-        };
-        trace.pasted_text = Some(text.as_str().to_owned());
-        trace.refinement = Some(match (refining, fell_back) {
-            (false, _) => RefinementOutcome::Off,
-            (true, true) => RefinementOutcome::FellBack,
-            (true, false) => RefinementOutcome::Refined,
-        });
+        trace.pasted_text = pasted.map(|text| text.as_str().to_owned());
     }
 }
 

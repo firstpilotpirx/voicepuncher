@@ -23,7 +23,6 @@ const FIRST_DUPLICATE_NUMBER: u32 = 2;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArchiveSetup {
     pub dictation_model: String,
-    pub refinement_model: Option<String>,
     pub app_version: String,
 }
 

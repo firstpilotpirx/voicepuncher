@@ -7,7 +7,7 @@ Feature: local-services
     Scenario: Only the speech recognition service is started
       Given no local service runs on the chosen ports
       When the user starts only the speech recognition service for dictation with the service scripts
-      Then the speech recognition service for dictation answers and nothing answers on the ports of the speech recognition service for commands, the text refinement service and the command spotting service
+      Then the speech recognition service for dictation answers and nothing answers on the ports of the speech recognition service for commands and the command spotting service
 
   @smoke @serial
   Rule: A copy of a speech recognition service is ready once it has transcribed speech

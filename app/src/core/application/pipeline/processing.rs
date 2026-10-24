@@ -1,14 +1,15 @@
-//! What a stopped dictation goes through: speech recognition, text refinement, delivery,
-//! the overlay's end and the archive entry; file mode runs the same stages once.
+//! What a stopped dictation goes through: speech recognition, the filler-sound cleanup,
+//! delivery, the overlay's end and the archive entry; file mode runs the same stages once.
 
 use std::time::Instant;
 
 use crate::core::application::chunking::{merge_chunk_texts, split_into_chunks};
-use crate::core::application::text_refiner::refine_or_raw;
 use crate::core::application::{
     insert_text, DictationOutcome, DictationStart, FocusWaitCfg, StageTiming,
 };
-use crate::core::domain::{AudioBuffer16k, CleanedText, FailingPart, FailureNotice, RawTranscript};
+use crate::core::domain::{
+    text_to_paste, AudioBuffer16k, CleanedText, FailingPart, FailureNotice, RawTranscript,
+};
 
 use super::archiving::insertion_outcome;
 use super::dictation::Dictation;
@@ -61,8 +62,9 @@ impl StageClock {
 }
 
 impl Pipeline {
-    /// Refines and delivers `raw`, ends the dictation on the overlay, logs the stages and
-    /// keeps the dictation in the archive; `pasting` names the dictation in the paste log.
+    /// Delivers `raw` without its filler sounds, ends the dictation on the overlay, logs the
+    /// stages and keeps the dictation in the archive; `pasting` names the dictation in the
+    /// paste log.
     pub(super) fn finish(
         &mut self,
         mut dictation: Dictation,
@@ -70,14 +72,11 @@ impl Pipeline {
         mut clock: StageClock,
         pasting: &str,
     ) {
-        log::info!("refining…");
-        if self.cfg.shows_refinement {
-            self.visual_indicator.show_refining_text();
-        }
-        let Some(cleaned) = self.refine(&mut dictation, raw) else {
+        let cleaned = text_to_paste(raw);
+        dictation.trace_transcript(raw, cleaned.as_ref());
+        let Some(cleaned) = cleaned else {
             return self.end_without_text(dictation, DictationOutcome::NoText, &clock);
         };
-        clock.lap("refine");
         log::info!("pasting… {pasting}");
         let outcome = self.deliver(&mut dictation, &cleaned);
         clock.lap("paste");
@@ -98,7 +97,7 @@ impl Pipeline {
         self.close_trace(dictation, outcome, clock.stages());
     }
 
-    /// The transcript of `audio` to refine, or how the dictation ends without one.
+    /// The transcript of `audio` to paste, or how the dictation ends without one.
     pub(super) fn transcribe_recording(
         &self,
         dictation: &mut Dictation,
@@ -126,22 +125,6 @@ impl Pipeline {
         })
     }
 
-    /// The text to paste; a fallback to the raw transcript is noted for the notice.
-    pub(super) fn refine(
-        &mut self,
-        dictation: &mut Dictation,
-        raw: &RawTranscript,
-    ) -> Option<CleanedText> {
-        let refined = refine_or_raw(self.refiner.as_mut(), raw);
-        let pasted = refined.as_ref().map(|r| (&r.text, r.fell_back));
-        dictation.trace_refinement(raw, pasted, self.cfg.shows_refinement);
-        let refined = refined?;
-        if refined.fell_back {
-            dictation.note_failure(FailureNotice::PastedUnrefined(FailingPart::TextRefinement));
-        }
-        Some(refined.text)
-    }
-
     /// Pastes `cleaned`, after a wait for text input focus when one is configured.
     fn deliver(&mut self, dictation: &mut Dictation, cleaned: &CleanedText) -> DictationOutcome {
         let insertion = insert_text(
@@ -161,7 +144,7 @@ impl Pipeline {
         insertion_outcome(&insertion)
     }
 
-    /// Transcribes, refines and pastes one recording, as file mode does; the pasted text,
+    /// Transcribes and pastes one recording, as file mode does; the pasted text,
     /// none when the recording held no speech.
     pub fn run_once(&mut self, audio: AudioBuffer16k) -> anyhow::Result<Option<CleanedText>> {
         let mut dictation = self.new_dictation(DictationStart::RecordingFile);
@@ -181,7 +164,11 @@ impl Pipeline {
         clock.lap("transcribe");
         dictation.trace_chunks(&texts, 0);
         let raw = RawTranscript::new(merge_chunk_texts(texts)).ok();
-        let Some(cleaned) = raw.and_then(|raw| self.refine(&mut dictation, &raw)) else {
+        let cleaned = raw.as_ref().and_then(text_to_paste);
+        if let Some(raw) = &raw {
+            dictation.trace_transcript(raw, cleaned.as_ref());
+        }
+        let Some(cleaned) = cleaned else {
             self.close_trace(dictation, DictationOutcome::NoText, clock.stages());
             return Ok(None);
         };

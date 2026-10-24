@@ -4,7 +4,6 @@ pub mod file_transcription;
 pub mod local_services;
 mod shared;
 pub mod speech_recognition;
-mod text_refinement;
 pub mod voice_control;
 
 use std::panic::{self, AssertUnwindSafe};

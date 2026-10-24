@@ -14,14 +14,10 @@ use crate::adapters::secondary::keypressing::macos::MacOsKeyPresser;
 use crate::adapters::secondary::recording::cpal::CpalAudioRecorder;
 use crate::adapters::secondary::soundplaying::macos::MacosSoundPlayer;
 use crate::adapters::secondary::textpasting::macos::MacOsTextPaster;
-use crate::adapters::secondary::textrefinement::openai::OpenAiTextRefiner;
-use crate::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use crate::adapters::secondary::transcription::openai::{longest_wait, OpenAiTranscriber};
 use crate::config::{Config, TranscriptionCfg};
 use crate::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
-use crate::core::application::{
-    ChunkingCfg, CommandSpotter, FocusWaitCfg, PipelineInput, TextRefiner,
-};
+use crate::core::application::{ChunkingCfg, CommandSpotter, FocusWaitCfg, PipelineInput};
 
 use super::{PipelineAssembler, SharedVisualIndicator};
 
@@ -51,7 +47,6 @@ impl WiringAssembler {
 }
 
 impl PipelineAssembler for WiringAssembler {
-    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn assemble(&mut self, config: &Config, inputs: Sender<PipelineInput>) -> Result<Pipeline> {
         let recorder = self.recorder(config, inputs.clone());
         let spotter = config
@@ -60,13 +55,11 @@ impl PipelineAssembler for WiringAssembler {
             .then(|| connect_command_spotter(config, inputs))
             .transpose()?;
         let transcriber = connect_transcriber(config)?;
-        let refiner = connect_refiner(config)?;
         let paster = MacOsTextPaster::new(config.paste.clipboard_restore_delay_ms);
         let mut pipeline = Pipeline::new(
             PipelineParts {
                 recorder: Box::new(recorder),
                 transcriber: Box::new(transcriber),
-                refiner,
                 paster: Box::new(paster),
                 sound_player: Box::new(sound_player(config)),
                 visual_indicator: Box::new(self.overlay.clone()),
@@ -81,9 +74,6 @@ impl PipelineAssembler for WiringAssembler {
                 poll_interval: FOCUS_POLL_INTERVAL,
             },
         );
-        if !config.refinement.enabled {
-            pipeline = pipeline.without_text_refinement_stage();
-        }
         if config.archive.enabled {
             pipeline = pipeline.with_archive(Box::new(connect_archive(config)));
         } else {
@@ -128,7 +118,7 @@ fn sound_player(config: &Config) -> MacosSoundPlayer {
     )
 }
 
-/// The dictation archive in the configured folder, with the models every entry records.
+/// The dictation archive in the configured folder, with the model every entry records.
 pub fn connect_archive(config: &Config) -> FileSystemDictationArchive {
     let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
     let dir = config.archive.resolved_dir(&home);
@@ -137,11 +127,8 @@ pub fn connect_archive(config: &Config) -> FileSystemDictationArchive {
         dir.display(),
         config.archive.max_size_mb
     );
-    let refining = config.refinement.enabled;
-    let refinement_model = refining.then(|| config.refinement.model.clone());
     let setup = ArchiveSetup {
         dictation_model: config.transcription.model.clone(),
-        refinement_model,
         app_version: env!("CARGO_PKG_VERSION").to_string(),
     };
     FileSystemDictationArchive::new(dir, config.archive.max_size_bytes(), setup)
@@ -168,50 +155,10 @@ pub fn connect_transcriber(config: &Config) -> Result<OpenAiTranscriber> {
     OpenAiTranscriber::connect(config.transcription.clone())
 }
 
-/// The text refiner `[refinement] enabled` asks for, read anew at every assembly so a
-/// reload switches refinement on or off.
-pub fn connect_refiner(config: &Config) -> Result<Box<dyn TextRefiner>> {
-    if !config.refinement.enabled {
-        log::info!("text refinement off (turn it on with --llm), pasting raw transcripts");
-        return Ok(Box::new(PassthroughTextRefiner));
-    }
-    let refiner = OpenAiTextRefiner::connect(config.refinement.clone())?;
-    Ok(Box::new(refiner))
-}
-
 pub fn chunking_cfg(cfg: &TranscriptionCfg) -> ChunkingCfg {
     ChunkingCfg {
         chunk_threshold_secs: cfg.chunk_threshold_secs,
         chunk_overlap_secs: cfg.chunk_overlap_secs,
         vad_lookback_secs: cfg.vad_lookback_secs,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn should_paste_raw_transcripts_without_a_refinement_service_when_refinement_is_off() {
-        // Given
-        let mut config = Config::default();
-        config.refinement.enabled = false;
-        config.refinement.base_url = "http://127.0.0.1:1/v1".into();
-        // When
-        let refiner = connect_refiner(&config);
-        // Then
-        assert!(refiner.is_ok());
-    }
-
-    #[test]
-    fn should_need_the_refinement_service_when_refinement_is_on() {
-        // Given
-        let mut config = Config::default();
-        config.refinement.enabled = true;
-        config.refinement.base_url = "http://127.0.0.1:1/v1".into();
-        // When
-        let refiner = connect_refiner(&config);
-        // Then
-        assert!(refiner.is_err());
     }
 }

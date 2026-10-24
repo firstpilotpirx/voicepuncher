@@ -1,7 +1,6 @@
 //! The local services the app talks to over loopback (the `justfile`'s `start-model-servers`,
 //! `stop-model-servers` and the E2E pair): the speech recognition services for dictation and for commands, each
-//! as one `whisper-server` or as copies 10000 above its port, the text refinement service and the command
-//! spotting service. Each runs under its supervisor (`dev-tools supervise`), which starts it again when it
+//! as one `whisper-server` or as copies 10000 above its port, and the command spotting service. Each runs under its supervisor (`dev-tools supervise`), which starts it again when it
 //! exits; the PID files in `~/.voicepuncher/run` name the supervisors, the logs are in `~/.voicepuncher/logs`.
 
 pub mod command_lines;
@@ -30,10 +29,9 @@ pub const MAX_COPIES: u32 = 4;
 
 /// Every service, in the order a start without names starts them: the service for commands before the command
 /// spotting service, so its first confirmation finds it ready.
-pub const SERVICES: [&str; 4] = [
+pub const SERVICES: [&str; 3] = [
     "whisper-server",
     "whisper-server-commands",
-    "llama-server",
     "voicepuncher-command-spotting",
 ];
 
@@ -82,14 +80,13 @@ pub struct Settings {
     pub log_dir: PathBuf,
     pub dictation: Speech,
     pub commands: Speech,
-    pub llm_port: u32,
     pub kws_port: u32,
 }
 
 impl Settings {
     /// The settings of this environment: `VOICEPUNCHER_STT_PORT` (8081), `VOICEPUNCHER_STT_INSTANCES` (3),
-    /// `VOICEPUNCHER_COMMAND_STT_PORT` (8085), `VOICEPUNCHER_COMMAND_STT_INSTANCES` (3), `VOICEPUNCHER_LLM_PORT`
-    /// (8080) and `VOICEPUNCHER_KWS_PORT` (8082).
+    /// `VOICEPUNCHER_COMMAND_STT_PORT` (8085), `VOICEPUNCHER_COMMAND_STT_INSTANCES` (3) and
+    /// `VOICEPUNCHER_KWS_PORT` (8082).
     pub fn from_env() -> Result<Self, String> {
         let home = home();
         Ok(Self {
@@ -110,14 +107,8 @@ impl Settings {
                 model_var: "VOICEPUNCHER_COMMAND_WHISPER_MODEL",
                 label: "speech recognition service for commands",
             },
-            llm_port: port("VOICEPUNCHER_LLM_PORT", "8080")?,
             kws_port: port("VOICEPUNCHER_KWS_PORT", "8082")?,
         })
-    }
-
-    /// The URL of the text refinement service.
-    pub fn llm_url(&self) -> String {
-        format!("http://127.0.0.1:{}/v1", self.llm_port)
     }
 
     /// The URL of the speech recognition service for commands, which the command spotting service confirms with.
@@ -188,7 +179,7 @@ pub fn selected(args: &[String]) -> Vec<String> {
 /// The message for a name that is no service.
 pub fn unknown(service: &str) -> Stop {
     Stop::Message(format!(
-        "unknown service '{service}' — use whisper-server, whisper-server-commands, llama-server or \
+        "unknown service '{service}' — use whisper-server, whisper-server-commands or \
          voicepuncher-command-spotting"
     ))
 }

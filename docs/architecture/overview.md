@@ -1,6 +1,6 @@
 # System Overview
 
-voicepuncher is an offline push-to-talk voice-to-text menu bar application for macOS Apple Silicon; its command line remains for developers and file mode. The user holds a configurable hotkey (or says a voice command), speaks, releases — the speech is transcribed by a local speech recognition service, optionally cleaned by a local text refinement service, and pasted at the cursor. Nothing leaves the machine: the app opens loopback connections only, and every service runs on the Apple Silicon GPU through Metal.
+voicepuncher is an offline push-to-talk voice-to-text menu bar application for macOS Apple Silicon; its command line remains for developers and file mode. The user holds a configurable hotkey (or says a voice command), speaks, releases — the speech is transcribed by a local speech recognition service and pasted at the cursor. Nothing leaves the machine: the app opens loopback connections only, and every service runs on the Apple Silicon GPU through Metal.
 
 The repository is a Cargo workspace of four crates (`docs/project-map.md` lists their modules):
 
@@ -20,7 +20,7 @@ flowchart TB
     subgraph external["External actors"]
         USER["User\n(hotkey, voice, menu bar, windows)"]
         MACOS["macOS\n(TCC, CoreAudio, AppKit,\nCGEventPost, afplay)"]
-        SERVICES[("Local services\nwhisper-server :8081 · whisper-server-commands :8085\nllama-server :8080 · command spotting :8082")]
+        SERVICES[("Local services\nwhisper-server :8081 · whisper-server-commands :8085\ncommand spotting :8082")]
         FS["File system\n(config, models, logs,\ndictation archive, WAV)"]
     end
 
@@ -42,7 +42,7 @@ flowchart TB
         GATE["PermissionsGate"]
         DOWNLOAD["ModelDownload"]
         SERVICERT["ServiceRuntime\n(local services)"]
-        PORTS["Ports (traits)\nAudioRecorder · Transcriber · TextRefiner\nTextPaster · KeyPresser · FocusProbe\nCommandSpotter · DictationArchive\nVisualIndicator · SoundPlayer · HotkeyListener\nPermissionProbe · LoginItem · ServiceLauncher …"]
+        PORTS["Ports (traits)\nAudioRecorder · Transcriber\nTextPaster · KeyPresser · FocusProbe\nCommandSpotter · DictationArchive\nVisualIndicator · SoundPlayer · HotkeyListener\nPermissionProbe · LoginItem · ServiceLauncher …"]
     end
 
     subgraph domain["core/domain"]
@@ -52,7 +52,6 @@ flowchart TB
     subgraph secondary["Secondary adapters (driven)"]
         REC["recording/cpal · recording/filesystem"]
         STT["transcription/openai\n(whisper-server over HTTP)"]
-        LLM["textrefinement/openai · textrefinement/passthrough\n(llama-server over HTTP, or none)"]
         KWS["commandspotting/websocket\n(command spotting service)"]
         PASTE["textpasting/macos · textpasting/stdio"]
         KEYS["keypressing/macos\n(Enter, Cmd+A, Cmd+V)"]
@@ -75,7 +74,7 @@ flowchart TB
     PORTS --> domain
     PORTS -.implemented by.-> secondary
     REC & FOCUS & PASTE & KEYS & OVERLAY & SOUND & PROBE & LOGIN --> MACOS
-    STT & LLM & KWS & LOCAL --> SERVICES
+    STT & KWS & LOCAL --> SERVICES
     ARCHIVE & MODELS & LOG --> FS
 ```
 
@@ -91,11 +90,9 @@ stateDiagram-v2
     Idle --> Recording : PttSignal::Pressed\nor voice command "start"
     Recording --> Transcribing : PttSignal::Released\n(press ≥ min_press_ms)\nor voice command "stop"
     Recording --> Idle : press < min_press_ms (drop)\nor voice command "cancel"
-    Transcribing --> Refining : RawTranscript produced
-    Refining --> Pasting : CleanedText produced
+    Transcribing --> Pasting : CleanedText produced
     Pasting --> Idle : text pasted
     Transcribing --> Idle : error (failure notice)
-    Refining --> Idle : error (failure notice)
     Pasting --> Idle : error (failure notice)
 ```
 
@@ -108,7 +105,6 @@ Signals received while the pipeline is in any non-Idle state other than `Recordi
 | Hotkey capture | `rdev` | Global key listener without a visible window; works in a terminal |
 | Audio recording | `cpal` | Cross-platform abstraction; picks CoreAudio on macOS; the capture callback is realtime-safe |
 | Speech-to-text | local `whisper-server` (whisper.cpp) over the OpenAI Audio Transcriptions API, via `ureq` | The engine runs outside the app (Metal, any `ggml-*.bin` model); the app stays engine-agnostic and builds without C++. The service runs as copies on the ports 10000 above its own; `copy-pool` finds them from the address and gives each request a free copy |
-| Text refinement | local `llama-server` (llama.cpp) over the OpenAI Chat Completions API, via `ureq`; off by default (passthrough) | Qwen3-4B-Instruct-2507 on Metal in its own process: no FFI, no model in the app's memory, the same loopback rule as speech recognition |
 | Voice control | the command spotting service `voicepuncher-command-spotting` (sherpa-onnx keyword spotting + confirmation by `whisper-server-commands`) over a loopback WebSocket | Keyword spotting is cheap enough to run on the whole microphone stream; the confirmation by a small Whisper model keeps false starts out; a separate process keeps the native library out of the app |
 | Clipboard paste, key presses | `arboard` + `CGEventPost` | `arboard` writes to NSPasteboard; `CGEventPost` sends Cmd+V, Enter and Cmd+A |
 | Text input focus | AppKit accessibility (`AXUIElement`) | A command that types waits for a text field to have the focus |
@@ -121,7 +117,7 @@ Signals received while the pipeline is in any non-Idle state other than `Recordi
 | GUI toolkit, menu bar item | AppKit through `objc2-app-kit` (`NSStatusItem`, `NSMenu`, SF Symbols) | Native look in the light and the dark menu bar, no runtime beyond the system; rejected: Tauri (a web view and a second runtime), egui and iced (no native menu bar item), SwiftUI (a second language and build) |
 | Local services | child processes in their own process group, health over loopback HTTP, SIGTERM then SIGKILL after 5 s | The app needs no scripts to run; a service already running is adopted, never stopped |
 | Packaging | `just` recipes on macOS tools (`plutil`, `iconutil`, `codesign`, `hdiutil`) + `create-dmg` 1.3.0 for the disk image window | A bundle is three files in a fixed tree; `create-dmg` scripts the Finder layout. No packaging crate: `cargo-packager` always signs with the hardened runtime, which blocks the microphone and the key listener without entitlements |
-| Engine distribution | Prebuilt engines in a folder each under `Contents/MacOS/engines/`, their libraries beside them, relocated with `install_name_tool`, pinned by version and sha256 in `app/packaging/engines.lock`, signed inside-out with the app; whisper.cpp from Homebrew, llama.cpp from its release archive, the command spotting service from this workspace | Users install nothing: no Homebrew, nothing on `$PATH`. One folder per engine keeps the two ggml builds apart |
+| Engine distribution | Prebuilt engines in a folder each under `Contents/MacOS/engines/`, their libraries beside them, relocated with `install_name_tool`, pinned by version and sha256 in `app/packaging/engines.lock`, signed inside-out with the app; whisper.cpp from Homebrew, the command spotting service from this workspace | Users install nothing: no Homebrew, nothing on `$PATH`. One folder per engine keeps each engine's libraries apart |
 | Model distribution | downloaded by the app at first launch (`ureq` over HTTPS, `sha2`) from pinned addresses, resumable from `NAME.part`; `--download-models` for a terminal | The models (≈ 3.5 GB in all) are far over a release asset's size limit and change on their own schedule; a pinned sha256 keeps a cut or altered file out |
 | Signing | self-signed code-signing certificate (`VOICEPUNCHER_SIGNING_IDENTITY`), no Developer ID, no notarization | The designated requirement names the certificate, so updates keep the TCC permissions; ad-hoc signatures change identity every build. Gatekeeper needs one "Open Anyway" per version |
 | Login item | `SMAppService.mainAppService` through `objc2-service-management` | The macOS 13+ API for an app's own login item, listed in System Settings → Login Items; no helper app and no launch agent plist |
@@ -132,7 +128,7 @@ Signals received while the pipeline is in any non-Idle state other than `Recordi
 | Goal | Target | Notes |
 |---|---|---|
 | Fully offline | Zero network I/O at runtime | Every model runs locally through Metal; the only internet use is the model download the user starts |
-| Latency | < 3 s end-to-end (release → paste) | On Apple M-series with `large-v3-turbo-q5_0`; refinement with Qwen3-4B adds its own generation time |
+| Latency | < 3 s end-to-end (release → paste) | On Apple M-series with `large-v3-turbo-q5_0` |
 | Multilingual | English + Russian validated | FLEURS en/ru corpus in the benchmark suite |
 | Accuracy (WER) | < 30 % mean WER on the mixed corpus | `just e2e-quick` on 10 samples in every `check`, `just e2e-bench` on 100 in `full-check` |
 | Voice control | Every command of the smoke set recognized from synthesized speech and from the user's recordings | `just e2e-smoke`, `voice_samples_it` |

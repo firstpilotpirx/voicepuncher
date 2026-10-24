@@ -13,7 +13,6 @@ use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_foundation::{NSArray, NSString};
 
 use super::control::{FieldControl, Widget};
-use super::examples::{ExamplesTable, TABLE_SIZE};
 use super::field::{Choices, Control, Field};
 use super::session::SettingsSession;
 use super::target::{Action, FormTarget};
@@ -23,17 +22,13 @@ const TEXT_WIDTH: f64 = 300.0;
 const SLIDER_WIDTH: f64 = 200.0;
 const VALUE_WIDTH: f64 = 40.0;
 const PATH_WIDTH: f64 = 140.0;
-/// Text view heights: the Dictation prompt, the Refinement system prompt.
+/// Text view height: the Dictation prompt.
 const PROMPT_HEIGHT: f64 = 90.0;
-const SYSTEM_PROMPT_HEIGHT: f64 = 120.0;
-const SYSTEM_PROMPT_KEY: &str = "system_prompt";
 const ROW_SPACING: f64 = 8.0;
 const LANGUAGES_PLACEHOLDER: &str = "comma-separated codes, e.g. en, ru";
 const PLAY_TITLE: &str = "▶";
 const CHOOSE_TITLE: &str = "Choose…";
 const REVEAL_TITLE: &str = "Show in Finder";
-const ADD_TITLE: &str = "+";
-const REMOVE_TITLE: &str = "−";
 
 /// What a control is built from.
 pub struct Parts<'a> {
@@ -52,9 +47,8 @@ pub fn control(parts: &Parts, field: &'static Field, tag: isize) -> FieldControl
         Control::Slider { min, max } => slider(parts, min, max, tag),
         Control::Text | Control::Address(_) => text(parts, tag, Widget::Text, ""),
         Control::LanguageList => text(parts, tag, Widget::Languages, LANGUAGES_PLACEHOLDER),
-        Control::TextArea => text_area(parts, field),
+        Control::TextArea => text_area(parts),
         Control::Folder => folder(parts, tag),
-        Control::Examples => examples(parts),
     };
     let (view, outlined, widget) = built;
     let control = FieldControl::new(field, view, outlined, widget);
@@ -158,16 +152,11 @@ fn text(parts: &Parts, tag: isize, widget: TextWidget, placeholder: &str) -> Bui
     (view_of(&text), view_of(&text), widget(text))
 }
 
-fn text_area(parts: &Parts, field: &Field) -> Built {
+fn text_area(parts: &Parts) -> Built {
     let scroll = NSTextView::scrollableTextView(parts.mtm);
-    let height = if field.key == SYSTEM_PROMPT_KEY {
-        SYSTEM_PROMPT_HEIGHT
-    } else {
-        PROMPT_HEIGHT
-    };
     scroll.setBorderType(NSBorderType::BezelBorder);
     width(&scroll, TEXT_WIDTH);
-    height_of(&scroll, height);
+    height_of(&scroll, PROMPT_HEIGHT);
     let held = scroll
         .documentView()
         .and_then(|view| view.downcast::<NSTextView>().ok());
@@ -189,20 +178,6 @@ fn folder(parts: &Parts, tag: isize) -> Built {
     );
     let widget = Widget::Folder(path.clone(), RefCell::new(String::new()));
     (view_of(&row), view_of(&path), widget)
-}
-
-fn examples(parts: &Parts) -> Built {
-    let table = ExamplesTable::new(parts.mtm);
-    let add = button(parts, ADD_TITLE, Action::ADD_EXAMPLE, 0);
-    let remove = button(parts, REMOVE_TITLE, Action::REMOVE_EXAMPLE, 0);
-    let buttons = stack(parts.mtm, &[add.as_ref(), remove.as_ref()]);
-    let column = stack(parts.mtm, &[table.scroll.as_ref(), buttons.as_ref()]);
-    column.setOrientation(NSUserInterfaceLayoutOrientation::Vertical);
-    column.setAlignment(objc2_app_kit::NSLayoutAttribute::Leading);
-    width(&table.scroll, TABLE_SIZE.0);
-    height_of(&table.scroll, TABLE_SIZE.1);
-    let outlined = view_of(&table.scroll);
-    (view_of(&column), outlined, Widget::Examples(table))
 }
 
 /// A push button calling `action` with `tag`.

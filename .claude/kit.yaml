@@ -17,7 +17,7 @@ release:
 panel:
   services:
     - {name: whisper-server, url: "http://127.0.0.1:8081"}
-    - {name: llama-server, url: "http://127.0.0.1:8080"}
+    - {name: whisper-server-commands, url: "http://127.0.0.1:8085"}
     - {name: voicepuncher-command-spotting, url: "http://127.0.0.1:8082"}
 launch:
   max_running: 7

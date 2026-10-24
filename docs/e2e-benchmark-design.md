@@ -39,7 +39,7 @@ When `--input-file <path>` is passed:
 
 - Skips the hotkey listener (no `rdev` thread).
 - Reads the audio file from disk instead of the microphone.
-- Runs the pipeline exactly once: transcribe → refine → output.
+- Runs the pipeline exactly once: transcribe → output.
 - Writes the result text to **stdout** (instead of pasting via accessibility API).
 - Exits with code 0 on success, non-zero on failure.
 
@@ -48,7 +48,7 @@ The binary behaves like a standard Unix filter: audio in via flag, text out via 
 ### CLI change
 
 ```
-voicepuncher --input-file <path> [--config <path>] [--whisper-model <path>] [--llm-model <path>]
+voicepuncher --input-file <path> [--config <path>] [--whisper-model <path>]
 ```
 
 `--input-file` is mutually exclusive with normal (hotkey) mode.
@@ -130,11 +130,10 @@ communicate with the SUT **only through its CLI/HTTP/stdio boundary**.
 
 ```
 1. Resolve binary path from env: VOICEPUNCHER_BIN or target/release/voicepuncher
-2. Resolve model paths from env: VOICEPUNCHER_WHISPER_MODEL, VOICEPUNCHER_LLM_MODEL
+2. Resolve model paths from env: VOICEPUNCHER_WHISPER_MODEL
 3. Fork the binary:
      voicepuncher --input-file <audio.wav> \
                   --whisper-model <whisper.bin> \
-                  --llm-model <llm.gguf> \
                   --config /dev/null   (or a minimal test config)
 4. Capture stdout → hypothesis string
 5. Load ground-truth reference from the dataset manifest
@@ -142,22 +141,18 @@ communicate with the SUT **only through its CLI/HTTP/stdio boundary**.
 7. Assert WER < threshold  (or just record — regression mode)
 ```
 
-### N×N matrix runner
+### Model matrix runner
 
-For benchmark (not regression) mode, the test iterates cartesian product of models:
+For benchmark (not regression) mode, the test iterates the Whisper models:
 
 ```
 for whisper_model in [large-v3-turbo, small, medium]:
-    for llm_model in [Qwen2.5-1.5B, Qwen2.5-3B, none]:
-        for sample in corpus:
-            run binary → collect WER/CER
-        record mean WER/CER per (whisper, llm, dataset, language)
+    for sample in corpus:
+        run binary → collect WER/CER
+    record mean WER/CER per (whisper, dataset, language)
 
 emit results/YYYY-MM-DD_HHMM/summary.md
 ```
-
-The "none" LLM row is the control: raw whisper output without correction.
-This isolates whisper contribution from LLM contribution.
 
 ### Env vars (no hardcoded paths)
 
@@ -165,12 +160,11 @@ This isolates whisper contribution from LLM contribution.
 |---|---|---|
 | `VOICEPUNCHER_BIN` | `../app/target/release/voicepuncher` | Path to binary |
 | `VOICEPUNCHER_WHISPER_MODEL` | — | Whisper model for smoke/regression tests |
-| `VOICEPUNCHER_LLM_MODEL` | — | LLM model for smoke/regression tests |
 | `VOICEPUNCHER_BENCH_CORPUS` | `./corpus` | Root of downloaded dataset samples |
 | `VOICEPUNCHER_BENCH_MODELS_DIR` | `~/.voicepuncher` | Root for benchmark model files |
 
 Tests that require models are skipped (not failed) when the env vars are absent —
-same pattern as `app/tests/it/transcription_openai.rs` and `app/tests/it/textrefinement_openai.rs`.
+same pattern as `app/tests/it/transcription_openai.rs`.
 
 ### WER/CER computation
 

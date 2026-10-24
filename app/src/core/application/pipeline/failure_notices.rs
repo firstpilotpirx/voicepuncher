@@ -14,7 +14,6 @@ pub(super) struct RecordingNotStarted;
 enum Gravity {
     /// Shown at once, never kept for the end of a cycle.
     ShownAtOnce,
-    Unrefined,
     PartLost,
     NotPasted,
     Lost,
@@ -22,7 +21,6 @@ enum Gravity {
 
 fn gravity(notice: FailureNotice) -> Gravity {
     match notice {
-        FailureNotice::PastedUnrefined(_) => Gravity::Unrefined,
         FailureNotice::PartOfDictationLost(_) => Gravity::PartLost,
         FailureNotice::NotPasted(_) => Gravity::NotPasted,
         FailureNotice::DictationLost(_) => Gravity::Lost,
@@ -116,21 +114,17 @@ mod tests {
     #[test]
     fn should_keep_the_first_notice_of_a_cycle() {
         assert_eq!(
-            graver(
-                None,
-                FailureNotice::PastedUnrefined(FailingPart::TextRefinement)
-            ),
-            FailureNotice::PastedUnrefined(FailingPart::TextRefinement)
+            graver(None, FailureNotice::PartOfDictationLost(RECOGNITION)),
+            FailureNotice::PartOfDictationLost(RECOGNITION)
         );
     }
 
     #[test]
-    fn should_rank_a_lost_dictation_over_a_failed_paste_over_a_lost_part_over_no_refinement() {
+    fn should_rank_a_lost_dictation_over_a_failed_paste_over_a_lost_part() {
         let gravest_first = [
             FailureNotice::DictationLost(RECOGNITION),
             FailureNotice::NotPasted(None),
             FailureNotice::PartOfDictationLost(RECOGNITION),
-            FailureNotice::PastedUnrefined(FailingPart::TextRefinement),
         ];
         for (at, graver_notice) in gravest_first.iter().enumerate() {
             for lighter in &gravest_first[at + 1..] {

@@ -5,16 +5,14 @@ use super::voice_command::VoiceCommand;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FailingPart {
     SpeechRecognition,
-    TextRefinement,
     CommandSpotting,
     Microphone,
     Accessibility,
 }
 
 impl FailingPart {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 4] = [
         Self::SpeechRecognition,
-        Self::TextRefinement,
         Self::CommandSpotting,
         Self::Microphone,
         Self::Accessibility,
@@ -24,7 +22,6 @@ impl FailingPart {
     pub fn short_name(self) -> &'static str {
         match self {
             Self::SpeechRecognition => "STT",
-            Self::TextRefinement => "REFINE",
             Self::CommandSpotting => "VOICE",
             Self::Microphone => "MIC",
             Self::Accessibility => "ACCESS",
@@ -34,7 +31,6 @@ impl FailingPart {
     fn failure(self) -> &'static str {
         match self {
             Self::SpeechRecognition => "speech recognition failed",
-            Self::TextRefinement => "text refinement failed",
             Self::CommandSpotting => "command spotting failed",
             Self::Microphone => "the microphone failed",
             Self::Accessibility => "Accessibility permission missing",
@@ -43,9 +39,7 @@ impl FailingPart {
 
     fn remedy(self) -> &'static str {
         match self {
-            Self::SpeechRecognition | Self::TextRefinement | Self::CommandSpotting => {
-                "start the local services"
-            }
+            Self::SpeechRecognition | Self::CommandSpotting => "start the local services",
             Self::Microphone => "check the microphone and its permission",
             Self::Accessibility => "check the Accessibility permission",
         }
@@ -63,7 +57,6 @@ const PILL_LABEL_WITHOUT_PART: &str = "FAILED";
 pub enum FailureNotice {
     DictationLost(FailingPart),
     PartOfDictationLost(FailingPart),
-    PastedUnrefined(FailingPart),
     NotPasted(Option<FailingPart>),
     RecordingNotStarted,
     CommandFailed(VoiceCommand, Option<FailingPart>),
@@ -75,9 +68,7 @@ pub enum FailureNotice {
 impl FailureNotice {
     pub fn part(&self) -> Option<FailingPart> {
         match *self {
-            Self::DictationLost(part)
-            | Self::PartOfDictationLost(part)
-            | Self::PastedUnrefined(part) => Some(part),
+            Self::DictationLost(part) | Self::PartOfDictationLost(part) => Some(part),
             Self::NotPasted(part) | Self::CommandFailed(_, part) => part,
             Self::RecordingNotStarted => Some(FailingPart::Microphone),
             Self::VoiceCommandsUnavailable => Some(FailingPart::CommandSpotting),
@@ -108,7 +99,6 @@ impl FailureNotice {
         let loss: &str = match self {
             Self::DictationLost(_) => "Dictation lost",
             Self::PartOfDictationLost(_) => "Part of the dictation lost",
-            Self::PastedUnrefined(_) => "Pasted without refinement",
             Self::NotPasted(_) => "Text not pasted",
             Self::RecordingNotStarted => "Recording not started",
             Self::CommandFailed(command, _) => return format!("\"{}\" failed", command.phrase()),
@@ -141,7 +131,6 @@ mod tests {
         for part in FailingPart::ALL {
             notices.push(FailureNotice::DictationLost(part));
             notices.push(FailureNotice::PartOfDictationLost(part));
-            notices.push(FailureNotice::PastedUnrefined(part));
             notices.push(FailureNotice::NotPasted(Some(part)));
         }
         for command in VoiceCommand::ALL {
@@ -177,15 +166,6 @@ mod tests {
         assert_eq!(
             notice.message(),
             "Part of the dictation lost: speech recognition failed — start the local services"
-        );
-    }
-
-    #[test]
-    fn should_name_a_paste_without_refinement() {
-        let notice = FailureNotice::PastedUnrefined(FailingPart::TextRefinement);
-        assert_eq!(
-            notice.message(),
-            "Pasted without refinement: text refinement failed — start the local services"
         );
     }
 
@@ -250,9 +230,9 @@ mod tests {
 
     #[test]
     fn should_label_the_pill_with_the_failing_part() {
-        let labels: [&str; 5] =
+        let labels: [&str; 4] =
             FailingPart::ALL.map(|part| FailureNotice::DictationLost(part).part_name());
-        assert_eq!(labels, ["STT", "REFINE", "VOICE", "MIC", "ACCESS"]);
+        assert_eq!(labels, ["STT", "VOICE", "MIC", "ACCESS"]);
     }
 
     #[test]

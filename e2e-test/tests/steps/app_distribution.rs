@@ -235,10 +235,10 @@ fn expand_stage_list(expression: &str) -> Result<Vec<String>> {
         .collect())
 }
 
-/// A stage `_stages` runs under the machine-wide lock, by its rule: an E2E stage, the refinement
-/// evaluation, and every stage after the first of them.
+/// A stage `_stages` runs under the machine-wide lock, by its rule: an E2E stage and every stage
+/// after the first of them.
 fn waits_for_the_lock(stage: &str) -> bool {
-    stage.starts_with("e2e") || stage == "refine-eval" || stage == "\"$stage\""
+    stage.starts_with("e2e") || stage == "\"$stage\""
 }
 
 #[given("the disk image the release build made")]

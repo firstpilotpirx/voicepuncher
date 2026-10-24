@@ -14,7 +14,6 @@ use crate::core::domain::{FailureNotice, VoiceCommand};
 pub enum DictationSignState {
     Recording,
     RecognizingSpeech,
-    RefiningText,
     WaitingForFocus,
     Pasted,
     Failure,
@@ -23,15 +22,12 @@ pub enum DictationSignState {
 impl DictationSignState {
     /// Whether an activity ring turns around the icon: while a local service works on the text.
     pub fn turns_activity_ring(self) -> bool {
-        matches!(self, Self::RecognizingSpeech | Self::RefiningText)
+        matches!(self, Self::RecognizingSpeech)
     }
 
     /// Whether the icon breathes: while the dictation waits for something to finish.
     pub fn breathes(self) -> bool {
-        matches!(
-            self,
-            Self::RecognizingSpeech | Self::RefiningText | Self::WaitingForFocus
-        )
+        matches!(self, Self::RecognizingSpeech | Self::WaitingForFocus)
     }
 }
 
@@ -118,11 +114,6 @@ impl<V: VisualIndicator, S: PointerSignView> VisualIndicator for PointerSignIndi
         self.overlay.show_recognizing_speech();
     }
 
-    fn show_refining_text(&self) {
-        self.show_badge(DictationSignState::RefiningText);
-        self.overlay.show_refining_text();
-    }
-
     fn show_waiting_for_focus(&self) {
         self.show_badge(DictationSignState::WaitingForFocus);
         self.overlay.show_waiting_for_focus();
@@ -200,7 +191,6 @@ mod tests {
         let mut overlay = MockVisualIndicator::new();
         overlay.expect_show_recording().return_const(());
         overlay.expect_show_recognizing_speech().return_const(());
-        overlay.expect_show_refining_text().return_const(());
         overlay.expect_show_waiting_for_focus().return_const(());
         overlay.expect_show_pasted().return_const(());
         overlay.expect_hide().return_const(());
@@ -222,14 +212,12 @@ mod tests {
         // When
         indicator.show_recording();
         indicator.show_recognizing_speech();
-        indicator.show_refining_text();
         indicator.show_waiting_for_focus();
         indicator.show_pasted();
         // Then
         let expected = [
             DictationSignState::Recording,
             DictationSignState::RecognizingSpeech,
-            DictationSignState::RefiningText,
             DictationSignState::WaitingForFocus,
             DictationSignState::Pasted,
         ]
@@ -307,10 +295,7 @@ mod tests {
 
     #[test]
     fn should_turn_the_activity_ring_only_while_a_service_works_on_the_text() {
-        let turning = [
-            DictationSignState::RecognizingSpeech,
-            DictationSignState::RefiningText,
-        ];
+        let turning = [DictationSignState::RecognizingSpeech];
         for badge in all_badges() {
             assert_eq!(
                 badge.turns_activity_ring(),
@@ -324,7 +309,6 @@ mod tests {
     fn should_breathe_only_while_the_dictation_waits() {
         let breathing = [
             DictationSignState::RecognizingSpeech,
-            DictationSignState::RefiningText,
             DictationSignState::WaitingForFocus,
         ];
         for badge in all_badges() {
@@ -332,11 +316,10 @@ mod tests {
         }
     }
 
-    fn all_badges() -> [DictationSignState; 6] {
+    fn all_badges() -> [DictationSignState; 5] {
         [
             DictationSignState::Recording,
             DictationSignState::RecognizingSpeech,
-            DictationSignState::RefiningText,
             DictationSignState::WaitingForFocus,
             DictationSignState::Pasted,
             DictationSignState::Failure,

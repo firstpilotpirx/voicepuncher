@@ -23,8 +23,9 @@ Out of scope: the two whisper speech recognition services and the command spotti
 ### Modified Capabilities
 
 - `text-refinement`: removed entirely.
-- dictation / pipeline capability: pastes the transcription without refinement.
-- service management capability: manages three services instead of four.
+- `processing-stages`, `text-insertion`, `visual-feedback`, `dictation-pointer`, `menu-bar-presence`, `failure-notices`, `voice-control`, `app-runtime`: the transcript is pasted right after speech recognition; no refinement stage, sign or notice.
+- `local-services`, `app-distribution`, `model-download`, `change-workflow`: three services instead of four; no llama.cpp engine, Qwen model or refinement stages.
+- `settings-window`, `dictation-archive`, `file-transcription`, `speech-recognition`: no refinement tab, archive fields or options.
 
 ## Impact
 
@@ -32,8 +33,8 @@ Out of scope: the two whisper speech recognition services and the command spotti
 
 ## Open points
 
-- Old configuration files with LLM keys: proposed — ignore unknown keys silently (or with one warning line) instead of failing to load.
-- Capability names of dictation and service management in `openspec/specs/`: to be confirmed at the specs stage.
+- Old configuration files with LLM keys: decided (design, decision 2) — the loader drops only `[refinement]`, `[llm]` and `services.refinement_copies`, with one warning naming them; every other unknown key still fails the load.
+- Capability names: settled at the specs stage, listed above.
 - Whether to remove the downloaded Qwen model file from `~/.voicepuncher/`: proposed — leave the user's files alone, mention it in the release notes.
 
 ## Release

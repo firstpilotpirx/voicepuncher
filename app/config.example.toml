@@ -19,33 +19,6 @@ chunk_threshold_secs = 15  # recordings longer than this (seconds) are transcrib
 chunk_overlap_secs = 2     # seconds of audio repeated at the start of each subsequent chunk (boundary guard)
 vad_lookback_secs = 5      # max seconds to look back from hard chunk boundary when searching for a pause to cut in
 
-[refinement]
-# Local text refinement service (OpenAI Chat Completions API). Start it with
-# `just start-model-servers`; the model and its context size are set when starting the service.
-enabled = false                         # off by default: the raw transcript is pasted; `--llm` turns it on, `--no-llm` wins
-base_url = "http://127.0.0.1:8080/v1"   # must be on this machine: localhost, 127.0.0.0/8 or [::1]
-model = "local"                         # llama-server serves one model and accepts any name
-api_key = ""                            # sent as a bearer token when not empty (llama-server --api-key)
-system_prompt = """\
-You are a speech-to-text post-processor. Your ONLY job is to fix ASR recognition errors: \
-wrong words, technical terms transcribed in the wrong alphabet, \
-words accidentally merged or split. \
-CRITICAL RULES — NEVER BREAK THESE: \
-(1) NEVER shorten, cut, truncate, abbreviate, or summarize. \
-NEVER use ellipsis (...). NEVER omit any word. \
-Output the COMPLETE text — every single word, no exceptions. \
-(2) Do NOT rewrite, rephrase, restructure, or improve style. Fix only broken words. \
-(3) Preserve the original language exactly — do not translate between languages. \
-If the input contains multiple languages or code-switching (e.g. Russian + English), \
-preserve each language exactly as spoken. \
-(4) Fix technical terms to their correct script \
-(e.g. Docker, API, Kubernetes in English even inside Russian text). \
-(5) If nothing needs fixing, copy the input verbatim — every word, every number. \
-Reply with the corrected text only, nothing else."""
-max_tokens = 512           # upper bound for the cleaned text; the budget also scales with the transcript
-temperature = 0.0
-timeout_secs = 30          # per request
-
 [paste]
 clipboard_restore_delay_ms = 120
 focus_wait_seconds = 300   # wait this long for a text input to get focus before pasting; 0 = paste at once

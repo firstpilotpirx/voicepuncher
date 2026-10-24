@@ -3,8 +3,8 @@
 use super::{
     mpsc, record, AudioBuffer16k, AudioRecorder, ChunkingCfg, CleanedText, Event, Events,
     FailureNotice, FocusProbe, FocusedElement, Instant, LiveChunk, Overlay, RawTranscript,
-    Receiver, Result, SoundPlayer, TextPaster, TextRefiner, Transcriber, VisualIndicator,
-    PIPELINE_LAG, SENTENCE, SERVICE_TIME,
+    Receiver, Result, SoundPlayer, TextPaster, Transcriber, VisualIndicator, PIPELINE_LAG,
+    SENTENCE, SERVICE_TIME,
 };
 
 /// Hands over one second of audio at the stop; recorded in parts, it sends one part while
@@ -73,17 +73,6 @@ impl Transcriber for NotingTranscriber {
     }
 }
 
-pub(super) struct NotingRefiner(pub(super) Events);
-
-impl TextRefiner for NotingRefiner {
-    fn refine(&mut self, raw: &RawTranscript) -> Result<CleanedText> {
-        record(&self.0, Event::RefinementStarted);
-        std::thread::sleep(SERVICE_TIME);
-        record(&self.0, Event::RefinementFinished);
-        Ok(CleanedText::new(raw.as_str().to_owned())?)
-    }
-}
-
 pub(super) struct NotingPaster(pub(super) Events);
 
 impl TextPaster for NotingPaster {
@@ -109,10 +98,6 @@ impl VisualIndicator for NotingOverlay {
 
     fn show_recognizing_speech(&self) {
         record(&self.events, Event::Overlay(Overlay::RecognizingSpeech));
-    }
-
-    fn show_refining_text(&self) {
-        record(&self.events, Event::Overlay(Overlay::RefiningText));
     }
 
     fn show_pasted(&self) {

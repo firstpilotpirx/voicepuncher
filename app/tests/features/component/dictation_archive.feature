@@ -1,5 +1,5 @@
 # The pipeline runs on its own thread with stand-ins for the recorder, speech recognition,
-# text refinement, the paster and the overlay, and keeps its dictations in the real archive
+# the paster and the overlay, and keeps its dictations in the real archive
 # in a temporary folder; the scenarios read the entries back from that folder. The steps
 # block while they watch the pipeline, so @serial keeps other scenarios from stalling them.
 @dictation_archive @component @serial
@@ -9,8 +9,8 @@ Feature: dictation-archive
 
     Scenario: A pasted dictation is archived with its audio and texts
       Given the archive is on
-      When the user dictates a phrase with the hotkey and it is pasted after text refinement
-      Then a new archive entry holds the audio of the dictation, the raw transcript speech recognition returned, and the refined text that was pasted
+      When the user dictates a phrase with the hotkey and it is pasted
+      Then a new archive entry holds the audio of the dictation, the raw transcript speech recognition returned, and the text that was pasted
 
     Scenario: A long dictation keeps the text of every chunk
       Given the archive is on
@@ -21,18 +21,6 @@ Feature: dictation-archive
       Given the archive is on
       When the user dictates two phrases one after the other
       Then the archive holds two entries, each with only its own audio and texts, the later one sorting after the earlier one
-
-  Rule: An entry says how text refinement went
-
-    Scenario: Refinement turned off
-      Given the archive is on and text refinement is turned off
-      When the user dictates a phrase
-      Then its entry says refinement was off and the pasted text equals the raw transcript
-
-    Scenario: Refinement fails
-      Given the archive is on and the text refinement service fails
-      When the user dictates a phrase
-      Then its entry says refinement fell back and the pasted text equals the raw transcript
 
   Rule: Dictations that paste nothing are archived with the reason
 
@@ -66,7 +54,12 @@ Feature: dictation-archive
     Scenario: A voice-started dictation is marked as such
       Given the archive is on and voice control is on
       When the user starts a dictation by voice, dictates a phrase and stops it by voice
-      Then its entry says it started by voice and names the app version and the models
+      Then its entry says it started by voice and names the app version and the dictation model
+
+    Scenario: An entry has no refinement fields
+      Given the archive is on
+      When the user dictates a phrase
+      Then its entry names no text refinement model and no refinement outcome
 
   Rule: Archiving never costs a dictation
 

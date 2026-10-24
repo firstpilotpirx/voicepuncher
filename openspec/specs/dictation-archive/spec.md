@@ -10,8 +10,8 @@ The system SHALL keep every dictation that reached speech recognition in an arch
 
 #### Scenario: A pasted dictation is archived with its audio and texts
 - **GIVEN** the archive is on
-- **WHEN** the user dictates a phrase with the hotkey and it is pasted after text refinement
-- **THEN** a new archive entry holds the audio of the dictation, the raw transcript speech recognition returned, and the refined text that was pasted
+- **WHEN** the user dictates a phrase with the hotkey and it is pasted
+- **THEN** a new archive entry holds the audio of the dictation, the raw transcript speech recognition returned, and the text that was pasted
 
 #### Scenario: A long dictation keeps the text of every chunk
 - **GIVEN** the archive is on
@@ -22,19 +22,6 @@ The system SHALL keep every dictation that reached speech recognition in an arch
 - **GIVEN** the archive is on
 - **WHEN** the user dictates two phrases one after the other
 - **THEN** the archive holds two entries, each with only its own audio and texts, the later one sorting after the earlier one
-
-### Requirement: An entry says how text refinement went
-The system SHALL record in every entry whether the pasted text is the refinement service's answer, the raw transcript because refinement was turned off, or the raw transcript because refinement failed or its answer was rejected.
-
-#### Scenario: Refinement turned off
-- **GIVEN** the archive is on and text refinement is turned off
-- **WHEN** the user dictates a phrase
-- **THEN** its entry says refinement was off and the pasted text equals the raw transcript
-
-#### Scenario: Refinement fails
-- **GIVEN** the archive is on and the text refinement service fails
-- **WHEN** the user dictates a phrase
-- **THEN** its entry says refinement fell back and the pasted text equals the raw transcript
 
 ### Requirement: Dictations that paste nothing are archived with the reason
 The system SHALL archive a dictation that reached speech recognition but pasted nothing, with its audio and the reason: speech recognition failed, speech recognition returned no text, only command words were transcribed, or the paste failed. A recording the user cancelled, one dropped by "restart dictation", and one shorter than the minimum press time SHALL leave no entry.
@@ -65,12 +52,17 @@ The system SHALL archive a dictation that reached speech recognition but pasted 
 - **THEN** the archive holds no entry for it
 
 ### Requirement: An entry carries what is needed to compare runs
-The system SHALL record in every entry the moment the recording started, how it started (hotkey held, hotkey toggled, voice start, or recording file), the audio duration, the time of each stage after the recording stopped, the dictation and text refinement models, and the app version.
+The system SHALL record in every entry the moment the recording started, how it started (hotkey held, hotkey toggled, voice start, or recording file), the audio duration, the time of each stage after the recording stopped, the dictation model, and the app version. An entry SHALL say nothing about text refinement.
 
 #### Scenario: A voice-started dictation is marked as such
 - **GIVEN** the archive is on and voice control is on
 - **WHEN** the user starts a dictation by voice, dictates a phrase and stops it by voice
-- **THEN** its entry says it started by voice and names the app version and the models
+- **THEN** its entry says it started by voice and names the app version and the dictation model
+
+#### Scenario: An entry has no refinement fields
+- **GIVEN** the archive is on
+- **WHEN** the user dictates a phrase
+- **THEN** its entry names no text refinement model and no refinement outcome
 
 ### Requirement: The archive is on for dictations and opt-in for recording files
 The system SHALL archive live dictations by default, into a folder under the app's home folder, and SHALL let the user turn the archive off or name another folder in the configuration or on the command line. A recording file SHALL be archived only when an archive folder is named on the command line, so test and benchmark runs never write into the user's archive.

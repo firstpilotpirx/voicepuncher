@@ -13,7 +13,6 @@ use voicepuncher::core::domain::{ServiceKind, ServiceStatus};
 use voicepuncher::runtime::services::{LocalServices, ManagedServices, ServicesView};
 use voicepuncher_copy_pool::{
     ServiceAddress, COMMAND_SPOTTING_COPY_OFFSET, SPEECH_RECOGNITION_COPY_OFFSET,
-    TEXT_REFINEMENT_COPY_OFFSET,
 };
 
 use super::{answers, free_port, pgrep, signal, wait_until, workspace_root};
@@ -21,13 +20,12 @@ use super::{answers, free_port, pgrep, signal, wait_until, workspace_root};
 /// Loading the models of every copy takes up to a minute on a busy machine.
 const READY_WITHIN: Duration = Duration::from_secs(240);
 /// The programs the app starts, as their command lines begin.
-const PROGRAMS: &str = "(whisper-server|llama-server|voicepuncher-command-spotting)";
+const PROGRAMS: &str = "(whisper-server|voicepuncher-command-spotting)";
 
 /// Which services a scenario needs, and as how many copies.
 #[derive(Debug, Clone, Copy)]
 pub struct Needed {
     pub dictation_copies: u32,
-    pub refinement_copies: Option<u32>,
     pub voice_control: bool,
 }
 
@@ -79,12 +77,6 @@ impl ManagedRun {
         config.voice_control.url = format!(
             "ws://127.0.0.1:{}",
             free_service_port(COMMAND_SPOTTING_COPY_OFFSET)?
-        );
-        config.refinement.enabled = needed.refinement_copies.is_some();
-        config.services.refinement_copies = needed.refinement_copies.unwrap_or(1);
-        config.refinement.base_url = format!(
-            "http://127.0.0.1:{}/v1",
-            free_service_port(TEXT_REFINEMENT_COPY_OFFSET)?
         );
         let mut machine = Machine::current();
         machine.home = home.path().to_path_buf();

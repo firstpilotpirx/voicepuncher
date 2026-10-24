@@ -63,7 +63,7 @@ fn should_show_a_lock_never_taken_and_one_the_caller_held() {
 
 #[test]
 fn should_lock_every_stage_from_the_first_model_stage_on() {
-    for stage in ["e2e-smoke-voice", "e2e-cues", "refine-eval", "it-real"] {
+    for stage in ["e2e-smoke-voice", "e2e-cues", "it-real"] {
         assert!(is_model(stage), "{stage}");
     }
     for stage in [
@@ -190,11 +190,11 @@ fn should_run_voice_control_first_and_the_cues_last() {
 
 #[test]
 fn should_run_the_same_stages_as_before() {
-    let check = "e2e-smoke-speech e2e-smoke-refinement e2e-smoke-voice e2e-smoke-services e2e-quick refine-eval";
+    let check = "e2e-smoke-speech e2e-smoke-voice e2e-smoke-services e2e-quick";
     assert_eq!(sorted(&variable("check_model_stages")), sorted(check));
-    let full = "e2e-smoke-speech e2e-smoke-refinement e2e-smoke-voice e2e-smoke-services e2e-regression e2e-seams it-real e2e-cues e2e-resilience e2e-bundle accuracy refine-eval";
+    let full = "e2e-smoke-speech e2e-smoke-voice e2e-smoke-services e2e-regression e2e-seams it-real e2e-cues e2e-resilience e2e-bundle accuracy";
     assert_eq!(sorted(&variable("full_check_model_stages")), sorted(full));
-    let smoke = "e2e-smoke-speech e2e-smoke-refinement e2e-smoke-voice e2e-smoke-services";
+    let smoke = "e2e-smoke-speech e2e-smoke-voice e2e-smoke-services";
     assert_eq!(sorted(&variable("e2e_smoke_stages")), sorted(smoke));
     let tables = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),

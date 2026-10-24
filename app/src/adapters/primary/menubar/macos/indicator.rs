@@ -129,11 +129,6 @@ impl<I: VisualIndicator> VisualIndicator for StatusItemIndicator<I> {
         self.cell.apply(OverlaySignal::RecognizingSpeech);
     }
 
-    fn show_refining_text(&self) {
-        self.overlay.show_refining_text();
-        self.cell.apply(OverlaySignal::RefiningText);
-    }
-
     fn show_waiting_for_focus(&self) {
         self.overlay.show_waiting_for_focus();
         self.cell.apply(OverlaySignal::WaitingForFocus);

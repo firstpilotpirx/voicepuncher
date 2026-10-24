@@ -17,7 +17,8 @@ use super::{config_with, push, run, Event, Events, RuntimeRun, FIRST_HOTKEY, SET
 use crate::IntegrationWorld;
 
 const DICTATION: u16 = 18082;
-const REFINEMENT: u16 = 8080;
+/// A second copy of the speech recognition service for dictation.
+const SECOND_COPY: u16 = 28082;
 const COMMANDS: u16 = 18086;
 const COMMAND_SPOTTING: u16 = 8082;
 /// How many looks of the runtime a service started by itself takes to answer.
@@ -72,10 +73,9 @@ impl FakeServices {
 
 fn status(port: u16) -> ServiceStatus {
     let kind = match port {
-        DICTATION => ServiceKind::Dictation,
+        DICTATION | SECOND_COPY => ServiceKind::Dictation,
         COMMANDS => ServiceKind::Commands,
-        COMMAND_SPOTTING => ServiceKind::CommandSpotting,
-        _ => ServiceKind::Refinement,
+        _ => ServiceKind::CommandSpotting,
     };
     ServiceStatus {
         kind,
@@ -89,7 +89,7 @@ fn status(port: u16) -> ServiceStatus {
 
 impl LocalServices for FakeServices {
     fn require(&mut self, config: &Config) {
-        let mut needed = vec![DICTATION, REFINEMENT];
+        let mut needed = vec![DICTATION, SECOND_COPY];
         if config.voice_control.enabled {
             needed.extend([COMMANDS, COMMAND_SPOTTING]);
         }
@@ -168,7 +168,7 @@ fn services_become_ready(world: &mut IntegrationWorld) -> Result<()> {
     wait_for_state(run, starting_services(0, 2))?;
     services(run)?.set(DICTATION, ServiceState::Ready);
     wait_for_state(run, starting_services(1, 2))?;
-    services(run)?.set(REFINEMENT, ServiceState::Ready);
+    services(run)?.set(SECOND_COPY, ServiceState::Ready);
     Ok(())
 }
 
@@ -201,15 +201,15 @@ fn runtime_waits_for_services(world: &mut IntegrationWorld) -> Result<()> {
 
 #[when("a needed service is marked Failed")]
 fn service_failed(world: &mut IntegrationWorld) -> Result<()> {
-    let reason = "could not start 5 times in a row; see /logs/8080.log".to_string();
-    services(run(world))?.set(REFINEMENT, ServiceState::Failed(reason));
+    let reason = "could not start 5 times in a row; see /logs/28082.log".to_string();
+    services(run(world))?.set(SECOND_COPY, ServiceState::Failed(reason));
     Ok(())
 }
 
 #[then("the runtime state is Failed naming that service")]
 fn failed_naming_that_service(world: &mut IntegrationWorld) -> Result<()> {
     run(world).state_becomes(
-        |s| matches!(s, RuntimeState::Failed(reason) if reason.contains("text refinement service")),
+        |s| matches!(s, RuntimeState::Failed(reason) if reason.contains("speech recognition service for dictation")),
     )
 }
 
@@ -233,9 +233,9 @@ fn runtime_failed_for_service(world: &mut IntegrationWorld) -> Result<()> {
 #[when("the service is retried and becomes ready")]
 fn service_retried(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
-    services(run)?.set(REFINEMENT, ServiceState::Starting { attempt: 1 });
+    services(run)?.set(SECOND_COPY, ServiceState::Starting { attempt: 1 });
     wait_for_state(run, starting_services(1, 2))?;
-    services(run)?.set(REFINEMENT, ServiceState::Ready);
+    services(run)?.set(SECOND_COPY, ServiceState::Ready);
     Ok(())
 }
 
@@ -272,7 +272,7 @@ fn ready_with_services(world: &mut IntegrationWorld) -> Result<()> {
 #[when("one of them stops answering")]
 fn one_stops_answering(world: &mut IntegrationWorld) -> Result<()> {
     let restarting = ServiceState::Restarting { attempt: 1, pause: Duration::from_secs(1) };
-    services(run(world))?.set(REFINEMENT, restarting);
+    services(run(world))?.set(SECOND_COPY, restarting);
     Ok(())
 }
 

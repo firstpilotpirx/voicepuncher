@@ -43,7 +43,7 @@ fn should_count_the_needed_services_ready_as_they_answer() {
     let mut harness = Harness::new(false);
     harness.services.supervise(vec![
         spec(ServiceKind::Dictation, 18082),
-        spec(ServiceKind::Refinement, 8080),
+        spec(ServiceKind::Commands, 8080),
     ]);
     harness.services.tick();
     // When
@@ -109,10 +109,10 @@ fn should_stop_command_spotting_first_and_leave_adopted_services_running() {
     let mut harness = Harness::new(false);
     harness.probe.set(8080, ProbeAnswer::Ready);
     harness.services.supervise(vec![
-        spec(ServiceKind::Refinement, 8080),
+        spec(ServiceKind::Commands, 8080),
         spec(ServiceKind::Dictation, 18082),
         spec(ServiceKind::CommandSpotting, 8082),
-        spec(ServiceKind::Refinement, 8090),
+        spec(ServiceKind::Commands, 8090),
     ]);
     harness.services.tick();
     // When
@@ -143,7 +143,7 @@ fn should_kill_a_service_that_does_not_end_five_seconds_after_it_was_asked() {
     let mut harness = Harness::new(true);
     harness
         .services
-        .supervise(vec![spec(ServiceKind::Refinement, 8080)]);
+        .supervise(vec![spec(ServiceKind::Commands, 8080)]);
     harness.services.tick();
     let asked_at = harness.clock.now();
     // When
@@ -161,7 +161,7 @@ fn should_restart_the_service_on_a_port() {
     let mut harness = Harness::new(false);
     harness
         .services
-        .supervise(vec![spec(ServiceKind::Refinement, 8080)]);
+        .supervise(vec![spec(ServiceKind::Commands, 8080)]);
     harness.services.tick();
     // When
     harness.services.restart(8080);
@@ -184,7 +184,7 @@ fn should_publish_the_states_and_stop_the_owned_services_from_its_thread() {
     let runtime = ServiceRuntime::start(services, Duration::from_millis(5)).unwrap();
     // When
     runtime.supervise(vec![
-        spec(ServiceKind::Refinement, 8080),
+        spec(ServiceKind::Commands, 8080),
         spec(ServiceKind::Dictation, 18082),
     ]);
     let deadline = std::time::Instant::now() + Duration::from_secs(2);

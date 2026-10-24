@@ -8,11 +8,9 @@ use crate::core::domain::{HotKey, RecordingMode};
 
 pub mod document;
 mod loopback;
-mod refinement;
 mod transcription;
 
 pub use loopback::{ensure_loopback, ensure_loopback_websocket};
-pub use refinement::{RefinementCfg, RefinementExample};
 pub use transcription::TranscriptionCfg;
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -21,7 +19,6 @@ pub struct Config {
     pub hotkey: HotkeyCfg,
     pub audio: AudioCfg,
     pub transcription: TranscriptionCfg,
-    pub refinement: RefinementCfg,
     pub paste: PasteCfg,
     pub sounds: SoundsCfg,
     pub voice_control: VoiceControlCfg,
@@ -197,7 +194,6 @@ pub struct ServicesCfg {
     pub manage: bool,
     pub dictation_copies: u32,
     pub command_copies: u32,
-    pub refinement_copies: u32,
     pub command_spotting_copies: u32,
     pub models_dir: PathBuf,
     /// The speech recognition service for commands, which the command spotting service asks.
@@ -229,7 +225,6 @@ impl Default for ServicesCfg {
             manage: true,
             dictation_copies: DEFAULT_COPIES,
             command_copies: DEFAULT_COPIES,
-            refinement_copies: DEFAULT_SERVICE_COPIES,
             command_spotting_copies: DEFAULT_SERVICE_COPIES,
             models_dir: PathBuf::from(DEFAULT_MODELS_DIR),
             commands_url: "http://127.0.0.1:8085/v1".into(),
@@ -265,9 +260,40 @@ pub fn load(path: &Path) -> Result<Config> {
 
 /// The configuration `raw` holds, checked as a file is; `origin` names it in errors.
 pub fn parse(raw: &str, origin: &str) -> Result<Config> {
+    let current = without_retired_settings(raw, origin);
+    let raw = current.as_deref().unwrap_or(raw);
     let cfg: Config = toml::from_str(raw).map_err(|error| explain(raw, error, origin))?;
     validate(&cfg).with_context(|| format!("invalid config: {origin}"))?;
     Ok(cfg)
+}
+
+/// Settings of the retired text refinement: ignored, so an old file keeps loading.
+const RETIRED_SECTIONS: [&str; 2] = ["refinement", "llm"];
+const RETIRED_SERVICES_KEY: &str = "refinement_copies";
+
+/// `raw` without the retired text refinement settings, with one warning naming them; `None`
+/// when it has none (or is no table, which the parse then explains).
+fn without_retired_settings(raw: &str, origin: &str) -> Option<String> {
+    let mut table = toml::from_str::<toml::Table>(raw).ok()?;
+    let mut retired: Vec<String> = RETIRED_SECTIONS
+        .into_iter()
+        .filter(|section| table.remove(*section).is_some())
+        .map(|section| format!("[{section}]"))
+        .collect();
+    let services = table
+        .get_mut("services")
+        .and_then(toml::Value::as_table_mut);
+    if services.is_some_and(|services| services.remove(RETIRED_SERVICES_KEY).is_some()) {
+        retired.push(format!("services.{RETIRED_SERVICES_KEY}"));
+    }
+    if retired.is_empty() {
+        return None;
+    }
+    log::warn!(
+        "config: {origin}: {} retired with text refinement, ignored",
+        retired.join(", ")
+    );
+    toml::to_string(&table).ok()
 }
 
 /// Why `raw` is no configuration: the removed section or key it still sets, else `error`.
@@ -276,7 +302,6 @@ fn explain(raw: &str, error: toml::de::Error, origin: &str) -> anyhow::Error {
     let removed = toml::from_str::<toml::Table>(raw).ok().and_then(|table| {
         transcription::reject_removed_whisper_section(&table)
             .and_then(|()| transcription::reject_removed_transcription_keys(&table))
-            .and_then(|()| refinement::reject_removed_llm_section(&table))
             .err()
     });
     match removed {
@@ -288,12 +313,10 @@ fn explain(raw: &str, error: toml::de::Error, origin: &str) -> anyhow::Error {
 /// Checks rules that span the effective config; run again after CLI flags are overlaid.
 pub fn validate(cfg: &Config) -> Result<()> {
     ensure_loopback("transcription.base_url", &cfg.transcription.base_url)?;
-    ensure_loopback("refinement.base_url", &cfg.refinement.base_url)?;
     ensure_loopback_websocket("voice_control.url", &cfg.voice_control.url)?;
     ensure_loopback("services.commands_url", &cfg.services.commands_url)?;
     ensure_copies("services.dictation_copies", cfg.services.dictation_copies)?;
     ensure_copies("services.command_copies", cfg.services.command_copies)?;
-    ensure_copies("services.refinement_copies", cfg.services.refinement_copies)?;
     ensure_copies(
         "services.command_spotting_copies",
         cfg.services.command_spotting_copies,
@@ -311,85 +334,7 @@ fn ensure_copies(key: &str, copies: u32) -> Result<()> {
 }
 
 #[cfg(test)]
-mod default_file_tests {
-    use super::*;
-
-    /// Options the default file leaves to the app: the long refinement texts keep improving
-    /// with it, and the retired key is only tolerated.
-    const LEFT_OUT: [(&str, &str); 3] = [
-        ("refinement", "system_prompt"),
-        ("refinement", "examples"),
-        ("audio", "debug_save_wav"),
-    ];
-
-    #[test]
-    fn should_hold_the_defaults_in_the_default_file() {
-        // Given / When
-        let cfg = parse(DEFAULT_FILE, "the default file").unwrap();
-        // Then
-        assert_eq!(
-            toml::Value::try_from(&cfg).unwrap(),
-            toml::Value::try_from(Config::default()).unwrap()
-        );
-    }
-
-    #[test]
-    #[expect(clippy::excessive_nesting, reason = "size baseline")]
-    fn should_set_every_option_with_a_comment_above_it_in_the_default_file() {
-        // Given
-        let defaults = toml::Value::try_from(Config::default()).unwrap();
-        let document = DEFAULT_FILE.parse::<toml_edit::DocumentMut>().unwrap();
-        // When
-        let mut missing = Vec::new();
-        for (section, keys) in defaults.as_table().unwrap() {
-            for key in keys.as_table().unwrap().keys() {
-                if LEFT_OUT.contains(&(section.as_str(), key.as_str())) {
-                    continue;
-                }
-                let commented = document
-                    .get(section)
-                    .and_then(|table| table.as_table())
-                    .and_then(|table| table.key(key))
-                    .and_then(|key| key.leaf_decor().prefix())
-                    .and_then(|prefix| prefix.as_str())
-                    .is_some_and(|prefix| prefix.trim_start().starts_with('#'));
-                if !commented {
-                    missing.push(format!("{section}.{key}"));
-                }
-            }
-        }
-        // Then
-        assert!(missing.is_empty(), "not set with a comment: {missing:?}");
-    }
-
-    #[test]
-    fn should_write_the_default_file_when_there_is_none() {
-        // Given
-        let folder = tempfile::tempdir().unwrap();
-        let path = folder.path().join("nested/config.toml");
-        // When
-        let outcome = ensure_exists(&path).unwrap();
-        // Then
-        assert_eq!(outcome, FileOutcome::Created);
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), DEFAULT_FILE);
-    }
-
-    #[test]
-    fn should_keep_an_existing_file() {
-        // Given
-        let folder = tempfile::tempdir().unwrap();
-        let path = folder.path().join("config.toml");
-        std::fs::write(&path, "[hotkey]\nkey = \"F13\"\n").unwrap();
-        // When
-        let outcome = ensure_exists(&path).unwrap();
-        // Then
-        assert_eq!(outcome, FileOutcome::Existed);
-        assert_eq!(
-            std::fs::read_to_string(&path).unwrap(),
-            "[hotkey]\nkey = \"F13\"\n"
-        );
-    }
-}
+mod default_file_tests;
 
 #[cfg(test)]
 mod tests {
@@ -595,18 +540,6 @@ mod tests {
     }
 
     #[test]
-    fn should_report_removed_llm_section_with_replacement() {
-        // Given
-        let mut f = tempfile::NamedTempFile::new().unwrap();
-        writeln!(f, "[llm]\nmodel_path = \"~/models/qwen.gguf\"").unwrap();
-        // When
-        let message = format!("{:#}", load(f.path()).unwrap_err());
-        // Then
-        assert!(message.contains("[refinement]"), "{message}");
-        assert!(message.contains("llm.model_path"), "{message}");
-    }
-
-    #[test]
     fn should_parse_transcription_section_from_toml() {
         // Given
         let mut f = tempfile::NamedTempFile::new().unwrap();
@@ -659,78 +592,12 @@ mod tests {
     }
 
     #[test]
-    fn should_parse_refinement_section_from_toml() {
-        // Given
-        let mut f = tempfile::NamedTempFile::new().unwrap();
-        writeln!(
-            f,
-            "[refinement]\nbase_url = \"http://localhost:9090/v1\"\nmodel = \"qwen\"\n\
-             api_key = \"secret\"\nsystem_prompt = \"Fix it.\"\ntemperature = 0.1\n\
-             max_tokens = 256\ntimeout_secs = 5"
-        )
-        .unwrap();
-        // When
-        let cfg = load(f.path()).unwrap();
-        // Then
-        let r = &cfg.refinement;
-        assert_eq!(r.base_url, "http://localhost:9090/v1");
-        assert_eq!(r.model, "qwen");
-        assert_eq!(r.api_key, "secret");
-        assert_eq!(r.system_prompt, "Fix it.");
-        assert_eq!(r.temperature, 0.1_f32);
-        assert_eq!(r.max_tokens, 256);
-        assert_eq!(r.timeout_secs, 5);
-    }
-
-    #[test]
-    fn should_keep_refinement_off_by_default() {
-        // Given / When
-        let cfg = Config::default();
-        // Then
-        assert!(!cfg.refinement.enabled);
-    }
-
-    #[test]
-    fn should_turn_refinement_on_from_toml() {
-        // Given
-        let mut f = tempfile::NamedTempFile::new().unwrap();
-        writeln!(f, "[refinement]\nenabled = true").unwrap();
-        // When
-        let cfg = load(f.path()).unwrap();
-        // Then
-        assert!(cfg.refinement.enabled);
-    }
-
-    #[test]
     fn should_reject_remote_service_set_after_load() {
         // Given
         let mut cfg = Config::default();
         cfg.transcription.base_url = "https://example.com/v1".into();
         // When / Then
         assert!(validate(&cfg).is_err());
-    }
-
-    #[test]
-    fn should_reject_remote_refinement_service_at_load() {
-        // Given
-        let mut f = tempfile::NamedTempFile::new().unwrap();
-        writeln!(f, "[refinement]\nbase_url = \"https://api.openai.com/v1\"").unwrap();
-        // When
-        let message = format!("{:#}", load(f.path()).unwrap_err());
-        // Then
-        assert!(message.contains("refinement.base_url"), "{message}");
-        assert!(message.contains("not on this machine"), "{message}");
-    }
-
-    #[test]
-    fn should_reject_remote_refinement_service_set_after_load() {
-        // Given
-        let mut cfg = Config::default();
-        cfg.refinement.base_url = "http://192.168.1.10:8080/v1".into();
-        // When
-        let message = format!("{:#}", validate(&cfg).unwrap_err());
-        // Then
-        assert!(message.contains("refinement.base_url"), "{message}");
     }
 
     #[test]
@@ -759,12 +626,6 @@ mod tests {
     }
 
     #[test]
-    fn should_run_two_copies_of_the_refinement_service_by_default() {
-        let cfg = Config::default();
-        assert_eq!(cfg.services.refinement_copies, 2);
-    }
-
-    #[test]
     fn should_run_two_copies_of_the_command_spotting_service_by_default() {
         let cfg = Config::default();
         assert_eq!(cfg.services.command_spotting_copies, 2);
@@ -783,19 +644,6 @@ mod tests {
                 message.contains("services.command_spotting_copies"),
                 "{message}"
             );
-        }
-    }
-
-    #[test]
-    fn should_reject_more_refinement_copies_than_the_pool_looks_for() {
-        for copies in [0, 5] {
-            // Given
-            let mut f = tempfile::NamedTempFile::new().unwrap();
-            writeln!(f, "[services]\nrefinement_copies = {copies}").unwrap();
-            // When
-            let message = format!("{:#}", load(f.path()).unwrap_err());
-            // Then
-            assert!(message.contains("services.refinement_copies"), "{message}");
         }
     }
 

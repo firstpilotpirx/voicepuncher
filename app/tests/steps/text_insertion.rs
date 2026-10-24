@@ -10,7 +10,6 @@ use std::time::{Duration, Instant};
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 
-use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use voicepuncher::core::application::{
@@ -122,7 +121,6 @@ impl InsertionRun {
             PipelineParts {
                 recorder: Box::new(OneSecondRecorder(Arc::clone(&events))),
                 transcriber: Box::new(FixedTranscript),
-                refiner: Box::new(PassthroughTextRefiner),
                 paster: Box::new(RecordingPaster(
                     Arc::clone(&events),
                     Arc::clone(&self.left_in_clipboard_at),

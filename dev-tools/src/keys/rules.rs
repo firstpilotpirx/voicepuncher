@@ -5,7 +5,7 @@
 /// A model stage: it runs on the local services and its key also covers what it runs on outside the
 /// repository.
 pub fn is_model_stage(stage: &str) -> bool {
-    stage.starts_with("e2e") || stage == "refine-eval"
+    stage.starts_with("e2e")
 }
 
 struct Rule {
@@ -98,7 +98,7 @@ mod tests {
         assert!(!rules.feeds("docs/a.txt", "e2e-smoke-voice"));
         assert!(!rules.feeds("docs/a.md", "fmt"));
         assert!(rules.feeds("command-spotting/x.rs", "e2e-bench"));
-        assert!(!rules.feeds("command-spotting/x.rs", "refine-eval"));
-        assert!(rules.feeds("app/x.rs", "refine-eval"));
+        assert!(!rules.feeds("command-spotting/x.rs", "e2e-smoke-speech"));
+        assert!(rules.feeds("app/x.rs", "e2e-smoke-speech"));
     }
 }

@@ -2,11 +2,6 @@ use voicepuncher::config::load;
 use voicepuncher::core::domain::HotKey;
 
 #[test]
-#[expect(
-    clippy::too_many_lines,
-    clippy::cognitive_complexity,
-    reason = "size baseline"
-)]
 fn should_round_trip_full_example_toml() {
     // Given
     let toml_str = r#"
@@ -21,14 +16,6 @@ input_device = "default"
 base_url = "http://127.0.0.1:8081/v1"
 language = "auto"
 timeout_secs = 30
-
-[refinement]
-base_url = "http://127.0.0.1:8080/v1"
-model = "qwen"
-system_prompt = "You clean up speech-to-text transcripts."
-max_tokens = 256
-temperature = 0.0
-timeout_secs = 20
 
 [paste]
 clipboard_restore_delay_ms = 120
@@ -54,11 +41,6 @@ level = "info"
     assert_eq!(cfg.transcription.base_url, "http://127.0.0.1:8081/v1");
     assert_eq!(cfg.transcription.language, "auto");
     assert_eq!(cfg.transcription.timeout_secs, 30);
-    assert_eq!(cfg.refinement.base_url, "http://127.0.0.1:8080/v1");
-    assert_eq!(cfg.refinement.model, "qwen");
-    assert_eq!(cfg.refinement.max_tokens, 256);
-    assert_eq!(cfg.refinement.temperature, 0.0_f32);
-    assert_eq!(cfg.refinement.timeout_secs, 20);
     assert_eq!(cfg.paste.clipboard_restore_delay_ms, 120);
     assert!(cfg.archive.enabled);
     assert_eq!(
@@ -70,19 +52,20 @@ level = "info"
 }
 
 #[test]
-fn should_reject_old_llm_section_naming_replacement() {
+fn should_load_a_config_with_the_retired_text_refinement_settings_and_ignore_them() {
     // Given
-    let toml_str = "[llm]\nmodel_path = \"~/qwen.gguf\"\ncontext_size = 4096\n";
-    let temp = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(temp.path(), toml_str).unwrap();
+    let toml_str = "[refinement]\nenabled = true\nmodel = \"qwen\"\n\n\
+                    [llm]\nmodel_path = \"~/qwen.gguf\"\n\n\
+                    [services]\nrefinement_copies = 2\ndictation_copies = 2\n";
 
     // When
-    let msg = format!("{:#}", load(temp.path()).unwrap_err());
+    let cfg = voicepuncher::config::parse(toml_str, "retired").unwrap();
 
     // Then
-    assert!(msg.contains("llm.model_path"), "{msg}");
-    assert!(msg.contains("llm.context_size"), "{msg}");
-    assert!(msg.contains("[refinement].base_url"), "{msg}");
+    assert_eq!(cfg.services.dictation_copies, 2);
+    let kept = toml::to_string(&cfg).unwrap();
+    assert!(!kept.contains("refinement"), "{kept}");
+    assert!(!kept.contains("llm"), "{kept}");
 }
 
 #[test]
@@ -96,7 +79,6 @@ fn should_load_shipped_example_config() {
     // Then
     assert_eq!(cfg.transcription.base_url, "http://127.0.0.1:8081/v1");
     assert_eq!(cfg.transcription.chunk_threshold_secs, 15);
-    assert_eq!(cfg.refinement.base_url, "http://127.0.0.1:8080/v1");
     assert!(cfg.archive.enabled);
     assert_eq!(cfg.archive.max_size_mb, 2048);
 }
@@ -149,7 +131,6 @@ fn should_load_with_only_hotkey_section() {
     // Then
     assert_eq!(cfg.hotkey.key, HotKey::F13);
     assert_eq!(cfg.audio.input_device, "default");
-    assert_eq!(cfg.refinement.max_tokens, 512);
 }
 
 #[test]

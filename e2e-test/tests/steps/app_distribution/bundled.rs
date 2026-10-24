@@ -27,10 +27,9 @@ const RPATH_PREFIX: &str = "@rpath/";
 /// backend folder, which `just engines` blanks.
 const CELLAR: &[u8] = b"/Cellar/";
 /// The license of every bundled engine and library, by the name the bundle gives its file.
-const LICENSES: [&str; 6] = [
+const LICENSES: [&str; 5] = [
     "whisper.cpp-LICENSE",
     "ggml-LICENSE",
-    "llama.cpp-LICENSE",
     "libomp-LICENSE",
     "sherpa-onnx-LICENSE",
     "onnxruntime-LICENSE",
@@ -136,7 +135,7 @@ fn list_engine_folders(world: &mut E2eWorld) -> Result<()> {
 }
 
 #[then(
-    "there is one folder for the speech recognition engine, one for the text refinement engine and one for the command spotting service"
+    "there is one folder for the speech recognition engine and one for the command spotting service"
 )]
 fn one_folder_per_engine(world: &mut E2eWorld) -> Result<()> {
     let mut expected: Vec<String> = ENGINES.iter().map(|engine| (*engine).to_string()).collect();
@@ -312,7 +311,7 @@ fn list_licenses(world: &mut E2eWorld) -> Result<()> {
 }
 
 #[then(
-    "it holds the licenses of whisper.cpp, ggml, llama.cpp, the OpenMP runtime, sherpa-onnx and ONNX Runtime"
+    "it holds the licenses of whisper.cpp, ggml, the OpenMP runtime, sherpa-onnx and ONNX Runtime"
 )]
 fn holds_licenses(world: &mut E2eWorld) -> Result<()> {
     let listed = &world.distribution.bundled.listed;
@@ -322,5 +321,15 @@ fn holds_licenses(world: &mut E2eWorld) -> Result<()> {
             "the bundle's licenses lack {license}: {listed:?}"
         );
     }
+    Ok(())
+}
+
+#[then("it holds no license of llama.cpp")]
+fn no_llama_license(world: &mut E2eWorld) -> Result<()> {
+    let listed = &world.distribution.bundled.listed;
+    ensure!(
+        !listed.iter().any(|name| name.starts_with("llama")),
+        "the bundle still holds a llama.cpp license: {listed:?}"
+    );
     Ok(())
 }

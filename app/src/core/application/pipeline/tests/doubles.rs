@@ -7,13 +7,12 @@ use anyhow::anyhow;
 use crate::core::application::live_transcript_view::HiddenLiveTranscript;
 use crate::core::application::pipeline_activity::{PipelineActivity, PipelineActivitySink};
 
-/// The mocks of the six ports, shared with the builder.
+/// The mocks of the five ports, shared with the builder.
 pub(super) use crate::core::application::{
     audio_recorder::MockAudioRecorder, sound_player::MockSoundPlayer, text_paster::MockTextPaster,
-    text_refiner::MockTextRefiner, transcriber::MockTranscriber,
-    visual_indicator::MockVisualIndicator,
+    transcriber::MockTranscriber, visual_indicator::MockVisualIndicator,
 };
-use crate::core::domain::{AudioBuffer16k, CleanedText, RawTranscript};
+use crate::core::domain::{AudioBuffer16k, RawTranscript};
 
 /// What was noted, in order, shared with the double that notes it.
 pub(super) type Noted<T> = Arc<Mutex<Vec<T>>>;
@@ -76,31 +75,6 @@ pub(super) fn transcription_down() -> MockTranscriber {
     transcriber
 }
 
-/// Text refinement that returns the transcript as it is.
-pub(super) fn echoing_refiner() -> MockTextRefiner {
-    let mut refiner = MockTextRefiner::new();
-    refiner
-        .expect_refine()
-        .returning(|raw| Ok(CleanedText::new(raw.as_str().to_owned())?));
-    refiner
-}
-
-pub(super) fn refining_to(text: &'static str) -> MockTextRefiner {
-    let mut refiner = MockTextRefiner::new();
-    refiner
-        .expect_refine()
-        .returning(move |_| Ok(CleanedText::new(text.to_owned())?));
-    refiner
-}
-
-pub(super) fn refinement_down() -> MockTextRefiner {
-    let mut refiner = MockTextRefiner::new();
-    refiner
-        .expect_refine()
-        .returning(|_| Err(anyhow!("llm failure")));
-    refiner
-}
-
 /// A paster that takes every text.
 pub(super) fn pasting() -> MockTextPaster {
     let mut paster = MockTextPaster::new();
@@ -143,10 +117,6 @@ pub(super) fn quiet_overlay() -> MockVisualIndicator {
         .expect_show_recognizing_speech()
         .times(..)
         .return_const(());
-    overlay
-        .expect_show_refining_text()
-        .times(..)
-        .return_const(());
     overlay.expect_show_pasted().times(..).return_const(());
     overlay.expect_hide().times(..).return_const(());
     overlay
@@ -172,9 +142,6 @@ pub(super) fn noting_overlay() -> (MockVisualIndicator, Noted<String>) {
     overlay
         .expect_show_recognizing_speech()
         .returning(note("recognizing speech"));
-    overlay
-        .expect_show_refining_text()
-        .returning(note("refining text"));
     overlay.expect_show_pasted().returning(note("pasted"));
     overlay.expect_hide().returning(note("hidden"));
     let noting = Arc::clone(&shown);
@@ -206,7 +173,7 @@ pub(super) fn noting_activity() -> (Box<dyn PipelineActivitySink>, Noted<Pipelin
 }
 
 /// Every line the pipeline logs at info and above, for the lines the manual run reads.
-pub(super) struct CapturedLog(Mutex<Vec<String>>);
+pub(crate) struct CapturedLog(Mutex<Vec<String>>);
 
 impl log::Log for CapturedLog {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
@@ -221,7 +188,7 @@ impl log::Log for CapturedLog {
 }
 
 impl CapturedLog {
-    pub(super) fn lines_starting_with(&self, prefix: &str) -> Vec<String> {
+    pub(crate) fn lines_starting_with(&self, prefix: &str) -> Vec<String> {
         self.0
             .lock()
             .unwrap()
@@ -234,7 +201,7 @@ impl CapturedLog {
 
 /// The process's log, captured from the first call on; nextest runs each test in a process
 /// of its own, so it holds one test's lines.
-pub(super) fn captured_log() -> &'static CapturedLog {
+pub(crate) fn captured_log() -> &'static CapturedLog {
     static LOG: OnceLock<&'static CapturedLog> = OnceLock::new();
     LOG.get_or_init(|| {
         let log: &'static CapturedLog = Box::leak(Box::new(CapturedLog(Mutex::new(Vec::new()))));

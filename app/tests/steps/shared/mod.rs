@@ -4,7 +4,7 @@
 use anyhow::{bail, Result};
 use voicepuncher_test_steps::{shared_steps, SharedSteps};
 
-use super::{dictation_pointer, failure_notices, permissions_gate, voice_control};
+use super::{dictation_pointer, permissions_gate, voice_control};
 use crate::IntegrationWorld;
 
 shared_steps!(IntegrationWorld);
@@ -66,10 +66,6 @@ impl SharedSteps for IntegrationWorld {
 
     async fn return_pressed(&mut self) -> Result<()> {
         voice_control::return_pressed(self)
-    }
-
-    async fn the_raw_transcript_is_pasted(&mut self) -> Result<()> {
-        failure_notices::raw_pasted(self)
     }
 
     async fn the_sentence_is_pasted(&mut self) -> Result<()> {

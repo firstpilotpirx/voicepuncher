@@ -19,16 +19,6 @@ pub enum DictationStart {
     RecordingFile,
 }
 
-/// Whether the pasted text is the refinement service's answer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RefinementOutcome {
-    Refined,
-    /// Text refinement is turned off: the raw transcript is pasted.
-    Off,
-    /// Refinement failed or its answer was rejected: the raw transcript is pasted.
-    FellBack,
-}
-
 /// How a dictation that reached speech recognition ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DictationOutcome {
@@ -55,11 +45,10 @@ pub struct ArchiveEntry {
     pub audio: AudioBuffer16k,
     /// The text speech recognition returned for each chunk, in the order spoken.
     pub chunk_texts: Vec<String>,
-    /// The stitched transcript that went to text refinement.
+    /// The stitched transcript.
     pub raw_transcript: Option<String>,
     /// The text to paste: pasted, left in the clipboard or lost to a failed paste.
     pub pasted_text: Option<String>,
-    pub refinement: Option<RefinementOutcome>,
     pub outcome: DictationOutcome,
     /// Chunks speech recognition failed on.
     pub lost_chunks: usize,

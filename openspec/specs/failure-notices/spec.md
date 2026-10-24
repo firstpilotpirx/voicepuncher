@@ -6,7 +6,7 @@ Tells the user on screen, right away, what failed whenever an action they starte
 ## Requirements
 
 ### Requirement: A failed action shows a failure notice
-The system SHALL show a failure notice in the overlay when an action the user started cannot be completed because a local service, a device or a permission failed. The notice SHALL name the failing part in plain words (speech recognition, text refinement, command spotting, microphone, accessibility) and, when a remedy is known, say it. It SHALL appear within 2 s of the failure, take no keyboard focus, and the log SHALL keep the technical detail.
+The system SHALL show a failure notice in the overlay when an action the user started cannot be completed because a local service, a device or a permission failed. The notice SHALL name the failing part in plain words (speech recognition, command spotting, microphone, accessibility) and, when a remedy is known, say it. It SHALL appear within 2 s of the failure, take no keyboard focus, and the log SHALL keep the technical detail.
 
 #### Scenario: The notice names the failing service and its remedy
 - **GIVEN** the speech recognition service is not running
@@ -34,19 +34,6 @@ The system SHALL show a failure notice saying part of the dictation was lost whe
 - **GIVEN** the speech recognition service fails on one chunk of a long dictation and answers on the others
 - **WHEN** the user stops the dictation
 - **THEN** the text of the other chunks is pasted and the overlay shows that part of the dictation was lost
-
-### Requirement: Text pasted without refinement is announced
-The system SHALL show a failure notice saying the text was pasted without refinement when text refinement fails or its answer is rejected and the raw transcript is pasted instead. No notice is shown when the user turned refinement off.
-
-#### Scenario: The text refinement service is down
-- **GIVEN** text refinement is on and the text refinement service is not running
-- **WHEN** the user stops a dictation
-- **THEN** the raw transcript is pasted and the overlay shows that the text was pasted without refinement
-
-#### Scenario: Refinement turned off shows no notice
-- **GIVEN** the user turned text refinement off
-- **WHEN** the user stops a dictation
-- **THEN** the raw transcript is pasted and no failure notice is shown
 
 ### Requirement: A failed paste is announced
 The system SHALL show a failure notice saying the text was not pasted when pasting a transcript fails, naming the accessibility permission when it is missing.

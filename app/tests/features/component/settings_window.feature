@@ -26,7 +26,7 @@ Feature: settings-window
       When the user opens the settings
       Then the microphone choice offers the system default and both devices by name
 
-  Rule: Saving applies without a relaunch
+  Rule: Saving applies in the running app
 
     Scenario: A new hotkey and sound apply after Save
       Given the app runs from its configuration file with the first hotkey and the first start sound
@@ -35,13 +35,6 @@ Feature: settings-window
       Then the configuration file holds the second hotkey and the second start sound
       And the settings say the settings are applied
       And the next dictation starts with the second hotkey and plays the second start sound
-      And the app was not relaunched
-
-    Scenario: Refinement switched on applies after Save
-      Given the app runs from its configuration file with refinement off
-      And the user opens the settings
-      When the user switches refinement on and saves
-      Then the next dictation is refined
       And the app was not relaunched
 
     Scenario: A setting the running app cannot use is reported
@@ -88,7 +81,7 @@ Feature: settings-window
       And the settings say the address must be on this machine
       And the configuration file is unchanged
 
-  Rule: The user's configuration file is preserved
+  Rule: Save keeps the user's configuration file as written
 
     Scenario: Comments and order survive a Save
       Given a configuration file with comments above and beside its options
@@ -97,11 +90,11 @@ Feature: settings-window
       Then the file differs from the original only in the logging level
       And every comment is where it was
 
-    Scenario: The refinement examples survive a Save
-      Given a configuration file with refinement examples
+    Scenario: Retired text refinement settings survive a Save
+      Given a configuration file that still holds the retired text refinement settings
       And the user opens the settings
       When the user changes the logging level and saves
-      Then the refinement examples in the file are unchanged
+      Then the retired text refinement settings in the file are unchanged
 
   Rule: Revert and unsaved edits
 
@@ -126,7 +119,7 @@ Feature: settings-window
       When the user closes the settings
       Then the settings close without a question
 
-  Rule: Command line overrides are shown
+  Rule: Command line overrides are noted in the window
 
     Scenario: A hotkey overridden on the command line
       Given the configuration file sets the hotkey to the right Command key
@@ -135,9 +128,9 @@ Feature: settings-window
       Then the hotkey control shows Right Command
       And a note under it names F13 as the hotkey the command line set for this run
 
-    Scenario: Refinement switched off on the command line
-      Given the configuration file turns refinement on
-      And the app was started with refinement turned off on the command line
+  Rule: One settings window opens from the menu
+
+    Scenario: The window has no Refinement tab
       When the user opens the settings
-      Then the refinement switch is on
-      And a note under it says the command line turned refinement off for this run
+      Then the tabs are General, Dictation, Sounds, Paste, Archive, Logging and Services
+      And no control names text refinement

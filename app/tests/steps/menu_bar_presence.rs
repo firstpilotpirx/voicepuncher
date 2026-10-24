@@ -17,7 +17,6 @@ use voicepuncher::adapters::primary::menubar::macos::indicator::{
     MenuModel, StatusItemCell, StatusItemSurface,
 };
 use voicepuncher::adapters::primary::menubar::macos::mapping::IconState;
-use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::config::Config;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineParts};
@@ -363,7 +362,7 @@ fn runtime_ready(world: &mut IntegrationWorld) -> Result<()> {
     run(world).start_ready()
 }
 
-#[given("text refinement is enabled and a button has keyboard focus while the runtime is ready")]
+#[given("a button has keyboard focus while the runtime is ready")]
 fn button_focused(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     set(&run.parts.text_field_focused, false);

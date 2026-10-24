@@ -39,8 +39,6 @@ pub trait SharedSteps {
     async fn return_pressed_after_the_paste(&mut self) -> Result<()>;
     /// Then the Return key is pressed in the focused app.
     async fn return_pressed(&mut self) -> Result<()>;
-    /// Then the raw transcript is pasted.
-    async fn the_raw_transcript_is_pasted(&mut self) -> Result<()>;
     /// Then the sentence is pasted into the focused app.
     async fn the_sentence_is_pasted(&mut self) -> Result<()>;
 }
@@ -64,7 +62,6 @@ macro_rules! shared_steps {
         $crate::shared_steps!(@step $world, then, "only the other sentence is pasted, its first words included", only_the_other_sentence_is_pasted);
         $crate::shared_steps!(@step $world, then, "the Return key is pressed after it", return_pressed_after_the_paste);
         $crate::shared_steps!(@step $world, then, "the Return key is pressed in the focused app", return_pressed);
-        $crate::shared_steps!(@step $world, then, "the raw transcript is pasted", the_raw_transcript_is_pasted);
         $crate::shared_steps!(@step $world, then, "the sentence is pasted into the focused app", the_sentence_is_pasted);
     };
     (@step $world:ident, $keyword:ident, $text:literal, $method:ident) => {

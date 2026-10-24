@@ -3,7 +3,7 @@
 # key, and the needs a test can state. Text tables, one entry per line.
 
 # The paths whose change makes full-check run the accuracy stage on 100 recordings: what the two @accuracy
-# scenarios run — file mode, transcription and chunking; text refinement; command spotting (keywords.txt is
+# scenarios run — file mode, transcription and chunking; command spotting (keywords.txt is
 # compiled in) and voice-command matching; the WER and corpus test code; the justfile whole and the services' code (models, service
 # settings); the Cargo files when a line other than `version = "…"` changed. One glob per line, matched with
 # a glob (`*` spans `/`). A branch that adds a file on this path adds it here
@@ -23,11 +23,8 @@ recognition_paths = '''
     app/src/core/application/transcript_filter.rs
     app/src/core/domain/audio_buffer.rs
     app/src/core/domain/raw_transcript.rs
-    app/src/adapters/secondary/textrefinement/*
-    app/src/core/application/text_refiner.rs
     app/src/core/domain/cleaned_text.rs
     app/src/core/domain/filler_sounds.rs
-    app/src/core/domain/normalization_check.rs
     app/src/core/domain/command_words.rs
     command-spotting/src/*
     command-spotting/keywords.txt
@@ -82,22 +79,13 @@ stage_inputs = '''
     app/tests/it/*                                     code
     app/tests/main_thread/*                            code
     app/tests/it/transcription_openai.rs               e2e-smoke-speech
-    app/tests/it/textrefinement_openai.rs              e2e-smoke-refinement
     app/tests/it/commandspotting_websocket.rs          e2e-smoke-voice
     app/tests/it/voice_samples.rs                      e2e-smoke-voice
     app/tests/it/voice_forms.rs                        e2e-smoke-voice
     app/tests/it/chunked_transcription.rs              e2e-seams
     app/src/core/application/chunking_seam_cases.rs    e2e-seams
-    app/src/adapters/secondary/textrefinement/*        e2e-smoke-refinement,refine-eval,e2e-regression,e2e-smoke-speech,accuracy
-    app/src/core/application/text_refiner.rs          e2e-smoke-refinement,refine-eval,e2e-regression,e2e-smoke-speech,accuracy
-    app/src/core/domain/cleaned_text.rs                e2e-smoke-refinement,refine-eval,e2e-regression,e2e-smoke-speech,accuracy
-    app/src/core/domain/filler_sounds.rs               e2e-smoke-refinement,refine-eval,e2e-regression,e2e-smoke-speech,accuracy
-    app/src/core/domain/normalization_check.rs         e2e-smoke-refinement,refine-eval,e2e-regression,e2e-smoke-speech,accuracy
-    e2e-test/src/refinement_eval.rs                    e2e-smoke-refinement,refine-eval,e2e-regression
-    e2e-test/refinement/*                              e2e-smoke-refinement,refine-eval,e2e-regression
-    e2e-test/tests/features/text_refinement.feature    e2e-smoke-refinement,refine-eval,e2e-regression
-    e2e-test/tests/steps/text_refinement/*             e2e-smoke-refinement,refine-eval,e2e-regression
-    e2e-test/src/refinement_service_stub/*             e2e-smoke-refinement,refine-eval,e2e-regression
+    app/src/core/domain/cleaned_text.rs                e2e-regression,e2e-smoke-speech,accuracy
+    app/src/core/domain/filler_sounds.rs               e2e-regression,e2e-smoke-speech,accuracy
     command-spotting/*                                 e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
     app/src/adapters/secondary/commandspotting/*       e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
     app/src/adapters/secondary/keypressing/*           e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy

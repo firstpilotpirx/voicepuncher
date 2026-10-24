@@ -58,7 +58,6 @@ fn new_run() -> LoggingRun {
     let config = home.path().join("config.toml");
     let text = format!(
         "[transcription]\nbase_url = \"http://127.0.0.1:{port}/v1\"\n\
-         [refinement]\nbase_url = \"http://127.0.0.1:{port}/v1\"\n\
          [voice_control]\nenabled = true\nurl = \"ws://127.0.0.1:{port}\"\n\
          [services]\nmanage = false\n"
     );

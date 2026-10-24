@@ -12,7 +12,6 @@ use std::time::{Duration, Instant};
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 
-use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::config::Config;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineParts};
@@ -63,8 +62,8 @@ type Generation = usize;
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Event {
     Assembled(Generation, HotKey),
-    /// The start sound and whether the pipeline refines, as its configuration set them.
-    Configured(Generation, String, bool),
+    /// The start sound, as its configuration set it.
+    Configured(Generation, String),
     RecordingStarted(Generation),
     CancelPlayed(Generation),
     Pasted(Generation),
@@ -368,10 +367,10 @@ impl RuntimeRun {
         Ok(())
     }
 
-    /// The start sound and the refinement switch of the newest pipeline.
-    pub(crate) fn newest_setup(&self) -> Option<(String, bool)> {
+    /// The start sound of the newest pipeline.
+    pub(crate) fn newest_start_sound(&self) -> Option<String> {
         self.events().into_iter().rev().find_map(|e| match e {
-            Event::Configured(_, sound, refines) => Some((sound, refines)),
+            Event::Configured(_, sound) => Some(sound),
             _ => None,
         })
     }
@@ -419,7 +418,7 @@ fn valid_configuration(world: &mut IntegrationWorld) {
     run.config.voice_control.enabled = false;
 }
 
-#[given("the speech recognition service and the text refinement service answer")]
+#[given("the speech recognition service answers")]
 fn services_answer(world: &mut IntegrationWorld) {
     *run(world).services_answer.lock().unwrap() = true;
 }
@@ -836,7 +835,6 @@ struct StandInAssembler {
 }
 
 impl PipelineAssembler for StandInAssembler {
-    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn assemble(&mut self, config: &Config, _inputs: Sender<PipelineInput>) -> Result<Pipeline> {
         if !*self.services_answer.lock().unwrap() {
             bail!("{SILENT_SERVICE_ERROR}");
@@ -849,18 +847,13 @@ impl PipelineAssembler for StandInAssembler {
         );
         push(
             &self.events,
-            Event::Configured(
-                generation,
-                config.sounds.start_sound.clone(),
-                config.refinement.enabled,
-            ),
+            Event::Configured(generation, config.sounds.start_sound.clone()),
         );
         let part = || Part { events: Arc::clone(&self.events), generation };
         let mut pipeline = Pipeline::new(
             PipelineParts {
                 recorder: Box::new(StandInRecorder(part(), Arc::clone(&self.panics))),
                 transcriber: Box::new(FixedTranscript),
-                refiner: Box::new(PassthroughTextRefiner),
                 paster: Box::new(StandInPaster(part())),
                 sound_player: Box::new(StandInSounds(part())),
                 visual_indicator: Box::new(NoticeOverlay(part())),

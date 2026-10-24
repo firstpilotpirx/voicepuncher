@@ -5,7 +5,7 @@ pub enum PipelineActivity {
     #[default]
     Idle,
     Recording,
-    /// Recognition, refinement, the focus wait and the paste.
+    /// Recognition, the focus wait and the paste.
     Processing,
 }
 

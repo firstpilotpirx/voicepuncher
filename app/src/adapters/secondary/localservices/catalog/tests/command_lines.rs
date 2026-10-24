@@ -39,7 +39,6 @@ fn list_of(text: &str, function: &str) -> Vec<String> {
 fn script_args(service: &str, text: &str) -> Vec<String> {
     let function = match service {
         WHISPER => "whisper_args",
-        LLAMA => "llama_args",
         _ => "command_spotting_args",
     };
     list_of(text, function)
@@ -55,14 +54,13 @@ fn script_args(service: &str, text: &str) -> Vec<String> {
 fn catalog_args(service: &str) -> Vec<String> {
     match service {
         WHISPER => whisper_args("model", 0, 0, "vad"),
-        LLAMA => llama_args("model", 0),
         _ => command_spotting_args(0, "model_dir", "vad", "commands_url"),
     }
 }
 
 /// The services whose arguments differ between the service scripts in `text` and the catalog.
 fn drifted(text: &str) -> Vec<&'static str> {
-    [WHISPER, LLAMA, COMMAND_SPOTTING]
+    [WHISPER, COMMAND_SPOTTING]
         .into_iter()
         .filter(|service| script_args(service, text) != catalog_args(service))
         .collect()
@@ -84,9 +82,9 @@ fn should_start_every_service_with_the_arguments_of_the_service_scripts() {
 #[test]
 fn should_name_the_service_whose_arguments_changed_in_one_place_only() {
     // Given
-    let text = scripts().replace("\"4096\"", "\"8192\"");
+    let text = scripts().replace("\"2000\"", "\"3000\"");
     // When
     let drifted = drifted(&text);
     // Then
-    assert_eq!(drifted, vec![LLAMA]);
+    assert_eq!(drifted, vec![WHISPER]);
 }

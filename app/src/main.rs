@@ -88,7 +88,7 @@ pub(crate) fn home() -> PathBuf {
 }
 
 /// `--download-models`: the models folder of the command line, else of the configuration
-/// file when there is one; every catalog file but the text refinement model with `--no-llm`.
+/// file when there is one; every catalog file.
 fn download_models(cli: &Cli, config_path: &Path) -> anyhow::Result<i32> {
     let mut config = if config_path.exists() {
         voicepuncher::config::load(config_path).context("config error")?
@@ -98,7 +98,7 @@ fn download_models(cli: &Cli, config_path: &Path) -> anyhow::Result<i32> {
     if let Some(dir) = &cli.models_dir {
         config.services.models_dir = dir.clone();
     }
-    let needs = ModelNeeds { voice_control: true, refinement: !cli.no_llm };
+    let needs = ModelNeeds::ALL;
     Ok(voicepuncher::runtime::models::download_headless(
         &CatalogModels::current(),
         config.services.resolved_models_dir(&home()),
@@ -119,12 +119,10 @@ fn run_file_mode(input_path: &Path, config: &Config, archives: bool) -> anyhow::
         }
     };
     let transcriber = wiring::connect_transcriber(config)?;
-    let refiner = wiring::connect_refiner(config)?;
     let mut pipeline = Pipeline::new(
         PipelineParts {
             recorder: Box::new(FileSystemAudioRecorder::new(input_path.to_path_buf())),
             transcriber: Box::new(transcriber),
-            refiner,
             paster: Box::new(StdioTextPaster::new()),
             sound_player: Box::new(MacosSoundPlayer::new("", "", "")),
             visual_indicator: Box::new(QuietVisualIndicator),
@@ -136,9 +134,6 @@ fn run_file_mode(input_path: &Path, config: &Config, archives: bool) -> anyhow::
             ..PipelineConfig::default()
         },
     );
-    if !config.refinement.enabled {
-        pipeline = pipeline.without_text_refinement_stage();
-    }
     if archives {
         pipeline = pipeline.with_archive(Box::new(wiring::connect_archive(config)));
     }

@@ -9,13 +9,11 @@ use crate::core::application::live_transcript_view::HiddenLiveTranscript;
 use crate::core::application::pipeline::{PipelineConfig, PipelineParts};
 use crate::core::application::sound_player::MockSoundPlayer;
 use crate::core::application::text_paster::MockTextPaster;
-use crate::core::application::text_refiner::MockTextRefiner;
 use crate::core::application::transcriber::MockTranscriber;
 use crate::core::application::visual_indicator::MockVisualIndicator;
 use crate::core::application::{ChunkingCfg, PipelineInput};
 use crate::core::domain::{
-    AudioBuffer16k, CleanedText, PttSignal, RawTranscript, RecordingMode, SpottingEvent,
-    VoiceCommand,
+    AudioBuffer16k, PttSignal, RawTranscript, RecordingMode, SpottingEvent, VoiceCommand,
 };
 
 const PHRASE_LEAD: Duration = Duration::from_millis(100);
@@ -39,7 +37,6 @@ fn overlay() -> MockVisualIndicator {
     let mut overlay = MockVisualIndicator::new();
     overlay.expect_show_recording().return_const(());
     overlay.expect_show_recognizing_speech().return_const(());
-    overlay.expect_show_refining_text().return_const(());
     overlay.expect_show_pasted().return_const(());
     overlay.expect_hide().return_const(());
     overlay.expect_show_command_sign().return_const(());
@@ -79,14 +76,6 @@ fn answering_transcriber() -> MockTranscriber {
         .expect_transcribe()
         .returning(|_| Ok(Some(RawTranscript::new("hello".into()).unwrap())));
     transcriber
-}
-
-fn passthrough_refiner() -> MockTextRefiner {
-    let mut refiner = MockTextRefiner::new();
-    refiner
-        .expect_refine()
-        .returning(|raw| Ok(CleanedText::new(raw.as_str().to_owned()).unwrap()));
-    refiner
 }
 
 fn listening_spotter() -> MockCommandSpotter {
@@ -145,7 +134,6 @@ fn parts(recorder: MockAudioRecorder, paster: MockTextPaster) -> PipelineParts {
     PipelineParts {
         recorder: Box::new(recorder),
         transcriber: Box::new(answering_transcriber()),
-        refiner: Box::new(passthrough_refiner()),
         paster: Box::new(paster),
         sound_player: Box::new(sounds()),
         visual_indicator: Box::new(overlay()),

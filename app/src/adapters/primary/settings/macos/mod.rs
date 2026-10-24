@@ -3,7 +3,6 @@
 
 pub mod build;
 pub mod control;
-pub mod examples;
 pub mod field;
 pub mod files;
 pub mod form;

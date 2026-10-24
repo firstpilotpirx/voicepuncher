@@ -15,8 +15,8 @@ pub const STARTUP_FAILURE_EXIT_CODE: i32 = 2;
 /// An empty config: every setting at its default, never the user's own config file.
 pub const NO_CONFIG: &str = "/dev/null";
 const MAX_MEAN_WER: f64 = 0.30;
-/// Two recordings at a time: speech recognition of one overlaps refinement of the
-/// other, while each service still handles one request at a time.
+/// Two recordings at a time: speech recognition of one overlaps the start and the end of the
+/// other, while each copy still handles one request at a time.
 const CONCURRENT_RECORDINGS: usize = 2;
 
 #[given(expr = "a recording of silence lasting {int} seconds")]
@@ -56,22 +56,22 @@ fn benchmark_sample(world: &mut E2eWorld, size: usize) -> Result<()> {
     Ok(())
 }
 
-#[when(regex = r"^the user transcribes the recording file (with|without) refinement$")]
-async fn transcribe_recording(world: &mut E2eWorld, refinement: String) -> Result<()> {
+#[when("the user transcribes the recording file")]
+async fn transcribe_recording(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, move |world| {
         let recording = world.recording.as_deref().context("no recording")?;
-        let output = transcribe(recording, world.config.as_deref(), refinement == "with")?;
+        let output = transcribe(recording, world.config.as_deref())?;
         world.note_app_output(&output);
         Ok(())
     })
     .await
 }
 
-#[when("the user transcribes every recording of the sample with refinement")]
+#[when("the user transcribes every recording of the sample")]
 async fn transcribe_sample(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, move |world| {
         let outputs = map_concurrently(&world.corpus, CONCURRENT_RECORDINGS, |sample| {
-            transcribe(&sample.path, None, true)
+            transcribe(&sample.path, None)
         });
         eprintln!("\n  {:<20} {:<4} {:>7} {:>8}", "id", "lang", "dur", "wer");
         for (sample, output) in world.corpus.iter().zip(outputs) {
@@ -115,22 +115,14 @@ fn mean_wer_below_bar(world: &mut E2eWorld) -> Result<()> {
     Ok(())
 }
 
-pub fn transcribe(
-    recording: &Path,
-    config: Option<&Path>,
-    with_refinement: bool,
-) -> Result<Output> {
-    let mut cmd = transcribe_command(recording, config, with_refinement)?;
+pub fn transcribe(recording: &Path, config: Option<&Path>) -> Result<Output> {
+    let mut cmd = transcribe_command(recording, config)?;
     cmd.output()
         .with_context(|| format!("failed to spawn {:?}", cmd.get_program()))
 }
 
 /// The app's command line that transcribes `recording` through the local services.
-pub fn transcribe_command(
-    recording: &Path,
-    config: Option<&Path>,
-    with_refinement: bool,
-) -> Result<Command> {
+pub fn transcribe_command(recording: &Path, config: Option<&Path>) -> Result<Command> {
     let mut cmd = Command::new(sut_bin());
     cmd.arg("--config")
         .arg(config.unwrap_or(Path::new(NO_CONFIG)))
@@ -138,13 +130,6 @@ pub fn transcribe_command(
         .arg(recording)
         .arg("--transcription-url")
         .arg(env("VOICEPUNCHER_TRANSCRIPTION_URL")?);
-    if with_refinement {
-        cmd.arg("--llm")
-            .arg("--refinement-url")
-            .arg(env("VOICEPUNCHER_REFINEMENT_URL")?);
-    } else {
-        cmd.arg("--no-llm");
-    }
     Ok(cmd)
 }
 

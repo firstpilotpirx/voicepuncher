@@ -15,13 +15,12 @@ use crate::steps::off_thread;
 use crate::E2eWorld;
 
 /// The engine sections of the lock and the folders `just engines` writes for them.
-pub const ENGINES: [&str; 3] = ["whisper", "llama", "command-spotting"];
+pub const ENGINES: [&str; 2] = ["whisper", "command-spotting"];
 /// The file of an engine folder that holds its version.
 pub const VERSION_FILE: &str = "VERSION";
 /// The formula the wrong-version lock moves to a version no Mac has.
 const PINNED_FORMULA: &str = "ggml";
 const MISSING_VERSION: &str = "0.0.1";
-const WRONG_CHECKSUM: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
 /// What a scenario staged and what it expects the staging to say.
 #[derive(Debug, Default)]
@@ -91,21 +90,6 @@ fn lock_with_missing_version(world: &mut E2eWorld) -> Result<()> {
     Ok(())
 }
 
-#[given("an engine lock whose release archive checksum differs from the archive's")]
-fn lock_with_wrong_checksum(world: &mut E2eWorld) -> Result<()> {
-    let llama = read_lock(&checkout_lock())?
-        .remove("llama")
-        .context("the lock has no llama table")?;
-    let asset = llama.get("asset").context("no asset")?.clone();
-    let checksum = llama
-        .get("asset_sha256")
-        .context("no asset_sha256")?
-        .clone();
-    lock_with(world, |lock| lock.replace(&checksum, WRONG_CHECKSUM))?;
-    world.distribution.engines.expected = vec![asset, checksum, WRONG_CHECKSUM.to_string()];
-    Ok(())
-}
-
 #[given("the engine lock of the checkout")]
 fn checkout_engine_lock(world: &mut E2eWorld) {
     world.distribution.engines.lock = Some(checkout_lock());
@@ -161,13 +145,6 @@ fn says_how_to_pin(world: &mut E2eWorld) -> Result<()> {
     Ok(())
 }
 
-#[then(
-    "the staging fails naming the archive, the checksum found and the checksum the lock expects"
-)]
-fn fails_naming_checksums(world: &mut E2eWorld) -> Result<()> {
-    fails_naming_expected(world)
-}
-
 #[then("no engine folder is written")]
 fn no_engine_folder(world: &mut E2eWorld) -> Result<()> {
     let (_, out) = staging(world)?;
@@ -215,14 +192,12 @@ fn holds_locked_files(world: &mut E2eWorld) -> Result<()> {
 fn version_files(world: &mut E2eWorld) -> Result<()> {
     let out = staged(world)?;
     let lock = read_lock(&checkout_lock())?;
-    for engine in ["whisper", "llama"] {
-        let expected = lock[engine].get("version").context("no version")?;
-        let found = fs::read_to_string(out.join(engine).join(VERSION_FILE))?;
-        ensure!(
-            found.trim() == expected,
-            "{engine}'s version file holds '{found}', the lock says '{expected}'"
-        );
-    }
+    let expected = lock["whisper"].get("version").context("no version")?;
+    let found = fs::read_to_string(out.join("whisper").join(VERSION_FILE))?;
+    ensure!(
+        found.trim() == expected,
+        "whisper's version file holds '{found}', the lock says '{expected}'"
+    );
     let manifest = fs::read_to_string(checkout().join("command-spotting/Cargo.toml"))?;
     let crate_version = manifest
         .lines()

@@ -4,9 +4,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use voicepuncher_copy_pool::{
-    ServiceAddress, COMMAND_SPOTTING_COPY_OFFSET, TEXT_REFINEMENT_COPY_OFFSET,
-};
+use voicepuncher_copy_pool::{ServiceAddress, COMMAND_SPOTTING_COPY_OFFSET};
 
 use crate::adapters::secondary::logging::file::logs_dir;
 use crate::config::Config;
@@ -14,11 +12,9 @@ use crate::core::application::{ProbeAnswer, ServiceProbe};
 use crate::core::domain::{ServiceKind, ServiceSpec};
 
 const WHISPER: &str = "whisper-server";
-const LLAMA: &str = "llama-server";
 const COMMAND_SPOTTING: &str = "voicepuncher-command-spotting";
 const DICTATION_MODEL: &str = "ggml-large-v3-turbo-q5_0.bin";
 const COMMAND_MODEL: &str = "ggml-small.bin";
-const REFINEMENT_MODEL: &str = "Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
 const WHISPER_VAD_PREFIX: &str = "ggml-silero-";
 const KWS_VAD_MODEL: &str = "silero_vad.onnx";
 const KWS_MODEL_DIR_PREFIX: &str = "sherpa-onnx-kws-";
@@ -32,7 +28,6 @@ const VERSION_FILE: &str = "VERSION";
 fn engine_folder(program: &str) -> &'static str {
     match program {
         WHISPER => "whisper",
-        LLAMA => "llama",
         _ => "command-spotting",
     }
 }
@@ -158,14 +153,12 @@ fn cellar_version(program: &Path) -> Option<String> {
 /// The optional services the configuration turns on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Needs {
-    pub refinement: bool,
     pub voice_control: bool,
 }
 
 impl Needs {
-    /// Text refinement only when it is on (`--llm` or `[refinement] enabled`, never with `--no-llm`).
     pub fn of(cfg: &Config) -> Self {
-        Self { refinement: cfg.refinement.enabled, voice_control: cfg.voice_control.enabled }
+        Self { voice_control: cfg.voice_control.enabled }
     }
 }
 
@@ -196,13 +189,6 @@ pub fn needed(
             &cfg.voice_control.url,
             &cfg.services.commands_url,
             cfg.services.command_spotting_copies,
-            probe,
-        ));
-    }
-    if needs.refinement {
-        specs.extend(lookup.llama(
-            &cfg.refinement.base_url,
-            cfg.services.refinement_copies,
             probe,
         ));
     }
@@ -296,21 +282,6 @@ impl<'a> Lookup<'a> {
         let cores = self.machine.cores;
         self.copies(&service, &address, probe, |port, count| {
             whisper_args(&shown(&model), port, threads(cores, count), &shown(&vad))
-        })
-    }
-
-    fn llama(&self, url: &str, copies: u32, probe: &dyn ServiceProbe) -> Vec<ServiceSpec> {
-        let Ok(address) = ServiceAddress::parse(url) else {
-            return Vec::new();
-        };
-        let address = address.with_copy_offset(TEXT_REFINEMENT_COPY_OFFSET);
-        let program = self.engine(LLAMA, "VOICEPUNCHER_LLAMA_BINARY", "brew install llama.cpp");
-        let model = self.model("VOICEPUNCHER_LLM_MODEL", REFINEMENT_MODEL);
-        let problem = first_problem([&program, &model]);
-        let kind = ServiceKind::Refinement;
-        let service = Service { kind, binary: LLAMA, program, problem, copies };
-        self.copies(&service, &address, probe, |port, _| {
-            llama_args(&shown(&model), port)
         })
     }
 
@@ -511,26 +482,6 @@ pub fn whisper_args(model: &str, port: u16, threads: usize, vad: &str) -> Vec<St
         "-vp",
         "500",
         "-nlp",
-    ]
-    .map(String::from)
-    .to_vec()
-}
-
-/// `dev-tools`'s `llama-server` line, without the program: one slot, so a request gets
-/// the whole context.
-pub fn llama_args(model: &str, port: u16) -> Vec<String> {
-    let port = port.to_string();
-    [
-        "-m",
-        model,
-        "--host",
-        "127.0.0.1",
-        "--port",
-        &port,
-        "-c",
-        "4096",
-        "-np",
-        "1",
     ]
     .map(String::from)
     .to_vec()

@@ -1,13 +1,13 @@
 # processing-stages Specification
 
 ## Purpose
-Between the end of a recording and the paste, the overlay shows which processing stage runs — speech recognition, then text refinement — each with an icon of its own, so the user sees where a dictation is.
+Between the end of a recording and the paste, the overlay shows the speech recognition stage with an icon of its own, so the user sees where a dictation is; the transcript is pasted as soon as speech recognition ends.
 
 ## Requirements
 
 ### Requirement: The overlay shows speech recognition until the transcript is ready
 
-From the moment a recording stops until its transcript is ready, the overlay SHALL show the speech recognition stage, whether the dictation was ended by the hotkey or by voice. When the recording was transcribed in chunks while the user spoke, the stage SHALL cover the transcription still running after the stop. A dictation with nothing to paste SHALL hide the overlay once that is known, without showing the text refinement stage.
+From the moment a recording stops until its transcript is ready, the overlay SHALL show the speech recognition stage, whether the dictation was ended by the hotkey or by voice. When the recording was transcribed in chunks while the user spoke, the stage SHALL cover the transcription still running after the stop. A dictation with nothing to paste SHALL hide the overlay once that is known.
 
 #### Scenario: A hotkey dictation shows speech recognition after the stop
 - **GIVEN** the user records a dictation with the hotkey
@@ -28,33 +28,25 @@ From the moment a recording stops until its transcript is ready, the overlay SHA
 - **GIVEN** the user records a dictation with no speech in it
 - **WHEN** the user ends the recording
 - **THEN** the overlay shows the speech recognition stage, then hides
-- **AND** the text refinement stage is not shown
 
-### Requirement: The overlay shows text refinement until the corrected text is ready
+### Requirement: The transcript is pasted right after speech recognition
 
-When text refinement starts, the overlay SHALL switch to the text refinement stage and show it until the corrected text is ready. With text refinement disabled, the text refinement stage SHALL never be shown. What follows SHALL be: the overlay shows the wait for focus when the text is held back, the Pasted sign once the text is pasted, and hides once the dictation is dropped. The stages SHALL NOT delay the paste.
+Once the transcript is ready, the overlay SHALL go straight from the speech recognition stage to what follows: the wait for focus when the text is held back, the Pasted sign once the text is pasted, and hidden once the dictation is dropped. No other processing stage SHALL be shown between speech recognition and the paste, and the stages SHALL NOT delay the paste.
 
-#### Scenario: Text refinement follows speech recognition
-- **GIVEN** text refinement is enabled
-- **WHEN** the user ends a dictation with speech in it
-- **THEN** the overlay shows the speech recognition stage, then the text refinement stage from the start of text refinement until the corrected text is ready
-- **AND** the overlay shows the Pasted sign once the text is pasted, then hides
-
-#### Scenario: With text refinement disabled only speech recognition is shown
-- **GIVEN** text refinement is disabled
-- **WHEN** the user ends a dictation with speech in it
+#### Scenario: Speech recognition is followed by the paste
+- **GIVEN** the user records a dictation with speech in it
+- **WHEN** the user ends the recording
 - **THEN** the overlay shows the speech recognition stage until the transcript is ready
-- **AND** the text refinement stage is not shown
 - **AND** the overlay shows the Pasted sign once the text is pasted, then hides
 
-#### Scenario: Text held back for focus shows the wait after text refinement
+#### Scenario: Text held back for focus shows the wait after speech recognition
 - **GIVEN** no text input has focus
 - **WHEN** the user ends a dictation with speech in it
-- **THEN** the overlay shows the speech recognition stage, then the text refinement stage, then the wait for focus
+- **THEN** the overlay shows the speech recognition stage, then the wait for focus
 
-### Requirement: Each processing stage has its own icon and label
+### Requirement: Speech recognition shows an ear, its label and a spinner
 
-The speech recognition stage SHALL show a breathing ear and "Recognizing", the text refinement stage breathing sparkles and "Refining text", each icon on the overlay's left with a spoke spinner right of the label, so the user tells them apart at a glance. The spinner SHALL be indeterminate: it SHALL NOT fill up or suggest how long is left. Both icons SHALL be legible in light and dark appearance.
+The speech recognition stage SHALL show a breathing ear and "Recognizing" on the overlay's left with a spoke spinner right of the label. The spinner SHALL be indeterminate: it SHALL NOT fill up or suggest how long is left. The icon SHALL be legible in light and dark appearance.
 
 #### Scenario: Speech recognition shows an ear left of its label and spinner
 - **GIVEN** the user records a dictation
@@ -62,32 +54,21 @@ The speech recognition stage SHALL show a breathing ear and "Recognizing", the t
 - **THEN** the overlay shows a breathing ear on its left, then "Recognizing"
 - **AND** a spoke spinner turns to the right of the label
 
-#### Scenario: Text refinement shows sparkles left of its label and spinner
-- **GIVEN** a dictation with speech in it is processed with text refinement enabled
-- **WHEN** text refinement starts
-- **THEN** the overlay shows breathing sparkles on its left, then "Refining text"
-- **AND** a spoke spinner turns to the right of the label
-
-#### Scenario: The two stages look different
-- **GIVEN** a dictation is processed with text refinement enabled
-- **WHEN** the overlay switches from the speech recognition stage to the text refinement stage
-- **THEN** the icon and the label on the overlay change to different ones
-
-#### Scenario: The stage icons read in light and dark appearance
-- **GIVEN** text refinement is enabled and macOS uses the light or the dark appearance
+#### Scenario: The stage icon reads in light and dark appearance
+- **GIVEN** macOS uses the light or the dark appearance
 - **WHEN** the user ends a dictation with speech in it
-- **THEN** the overlay shows the ear, then the sparkles, each whole and legible
+- **THEN** the overlay shows the ear whole and legible
 
 #### Scenario: A long speech recognition never looks nearly done
 - **GIVEN** the user records a long dictation
 - **WHEN** speech recognition runs for several seconds after the stop
 - **THEN** the spinner keeps turning without filling up
 
-### Requirement: The processing stages show no text window
+### Requirement: Speech recognition shows no text window
 
-While the speech recognition stage or the text refinement stage shows, the overlay SHALL show the stage in the pill alone, with no text window under it.
+While the speech recognition stage shows, the overlay SHALL show the stage in the pill alone, with no text window under it.
 
-#### Scenario: Refinement shows no raw transcript
-- **GIVEN** text refinement is enabled
-- **WHEN** text refinement of a dictation with speech in it starts
-- **THEN** the overlay shows "Refining text" in the pill and no text window under it
+#### Scenario: Speech recognition shows no transcript
+- **GIVEN** the user records a dictation with speech in it
+- **WHEN** the user ends the recording
+- **THEN** the overlay shows "Recognizing" in the pill and no text window under it

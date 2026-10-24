@@ -15,7 +15,6 @@ pub enum ModelKind {
 pub enum ModelUse {
     Dictation,
     VoiceControl,
-    Refinement,
 }
 
 /// One model file of the catalog.
@@ -47,7 +46,7 @@ impl ModelFile {
 }
 
 /// Every model file, in download order.
-pub const CATALOG: [ModelFile; 6] = [
+pub const CATALOG: [ModelFile; 5] = [
     ModelFile {
         name: "ggml-large-v3-turbo-q5_0.bin",
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo-q5_0.bin",
@@ -100,34 +99,22 @@ pub const CATALOG: [ModelFile; 6] = [
         used_by: ModelUse::VoiceControl,
         variable: "VOICEPUNCHER_KWS_MODEL_DIR",
     },
-    ModelFile {
-        name: "Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-        url: "https://huggingface.co/bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF/resolve/ae44f08e1392f39c0e474af10c3ff8355c8b6688/Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-        sha256: "2fde00ce69dd4899c70d020845e2638353015bba0fdf161b3eb965f2bca4464e",
-        size_bytes: 2_497_280_736,
-        purpose: "text refinement",
-        kind: ModelKind::File,
-        used_by: ModelUse::Refinement,
-        variable: "VOICEPUNCHER_LLM_MODEL",
-    },
 ];
 
 /// The parts of the app that are on, and so which models are needed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ModelNeeds {
     pub voice_control: bool,
-    pub refinement: bool,
 }
 
 impl ModelNeeds {
     /// Every model of the catalog.
-    pub const ALL: Self = Self { voice_control: true, refinement: true };
+    pub const ALL: Self = Self { voice_control: true };
 
     fn includes(self, used_by: ModelUse) -> bool {
         match used_by {
             ModelUse::Dictation => true,
             ModelUse::VoiceControl => self.voice_control,
-            ModelUse::Refinement => self.refinement,
         }
     }
 }
@@ -159,9 +146,9 @@ mod tests {
     }
 
     #[test]
-    fn should_list_six_files_each_with_a_pinned_address_checksum_size_and_purpose() {
+    fn should_list_five_files_each_with_a_pinned_address_checksum_size_and_purpose() {
         // Then
-        assert_eq!(CATALOG.len(), 6);
+        assert_eq!(CATALOG.len(), 5);
         for file in CATALOG {
             assert!(file.url.starts_with("https://"), "{}", file.url);
             assert!(file.url.ends_with(file.name), "{}", file.url);
@@ -194,10 +181,6 @@ mod tests {
             "https://huggingface.co/ggml-org/whisper-vad/resolve/9ffd54a1e1ee413ddf265af9913beaf518d1639b/ggml-silero-v5.1.2.bin"
         );
         assert_eq!(
-            url("Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf"),
-            "https://huggingface.co/bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF/resolve/ae44f08e1392f39c0e474af10c3ff8355c8b6688/Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
-        );
-        assert_eq!(
             url("silero_vad.onnx"),
             format!("{sherpa}/asr-models/silero_vad.onnx")
         );
@@ -214,13 +197,12 @@ mod tests {
         let sha = |name| by_name(name).unwrap().sha256;
         assert!(sha("ggml-large-v3-turbo-q5_0.bin").starts_with("394221709cd5"));
         assert!(sha("ggml-small.bin").starts_with("1be3a9b2"));
-        assert!(sha("Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf").starts_with("2fde00ce"));
     }
 
     #[test]
-    fn should_need_only_the_dictation_models_with_voice_control_and_refinement_off() {
+    fn should_need_only_the_dictation_models_with_voice_control_off() {
         // When
-        let files = needed(ModelNeeds { voice_control: false, refinement: false });
+        let files = needed(ModelNeeds { voice_control: false });
         // Then
         assert_eq!(
             names(&files),
@@ -231,13 +213,6 @@ mod tests {
     #[test]
     fn should_need_every_file_with_everything_on() {
         assert_eq!(needed(ModelNeeds::ALL), CATALOG.to_vec());
-    }
-
-    #[test]
-    fn should_need_the_refinement_model_only_with_refinement_on() {
-        let files = needed(ModelNeeds { voice_control: false, refinement: true });
-        assert!(names(&files).contains(&"Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf"));
-        assert_eq!(files.len(), 3);
     }
 
     #[test]
@@ -254,6 +229,6 @@ mod tests {
 
     #[test]
     fn should_add_up_the_sizes() {
-        assert_eq!(total_bytes(&CATALOG), 3_578_079_573);
+        assert_eq!(total_bytes(&CATALOG), 1_080_798_837);
     }
 }

@@ -1,16 +1,14 @@
 //! Services the app starts as copies itself, through outages a step makes: a copy that
-//! stops answering, every dictation copy killed during a chunk, a refinement copy killed
-//! while it refines.
+//! stops answering, every dictation copy killed during a chunk.
 
 use std::time::Duration;
 
 use anyhow::{bail, ensure, Context, Result};
 use cucumber::{given, then, when};
 
-use voicepuncher::adapters::secondary::textrefinement::openai::OpenAiTextRefiner;
 use voicepuncher::adapters::secondary::transcription::openai::OpenAiTranscriber;
-use voicepuncher::core::application::{TextRefiner, Transcriber};
-use voicepuncher::core::domain::{AudioBuffer16k, RawTranscript, ServiceKind};
+use voicepuncher::core::application::Transcriber;
+use voicepuncher::core::domain::{AudioBuffer16k, ServiceKind};
 use voicepuncher_e2e_test::speech_cache::{synthesized, SayRequest};
 
 use super::managed::{log_mark, logged_since, process_on, ManagedRun, Needed};
@@ -24,17 +22,12 @@ const RESTARTED_WITHIN: Duration = Duration::from_secs(30);
 const ANSWERS_WITHIN: Duration = Duration::from_secs(90);
 /// How long the chunk is on its way before its copies are killed.
 const KILLED_AFTER: Duration = Duration::from_millis(300);
-/// How long the refinement is on its way, at most, before the step looks for its copy.
-const REFINING_WITHIN: Duration = Duration::from_secs(5);
 /// What the dictation client logs when it waits for a copy to come back.
 const WAITING_FOR_A_COPY: &str = "speech recognition: no copy accepts connections — waiting";
 /// About ten seconds of speech: the copies take a while to transcribe it.
 const CHUNK_SPEECH: &str = "The quarterly report is ready for review. Please read the summary \
      before the meeting on Friday and send your comments to the team by Thursday evening.";
 const CHUNK_WORD: &str = "quarterly";
-const TRANSCRIPT: &str = "so um the quarterly report is uh ready for review and please read \
-     the summary before the meeting on friday and um send your comments to the team by \
-     thursday evening because we want to uh close it out before the weekend";
 
 /// What one scenario's services and outages left behind.
 #[derive(Debug, Default)]
@@ -47,7 +40,6 @@ pub struct OwnedServices {
     heard: Option<std::result::Result<Option<String>, String>>,
     /// Where the log stood when the chunk was sent.
     sent_at: usize,
-    refined: Option<std::result::Result<String, String>>,
 }
 
 impl OwnedServices {
@@ -67,20 +59,6 @@ async fn dictation_copies_ready(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         owned(world).run = Some(ManagedRun::start(Needed {
             dictation_copies: 2,
-            refinement_copies: None,
-            voice_control: false,
-        })?);
-        Ok(())
-    })
-    .await
-}
-
-#[given("the app started the text refinement service as two copies and they are ready")]
-async fn refinement_copies_ready(world: &mut E2eWorld) -> Result<()> {
-    off_thread(world, |world| {
-        owned(world).run = Some(ManagedRun::start(Needed {
-            dictation_copies: 1,
-            refinement_copies: Some(2),
             voice_control: false,
         })?);
         Ok(())
@@ -128,40 +106,6 @@ async fn every_copy_killed_during_a_chunk(world: &mut E2eWorld) -> Result<()> {
             chunk
                 .join()
                 .map_err(|_| anyhow::anyhow!("the chunk panicked"))?,
-        );
-        Ok(())
-    })
-    .await
-}
-
-#[when("the copy refining a transcript is killed before it answers")]
-async fn refining_copy_killed(world: &mut E2eWorld) -> Result<()> {
-    off_thread(world, |world| {
-        let owned = owned(world);
-        let run = owned.run()?;
-        let mut refiner = OpenAiTextRefiner::connect(run.config.refinement.clone())?;
-        let refinement = std::thread::spawn(move || {
-            let raw = RawTranscript::new(TRANSCRIPT.to_owned()).map_err(|e| format!("{e:?}"))?;
-            refiner
-                .refine(&raw)
-                .map(|text| text.as_str().to_owned())
-                .map_err(|e| format!("{e:#}"))
-        });
-        let ports = run.ports(ServiceKind::Refinement);
-        let refining = std::cell::Cell::new(None);
-        wait_until(REFINING_WITHIN, || {
-            refining.set(run.connected_copy(&ports));
-            refining.get().is_some()
-        });
-        let port = refining
-            .get()
-            .context("no copy of the text refinement service took the refinement")?;
-        let pid = run.kill(port)?;
-        owned.stopped = Some((port, pid));
-        owned.refined = Some(
-            refinement
-                .join()
-                .map_err(|_| anyhow::anyhow!("the refinement panicked"))?,
         );
         Ok(())
     })
@@ -217,17 +161,4 @@ fn wait_logged(world: &mut E2eWorld) -> Result<()> {
         "the dictation client logged no wait for a copy"
     );
     Ok(())
-}
-
-#[then("the other copy refines the transcript, and the text is not reported as pasted without refinement")]
-fn other_copy_refined(world: &mut E2eWorld) -> Result<()> {
-    match owned(world)
-        .refined
-        .clone()
-        .context("no refinement was sent")?
-    {
-        Ok(text) if !text.trim().is_empty() => Ok(()),
-        Ok(text) => bail!("the refinement came back empty: {text:?}"),
-        Err(e) => bail!("the refinement failed, so the raw text would be pasted: {e}"),
-    }
 }

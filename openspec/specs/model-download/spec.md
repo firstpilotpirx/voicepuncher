@@ -103,7 +103,7 @@ When every needed file is present, the runtime SHALL leave Waiting for models an
 - **AND** Done is enabled in the window
 
 ### Requirement: The same download runs headless
-`voicepuncher --download-models [--models-dir DIR] [--no-llm]` SHALL run the same download without a window, for every catalog file (without the text refinement model with `--no-llm`), printing one line per file event and per 10 % of a file's progress to the error output, and SHALL exit 0 when every file is present at the end and 1 otherwise; `just models` SHALL run it.
+`voicepuncher --download-models [--models-dir DIR]` SHALL run the same download without a window, for every catalog file, printing one line per file event and per 10 % of a file's progress to the error output, and SHALL exit 0 when every file is present at the end and 1 otherwise; `just models` SHALL run it.
 
 #### Scenario: A headless run with every file present
 - **GIVEN** a folder that holds every catalog file

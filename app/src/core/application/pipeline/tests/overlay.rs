@@ -9,49 +9,35 @@ use crate::core::application::live_transcript_view::MockLiveTranscriptView;
 use crate::core::application::pipeline::live_transcript::LiveTranscript;
 use crate::core::application::pipeline::live_worker::run_live_worker;
 use crate::core::application::pipeline::SharedTranscriber;
-use crate::core::domain::{FailingPart, FailureNotice, RawTranscript};
+use crate::core::domain::{FailureNotice, RawTranscript};
 
-/// What the overlay showed for a dictation whose refiner is `refiner`.
-fn signs_with(refiner: MockTextRefiner, refinement_shown: bool) -> Vec<String> {
+#[test]
+fn should_show_speech_recognition_then_the_pasted_sign() {
+    // Given
     let (overlay, shown) = noting_overlay();
-    let mut under_test = PipelineUnderTest::new().refiner(refiner).overlay(overlay);
-    if !refinement_shown {
-        under_test = under_test.without_refinement_stage();
-    }
-    let mut pipeline = under_test.build();
+    let mut pipeline = PipelineUnderTest::new().overlay(overlay).build();
+    // When
     press(&mut pipeline);
     press(&mut pipeline);
-    seen(&shown)
-}
-
-#[test]
-fn should_show_speech_recognition_then_text_refinement_then_the_pasted_sign() {
-    assert_eq!(
-        signs_with(refining_to("Hello."), true),
-        ["recording", "recognizing speech", "refining text", "pasted"]
-    );
-}
-
-#[test]
-fn should_not_show_text_refinement_when_its_stage_is_off() {
-    assert_eq!(
-        signs_with(refining_to("Hello."), false),
-        ["recording", "recognizing speech", "pasted"]
-    );
+    // Then
+    assert_eq!(seen(&shown), ["recording", "recognizing speech", "pasted"]);
 }
 
 #[test]
 fn should_end_on_the_pending_failure_notice_instead_of_the_pasted_sign() {
-    let notice = FailureNotice::PastedUnrefined(FailingPart::TextRefinement);
-    assert_eq!(
-        signs_with(refinement_down(), true),
-        [
-            "recording".to_owned(),
-            "recognizing speech".to_owned(),
-            "refining text".to_owned(),
-            format!("{notice:?}"),
-        ]
-    );
+    // Given
+    let (overlay, shown) = noting_overlay();
+    let mut pipeline = PipelineUnderTest::new()
+        .paster(paste_down())
+        .overlay(overlay)
+        .build();
+    // When
+    press(&mut pipeline);
+    press(&mut pipeline);
+    // Then
+    let notice = FailureNotice::NotPasted(None);
+    assert_eq!(seen(&shown).last(), Some(&format!("{notice:?}")));
+    assert!(!seen(&shown).contains(&"pasted".to_owned()));
 }
 
 /// Runs the live worker over two chunks the transcriber answers with `answers` in turn.

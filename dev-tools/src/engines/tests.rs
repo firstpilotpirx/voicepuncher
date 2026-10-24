@@ -2,8 +2,8 @@
 
 use super::lock::EngineLock;
 use super::relocate::{arguments, blank, references};
-use super::sources::Source;
-use super::{bundle, staging::crates};
+use super::sources::{verify_in, Source, Sources};
+use super::{accepted, bundle, staging::crates};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -20,8 +20,6 @@ fn should_read_every_section_of_the_engine_lock() {
         "whisper.formulae",
         "whisper.from",
         "whisper.sha256",
-        "llama",
-        "llama.from",
         "command-spotting",
         "licenses",
     ] {
@@ -45,16 +43,12 @@ fn should_refuse_a_line_that_is_no_key_value_pair() {
 }
 
 #[test]
-fn should_read_a_file_from_its_formula_or_its_archive() {
+fn should_read_a_file_from_its_formula() {
     let formulae = BTreeMap::from([("ggml".to_string(), "0.27.0".to_string())]);
-    let cellar = Source::Cellar { cellar: PathBuf::from("/c"), formulae };
+    let cellar = Source { cellar: PathBuf::from("/c"), formulae };
     assert_eq!(
         cellar.path("ggml/lib/libggml.0.dylib"),
         PathBuf::from("/c/ggml/0.27.0/lib/libggml.0.dylib")
-    );
-    assert_eq!(
-        Source::Archive(PathBuf::from("/a")).path("llama/x"),
-        PathBuf::from("/a/llama/x")
     );
 }
 
@@ -111,4 +105,35 @@ fn should_expect_the_app_version_in_the_bundle() {
     assert!(keys.contains(&("CFBundleVersion", "0.9.1".to_string())));
     assert!(keys.contains(&("LSUIElement", "true".to_string())));
     assert_eq!(keys.len(), 11);
+}
+
+const WRONG_SUM: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+
+#[test]
+fn should_refuse_a_homebrew_file_whose_checksum_differs_from_the_lock() {
+    let cellar = tempfile::tempdir().unwrap();
+    let program = cellar.path().join("whisper-cpp/1.9.5/bin/whisper-server");
+    std::fs::create_dir_all(program.parent().unwrap()).unwrap();
+    std::fs::write(&program, "the installed program").unwrap();
+    let found = super::sha256(&program).unwrap();
+    let lock = EngineLock::parse(
+        &format!(
+            "[whisper]\nsource = \"homebrew\"\n[whisper.formulae]\nwhisper-cpp = \"1.9.5\"\n\
+             [whisper.from]\nwhisper-server = \"whisper-cpp/bin/whisper-server\"\n\
+             [whisper.sha256]\nwhisper-server = \"{WRONG_SUM}\"\n"
+        ),
+        "engines.lock",
+    )
+    .unwrap();
+    let seed = Sources { cellar: Some(cellar.path().to_path_buf()), ..Sources::default() };
+    let sources = verify_in(seed, &lock, "engines.lock").unwrap();
+    assert_eq!(
+        sources.problems,
+        [format!(
+            "whisper: whisper-server ({}) has sha256 {found}, engines.lock expects {WRONG_SUM}",
+            program.display()
+        )]
+    );
+    let refused = accepted(sources, "engines.lock").err().unwrap();
+    assert!(refused.starts_with("no engine staged"), "{refused}");
 }

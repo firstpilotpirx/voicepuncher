@@ -12,19 +12,17 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Command;
 
-const ENGINES: [(&str, &str, &str); 3] = [
+const ENGINES: [(&str, &str, &str); 2] = [
     ("whisper", "whisper-server", "--help"),
-    ("llama", "llama-server", "--version"),
     (
         "command-spotting",
         "voicepuncher-command-spotting",
         "--version",
     ),
 ];
-const LICENSES: [&str; 6] = [
+const LICENSES: [&str; 5] = [
     "whisper.cpp",
     "ggml",
-    "llama.cpp",
     "libomp",
     "sherpa-onnx",
     "onnxruntime",

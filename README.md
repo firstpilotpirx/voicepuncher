@@ -1,12 +1,12 @@
 # voicepuncher
 
-A menu bar app for macOS on Apple Silicon that turns speech into text: press a hotkey, speak, and the text is pasted at the cursor. Everything runs on your Mac: speech recognition (whisper.cpp), optional text cleanup (llama.cpp) and voice commands run as local services the app starts itself, on the Metal GPU. Nothing you say leaves the machine; the only network use is the one-time download of the models (see [Privacy](#privacy)). Optional [voice control](#voice-control) works hands-free: spoken commands start and stop a dictation and press Enter.
+A menu bar app for macOS on Apple Silicon that turns speech into text: press a hotkey, speak, and the text is pasted at the cursor. Everything runs on your Mac: speech recognition (whisper.cpp) and voice commands run as local services the app starts itself, on the Metal GPU. Nothing you say leaves the machine; the only network use is the one-time download of the models (see [Privacy](#privacy)). Optional [voice control](#voice-control) works hands-free: spoken commands start and stop a dictation and press Enter.
 
 ## Requirements
 
 - Apple Silicon Mac (Metal required — no Intel support), macOS 15 or later
-- 16 GB RAM minimum (all models load resident, ~7 GB working set combined: six whisper-server copies ≈ 4.3 GB, two text refinement copies ≈ 2 GB)
-- ≈ 2.1 GB of free disk space for the models (≈ 4.6 GB with text refinement)
+- 16 GB RAM minimum (all models load resident, ≈ 5 GB working set combined: six whisper-server copies ≈ 4.3 GB)
+- ≈ 2.1 GB of free disk space for the models
 
 ## Install
 
@@ -14,13 +14,13 @@ A menu bar app for macOS on Apple Silicon that turns speech into text: press a h
 2. Open it and drag **voicepuncher** onto **Applications**.
 3. Open voicepuncher from Applications. macOS shows a dialog saying it cannot verify that voicepuncher is free of malware, with the buttons **Move to Trash** and **Done**: voicepuncher is signed with the project's own certificate, not an Apple Developer ID, and is not notarized. Click **Done**, open **System Settings → Privacy & Security**, scroll to the message about voicepuncher and click **Open Anyway**, then confirm with your password. Needed once per version; macOS 15 and later no longer offer right-click → Open for this.
 
-The app carries its own engines — whisper.cpp 1.9.5 for speech recognition, llama.cpp b11669 for text refinement and the command spotting service — so nothing else is installed: no Homebrew, no terminal.
+The app carries its own engines — whisper.cpp 1.9.5 for speech recognition and the command spotting service — so nothing else is installed: no Homebrew, no terminal.
 
 ## First launch
 
 Nothing is asked in a terminal. The first launch goes through these steps, each in a window of its own, and remembers them:
 
-1. **Settings file.** The app writes `~/.voicepuncher/config.toml` with every option at its default and a comment explaining it (hotkey Right Option, recording mode Toggle, language detected automatically, text refinement off). Change the options in the [Settings](#settings) window; delete the file to get the defaults back at the next launch.
+1. **Settings file.** The app writes `~/.voicepuncher/config.toml` with every option at its default and a comment explaining it (hotkey Right Option, recording mode Toggle, language detected automatically). Change the options in the [Settings](#settings) window; delete the file to get the defaults back at the next launch.
 2. **Permissions.** The **Permissions** window lists the three permissions the app needs, each with its status (Granted, Not granted, Not asked yet) and its remedy — **Request…** shows the system prompt, **Open System Settings** opens the exact pane. The app checks again by itself and goes on as soon as the last one is granted, without a restart; a permission revoked while it runs stops dictation within 5 s and reopens the window. **Permissions…** in the menu opens the window at any time. The panes list the app as **voicepuncher** with its icon; an update signed with the same certificate keeps them.
 
    | Permission | Why | Location |
@@ -29,13 +29,13 @@ Nothing is asked in a terminal. The first launch goes through these steps, each 
    | Accessibility | to paste the text into the focused app (it presses ⌘V) | System Settings → Privacy & Security → Accessibility |
    | Input Monitoring | to notice the hotkey in every app | System Settings → Privacy & Security → Input Monitoring |
 
-3. **Models.** With a [model](#models) missing, the **Download speech models** window opens and the menu shows "Waiting for models — open Download models…". It lists each needed file with its size and status, the free space and the folder. **Download** fetches the missing files one after another (≈ 2.1 GB, ≈ 4.6 GB with text refinement), with each file's progress, the total, the rate and the time left; **Cancel** keeps what came, and the next **Download** goes on from there; **Retry** follows a failure. Once every file is present, **Done** closes the window and the services start. **Download models…** in the menu and in **Settings → Services** opens the window again.
+3. **Models.** With a [model](#models) missing, the **Download speech models** window opens and the menu shows "Waiting for models — open Download models…". It lists each needed file with its size and status, the free space and the folder. **Download** fetches the missing files one after another (≈ 2.1 GB), with each file's progress, the total, the rate and the time left; **Cancel** keeps what came, and the next **Download** goes on from there; **Retry** follows a failure. Once every file is present, **Done** closes the window and the services start. **Download models…** in the menu and in **Settings → Services** opens the window again.
 4. **Services.** The app starts its local services (the menu shows "Starting services… (N of M ready)"); when all answer, the menu bar icon becomes a microphone and the menu says "Ready — hold Right Option to dictate".
 5. **Login item.** Once it is ready the first time, voicepuncher asks once whether to start at login: **Start at Login** adds it to **System Settings → General → Login Items**, **Not Now** adds nothing. Either answer is remembered (`[app] launch_at_login_asked` in the configuration file, kept by the app). Change it later with the switch in **Settings → General** or in Login Items. A launch at login logs `launched at login`.
 
 ## Using
 
-**Menu bar.** The app lives in the menu bar, without a Dock icon. The icon shows what it does: an hourglass while it starts, a microphone when ready, an ear when voice control listens, a microphone with a red dot while recording, a moving waveform while it recognizes and refines the text, a keyboard while the text waits for a text field, a warning triangle with a failure. Click it for the menu:
+**Menu bar.** The app lives in the menu bar, without a Dock icon. The icon shows what it does: an hourglass while it starts, a microphone when ready, an ear when voice control listens, a microphone with a red dot while recording, a moving waveform while it recognizes the text, a keyboard while the text waits for a text field, a warning triangle with a failure. Click it for the menu:
 
 - the version and the state in words ("Ready — hold Right Option to dictate");
 - `Settings…` (⌘,) opens the [settings window](#settings);
@@ -70,7 +70,7 @@ A command works when it is:
 
 Any command may end with "please". The same words inside a sentence ("we should stop the server") do nothing. Details: [Voice control](#voice-control).
 
-**Example.** Press `RightOption`, say "hello world uh I think the API is fine", press it again; with text refinement on, `Hello world, I think the API is fine.` is pasted at the cursor.
+**Example.** Press `RightOption`, say "hello world, I think the API is fine", press it again; the transcript is pasted at the cursor as soon as speech recognition returns it.
 
 ### Voice control
 
@@ -109,13 +109,7 @@ A command said in the other state is ignored. `press enter` said right after `st
 
 **Careful with `clear all text`:** it selects everything in the focused app before deleting — meant for a chat input, it erases a whole document in an editor.
 
-### Text refinement
-
-The text refinement service **normalizes** the dictation: punctuation, capitals, misrecognized words, technical terms in their usual spelling (`докер` → `Docker`). Filler sounds (`э-э`, `эм`, `um`, `uh`) are removed by the app before the transcript is sent. Meaning and language stay as dictated; the transcript is data, so a dictated "переведи это на английский" is pasted as that sentence, not translated.
-
-The app pastes the service's answer only when it is still the dictation: the same writing system and at least half of the transcript's Cyrillic and half of its Latin words. Otherwise — a translation, an answer to a dictated question, a rewrite — it logs `refinement answer rejected (…)` and pastes the raw transcript.
-
-The default instruction comes with seven example turns (`[refinement].examples`, each `{ transcript, normalized }`; `examples = []` sends none). A `system_prompt` set in your config replaces the default instruction — delete it to get the current one.
+### Languages
 
 **Speech language:** keep `[transcription].language = "auto"` (the default) when you dictate in more than one language. A fixed language makes the speech recognition service write speech in another language as text in the fixed one: with `language = "ru"`, 29 of 40 English corpus samples came out as Russian, mostly garbled.
 
@@ -130,18 +124,17 @@ Every dictation that reached speech recognition is kept in `~/.voicepuncher/hist
 
 | Field | Meaning |
 |---|---|
-| `format` | Layout version of `entry.json` (now `1`) |
+| `format` | Layout version of `entry.json` (now `2`; format `1` also had `refinement` and `refinement_model`) |
 | `started_at` | Start of the recording, UTC |
 | `start` | How it started: `hotkey_held`, `hotkey_toggled`, `voice` or `recording_file` |
 | `audio` | The audio file and its length in ms |
 | `chunks` | Text of each chunk as speech recognition returned it |
-| `raw_transcript` | The joined transcript before refinement |
+| `raw_transcript` | The joined transcript |
 | `pasted_text` | The text that was pasted (or printed, in file mode) |
-| `refinement` | `refined`, `off` or `fell_back` (service failed, raw text pasted) |
 | `outcome` | `pasted`, `left_in_clipboard`, `paste_failed`, `speech_recognition_failed`, `no_text` or `only_command_words` |
 | `lost_chunks` | Chunks speech recognition could not transcribe |
 | `timings_ms` | Time of each stage after the recording stopped |
-| `dictation_model`, `refinement_model`, `app_version` | What produced the text |
+| `dictation_model`, `app_version` | What produced the text |
 
 Settings (Settings → Archive, or `~/.voicepuncher/config.toml`):
 
@@ -163,7 +156,7 @@ max_size_mb = 2048                 # beyond this, the oldest entries are removed
 - **Save** checks every value first: a value out of range or a service address that is not on this Mac is refused, outlined in red and named in the status line, and the file stays unchanged. Otherwise only the changed keys are written; comments, order and the examples you did not touch stay as they are. A missing file is created.
 - The saved settings apply without a relaunch: the status line says `Saved and applied.`, or that they apply after the current dictation, or why the running app could not use them (the file keeps the values).
 - **Revert** drops the unsaved edits; closing the window with unsaved edits asks Save, Don't Save or Cancel.
-- An option this run's command line overrides (`--hotkey`, `--no-llm`, …) shows the file's value with a note under it naming the value the run uses.
+- An option this run's command line overrides (`--hotkey`, `--input-device`, …) shows the file's value with a note under it naming the value the run uses.
 - **Start at login** (General) is not a configuration key: it adds or removes the app in **System Settings → General → Login Items** at once, without Save, and shows the system's state each time the window comes to the front. A login item waiting for approval shows a note and a button to that pane; outside an installed app (run from a build folder) the switch is disabled.
 
 | Tab | Option | Control | Key |
@@ -184,14 +177,6 @@ max_size_mb = 2048                 # beyond this, the oldest entries are removed
 | Dictation (advanced) | Chunk threshold, Chunk overlap, VAD lookback | numbers, s | `transcription.chunk_threshold_secs, chunk_overlap_secs, vad_lookback_secs` |
 | Dictation (advanced) | Model name | text | `transcription.model` |
 | Dictation (advanced) | Service address | text | `transcription.base_url` |
-| Refinement | Refine text with the language model | switch | `refinement.enabled` |
-| Refinement | Model | text | `refinement.model` |
-| Refinement | System prompt | text view | `refinement.system_prompt` |
-| Refinement | Examples | table with + and − | `[[refinement.examples]]` |
-| Refinement | Temperature | slider | `refinement.temperature` |
-| Refinement | Max tokens | number | `refinement.max_tokens` |
-| Refinement | Timeout | number, s | `refinement.timeout_secs` |
-| Refinement (advanced) | Service address, API key | text | `refinement.base_url, api_key` |
 | Sounds | Start, Stop, Cancel, Listening on, Listening off, Enter, Clear, Paste, Restart | pop-up of the 14 system sounds and None, ▶ plays it | `sounds.*_sound` |
 | Paste | Clipboard restore delay | number, ms | `paste.clipboard_restore_delay_ms` |
 | Paste | Wait for a text field | number, s | `paste.focus_wait_seconds` |
@@ -214,7 +199,7 @@ tail -n 200 ~/.voicepuncher/logs/voicepuncher.log
 
 When the file would pass 10 MB, it is renamed `voicepuncher.log.1` (older ones move up to `.5`, the oldest is deleted) and a new file starts; no line is split between two files. File mode (`--input-file`) logs to the error output only and never touches the logs folder.
 
-**Open Logs Folder** in the menu (and beside the level in Settings → Logging) shows the folder in Finder. Each local service writes its own log beside it (`whisper-server-<port>.log`, `llama-server-8080.log`, `voicepuncher-command-spotting-8082.log`); **Services → Open Log** in the menu opens one.
+**Open Logs Folder** in the menu (and beside the level in Settings → Logging) shows the folder in Finder. Each local service writes its own log beside it (`whisper-server-<port>.log`, `voicepuncher-command-spotting-8082.log`); **Services → Open Log** in the menu opens one.
 
 **In a bug report**, paste the last 200 lines of `voicepuncher.log` (above) — they start with the launch header naming the version and macOS — and say what you did and what you expected. Add the log of a service when the menu shows it Failed.
 
@@ -228,7 +213,7 @@ When the file would pass 10 MB, it is renamed `voicepuncher.log.1` (older ones m
 
 ## Privacy
 
-The model download is the app's only network use, and only when the user clicks **Download** (or runs `--download-models` / `just models`). It contacts `huggingface.co` and `github.com` (and the CDNs they redirect to) over HTTPS, at pinned addresses, and sends nothing but the requests for the files. `VOICEPUNCHER_MODEL_MIRROR` points every address at another host. Dictation, refinement and voice control never leave `127.0.0.1`.
+The model download is the app's only network use, and only when the user clicks **Download** (or runs `--download-models` / `just models`). It contacts `huggingface.co` and `github.com` (and the CDNs they redirect to) over HTTPS, at pinned addresses, and sends nothing but the requests for the files. `VOICEPUNCHER_MODEL_MIRROR` points every address at another host. Dictation and voice control never leave `127.0.0.1`.
 
 Your dictations stay on this machine: the [dictation archive](#dictation-archive) keeps their audio and text in `~/.voicepuncher/history/`, never sent anywhere.
 
@@ -240,7 +225,6 @@ The bundle carries the license of every engine and library it bundles in `Conten
 |---|---|---|
 | whisper.cpp | MIT | `whisper.cpp-LICENSE` |
 | ggml | MIT | `ggml-LICENSE` |
-| llama.cpp | MIT | `llama.cpp-LICENSE` |
 | LLVM OpenMP runtime (`libomp`) | Apache-2.0 with LLVM exceptions | `libomp-LICENSE` |
 | sherpa-onnx | Apache-2.0 | `sherpa-onnx-LICENSE` |
 | ONNX Runtime (linked into the command spotting service) | MIT | `onnxruntime-LICENSE` |
@@ -251,7 +235,7 @@ Everything below is for working on voicepuncher from a checkout. The terminal is
 
 ### From source
 
-Prerequisites: Rust ≥ 1.88, [`just`](https://github.com/casey/just), Homebrew `whisper.cpp` and `llama.cpp` (`just start-model-servers` offers to install them). Outside a bundle the app finds the engines on `$PATH` and logs their Homebrew version, e.g. `llama-server 0.7.0 from $PATH`.
+Prerequisites: Rust ≥ 1.88, [`just`](https://github.com/casey/just), Homebrew `whisper.cpp` (`just start-model-servers` offers to install it). Outside a bundle the app finds the engine on `$PATH` and logs its Homebrew version, e.g. `whisper-server 1.9.5 from $PATH`.
 
 For the tests, also [cargo-nextest](https://nexte.st) 0.9.146: `cargo +stable install --locked cargo-nextest@0.9.146`. For the bundle and the disk image (`just bundle`, `just dmg`, the `bundle` stage of `full-check`), also `brew install create-dmg`.
 
@@ -274,7 +258,7 @@ cargo run --release -p voicepuncher      # the app, with its menu bar icon and w
 
 ### Run everything in one command
 
-`just run` does everything in one command: downloads missing models, restarts the local services (the command spotting service is rebuilt from the checkout; each service is started again if it crashes while the app runs), builds the app and starts it with voice control; the hotkey records as push-to-talk too. Extra arguments go to the app. Text refinement stays off, and its model and the text refinement service (llama-server) are neither downloaded nor started, unless the arguments hold `--llm`: `just run --llm`. With `[refinement] enabled = true` in the config, pass `--llm` to `just run` as well, or the app exits because no text refinement service runs. Restarting reloads the models, so it takes a few seconds more than `just start-model-servers` followed by `cargo run --release -p voicepuncher`. It is also how an existing setup picks up a new model: after an update that changed one, `just run` downloads it and restarts the services on it.
+`just run` does everything in one command: downloads missing models, restarts the local services (the command spotting service is rebuilt from the checkout; each service is started again if it crashes while the app runs), builds the app and starts it with voice control; the hotkey records as push-to-talk too. Extra arguments go to the app. Restarting reloads the models, so it takes a few seconds more than `just start-model-servers` followed by `cargo run --release -p voicepuncher`. It is also how an existing setup picks up a new model: after an update that changed one, `just run` downloads it and restarts the services on it.
 
 ### Engines
 
@@ -283,32 +267,29 @@ The bundle carries the engines `app/packaging/engines.lock` pins, by version and
 | Engine | Source | Folder in the bundle |
 |---|---|---|
 | speech recognition (`whisper-server`) | Homebrew `whisper.cpp` 1.9.5 with `ggml` 0.27.0 and `libomp` 23.1.3 | `Contents/MacOS/engines/whisper/` |
-| text refinement (`llama-server`) | llama.cpp release `b11669` (`llama-b11669-bin-macos-arm64.tar.gz`, downloaded once into `~/.cache/voicepuncher/engines/`, `VOICEPUNCHER_ENGINE_CACHE`) | `Contents/MacOS/engines/llama/` |
 | command spotting (`voicepuncher-command-spotting`) | this workspace, `cargo build --release` | `Contents/MacOS/engines/command-spotting/` |
 
-Each folder holds the program, every library it loads and a `VERSION` file. `just engines` refuses a Homebrew version or a checksum other than the lock's, naming what it found, and writes nothing then; keep the formulae with `brew pin whisper.cpp ggml libomp`. It relocates every file (each Homebrew path becomes `@rpath`, `@loader_path` the only search path, ggml's compiled-in backend folder blanked so the Metal and CPU backends load from the engine's own folder), signs it ad-hoc, and runs each engine with nothing but `/usr/bin:/bin` on `$PATH`; `just bundle` signs every file again with the signing identity, before the app. Whisper and llama are staged again only when the lock changed.
+Each folder holds the program, every library it loads and a `VERSION` file. `just engines` refuses a Homebrew version or a checksum other than the lock's, naming what it found, and writes nothing then; keep the formulae with `brew pin whisper.cpp ggml libomp`. It relocates every file (each Homebrew path becomes `@rpath`, `@loader_path` the only search path, ggml's compiled-in backend folder blanked so the Metal and CPU backends load from the engine's own folder), signs it ad-hoc, and runs each engine with nothing but `/usr/bin:/bin` on `$PATH`; `just bundle` signs every file again with the signing identity, before the app. Whisper is staged again only when the lock changed.
 
-**Bumping an engine:** install the new version (`brew upgrade whisper.cpp`, or a new release tag), write its version, sources and sha256 values into `engines.lock` (`shasum -a 256` of each file; the reason in the commit), run `just engines`, then `just full-check` — its `e2e-bundle` stage runs the bundled engines on the models and fails when one no longer uses the Metal GPU.
+**Bumping an engine:** install the new version (`brew upgrade whisper.cpp`), write its version, sources and sha256 values into `engines.lock` (`shasum -a 256` of each file; the reason in the commit), run `just engines`, then `just full-check` — its `e2e-bundle` stage runs the bundled engines on the models and fails when one no longer uses the Metal GPU.
 
 ### Local services
 
-voicepuncher runs no model itself. It sends each recording to the **speech recognition service for dictation** (OpenAI Audio Transcriptions API) and each raw transcript to a **text refinement service** (OpenAI Chat Completions API), both on this machine, and pastes what comes back. The supported services are whisper.cpp `whisper-server` and llama.cpp `llama-server`. With voice control on, the [command spotting service](#command-spotting-voice-control) confirms utterances with a **speech recognition service for commands** of its own, so the larger dictation model never slows down a voice command; the app never talks to that one.
+voicepuncher runs no model itself. It sends each recording to the **speech recognition service for dictation** (OpenAI Audio Transcriptions API) on this machine and pastes the transcript it returns. The supported service is whisper.cpp `whisper-server`. With voice control on, the [command spotting service](#command-spotting-voice-control) confirms utterances with a **speech recognition service for commands** of its own, so the larger dictation model never slows down a voice command; the app never talks to that one.
 
 | Service | Script name | Port | Model (variable) | Copies (variable) |
 |---|---|---|---|---|
 | speech recognition for dictation | `whisper-server` | 8081 (`VOICEPUNCHER_STT_PORT`) | `ggml-large-v3-turbo-q5_0.bin` (`VOICEPUNCHER_WHISPER_MODEL`) | 3 (`VOICEPUNCHER_STT_INSTANCES`) |
 | speech recognition for commands | `whisper-server-commands` | 8085 (`VOICEPUNCHER_COMMAND_STT_PORT`) | `ggml-small.bin` (`VOICEPUNCHER_COMMAND_WHISPER_MODEL`) | 3 (`VOICEPUNCHER_COMMAND_STT_INSTANCES`) |
-| text refinement | `llama-server` | 8080 (`VOICEPUNCHER_LLM_PORT`) | `Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf` (`VOICEPUNCHER_LLM_MODEL`) | 1 (the app: 2) |
 | command spotting | `voicepuncher-command-spotting` | 8082 (`VOICEPUNCHER_KWS_PORT`) | see [Command spotting](#command-spotting-voice-control) | 1 (the app: 2) |
 
-**The app starts them itself.** In hotkey mode the app starts the services its configuration needs: the speech recognition service for dictation, the text refinement service when text refinement is on (`--llm` or `[refinement] enabled = true`), and with voice control the speech recognition service for commands and the command spotting service. A service that already answers on its port — started by `just start-model-servers`, say — is adopted: the app uses it and leaves it running at quit. A speech recognition copy the app started counts ready only once it has transcribed a short warm-up utterance (its first decode builds its Metal pipelines, up to seconds on a busy machine), and its log line names how long that took. The menu bar shows "Starting services… (N of M ready)" until all answer; the Services submenu lists each service with its state, with Restart for one the app started and Open Log. A service the app started is started again when it exits (after 1 s, doubling up to 30 s) or stops answering its health check three times; after five starts that never answered it is Failed, naming its log. Every service runs as copies the app starts and watches one by one, so one copy that dies or hangs is restarted while the others answer: the text refinement service as two `llama-server` copies (8080 → 48081–48082), the command spotting service as two copies (8082 → 49083–49084). A chunk whose speech recognition copies are all down waits up to 30 s for one to come back instead of being lost; a refinement whose copy drops the connection or sends no answer is sent once to another copy; the app's listening moves to another command spotting copy at once, and a confirmation refused by its copy goes to another copy for commands. At quit the app asks each service it started to end and kills one still running 5 s later. The app finds `whisper-server` and `llama-server` in its bundle (`engines/`), through `VOICEPUNCHER_WHISPER_BINARY` / `VOICEPUNCHER_LLAMA_BINARY`, or on `$PATH`; the command spotting service next to the app or through `VOICEPUNCHER_KWS_BINARY`; the models through the variables of the table or in `~/.voicepuncher/models/`. A missing one fails that service with the file it looked for. The `[services]` section sets it:
+**The app starts them itself.** In hotkey mode the app starts the services its configuration needs: the speech recognition service for dictation and, with voice control, the speech recognition service for commands and the command spotting service. A service that already answers on its port — started by `just start-model-servers`, say — is adopted: the app uses it and leaves it running at quit. A speech recognition copy the app started counts ready only once it has transcribed a short warm-up utterance (its first decode builds its Metal pipelines, up to seconds on a busy machine), and its log line names how long that took. The menu bar shows "Starting services… (N of M ready)" until all answer; the Services submenu lists each service with its state, with Restart for one the app started and Open Log. A service the app started is started again when it exits (after 1 s, doubling up to 30 s) or stops answering its health check three times; after five starts that never answered it is Failed, naming its log. Every service runs as copies the app starts and watches one by one, so one copy that dies or hangs is restarted while the others answer: the command spotting service as two copies (8082 → 49083–49084). A chunk whose speech recognition copies are all down waits up to 30 s for one to come back instead of being lost; the app's listening moves to another command spotting copy at once, and a confirmation refused by its copy goes to another copy for commands. At quit the app asks each service it started to end and kills one still running 5 s later. The app finds `whisper-server` in its bundle (`engines/`), through `VOICEPUNCHER_WHISPER_BINARY`, or on `$PATH`; the command spotting service next to the app or through `VOICEPUNCHER_KWS_BINARY`; the models through the variables of the table or in `~/.voicepuncher/models/`. A missing one fails that service with the file it looked for. The `[services]` section sets it:
 
 ```toml
 [services]
 manage = true            # false: the app starts nothing and expects the scripts below
 dictation_copies = 3      # 1 to 4
 command_copies = 3        # 1 to 4
-refinement_copies = 2     # 1 to 4; 1 runs llama-server on the service's own port
 command_spotting_copies = 2  # 1 to 4
 models_dir = "~/.voicepuncher/models"
 commands_url = "http://127.0.0.1:8085/v1"  # the speech recognition service for commands
@@ -317,11 +298,11 @@ commands_url = "http://127.0.0.1:8085/v1"  # the speech recognition service for 
 The scripts below start the same services by hand, with the same flags:
 
 ```bash
-just start-model-servers   # starts all four, in the order of the table (the service for commands before command spotting)
-just stop-model-servers    # stops them again (or some: just stop-model-servers llama-server whisper-server-commands)
+just start-model-servers   # starts all three, in the order of the table (the service for commands before command spotting)
+just stop-model-servers    # stops them again (or some: just stop-model-servers whisper-server-commands)
 ```
 
-`start-model-servers` checks that `whisper-server` and `llama-server` are installed (offers `brew install whisper-cpp` / `brew install llama.cpp`), skips a service if something already answers on its port, and waits until each model is loaded. A speech recognition copy counts ready only once it has transcribed a short warm-up utterance (`app/assets/warm-up.wav`), so no client's first request waits for its first decode; its ready line names that time (`, first transcription N ms`). Each Whisper model is found by its file name in `~/.voicepuncher/` or `~/.voicepuncher/models/`, where `just models` puts it; set the variable (environment or `.env`) to another file to use another model — naming one for dictation leaves the one for commands alone. A default model that is not on disk fails the start with "Run 'just models' or set it in .env". whisper-server also needs the Silero voice activity detection model `ggml-silero-*.bin` (`just models` downloads it; override with `VOICEPUNCHER_VAD_MODEL`): it removes silences longer than 2 s, so a silent recording yields no text, while the pauses between words stay. Logs: `~/.voicepuncher/logs/llama-server-8080.log`, and for a speech recognition service `whisper-server-<port>.log` with one copy (see below for several). Set the port variables of the table to use other ports; PID and log files are per port, so the two speech recognition services never share one. `start-model-servers` also takes the services to start (`just start-model-servers whisper-server`). Each service it launches runs under a supervisor: when the service exits (a crash), it is started again after 1 s (doubling up to 30 s while it keeps crashing), and its log keeps the crash output followed by a `… exited with code N — restarting` note; a service that exits before it was ever ready fails the start at once, with its log. whisper-server runs without language probabilities (`-nlp`): with them, whisper.cpp 1.9.5 crashes on a command confirmation of an utterance without speech. Each speech recognition service runs as three `whisper-server` copies (`VOICEPUNCHER_STT_INSTANCES`, `VOICEPUNCHER_COMMAND_STT_INSTANCES`, at most 4; 1 runs a single whisper-server on the service's own port) on the ports 10000 above its own (8081 → 18082–18084, 8085 → 18086–18088; 10000 below when that would pass port 65535), each under its supervisor, and nothing listens on the service's own port: whisper-server transcribes one request at a time, and two to four copies on one GPU are about twice as fast on long speech (five and more are slower). The app and the command spotting service find the copies from the service's address alone — its own port when that answers, else whichever of the four ports above it plus 10000 answer — and send each request to a free copy, one request per copy, or wait their turn; a copy that refuses a connection gets no requests until it answers again, a request whose copy died is sent again to another copy, and a copy that holds a request past twice its time limit is logged as hung. The CPU threads are split between the copies of a service (cores ÷ copies each); logs `~/.voicepuncher/logs/whisper-server-<copy port>.log`. The service for commands uses the same flags as the one for dictation, with its own model; three copies of small answer the bursts of confirmations of several connections at once (≈ 0.7 GB each; `VOICEPUNCHER_COMMAND_STT_INSTANCES=1` saves ≈ 1.4 GB, unmeasured). `stop-model-servers` stops only servers that `start-model-servers` launched, together with their supervisor, so they stay stopped. A service that is already running keeps the flags it was started with: after an update that changes them, restart it (`just stop-model-servers whisper-server whisper-server-commands && just start-model-servers`).
+`start-model-servers` checks that `whisper-server` is installed (offers `brew install whisper-cpp`), skips a service if something already answers on its port, and waits until each model is loaded. A speech recognition copy counts ready only once it has transcribed a short warm-up utterance (`app/assets/warm-up.wav`), so no client's first request waits for its first decode; its ready line names that time (`, first transcription N ms`). Each Whisper model is found by its file name in `~/.voicepuncher/` or `~/.voicepuncher/models/`, where `just models` puts it; set the variable (environment or `.env`) to another file to use another model — naming one for dictation leaves the one for commands alone. A default model that is not on disk fails the start with "Run 'just models' or set it in .env". whisper-server also needs the Silero voice activity detection model `ggml-silero-*.bin` (`just models` downloads it; override with `VOICEPUNCHER_VAD_MODEL`): it removes silences longer than 2 s, so a silent recording yields no text, while the pauses between words stay. Logs: for a speech recognition service `~/.voicepuncher/logs/whisper-server-<port>.log` with one copy (see below for several). Set the port variables of the table to use other ports; PID and log files are per port, so the two speech recognition services never share one. `start-model-servers` also takes the services to start (`just start-model-servers whisper-server`). Each service it launches runs under a supervisor: when the service exits (a crash), it is started again after 1 s (doubling up to 30 s while it keeps crashing), and its log keeps the crash output followed by a `… exited with code N — restarting` note; a service that exits before it was ever ready fails the start at once, with its log. whisper-server runs without language probabilities (`-nlp`): with them, whisper.cpp 1.9.5 crashes on a command confirmation of an utterance without speech. Each speech recognition service runs as three `whisper-server` copies (`VOICEPUNCHER_STT_INSTANCES`, `VOICEPUNCHER_COMMAND_STT_INSTANCES`, at most 4; 1 runs a single whisper-server on the service's own port) on the ports 10000 above its own (8081 → 18082–18084, 8085 → 18086–18088; 10000 below when that would pass port 65535), each under its supervisor, and nothing listens on the service's own port: whisper-server transcribes one request at a time, and two to four copies on one GPU are about twice as fast on long speech (five and more are slower). The app and the command spotting service find the copies from the service's address alone — its own port when that answers, else whichever of the four ports above it plus 10000 answer — and send each request to a free copy, one request per copy, or wait their turn; a copy that refuses a connection gets no requests until it answers again, a request whose copy died is sent again to another copy, and a copy that holds a request past twice its time limit is logged as hung. The CPU threads are split between the copies of a service (cores ÷ copies each); logs `~/.voicepuncher/logs/whisper-server-<copy port>.log`. The service for commands uses the same flags as the one for dictation, with its own model; three copies of small answer the bursts of confirmations of several connections at once (≈ 0.7 GB each; `VOICEPUNCHER_COMMAND_STT_INSTANCES=1` saves ≈ 1.4 GB, unmeasured). `stop-model-servers` stops only servers that `start-model-servers` launched, together with their supervisor, so they stay stopped. A service that is already running keeps the flags it was started with: after an update that changes them, restart it (`just stop-model-servers whisper-server whisper-server-commands && just start-model-servers`).
 
 To run the services by hand instead:
 
@@ -331,8 +312,6 @@ whisper-server -m ~/.voicepuncher/models/ggml-large-v3-turbo-q5_0.bin \
   -l auto -bo 1 -nf -sns -mc 0 \
   --vad -vm ~/.voicepuncher/models/ggml-silero-v5.1.2.bin -vsd 2000 -vp 500
 # the same with -m ~/.voicepuncher/models/ggml-small.bin --port 8085 for the service for commands
-llama-server -m ~/.voicepuncher/models/Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
-  --host 127.0.0.1 --port 8080 -c 4096 -np 1
 ```
 
 whisper-server 1.9.5 accepts `-nf` (no temperature fallback) but ignores it: every request still decodes again at temperatures 0.2, 0.4, … 1.0 when the first decoding fails. `-nf` stays on the command line for a whisper-server that honours it. Dictation keeps the server's fallback; a command confirmation turns the retries off per request (`temperature_inc` 0), so on an idle service one confirmation takes at most about 1.5 s.
@@ -343,26 +322,25 @@ whisper-server 1.9.5 accepts `-nf` (no temperature fallback) but ignores it: eve
 
 **English terms in Russian dictation:** without a prompt, "oh-my-zsh, zsh и Powerlevel10k" spoken in Russian came out as "а май ZSH, ZSH и по-ирлевелтинке"; with the prompt "В терминале у меня zsh с oh-my-zsh и темой Powerlevel10k, пакеты ставлю через Homebrew и npm." the terms came out as written. There is no default prompt: a Russian prompt also pushes English dictation toward Russian (a short English phrase after a voice command came out as "Кофе машине на 3rd floor", and a long English recording got invented Russian text). Set such a prompt only if you dictate mostly in Russian, and name the terms you use.
 
-With `[services] manage = false` the app checks both services at startup and exits with code 2 if one is not reachable, or if the text refinement service offers several models and none matches `[refinement].model`. Only addresses on this machine are accepted (`localhost`, `127.0.0.0/8`, `[::1]`). Text refinement is off by default: the raw transcript is pasted and the text refinement service is neither checked nor used. Turn it on with `--llm` or `[refinement] enabled = true`; `--no-llm` turns it off and wins over both. If refinement fails during a recording (service stopped, timeout, cut-off or too short answer), the raw transcript is pasted.
+With `[services] manage = false` the app checks the speech recognition service for dictation at startup and exits with code 2 if it is not reachable. Only addresses on this machine are accepted (`localhost`, `127.0.0.0/8`, `[::1]`). A configuration file from an older version that still holds `[refinement]`, `[llm]` or `[services] refinement_copies` loads: the app logs one warning naming them and ignores them.
 
 ### Command spotting (voice control)
 
 With [voice control](#voice-control) on, the app also needs the **command spotting service** `voicepuncher-command-spotting`, built from this repository (`command-spotting/`): sherpa-onnx keyword spotting with the English `zipformer-gigaspeech-3.3M` model and a Silero voice activity detector. The app streams the microphone to it over a loopback WebSocket while listening; it reports the spotted phrases and where speech starts and ends. Each short utterance (up to 3 s) is also sent to the speech recognition service for commands (`--transcription-url http://127.0.0.1:8085/v1`, the Whisper small model: it answers a short utterance in about 0.25 s, where turbo takes about 1 s and lost commands), and the service reports a command when the whole utterance is a command phrase — this is what recognizes commands in a non-native accent reliably; the keyword spotter alone missed most of them. `just models` downloads both models into `~/.voicepuncher/models/` (override with `VOICEPUNCHER_KWS_MODEL_DIR`, `VOICEPUNCHER_KWS_VAD_MODEL`); `just start-model-servers` builds the service and starts it on `127.0.0.1:8082` (`VOICEPUNCHER_KWS_PORT`), log `~/.voicepuncher/logs/voicepuncher-command-spotting-8082.log`. With voice control on and `[services] manage = false`, the app checks it at startup and exits with code 2 when it does not answer; otherwise the app starts it.
 
-**When a service stalls or goes away.** The command spotting service answers the app's pings at once, whatever its confirmations do: each confirmation runs on a thread of its own and is given up after 3 s (`--confirmation-deadline-secs`), so a slow speech recognition service for commands never makes voice control stop. When the command spotting service does go away (a crash, a restart, a hang), the app plays the listening-off sound, keeps a running dictation recording and tries the service again every few seconds; once it answers, the listening-on sound plays and the speech of the last seconds is sent to it again, so a "stop dictation" said meanwhile still counts. A speech recognition request that times out or gets an error answer is sent again up to twice; the wait for one request grows with its audio (5 s plus half its length). The scripts also restart a command spotting or text refinement service that stops answering its `/health` check three times in a row (`… stopped answering its health check — restarting` in its log).
+**When a service stalls or goes away.** The command spotting service answers the app's pings at once, whatever its confirmations do: each confirmation runs on a thread of its own and is given up after 3 s (`--confirmation-deadline-secs`), so a slow speech recognition service for commands never makes voice control stop. When the command spotting service does go away (a crash, a restart, a hang), the app plays the listening-off sound, keeps a running dictation recording and tries the service again every few seconds; once it answers, the listening-on sound plays and the speech of the last seconds is sent to it again, so a "stop dictation" said meanwhile still counts. A speech recognition request that times out or gets an error answer is sent again up to twice; the wait for one request grows with its audio (5 s plus half its length). The scripts also restart a command spotting service that stops answering its `/health` check three times in a row (`… stopped answering its health check — restarting` in its log).
 
 **Tracing a session.** Every log line names its thread (`[time LEVEL thread target]`). In the app, `command spotting: session=<n>` follows one connection to the command spotting service (connect, loss with its cause, each reconnect attempt, back with the replayed seconds), `request=<n>` one speech recognition request with each failed attempt, and `voice control: listening → away` / `away → listening again` the state changes. In the command spotting service log, `conn=<n>` follows one app connection over its threads `conn-<n>-io`, `conn-<n>-proc` and `conn-<n>-confirm`, `job=<conn>.<n>` one confirmation (asked, answered in N ms or given up, what it decided), `lag=` audio that waited for processing, and a `stats conn=<n>` line every 30 s. `RUST_LOG=debug` adds every confirmation asked and every skipped check.
 
 ### Models
 
-The app downloads every model its configuration needs into the models folder (`[services] models_dir`, default `~/.voicepuncher/models/`) at its first launch, in the Download window (see [First launch](#first-launch)); a file already there, in `~/.voicepuncher/` or named by its variable (`VOICEPUNCHER_WHISPER_MODEL` and the others) counts as present. Without a window, `voicepuncher --download-models [--models-dir DIR] [--no-llm]` does the same in a terminal, one line per file, and exits 0 when every file is present, else 1. `just models` builds the app and runs it so (≈ 2.1 GB the first time; `just models no` skips the text refinement model):
+The app downloads every model its configuration needs into the models folder (`[services] models_dir`, default `~/.voicepuncher/models/`) at its first launch, in the Download window (see [First launch](#first-launch)); a file already there, in `~/.voicepuncher/` or named by its variable (`VOICEPUNCHER_WHISPER_MODEL` and the others) counts as present. Without a window, `voicepuncher --download-models [--models-dir DIR]` does the same in a terminal, one line per file, and exits 0 when every file is present, else 1. `just models` builds the app and runs it so (≈ 2.1 GB the first time):
 
 | Model | Used by | File | Source |
 |---|---|---|---|
 | Whisper large-v3-turbo q5_0 (≈ 574 MB) | speech recognition service for dictation | `ggml-large-v3-turbo-q5_0.bin` | https://huggingface.co/ggerganov/whisper.cpp, pinned revision, sha256 checked |
 | Whisper small (≈ 488 MB) | speech recognition service for commands | `ggml-small.bin` | https://huggingface.co/ggerganov/whisper.cpp, pinned revision, sha256 checked |
 | Silero VAD | both speech recognition services | `ggml-silero-v5.1.2.bin` | https://huggingface.co/ggml-org/whisper-vad |
-| Qwen3-4B-Instruct-2507 Q4_K_M (≈ 2.5 GB) | text refinement service | `Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf` | https://huggingface.co/bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF, pinned revision, sha256 checked |
 | keyword spotting + Silero VAD | command spotting service | `sherpa-onnx-kws-*`, `silero_vad.onnx` | https://github.com/k2-fsa/sherpa-onnx |
 
 Each file is downloaded into `NAME.part` beside it and resumed from there after a cancel, a cut connection or a quit; a part whose sha256 does not match is downloaded again once, and then the file fails, so a cut or altered file never lands. A lost connection is retried after 2, 4 and 8 s; a download that does not fit in the free space does not start. The turbo q5_0 file is the measured one: WER 0.077 against small's 0.116 on the fixed 100 corpus recordings, and every chunk-seam case under difficult recording conditions within the bar.
@@ -375,12 +353,9 @@ Every flag is for development, tests and file mode; each one that changes a sett
 --config <FILE>           The configuration file [default: ~/.voicepuncher/config.toml; written with the defaults when missing]
 --hotkey <KEY>            The recording hotkey
 --transcription-url <URL> Speech recognition service address (loopback only)
---refinement-url <URL>    Text refinement service address (loopback only)
 --archive-dir <DIR>       Keep each dictation in this folder (also archives a file run with --input-file)
 --no-archive              Keep no dictation archive (wins over --archive-dir)
 --input-file <FILE>       File mode: transcribe a WAV file and print the text to stdout
---no-llm                  Skip text refinement (wins over --llm)
---llm                     Refine each transcript through the text refinement service
 --voice-control           Listen for spoken commands from the start, beside the hotkey
 --download-models         Download the missing model files without a window and exit
 --models-dir <DIR>        The models folder of --download-models
@@ -388,7 +363,7 @@ Every flag is for development, tests and file mode; each one that changes a sett
 -V, --version             Print version
 ```
 
-The terminal setup wizard and `--setup` are gone: to start over with the defaults, delete the configuration file; the next launch writes it again.
+`--llm`, `--no-llm` and `--refinement-url` are gone with text refinement: a command line that still passes one exits with code 2 naming it. The terminal setup wizard and `--setup` are gone: to start over with the defaults, delete the configuration file; the next launch writes it again.
 
 ### Exit codes
 
@@ -439,22 +414,6 @@ chunk_threshold_secs = 15                  chunk_threshold_secs = 15
 
 `beam_size`, `patience`, `entropy_thold`, `logprob_thold`, `no_speech_thold` and `flash_attn` are now `whisper-server` launch flags; `temperature_inc` has no flag (whisper-server 1.9.5 ignores `-nf` and keeps its own temperature fallback). New keys: `model` (sent as-is), `temperature`, `timeout_secs` (per request, default 60). Then run `just start-model-servers`.
 
-### Upgrading from the in-process LLM
-
-The `[llm]` config section and `--llm-model` are gone (use `--refinement-url`). A config that still has `[llm]` makes the app exit with a message naming each key's replacement:
-
-```toml
-# before                                   # after
-[llm]                                      [refinement]
-model_path = "~/.voicepuncher/qwen.gguf"   base_url = "http://127.0.0.1:8080/v1"   # model: llama-server -m
-context_size = 4096                        # llama-server -c 4096
-system_prompt = "..."                      system_prompt = "..."
-max_tokens = 512                           max_tokens = 512
-temperature = 0.0                          temperature = 0.0
-```
-
-New keys: `model` (default `local`; `llama-server` accepts any name), `api_key` (sent as a bearer token when not empty), `timeout_secs` (per request, default 30). Then run `just start-model-servers`.
-
 ### Tests
 
 All checks run through [`just`](https://github.com/casey/just) (`brew install just`). `just` with no arguments lists every recipe.
@@ -463,18 +422,18 @@ All checks run through [`just`](https://github.com/casey/just) (`brew install ju
 |---|---|---|---|
 | `just test-one <name>...` | only the named tests or slice/component scenarios, in the `test` stage | seconds after the build | TDD Red and Green |
 | `just test` | unit + architecture + integration tests under cargo-nextest, each within its time limit | ~1 min | once per task group |
-| `just check` | fmt, clippy, `test`, release build, E2E smoke, WER accuracy on 10 samples, refinement evaluation | ~8.5 min (machine lock ≈ 7.3 min) | often while developing, before every commit you push |
-| `just full-check` | fmt, clippy, `test`, release build, the bundle (`bundle`: the disk image built and mounted, the bundle's Info.plist and signature checked, then the bundled engines checked, then the `app_distribution.feature` scenarios with the signing guards; no machine lock), E2E smoke, chunk seams, outages (`e2e-resilience`), the bundled engines (`e2e-bundle`: a copy of the bundle starts every service from its own engines on the Metal GPU), WER accuracy on a fixed sample of 100 recordings (or 10, below), refinement evaluation | ~15.5–17.5 min (machine lock ≈ 14.5 min with 10 recordings, ≈ 16.3 min with 100) | before merging a branch and before every release |
+| `just check` | fmt, clippy, `test`, release build, E2E smoke, WER accuracy on 10 samples | ~8.5 min (machine lock ≈ 7.3 min) | often while developing, before every commit you push |
+| `just full-check` | fmt, clippy, `test`, release build, the bundle (`bundle`: the disk image built and mounted, the bundle's Info.plist and signature checked, then the bundled engines checked, then the `app_distribution.feature` scenarios with the signing guards; no machine lock), E2E smoke, chunk seams, outages (`e2e-resilience`), the bundled engines (`e2e-bundle`: a copy of the bundle starts every service from its own engines on the Metal GPU), WER accuracy on a fixed sample of 100 recordings (or 10, below) | ~15.5–17.5 min (machine lock ≈ 14.5 min with 10 recordings, ≈ 16.3 min with 100) | before merging a branch and before every release |
 
-Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke` (four stages, one per capability), `e2e-quick` (10 samples), `e2e-seams` (the seam sweep, plus Russian and English speech under 11 recording conditions, transcribed in chunks), `e2e-bench` (100 samples, two at a time), `e2e-resilience` (the `@resilience` scenarios: a speech recognition service paused while voice control runs, a command spotting service killed or paused and started again by the scripts, a request abandoned in the queue — each on service ports of its own, so the shared services are never touched), `bundle-smoke` (the `bundle` stage, then `e2e-bundle`: a copy of the bundle launched outside `dist/` with nothing but `/usr/bin:/bin` on `$PATH` transcribes a recording, refines a sentence and answers the command spotting health check, and the engine logs show Metal), `e2e` (smoke + seams + 100 samples + refinement evaluation), `refine-eval` (the `@refinement` scenarios: dictated commands, normalization, and a per-category score of the 41 dictations in `e2e-test/refinement/eval_set.jsonl` against the live text refinement service, next to the raw-transcript baseline; fails when a dictated command is carried out or the language changes). The E2E recipes start every local service they test from the checkout's own code and models, on test ports of their own (28081 dictation, 28085 commands, 28080 text refinement, 28082 command spotting; `VOICEPUNCHER_TEST_STT_PORT` and siblings change them), and stop them afterwards, also when a test fails; your everyday services on the default ports are never reused, stopped or restarted. A service a killed run left on a test port is restarted; any other process holding one stops the run before it starts, naming that process. `check` and `full-check` start the services once for all their E2E stages and end with each stage's time. Speech synthesized with `say` is cached in `~/.cache/voicepuncher/speech/`; delete it to synthesize everything again.
+Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke` (three stages, one per capability), `e2e-quick` (10 samples), `e2e-seams` (the seam sweep, plus Russian and English speech under 11 recording conditions, transcribed in chunks), `e2e-bench` (100 samples, two at a time), `e2e-resilience` (the `@resilience` scenarios: a speech recognition service paused while voice control runs, a command spotting service killed or paused and started again by the scripts, a request abandoned in the queue — each on service ports of its own, so the shared services are never touched), `bundle-smoke` (the `bundle` stage, then `e2e-bundle`: a copy of the bundle launched outside `dist/` with nothing but `/usr/bin:/bin` on `$PATH` transcribes a recording and answers the command spotting health check, and the engine logs show Metal), `e2e` (smoke + seams + start cues + 100 samples). The E2E recipes start every local service they test from the checkout's own code and models, on test ports of their own (28081 dictation, 28085 commands, 28082 command spotting; `VOICEPUNCHER_TEST_STT_PORT` and siblings change them), and stop them afterwards, also when a test fails; your everyday services on the default ports are never reused, stopped or restarted. A service a killed run left on a test port is restarted; any other process holding one stops the run before it starts, naming that process. `check` and `full-check` start the services once for all their E2E stages and end with each stage's time. Speech synthesized with `say` is cached in `~/.cache/voicepuncher/speech/`; delete it to synthesize everything again.
 
 **Time limits.** Every Rust test runs under [cargo-nextest](https://nexte.st) 0.9.146 with a time limit, set in `.config/nextest.toml`: 2 min a test by default, and each E2E suite its own (one Gherkin harness run counts as one test, e.g. 7 min for the `@smoke` scenarios, 3 min for `e2e-quick`). A test still running at its limit is stopped and reported `TIMEOUT`, and the recipe fails at once instead of hanging. Without cargo-nextest 0.9.146 every test recipe stops with the install command above. `VOICEPUNCHER_HANG_PROBE=1 just test` and `VOICEPUNCHER_HANG_PROBE=1 just e2e-quick` arm two probes that hang on purpose, to see the limits work: they end with `TIMEOUT` after 2 and 3 min. Measured on Apple Silicon (10 cores): `just test` 67 s, `just check` ≈ 8.5 min.
 
 **Needs and skipped tests.** A test that needs a running service, a model, your recordings, the corpus or the desktop states it in its name (`needs_stt`, `needs_desktop`, …). A recipe leaves out the tests whose need is missing and prints one line per need, `● skipped N test(s): <need> — <reason>`, instead of letting them pass without running; such a test run by hand without its need fails naming the variable to set. `full-check` runs the desktop tests (real microphone, Accessibility, windows on screen) in its `it-real` stage; when the terminal lacks Microphone or Accessibility the stage shows `–` skipped and names the permission: grant it, or run `just it-real` yourself. The tests that press keys in the focused app run only in `just test-real-keyboard`.
 
-**Models and corpus** are found automatically: each Whisper model by its file name (`ggml-large-v3-turbo-q5_0.bin`, `ggml-small.bin`, `Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf`) in `~/.voicepuncher/` or `~/.voicepuncher/models/`, and the corpus in `e2e-test/corpus/`. Override with `VOICEPUNCHER_WHISPER_MODEL`, `VOICEPUNCHER_COMMAND_WHISPER_MODEL`, `VOICEPUNCHER_LLM_MODEL`, `VOICEPUNCHER_BENCH_CORPUS` (env or `.env`). If they are missing, `check`, `full-check` and the E2E recipes stop with an error instead of skipping. First-time setup: `just models`, `just corpus`.
+**Models and corpus** are found automatically: each Whisper model by its file name (`ggml-large-v3-turbo-q5_0.bin`, `ggml-small.bin`) in `~/.voicepuncher/` or `~/.voicepuncher/models/`, and the corpus in `e2e-test/corpus/`. Override with `VOICEPUNCHER_WHISPER_MODEL`, `VOICEPUNCHER_COMMAND_WHISPER_MODEL`, `VOICEPUNCHER_BENCH_CORPUS` (env or `.env`). If they are missing, `check`, `full-check` and the E2E recipes stop with an error instead of skipping. First-time setup: `just models`, `just corpus`.
 
-**The machine-wide test lock.** Checks from several checkouts on one machine take turns through agent-kit's `with-machine-lock`. `check` and `full-check` run fmt, clippy, `test`, the release build and the E2E test builds right away, without the lock (every build at a low CPU priority, the test binaries at the normal one), and wait for the lock only for their stages on the local services (E2E, accuracy, refinement evaluation), which start and stop the services inside it. `just test` and `just release` never wait for it. A clone without the lock tool gets the command that installs it from the first check it runs (`just check` fails before its first stage); `VOICEPUNCHER_NO_MACHINE_LOCK=1` runs without it, as the hosted CI does. `full-check` builds incrementally like `check` and runs no `cargo clean`.
+**The machine-wide test lock.** Checks from several checkouts on one machine take turns through agent-kit's `with-machine-lock`. `check` and `full-check` run fmt, clippy, `test`, the release build and the E2E test builds right away, without the lock (every build at a low CPU priority, the test binaries at the normal one), and wait for the lock only for their stages on the local services (E2E, accuracy), which start and stop the services inside it. `just test` and `just release` never wait for it. A clone without the lock tool gets the command that installs it from the first check it runs (`just check` fails before its first stage); `VOICEPUNCHER_NO_MACHINE_LOCK=1` runs without it, as the hosted CI does. `full-check` builds incrementally like `check` and runs no `cargo clean`.
 
 **The stage journal.** Every run of `test`, `check`, `full-check` and the E2E recipes ends with a table of its stages and adds one JSON line to `~/.cache/voicepuncher/stage-times.jsonl` (`VOICEPUNCHER_STAGE_JOURNAL`), shared by every checkout and kept when a worktree is removed: when, worktree, branch, commit, recipe, result (passed, failed or interrupted), each stage with its time and result (passed, failed, or skipped after a failure), the lock wait and hold, the accuracy sample and the failed tests. A run killed with `kill -9` leaves no line. A stage that already passed on the same inputs, in any checkout of this machine, is not run again: the table shows it `↺ reused` with the pass it came from, and the journal records it `reused` (`VOICEPUNCHER_REUSE_STAGES=0` runs every stage; AGENTS.md § How to verify a change says what counts as an input). `just stage-times` prints the runs of the last 30 days (`just stage-times 7d`, `just stage-times 2026-10-01`): per recipe and stage the runs, median, total and failures, and the reused runs, the lock wait, the failed tests and the runs per branch.
 
@@ -492,16 +451,13 @@ Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke` (four sta
 1. The hosted `ci` check (`.github/workflows/ci.yml`) is green on the release commit. Owner setup, once: in the repository's Settings → Branches, the protection rule of `main` requires the status check `ci`.
 2. Manual run (required before merging a change to hotkey, recording, overlay, paste or permissions) — `cargo run --release -p voicepuncher`, then check:
    - [ ] Short phrase: press, speak, release → text is pasted.
-   - [ ] Local services: `just stop-model-servers`, launch → the menu shows "Starting services… (N of M ready)", then Ready; Services lists each as Ready with Restart; quit → `pgrep -fl whisper-server` and `pgrep -fl llama-server` find none. After `just start-model-servers`, launch → Services lists them as Adopted, and after quit they still run. Kill the owned `llama-server` while the app runs → it is Restarting, then Ready, and the next dictation is refined.
+   - [ ] Local services: `just stop-model-servers`, launch → the menu shows "Starting services… (N of M ready)", then Ready; Services lists each as Ready with Restart; quit → `pgrep -fl whisper-server` finds none. After `just start-model-servers`, launch → Services lists them as Adopted, and after quit they still run. Kill an owned `whisper-server` copy while the app runs → it is Restarting, then Ready, and the next dictation is pasted.
    - [ ] Permissions: remove each permission for the terminal in System Settings (`tccutil reset Microphone`, `Accessibility`, `ListenEvent` for its bundle id), launch → the Permissions window names the terminal; Request… shows the system prompt and the row shows Checking…; Open System Settings opens the right pane; the log shows `permissions: …` at each change; dictation starts once the last one is granted. Revoke Accessibility while it runs → within 5 s the window reopens with `Accessibility was revoked — dictation stopped`; grant it again → dictation works. Compare the window in light and dark with `openspec/changes/archive/*-permissions-gate-window/mockups/states/`.
    - [ ] Long dictation (> 30 s, crosses a chunk boundary) → no repeated or missing words at the seam.
    - [ ] Mixed Russian + English ("задеплой в Docker") → each language kept as spoken, terms in Latin script.
-   - [ ] Same with `--llm` → the text is refined (punctuation, terms); without it the raw transcript is pasted and the overlay shows no "Refining text".
+   - [ ] The transcript is pasted right after speech recognition; the overlay shows no "Refining text".
    - [ ] `just stop-model-servers whisper-server`, then with `[services] manage = false` start the app → it exits naming the speech recognition service address and `just start-model-servers`.
    - [ ] Stop the speech recognition service while the app runs and record → nothing is pasted, the failure is logged; after `just start-model-servers` the next recording works.
-   - [ ] `just stop-model-servers llama-server`, then with `[services] manage = false` start the app with `--llm` → it exits naming the text refinement service address and `just start-model-servers`.
-   - [ ] With the text refinement service stopped, start without `--llm` → the raw transcript is pasted.
-   - [ ] Stop the text refinement service while the app runs with `--llm` and record → the raw transcript is pasted, the failure is logged.
    - [ ] Overlay shows while recording and while processing, also on a second display if present.
    - [ ] A tap shorter than the minimum press time is ignored.
    - [ ] `just test-real-keyboard` passes (hotkey still registered after a paste, key presses into the focused app).
@@ -514,27 +470,27 @@ Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke` (four sta
    - [ ] Drag it to Applications, open it: the Gatekeeper dialog, then Open Anyway in Privacy & Security starts it; no Dock icon appears and the menu bar keeps the frontmost app's menu. Grant the three permissions: each pane lists **voicepuncher** with its icon. Dictate once.
    - [ ] The identity survives an update: change anything, `just dmg` again, replace the app in Applications, open it → no permission prompt, dictation works. `codesign -d -r- /Applications/voicepuncher.app` names the certificate (`certificate leaf = H"…"`), the same for both builds.
    - [ ] After a release: download the DMG from the GitHub release (`xattr -p com.apple.quarantine` on it shows the quarantine flag), install it as above.
-   - [ ] Without Homebrew: quit every service (`just stop-model-servers`), launch the installed app from a shell with Homebrew's folders hidden — `env -i HOME="$HOME" PATH=/usr/bin:/bin /Applications/voicepuncher.app/Contents/MacOS/voicepuncher` — and dictate: the text is pasted, the log names each engine `from the bundle`, and `grep -l ggml_metal ~/.voicepuncher/logs/whisper-server-*.log ~/.voicepuncher/logs/llama-server-*.log` finds both engines on Metal. A downloaded copy runs nothing, not even an engine, before Open Anyway: macOS kills every program of a quarantined bundle that is not notarized.
+   - [ ] Without Homebrew: quit every service (`just stop-model-servers`), launch the installed app from a shell with Homebrew's folders hidden — `env -i HOME="$HOME" PATH=/usr/bin:/bin /Applications/voicepuncher.app/Contents/MacOS/voicepuncher` — and dictate: the text is pasted, the log names each engine `from the bundle`, and `grep -l ggml_metal ~/.voicepuncher/logs/whisper-server-*.log` finds the engine on Metal. A downloaded copy runs nothing, not even an engine, before Open Anyway: macOS kills every program of a quarantined bundle that is not notarized.
 4. After the merge, on a clean checkout of `origin/main` with a bumped `version` in `app/Cargo.toml` and the signing identity set: `just release` — cleans `target/` and `dist/`, runs the tests and builds from scratch without the machine-wide lock, builds the signed bundle into `dist/voicepuncher-vX.Y.Z.dmg`, then tags `vX.Y.Z` and publishes a GitHub Release with the disk image and its `.sha256`, nothing else. In the main checkout, `target/release/voicepuncher` is gone until it finishes.
 
 ### Model comparison (not a release gate)
 
-Run only when changing a model, decoding params or the prompt. Missing models and corpus are downloaded automatically. For each Whisper model the script starts its own `whisper-server` on port 8091, and for each LLM its own `llama-server` on port 8090, with the `start-model-servers` flags.
+Run only when changing a model, decoding params or the prompt. Missing models and corpus are downloaded automatically. For each Whisper model the script starts its own `whisper-server` on port 8091, with the `start-model-servers` flags.
 
 | Command | Samples | Time |
 |---|---|---|
 | `just bench` | full corpus | long |
 | `just bench-smoke` | 10 | ~2 min |
 
-Example output:
+Example output (the layout; the numbers are illustrative):
 
 ```
-+--------------------+---------------+--------+--------+----------+
-| Whisper            | LLM           |    WER |    CER |  Samples |
-+--------------------+---------------+--------+--------+----------+
-| large-v3-turbo-q5  | Qwen2.5-3B-Q4 |  32.1% |  28.0% | 100/100  |
-| small              | Qwen2.5-3B-Q4 |  53.0% |  48.1% | 100/100  |
-+--------------------+---------------+--------+--------+----------+
++--------------------+--------+--------+----------+
+| Whisper            |    WER |    CER |  Samples |
++--------------------+--------+--------+----------+
+| large-v3-turbo-q5  |   7.7% |   4.1% | 100/100  |
+| small              |  11.6% |   6.9% | 100/100  |
++--------------------+--------+--------+----------+
 ```
 
-To add a model to the matrix, add an entry to `WHISPER_MODELS` or `LLM_MODELS` in `e2e-test/scripts/bench.py`.
+To add a model to the matrix, add an entry to `WHISPER_MODELS` in `e2e-test/scripts/bench.py`.

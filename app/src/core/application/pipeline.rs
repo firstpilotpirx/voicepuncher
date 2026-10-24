@@ -20,7 +20,7 @@ use crate::core::application::pipeline::live_transcript::RecordingEnd;
 use crate::core::application::{
     hotkey_pressed_during_wait, AudioRecorder, DictationArchive, DictationStart, FocusProbe,
     FocusWaitCfg, NoActivitySink, PipelineActivity, PipelineActivitySink, PipelineInput,
-    SoundPlayer, TextPaster, TextRefiner, Transcriber, VisualIndicator,
+    SoundPlayer, TextPaster, Transcriber, VisualIndicator,
 };
 use crate::core::domain::{FailureNotice, Permission, PttSignal, RecordingMode};
 
@@ -61,7 +61,6 @@ pub(super) fn lock_transcriber(
 pub struct Pipeline {
     recorder: Box<dyn AudioRecorder>,
     transcriber: SharedTranscriber,
-    refiner: Box<dyn TextRefiner>,
     paster: Box<dyn TextPaster>,
     sound_player: Box<dyn SoundPlayer>,
     visual_indicator: Box<dyn VisualIndicator>,
@@ -121,7 +120,6 @@ impl Pipeline {
         Self {
             recorder: parts.recorder,
             transcriber: Arc::new(Mutex::new(parts.transcriber)),
-            refiner: parts.refiner,
             paster: parts.paster,
             sound_player: parts.sound_player,
             visual_indicator: parts.visual_indicator,
@@ -143,12 +141,6 @@ impl Pipeline {
     /// Publishes the activity to `sink` after every input, so a restart can wait for Idle.
     pub fn with_activity_sink(mut self, sink: Box<dyn PipelineActivitySink>) -> Self {
         self.sinks.activity = sink;
-        self
-    }
-
-    /// Text refinement is off: the overlay never shows its processing stage.
-    pub fn without_text_refinement_stage(mut self) -> Self {
-        self.cfg.shows_refinement = false;
         self
     }
 
@@ -262,4 +254,4 @@ impl Pipeline {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

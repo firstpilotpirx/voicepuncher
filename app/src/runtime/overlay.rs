@@ -33,10 +33,6 @@ impl VisualIndicator for SharedVisualIndicator {
         self.overlay().show_recognizing_speech();
     }
 
-    fn show_refining_text(&self) {
-        self.overlay().show_refining_text();
-    }
-
     fn show_waiting_for_focus(&self) {
         self.overlay().show_waiting_for_focus();
     }
@@ -86,7 +82,6 @@ mod tests {
             .expect_show_recognizing_speech()
             .once()
             .return_const(());
-        overlay.expect_show_refining_text().once().return_const(());
         overlay
             .expect_show_waiting_for_focus()
             .once()
@@ -120,7 +115,6 @@ mod tests {
         // When
         forwarding.show_recording();
         forwarding.show_recognizing_speech();
-        forwarding.show_refining_text();
         forwarding.show_waiting_for_focus();
         forwarding.show_pasted();
         forwarding.hide();

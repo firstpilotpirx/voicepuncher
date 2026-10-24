@@ -13,10 +13,8 @@ pub const WITHOUT_MIN_PRESS: &str = "[hotkey]\nkey = \"RightOption\"\n";
 
 pub const VALID_MIN_PRESS: &str = "[hotkey]\nmin_press_ms = 300\n";
 
-pub const REFINEMENT_ON: &str = "[refinement]\nenabled = true\n";
-
 /// The app's settings in the app-runtime scenarios: the first hotkey, a press of any length,
-/// a press starts and stops, the first start sound, no voice control, no refinement.
+/// a press starts and stops, the first start sound, no voice control.
 pub const FIRST_SETTINGS: &str = "\
 [hotkey]
 key = \"RightOption\"
@@ -27,9 +25,6 @@ recording_mode = \"Toggle\"
 start_sound = \"Glass\"
 
 [voice_control]
-enabled = false
-
-[refinement]
 enabled = false
 ";
 
@@ -46,14 +41,22 @@ min_press_ms = 300
 level = \"info\"  # info is enough day to day
 ";
 
-pub const EXAMPLES_BLOCK: &str = "\
+/// Settings of the retired text refinement, as a file from before its removal holds them.
+pub const RETIRED_BLOCK: &str = "\
+[refinement]
+enabled = true
+model = \"local\"
+
 [[refinement.examples]]
 transcript = \"meeting moved to friday\"
 normalized = \"Meeting moved to Friday.\"
 ";
 
-pub const WITH_EXAMPLES: &str = concat!(
+pub const WITH_RETIRED: &str = concat!(
     "[logging]\nlevel = \"info\"\n\n",
+    "[refinement]\n",
+    "enabled = true\n",
+    "model = \"local\"\n\n",
     "[[refinement.examples]]\n",
     "transcript = \"meeting moved to friday\"\n",
     "normalized = \"Meeting moved to Friday.\"\n",

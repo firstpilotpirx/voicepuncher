@@ -10,7 +10,6 @@ use std::time::{Duration, Instant};
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 
-use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use voicepuncher::core::application::{
@@ -71,7 +70,6 @@ fn start_pipeline(run: &mut LossRun) -> Result<(Sender<PipelineInput>, JoinHandl
         PipelineParts {
             recorder: Box::new(OneChunkRecorder(run.recordings.clone())),
             transcriber: Box::new(FirstDictationLost { loss, release: Some(release_rx) }),
-            refiner: Box::new(PassthroughTextRefiner),
             paster: Box::new(CapturingPaster(run.pasted.clone())),
             sound_player: Box::new(Quiet(run.notices.clone())),
             visual_indicator: Box::new(Quiet(run.notices.clone())),
@@ -247,7 +245,6 @@ impl SoundPlayer for Quiet {
 impl VisualIndicator for Quiet {
     fn show_recording(&self) {}
     fn show_recognizing_speech(&self) {}
-    fn show_refining_text(&self) {}
     fn show_waiting_for_focus(&self) {}
     fn show_pasted(&self) {}
     fn hide(&self) {}

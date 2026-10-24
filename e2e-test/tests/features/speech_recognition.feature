@@ -46,14 +46,14 @@ Feature: speech-recognition
     Scenario: Short Russian speech is never transcribed as Korean
       Given the service detects the spoken language automatically and the user's languages are Russian and English
       And a recording file of a short Russian phrase
-      When the user transcribes the recording file without refinement
+      When the user transcribes the recording file
       Then the printed text is the phrase in Russian, with no Korean characters
 
     @smoke @serial
     Scenario: English speech stays English with automatic detection
       Given the service detects the spoken language automatically and the user's languages are Russian and English
       And a recording file of a short English phrase
-      When the user transcribes the recording file without refinement
+      When the user transcribes the recording file
       Then the printed text holds the English words of the phrase, in Latin letters
 
   Rule: Known recognition hallucinations are discarded
@@ -62,7 +62,7 @@ Feature: speech-recognition
     Scenario Outline: Silence produces a lone "you"
       Given a recording of silence lasting <seconds> seconds
       And the service detects the spoken language automatically
-      When the user transcribes the recording file without refinement
+      When the user transcribes the recording file
       Then no text is produced
 
       Examples:
@@ -90,7 +90,7 @@ Feature: speech-recognition
     @smoke @serial
     Scenario Outline: Recording file longer than the chunk threshold
       Given a recording file of <language> speech longer than the chunk threshold
-      When the user transcribes the recording file without refinement
+      When the user transcribes the recording file
       Then the recording is transcribed in chunks
       And the printed text repeats no phrase of the speech
       And the printed text misses at most one spoken word in ten
@@ -103,7 +103,7 @@ Feature: speech-recognition
     @seams
     Scenario Outline: Long speech under difficult recording conditions
       Given a recording file of <language> speech longer than the chunk threshold, <condition>
-      When the user transcribes the recording file without refinement
+      When the user transcribes the recording file
       Then the printed text repeats no phrase of the speech
       And the printed text misses at most one spoken word in ten
 
@@ -135,7 +135,7 @@ Feature: speech-recognition
     @seams
     Scenario Outline: Speech with pauses between words or sentences
       Given a recording file of <language> speech longer than the chunk threshold, <condition>
-      When the user transcribes the recording file without refinement
+      When the user transcribes the recording file
       Then no run of more than five consecutive spoken words is missing from the printed text
 
       Examples:
@@ -148,7 +148,7 @@ Feature: speech-recognition
     @seams
     Scenario Outline: English speech with a short pause after every word keeps every phrase
       Given a recording file of English speech longer than the chunk threshold, with pauses between words, after a lead-in of <seconds> seconds
-      When the user transcribes the recording file without refinement
+      When the user transcribes the recording file
       Then no run of more than five consecutive spoken words is missing from the printed text
 
       Examples:
@@ -171,7 +171,7 @@ Feature: speech-recognition
     Scenario: A domain term named in the prompt is recognized
       Given the configured prompt names a domain term that speech recognition misses without it
       And a recording file of a Russian sentence that says the term
-      When the user transcribes the recording file without refinement
+      When the user transcribes the recording file
       Then the printed text holds the term as written in the prompt
 
     @smoke @serial
@@ -179,7 +179,7 @@ Feature: speech-recognition
       Given the configured prompt names a domain term that speech recognition misses without it
       And a recording is transcribed as one chunk however long it is
       And a recording file of Russian speech that says the term only after its first 30 seconds and goes on after it
-      When the user transcribes the recording file without refinement
+      When the user transcribes the recording file
       Then the printed text holds the term as written in the prompt
 
   Rule: Text of one request never steers another
@@ -189,7 +189,7 @@ Feature: speech-recognition
       Given the configured prompt names a domain term that speech recognition misses without it
       And the user transcribed a recording file of a Russian sentence
       And a recording file of an unrelated Russian sentence
-      When the user transcribes the recording file without refinement
+      When the user transcribes the recording file
       Then the printed text holds no word of the first sentence that the second one does not say
 
   @serial @resilience

@@ -10,7 +10,6 @@ pub(super) struct Staging<'a> {
     pub(super) lock: &'a EngineLock,
     pub(super) sources: &'a Sources,
     pub(super) stage: &'a Path,
-    pub(super) out: &'a Path,
     pub(super) root: PathBuf,
 }
 
@@ -147,10 +146,6 @@ impl Staging<'_> {
                         .join(version)
                         .join(rest)
                 }
-                "llama" => self.sources.of.get("llama").map_or_else(
-                    || self.out.join("licenses").join(name),
-                    |source| source.path(path),
-                ),
                 "cargo" => registry
                     .join(format!(
                         "{first}-{}",

@@ -1,7 +1,7 @@
 //! `dev-tools engines <lock> <out>`: stages the engines of a lock into a folder. It checks every pinned version
 //! and checksum first and writes nothing when one differs; then copies each engine's files, relocates them
 //! (`relocate`), proves no reference leaves the folder and each engine runs with nothing but the system folders
-//! on `$PATH`, and writes each folder's `VERSION` and the licenses. Whisper and llama are kept when the folder was
+//! on `$PATH`, and writes each folder's `VERSION` and the licenses. Whisper is kept when the folder was
 //! staged from the same lock; the command spotting service is rebuilt every time.
 //!
 //! `dev-tools check-bundle <app> <dmg>`: checks a built bundle and its disk image (`bundle`).
@@ -14,7 +14,7 @@ mod staging;
 #[cfg(test)]
 mod tests;
 
-use crate::context::{cache_path, Context};
+use crate::context::Context;
 use crate::Outcome;
 use lock::{field, EngineLock};
 use sha2::{Digest, Sha256};
@@ -24,7 +24,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const ENGINES: [&str; 3] = ["whisper", "llama", "command-spotting"];
+const ENGINES: [&str; 2] = ["whisper", "command-spotting"];
 
 /// Runs a program; fails naming it.
 fn run(program: &str, args: &[&str]) -> Result<(), String> {
@@ -102,7 +102,6 @@ pub fn command(args: &[String]) -> Outcome {
         lock: &lock,
         sources: &sources,
         stage: stage.path(),
-        out: &out,
         root: Context::from_env().root,
     };
     staging.stage(&fresh)?;
@@ -119,11 +118,11 @@ pub fn command(args: &[String]) -> Outcome {
 
 /// The sources of every engine, each version and checksum as the lock pins it; fails naming every difference.
 fn verified(lock: &EngineLock, shown: &str) -> Result<Sources, String> {
-    let sources = sources::verify(
-        lock,
-        shown,
-        &cache_path("VOICEPUNCHER_ENGINE_CACHE", "engines"),
-    )?;
+    accepted(sources::verify(lock, shown)?, shown)
+}
+
+/// The sources when they hold no problem; else every problem printed and the staging refused.
+fn accepted(sources: Sources, shown: &str) -> Result<Sources, String> {
     if sources.problems.is_empty() {
         return Ok(sources);
     }

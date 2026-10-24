@@ -31,21 +31,21 @@
 
 ### RawTranscript
 - **Type:** Value Object
-- **Definition:** The speech recognition service's output before text refinement. May contain filler words, missing punctuation, casing inconsistencies. Constructor rejects empty/whitespace.
+- **Definition:** The speech recognition service's output, before its filler sounds are removed. May contain filler words, missing punctuation, casing inconsistencies. Constructor rejects empty/whitespace.
 - **Code:** `app/src/core/domain/raw_transcript.rs`
 - **Synonyms to AVOID:** "transcription", "STT output", "text"
 
 ### CleanedText
 - **Type:** Value Object
-- **Definition:** Final text ready to paste — the text refinement service's normalization of a `RawTranscript` (punctuation, capitals, filler sounds, misrecognized words, technical terms and wrong word endings fixed; meaning and language unchanged; reasoning removed) that passed the normalization check, or the raw transcript itself when refinement is disabled, fails or its answer is rejected. Constructor rejects empty/whitespace.
+- **Definition:** Final text ready to paste — the `RawTranscript` without its filler sounds (`text_to_paste`), or the raw transcript as returned when it holds nothing else. Constructor rejects empty/whitespace.
 - **Code:** `app/src/core/domain/cleaned_text.rs`
-- **Synonyms to AVOID:** "refined transcript", "polished text", "corrected text", "LLM output"
+- **Synonyms to AVOID:** "refined transcript", "polished text", "corrected text"
 
 ### Pipeline
 - **Type:** Use Case (Application Service)
-- **Definition:** The orchestrator that consumes `PttSignal`s and drives one full PTT cycle: `Pressed → start record → Released → stop record → transcribe → refine → paste → Idle`. Holds a state machine; ignores signals while non-Idle (except in Recording).
+- **Definition:** The orchestrator that consumes `PttSignal`s and drives one full PTT cycle: `Pressed → start record → Released → stop record → transcribe → paste → Idle`. Holds a state machine; ignores signals while non-Idle (except in Recording).
 - **Code:** `app/src/core/application/pipeline.rs`
-- **States:** `Idle`, `Recording`, `Transcribing`, `Refining`, `Pasting`
+- **States:** `Idle`, `Recording`, `Transcribing`, `Pasting`
 - **Synonyms to AVOID:** "controller", "engine", "manager"
 
 ### Permissions gate
@@ -98,7 +98,7 @@
 
 ### Pipeline activity
 - **Type:** Value + driven port (`core/application/`)
-- **Definition:** What the `Pipeline` is doing as far as a restart cares: `Idle`, `Recording` or `Processing` (recognition, refinement, the focus wait, the paste). The pipeline publishes it on every transition; a restart waits for `Idle`.
+- **Definition:** What the `Pipeline` is doing as far as a restart cares: `Idle`, `Recording` or `Processing` (recognition, the focus wait, the paste). The pipeline publishes it on every transition; a restart waits for `Idle`.
 - **Code:** `app/src/core/application/pipeline_activity.rs`
 - **Synonyms to AVOID:** "busy flag", "pipeline state" (that is the state machine of `Pipeline`)
 
@@ -123,7 +123,7 @@
 
 ### Default configuration file
 - **Type:** Configuration (embedded text)
-- **Definition:** The configuration file a *First launch* writes when none exists: every option the settings window shows, at its default, with a comment above it. It parses to the same configuration as an empty file; the long refinement instruction and examples are left to the app. Replaces the retired *SetupWizard*, which asked for the options in a terminal.
+- **Definition:** The configuration file a *First launch* writes when none exists: every option the settings window shows, at its default, with a comment above it. It parses to the same configuration as an empty file; retired settings of an old file are ignored. Replaces the retired *SetupWizard*, which asked for the options in a terminal.
 - **Code:** `app/src/config/default.toml`, `config::ensure_exists`
 - **Synonyms to AVOID:** "config template", "setup wizard", "example config"
 
@@ -135,7 +135,7 @@
 - **Type:** Driven Port (trait in `core/application/`)
 - **Definition:** Surfaces the current `Pipeline` state to the user as
   an on-screen widget — nine discrete signals: recording in progress,
-  each `Processing stage` (speech recognition, text refinement), waiting
+  each `Processing stage` (speech recognition), waiting
   for `Text input focus`, the `Pasted sign`, hidden, the `Command sign`, the `Failure notice`, and the
   `Commands-unavailable sign` (shown and hidden on its own, beside whatever else shows). Abstracts the platform-specific
   always-on-top overlay so `Pipeline` stays platform-agnostic.
@@ -144,7 +144,7 @@
 
 ### Live transcript
 - **Type:** Domain concept (overlay content)
-- **Definition:** The raw transcript of the chunks transcribed so far, stitched at their seams as the pasted transcript is, shown next to the recording sign while the user dictates and updated after every chunk with text. It is gone once the recording ends; the pasted text may still differ after text refinement. A dictation shorter than the chunk threshold has none.
+- **Definition:** The raw transcript of the chunks transcribed so far, stitched at their seams as the pasted transcript is, shown next to the recording sign while the user dictates and updated after every chunk with text. It is gone once the recording ends; the pasted text may still differ where filler sounds are removed. A dictation shorter than the chunk threshold has none.
 - **Code:** `LiveTranscriptView` (driven port in `app/src/core/application/live_transcript_view.rs`), handed out by `VisualIndicator::live_transcript_view`; `app/src/core/application/pipeline/live_transcript.rs`
 - **Synonyms to AVOID:** "partial transcript", "preview", "text so far" (in code)
 
@@ -162,13 +162,13 @@
 
 ### Dictation sign
 - **Type:** Adapter concept (visual feedback next to the mouse pointer)
-- **Definition:** A small round dark-glass badge shown just below and to the right of the mouse pointer while a dictation runs, over any app and on every screen, so the user sees the dictation where they already look. It mirrors the overlay's stage: a red microphone while recording, an ear and then sparkles with a turning activity ring during speech recognition and text refinement, an orange keyboard while the text waits for focus, a green check after the paste and a yellow warning triangle with a failure notice. The check and the triangle go away by themselves with the Pasted sign and the failure notice; hiding the overlay hides it; a command sign or the commands-unavailable sign leaves it as it is, so it never shows for them alone. It follows the pointer and takes no clicks or focus. The pointer itself never changes: macOS lets an app set the pointer only over its own windows.
+- **Definition:** A small round dark-glass badge shown just below and to the right of the mouse pointer while a dictation runs, over any app and on every screen, so the user sees the dictation where they already look. It mirrors the overlay's stage: a red microphone while recording, an ear with a turning activity ring during speech recognition, an orange keyboard while the text waits for focus, a green check after the paste and a yellow warning triangle with a failure notice. The check and the triangle go away by themselves with the Pasted sign and the failure notice; hiding the overlay hides it; a command sign or the commands-unavailable sign leaves it as it is, so it never shows for them alone. It follows the pointer and takes no clicks or focus. The pointer itself never changes: macOS lets an app set the pointer only over its own windows.
 - **Code:** `app/src/adapters/secondary/visualfeedback/pointer_sign.rs` (`PointerSignIndicator`, `PointerSignView`, `DictationSignState`, `SignLifetimes`), `visualfeedback/macos/pointer_sign.rs` (`MacosPointerSign`), `visualfeedback/macos/sign_badge.rs` (the drawing)
 - **Synonyms to AVOID:** "cursor" (the text caret), "custom pointer", "pointer badge"
 
 ### Failure notice
 - **Type:** Value Object (enum `FailureNotice`, with the failing part `FailingPart`)
-- **Definition:** The overlay telling the user that an action they started failed: what was lost (the dictation, part of it, the refinement, the paste, the recording, a voice command, voice commands at all) and the failing part — speech recognition, text refinement, command spotting, the microphone or the Accessibility permission — with the remedy when one is known ("start the local services", "check the Accessibility permission"). The pill shows a warning sign and the part's short name, the text window under it a sentence of at most two lines; it hides by itself after a few seconds, and any later signal replaces it. The log keeps the technical detail. `AccessibilityMissing` is the domain error a paste or key press fails with when the process is not trusted for accessibility.
+- **Definition:** The overlay telling the user that an action they started failed: what was lost (the dictation, part of it, the paste, the recording, a voice command, voice commands at all) and the failing part — speech recognition, command spotting, the microphone or the Accessibility permission — with the remedy when one is known ("start the local services", "check the Accessibility permission"). The pill shows a warning sign and the part's short name, the text window under it a sentence of at most two lines; it hides by itself after a few seconds, and any later signal replaces it. The log keeps the technical detail. `AccessibilityMissing` is the domain error a paste or key press fails with when the process is not trusted for accessibility.
 - **Code:** `app/src/core/domain/failure_notice.rs`
 - **Synonyms to AVOID:** "error popup", "alert", "toast", "notification" (macOS notifications are not used)
 
@@ -192,7 +192,7 @@
 
 ### Status line
 - **Type:** Adapter concept (the menu's second line)
-- **Definition:** The `Icon state` in plain words, set when the menu opens: "Ready — hold Right Option to dictate" (or "press" in Toggle mode), "Recording — release Right Option to stop", "Recognizing speech…", "Refining text…", "Waiting for a text field…", "Voice control: listening", "Starting…", "Restarting…", "Failed: " with the reason. Hotkeys are named as a person reads them ("Right Option", "Cmd+E").
+- **Definition:** The `Icon state` in plain words, set when the menu opens: "Ready — hold Right Option to dictate" (or "press" in Toggle mode), "Recording — release Right Option to stop", "Recognizing speech…", "Waiting for a text field…", "Voice control: listening", "Starting…", "Restarting…", "Failed: " with the reason. Hotkeys are named as a person reads them ("Right Option", "Cmd+E").
 - **Code:** `StatusItemState::status_line`, `hotkey_name` in `app/src/adapters/primary/menubar/macos/mapping.rs`
 - **Synonyms to AVOID:** "tooltip", "subtitle", "status" (alone)
 
@@ -204,7 +204,7 @@
 
 ### Settings window
 - **Type:** Primary adapter concept (macOS)
-- **Definition:** The window Settings in the menu opens, one at a time: a tab per area (General, Dictation, Refinement, Sounds, Paste, Archive, Logging) with one control per option of the configuration file. Save checks every edited value (`Field validation`), writes the edits into the `Config document` and applies the saved configuration, with this run's command line over it, to the running app without a relaunch; its status line says whether the settings wait for the current dictation, were applied, or were not applied and why. Revert drops unsaved edits; closing with unsaved edits asks first. An option the command line overrides shows the file's value with a note naming the value of this run.
+- **Definition:** The window Settings in the menu opens, one at a time: a tab per area (General, Dictation, Sounds, Paste, Archive, Logging, Services) with one control per option of the configuration file. Save checks every edited value (`Field validation`), writes the edits into the `Config document` and applies the saved configuration, with this run's command line over it, to the running app without a relaunch; its status line says whether the settings wait for the current dictation, were applied, or were not applied and why. Revert drops unsaved edits; closing with unsaved edits asks first. An option the command line overrides shows the file's value with a note naming the value of this run.
 - **Code:** `SettingsSession` (without its controls) in `app/src/adapters/primary/settings/macos/session.rs`; the field table in `table.rs`; `RuntimeApplier` in `app/src/adapters/primary/menubar/macos/applier.rs`
 - **Synonyms to AVOID:** "preferences pane", "config editor", "options dialog"
 
@@ -222,13 +222,13 @@
 
 ### Processing stage
 - **Type:** Domain concept (overlay state)
-- **Definition:** The step a dictation is in between the end of its recording and the paste, as the overlay shows it with an icon and an English label of its own, and an indeterminate spinner beside the label: **speech recognition** — a breathing ear, "Recognizing", no text window — from the stop until the transcript is ready (with live chunks, the transcription still running after the stop), then **text refinement** — breathing sparkles, "Refining text", and the raw transcript being refined, dimmed, in the text window — from its start until the corrected text is ready. With text refinement off only speech recognition is shown.
-- **Code:** `VisualIndicator::show_recognizing_speech`, `VisualIndicator::show_refining_text` (handed the raw transcript); `Pipeline::without_text_refinement_stage`
+- **Definition:** The step a dictation is in between the end of its recording and the paste, as the overlay shows it with an icon and an English label of its own, and an indeterminate spinner beside the label: **speech recognition** — a breathing ear, "Recognizing", no text window — from the stop until the transcript is ready (with live chunks, the transcription still running after the stop). The transcript is pasted right after it; no other stage is shown.
+- **Code:** `VisualIndicator::show_recognizing_speech`
 - **Synonyms to AVOID:** "phase", "step" (alone), "processing" (alone — names both stages)
 
 ### Model catalog
 - **Type:** Value (domain data)
-- **Definition:** The six model files the local services load — the dictation and commands Whisper models, the Whisper voice activity model, the text refinement model, the voice control voice activity model and the keyword spotting archive — each with its pinned download address, sha256, size, purpose and the part of the app that needs it (dictation always, voice control, refinement). The one source of the files `just models` and the *Download window* fetch.
+- **Definition:** The five model files the local services load — the dictation and commands Whisper models, the Whisper voice activity model, the voice control voice activity model and the keyword spotting archive — each with its pinned download address, sha256, size, purpose and the part of the app that needs it (dictation always, voice control). The one source of the files `just models` and the *Download window* fetch.
 - **Code:** `app/src/core/domain/model_catalog.rs` (`CATALOG`, `ModelFile`, `ModelNeeds`)
 - **Synonyms to AVOID:** "model list", "manifest"
 
@@ -252,7 +252,7 @@
 
 ### Service runtime
 - **Type:** Use Case (Application Service)
-- **Definition:** The part of the app that starts, *adopts*, watches, restarts and stops the local services a configuration needs — the *speech recognition services* (as their *copies*), the *text refinement service* and the *command spotting service* — when the app manages them (`[services] manage`, on by default). It counts the needed services ready, which the runtime waits for before it starts the pipeline, and lists each with its *service state* in the menu. File mode and `manage = false` start nothing.
+- **Definition:** The part of the app that starts, *adopts*, watches, restarts and stops the local services a configuration needs — the *speech recognition services* (as their *copies*) and the *command spotting service* — when the app manages them (`[services] manage`, on by default). It counts the needed services ready, which the runtime waits for before it starts the pipeline, and lists each with its *service state* in the menu. File mode and `manage = false` start nothing.
 - **Code:** `app/src/core/application/local_services/` (`ServiceRuntime`, `Services`, `Supervision`); ports `ServiceLauncher`, `ServiceProcess`, `ServiceProbe`, `Clock`
 - **Synonyms to AVOID:** "service manager", "daemon", "supervisor" (the runtime thread's name), "launcher" (the port that starts one process)
 
@@ -292,12 +292,12 @@
 
 ### Copy
 - **Type:** External system (one process of a local service)
-- **Definition:** One process of a local service — a `whisper-server` of a *speech recognition service*, a `llama-server` of the *text refinement service* or a `voicepuncher-command-spotting` of the *command spotting service*; a speech recognition or text refinement copy answers one request at a time, a command spotting copy serves one connection's listening. With several copies, copy *n* listens on the service's port + its copy offset + *n* — 10000 for a speech recognition service, 40000 for text refinement (8080 → 48081–48084), 41000 for command spotting (8082 → 49083–49086); − the offset when that would pass the last port; at most 4 copies — and nothing the app starts listens on the service's own port; a single copy listens on the service's own port. A client finds the copies from the service's address alone: the own port when it answers, else the copy ports.
+- **Definition:** One process of a local service — a `whisper-server` of a *speech recognition service* or a `voicepuncher-command-spotting` of the *command spotting service*; a speech recognition copy answers one request at a time, a command spotting copy serves one connection's listening. With several copies, copy *n* listens on the service's port + its copy offset + *n* — 10000 for a speech recognition service, 41000 for command spotting (8082 → 49083–49086); − the offset when that would pass the last port; at most 4 copies — and nothing the app starts listens on the service's own port; a single copy listens on the service's own port. A client finds the copies from the service's address alone: the own port when it answers, else the copy ports.
 - **Code:** `copy-pool/src/address.rs` — `ServiceAddress::copy_ports`
 - **Synonyms to AVOID:** "instance", "backend", "replica", "worker"
 
 ### Copy pool
-- **Type:** Shared library (`copy-pool/`, used by the app's transcription and text refinement adapters, its command spotting client and the command spotting service)
+- **Type:** Shared library (`copy-pool/`, used by the app's transcription adapter, its command spotting client and the command spotting service)
 - **Definition:** The *copies* of one local service as one client process sees them: which accept connections (probed every second), which are held, and the requests waiting for one, first come first served. A request whose copy refuses the connection or drops it goes to another copy; when no copy accepts connections, the client waits for one to come back (30 s) before it fails. One pool per process per service address and copy offset.
 - **Code:** `copy-pool/src/pool.rs` — `CopyPool`
 - **Synonyms to AVOID:** "load balancer", "proxy", "router"
@@ -313,35 +313,11 @@
 - **Definition:** A *copy* still transcribing a request its client gave up on: its *lease* lasts until that answer arrives, so the client's next request goes to another copy or waits. A copy draining past twice the request's wait is logged as hung.
 - **Synonyms to AVOID:** "stuck copy", "zombie request"
 
-### Text refinement service
-- **Type:** External system (outside the app process)
-- **Definition:** A process on the same machine that corrects a `RawTranscript` into `CleanedText` over the OpenAI Chat Completions API — llama.cpp `llama-server` is the supported one. The app sends the configured system prompt as the instruction and the transcript as delimited data. The user starts it (normally with `just start-model-servers`); the app only connects to it, checks at startup that it answers and offers the configured model (unless refinement is disabled), rejects any address that is not loopback, and pastes the raw transcript when it fails.
-- **Code:** `app/src/adapters/secondary/textrefinement/openai/` — `OpenAiTextRefiner`; config section `[refinement]` (`app/src/config/refinement.rs`)
-- **Synonyms to AVOID:** "LLM server", "llama server" (names one implementation), "backend", "engine"
-
-### Text refinement
-- **Type:** Pipeline step
-- **Definition:** Normalizing a `RawTranscript` before it is pasted — punctuation, capitals, filler sounds removed, misrecognized words, technical terms and wrong word endings (case, gender, number, conjugation) fixed, meaning and language kept — done by the text refinement service and accepted only after the normalization check. Dictated words that sound like commands are normalized, never carried out. Off by default: the raw transcript is pasted unchanged unless `--llm` or `[refinement] enabled = true` turns it on; `--no-llm` keeps it off.
-- **Code:** `app/src/core/application/text_refiner.rs` — `TextRefiner` port; `refine_or_raw`
-- **Synonyms to AVOID:** "LLM cleanup", "post-processing", "polishing"
-
-### Normalization check
-- **Type:** Domain policy (pure function)
-- **Definition:** Decides whether a text refinement service answer is still the user's dictation: it must keep the transcript's writing system (Cyrillic share of letters moves by at most 50 points) and at least half of its Cyrillic and half of its Latin words, filler sounds aside — a word whose ending was corrected (время → времени) still counts as kept — so translating only the Russian part of a mixed dictation is caught too. A rejected answer — a translation, an answer to a dictated question, a rewrite — is logged and the raw transcript is pasted instead.
-- **Code:** `app/src/core/domain/normalization_check.rs` — `check_normalization`, `NotANormalization`
-- **Synonyms to AVOID:** "guard", "injection filter", "sanity check"
-
 ### Filler sound
 - **Type:** Domain policy (closed word list)
-- **Definition:** A hesitation sound the user never means to write — `э`, `э-э`, `эм`, `ммм`, `um`, `uh`, `hmm`, … Removed with the comma after it from the `RawTranscript` before text refinement; ignored by the normalization check. Words like "ну" or "типа" are not filler sounds.
-- **Code:** `app/src/core/domain/filler_sounds.rs` — `is_filler_sound`, `without_filler_sounds`
+- **Definition:** A hesitation sound the user never means to write — `э`, `э-э`, `эм`, `ммм`, `um`, `uh`, `hmm`, … Removed with the comma after it from the `RawTranscript` before it is pasted; a transcript of nothing but filler sounds is pasted as it was returned. Words like "ну" or "типа" are not filler sounds.
+- **Code:** `app/src/core/domain/filler_sounds.rs` — `is_filler_sound`, `without_filler_sounds`, `text_to_paste`
 - **Synonyms to AVOID:** "filler words", "disfluencies", "noise"
-
-### Reasoning block
-- **Type:** Part of a text refinement service answer
-- **Definition:** The `<think>…</think>` text a reasoning model puts before its answer. Removed before the answer becomes `CleanedText`, so it is never pasted.
-- **Code:** `app/src/adapters/secondary/textrefinement/openai/request.rs` — `without_reasoning`
-- **Synonyms to AVOID:** "thoughts", "chain of thought"
 
 ### Recognition hallucination
 - **Type:** Application policy (pure functions in `core/application/`)
@@ -387,13 +363,13 @@
 
 ### Dictation archive
 - **Type:** Driven Port (trait `DictationArchive` in `core/application/`) and the folder it writes
-- **Definition:** The local folder (`~/.voicepuncher/history/` by default, `[archive]`) where every dictation that reached speech recognition is kept as an *archive entry*, so its recognition and refinement can be evaluated later. On by default for dictations, opt-in (`--archive-dir`) for recording files; kept within a size limit by removing the oldest entries; never sent anywhere.
+- **Definition:** The local folder (`~/.voicepuncher/history/` by default, `[archive]`) where every dictation that reached speech recognition is kept as an *archive entry*, so its recognition can be evaluated later. On by default for dictations, opt-in (`--archive-dir`) for recording files; kept within a size limit by removing the oldest entries; never sent anywhere.
 - **Code:** `app/src/core/application/dictation_archive.rs`; `app/src/adapters/secondary/archiving/filesystem/`
 - **Synonyms to AVOID:** "history" (alone — names the folder only), "log", "recordings", "dump"
 
 ### Archive entry
 - **Type:** Value Object (`ArchiveEntry`)
-- **Definition:** What the *dictation archive* keeps of one dictation, in a folder of its own named by the recording's start: the 16 kHz audio speech recognition heard, the text of each chunk, the stitched `RawTranscript`, the pasted text, how text refinement went (refined, off, fell back), how the dictation ended (pasted, left in the clipboard, paste failed, speech recognition failed, no text, only command words), how it started, stage timings, the models and the app version.
+- **Definition:** What the *dictation archive* keeps of one dictation, in a folder of its own named by the recording's start: the 16 kHz audio speech recognition heard, the text of each chunk, the stitched `RawTranscript`, the pasted text, how the dictation ended (pasted, left in the clipboard, paste failed, speech recognition failed, no text, only command words), how it started, stage timings, the models and the app version.
 - **Code:** `app/src/core/application/dictation_archive.rs`
 - **Synonyms to AVOID:** "record", "history item", "log entry"
 
@@ -409,9 +385,9 @@
 - **Code:** `app/src/adapters/secondary/logging/file/rotating.rs` — `RotatingFileWriter`
 - **Synonyms to AVOID:** "log cleanup", "truncation"
 
-### HotkeyListener / AudioRecorder / Transcriber / TextRefiner / TextPaster / FocusProbe
+### HotkeyListener / AudioRecorder / Transcriber / TextPaster / FocusProbe
 - **Type:** Driving / Driven Ports (traits in `core/application/`)
-- **Code:** `app/src/core/application/{hotkey_listener,audio_recorder,transcriber,text_refiner,text_paster,focus_probe}.rs`
+- **Code:** `app/src/core/application/{hotkey_listener,audio_recorder,transcriber,text_paster,focus_probe}.rs`
 
 ### Bundle
 - **Type:** Distribution artifact (not a domain object)
@@ -421,13 +397,13 @@
 
 ### Engine
 - **Type:** Distribution artifact (not a domain object)
-- **Definition:** The program a local service runs: `whisper-server` (whisper.cpp) for both speech recognition services, `llama-server` (llama.cpp) for the text refinement service, `voicepuncher-command-spotting` for the command spotting service. A service is the running process on its port; the engine is the program and the libraries it loads. The app logs, per service, the engine it runs, its version and where it came from: the bundle, a program the environment names, `$PATH` or the build folder.
+- **Definition:** The program a local service runs: `whisper-server` (whisper.cpp) for both speech recognition services, `voicepuncher-command-spotting` for the command spotting service. A service is the running process on its port; the engine is the program and the libraries it loads. The app logs, per service, the engine it runs, its version and where it came from: the bundle, a program the environment names, `$PATH` or the build folder.
 - **Code:** `EngineOrigin`, `EngineSource`, `engine_origin` in `app/src/adapters/secondary/localservices/catalog/`
 - **Synonyms to AVOID:** "server" for the program (the service is the process), "backend" (ggml's compute backends are libraries an engine loads), "binary" alone
 
 ### Engine folder
 - **Type:** Distribution artifact (not a domain object)
-- **Definition:** The folder of one engine inside the bundle — `Contents/MacOS/engines/whisper/`, `llama/` or `command-spotting/` — holding its program, every library it loads (relocated to `@rpath` + `@loader_path`) and a `VERSION` file; the app takes each engine from its folder before `$PATH`.
+- **Definition:** The folder of one engine inside the bundle — `Contents/MacOS/engines/whisper/` or `command-spotting/` — holding its program, every library it loads (relocated to `@rpath` + `@loader_path`) and a `VERSION` file; the app takes each engine from its folder before `$PATH`.
 - **Code:** `ENGINES_DIR`, `engine_folder` in the catalog; `just engines` stages them into `app/packaging/engines/`
 - **Synonyms to AVOID:** "Frameworks", "lib folder"
 
@@ -455,8 +431,7 @@
 |---|---|---|
 | `rdev` | `rdev` crate | `adapters/primary/ptt/rdev/` — `RdevHotkeyListener` |
 | `cpal` | `cpal` crate | `adapters/secondary/recording/cpal/` — `CpalAudioRecorder` |
-| `openai` | OpenAI-compatible HTTP API (wire protocol, not the vendor) via `ureq`, on loopback only | `adapters/secondary/transcription/openai/` — `OpenAiTranscriber`; `adapters/secondary/textrefinement/openai/` — `OpenAiTextRefiner` |
-| `passthrough` | no technology: hands the input on unchanged | `adapters/secondary/textrefinement/passthrough/` — `PassthroughTextRefiner` |
+| `openai` | OpenAI-compatible HTTP API (wire protocol, not the vendor) via `ureq`, on loopback only | `adapters/secondary/transcription/openai/` — `OpenAiTranscriber` |
 | `macos` | macOS native APIs (`CGEventPost` via `enigo`, `NSPasteboard` via `arboard`, `AXIsProcessTrusted` via `core-foundation`) | `adapters/secondary/textpasting/macos/`, `adapters/secondary/soundplaying/macos/`, `adapters/secondary/permissions/macos/` |
 | `filesystem` | WAV file I/O via `hound` | `adapters/secondary/recording/filesystem/` — `FileSystemAudioRecorder` |
 | `file` | a plain file on disk via `std::fs`, size-rotated | `adapters/secondary/logging/file/` — `RotatingFileWriter`, `TeeWriter` |
@@ -555,7 +530,7 @@
 
 ### Health check
 - **Type:** Rule of the service scripts
-- **Definition:** Every 5 s the supervisor of the command spotting and text refinement services asks `/health`; a service that answered once and then fails 3 checks in a row is killed and so restarted, with a note in its log. The command spotting service answers 503 when a connection has audio waiting and its processing made no progress for 10 s.
+- **Definition:** Every 5 s the supervisor of the command spotting service asks `/health`; a service that answered once and then fails 3 checks in a row is killed and so restarted, with a note in its log. The command spotting service answers 503 when a connection has audio waiting and its processing made no progress for 10 s.
 - **Code:** `supervise` in `justfile`, `command-spotting/src/health.rs`
 - **Synonyms to AVOID:** "heartbeat", "ping" (the app's pings check one connection)
 

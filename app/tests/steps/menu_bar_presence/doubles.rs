@@ -3,10 +3,10 @@
 use super::{
     bail, pipeline_config, set, Arc, AudioBuffer16k, AudioRecorder, ChunkingCfg, CleanedText,
     Config, Duration, FailureNotice, Flag, FocusProbe, FocusWaitCfg, FocusedElement, HotkeyBinding,
-    HotkeyListener, JoinHandle, LiveChunk, Mutex, NoKeys, Parts, PassthroughTextRefiner, Pipeline,
-    PipelineAssembler, PipelineInput, PipelineParts, PttSignal, QuietSpotter, RawTranscript,
-    Receiver, Result, Sender, SharedVisualIndicator, SoundPlayer, TextPaster, Transcriber,
-    VisualIndicator, DICTATED, FOCUS_POLL, POLL, SILENT_SERVICE_ERROR,
+    HotkeyListener, JoinHandle, LiveChunk, Mutex, NoKeys, Parts, Pipeline, PipelineAssembler,
+    PipelineInput, PipelineParts, PttSignal, QuietSpotter, RawTranscript, Receiver, Result, Sender,
+    SharedVisualIndicator, SoundPlayer, TextPaster, Transcriber, VisualIndicator, DICTATED,
+    FOCUS_POLL, POLL, SILENT_SERVICE_ERROR,
 };
 
 /// Builds every pipeline from stand-ins over the overlay the status item decorates.
@@ -31,7 +31,6 @@ impl PipelineAssembler for StandInAssembler {
             PipelineParts {
                 recorder: Box::new(StandInRecorder),
                 transcriber: Box::new(StandInTranscriber(self.parts.clone())),
-                refiner: Box::new(PassthroughTextRefiner),
                 paster: Box::new(StandInPaster(Arc::clone(&self.parts.pasted))),
                 sound_player: Box::new(StandInSounds(Arc::clone(&self.parts.cancel_played))),
                 visual_indicator: Box::new(self.overlay.clone()),
@@ -118,7 +117,6 @@ pub(super) struct QuietOverlay;
 impl VisualIndicator for QuietOverlay {
     fn show_recording(&self) {}
     fn show_recognizing_speech(&self) {}
-    fn show_refining_text(&self) {}
     fn show_waiting_for_focus(&self) {}
     fn show_pasted(&self) {}
     fn hide(&self) {}

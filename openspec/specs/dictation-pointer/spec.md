@@ -39,9 +39,9 @@ From the moment a recording starts until the overlay hides, the app SHALL show t
 - **THEN** its top-left corner sits 8 points right of and 6 points below the pointer's tip
 
 #### Scenario: The dictation sign mirrors every stage of a dictation
-- **GIVEN** text refinement is enabled and a button has keyboard focus
+- **GIVEN** a button has keyboard focus
 - **WHEN** the user records a dictation with speech in it, ends it and then clicks into a text field
-- **THEN** the dictation sign shows a red microphone, then an ear with a turning ring, then sparkles with a turning ring, then an orange keyboard, then a green check
+- **THEN** the dictation sign shows a red microphone, then an ear with a turning ring, then an orange keyboard, then a green check
 - **AND** the system pointer looks as usual throughout
 
 #### Scenario: A failure shows a warning triangle in the dictation sign

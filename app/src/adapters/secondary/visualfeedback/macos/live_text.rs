@@ -114,7 +114,6 @@ mod tests {
         let live = recording_with("we moved the meeting");
         for state in [
             OverlayState::RecognizingSpeech,
-            OverlayState::RefiningText,
             OverlayState::WaitingForFocus,
             OverlayState::Hidden,
         ] {
@@ -138,10 +137,9 @@ mod tests {
     }
 
     #[test]
-    fn should_leave_the_text_window_to_the_refinement_preview_and_the_wait() {
+    fn should_leave_the_text_window_to_the_processing_stages_and_the_wait() {
         for state in [
             OverlayState::RecognizingSpeech,
-            OverlayState::RefiningText,
             OverlayState::WaitingForFocus,
             OverlayState::Hidden,
         ] {

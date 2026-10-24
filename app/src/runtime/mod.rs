@@ -774,7 +774,6 @@ mod tests {
     use crate::core::application::pipeline::{PipelineConfig, PipelineParts};
     use crate::core::application::sound_player::MockSoundPlayer;
     use crate::core::application::text_paster::MockTextPaster;
-    use crate::core::application::text_refiner::MockTextRefiner;
     use crate::core::application::transcriber::MockTranscriber;
     use crate::core::application::visual_indicator::MockVisualIndicator;
     use crate::core::domain::{HotKey, RecordingMode};
@@ -791,7 +790,6 @@ mod tests {
                 PipelineParts {
                     recorder: Box::new(MockAudioRecorder::new()),
                     transcriber: Box::new(MockTranscriber::new()),
-                    refiner: Box::new(MockTextRefiner::new()),
                     paster: Box::new(MockTextPaster::new()),
                     sound_player: Box::new(MockSoundPlayer::new()),
                     visual_indicator: Box::new(MockVisualIndicator::new()),

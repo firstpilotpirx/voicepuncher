@@ -9,7 +9,6 @@ use std::time::{Duration, Instant};
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 
-use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::chunking::merge_chunk_texts;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
@@ -89,7 +88,6 @@ impl LiveRun {
                     answers: Arc::clone(&self.answers),
                     transcribed: Arc::clone(&self.transcribed),
                 }),
-                refiner: Box::new(PassthroughTextRefiner),
                 paster: Box::new(CapturingPaster(Arc::clone(&self.pasted))),
                 sound_player: Box::new(Silent),
                 visual_indicator: Box::new(NotingOverlay(Arc::clone(&self.shown))),

@@ -11,23 +11,17 @@ fn should_parse_and_overlay_all_modifiable_flags_onto_config() {
         "F19",
         "--transcription-url",
         "http://localhost:9000/v1",
-        "--refinement-url",
-        "http://localhost:9090/v1",
         "--archive-dir",
         "/tmp/dictations",
-        "--no-llm",
     ]);
-    let no_llm = cli.no_llm;
     let mut cfg = Config::default();
 
     cli.overlay(&mut cfg);
 
     assert_eq!(cfg.hotkey.key, HotKey::F19);
     assert_eq!(cfg.transcription.base_url, "http://localhost:9000/v1");
-    assert_eq!(cfg.refinement.base_url, "http://localhost:9090/v1");
     assert!(cfg.archive.enabled);
     assert_eq!(cfg.archive.dir, std::path::Path::new("/tmp/dictations"));
-    assert!(no_llm);
 }
 
 #[test]
@@ -170,6 +164,20 @@ fn should_exit_2_naming_an_unknown_option() {
 }
 
 #[test]
+fn should_refuse_the_retired_text_refinement_options_with_exit_2() {
+    for option in ["--llm", "--no-llm"] {
+        // Given
+        let home = tempfile::tempdir().unwrap();
+        // When
+        let output = run(home.path(), &[option.as_ref()]);
+        // Then
+        let printed = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(2), "{option}: {printed}");
+        assert!(printed.contains(option), "{printed}");
+    }
+}
+
+#[test]
 fn should_write_the_default_file_and_ask_nothing_at_a_first_launch() {
     // Given
     let home = tempfile::tempdir().unwrap();
@@ -229,7 +237,6 @@ fn should_exit_2_when_the_file_mode_service_does_not_answer() {
             "/dev/null".as_ref(),
             "--input-file".as_ref(),
             recording.as_os_str(),
-            "--no-llm".as_ref(),
             "--transcription-url".as_ref(),
             refused_url().as_ref(),
         ],
@@ -284,11 +291,8 @@ fn should_offer_only_the_developer_options_each_saying_it_overrides_the_configur
             "help",
             "hotkey",
             "input-file",
-            "llm",
             "models-dir",
             "no-archive",
-            "no-llm",
-            "refinement-url",
             "transcription-url",
             "version",
             "voice-control",

@@ -1,6 +1,6 @@
 //! What a key covers beside the repository's files: the toolchain, the input variables and, for a model
 //! stage, what it runs on outside the repository (the size and modification time of every file a variable
-//! names, and of the speech recognition and text refinement servers).
+//! names, and of the speech recognition server).
 
 use crate::process::{find_program, stdout};
 use regex::Regex;
@@ -30,7 +30,7 @@ static VOLATILE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// The programs whose binaries a model stage's key covers.
-pub const SERVERS: [&str; 2] = ["whisper-server", "llama-server"];
+pub const SERVERS: [&str; 1] = ["whisper-server"];
 
 /// What every key covers beside the files.
 pub struct Inputs {

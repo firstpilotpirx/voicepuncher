@@ -1,4 +1,4 @@
-use super::command_lines::{command_spotting_args, llama_args, whisper_args};
+use super::command_lines::{command_spotting_args, whisper_args};
 use super::e2e::{unlisted, watched_ports, Watched};
 use super::launch::{last_lines, supervisor_args, Service};
 use super::ready::{note, port_open, Ready};
@@ -30,7 +30,6 @@ fn settings() -> Settings {
             label: "speech recognition service for commands",
             port: 28085,
         },
-        llm_port: 28080,
         kws_port: 28082,
     }
 }
@@ -72,11 +71,7 @@ fn should_start_whisper_with_the_arguments_of_both_speech_recognition_services()
 }
 
 #[test]
-fn should_start_llama_and_command_spotting_with_their_arguments() {
-    assert_eq!(
-        llama_args("q.gguf", "8080").join(" "),
-        "-m q.gguf --host 127.0.0.1 --port 8080 -c 4096 -np 1"
-    );
+fn should_start_command_spotting_with_its_arguments() {
     assert_eq!(
         command_spotting_args("8082", "kws", "vad.onnx", "http://127.0.0.1:8085/v1").join(" "),
         "--port 8082 --model-dir kws --vad-model vad.onnx --transcription-url http://127.0.0.1:8085/v1"
@@ -91,8 +86,8 @@ fn should_name_the_pid_log_and_copy_files_by_binary_and_port() {
         PathBuf::from("/home/.voicepuncher/run/whisper-server-18082.pid")
     );
     assert_eq!(
-        settings.log_file("llama-server", 8080),
-        PathBuf::from("/home/.voicepuncher/logs/llama-server-8080.log")
+        settings.log_file("voicepuncher-command-spotting", 8082),
+        PathBuf::from("/home/.voicepuncher/logs/voicepuncher-command-spotting-8082.log")
     );
     assert_eq!(
         settings.copies_file(8081),
@@ -107,7 +102,6 @@ fn should_name_the_pid_log_and_copy_files_by_binary_and_port() {
 #[test]
 fn should_give_the_urls_of_the_services() {
     let settings = settings();
-    assert_eq!(settings.llm_url(), "http://127.0.0.1:28080/v1");
     assert_eq!(settings.command_stt_url(), "http://127.0.0.1:28085/v1");
     assert_eq!(settings.kws_url(), "ws://127.0.0.1:28082");
 }
@@ -116,8 +110,8 @@ fn should_give_the_urls_of_the_services() {
 fn should_select_every_service_in_start_order_when_none_is_named() {
     assert_eq!(selected(&[]), SERVICES.map(String::from).to_vec());
     assert_eq!(
-        selected(&["llama-server".into()]),
-        vec!["llama-server".to_string()]
+        selected(&["whisper-server-commands".into()]),
+        vec!["whisper-server-commands".to_string()]
     );
 }
 
@@ -128,7 +122,7 @@ fn should_name_the_known_services_for_an_unknown_one() {
     };
     assert_eq!(
         message,
-        "unknown service 'whisper' — use whisper-server, whisper-server-commands, llama-server or \
+        "unknown service 'whisper' — use whisper-server, whisper-server-commands or \
          voicepuncher-command-spotting"
     );
 }
@@ -137,7 +131,7 @@ fn should_name_the_known_services_for_an_unknown_one() {
 fn should_watch_every_test_port_with_the_variable_that_moves_it() {
     let watched = watched_ports(&settings(), "VOICEPUNCHER_TEST");
     let ports: Vec<u32> = watched.iter().map(|w| w.port).collect();
-    assert_eq!(ports, vec![28081, 38082, 38083, 38084, 28085, 28080, 28082]);
+    assert_eq!(ports, vec![28081, 38082, 38083, 38084, 28085, 28082]);
     assert_eq!(
         watched[1],
         Watched {
@@ -151,8 +145,8 @@ fn should_watch_every_test_port_with_the_variable_that_moves_it() {
 
 #[test]
 fn should_drop_the_stop_lines_of_services_that_were_not_there() {
-    let text = "· no text refinement service started by start-model-servers\n✓ stopped llama-server (pid 7)\n";
-    assert_eq!(unlisted(text), "✓ stopped llama-server (pid 7)\n");
+    let text = "· no command spotting service started by start-model-servers\n✓ stopped whisper-server (pid 7)\n";
+    assert_eq!(unlisted(text), "✓ stopped whisper-server (pid 7)\n");
 }
 
 #[test]
@@ -176,22 +170,22 @@ fn should_note_how_long_the_first_transcription_took() {
 #[test]
 fn should_pass_the_supervisor_its_name_log_health_and_command() {
     let service = Service {
-        binary: "llama-server".into(),
-        port: 8080,
-        label: "text refinement service".into(),
-        ready: Ready::Llama { port: 8080 },
+        binary: "whisper-server".into(),
+        port: 8081,
+        label: "speech recognition service for dictation".into(),
+        ready: Ready::Port { port: 8081 },
         health: None,
-        command: vec!["llama-server".into(), "-m".into()],
+        command: vec!["whisper-server".into(), "-m".into()],
     };
     let args = supervisor_args(&service, Path::new("/l.log"));
     assert_eq!(
         args,
         [
             "supervise",
-            "supervise-llama-server",
+            "supervise-whisper-server",
             "/l.log",
             "-",
-            "llama-server",
+            "whisper-server",
             "-m"
         ]
     );
@@ -221,8 +215,8 @@ fn should_kill_a_service_after_3_failed_health_checks_once_it_answered() {
     let after = [true, false, false, true, false, false, false].map(|answer| fails.record(answer));
     assert_eq!(after, [false, false, false, false, false, false, true]);
     assert_eq!(
-        health_line("llama-server", fails.count),
-        "… llama-server stopped answering its health check (3 checks in a row) — restarting"
+        health_line("voicepuncher-command-spotting", fails.count),
+        "… voicepuncher-command-spotting stopped answering its health check (3 checks in a row) — restarting"
     );
 }
 

@@ -39,7 +39,6 @@ pub(super) fn badge_symbol(badge: DictationSignState) -> &'static str {
     match badge {
         DictationSignState::Recording => "mic.fill",
         DictationSignState::RecognizingSpeech => "ear",
-        DictationSignState::RefiningText => "sparkles",
         DictationSignState::WaitingForFocus => "keyboard",
         DictationSignState::Pasted => "checkmark",
         DictationSignState::Failure => "exclamationmark.triangle.fill",
@@ -49,9 +48,7 @@ pub(super) fn badge_symbol(badge: DictationSignState) -> &'static str {
 fn badge_tint(badge: DictationSignState) -> Retained<NSColor> {
     match badge {
         DictationSignState::Recording => NSColor::systemRedColor(),
-        DictationSignState::RecognizingSpeech | DictationSignState::RefiningText => {
-            NSColor::whiteColor()
-        }
+        DictationSignState::RecognizingSpeech => NSColor::whiteColor(),
         DictationSignState::WaitingForFocus => NSColor::systemOrangeColor(),
         DictationSignState::Pasted => NSColor::systemGreenColor(),
         DictationSignState::Failure => NSColor::systemYellowColor(),
@@ -201,7 +198,6 @@ mod tests {
         let expected = [
             (DictationSignState::Recording, "mic.fill"),
             (DictationSignState::RecognizingSpeech, "ear"),
-            (DictationSignState::RefiningText, "sparkles"),
             (DictationSignState::WaitingForFocus, "keyboard"),
             (DictationSignState::Pasted, "checkmark"),
             (DictationSignState::Failure, "exclamationmark.triangle.fill"),

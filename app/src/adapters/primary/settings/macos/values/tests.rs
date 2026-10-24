@@ -41,24 +41,6 @@ fn should_write_an_edited_value_the_loader_reads_back() {
 }
 
 #[test]
-fn should_write_the_refinement_examples_as_a_table_list() {
-    // Given
-    let config = crate::config::parse(
-        "[[refinement.examples]]\ntranscript = \"a\"\nnormalized = \"A\"\n",
-        "test",
-    )
-    .unwrap();
-    let examples = shown_value(&config, find("refinement", "examples").unwrap());
-    let mut document = ConfigDocument::parse("").unwrap();
-    // When
-    document.set("refinement", "examples", to_item(&examples));
-    // Then
-    let saved = document.to_config().unwrap();
-    assert_eq!(saved.refinement.examples, config.refinement.examples);
-    assert!(document.to_string().contains("[[refinement.examples]]"));
-}
-
-#[test]
 fn should_offer_every_hotkey_by_the_menu_bar_name() {
     // When
     let hotkeys = options(Choices::Hotkeys, &[]);

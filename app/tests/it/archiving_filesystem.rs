@@ -6,7 +6,7 @@ use voicepuncher::adapters::secondary::archiving::filesystem::{
     ArchiveSetup, FileSystemDictationArchive,
 };
 use voicepuncher::core::application::dictation_archive::{
-    ArchiveEntry, DictationOutcome, DictationStart, RefinementOutcome, StageTiming,
+    ArchiveEntry, DictationOutcome, DictationStart, StageTiming,
 };
 use voicepuncher::core::application::DictationArchive;
 use voicepuncher::core::domain::AudioBuffer16k;
@@ -26,7 +26,6 @@ fn entry(started_at: SystemTime, samples: Vec<i16>) -> ArchiveEntry {
         chunk_texts: vec!["hello world".into()],
         raw_transcript: Some("hello world".into()),
         pasted_text: Some("Hello world.".into()),
-        refinement: Some(RefinementOutcome::Refined),
         outcome: DictationOutcome::Pasted,
         lost_chunks: 0,
         timings: vec![StageTiming { stage: "transcribe", ms: 300 }],
@@ -36,7 +35,6 @@ fn entry(started_at: SystemTime, samples: Vec<i16>) -> ArchiveEntry {
 fn archive(dir: &Path, max_size_bytes: u64) -> FileSystemDictationArchive {
     let setup = ArchiveSetup {
         dictation_model: "ggml-large-v3-turbo-q5_0.bin".into(),
-        refinement_model: Some("Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf".into()),
         app_version: "0.21.0".into(),
     };
     FileSystemDictationArchive::new(dir.to_path_buf(), max_size_bytes, setup)
@@ -76,7 +74,7 @@ fn should_write_readable_audio_and_parsable_entry() {
     assert_eq!(read, samples);
     let json: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(folder.join("entry.json")).unwrap()).unwrap();
-    assert_eq!(json["format"], 1);
+    assert_eq!(json["format"], 2);
     assert_eq!(json["start"], "voice");
 }
 

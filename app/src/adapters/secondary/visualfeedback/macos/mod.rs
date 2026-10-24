@@ -50,7 +50,6 @@ enum OverlayState {
     Hidden,
     Recording,
     RecognizingSpeech,
-    RefiningText,
     WaitingForFocus,
     FailureNotice(FailureNotice),
 }
@@ -378,7 +377,7 @@ impl Redraw {
                 );
                 apply_live_transcript(&ws_vec, shown);
             }
-            OverlayState::RecognizingSpeech | OverlayState::RefiningText => {
+            OverlayState::RecognizingSpeech => {
                 apply_processing_state(main, state, turn, commands_unavailable);
             }
             OverlayState::WaitingForFocus => {
@@ -401,10 +400,6 @@ impl VisualIndicator for MacosVisualIndicator {
 
     fn show_recognizing_speech(&self) {
         self.show_state(OverlayState::RecognizingSpeech);
-    }
-
-    fn show_refining_text(&self) {
-        self.show_state(OverlayState::RefiningText);
     }
 
     fn show_waiting_for_focus(&self) {

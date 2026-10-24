@@ -62,13 +62,13 @@ fn archive_turned_off(world: &mut E2eWorld) {
     world.archive.turned_off = true;
 }
 
-#[when("the user transcribes the recording file")]
+#[when("the user transcribes the recording file in a home of its own")]
 async fn transcribe_recording(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let home = world.workdir()?.join("home");
         fs::create_dir_all(&home)?;
         let recording = world.recording.as_deref().context("no recording")?;
-        let mut cmd = transcribe_command(recording, None, true)?;
+        let mut cmd = transcribe_command(recording, None)?;
         cmd.env("HOME", &home);
         if let Some(dir) = &world.archive.named_dir {
             cmd.arg(ARCHIVE_DIR_FLAG).arg(dir);

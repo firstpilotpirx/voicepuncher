@@ -1,6 +1,6 @@
 //! The `e2e-bundle` stage: a copy of the bundle the bundle stage built, launched outside the
 //! build folder with nothing but the system folders on its path, so every service it starts runs
-//! the bundle's own engines; then one transcription, one refinement and the command spotting
+//! the bundle's own engines; then one transcription and the command spotting
 //! service's health through them, and the engines' logs read for the Metal GPU.
 
 use std::fs;
@@ -12,11 +12,10 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use cucumber::{given, then, when};
 use voicepuncher::adapters::secondary::logging::file::{logs_dir, LOG_FILE_NAME};
-use voicepuncher::adapters::secondary::textrefinement::openai::OpenAiTextRefiner;
 use voicepuncher::adapters::secondary::transcription::openai::OpenAiTranscriber;
-use voicepuncher::config::{RefinementCfg, TranscriptionCfg};
-use voicepuncher::core::application::{TextRefiner, Transcriber};
-use voicepuncher::core::domain::{AudioBuffer16k, RawTranscript};
+use voicepuncher::config::TranscriptionCfg;
+use voicepuncher::core::application::Transcriber;
+use voicepuncher::core::domain::AudioBuffer16k;
 use voicepuncher_copy_pool::ServiceAddress;
 use voicepuncher_e2e_test::corpus::load_manifest;
 use voicepuncher_e2e_test::speech::read_wav;
@@ -28,21 +27,19 @@ use crate::E2eWorld;
 
 /// The models the services need, as the `justfile` exports them; the only variables the copy
 /// gets beside its home and its path.
-const MODELS: [&str; 6] = [
+const MODELS: [&str; 5] = [
     "VOICEPUNCHER_WHISPER_MODEL",
     "VOICEPUNCHER_VAD_MODEL",
     "VOICEPUNCHER_COMMAND_WHISPER_MODEL",
-    "VOICEPUNCHER_LLM_MODEL",
     "VOICEPUNCHER_KWS_MODEL_DIR",
     "VOICEPUNCHER_KWS_VAD_MODEL",
 ];
 const CORPUS: &str = "VOICEPUNCHER_BENCH_CORPUS";
 const APP_PROGRAM: &str = "Contents/MacOS/voicepuncher";
-const ENGINES_DIR: &str = "Contents/MacOS/engines";
 /// The system folders a Mac without Homebrew has on its path.
 const SYSTEM_PATH: &str = "/usr/bin:/bin";
 /// The engine sections of the lock, by the program each runs.
-const ENGINES: [&str; 3] = ["whisper", "llama", "command-spotting"];
+const ENGINES: [&str; 2] = ["whisper", "command-spotting"];
 /// What the app logs for an engine it takes from the bundle.
 const FROM_BUNDLE: &str = "from the bundle";
 /// What whisper-server logs when it sets up the Metal device and its library; a line of them
@@ -52,12 +49,7 @@ const METAL_PREFIX: &str = "ggml_metal";
 const METAL_FAILURES: [&str; 2] = ["error", "failed"];
 /// What ggml logs for each backend it loads, followed by the file it loaded.
 const BACKEND_LOADED: &str = "load_backend: loaded";
-/// llama-server logs no device at its default verbosity: the copy's own llama-server lists the
-/// devices its backends found, and the Metal one is named `MTL0`.
-const LLAMA_DEVICES: &str = "--list-devices";
-const LLAMA_METAL: &str = "MTL0";
-const UNPUNCTUATED: &str = "я думаю что это хорошая идея но надо обсудить с командой";
-/// Loading the dictation and refinement models takes 5–30 s; the app gives each start 60 s.
+/// Loading the dictation models takes 5–30 s; the app gives each start 60 s.
 const READY_WITHIN: Duration = Duration::from_secs(120);
 /// The app asks its services to end and kills one after 5 s.
 const ENDED_WITHIN: Duration = Duration::from_secs(15);
@@ -76,7 +68,6 @@ pub struct BundleLaunch {
 struct Ports {
     stt: u16,
     command_stt: u16,
-    llm: u16,
     kws: u16,
 }
 
@@ -182,18 +173,17 @@ fn bundle_copy(world: &mut E2eWorld) -> Result<()> {
     launch.ports = Ports {
         stt: free_speech_recognition_port()?,
         command_stt: free_speech_recognition_port()?,
-        llm: free_port()?,
         kws: free_port()?,
     };
     Ok(())
 }
 
-#[when("the copy's application starts its services with refinement and voice control on")]
+#[when("the copy's application starts its services with voice control on")]
 #[expect(clippy::too_many_lines, reason = "size baseline")]
 async fn copy_starts_services(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let launch = launch(world);
-        let Ports { stt, command_stt, llm, kws } = launch.ports;
+        let Ports { stt, command_stt, kws } = launch.ports;
         let app = launch
             .folder
             .as_ref()
@@ -208,13 +198,11 @@ async fn copy_starts_services(world: &mut E2eWorld) -> Result<()> {
             &config,
             format!(
                 "[transcription]\nbase_url = \"{}\"\n\n\
-                 [refinement]\nenabled = true\nbase_url = \"{}\"\n\n\
                  [voice_control]\nenabled = true\nurl = \"ws://127.0.0.1:{kws}\"\n\n\
                  [services]\nmanage = true\ndictation_copies = 1\ncommand_copies = 1\n\
-                 refinement_copies = 1\ncommand_spotting_copies = 1\n\
+                 command_spotting_copies = 1\n\
                  commands_url = \"{}\"\n",
                 url(stt),
-                url(llm),
                 url(command_stt)
             ),
         )?;
@@ -238,7 +226,6 @@ async fn copy_starts_services(world: &mut E2eWorld) -> Result<()> {
         let services = [
             ("speech recognition", stt),
             ("speech recognition for commands", command_stt),
-            ("text refinement", llm),
             ("command spotting", kws),
         ];
         let deadline = Instant::now() + READY_WITHIN;
@@ -297,8 +284,8 @@ fn engines_from_bundle(world: &mut E2eWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("a recording is transcribed and a sentence is refined through the started services")]
-async fn transcribe_and_refine(world: &mut E2eWorld) -> Result<()> {
+#[then("a recording is transcribed through the started services")]
+async fn transcribe(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let ports = launch(world).ports;
         let corpus = PathBuf::from(std::env::var(CORPUS)?);
@@ -317,15 +304,6 @@ async fn transcribe_and_refine(world: &mut E2eWorld) -> Result<()> {
             !transcript.as_str().trim().is_empty(),
             "an empty transcript of {}",
             recording.path.display()
-        );
-        let mut refiner = OpenAiTextRefiner::connect(RefinementCfg {
-            base_url: url(ports.llm),
-            ..RefinementCfg::default()
-        })?;
-        let refined = refiner.refine(&RawTranscript::new(UNPUNCTUATED.to_string())?)?;
-        ensure!(
-            !refined.as_str().trim().is_empty(),
-            "the bundled text refinement engine answered nothing"
         );
         Ok(())
     })
@@ -383,36 +361,5 @@ fn whisper_on_metal(world: &mut E2eWorld) -> Result<()> {
     }) {
         bail!("{whisper} failed on Metal: {failure}");
     }
-    Ok(())
-}
-
-#[then("the copy's text refinement engine finds the Metal GPU")]
-fn llama_finds_metal(world: &mut E2eWorld) -> Result<()> {
-    let launch = launch(world);
-    let llama = program("llama")?;
-    let path = launch
-        .folder
-        .as_ref()
-        .context("no copy")?
-        .path()
-        .join(BUNDLE_DIR)
-        .join(ENGINES_DIR)
-        .join("llama")
-        .join(&llama);
-    let output = Command::new(&path)
-        .arg(LLAMA_DEVICES)
-        .env_clear()
-        .env("PATH", SYSTEM_PATH)
-        .output()
-        .with_context(|| format!("{} could not start", path.display()))?;
-    let devices = format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    ensure!(
-        output.status.success() && devices.contains(LLAMA_METAL),
-        "the bundle's {llama} finds no Metal device ({LLAMA_METAL}):\n{devices}"
-    );
     Ok(())
 }

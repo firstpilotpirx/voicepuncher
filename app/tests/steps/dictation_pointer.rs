@@ -17,7 +17,7 @@ use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use voicepuncher::core::application::{
     AudioRecorder, ChunkingCfg, FocusProbe, FocusWaitCfg, PipelineInput, SoundPlayer, TextPaster,
-    TextRefiner, Transcriber, VisualIndicator,
+    Transcriber, VisualIndicator,
 };
 use voicepuncher::core::domain::{
     AudioBuffer16k, CleanedText, FailureNotice, FocusedElement, PttSignal, RawTranscript,
@@ -28,8 +28,8 @@ use crate::steps::quiet_voice_control::{NoKeys, QuietSpotter};
 use crate::IntegrationWorld;
 mod doubles;
 use doubles::{
-    NotingOverlay, NotingSign, OneSecondRecorder, QuietPaster, Silent, SlowRefiner,
-    SlowTranscriber, SwitchableFocus,
+    NotingOverlay, NotingSign, OneSecondRecorder, QuietPaster, Silent, SlowTranscriber,
+    SwitchableFocus,
 };
 
 const SENTENCE: &str = "Meeting moved to Friday.";
@@ -57,7 +57,6 @@ enum Event {
 enum Overlay {
     Recording,
     RecognizingSpeech,
-    RefiningText,
     WaitingForFocus,
     PastedSign,
     Hidden,
@@ -133,7 +132,6 @@ impl PointerRun {
             PipelineParts {
                 recorder: Box::new(OneSecondRecorder(Arc::clone(&self.events))),
                 transcriber: Box::new(SlowTranscriber { down: self.recognition_down }),
-                refiner: Box::new(SlowRefiner),
                 paster: Box::new(QuietPaster),
                 sound_player: Box::new(Silent),
                 visual_indicator: Box::new(self.indicator()),
@@ -259,7 +257,7 @@ fn listening_on_idle(world: &mut IntegrationWorld) {
     run.ensure_started();
 }
 
-#[given("text refinement is enabled and a button has keyboard focus for the dictation sign")]
+#[given("a button has keyboard focus for the dictation sign")]
 fn button_focused(world: &mut IntegrationWorld) {
     run(world).button_focused.store(true, Ordering::SeqCst);
 }
@@ -368,7 +366,7 @@ fn shows_microphone(world: &mut IntegrationWorld) -> Result<()> {
 }
 
 #[then(
-    "the dictation sign shows a red microphone, then an ear with a turning ring, then sparkles with a turning ring, then an orange keyboard, then a green check"
+    "the dictation sign shows a red microphone, then an ear with a turning ring, then an orange keyboard, then a green check"
 )]
 fn mirrors_every_stage(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
@@ -377,7 +375,6 @@ fn mirrors_every_stage(world: &mut IntegrationWorld) -> Result<()> {
     let stages = [
         DictationSignState::Recording,
         DictationSignState::RecognizingSpeech,
-        DictationSignState::RefiningText,
         DictationSignState::WaitingForFocus,
         DictationSignState::Pasted,
     ]
@@ -385,13 +382,8 @@ fn mirrors_every_stage(world: &mut IntegrationWorld) -> Result<()> {
     if sign(&events) != stages {
         bail!("the dictation sign did not mirror every stage: {events:?}");
     }
-    for processing in [
-        DictationSignState::RecognizingSpeech,
-        DictationSignState::RefiningText,
-    ] {
-        if !processing.turns_activity_ring() {
-            bail!("{processing:?} shows no turning ring");
-        }
+    if !DictationSignState::RecognizingSpeech.turns_activity_ring() {
+        bail!("speech recognition shows no turning ring");
     }
     Ok(())
 }
@@ -437,7 +429,6 @@ fn gone_after_pasted(world: &mut IntegrationWorld) -> Result<()> {
     let events = run.after_action();
     let expected = [
         Sign::Shown(DictationSignState::RecognizingSpeech),
-        Sign::Shown(DictationSignState::RefiningText),
         Sign::Shown(DictationSignState::Pasted),
         Sign::Gone,
     ];

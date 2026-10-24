@@ -36,7 +36,7 @@ Feature: menu-bar-presence
       Then the status item shows the recording icon
 
     Scenario: The icon follows every stage of a dictation
-      Given text refinement is enabled and a button has keyboard focus while the runtime is ready
+      Given a button has keyboard focus while the runtime is ready
       When the user dictates a sentence, ends the dictation and then clicks into a text field
       Then the status item shows the recording icon, then the waveform, then the keyboard, then the ready icon after the paste
 
@@ -147,12 +147,12 @@ Feature: menu-bar-presence
   Rule: The menu lists the services
 
     Scenario: The services are listed with their states
-      Given the app started the speech recognition service for dictation and adopted the text refinement service
+      Given the app started the speech recognition service for dictation and adopted the one for commands
       When the user opens the Services submenu
-      Then it lists the dictation copies as Ready and the text refinement service as Adopted
+      Then it lists the dictation copies as Ready and the speech recognition service for commands as Adopted
       And Restart is offered for the dictation copies only
 
     Scenario: Restart from the menu
-      Given the app started the text refinement service and it is Failed
+      Given the app started the command spotting service and it is Failed
       When the user chooses Restart for it
       Then the app starts it again

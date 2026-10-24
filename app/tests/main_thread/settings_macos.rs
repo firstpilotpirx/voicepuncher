@@ -14,6 +14,7 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSDictionary, NSString};
 use toml::Value;
+use voicepuncher::adapters::primary::settings::macos::control::FieldControl;
 use voicepuncher::adapters::primary::settings::macos::field::Choices;
 use voicepuncher::adapters::primary::settings::macos::form::Form;
 use voicepuncher::adapters::primary::settings::macos::login::UNAVAILABLE_NOTE;
@@ -154,11 +155,7 @@ fn open_form(folder: &Path, applied: &AppliedConfigs) -> (SettingsWindow, Rc<For
     (window, form)
 }
 
-fn control_of<'a>(
-    form: &'a Form,
-    section: &str,
-    key: &str,
-) -> &'a voicepuncher::adapters::primary::settings::macos::control::FieldControl {
+fn control_of<'a>(form: &'a Form, section: &str, key: &str) -> &'a FieldControl {
     let field = find(section, key).expect("the option has a field");
     form.controls
         .iter()
@@ -188,7 +185,9 @@ fn should_build_a_control_for_every_option_and_close() {
     let (_window, form) = open_form(folder.path(), &AppliedConfigs::default());
     // Then
     assert_eq!(form.controls.len(), FIELDS.len());
-    assert_eq!(form.tabs.len(), 8);
+    assert_eq!(form.tabs.len(), 7);
+    let tab = form.controller.selectedTabViewItemIndex();
+    assert_eq!(tab, 0, "the window opens on General, the first tab");
     let hotkey = control_of(&form, "hotkey", "key").read();
     assert_eq!(hotkey, Value::String("RightCommand".to_owned()));
     form.window.close();

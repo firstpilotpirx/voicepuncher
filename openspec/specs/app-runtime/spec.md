@@ -10,7 +10,7 @@ The runtime SHALL start the dictation pipeline from a valid configuration once e
 
 #### Scenario: Every service answers
 - **GIVEN** a valid configuration with voice control off
-- **AND** the speech recognition service and the text refinement service answer
+- **AND** the speech recognition service answers
 - **WHEN** the runtime starts
 - **THEN** the dictation pipeline runs with that configuration
 - **AND** the runtime state is Ready with voice control off
@@ -40,7 +40,7 @@ The runtime SHALL apply a new valid configuration by restarting the pipeline ins
 - **AND** the runtime state is Ready
 
 ### Requirement: A restart waits for the dictation in progress
-When a reload arrives while the pipeline records, recognizes, refines, waits for focus or pastes, the runtime SHALL report the state Restarting, let that dictation finish and paste, and only then restart the pipeline with the new configuration.
+When a reload arrives while the pipeline records, recognizes, waits for focus or pastes, the runtime SHALL report the state Restarting, let that dictation finish and paste, and only then restart the pipeline with the new configuration.
 
 #### Scenario: Reload during a recording
 - **GIVEN** the runtime is Ready

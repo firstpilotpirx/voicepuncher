@@ -16,18 +16,18 @@ fn should_note_the_hotkey_the_command_line_set_by_its_name() {
 }
 
 #[test]
-fn should_note_refinement_turned_off_on_the_command_line() {
+fn should_note_voice_control_turned_on_on_the_command_line() {
     // Given
     let mut file = Config::default();
-    file.refinement.enabled = true;
+    file.voice_control.enabled = false;
     let mut effective = file.clone();
-    effective.refinement.enabled = false;
+    effective.voice_control.enabled = true;
     // When
     let notes = override_notes(&file, &effective);
     // Then
     assert_eq!(notes.len(), 1);
-    assert_eq!(notes[0].field.path(), "refinement.enabled");
-    assert_eq!(notes[0].note, "Set to Off by the command line for this run");
+    assert_eq!(notes[0].field.path(), "voice_control.enabled");
+    assert_eq!(notes[0].note, "Set to On by the command line for this run");
 }
 
 #[test]

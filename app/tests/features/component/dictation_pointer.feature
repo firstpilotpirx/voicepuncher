@@ -1,5 +1,5 @@
 # The pipeline runs on its own thread with stand-ins: the recorder hands over one second of
-# audio, speech recognition and text refinement take a moment, a text field has keyboard focus
+# audio, speech recognition takes a moment, a text field has keyboard focus
 # unless a scenario says otherwise, and the overlay and the dictation sign record what they
 # were asked to show in one ordered log. The dictation sign is driven through the adapter that
 # shows it next to the pointer, with a stand-in for its window; the failure notice lasts a
@@ -22,9 +22,9 @@ Feature: dictation-pointer
       Then the dictation sign shows a red microphone
 
     Scenario: The dictation sign mirrors every stage of a dictation
-      Given text refinement is enabled and a button has keyboard focus for the dictation sign
+      Given a button has keyboard focus for the dictation sign
       When the user records a dictation with speech in it, ends it and then clicks into a text field
-      Then the dictation sign shows a red microphone, then an ear with a turning ring, then sparkles with a turning ring, then an orange keyboard, then a green check
+      Then the dictation sign shows a red microphone, then an ear with a turning ring, then an orange keyboard, then a green check
 
     Scenario: A failure shows a warning triangle in the dictation sign
       Given the speech recognition service is not running while a recording runs with the dictation sign

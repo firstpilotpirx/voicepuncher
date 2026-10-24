@@ -67,16 +67,7 @@ success-output = "immediate"
 
 [[profile.e2e-smoke-speech.overrides]]
 filter = 'binary(cucumber_e2e)'
-run-extra-args = ["--tags", "@smoke and not @text_refinement and not @voice_control and not @local_services and not @wip"]
-slow-timeout = { period = "60s", terminate-after = 2 }
-
-# @smoke of text refinement, 11 s measured: 2 min
-[profile.e2e-smoke-refinement]
-success-output = "immediate"
-
-[[profile.e2e-smoke-refinement.overrides]]
-filter = 'binary(cucumber_e2e)'
-run-extra-args = ["--tags", "@smoke and @text_refinement and not @wip"]
+run-extra-args = ["--tags", "@smoke and not @voice_control and not @local_services and not @wip"]
 slow-timeout = { period = "60s", terminate-after = 2 }
 
 # @smoke of voice control, 136 s measured: 5 min
@@ -113,14 +104,6 @@ success-output = "immediate"
 filter = 'binary(cucumber_e2e)'
 run-extra-args = ["--tags", "@accuracy and not @wip"]
 slow-timeout = { period = "60s", terminate-after = 3 }
-
-# @refinement, 27 s measured (the evaluation set sent once): default 2 min
-[profile.refine-eval]
-success-output = "immediate"
-
-[[profile.refine-eval.overrides]]
-filter = 'binary(cucumber_e2e)'
-run-extra-args = ["--tags", "@refinement and not @wip"]
 
 # @accuracy on 100 recordings and the 20 recordings of "Ordinary speech triggers no command": 292 s the longest
 # pass of the stage journal (2026-10-22, fix/voice-commands-under-load), past half the old 6 min: 10 min

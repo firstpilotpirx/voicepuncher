@@ -3,10 +3,9 @@
 Automated E2E accuracy benchmark for voicepuncher.
 
 Downloads models and corpus automatically on first run.
-Runs all Whisper × LLM combinations and prints a Score/RTF comparison table.
-For each Whisper model it starts its own whisper-server (Homebrew whisper-cpp),
-and for each LLM its own llama-server (Homebrew llama.cpp), on separate ports,
-and stops them after that model's combinations.
+Runs every Whisper model and prints a Score/RTF comparison table.
+For each Whisper model it starts its own whisper-server (Homebrew whisper-cpp)
+on a port of its own, and stops it after that model's run.
 
 Metrics:
   Score = 1 - (WER + CER) / 2   quality, 0..1, higher is better
@@ -46,11 +45,6 @@ VAD_MODEL = {
     "file": "ggml-silero-v5.1.2.bin",
     "url": "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin",
 }
-# Separate from the 8080 port `just start-model-servers` uses
-BENCH_LLM_PORT = 8090
-LLM_READY_TIMEOUT_S = 120
-# Same flags as `just start-model-servers`
-LLM_SERVER_FLAGS = ["-c", "4096", "-np", "1"]
 
 # ── Model matrix ── add entries here to include new models in the benchmark ────
 
@@ -71,25 +65,6 @@ WHISPER_MODELS = [
         "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
     },
 ]
-
-LLM_MODELS = [
-    {
-        "name": "Qwen2.5-1.5B-Q4",
-        "file": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
-        "url": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
-    },
-    {
-        "name": "Qwen2.5-3B-Q4",
-        "file": "qwen2.5-3b-instruct-q4_k_m.gguf",
-        "url": "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf",
-    },
-    {
-        "name": "Qwen2.5-7B-Q4",
-        "file": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
-        "url": "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf",
-    },
-]
-
 
 # ── ANSI colours ───────────────────────────────────────────────────────────────
 
@@ -219,7 +194,7 @@ def _download(url: str, dest: Path) -> None:
 
 def ensure_models(models_dir: Path) -> None:
     print(_banner("Models"))
-    for m in WHISPER_MODELS + LLM_MODELS + [VAD_MODEL]:
+    for m in WHISPER_MODELS + [VAD_MODEL]:
         path = models_dir / m["file"]
         if path.exists():
             print(f"  {GREEN}✓ {m['file']}{RESET}")
@@ -287,14 +262,6 @@ def _port_open(port: int) -> bool:
         return sock.connect_ex(("127.0.0.1", port)) == 0
 
 
-def _health_ok(port: int) -> bool:
-    try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=1) as response:
-            return response.status == 200
-    except OSError:
-        return False
-
-
 @contextlib.contextmanager
 def _local_server(cmd: list, port: int, ready, ready_timeout_s: int, model_path: Path) -> Iterator[str]:
     """Runs one local service for the duration of the block; yields its base URL."""
@@ -330,24 +297,13 @@ def whisper_server(model_path: Path, port: int = BENCH_STT_PORT):
     return _local_server(cmd, port, _port_open, STT_READY_TIMEOUT_S, model_path)
 
 
-def llama_server(model_path: Path, port: int = BENCH_LLM_PORT):
-    """Text refinement service with one LLM."""
-    cmd = [
-        "llama-server", "-m", str(model_path), "--host", "127.0.0.1", "--port", str(port),
-        *LLM_SERVER_FLAGS,
-    ]
-    return _local_server(cmd, port, _health_ok, LLM_READY_TIMEOUT_S, model_path)
-
-
 def ensure_servers() -> None:
-    for binary, formula in [("whisper-server", "whisper-cpp"), ("llama-server", "llama.cpp")]:
+    for binary, formula in [("whisper-server", "whisper-cpp")]:
         if shutil.which(binary) is None:
             raise SystemExit(f"{RED}✗ {binary} not found — run 'brew install {formula}'{RESET}")
 
 
-def _run_one(
-    binary: Path, transcription_url: str, refinement_url: str, wav: Path
-) -> tuple[Optional[str], float]:
+def _run_one(binary: Path, transcription_url: str, wav: Path) -> tuple[Optional[str], float]:
     t0 = time.monotonic()
     try:
         r = subprocess.run(
@@ -356,8 +312,6 @@ def _run_one(
                 "--config", "/dev/null",
                 "--input-file", str(wav),
                 "--transcription-url", transcription_url,
-                "--llm",
-                "--refinement-url", refinement_url,
             ],
             capture_output=True,
             text=True,
@@ -371,7 +325,6 @@ def _run_one(
 
 class ComboResult(NamedTuple):
     whisper_name: str
-    llm_name: str
     mean_score: float
     mean_wer: float
     mean_cer: float
@@ -384,15 +337,13 @@ class ComboResult(NamedTuple):
 def run_combo(
     binary: Path,
     transcription_url: str,
-    refinement_url: str,
     whisper: dict,
-    llm: dict,
     samples: list,
 ) -> ComboResult:
     wers, cers, times, rtfs = [], [], [], []
     for i, s in enumerate(samples, 1):
         print(f"  {DIM}[{i:>3}/{len(samples)}]{RESET} {s.id:<50}", end=" ", flush=True)
-        hyp, elapsed = _run_one(binary, transcription_url, refinement_url, s.path)
+        hyp, elapsed = _run_one(binary, transcription_url, s.path)
         if hyp is None:
             print(f"{DIM}—{RESET}")
             continue
@@ -415,20 +366,19 @@ def run_combo(
     mean_t = sum(times) / len(times) if times else math.nan
     mean_rtf = sum(rtfs) / len(rtfs) if rtfs else math.nan
     mean_score = 1.0 - (mean_w + mean_c) / 2.0 if not (math.isnan(mean_w) or math.isnan(mean_c)) else math.nan
-    return ComboResult(whisper["name"], llm["name"], mean_score, mean_w, mean_c, mean_t, mean_rtf, len(wers), len(samples))
+    return ComboResult(whisper["name"], mean_score, mean_w, mean_c, mean_t, mean_rtf, len(wers), len(samples))
 
 
 # ── Table ──────────────────────────────────────────────────────────────────────
 
 def print_table(results: list) -> None:
     wn = max((len(r.whisper_name) for r in results), default=7)
-    ln = max((len(r.llm_name) for r in results), default=3)
-    wn, ln = max(wn, 7), max(ln, 3)
-    div = f"+{'-' * (wn + 2)}+{'-' * (ln + 2)}+--------+--------+----------+--------+"
+    wn = max(wn, 7)
+    div = f"+{'-' * (wn + 2)}+--------+--------+----------+--------+"
     print(f"\n{_banner('Results')}")
     print(div)
     print(
-        f"| {BOLD}{'Whisper':<{wn}}{RESET} | {BOLD}{'LLM':<{ln}}{RESET}"
+        f"| {BOLD}{'Whisper':<{wn}}{RESET}"
         f" | {BOLD}{' Score'}{RESET} | {BOLD}{'  RTF'}{RESET}"
         f" | {BOLD}{'Samples ':>8}{RESET} | {BOLD}{'s/clip'}{RESET} |"
     )
@@ -444,7 +394,7 @@ def print_table(results: list) -> None:
         time_s = f"{DIM}{r.mean_time_s:5.1f}s{RESET}" if not math.isnan(r.mean_time_s) else f"{DIM}  n/a {RESET}"
         samples_s = f"{r.n:>3}/{r.total:<4}"
         print(
-            f"| {row_fmt}{r.whisper_name:<{wn}}{RESET} | {row_fmt}{r.llm_name:<{ln}}{RESET}"
+            f"| {row_fmt}{r.whisper_name:<{wn}}{RESET}"
             f" | {score_s} | {rtf_s} | {samples_s} | {time_s} |"
         )
     print(div)
@@ -499,10 +449,8 @@ def main() -> None:
     results = []
     for whisper in WHISPER_MODELS:
         with whisper_server(models_dir / whisper["file"]) as transcription_url:
-            for llm in LLM_MODELS:
-                print(f"\n{MAGENTA}{BOLD}── {whisper['name']} × {llm['name']} {'─' * 40}{RESET}")
-                with llama_server(models_dir / llm["file"]) as refinement_url:
-                    results.append(run_combo(binary, transcription_url, refinement_url, whisper, llm, samples))
+            print(f"\n{MAGENTA}{BOLD}── {whisper['name']} {'─' * 40}{RESET}")
+            results.append(run_combo(binary, transcription_url, whisper, samples))
 
     print_table(results)
 

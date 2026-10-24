@@ -56,7 +56,7 @@ Most scenarios keep their meaning and their current test; the table names where 
 | A cold launch starts the needed services (local-services) | component `app_runtime.feature` and unit `localservices/catalog/tests.rs` (no refinement service) |
 | Voice control needs the command services (local-services) | unchanged, the unit or integration test that covers it today |
 | A real launch leaves no service behind at quit (local-services) | unchanged, E2E `local_services.feature` |
-| Services kept warm by the service scripts are adopted (local-services) | component `app_runtime.feature`, unit `core/application/local_services/tests.rs` |
+| Services kept warm by the service scripts are adopted (local-services) | unit `core/application/local_services/tests.rs`, `supervision_tests.rs` (the adopted log line) |
 | An owned service exits (local-services) | unit `core/application/local_services/supervision_tests.rs` (command spotting instead of refinement) |
 | The pause grows while a service keeps exiting (local-services) | unchanged, the unit or integration test that covers it today |
 | An owned service that stops answering is restarted (local-services) | unit `core/application/local_services/supervision_tests.rs` |
@@ -77,16 +77,16 @@ Most scenarios keep their meaning and their current test; the table names where 
 | Voice control starts two copies of the command spotting service (local-services) | unit `localservices/catalog/tests.rs`, unchanged |
 | One configured copy runs on the service's own port (local-services) | unit `localservices/catalog/tests.rs` (command spotting instead of refinement) |
 | The copy ports of the services never overlap (local-services) | unchanged, the unit or integration test that covers it today |
-| A command spotting service the scripts run is adopted (local-services) | unit `core/application/local_services/tests.rs` (the former refinement adoption case) |
+| A command spotting service the scripts run is adopted (local-services) | unit `localservices/catalog/tests/adoption.rs` `should_take_a_command_spotting_service_as_the_scripts_run_it` (the former refinement adoption case) |
 | A hotkey dictation shows speech recognition after the stop (processing-stages) | unchanged, component `processing_stages.feature` |
 | A dictation ended by voice shows speech recognition after the stop (processing-stages) | unchanged, component `processing_stages.feature` |
 | A dictation transcribed while the user speaks shows speech recognition for its last part (processing-stages) | unchanged, component `processing_stages.feature` |
 | A dictation without speech hides the overlay after speech recognition (processing-stages) | unchanged, component `processing_stages.feature` |
 | Speech recognition is followed by the paste (processing-stages) | component `processing_stages.feature` (the former refinement-disabled scenario) |
 | Text held back for focus shows the wait after speech recognition (processing-stages) | component `processing_stages.feature` |
-| Speech recognition shows an ear left of its label and spinner (processing-stages) | unchanged, the unit or integration test that covers it today |
-| The stage icon reads in light and dark appearance (processing-stages) | unchanged, the unit or integration test that covers it today |
-| A long speech recognition never looks nearly done (processing-stages) | unchanged, the unit or integration test that covers it today |
+| Speech recognition shows an ear left of its label and spinner (processing-stages) | unchanged: ear and label in `pill_content.rs` and `visualfeedback_macos.rs`; the spinner in the manual run |
+| The stage icon reads in light and dark appearance (processing-stages) | manual run (visual only) |
+| A long speech recognition never looks nearly done (processing-stages) | manual run (visual only) |
 | Speech recognition shows no transcript (processing-stages) | unchanged, the unit or integration test that covers it today |
 | Settings opens the window (settings-window) | unchanged, the unit or integration test that covers it today |
 | Settings chosen again reuses the window (settings-window) | unchanged, the unit or integration test that covers it today |
@@ -111,10 +111,10 @@ Most scenarios keep their meaning and their current test; the table names where 
 | A chunk whose copy is killed is transcribed by another copy (speech-recognition) | unchanged, the unit or integration test that covers it today |
 | Service hears no speech (speech-recognition) | unchanged, the unit or integration test that covers it today |
 | Service closed the idle connection during a long pause (speech-recognition) | unchanged, the unit or integration test that covers it today |
-| Filler sounds are dropped from the pasted text (text-insertion) | unit `core/domain/filler_sounds.rs` `text_to_paste` (Red/Green in 1.1–1.2), component `processing_stages.feature` via the pipeline |
+| Filler sounds are dropped from the pasted text (text-insertion) | unit `core/domain/filler_sounds.rs` `text_to_paste` (Red/Green in 1.1–1.2), unit `pipeline/tests/processing.rs` `should_paste_the_transcript_without_its_filler_sounds_after_the_stop` |
 | The transcript reaches the paste unchanged otherwise (text-insertion) | unit `core/domain/filler_sounds.rs` `text_to_paste` |
 | A lost dictation shows the amber notice with its message (visual-feedback) | unchanged, the unit or integration test that covers it today |
-| A failure notice over a white window stays legible (visual-feedback) | unchanged, the unit or integration test that covers it today |
+| A failure notice over a white window stays legible (visual-feedback) | manual run (visual only) |
 | The text recognized so far shows below the pill (visual-feedback) | unchanged, the unit or integration test that covers it today |
 | Ending the recording takes the text window away (visual-feedback) | unchanged, the unit or integration test that covers it today |
 | The pill does not change size from the recording to Pasted (visual-feedback) | unchanged, the unit or integration test that covers it today |

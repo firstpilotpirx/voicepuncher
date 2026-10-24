@@ -95,7 +95,7 @@ Feature: app-distribution
     Scenario: The engine folders hold what the services need
       Given the bundle the bundle build made
       When its engine folders are listed
-      Then there is one folder for the speech recognition engine, one for the text refinement engine and one for the command spotting service
+      Then there is one folder for the speech recognition engine and one for the command spotting service
       And each holds its program and a version file
 
   Rule: The engines are pinned
@@ -105,12 +105,6 @@ Feature: app-distribution
       When the engines are staged
       Then the staging fails naming the formula, the version the lock expects and the versions found
       And it says how to pin the formula
-      And no engine folder is written
-
-    Scenario: A release archive with another checksum is refused
-      Given an engine lock whose release archive checksum differs from the archive's
-      When the engines are staged
-      Then the staging fails naming the archive, the checksum found and the checksum the lock expects
       And no engine folder is written
 
     # frozen: hung past the bundle stage limit beside another full-check (2026-10-23, bundle); fixed separately
@@ -141,14 +135,13 @@ Feature: app-distribution
 
     # The e2e-bundle stage of full-check, under the machine-wide lock: the bundle's own engines on the models
     @bundle_engines
-    Scenario: A bundle copy serves dictation and refinement on Metal
+    Scenario: A bundle copy serves dictation on Metal
       Given a copy of the bundle outside the build folder, the models on disk and nothing but the system folders on the path
-      When the copy's application starts its services with refinement and voice control on
+      When the copy's application starts its services with voice control on
       Then its log names each engine as taken from the bundle
-      And a recording is transcribed and a sentence is refined through the started services
+      And a recording is transcribed through the started services
       And the command spotting service answers its health check
       And the speech recognition engine's log shows it loaded its compute backends from the copy and set up the Metal GPU
-      And the copy's text refinement engine finds the Metal GPU
 
     # Manual (task 6.2): a downloaded disk image needs the user's Open Anyway before any of its programs runs
     @wip
@@ -162,7 +155,8 @@ Feature: app-distribution
     Scenario: The bundle holds the licenses
       Given the bundle the bundle build made
       When its licenses folder is listed
-      Then it holds the licenses of whisper.cpp, ggml, llama.cpp, the OpenMP runtime, sherpa-onnx and ONNX Runtime
+      Then it holds the licenses of whisper.cpp, ggml, the OpenMP runtime, sherpa-onnx and ONNX Runtime
+      And it holds no license of llama.cpp
 
   Rule: The first launch is documented
 

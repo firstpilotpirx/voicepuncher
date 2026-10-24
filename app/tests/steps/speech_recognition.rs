@@ -1,7 +1,6 @@
 //! Drives the pipeline through one live dictation: a stand-in recorder delivers chunks, a
 //! stand-in speech recognition service answers each chunk with a fixed transcript, and the
-//! pasted text is captured. Refinement passes the raw transcript through unchanged, so the
-//! pasted text is the merged raw transcript.
+//! pasted text is captured. The pasted text is the merged raw transcript.
 
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
@@ -10,7 +9,6 @@ use std::time::Instant;
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 
-use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use voicepuncher::core::application::{
@@ -213,7 +211,6 @@ fn stop_dictation(world: &mut IntegrationWorld) -> Result<()> {
                 dictation.chunk_texts.clone(),
                 dictation.failing_chunk,
             )),
-            refiner: Box::new(PassthroughTextRefiner),
             paster: Box::new(CapturingPaster(pasted.clone())),
             sound_player: Box::new(Silent),
             visual_indicator: Box::new(Silent),

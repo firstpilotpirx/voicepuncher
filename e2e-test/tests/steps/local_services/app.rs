@@ -103,7 +103,6 @@ fn launch_ready_and_end(world: &mut E2eWorld, end: fn(u32) -> Result<()>) -> Res
     let child = Command::new(sut_bin())
         .arg("--config")
         .arg(&config)
-        .arg("--no-llm")
         .env("HOME", home.path())
         .stdin(Stdio::null())
         .stdout(Stdio::null())

@@ -1,6 +1,6 @@
 # The pipeline runs on its own thread with stand-ins: the recorder hands over one second of
 # audio (and, for a long dictation, a part during the recording and the last part at the stop),
-# speech recognition, text refinement and the paster answer or fail as the scenario sets them,
+# speech recognition and the paster answer or fail as the scenario sets them,
 # and the overlay records what it was asked to show. The steps block while they watch the
 # pipeline, so @serial keeps other scenarios from stalling them.
 @failure_notices @component @serial
@@ -39,22 +39,6 @@ Feature: failure-notices
       When the user stops the hotkey dictation
       Then the text of the other parts is pasted
       And the overlay shows a failure notice that part of the dictation was lost
-
-  Rule: Text pasted without refinement is announced
-
-    Scenario: The text refinement service is down
-      Given text refinement is on and its service is down
-      And the user is recording a hotkey dictation
-      When the user stops the hotkey dictation
-      Then the raw transcript is pasted
-      And the overlay shows a failure notice that the text was pasted without refinement
-
-    Scenario: Refinement turned off shows no notice
-      Given text refinement is turned off
-      And the user is recording a hotkey dictation
-      When the user stops the hotkey dictation
-      Then the raw transcript is pasted
-      And the overlay shows no failure notice
 
   Rule: A failed paste is announced
 

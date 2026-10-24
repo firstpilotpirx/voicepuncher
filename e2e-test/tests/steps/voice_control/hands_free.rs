@@ -10,7 +10,6 @@ use anyhow::{bail, Context, Result};
 use cucumber::when;
 
 use voicepuncher::adapters::secondary::commandspotting::websocket::AudioStream;
-use voicepuncher::adapters::secondary::textrefinement::passthrough::PassthroughTextRefiner;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use voicepuncher::core::application::{
@@ -87,7 +86,6 @@ impl HandsFree {
             PipelineParts {
                 recorder: Box::new(StandInRecorder(Arc::clone(&events))),
                 transcriber: Box::new(FixedTranscript),
-                refiner: Box::new(PassthroughTextRefiner),
                 paster: Box::new(RecordingPaster(Arc::clone(&events))),
                 sound_player: Box::new(ListeningSounds(Arc::clone(&events))),
                 visual_indicator: Box::new(SignOverlay(Arc::clone(&events))),

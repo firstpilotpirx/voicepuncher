@@ -1,5 +1,5 @@
 //! What went wrong with a request to a local service, so the clients of the speech
-//! recognition and text refinement services retry what a new attempt can fix.
+//! recognition services retry what a new attempt can fix.
 
 use std::io;
 

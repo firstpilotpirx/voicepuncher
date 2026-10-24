@@ -33,11 +33,7 @@ fn run(world: &mut E2eWorld) -> Result<&mut ManagedRun> {
 #[given("the app started the command spotting service and the speech recognition service for commands as two copies each, and listening is on")]
 async fn copies_listening(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
-        let run = ManagedRun::start(Needed {
-            dictation_copies: 1,
-            refinement_copies: None,
-            voice_control: true,
-        })?;
+        let run = ManagedRun::start(Needed { dictation_copies: 1, voice_control: true })?;
         let hands_free = HandsFree::start(run.config.voice_control.url.clone());
         if !hands_free.saw(|e| *e == Event::Listening) {
             bail!("listening did not start: {:?}", hands_free.events());
