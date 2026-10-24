@@ -2,9 +2,8 @@ set dotenv-load
 
 # ── Settings ── override any of these via env or .env ─────────────────────────
 
-# Models: explicit env var wins; otherwise the model `just models` downloads for each speech recognition
-# service, found by its exact file name in ~/.voicepuncher or ~/.voicepuncher/models (empty when not on disk:
-# the start and _require-models then fail with "Run 'just models' or set it in .env")
+# Models: env var wins; else the file `just models` downloads, found by name in ~/.voicepuncher or its models/
+# (empty when not on disk: the start and _require-models then fail with "Run 'just models' or set it in .env")
 dictation_model_file := "ggml-large-v3-turbo-q5_0.bin"
 command_model_file := "ggml-small.bin"
 find_model := 'find ~/.voicepuncher -maxdepth 2 -name "$1" 2>/dev/null | head -1'
@@ -40,9 +39,8 @@ e2e_smoke_stages := "e2e-smoke-voice e2e-smoke-speech e2e-smoke-services"
 # start cues at the very end. `accuracy` stands for the accuracy stage full-check picks (dev-tools accuracy-stage)
 check_model_stages := "e2e-smoke-voice e2e-smoke-speech e2e-quick e2e-smoke-services"
 full_check_model_stages := "e2e-smoke-voice e2e-regression e2e-resilience e2e-bundle e2e-smoke-speech accuracy e2e-smoke-services e2e-seams it-real e2e-cues"
-# The test modules of the voice control smoke part, the most failing first: every member's integration tests
-# build into its one `it` binary (tests/it/<module>.rs), so a part names modules; placed_commands is the command
-# spotting service's, the others the app's
+# The test modules of the voice control smoke part, the most failing first (each member's tests/it/<module>.rs
+# build into its one `it` binary); placed_commands is the command spotting service's, the others the app's
 voice_smoke_modules := "placed_commands voice_forms mishearings voice_samples commandspotting_websocket"
 # Every test binary of the smoke parts in one cargo selection: each part's one nextest call builds exactly what
 # _build-e2e built before the machine lock, and picks its own modules with a filter (dev-tools filter smoke)
@@ -50,12 +48,10 @@ smoke_parts_tests := "-p voicepuncher -p voicepuncher-command-spotting -p voicep
 e2e_seams_tests := "-p voicepuncher --test it"
 e2e_seams_modules := "chunked_transcription"
 cucumber_e2e_tests := "-p voicepuncher-e2e-test --test cucumber_e2e"
-# A rerun's selection (just rerun-failed): added to every nextest call of the E2E recipes, whose calls may each
-# hold none of the failed tests; _test narrows its own selection with it
+# A rerun's selection (just rerun-failed), added to every E2E nextest call (each may hold none); _test narrows with it
 rerun_filter := '${VOICEPUNCHER_RERUN_FILTER:+-E "$VOICEPUNCHER_RERUN_FILTER" --no-tests=pass}'
-# check and full-check set VOICEPUNCHER_FAIL_FAST=1, so a model stage stops at its first failure: nextest runs no
-# further test of the binary and the E2E harness no further scenario (harness_args::with_fail_fast). Standalone
-# recipes and rerun-failed report every failure. A volatile variable: it changes no stage key (dev-tools keys)
+# check and full-check set VOICEPUNCHER_FAIL_FAST=1: a model stage stops at its first failed test or scenario
+# (harness_args::with_fail_fast); other recipes report every failure. It changes no stage key (dev-tools keys)
 fail_fast := '${VOICEPUNCHER_FAIL_FAST:+--fail-fast}'
 
 # nextest prints captured test output unindented, so libtest's `test … FAILED` and `thread '…' panicked at
@@ -64,8 +60,7 @@ export NEXTEST_NO_OUTPUT_INDENT := "1"
 # The stage journal: one JSON line per run of _stages (check, full-check, test, the E2E recipes), shared by
 # every checkout and kept when a worktree goes; `just stage-times` summarizes it
 export VOICEPUNCHER_STAGE_JOURNAL := env_var_or_default("VOICEPUNCHER_STAGE_JOURNAL", home_directory() / ".cache/voicepuncher/stage-times.jsonl")
-# How long a locked run waits for the machine lock before it gives up (exit 75): 6 h unless the caller sets it,
-# so a run queued behind several sessions' checks waits out the queue instead of giving up and running nothing
+# How long a locked run waits for the machine lock before it gives up (exit 75): 6 h, to wait out a queue of checks
 export MACHINE_LOCK_WAIT := env_var_or_default("MACHINE_LOCK_WAIT", "21600")
 
 # dev-tools (crate dev-tools/): the stage runner — keys, pass records, the machine lock's phases, the stage table
@@ -541,8 +536,7 @@ app_version := shell("grep -m1 '^version = ' \"$1\" | cut -d '\"' -f2", justfile
 # The self-signed code-signing certificate of README § Release checklist; empty signs ad-hoc (no stable identity)
 signing_identity := env_var_or_default("VOICEPUNCHER_SIGNING_IDENTITY", "")
 
-# Build the signed application bundle into dist/voicepuncher.app (release build, no `cargo clean`), with the pinned
-# engines in Contents/MacOS/engines/ and their licenses in Contents/Resources/licenses/: `open dist/voicepuncher.app`
+# Build the signed dist/voicepuncher.app (release build, no `cargo clean`) with the pinned engines and their licenses
 bundle: _require-signing-identity engines
     #!/usr/bin/env bash
     set -euo pipefail
@@ -555,10 +549,16 @@ bundle: _require-signing-identity engines
     cp -R "$engines/licenses" "$app/Contents/Resources/licenses"
     iconutil -c icns {{quote(packaging_dir / "icons/voicepuncher.iconset")}} -o "$app/Contents/Resources/voicepuncher.icns"
     cp {{quote(packaging_dir / "Info.plist")}} "$app/Contents/Info.plist"
-    plutil -replace CFBundleShortVersionString -string {{quote(app_version)}} "$app/Contents/Info.plist"
-    plutil -replace CFBundleVersion -string {{quote(app_version)}} "$app/Contents/Info.plist"
+    for key in CFBundleShortVersionString CFBundleVersion; do plutil -replace "$key" -string {{quote(app_version)}} "$app/Contents/Info.plist"; done
     {{just_executable()}} --justfile {{quote(justfile())}} _sign "$app"
     echo "✓ bundle $app"
+
+# Update this checkout to origin/main, quit the running app, rebuild dist/voicepuncher.app and launch it from there
+update-app:
+    git switch main && git pull --ff-only origin main
+    if pgrep -f {{quote(app_bundle / "Contents/MacOS/voicepuncher")}} >/dev/null; then osascript -e 'quit app "voicepuncher"'; while pgrep -f {{quote(app_bundle / "Contents/MacOS/voicepuncher")}} >/dev/null; do sleep 0.5; done; fi
+    {{just_executable()}} --justfile {{quote(justfile())}} bundle
+    open {{quote(app_bundle)}}
 
 # Build the release disk image dist/voicepuncher-vX.Y.Z.dmg (the bundle, an Applications shortcut, the background
 # picture) and its .sha256; create-dmg lays the window out through the Finder
