@@ -26,7 +26,7 @@ flowchart TB
 
     subgraph primary["Primary adapters (driving)"]
         CLI["cli\n(clap: developer flags, file mode)"]
-        PTT["ptt/rdev\n(global hotkey)"]
+        PTT["ptt/eventtap\n(global hotkey)"]
         MENUBAR["menubar/macos\n(status item and menu)"]
         PERMWIN["permissions/macos\n(Permissions window)"]
         DLWIN["modeldownload/macos\n(Download window)"]
@@ -102,7 +102,7 @@ Signals received while the pipeline is in any non-Idle state other than `Recordi
 
 | Concern | Library / API | Reason |
 |---|---|---|
-| Hotkey capture | `rdev` | Global key listener without a visible window; works in a terminal |
+| Hotkey capture | `core-graphics` `CGEventTap` | Listen-only global key tap without a visible window; reads key codes and flags only, so no input-source call runs off the main thread |
 | Audio recording | `cpal` | Cross-platform abstraction; picks CoreAudio on macOS; the capture callback is realtime-safe |
 | Speech-to-text | local `whisper-server` (whisper.cpp) over the OpenAI Audio Transcriptions API, via `ureq` | The engine runs outside the app (Metal, any `ggml-*.bin` model); the app stays engine-agnostic and builds without C++. The service runs as copies on the ports 10000 above its own; `copy-pool` finds them from the address and gives each request a free copy |
 | Voice control | the command spotting service `voicepuncher-command-spotting` (sherpa-onnx keyword spotting + confirmation by `whisper-server-commands`) over a loopback WebSocket | Keyword spotting is cheap enough to run on the whole microphone stream; the confirmation by a small Whisper model keeps false starts out; a separate process keeps the native library out of the app |

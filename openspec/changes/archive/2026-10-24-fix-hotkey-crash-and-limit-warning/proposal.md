@@ -35,4 +35,4 @@ Out of scope: the permissions gate and the overlay (changes `fix-permissions-and
 ## Release
 
 SemVer: PATCH — bug fixes, no new capability.
-Target version: 0.37.4 (the next PATCH above `main` when it merges).
+Target version: 0.38.2.

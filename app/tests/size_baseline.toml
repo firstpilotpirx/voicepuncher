@@ -65,7 +65,6 @@
 "app/src/adapters/primary/menubar/macos/status_item.rs" = 373
 "app/src/adapters/primary/modeldownload/macos/mod.rs" = 378
 "app/src/adapters/primary/permissions/macos/mod.rs" = 431
-"app/src/adapters/primary/ptt/rdev/mod.rs" = 370
 "app/src/adapters/secondary/commandspotting/websocket/mod.rs" = 334
 "app/src/adapters/secondary/localservices/catalog/mod.rs" = 470
 "app/src/adapters/secondary/localservices/catalog/tests.rs" = 375
@@ -140,7 +139,6 @@
 
 [excessive_nesting]
 "app/src/adapters/primary/modeldownload/macos/mapping.rs::WindowModel::rechecked" = 0
-"app/src/adapters/primary/ptt/rdev/mod.rs::<RdevHotkeyListener as HotkeyListener>::spawn" = 0
 "app/src/adapters/primary/settings/macos/form.rs::Form::save" = 0
 "app/src/adapters/secondary/commandspotting/websocket/client.rs::SpottingClient::events_for_sent_audio" = 0
 "app/src/adapters/secondary/transcription/openai/mod.rs::OpenAiTranscriber::post_with_retries" = 0
@@ -149,7 +147,6 @@
 "app/src/core/application/model_download.rs::ModelDownload::download" = 0
 "app/src/runtime/mod.rs::Supervisor::wait_for_services" = 0
 "app/tests/it/architecture.rs::r12_only_the_runtime_assembles_the_hotkey_pipeline" = 0
-"app/tests/it/architecture.rs::r2_application_no_adapter_imports" = 0
 "app/tests/it/architecture.rs::r6_core_only_whitelisted_external_crates" = 0
 "app/tests/it/architecture.rs::r7_adapters_in_feature_tech_structure" = 0
 "app/tests/it/chunk_cuts.rs::should_cut_most_chunk_seams_of_synthesized_speech_in_a_pause" = 0

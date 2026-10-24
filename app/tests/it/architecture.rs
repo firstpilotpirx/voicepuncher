@@ -11,7 +11,7 @@ fn read_lines(path: &std::path::Path) -> Vec<String> {
 }
 
 /// Every line of `files` holding one of `patterns`, as `path:line: forbidden 'pattern' — text`.
-fn forbidden_lines(files: &[std::path::PathBuf], patterns: &[&str]) -> Vec<String> {
+pub fn forbidden_lines(files: &[std::path::PathBuf], patterns: &[&str]) -> Vec<String> {
     let mut violations = Vec::new();
     for path in files {
         for (line_no, line) in read_lines(path).iter().enumerate() {
@@ -48,7 +48,6 @@ fn r1_domain_no_adapter_imports() {
 }
 
 #[test]
-#[expect(clippy::excessive_nesting, reason = "size baseline")]
 fn r2_application_no_adapter_imports() {
     let forbidden_patterns = [
         "use crate::adapters",
@@ -62,31 +61,7 @@ fn r2_application_no_adapter_imports() {
         "sherpa_onnx",
         "voicepuncher_copy_pool",
     ];
-
-    let mut violations: Vec<String> = Vec::new();
-
-    for entry in WalkDir::new("src/core/application")
-        .into_iter()
-        .filter_map(std::result::Result::ok)
-        .filter(|e| e.file_type().is_file())
-        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("rs"))
-    {
-        let path = entry.path();
-        for (line_no, line) in read_lines(path).iter().enumerate() {
-            for pattern in &forbidden_patterns {
-                if line.contains(pattern) {
-                    violations.push(format!(
-                        "{}:{}: forbidden '{}' — {}",
-                        path.display(),
-                        line_no + 1,
-                        pattern,
-                        line.trim()
-                    ));
-                }
-            }
-        }
-    }
-
+    let violations = forbidden_lines(&rust_files("src/core/application"), &forbidden_patterns);
     assert!(
         violations.is_empty(),
         "R2 violations:\n{}",
@@ -451,7 +426,7 @@ fn r9_every_primary_adapter_has_it() {
     );
 }
 
-fn rust_files(root: &str) -> Vec<std::path::PathBuf> {
+pub fn rust_files(root: &str) -> Vec<std::path::PathBuf> {
     WalkDir::new(root)
         .into_iter()
         .filter_map(std::result::Result::ok)

@@ -12,11 +12,13 @@ pub struct RecordingBuffer {
     samples: Mutex<Vec<i16>>,
     /// Samples never appended beyond: the recording limit, or a cut.
     limit: Mutex<usize>,
+    /// The recording limit itself, which a cut never lowers.
+    max_samples: usize,
 }
 
 impl RecordingBuffer {
     pub fn new(max_samples: usize) -> Self {
-        Self { samples: Mutex::new(Vec::new()), limit: Mutex::new(max_samples) }
+        Self { samples: Mutex::new(Vec::new()), limit: Mutex::new(max_samples), max_samples }
     }
 
     fn lock(&self) -> MutexGuard<'_, Vec<i16>> {
@@ -43,9 +45,9 @@ impl RecordingBuffer {
         self.lock().is_empty()
     }
 
-    /// Whether the recording limit was reached.
+    /// Whether the recording limit was reached; a cut never counts.
     pub fn is_full(&self) -> bool {
-        self.lock().len() >= self.limit()
+        self.lock().len() >= self.max_samples
     }
 
     /// Drops everything from `len` on and takes nothing more past it.
@@ -100,6 +102,14 @@ mod tests {
         buffer.append(&[3, 4]);
         assert!(buffer.is_full());
         assert_eq!(buffer.take(), [1, 2, 3]);
+    }
+
+    #[test]
+    fn should_not_count_a_cut_buffer_as_full() {
+        let buffer = RecordingBuffer::new(100);
+        buffer.append(&[1, 2, 3, 4]);
+        buffer.cut_at(4);
+        assert!(!buffer.is_full());
     }
 
     #[test]

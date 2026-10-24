@@ -25,7 +25,7 @@ mod modelfetch_fs;
 mod modelfetch_http;
 mod packaging;
 mod permissions_macos;
-mod ptt_rdev;
+mod ptt_eventtap;
 mod recording_cpal;
 mod recording_filesystem;
 mod runtime_signal;

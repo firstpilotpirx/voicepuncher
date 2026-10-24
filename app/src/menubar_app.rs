@@ -23,7 +23,7 @@ use voicepuncher::adapters::primary::modeldownload::macos::{
     self as modeldownload, DownloadSource, DownloadWindow,
 };
 use voicepuncher::adapters::primary::permissions::macos::{self as permissions, PermissionsWindow};
-use voicepuncher::adapters::primary::ptt::rdev::RdevHotkeyListener;
+use voicepuncher::adapters::primary::ptt::eventtap::EventTapHotkeyListener;
 use voicepuncher::adapters::primary::settings::macos::{
     login::LoginOffer,
     models_row::ModelsPanel,
@@ -129,7 +129,7 @@ impl Shell {
         )));
         let assembler = WiringAssembler::new(overlay, level_register);
         // a missing permission makes the runtime wait for it, not the process exit
-        let runtime = Runtime::new(Box::new(assembler), Box::new(RdevHotkeyListener::new()))
+        let runtime = Runtime::new(Box::new(assembler), Box::new(EventTapHotkeyListener::new()))
             .with_permissions(PermissionsWatch::new(Arc::clone(&self.gate)));
         let Some(services) = services else {
             return Ok((runtime, None));

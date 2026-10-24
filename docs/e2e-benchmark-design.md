@@ -37,7 +37,7 @@ Option C is the only approach that satisfies all three constraints:
 
 When `--input-file <path>` is passed:
 
-- Skips the hotkey listener (no `rdev` thread).
+- Skips the hotkey listener (no hotkey tap thread).
 - Reads the audio file from disk instead of the microphone.
 - Runs the pipeline exactly once: transcribe → output.
 - Writes the result text to **stdout** (instead of pasting via accessibility API).
