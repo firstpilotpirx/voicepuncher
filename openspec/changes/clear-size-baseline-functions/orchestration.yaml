@@ -1,0 +1,4 @@
+depends_on:
+  - change: split-overgrown-module-dirs
+    why: the splits move the files these refactors edit
+autonomy: auto
