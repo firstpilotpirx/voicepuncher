@@ -1,0 +1,6 @@
+depends_on:
+  - change: clear-size-baseline-functions
+    why: both refactor the same functions
+  - change: format-in-static-check
+    why: clippy --fix in the static check clears many findings first
+autonomy: auto
