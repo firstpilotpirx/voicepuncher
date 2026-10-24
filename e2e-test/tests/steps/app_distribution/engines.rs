@@ -1,4 +1,4 @@
-//! The engine lock and `just _engines`, which stages the pinned engines into a folder: run on a
+//! The engine lock and `just engines`, which stages the pinned engines into a folder: run on a
 //! lock and a staging folder of the scenario's own, so the checkout's `app/packaging/engines/` is
 //! never touched.
 
@@ -14,7 +14,7 @@ use super::{checkout, just, path_str, text};
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
-/// The engine sections of the lock and the folders `_engines` writes for them.
+/// The engine sections of the lock and the folders `just engines` writes for them.
 pub const ENGINES: [&str; 3] = ["whisper", "llama", "command-spotting"];
 /// The file of an engine folder that holds its version.
 pub const VERSION_FILE: &str = "VERSION";
@@ -116,10 +116,8 @@ async fn stage_engines(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let out = world.workdir()?.join("engines");
         let lock = world.distribution.engines.lock.clone().context("no lock")?;
-        world.distribution.engines.run = Some(just(
-            &["_engines", path_str(&lock)?, path_str(&out)?],
-            None,
-        )?);
+        world.distribution.engines.run =
+            Some(just(&["engines", path_str(&lock)?, path_str(&out)?], None)?);
         world.distribution.engines.out = Some(out);
         Ok(())
     })

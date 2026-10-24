@@ -1,0 +1,26 @@
+[package]
+name = "voicepuncher-dev-tools"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+description = "What the justfile's recipes call: the stage runner (keys, reuse, locks, the journal), the frozen tests, the named runs, the engines and the local services"
+publish = false
+
+[[bin]]
+name = "dev-tools"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+jiff = { version = "=0.2.24", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
+regex = "=1.12.3"
+rustix = { version = "=1.1.4", features = ["fs", "process"] }
+serde_json = "=1.0.149"
+sha2 = "=0.11.1"
+signal-hook = "=0.4.5"
+tempfile = "=3.27.0"
+
+[dev-dependencies]
+voicepuncher-test-steps = { path = "../test-steps" }

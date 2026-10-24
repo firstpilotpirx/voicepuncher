@@ -26,7 +26,7 @@ test_paths = ["analyzers/tests/", "app/tests/", "command-spotting/tests/", "copy
 "clippy::significant_drop_tightening" = "nursery lint with known false positives on guards held on purpose"
 
 [metrics]
-members = ["analyzers", "app", "command-spotting", "copy-pool", "e2e-test", "test-steps"]
+members = ["analyzers", "app", "command-spotting", "copy-pool", "dev-tools", "e2e-test", "test-steps"]
 # A function over this cyclomatic complexity is listed in .config/analyzers/metrics.toml (cognitive complexity is
 # gated by clippy's size budgets)
 cyclomatic_threshold = 10

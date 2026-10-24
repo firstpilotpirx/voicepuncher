@@ -1,73 +1,63 @@
-//! The app and the service scripts (`justfile`) start each service with the same arguments.
+//! The app and the service scripts (`dev-tools start-model-servers`) start each service with the same arguments.
 
 use std::fs;
 
 use super::super::*;
 
-fn justfile() -> String {
-    fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../justfile")).unwrap()
+/// The service scripts' command lines: one literal list per service.
+fn scripts() -> String {
+    fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../dev-tools/src/services/command_lines.rs"
+    ))
+    .unwrap()
 }
 
-/// The words of `text` from `start` up to `end`, without line continuations.
-fn words_between(text: &str, start: &str, end: &str) -> Vec<String> {
+/// The elements of the list of `fn <function>(` in `text`: a string literal as its text, a parameter as its name.
+fn list_of(text: &str, function: &str) -> Vec<String> {
+    let start = format!("fn {function}(");
     let from = text
-        .find(start)
-        .unwrap_or_else(|| panic!("no {start} in the justfile"));
-    let rest = &text[from + start.len()..];
-    let to = rest
-        .find(end)
-        .unwrap_or_else(|| panic!("no {end} after {start}"));
-    rest[..to]
-        .split_whitespace()
-        .filter(|word| *word != "\\")
+        .find(&start)
+        .unwrap_or_else(|| panic!("no {start} in the service scripts"));
+    let rest = &text[from..];
+    let open = rest
+        .find("&[")
+        .unwrap_or_else(|| panic!("no list in {function}"));
+    let rest = &rest[open + 2..];
+    let close = rest
+        .find(']')
+        .unwrap_or_else(|| panic!("no end of the list in {function}"));
+    rest[..close]
+        .split(',')
+        .map(str::trim)
+        .filter(|word| !word.is_empty())
         .map(|word| word.trim_matches('"').to_string())
         .collect()
 }
 
-/// Where the service scripts' arguments of `service` start and end, and their port.
-fn script_bounds(service: &str) -> (&'static str, &'static str, &'static str) {
-    match service {
-        WHISPER => ("whisper_cmd=(whisper-server", ")\n", "$2"),
-        LLAMA => (
-            "\"http://127.0.0.1:{{llm_port}}/health\" llama-server",
-            "\n",
-            "{{llm_port}}",
-        ),
-        _ => (
-            "\"{{kws_binary}}\"",
-            "${VOICEPUNCHER_KWS_SAVE_SPEECH_DIR",
-            "{{kws_port}}",
-        ),
-    }
-}
-
-/// The catalog's arguments of `service`, with the scripts' variables, port 0 and 0 threads.
-fn catalog_args(service: &str) -> Vec<String> {
-    match service {
-        WHISPER => whisper_args("$1", 0, 0, "$VOICEPUNCHER_VAD_MODEL"),
-        LLAMA => llama_args("$VOICEPUNCHER_LLM_MODEL", 0),
-        _ => command_spotting_args(
-            0,
-            "$VOICEPUNCHER_KWS_MODEL_DIR",
-            "$VOICEPUNCHER_KWS_VAD_MODEL",
-            "{{command_stt_url}}",
-        ),
-    }
-}
-
-/// The service scripts' arguments of `service` in `text`, port and threads as 0.
+/// The service scripts' arguments of `service` in `text`, the port and threads parameters as 0.
 fn script_args(service: &str, text: &str) -> Vec<String> {
-    let (start, end, port) = script_bounds(service);
-    words_between(text, start, end)
+    let function = match service {
+        WHISPER => "whisper_args",
+        LLAMA => "llama_args",
+        _ => "command_spotting_args",
+    };
+    list_of(text, function)
         .into_iter()
-        .map(|word| {
-            if word == port || word == "$3" {
-                "0".into()
-            } else {
-                word
-            }
+        .map(|word| match word.as_str() {
+            "port" | "threads" => "0".into(),
+            _ => word,
         })
         .collect()
+}
+
+/// The catalog's arguments of `service`, with the scripts' parameter names, port 0 and 0 threads.
+fn catalog_args(service: &str) -> Vec<String> {
+    match service {
+        WHISPER => whisper_args("model", 0, 0, "vad"),
+        LLAMA => llama_args("model", 0),
+        _ => command_spotting_args(0, "model_dir", "vad", "commands_url"),
+    }
 }
 
 /// The services whose arguments differ between the service scripts in `text` and the catalog.
@@ -81,20 +71,20 @@ fn drifted(text: &str) -> Vec<&'static str> {
 #[test]
 fn should_start_every_service_with_the_arguments_of_the_service_scripts() {
     // Given
-    let text = justfile();
+    let text = scripts();
     // When
     let drifted = drifted(&text);
     // Then
     assert!(
         drifted.is_empty(),
-        "arguments differ from the justfile for {drifted:?}"
+        "arguments differ from dev-tools/src/services/command_lines.rs for {drifted:?}"
     );
 }
 
 #[test]
 fn should_name_the_service_whose_arguments_changed_in_one_place_only() {
     // Given
-    let text = justfile().replace("-c 4096 -np 1", "-c 4096 -np 2");
+    let text = scripts().replace("\"4096\"", "\"8192\"");
     // When
     let drifted = drifted(&text);
     // Then

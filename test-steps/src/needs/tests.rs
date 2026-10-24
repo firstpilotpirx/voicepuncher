@@ -22,7 +22,7 @@ fn should_fail_naming_the_variable_and_the_gates_when_it_is_unset() {
     // Then
     let message = failure.downcast_ref::<String>().unwrap();
     assert!(message.contains(UNSET), "{message}");
-    assert!(message.contains("_gates"), "{message}");
+    assert!(message.contains("the gates of `dev-tools`"), "{message}");
 }
 
 #[test]

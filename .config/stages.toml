@@ -1,0 +1,144 @@
+# The tables of the stage runner (dev-tools, crate dev-tools/), read by the `justfile`'s recipes through it:
+# which changed paths make full-check run the accuracy stage on 100 recordings, which files feed which stage's
+# key, and the needs a test can state. Text tables, one entry per line.
+
+# The paths whose change makes full-check run the accuracy stage on 100 recordings: what the two @accuracy
+# scenarios run — file mode, transcription and chunking; text refinement; command spotting (keywords.txt is
+# compiled in) and voice-command matching; the WER and corpus test code; the justfile whole and the services' code (models, service
+# settings); the Cargo files when a line other than `version = "…"` changed. One glob per line, matched with
+# a glob (`*` spans `/`). A branch that adds a file on this path adds it here
+recognition_paths = '''
+    copy-pool/src/*
+    app/src/main.rs
+    app/src/adapters/primary/cli/*
+    app/src/config.rs
+    app/src/config/*
+    app/src/adapters/secondary/recording/filesystem/*
+    app/src/adapters/secondary/transcription/*
+    app/src/adapters/secondary/http/*
+    app/src/adapters/secondary/textpasting/stdio/*
+    app/src/core/application/pipeline.rs
+    app/src/core/application/chunking.rs
+    app/src/core/application/transcriber.rs
+    app/src/core/application/transcript_filter.rs
+    app/src/core/domain/audio_buffer.rs
+    app/src/core/domain/raw_transcript.rs
+    app/src/adapters/secondary/textrefinement/*
+    app/src/core/application/text_refiner.rs
+    app/src/core/domain/cleaned_text.rs
+    app/src/core/domain/filler_sounds.rs
+    app/src/core/domain/normalization_check.rs
+    app/src/core/domain/command_words.rs
+    command-spotting/src/*
+    command-spotting/keywords.txt
+    app/src/adapters/secondary/commandspotting/websocket/client.rs
+    app/src/core/domain/voice_command.rs
+    app/src/core/domain/voice_command_recognizer.rs
+    e2e-test/src/corpus.rs
+    e2e-test/src/wer.rs
+    e2e-test/src/concurrency.rs
+    e2e-test/src/speech.rs
+    e2e-test/src/voice_commands.rs
+    e2e-test/src/scenario_filter/mod.rs
+    e2e-test/tests/cucumber_e2e.rs
+    e2e-test/tests/steps/mod.rs
+    e2e-test/tests/steps/file_transcription.rs
+    e2e-test/tests/steps/voice_control.rs
+    e2e-test/tests/features/file_transcription.feature
+    e2e-test/tests/features/voice_control.feature
+    justfile
+    dev-tools/src/services/*
+'''
+
+# Which files each stage reads, for its key (dev-tools keys): `<glob> <stages>` per line, the stages comma-separated,
+# `*` spanning `/`. A file feeds the code stages (fmt, lint, test, build, bundle, build-e2e) and the model stages
+# its matching lines name, all of them together; `code` names no model stage, `accuracy` both accuracy stages
+# (e2e-quick, e2e-bench), and `none` makes the file feed no stage at all. A file no line names feeds every stage,
+# so a new file is never left out: name a file here only when the stages it does not feed are certain. The app's
+# core, its wiring, the transcription adapter, the macOS adapters (the E2E scenarios run the app binary), the
+# shared E2E code, the Cargo files, .config and this justfile stay unnamed. docs/, AGENTS.md and README.md feed the
+# code stages because the docs check (app/tests/it/docs_check/) reads them
+stage_inputs = '''
+    openspec/*                                         none
+    docs/*                                             code
+    .claude/*                                          none
+    .github/*                                          none
+    AGENTS.md                                          code
+    README.md                                          code
+    *.md                                               none
+    app/packaging/*                                    e2e-bundle
+    app/tests/size_baseline.toml                       code
+    clippy.toml                                        code
+    analyzers/*                                        code
+    .config/analyzers.toml                             code
+    .config/frozen-tests.toml                          none
+    .config/analyzers/*                                code
+    deny.toml                                          code
+    .typos.toml                                        code
+    rustfmt.toml                                       code
+    app/tests/cucumber_integration.rs                  code
+    app/tests/features/*                               code
+    app/tests/steps/*                                  code
+    app/tests/it/*                                     code
+    app/tests/main_thread/*                            code
+    app/tests/it/transcription_openai.rs               e2e-smoke-speech
+    app/tests/it/textrefinement_openai.rs              e2e-smoke-refinement
+    app/tests/it/commandspotting_websocket.rs          e2e-smoke-voice
+    app/tests/it/voice_samples.rs                      e2e-smoke-voice
+    app/tests/it/voice_forms.rs                        e2e-smoke-voice
+    app/tests/it/chunked_transcription.rs              e2e-seams
+    app/src/core/application/chunking_seam_cases.rs    e2e-seams
+    app/src/adapters/secondary/textrefinement/*        e2e-smoke-refinement,refine-eval,e2e-regression,e2e-smoke-speech,accuracy
+    app/src/core/application/text_refiner.rs          e2e-smoke-refinement,refine-eval,e2e-regression,e2e-smoke-speech,accuracy
+    app/src/core/domain/cleaned_text.rs                e2e-smoke-refinement,refine-eval,e2e-regression,e2e-smoke-speech,accuracy
+    app/src/core/domain/filler_sounds.rs               e2e-smoke-refinement,refine-eval,e2e-regression,e2e-smoke-speech,accuracy
+    app/src/core/domain/normalization_check.rs         e2e-smoke-refinement,refine-eval,e2e-regression,e2e-smoke-speech,accuracy
+    e2e-test/src/refinement_eval.rs                    e2e-smoke-refinement,refine-eval,e2e-regression
+    e2e-test/refinement/*                              e2e-smoke-refinement,refine-eval,e2e-regression
+    e2e-test/tests/features/text_refinement.feature    e2e-smoke-refinement,refine-eval,e2e-regression
+    e2e-test/tests/steps/text_refinement/*             e2e-smoke-refinement,refine-eval,e2e-regression
+    e2e-test/src/refinement_service_stub/*             e2e-smoke-refinement,refine-eval,e2e-regression
+    command-spotting/*                                 e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
+    app/src/adapters/secondary/commandspotting/*       e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
+    app/src/adapters/secondary/keypressing/*           e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
+    app/src/core/application/pipeline/voice_control.rs e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
+    app/src/core/application/command_spotter.rs        e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
+    app/src/core/application/key_presser.rs            e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
+    app/src/core/domain/voice_command*.rs              e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
+    app/src/core/domain/command_words.rs               e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
+    app/src/core/domain/voice_start_timing.rs          e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
+    e2e-test/src/voice_commands.rs                     e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,accuracy
+    e2e-test/tests/features/voice_control.feature      e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,accuracy
+    e2e-test/tests/steps/voice_control.rs              e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,accuracy
+    e2e-test/tests/steps/voice_control/*               e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,accuracy
+    e2e-test/tests/features/speech_recognition.feature e2e-smoke-speech,e2e-seams
+    e2e-test/tests/steps/speech_recognition.rs         e2e-smoke-speech,e2e-seams
+    e2e-test/tests/steps/speech_recognition/*          e2e-smoke-speech,e2e-seams
+    e2e-test/tests/features/file_transcription.feature e2e-smoke-speech,accuracy
+    e2e-test/tests/steps/file_transcription.rs         e2e-smoke-speech,accuracy
+    e2e-test/src/wer.rs                                accuracy
+    e2e-test/src/corpus.rs                             accuracy
+    e2e-test/scripts/*                                 accuracy
+    e2e-test/tests/features/local_services.feature     e2e-smoke-services,e2e-resilience
+    e2e-test/tests/steps/local_services.rs             e2e-smoke-services,e2e-resilience
+    e2e-test/tests/steps/local_services/*              e2e-smoke-services,e2e-resilience
+    e2e-test/tests/features/dictation_archive.feature  e2e-smoke-speech
+    e2e-test/tests/steps/dictation_archive.rs          e2e-smoke-speech
+'''
+
+# The needs a test can state (test-steps/src/needs.rs): `<need> <condition> <reason>` per line, the test living in a
+# module named after the need, so its nextest name holds `<need>::`. The condition is a variable that must be set and
+# not empty (several joined with `+` must all be), or `file:<path with $VARIABLES>` that must exist. A need whose
+# condition fails is closed: dev-tools leaves its tests out and counts them
+test_needs = '''
+    needs_stt            VOICEPUNCHER_TRANSCRIPTION_URL                          no speech recognition service (the model stages start one)
+    needs_command_stt    VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL                  no speech recognition service for commands (the model stages start one)
+    needs_kws            VOICEPUNCHER_COMMAND_SPOTTING_URL                       no command spotting service (the model stages start one)
+    needs_kws_models     VOICEPUNCHER_KWS_MODEL_DIR+VOICEPUNCHER_KWS_VAD_MODEL   no command spotting models (just models)
+    needs_voice_samples  VOICEPUNCHER_VOICE_SAMPLES                              no recordings of the user's voice (~/.voicepuncher/voice-samples)
+    needs_corpus         file:$VOICEPUNCHER_BENCH_CORPUS/manifest.jsonl          no corpus (just corpus, or VOICEPUNCHER_BENCH_CORPUS)
+    needs_desktop        VOICEPUNCHER_DESKTOP_IT                                 the microphone, Accessibility and window tests run in the it-real stage
+    needs_real_keyboard  VOICEPUNCHER_REAL_KEYBOARD_IT                           key presses into the focused app run only in test-real-keyboard
+    needs_hang_probe     VOICEPUNCHER_HANG_PROBE                                 the hang probe runs only when armed (VOICEPUNCHER_HANG_PROBE=1)
+    needs_machine_lock   MACHINE_LOCK                                            no machine lock (VOICEPUNCHER_NO_MACHINE_LOCK=1, the hosted CI)
+'''

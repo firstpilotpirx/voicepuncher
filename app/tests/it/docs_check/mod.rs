@@ -210,6 +210,7 @@ fn port_sources(root: &Path) -> impl Iterator<Item = PathBuf> + use<> {
         "app/src",
         "command-spotting/src",
         "copy-pool/src",
+        "dev-tools/src",
         "e2e-test/src",
         "e2e-test/scripts",
     ]

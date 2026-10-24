@@ -1,5 +1,5 @@
 //! Which local services a configuration needs and how each is started: the programs, models,
-//! ports and arguments of the service scripts (`justfile`), found on this machine.
+//! ports and arguments of the service scripts (`dev-tools`), found on this machine.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -480,7 +480,7 @@ fn running_copies(
     (!answering.is_empty()).then_some(answering)
 }
 
-/// The `justfile`'s `whisper_args`, without the program.
+/// `dev-tools`'s `whisper_args`, without the program.
 pub fn whisper_args(model: &str, port: u16, threads: usize, vad: &str) -> Vec<String> {
     let port = port.to_string();
     let threads = threads.to_string();
@@ -516,7 +516,7 @@ pub fn whisper_args(model: &str, port: u16, threads: usize, vad: &str) -> Vec<St
     .to_vec()
 }
 
-/// The `justfile`'s `llama-server` line, without the program: one slot, so a request gets
+/// `dev-tools`'s `llama-server` line, without the program: one slot, so a request gets
 /// the whole context.
 pub fn llama_args(model: &str, port: u16) -> Vec<String> {
     let port = port.to_string();
@@ -536,7 +536,7 @@ pub fn llama_args(model: &str, port: u16) -> Vec<String> {
     .to_vec()
 }
 
-/// The `justfile`'s command spotting service line, without the program.
+/// `dev-tools`'s command spotting service line, without the program.
 pub fn command_spotting_args(
     port: u16,
     model_dir: &str,

@@ -4,7 +4,7 @@ See proposal.md § Why. The stage runner is spread over bash and Perl recipes th
 
 ## Decisions
 
-- **One binary, `dev-tools/`** (workspace member `voicepuncher-dev-tools`, program `dev-tools`), called by the recipes through `cargo run --quiet -p voicepuncher-dev-tools --`. One subcommand per former helper recipe (`stages`, `model-stages`, `keys`, `stage-times`, `frozen`, `freeze-test`, `named-run`, `rerun-failed`, `accuracy-stage`, `gated-filter`, `engines`, `services`, `supervise`). It removes the variables `cargo run` sets (`CARGO_MANIFEST_DIR`, `CARGO_PKG_*`, …) from every child, so a build it starts sees the environment the recipe saw. Alternative: one shell script per helper — rejected, it keeps untested shell.
+- **One binary, `dev-tools/`** (workspace member `voicepuncher-dev-tools`, program `dev-tools`), built by the recipes' dependency `_dev-tools` (`cargo build --quiet -p voicepuncher-dev-tools`) and run prebuilt from `target/debug/dev-tools`, never through `cargo run`. One subcommand per former helper recipe (`stages`, `model-stages`, `keys`, `stage-times`, `frozen`, `freeze-test`, `named-run`, `rerun-failed`, `accuracy-stage`, `gated-filter`, `engines`, `services`, `supervise`). It also removes the variables Cargo sets (`CARGO_MANIFEST_DIR`, `CARGO_PKG_*`, …) from every child, so a build it starts sees the environment the recipe saw. Alternative: one shell script per helper — rejected, it keeps untested shell.
 - **The stage lists stay in the `justfile`** (`check_model_stages`, `full_check_model_stages`, `e2e_smoke_stages`) and `_stages` stays a recipe that hands its stages to the binary: the bundle scenario and the documents keep reading them where they are.
 - **The report between the runner and its locked phase keeps its text form** (`stage`, `reused`, `requested`, `locked`, `returned` lines), since the phase runs in another process under the lock wrapper.
 - **Keys keep their algorithm**; the one change is that a directory outside the repository (a model folder, the corpus, the recordings) is walked in sorted order rather than in the order Perl's `File::Find` met it, so the key no longer depends on directory order. Golden tests take the former runner's keys for a fixture repository and environment without such directories. The test stage's part `test@justfile` goes: the self-tests are the binary's own tests, in its part `test@dev-tools`; a `justfile` edit still feeds every part as a file outside the members.
@@ -17,7 +17,7 @@ See proposal.md § Why. The stage runner is spread over bash and Perl recipes th
 
 - [The first runs after the merge reuse no pass: the `justfile` feeds every key] → expected once, as after any `justfile` edit.
 - [A behaviour of the bash runner lost in the port] → the former self-tests become Rust tests one by one, and `just check` runs the new runner on this branch before the landing queue's `full-check`.
-- [`cargo run` adds a build step to every recipe] → a no-op build is ~0.2 s; the binary has few dependencies.
+- [`_dev-tools` adds a build step to every recipe] → a no-op build is ~0.2 s; the binary has few dependencies.
 
 ## Test levels
 

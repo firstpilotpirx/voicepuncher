@@ -6,11 +6,12 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-const MEMBERS: [&str; 5] = [
+const MEMBERS: [&str; 6] = [
     "analyzers",
     "app",
     "command-spotting",
     "copy-pool",
+    "dev-tools",
     "e2e-test",
 ];
 

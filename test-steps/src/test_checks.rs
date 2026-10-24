@@ -1,7 +1,7 @@
 //! Every test checks something that can fail (D4 of unmask-gated-tests). A test with no
 //! check, or one that returns before its first check, passes whatever the code does; and no
 //! test skips itself with a gated-skip line: a missing need is the recipe's to count (`needs_*`
-//! modules, the justfile's `_gates`).
+//! modules, the gates of `dev-tools`).
 
 mod scan;
 mod shared_texts;
@@ -10,10 +10,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// The workspace members, as seen from the app's directory.
-const MEMBERS: [&str; 5] = [
+const MEMBERS: [&str; 6] = [
     "app",
     "command-spotting",
     "copy-pool",
+    "dev-tools",
     "e2e-test",
     "test-steps",
 ];

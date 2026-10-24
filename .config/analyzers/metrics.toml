@@ -3,6 +3,7 @@
 [findings]
 "cycle app/src/core/application app/src/core/application/pipeline" = 1
 "cycle command-spotting/src command-spotting/src/confirm command-spotting/src/engine command-spotting/src/worker" = 1
+"cycle dev-tools/src dev-tools/src/keys" = 1
 "cyclomatic analyzers/src/recipes.rs::run" = 11
 "cyclomatic analyzers/src/recipes.rs::scripts" = 12
 "cyclomatic analyzers/src/recipes.rs::scripts::<anonymous>" = 11
@@ -51,7 +52,7 @@
 "cyclomatic app/tests/it/textrefinement_openai/refinement_stub.rs::read_request" = 12
 "cyclomatic app/tests/it/transcription_openai.rs::read_request" = 12
 "cyclomatic app/tests/it/unsafe_impls.rs::violations" = 13
-"cyclomatic app/tests/it/voice_forms.rs::should_carry_out_every_recorded_way_of_saying_the_commands" = 12
+"cyclomatic app/tests/it/voice_forms.rs::should_carry_out_every_recorded_way_of_saying_the_commands" = 11
 "cyclomatic app/tests/it/voice_samples.rs::compare_session" = 12
 "cyclomatic app/tests/steps/app_runtime.rs::restarted_after_the_dictation" = 15
 "cyclomatic app/tests/steps/app_runtime/models.rs::RuntimeRun::starting_services_then_ready" = 12
@@ -73,6 +74,21 @@
 "cyclomatic command-spotting/src/outbox.rs::Outbox::resolve" = 11
 "cyclomatic command-spotting/src/server.rs::exchange" = 13
 "cyclomatic command-spotting/src/server.rs::process" = 12
+"cyclomatic dev-tools/src/engines/bundle.rs::engine" = 12
+"cyclomatic dev-tools/src/engines/mod.rs::command" = 19
+"cyclomatic dev-tools/src/engines/relocate.rs::relocate" = 16
+"cyclomatic dev-tools/src/engines/sources.rs::verify" = 11
+"cyclomatic dev-tools/src/engines/staging.rs::Staging<'_>::copy_engine" = 12
+"cyclomatic dev-tools/src/engines/staging.rs::Staging<'_>::licenses" = 12
+"cyclomatic dev-tools/src/frozen/freeze.rs::to_main" = 12
+"cyclomatic dev-tools/src/journal/times.rs::start" = 15
+"cyclomatic dev-tools/src/keys/files.rs::hashed" = 11
+"cyclomatic dev-tools/src/named/mod.rs::selection" = 17
+"cyclomatic dev-tools/src/named/rerun.rs::plan" = 12
+"cyclomatic dev-tools/src/services/e2e.rs::command" = 11
+"cyclomatic dev-tools/src/services/start.rs::start" = 11
+"cyclomatic dev-tools/src/stages/child.rs::run" = 12
+"cyclomatic dev-tools/src/stages/mod.rs::Runner::start" = 12
 "cyclomatic e2e-test/src/voice_commands.rs::carried_out_by_app" = 12
 "cyclomatic e2e-test/tests/steps/app_distribution.rs::expand_stage_list" = 13
 "cyclomatic e2e-test/tests/steps/app_distribution.rs::two_builds" = 12
@@ -105,5 +121,5 @@
 "cyclomatic e2e-test/tests/steps/voice_control/session.rs::recorded" = 12
 "cyclomatic e2e-test/tests/steps/voice_control/session.rs::session_done" = 11
 "cyclomatic e2e-test/tests/steps/voice_control/session/start_cue.rs::recorded_starts" = 19
-"duplicated_lines" = 1350
-"unsafe app" = 129
+"duplicated_lines" = 1341
+"unsafe app" = 128

@@ -1532,6 +1532,7 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3324,6 +3325,20 @@ version = "0.2.0"
 dependencies = [
  "log",
  "url",
+]
+
+[[package]]
+name = "voicepuncher-dev-tools"
+version = "0.1.0"
+dependencies = [
+ "jiff",
+ "regex",
+ "rustix",
+ "serde_json",
+ "sha2",
+ "signal-hook",
+ "tempfile",
+ "voicepuncher-test-steps",
 ]
 
 [[package]]

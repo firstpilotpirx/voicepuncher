@@ -1,7 +1,7 @@
 # kit config of voicepuncher (agent-kit README § Project config)
 version_file: app/Cargo.toml
 checks:
-  build_inputs: ["app/**", "command-spotting/**", "copy-pool/**", "e2e-test/**", "test-steps/**", ".config/**", "Cargo.toml", "Cargo.lock", "justfile"]
+  build_inputs: ["app/**", "command-spotting/**", "copy-pool/**", "dev-tools/**", "analyzers/**", "e2e-test/**", "test-steps/**", ".config/**", "Cargo.toml", "Cargo.lock", "justfile"]
   after_edit: just test
   after_group: just check
   before_merge: just full-check
