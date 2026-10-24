@@ -18,6 +18,9 @@ use voicepuncher::core::domain::{FailingPart, FailureNotice, VoiceCommand};
 
 use crate::IntegrationWorld;
 
+mod width;
+use width::pill_size;
+
 /// A notice that lasts long enough to look at, and short enough not to wait.
 const SHORT_NOTICE: Duration = Duration::from_millis(600);
 /// Long enough for the main queue to draw what was asked.
@@ -84,13 +87,6 @@ fn show(world: &mut IntegrationWorld, ask: impl FnOnce(&MacosVisualIndicator)) -
     ask(overlay(world)?);
     pump(DRAWN_SECS);
     Ok(())
-}
-
-fn pill_size(world: &mut IntegrationWorld) -> Result<(f64, f64)> {
-    let frame = overlay(world)?
-        .first_pill_glass_frame()
-        .context("no pill shows")?;
-    Ok((frame.size.width, frame.size.height))
 }
 
 #[given("the overlay is ready")]

@@ -104,6 +104,11 @@ Feature: visual-feedback
       When a recording starts on the overlay and the user speaks
       Then the waveform holds a column taller than a dot
 
+    Scenario: The recording pill is as long as ChatGPT's dictation bar
+      Given the overlay is ready
+      When a recording starts on the overlay
+      Then the pill is 727 points wide
+
   Rule: The text window shows only during a recording
 
     Scenario: The text recognized so far shows below the pill

@@ -153,9 +153,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn should_be_as_wide_as_ninety_columns_four_points_apart() {
-        assert_eq!(waveform_width(90), 358.0);
-        assert_eq!(waveform_width(78), 310.0);
+    fn should_be_as_wide_as_its_columns_four_points_apart() {
+        assert_eq!(waveform_width(160), 638.0);
+        assert_eq!(waveform_width(148), 590.0);
     }
 
     #[test]
