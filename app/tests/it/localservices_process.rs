@@ -41,22 +41,22 @@ fn read_when(path: &Path, wanted: &[&str]) -> String {
 }
 
 #[test]
-fn should_write_both_output_streams_of_a_service_into_its_log_file() {
+fn should_have_a_service_write_both_output_streams_into_its_log_file_itself() {
     // Given
     let home = tempfile::tempdir().unwrap();
     let log_file = home.path().join("logs/engine-1.log");
     // When
     let mut process = ProcessLauncher
         .spawn(&shell(
-            "echo out-line; echo err-line >&2; sleep 30",
+            "o=file; [ -p /dev/stdout ] && o=pipe; e=file; [ -p /dev/stderr ] && e=pipe; echo out-$o$o; echo err-$e$e >&2; sleep 30",
             &log_file,
         ))
         .unwrap();
-    let text = read_when(&log_file, &["out-line", "err-line"]);
+    let text = read_when(&log_file, &["out-filefile", "err-filefile"]);
     process.kill();
-    // Then
-    assert!(text.contains("out-line"), "{text}");
-    assert!(text.contains("err-line"), "{text}");
+    // Then — written into the file itself, not through a pipe of the app, so it outlives the app
+    assert!(text.contains("out-filefile"), "{text}");
+    assert!(text.contains("err-filefile"), "{text}");
 }
 
 #[test]

@@ -91,7 +91,7 @@ fn should_adopt_a_service_that_already_answers() {
 #[test]
 fn should_start_a_service_nothing_answers_for_and_count_it_ready_once_it_answers() {
     // Given
-    let mut harness = Harness::new();
+    let (log, mut harness) = (captured_log(), Harness::new());
     // When
     harness.tick();
     let starting = harness.state();
@@ -102,6 +102,8 @@ fn should_start_a_service_nothing_answers_for_and_count_it_ready_once_it_answers
     assert_eq!(harness.state(), ServiceState::Ready);
     assert!(harness.unit.status().owned);
     assert_eq!(harness.spawns.count(), 1);
+    let ready = log.lines_starting_with("services: command spotting service 8080 ready in");
+    assert_eq!(ready.len(), 1);
 }
 
 #[test]

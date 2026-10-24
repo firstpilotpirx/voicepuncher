@@ -4,9 +4,10 @@
 
 pub mod client;
 mod heard;
+pub mod kept_mic;
 mod link;
 
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -14,13 +15,14 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 
-use crate::adapters::secondary::recording::cpal::capture::{CapturedAudio, MicInput};
+use crate::adapters::secondary::recording::cpal::capture::CapturedAudio;
 use crate::adapters::secondary::recording::cpal::{devices, resampler::StreamResampler};
 use crate::core::application::{CommandSpotter, PipelineInput};
 use crate::core::domain::{AudioBuffer16k, SpottingEvent, VoiceCommand};
 
 use client::SpottingClient;
 use heard::HeardAudio;
+use kept_mic::{KeeperTimings, KeptMic, MicOpener};
 pub use link::LinkTimings;
 use link::Outage;
 
@@ -126,7 +128,7 @@ impl AudioStream {
 
 struct Listening {
     stream: AudioStream,
-    _capture: MicInput,
+    _mic: KeptMic,
 }
 
 pub struct WebSocketCommandSpotter {
@@ -156,22 +158,20 @@ impl CommandSpotter for WebSocketCommandSpotter {
 
     fn start_listening(&mut self, commands: &[VoiceCommand]) -> Result<()> {
         self.stop_listening();
-        let (capture, audio) = MicInput::open(&self.input_device, Arc::new(AtomicU32::new(0)))?;
-        log::info!(
-            "command spotting: microphone open at {} Hz, connecting to {}",
-            capture.rate,
-            self.url
-        );
+        let device = self.input_device.clone();
+        let open: MicOpener = Box::new(move || kept_mic::open_device(&device));
+        let (mic, audio, started_at) = KeptMic::start(open, KeeperTimings::default())?;
+        log::info!("command spotting: connecting to {}", self.url);
         let stream = AudioStream::start(
             &self.url,
             commands,
-            capture.started_at,
-            capture.rate,
+            started_at,
+            AudioBuffer16k::SAMPLE_RATE_HZ,
             audio,
             self.inputs.clone(),
         )?;
         log::info!("command spotting: streaming to the service");
-        self.listening = Some(Listening { stream, _capture: capture });
+        self.listening = Some(Listening { stream, _mic: mic });
         Ok(())
     }
 

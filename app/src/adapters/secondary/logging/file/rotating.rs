@@ -25,6 +25,15 @@ impl RotatingFileWriter {
         Ok(Self { path: path.to_path_buf(), max_bytes, keep, file, written })
     }
 
+    /// The file itself, for a writer that appends to it on its own, as a child process does;
+    /// rotated first when it already holds `max_bytes`.
+    pub fn into_file(mut self) -> io::Result<File> {
+        if self.written >= self.max_bytes {
+            self.rotate()?;
+        }
+        Ok(self.file)
+    }
+
     fn rotate(&mut self) -> io::Result<()> {
         self.file.flush()?;
         remove_if_exists(&backup_path(&self.path, self.keep))?;
@@ -121,6 +130,17 @@ mod tests {
             .collect();
         names.sort();
         names
+    }
+
+    #[test]
+    fn should_rotate_a_full_file_before_handing_it_over() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = log_path(&dir);
+        writer(&path).write_all(&line(100)).unwrap();
+        let mut file = writer(&path).into_file().unwrap();
+        file.write_all(b"next\n").unwrap();
+        assert_eq!(read(&path), "next\n");
+        assert_eq!(read(&backup_path(&path, 1)).len(), 100);
     }
 
     #[test]

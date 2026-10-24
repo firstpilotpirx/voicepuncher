@@ -47,4 +47,4 @@ Out of scope: the dictation recording stream (it reopens on every press), comman
 ## Release
 
 SemVer: PATCH — bug fix.
-Target version: 0.37.5.
+Target version: 0.38.1.
