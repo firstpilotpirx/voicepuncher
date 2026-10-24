@@ -80,11 +80,14 @@ pub fn is_installed_bundle(executable: &Path) -> bool {
             .is_some_and(|extension| extension == "app")
 }
 
-/// The system's status of the login item in the app's words; a status the system does
-/// not know the app by (`NotFound`, or a newer one) is unavailable.
+/// The system's status of the login item of an app run from its bundle, in the app's words:
+/// `NotFound`, a login item never registered, can be registered; a newer status is
+/// unavailable.
 pub fn status_of(status: SMAppServiceStatus) -> LoginItemStatus {
     match status {
-        SMAppServiceStatus::NotRegistered => LoginItemStatus::NotRegistered,
+        SMAppServiceStatus::NotRegistered | SMAppServiceStatus::NotFound => {
+            LoginItemStatus::NotRegistered
+        }
         SMAppServiceStatus::Enabled => LoginItemStatus::Enabled,
         SMAppServiceStatus::RequiresApproval => LoginItemStatus::RequiresApproval,
         _ => LoginItemStatus::Unavailable,

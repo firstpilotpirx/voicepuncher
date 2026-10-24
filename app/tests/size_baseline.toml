@@ -44,7 +44,6 @@
 "e2e-test/tests/steps/local_services/models.rs::ScenarioServices::check_loads" = 44
 
 [parameters]
-"app/src/adapters/primary/permissions/macos/mod.rs::add_row" = 6
 "app/src/adapters/primary/settings/macos/layout.rs::add_rows" = 6
 "app/src/adapters/primary/settings/macos/layout.rs::tab_view" = 7
 "app/src/adapters/secondary/commandspotting/websocket/mod.rs::AudioStream::start" = 6

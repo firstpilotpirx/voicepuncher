@@ -8,6 +8,9 @@ use crate::core::domain::Permission;
 
 use super::RuntimeState;
 
+mod wait;
+pub use wait::PermissionsWait;
+
 /// How often the permissions are checked while the pipeline runs.
 pub const CHECK_WHILE_READY: Duration = Duration::from_secs(5);
 /// How often the permissions are checked while the runtime waits for them.

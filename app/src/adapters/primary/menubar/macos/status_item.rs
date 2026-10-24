@@ -228,7 +228,7 @@ fn build_menu(mtm: MainThreadMarker, target: &MenuTarget) -> Retained<NSMenu> {
     menu.setDelegate(Some(ProtocolObject::from_ref(target)));
     for entry in MENU {
         let item = match entry {
-            MenuEntry::TitleLine | MenuEntry::StatusLine => text_line(mtm),
+            MenuEntry::TitleLine | MenuEntry::StatusLine => text_line(mtm, target),
             MenuEntry::Separator => NSMenuItem::separatorItem(mtm),
             MenuEntry::Permissions => chosen(mtm, target, entry, sel!(permissions:), NO_KEY),
             MenuEntry::DownloadModels => {
@@ -267,9 +267,9 @@ fn services_item(mtm: MainThreadMarker, entry: MenuEntry) -> Retained<NSMenuItem
     item
 }
 
-/// A line of text that cannot be chosen.
-fn text_line(mtm: MainThreadMarker) -> Retained<NSMenuItem> {
-    let item = NSMenuItem::new(mtm);
+/// A line of text, chosen only while `refresh` enables it: then it opens Permissions.
+fn text_line(mtm: MainThreadMarker, target: &MenuTarget) -> Retained<NSMenuItem> {
+    let item = action_item(mtm, target, "", sel!(permissions:), NO_KEY);
     item.setEnabled(false);
     item
 }
@@ -382,15 +382,11 @@ impl MenuTarget {
         }
         if let Some(item) = menu.itemAtIndex(MenuEntry::StatusLine.place()) {
             item.setTitle(&NSString::from_str(&model.status_line));
+            item.setEnabled(model.status_opens_permissions);
         }
         if let Some(item) = menu.itemAtIndex(MenuEntry::DownloadModels.place()) {
-            let managed = self
-                .ivars()
-                .actions
-                .borrow()
-                .as_deref()
-                .is_some_and(|actions| actions.services().is_some());
-            item.setHidden(!managed);
+            let actions = self.ivars().actions.borrow();
+            item.setHidden(actions.as_deref().is_none_or(|a| a.services().is_none()));
         }
         if let Some(item) = menu.itemAtIndex(MenuEntry::Services.place()) {
             self.refresh_services(&item);

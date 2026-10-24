@@ -237,9 +237,10 @@ fn approval_button(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("the login switch is disabled")]
-fn disabled(world: &mut IntegrationWorld) -> Result<()> {
-    ensure!(!login(world).view()?.enabled, "the switch is enabled");
+#[then(regex = r"^the login switch is (enabled|disabled)$")]
+fn enabled(world: &mut IntegrationWorld, state: String) -> Result<()> {
+    let enabled = login(world).view()?.enabled;
+    ensure!(enabled == (state == "enabled"), "the switch is not {state}");
     Ok(())
 }
 
@@ -341,10 +342,8 @@ fn start_at_login_registers(world: &mut IntegrationWorld) -> Result<()> {
 #[then("the configuration file records that the question was asked")]
 fn records_asked(world: &mut IntegrationWorld) -> Result<()> {
     let saved = voicepuncher::config::load(&login(world).path())?;
-    ensure!(
-        saved.app.launch_at_login_asked,
-        "the file does not record the question"
-    );
+    let asked = saved.app.launch_at_login_asked;
+    ensure!(asked, "the file does not record the question");
     Ok(())
 }
 

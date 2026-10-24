@@ -3,6 +3,7 @@
 //! runtime waits for permissions, and from the menu at any time.
 
 pub mod mapping;
+mod system_settings;
 
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -13,10 +14,10 @@ use objc2::{define_class, msg_send, sel, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
     NSApplication, NSApplicationDidBecomeActiveNotification, NSButton, NSColor, NSFont,
     NSFontWeightMedium, NSImage, NSImageSymbolConfiguration, NSImageView, NSProgressIndicator,
-    NSProgressIndicatorStyle, NSView, NSWindow, NSWorkspace,
+    NSProgressIndicatorStyle, NSView, NSWindow,
 };
 use objc2_foundation::{
-    NSNotificationCenter, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSURL,
+    NSNotificationCenter, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString,
 };
 
 use crate::adapters::appkit::{self, label, wrapping};
@@ -25,7 +26,9 @@ use crate::core::application::PermissionsGate;
 use crate::core::domain::Permission;
 use crate::runtime::{RuntimeObserver, RuntimeState};
 
-use mapping::{badge, button, symbol, why, BadgeMark, RowButton, Shown, WindowModel};
+use mapping::{
+    badge, button, symbol, BadgeMark, RowButton, RowModel, Shown, WindowModel, REFRESH_MS,
+};
 
 const WIDTH: f64 = 460.0;
 const HEIGHT: f64 = 390.0;
@@ -36,8 +39,6 @@ const TILE: f64 = 36.0;
 const SYMBOL_SIZE: f64 = 22.0;
 const STATUS_WIDTH: f64 = 140.0;
 const FOOTER_BUTTON_WIDTH: f64 = 90.0;
-/// How often the open window asks the gate again.
-const REFRESH_MS: i64 = 2_000;
 /// `NSFloatingWindowLevel`: above ordinary windows, so System Settings does not hide it.
 const FLOATING_LEVEL: isize = 3;
 const QUIT_TITLE: &str = "Quit";
@@ -54,6 +55,8 @@ struct Window {
     gate: Arc<PermissionsGate>,
     /// Requested and not answered yet.
     pending: Vec<Permission>,
+    /// System Settings was opened from their rows.
+    opened: Vec<Permission>,
     /// Revoked while dictation ran, as the runtime last said.
     revoked: Vec<Permission>,
     /// Focus is taken only the first time the window shows.
@@ -84,6 +87,7 @@ impl PermissionsWindow {
             target,
             gate,
             pending: Vec::new(),
+            opened: Vec::new(),
             revoked: Vec::new(),
             shown_once: false,
             showing: 0,
@@ -193,7 +197,8 @@ fn refresh() {
         state
             .pending
             .retain(|p| report.status(*p) == crate::core::domain::PermissionStatus::NotDetermined);
-        let model = WindowModel::new(&report, &state.pending, &state.revoked);
+        let model = WindowModel::new(&report, &state.pending, &state.revoked)
+            .with_lines(&state.opened, system_settings::macos_major());
         let mtm = MainThreadMarker::from(&*state.target);
         state
             .window
@@ -226,13 +231,17 @@ fn request(permission: Permission) {
 }
 
 fn open_settings(permission: Permission) {
-    let url = WINDOW.with_borrow(|state| state.as_ref().map(|s| s.gate.settings_url(permission)));
-    let Some(url) = url else { return };
-    let opened = NSURL::URLWithString(&NSString::from_str(&url))
-        .is_some_and(|url| NSWorkspace::sharedWorkspace().openURL(&url));
-    if !opened {
-        log::warn!("permissions: System Settings not opened at {url}");
+    let gate = WINDOW.with_borrow_mut(|state| {
+        let state = state.as_mut()?;
+        if !state.opened.contains(&permission) {
+            state.opened.push(permission);
+        }
+        Some(Arc::clone(&state.gate))
+    });
+    if let Some(gate) = gate {
+        system_settings::open(&gate, permission);
     }
+    dispatch_to_main(refresh);
 }
 
 fn quit() {
@@ -296,7 +305,7 @@ fn content(mtm: MainThreadMarker, target: &WindowTarget, model: &WindowModel) ->
     }
     for (index, row) in model.rows.iter().enumerate() {
         let top = rows_top + index as f64 * (ROW_HEIGHT + ROW_GAP);
-        add_row(mtm, &view, target, row.permission, row.shown, top);
+        add_row(mtm, &view, target, row, top);
     }
     let quit = push_button(mtm, target, QUIT_TITLE, sel!(quit:), 0);
     quit.setFrame(below_top(MARGIN, HEIGHT - 42.0, FOOTER_BUTTON_WIDTH, 28.0));
@@ -314,19 +323,8 @@ fn content(mtm: MainThreadMarker, target: &WindowTarget, model: &WindowModel) ->
     view
 }
 
-#[expect(
-    clippy::too_many_lines,
-    clippy::too_many_arguments,
-    reason = "size baseline"
-)]
-fn add_row(
-    mtm: MainThreadMarker,
-    view: &NSView,
-    target: &WindowTarget,
-    permission: Permission,
-    shown: Shown,
-    top: f64,
-) {
+#[expect(clippy::too_many_lines, reason = "size baseline")]
+fn add_row(mtm: MainThreadMarker, view: &NSView, target: &WindowTarget, row: &RowModel, top: f64) {
     let tile = NSView::initWithFrame(
         mtm.alloc::<NSView>(),
         below_top(MARGIN, top + (ROW_HEIGHT - TILE) / 2.0, TILE, TILE),
@@ -337,7 +335,7 @@ fn add_row(
         layer.setBackgroundColor(Some(&tint.CGColor()));
         layer.setCornerRadius(8.0);
     }
-    if let Some(image) = symbol_image(symbol(permission)) {
+    if let Some(image) = symbol_image(symbol(row.permission)) {
         let picture = NSImageView::imageViewWithImage(&image, mtm);
         picture.setContentTintColor(Some(&NSColor::systemBlueColor()));
         picture.setFrame(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(TILE, TILE)));
@@ -346,22 +344,22 @@ fn add_row(
     view.addSubview(&tile);
     let text_x = MARGIN + TILE + 10.0;
     let text_width = WIDTH - MARGIN - STATUS_WIDTH - 10.0 - text_x;
-    let name = label(mtm, permission.name(), &medium(13.0));
+    let name = label(mtm, row.permission.name(), &medium(13.0));
     name.setFrame(below_top(text_x, top + 2.0, text_width, 17.0));
     view.addSubview(&name);
-    let reason = wrapping(mtm, why(permission), &NSFont::systemFontOfSize(12.0));
+    let reason = wrapping(mtm, &row.line, &NSFont::systemFontOfSize(12.0));
     reason.setTextColor(Some(&NSColor::secondaryLabelColor()));
     reason.setFrame(below_top(text_x, top + 19.0, text_width, 30.0));
     view.addSubview(&reason);
-    add_badge(mtm, view, shown, top);
-    if let Some(choice) = button(shown) {
+    add_badge(mtm, view, row.shown, top);
+    if let Some(choice) = button(row.shown) {
         let action = match choice {
             RowButton::Request => sel!(request:),
             RowButton::OpenSystemSettings => sel!(openSettings:),
         };
         let index = Permission::ALL
             .iter()
-            .position(|p| *p == permission)
+            .position(|p| *p == row.permission)
             .unwrap_or_default();
         let control = push_button(mtm, target, choice.title(), action, index as isize);
         control.setFrame(below_top(

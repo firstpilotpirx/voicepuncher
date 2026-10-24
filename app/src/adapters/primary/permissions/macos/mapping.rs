@@ -32,6 +32,8 @@ pub enum RowButton {
 pub struct RowModel {
     pub permission: Permission,
     pub shown: Shown,
+    /// The line under the permission's name.
+    pub line: String,
 }
 
 /// Everything the window shows.
@@ -65,6 +67,7 @@ impl WindowModel {
                     } else {
                         Shown::Status(status)
                     },
+                    line: why(permission).to_owned(),
                 }
             })
             .collect();
@@ -76,6 +79,19 @@ impl WindowModel {
             revoked_line: revoked_line(revoked),
             continue_enabled: report.all_granted(),
         }
+    }
+}
+
+impl WindowModel {
+    /// The rows' lines for macOS `macos_major`, with the hint in the rows whose System
+    /// Settings pane was `opened` from the window.
+    #[must_use]
+    pub fn with_lines(mut self, opened: &[Permission], macos_major: u64) -> Self {
+        for row in &mut self.rows {
+            let was_opened = opened.contains(&row.permission);
+            row.line = row_line(row.permission, row.shown, was_opened, macos_major);
+        }
+        self
     }
 }
 
@@ -137,130 +153,62 @@ pub fn symbol(permission: Permission) -> &'static str {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// How often the open window asks the gate again, in milliseconds.
+pub const REFRESH_MS: i64 = 1_000;
 
-    fn report(statuses: [PermissionStatus; 3], responsible_app: Option<&str>) -> PermissionReport {
-        PermissionReport {
-            statuses: Permission::ALL.into_iter().zip(statuses).collect(),
-            responsible_app: responsible_app.map(str::to_owned),
-        }
-    }
+/// What Open System Settings does, in order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsStep {
+    /// Asks the system for the permission again.
+    Request,
+    /// Opens the permission's pane of System Settings.
+    OpenPane,
+    /// Shows the app's bundle in Finder, to add it with +.
+    RevealBundle,
+}
 
-    use PermissionStatus::{Denied, Granted, NotDetermined};
-
-    #[test]
-    fn should_show_each_status_as_its_badge() {
-        assert_eq!(badge(Shown::Status(Granted)), ("Granted", BadgeMark::Green));
-        assert_eq!(
-            badge(Shown::Status(Denied)),
-            ("Not granted", BadgeMark::Red)
-        );
-        assert_eq!(
-            badge(Shown::Status(NotDetermined)),
-            ("Not asked yet", BadgeMark::Grey)
-        );
-        assert_eq!(badge(Shown::Checking), ("Checking…", BadgeMark::Spinner));
-    }
-
-    #[test]
-    fn should_offer_request_for_not_asked_yet_settings_for_denied_and_nothing_for_granted() {
-        assert_eq!(
-            button(Shown::Status(NotDetermined)),
-            Some(RowButton::Request)
-        );
-        assert_eq!(
-            button(Shown::Status(Denied)),
-            Some(RowButton::OpenSystemSettings)
-        );
-        assert_eq!(button(Shown::Status(Granted)), None);
-        assert_eq!(button(Shown::Checking), None);
-        assert_eq!(RowButton::Request.title(), "Request…");
-        assert_eq!(
-            RowButton::OpenSystemSettings.title(),
-            "Open System Settings"
-        );
-    }
-
-    #[test]
-    fn should_name_each_permission_with_why_and_symbol() {
-        assert_eq!(why(Permission::Microphone), "to hear your dictation");
-        assert_eq!(
-            why(Permission::Accessibility),
-            "to paste the text into the app you are typing in"
-        );
-        assert_eq!(
-            why(Permission::InputMonitoring),
-            "to notice the hotkey in any app"
-        );
-        assert_eq!(symbol(Permission::Microphone), "mic");
-        assert_eq!(symbol(Permission::Accessibility), "accessibility");
-        assert_eq!(symbol(Permission::InputMonitoring), "keyboard");
-    }
-
-    #[test]
-    fn should_show_one_row_per_permission_in_order() {
-        let model = WindowModel::new(&report([Granted, Denied, NotDetermined], None), &[], &[]);
-        let rows: Vec<_> = model.rows.iter().map(|r| (r.permission, r.shown)).collect();
-        assert_eq!(
-            rows,
-            vec![
-                (Permission::Microphone, Shown::Status(Granted)),
-                (Permission::Accessibility, Shown::Status(Denied)),
-                (Permission::InputMonitoring, Shown::Status(NotDetermined)),
-            ]
-        );
-    }
-
-    #[test]
-    fn should_show_checking_while_a_request_is_not_answered() {
-        let pending = [Permission::InputMonitoring];
-        let asking = WindowModel::new(
-            &report([Granted, Granted, NotDetermined], None),
-            &pending,
-            &[],
-        );
-        assert_eq!(asking.rows[2].shown, Shown::Checking);
-        let answered = WindowModel::new(&report([Granted, Granted, Denied], None), &pending, &[]);
-        assert_eq!(answered.rows[2].shown, Shown::Status(Denied));
-    }
-
-    #[test]
-    fn should_name_the_responsible_app_when_run_from_another_app() {
-        let model = WindowModel::new(&report([Granted; 3], Some("iTerm2")), &[], &[]);
-        assert_eq!(
-            model.developer_line.as_deref(),
-            Some("voicepuncher runs from iTerm2 — grant the permissions to iTerm2.")
-        );
-    }
-
-    #[test]
-    fn should_name_no_other_app_when_run_from_the_bundle() {
-        let model = WindowModel::new(&report([Granted; 3], None), &[], &[]);
-        assert_eq!(model.developer_line, None);
-    }
-
-    #[test]
-    fn should_say_which_permission_was_revoked() {
-        let model = WindowModel::new(
-            &report([Granted, Denied, Granted], None),
-            &[],
-            &[Permission::Accessibility],
-        );
-        assert_eq!(
-            model.revoked_line.as_deref(),
-            Some("Accessibility was revoked — dictation stopped")
-        );
-        let none = WindowModel::new(&report([Granted, Denied, Granted], None), &[], &[]);
-        assert_eq!(none.revoked_line, None);
-    }
-
-    #[test]
-    fn should_enable_continue_only_when_every_permission_is_granted() {
-        let missing = WindowModel::new(&report([Granted, Denied, Granted], None), &[], &[]);
-        assert!(!missing.continue_enabled);
-        let all = WindowModel::new(&report([Granted; 3], None), &[], &[]);
-        assert!(all.continue_enabled);
+/// The pane of System Settings that holds `permission` on macOS `macos_major`.
+pub fn pane_name(permission: Permission, macos_major: u64) -> &'static str {
+    match permission {
+        Permission::Microphone => "Microphone",
+        Permission::Accessibility if macos_major >= 27 => "Device Control and Data Access",
+        Permission::Accessibility => "Accessibility",
+        Permission::InputMonitoring => "Input Monitoring",
     }
 }
+
+/// The line under a row's name: why the app needs it, where to switch it on, or the hint
+/// once System Settings was opened from the row and the permission still is not granted.
+pub fn row_line(permission: Permission, shown: Shown, opened: bool, macos_major: u64) -> String {
+    match (shown, opened, permission) {
+        (Shown::Status(PermissionStatus::Denied), true, Permission::InputMonitoring) => {
+            "Not listed? Add voicepuncher with +.".to_owned()
+        }
+        (Shown::Status(PermissionStatus::Denied), true, _) => {
+            "Already on? Remove voicepuncher with − and add it again with +.".to_owned()
+        }
+        (Shown::Status(PermissionStatus::Denied), false, _) => {
+            format!(
+                "Switch voicepuncher on in {}",
+                pane_name(permission, macos_major)
+            )
+        }
+        _ => why(permission).to_owned(),
+    }
+}
+
+/// The steps of Open System Settings in `permission`'s row; `from_bundle` when the app runs
+/// from its bundle.
+pub fn settings_steps(permission: Permission, from_bundle: bool) -> Vec<SettingsStep> {
+    if permission != Permission::InputMonitoring {
+        return vec![SettingsStep::OpenPane];
+    }
+    let mut steps = vec![SettingsStep::Request, SettingsStep::OpenPane];
+    if from_bundle {
+        steps.push(SettingsStep::RevealBundle);
+    }
+    steps
+}
+
+#[cfg(test)]
+mod tests;

@@ -47,13 +47,20 @@ fn should_name_every_system_status_in_the_app_s_words() {
             SMAppServiceStatus::RequiresApproval,
             LoginItemStatus::RequiresApproval,
         ),
-        (SMAppServiceStatus::NotFound, LoginItemStatus::Unavailable),
         (SMAppServiceStatus(42), LoginItemStatus::Unavailable),
     ];
     // When / Then
     for (system, expected) in cases {
         assert_eq!(status_of(system), expected, "{system:?}");
     }
+}
+
+#[test]
+fn should_take_not_found_as_not_registered() {
+    // Given — a bundle whose login item was never registered
+    let never_registered = SMAppServiceStatus::NotFound;
+    // When / Then
+    assert_eq!(status_of(never_registered), LoginItemStatus::NotRegistered);
 }
 
 #[test]

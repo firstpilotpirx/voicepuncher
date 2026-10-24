@@ -1,6 +1,7 @@
 //! What the status item shows, as pure functions of what it was told: the stage of the
 //! dictation the overlay shows, the runtime state and the voice control signs.
 
+use crate::adapters::primary::settings::hints::joined_names;
 use crate::core::domain::{HotKey, RecordingMode, ServiceStatus};
 use crate::runtime::RuntimeState;
 
@@ -50,6 +51,8 @@ pub enum IconState {
     CommandsUnavailable,
     Warning,
     Waiting,
+    /// The runtime waits for a permission the user has to grant.
+    MissingPermission,
     Failed,
 }
 
@@ -103,6 +106,7 @@ impl StatusItemState {
         }
         match &self.runtime {
             Some(RuntimeState::Failed(_)) => IconState::Failed,
+            Some(RuntimeState::WaitingForPermissions { .. }) => IconState::MissingPermission,
             Some(RuntimeState::Ready { voice_control, .. }) => {
                 if self.commands_unavailable {
                     IconState::CommandsUnavailable
@@ -122,6 +126,16 @@ impl StatusItemState {
             self.commands_unavailable = false;
         }
         self.runtime = Some(state);
+    }
+
+    /// Whether choosing the status line opens the Permissions window: while the runtime
+    /// waits for permissions and no dictation shows.
+    pub fn status_opens_permissions(&self) -> bool {
+        self.dictation.is_none()
+            && matches!(
+                self.runtime,
+                Some(RuntimeState::WaitingForPermissions { .. })
+            )
     }
 
     /// The state in words, for the menu's second line.
@@ -150,8 +164,8 @@ impl StatusItemState {
     fn standby_line(&self) -> String {
         match &self.runtime {
             None | Some(RuntimeState::Starting) => "Starting…".into(),
-            Some(RuntimeState::WaitingForPermissions { .. }) => {
-                "Waiting for permissions — open Permissions…".into()
+            Some(RuntimeState::WaitingForPermissions { missing, .. }) => {
+                format!("Waiting for {}…", joined_names(missing))
             }
             Some(RuntimeState::WaitingForModels { .. }) => {
                 "Waiting for models — open Download models…".into()
@@ -190,17 +204,7 @@ fn stage_icon(stage: DictationStage) -> IconState {
 
 impl IconState {
     pub fn picture(self) -> IconPicture {
-        let symbol = match self {
-            Self::Ready => "mic",
-            Self::Recording => "mic.fill",
-            Self::Processing => "waveform",
-            Self::WaitingForFocus => "keyboard",
-            Self::Listening => "ear",
-            Self::CommandsUnavailable => "ear.trianglebadge.exclamationmark",
-            Self::Warning => "exclamationmark.triangle",
-            Self::Waiting => "hourglass",
-            Self::Failed => "exclamationmark.triangle.fill",
-        };
+        let symbol = SYMBOLS[self as usize];
         let recording = self == Self::Recording;
         IconPicture {
             symbol,
@@ -210,6 +214,20 @@ impl IconState {
         }
     }
 }
+
+/// The SF Symbol of each icon state, in the order `IconState` declares them.
+const SYMBOLS: [&str; 10] = [
+    "mic",
+    "mic.fill",
+    "waveform",
+    "keyboard",
+    "ear",
+    "ear.trianglebadge.exclamationmark",
+    "exclamationmark.triangle",
+    "hourglass",
+    "lock.shield",
+    "exclamationmark.triangle.fill",
+];
 
 /// An entry of the menu, top to bottom.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -297,6 +315,8 @@ pub fn hotkey_name(key: HotKey) -> &'static str {
     key.human_name()
 }
 
+#[cfg(test)]
+mod permission_wait_tests;
 #[cfg(test)]
 mod place_tests;
 #[cfg(test)]

@@ -21,7 +21,7 @@ The first launch of the bundle `dist/voicepuncher.app` (v0.37.3, macOS 27.0.1) t
 
 Current stage: PoC. Target stage: PoC.
 Scope: the permissions gate, the Input Monitoring request, start at login, the waiting state in Settings and the menu bar.
-Acceptance bar: on macOS 27, a fresh launch of the bundle gets all three permissions from the Permissions window without a relaunch or adding the app by hand; the start-at-login switch registers the login item; while a permission is missing, Settings and the menu bar name it; the manual run of README § Release checklist (permissions, bundle) passes.
+Acceptance bar: on macOS 27, a fresh launch of the bundle gets all three permissions from the Permissions window without a relaunch, adding the app with + only where Open System Settings shows it in Finder because the system did not list it; the start-at-login switch registers the login item; while a permission is missing, Settings and the menu bar name it; the manual run of README § Release checklist (permissions, bundle) passes.
 Out of scope: notarization and an Apple Developer ID signature; the hotkey listener crash and the overlay (changes `fix-hotkey-crash-and-limit-warning`, `improve-recording-pill-look`).
 
 ## Capabilities

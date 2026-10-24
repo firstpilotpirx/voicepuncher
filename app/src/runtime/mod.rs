@@ -35,7 +35,7 @@ pub use assembler::PipelineAssembler;
 pub use models::{CatalogModels, ModelsGate};
 pub use observer::{LogObserver, Observers, RuntimeObserver, RuntimeState};
 pub use overlay::SharedVisualIndicator;
-pub use permissions::PermissionsWatch;
+pub use permissions::{PermissionsWait, PermissionsWatch};
 pub use report::{ReloadListener, ReloadReport};
 pub use router::SignalRouter;
 pub use services::{LocalServices, ManagedServices, ServicesView};

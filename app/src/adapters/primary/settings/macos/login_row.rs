@@ -13,6 +13,7 @@ use super::login::{
     LoginSwitch, LoginSwitchView, Turned, LOGIN_ITEMS_SETTINGS, OPEN_LOGIN_ITEMS_TITLE,
 };
 use super::target::Action;
+use crate::adapters::primary::settings::hints::switch_alpha;
 
 const NOTE_SIZE: f64 = 11.0;
 
@@ -58,12 +59,10 @@ impl LoginRow {
     }
 
     fn show(&self, view: &LoginSwitchView) {
-        self.control.setState(if view.on {
-            NSControlStateValueOn
-        } else {
-            NSControlStateValueOff
-        });
+        let states = [NSControlStateValueOff, NSControlStateValueOn];
+        self.control.setState(states[usize::from(view.on)]);
         self.control.setEnabled(view.enabled);
+        self.control.setAlphaValue(switch_alpha(view.enabled));
         self.note
             .setStringValue(&NSString::from_str(view.note.unwrap_or_default()));
         self.note.setHidden(view.note.is_none());

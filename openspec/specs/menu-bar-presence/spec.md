@@ -70,7 +70,7 @@ While voice control listens and no dictation runs, the icon SHALL be an ear inst
 - **THEN** the status item shows the recording icon
 
 ### Requirement: The menu tells the state in words
-Clicking the status item SHALL open a menu whose first line is the app's name and version and whose second line names the current state in plain words: ready, with the hotkey by its human name and how to use it in the configured recording mode; recording, with how to stop; recognizing speech; refining text; waiting for a text field; voice control listening; voice control commands unavailable; starting; restarting; failed, with the reason. Both lines SHALL be plain text that cannot be chosen.
+Clicking the status item SHALL open a menu whose first line is the app's name and version and whose second line names the current state in plain words: ready, with the hotkey by its human name and how to use it in the configured recording mode; recording, with how to stop; recognizing speech; refining text; waiting for a text field; waiting for the missing permissions, named; voice control listening; voice control commands unavailable; starting; restarting; failed, with the reason. Both lines SHALL be plain text that cannot be chosen, except the status line while the runtime waits for permissions, which opens the Permissions window.
 
 #### Scenario: The ready status line names the hotkey
 - **GIVEN** the runtime is ready, the hotkey is the right Option key and the recording mode is Hold
@@ -145,13 +145,23 @@ The menu SHALL offer Settings with the standard shortcut. Choosing it SHALL open
 - **THEN** the settings window opens in front
 
 ### Requirement: The menu shows the wait for permissions
-While the runtime waits for permissions, the status item SHALL show the waiting icon and the menu's status line SHALL read "Waiting for permissions — open Permissions…".
+While the runtime waits for permissions, the status item SHALL show an icon of its own for the missing permission, distinct from the waiting icon of the other waits, and the menu's status line SHALL read "Waiting for <permissions>…", naming each missing permission, and open the Permissions window when chosen.
 
 #### Scenario: A missing permission at launch
 - **GIVEN** Accessibility is not granted
 - **WHEN** the app launches and the user opens the menu
-- **THEN** the status item shows the waiting icon
-- **AND** the status line reads "Waiting for permissions — open Permissions…"
+- **THEN** the status item shows the missing-permission icon, not the waiting icon
+- **AND** the status line reads "Waiting for Accessibility…"
+
+#### Scenario: Two missing permissions
+- **GIVEN** Accessibility and Input Monitoring are not granted
+- **WHEN** the user opens the menu
+- **THEN** the status line reads "Waiting for Accessibility and Input Monitoring…"
+
+#### Scenario: The waiting item opens the Permissions window
+- **GIVEN** the runtime waits for Accessibility
+- **WHEN** the user chooses "Waiting for Accessibility…" in the menu
+- **THEN** the Permissions window comes to the front
 
 ### Requirement: Permissions open from the menu
 The menu SHALL offer Permissions… under the status line in every runtime state. Choosing it SHALL bring the Permissions window to the front with the current statuses.

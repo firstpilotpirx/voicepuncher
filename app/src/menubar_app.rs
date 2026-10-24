@@ -48,8 +48,8 @@ use voicepuncher::runtime::models::needs_of;
 use voicepuncher::runtime::services::SystemClock;
 use voicepuncher::runtime::wiring::WiringAssembler;
 use voicepuncher::runtime::{
-    signals, CatalogModels, LogObserver, ManagedServices, ModelsGate, PermissionsWatch, Runtime,
-    ServicesView, SharedVisualIndicator,
+    signals, CatalogModels, LogObserver, ManagedServices, ModelsGate, PermissionsWait,
+    PermissionsWatch, Runtime, ServicesView, SharedVisualIndicator,
 };
 
 /// The menu bar app: the runtime under the status item until Quit, which ends the process.
@@ -96,6 +96,7 @@ struct Shell {
     status_cell: StatusItemCell,
     gate: Arc<PermissionsGate>,
     permissions_window: PermissionsWindow,
+    permissions_wait: PermissionsWait,
     download_window: Option<DownloadWindow>,
 }
 
@@ -110,7 +111,15 @@ impl Shell {
         let gate = Arc::new(PermissionsGate::new(Box::new(MacOsPermissionProbe)));
         let permissions_window = PermissionsWindow::install(mtm, Arc::clone(&gate));
         let download_window = download.map(|source| DownloadWindow::install(mtm, source));
-        Self { status_item, status_cell, gate, permissions_window, download_window }
+        let permissions_wait = PermissionsWait::new();
+        Self {
+            status_item,
+            status_cell,
+            gate,
+            permissions_window,
+            permissions_wait,
+            download_window,
+        }
     }
 
     /// The runtime under this shell's overlay and permissions gate, with the services it
@@ -154,6 +163,7 @@ impl Shell {
             config_path.to_path_buf(),
         ))));
         runtime.observe(Box::new(self.permissions_window.observer()));
+        runtime.observe(self.permissions_wait.observer());
     }
 
     /// Hands the menu its actions; Quit, in the menu or from the system, stops the runtime
@@ -206,7 +216,11 @@ fn settings_window(
         };
         SettingsSession::open(&path, &home, parts)
     };
-    let mut settings = SettingsWindow::new(Box::new(opener), logs_folder(), Arc::clone(login_item));
+    let mut settings = SettingsWindow::new(Box::new(opener), logs_folder(), Arc::clone(login_item))
+        .with_permissions_wait({
+            let wait = shell.permissions_wait.clone();
+            Box::new(move || wait.missing())
+        });
     if shell.download_window.is_some() {
         let models = SavedModels { config_path: config_path.clone(), cli: cli.clone() };
         settings = settings.with_models(Rc::new(models));

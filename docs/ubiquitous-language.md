@@ -186,13 +186,19 @@
 
 ### Icon state
 - **Type:** Value (enum `IconState`, adapter)
-- **Definition:** What the `Status item` shows, picked from the dictation stage, the `Runtime state` and the voice control signs in one place: waiting (starting or restarting), ready, listening (voice control on), commands unavailable, recording, processing, waiting for focus, warning (while a `Failure notice` shows) and failed. A dictation outranks the commands-unavailable sign, which outranks listening, which outranks ready; a runtime state shows only while no dictation runs; a `Command sign` changes nothing. Each is an SF Symbol: a template image in the menu bar's ink, the recording one a filled microphone with a red dot, the processing one a waveform stepping every 400 ms (still under Reduce Motion).
+- **Definition:** What the `Status item` shows, picked from the dictation stage, the `Runtime state` and the voice control signs in one place: waiting (starting or restarting), the `Missing-permission icon` (waiting for permissions), ready, listening (voice control on), commands unavailable, recording, processing, waiting for focus, warning (while a `Failure notice` shows) and failed. A dictation outranks the commands-unavailable sign, which outranks listening, which outranks ready; a runtime state shows only while no dictation runs; a `Command sign` changes nothing. Each is an SF Symbol: a template image in the menu bar's ink, the recording one a filled microphone with a red dot, the processing one a waveform stepping every 400 ms (still under Reduce Motion).
 - **Code:** `app/src/adapters/primary/menubar/macos/mapping.rs`
 - **Synonyms to AVOID:** "status", "badge", "icon" (alone)
 
+### Missing-permission icon
+- **Type:** Value (`IconState::MissingPermission`, adapter)
+- **Definition:** The `Icon state` while the `Runtime` waits for a permission the user has to grant: a shield with a lock, apart from the hourglass of the other waits, so the menu bar says the app waits for the user, not for itself.
+- **Code:** `app/src/adapters/primary/menubar/macos/mapping.rs`
+- **Synonyms to AVOID:** "lock icon", "permission badge"
+
 ### Status line
 - **Type:** Adapter concept (the menu's second line)
-- **Definition:** The `Icon state` in plain words, set when the menu opens: "Ready — hold Right Option to dictate" (or "press" in Toggle mode), "Recording — release Right Option to stop", "Recognizing speech…", "Waiting for a text field…", "Voice control: listening", "Starting…", "Restarting…", "Failed: " with the reason. Hotkeys are named as a person reads them ("Right Option", "Cmd+E").
+- **Definition:** The `Icon state` in plain words, set when the menu opens: "Ready — hold Right Option to dictate" (or "press" in Toggle mode), "Recording — release Right Option to stop", "Recognizing speech…", "Waiting for a text field…", "Voice control: listening", "Starting…", "Restarting…", "Waiting for Accessibility and Input Monitoring…" (the missing permissions, named; choosing the line then opens the `Permissions window`), "Failed: " with the reason. Hotkeys are named as a person reads them ("Right Option", "Cmd+E").
 - **Code:** `StatusItemState::status_line`, `hotkey_name` in `app/src/adapters/primary/menubar/macos/mapping.rs`
 - **Synonyms to AVOID:** "tooltip", "subtitle", "status" (alone)
 

@@ -13,6 +13,8 @@ Feature: launch-at-login
       Given the app is not registered as a login item
       When the user opens the General tab
       Then the login switch is off
+      And the login switch is enabled
+      And no approval note is shown
 
     Scenario: A registration waiting for approval
       Given the app's login item waits for the user's approval

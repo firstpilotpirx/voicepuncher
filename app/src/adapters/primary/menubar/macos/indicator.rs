@@ -23,6 +23,8 @@ pub trait StatusItemSurface: Send + Sync {
 pub struct MenuModel {
     pub title_line: String,
     pub status_line: String,
+    /// Whether choosing the status line opens the Permissions window.
+    pub status_opens_permissions: bool,
 }
 
 /// What the status item was told, shared by the overlay decorator and the runtime observer.
@@ -58,7 +60,12 @@ impl StatusItemCell {
 
     /// The menu as it reads at this moment.
     pub fn menu(&self) -> MenuModel {
-        MenuModel { title_line: title_line(), status_line: self.lock().0.status_line() }
+        let guard = self.lock();
+        MenuModel {
+            title_line: title_line(),
+            status_line: guard.0.status_line(),
+            status_opens_permissions: guard.0.status_opens_permissions(),
+        }
     }
 
     /// `overlay`, also telling the status item each thing it shows.
