@@ -49,4 +49,4 @@ Out of scope: notarization and an Apple Developer ID signature; the hotkey liste
 ## Release
 
 SemVer: PATCH — bug fixes, no new capability.
-Target version: 0.37.4 (the next PATCH above `main` when it merges).
+Target version: 0.38.3 (the next PATCH above `main` when it merges).
