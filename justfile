@@ -98,12 +98,10 @@ default:
 # build-e2e ran without it (see _stages). Incremental, no `cargo clean`
 # FAST (~8.5 min), run often while developing: code checks + E2E smoke + accuracy on 10 samples
 check:
-    @VOICEPUNCHER_FAIL_FAST=1 VOICEPUNCHER_STAGES_RECIPE=check {{just_executable()}} _stages fmt lint test metrics build build-e2e {{check_model_stages}}
+    @VOICEPUNCHER_FAIL_FAST=1 VOICEPUNCHER_STAGES_RECIPE=check {{just_executable()}} _stages static lint test metrics build build-e2e {{check_model_stages}}
 
-# Only the model stages take the machine lock, held ≈ 16.3 min with 100 recordings and ≈ 14.5 min with 10 (measured)
-# (see _stages). Incremental like `check`, no `cargo clean`: the clean build is `release`'s. Accuracy runs on 100
-# recordings when the branch changes the recognition path (recognition_paths), on main itself or when that cannot
-# be told, else on 10 (dev-tools accuracy-stage); VOICEPUNCHER_ACCURACY_SAMPLE=100 forces 100
+# Only the model stages take the machine lock, ≈ 16.3 min with 100 recordings, ≈ 14.5 min with 10 (measured); incremental, no `cargo clean`.
+# Accuracy on 100 recordings and the whole seam matrix when the branch changes their paths, on main itself or when that cannot be told (dev-tools accuracy-stage, seams-stage), else 10 and the seam sample; VOICEPUNCHER_ACCURACY_SAMPLE=100 forces 100
 # FULL (~15.5–17.5 min), run before merging: code checks + the bundle + E2E (the whole voice control set, seams, outages and the bundled engines included) + accuracy on 100 or 10 samples
 full-check: _require-models _require-corpus _dev-tools
     #!/usr/bin/env bash
@@ -118,15 +116,14 @@ full-check: _require-models _require-corpus _dev-tools
     esac
     accuracy="accuracy: $count recordings ($stage) — $reason"
     echo "● $accuracy"
+    seams=$({{dev_tools}} seams-stage)
+    echo "● seams: $seams"
     VOICEPUNCHER_FAIL_FAST=1 VOICEPUNCHER_STAGES_RECIPE=full-check VOICEPUNCHER_STAGES_ACCURACY="$accuracy" \
-        {{just_executable()}} _stages fmt lint test metrics build bundle build-e2e {{replace(full_check_model_stages, "accuracy", '"$stage"')}}
+        {{just_executable()}} _stages static lint test metrics build bundle build-e2e {{replace(replace(full_check_model_stages, "accuracy", '"$stage"'), "e2e-seams", '"${seams%% *}"')}}
     echo "✓ full-check passed — $accuracy; before a release also walk through README.md § Release checklist (manual run)"
 
-# Summary of the stage journal for the runs since a date (2026-10-01) or a span (7d): per recipe and stage the
-# runs, median, total and failures, the runs that reused an earlier pass (left out of the times) and the time
-# they saved (the seconds of the passes they reused), with the total saved; the lock
-# wait; whether two runs' e2e lock holds overlapped (each overlapping pair); the failed tests, most first; runs and time per branch (a change's branch is <type>/<change>, so per change);
-# the mean WER of the last accuracy runs per sample size
+# Summary of the stage journal since a date (2026-10-01) or a span (7d): per recipe and stage the runs, median, total, failures, reused runs and the time they saved; the lock wait;
+# overlapping e2e lock holds; the failed tests, most first; runs and time per branch (so per change); the mean WER of the last accuracy runs per sample size
 stage-times since="30d": _dev-tools
     @{{dev_tools}} stage-times {{quote(since)}}
 
@@ -221,6 +218,20 @@ _lint: _require-tools
         exit 1
     fi
 
+# The fast static check after an edit (~10 s): formatting, clippy, the size budgets and the metrics of the changed files, stopping at the first that fails
+static: _dev-tools
+    @VOICEPUNCHER_STAGES_RECIPE=static {{just_executable()}} _stages static
+
+_static:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "● fmt"
+    cargo fmt --all -- --check
+    echo "● clippy"
+    cargo clippy --workspace --all-targets -- -D warnings
+    {{analyzers}} size
+    {{analyzers}} metrics --changed origin/main
+
 # Code metrics (AGENTS.md § How to verify a change): the 25 most complex functions, one row per module (functions,
 # lengths, complexity, unsafe/unwrap/clone, fan-in/out), import cycles and duplicated lines, ratcheted against
 # .config/analyzers/metrics.toml; a stage of `test`, unlocked like it
@@ -268,18 +279,18 @@ _require-tools:
     want trufflehog {{trufflehog_version}} "brew install trufflehog" trufflehog --version
     exit "$missing"
 
-# Rewrites app/tests/size_baseline.toml from the code (AGENTS.md § Architecture rules) by running `test` with
-# VOICEPUNCHER_WRITE_SIZE_BASELINE=1: to drop the entries of units back within budget, or to list the units a merge
-# of branches written before the budgets brought in; a rewrite that adds or raises an entry is reviewed like code
+# Rewrites app/tests/size_baseline.toml from the code (AGENTS.md § Architecture rules) with the size analyzer: to
+# drop the entries of units back within budget, or to list the units a merge of branches written before the
+# budgets brought in; a rewrite that adds or raises an entry is reviewed like code
 size-baseline:
-    VOICEPUNCHER_WRITE_SIZE_BASELINE=1 {{just_executable()}} test
+    {{analyzers}} size --write-baseline
 
 # Runs without the machine-wide lock, as an unlocked stage of _stages: it uses no shared service, port, GPU or
 # exclusive device; the quiet lock in the shared mode gives it the time limit and keeps it out of another run's
 # model stages (dev-tools stages)
 # Every test of the app, the command spotting service and the E2E harness under cargo-nextest, each within its time limit, without the machine lock (~1 min)
 test:
-    @VOICEPUNCHER_STAGES_RECIPE=test {{just_executable()}} _stages test metrics
+    @VOICEPUNCHER_STAGES_RECIPE=test {{just_executable()}} _stages static test metrics
 
 # Runs only the named tests and slice/component scenarios in the `test` stage (dev-tools named-run): the TDD Red
 # and Green steps (AGENTS.md § TDD), with the test stage's build, nextest config and time limits, unlocked;
@@ -412,19 +423,22 @@ _e2e-bundle: _require-nextest _require-models _require-corpus
     {{just_executable()}} --justfile {{quote(justfile())}} bundle
     cargo nextest run --profile e2e-bundle {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
-# Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words (~4 min)
+# Chunk seams: the seam sweep (speech after different lead-ins) and Russian and English speech under 11 recording conditions, transcribed in chunks — fails on a phrase repeated at a seam or > 10 % missing words (~4 min); its sample, `_e2e-seams-sample` (VOICEPUNCHER_SEAM_SAMPLE=1): the sweep at lead-in 0 and the @seams_sample rows
 e2e-seams:
     @VOICEPUNCHER_STAGES_RECIPE=e2e-seams {{just_executable()}} _stages e2e-seams
 
-_e2e-seams: _require-nextest _require-models _build _dev-tools
+_e2e-seams profile="e2e-seams": _require-nextest _require-models _build _dev-tools
     #!/usr/bin/env bash
     set -euo pipefail
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}"
     filter=$({{dev_tools}} filter it "{{e2e_seams_modules}}")
-    cargo nextest run --profile e2e-seams {{e2e_seams_tests}} -E "$filter" ${VOICEPUNCHER_RERUN_FILTER:+--no-tests=pass} {{fail_fast}}
-    cargo nextest run --profile e2e-seams {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
+    cargo nextest run --profile {{profile}} {{e2e_seams_tests}} -E "$filter" ${VOICEPUNCHER_RERUN_FILTER:+--no-tests=pass} {{fail_fast}}
+    cargo nextest run --profile {{profile}} {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
+
+_e2e-seams-sample:
+    @VOICEPUNCHER_SEAM_SAMPLE=1 {{just_executable()}} --justfile {{quote(justfile())}} _e2e-seams e2e-seams-sample
 
 # Start cues: the start cue of each voice start, timed from the end of the command's words, on an idle machine — the stage holds the machine lock exclusively and keeps the other checks' build stages out (~2.5 min)
 e2e-cues:

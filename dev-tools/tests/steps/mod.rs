@@ -11,6 +11,7 @@ pub mod locks;
 pub mod named;
 pub mod needs;
 pub mod scratch;
+pub mod test_loop;
 pub mod test_rules;
 
 use std::path::{Path, PathBuf};

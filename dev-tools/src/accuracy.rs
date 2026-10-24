@@ -19,11 +19,30 @@ pub fn command(args: &[String]) -> Outcome {
         &context.root,
         base,
         var("VOICEPUNCHER_ACCURACY_SAMPLE").as_deref(),
-        &context.table("recognition_paths")?,
+        &context.table(ACCURACY.table)?,
     )?;
     println!("{stage} — {reason}");
     Ok(0)
 }
+
+/// A stage that runs whole or as a sample, chosen by the paths a branch changed.
+pub struct Sampled {
+    /// The stage that runs everything.
+    pub whole: &'static str,
+    /// The stage that runs the sample.
+    pub sample: &'static str,
+    /// The table of `.config/stages.toml` naming the paths that call for the whole stage.
+    pub table: &'static str,
+    /// What one such path is called in the reason.
+    pub path: &'static str,
+}
+
+pub const ACCURACY: Sampled = Sampled {
+    whole: "e2e-bench",
+    sample: "e2e-quick",
+    table: "recognition_paths",
+    path: "recognition path",
+};
 
 pub fn choose(
     root: &Path,
@@ -40,17 +59,28 @@ pub fn choose(
             ))
         }
     }
+    Ok(choose_stage(root, base, &ACCURACY, patterns))
+}
+
+/// The whole stage on main itself, when the changed paths cannot be read or when one matches `patterns` (or changes
+/// a Cargo file beyond its version); else the sample.
+pub fn choose_stage(
+    root: &Path,
+    base: &str,
+    stage: &Sampled,
+    patterns: &str,
+) -> (&'static str, String) {
     let Some((merge_base, changed)) = changed(root, base) else {
-        return Ok((
-            "e2e-bench",
+        return (
+            stage.whole,
             format!("cannot tell what the branch changed against {base}"),
-        ));
+        );
     };
     if changed.is_empty() {
-        return Ok((
-            "e2e-bench",
+        return (
+            stage.whole,
             format!("no change against {base} (main itself)"),
-        ));
+        );
     }
     let patterns: Vec<&str> = patterns.split_whitespace().collect();
     let hits: Vec<&str> = changed
@@ -64,21 +94,22 @@ pub fn choose(
         })
         .map(String::as_str)
         .collect();
-    Ok(verdict(&hits, changed.len()))
+    verdict(stage, &hits, changed.len())
 }
 
-/// The sample for the recognition paths the branch changed, out of how many changed files.
-fn verdict(hits: &[&str], changed: usize) -> (&'static str, String) {
+/// The stage for the matching paths the branch changed, out of how many changed files.
+fn verdict(stage: &Sampled, hits: &[&str], changed: usize) -> (&'static str, String) {
     let named = hits.iter().take(3).copied().collect::<Vec<_>>().join(", ");
+    let path = stage.path;
     match hits.len() {
         0 => (
-            "e2e-quick",
-            format!("no recognition path among the {changed} changed files"),
+            stage.sample,
+            format!("no {path} among the {changed} changed files"),
         ),
-        1..=3 => ("e2e-bench", format!("recognition paths changed: {named}")),
+        1..=3 => (stage.whole, format!("{path}s changed: {named}")),
         count => (
-            "e2e-bench",
-            format!("recognition paths changed: {named} and {} more", count - 3),
+            stage.whole,
+            format!("{path}s changed: {named} and {} more", count - 3),
         ),
     }
 }

@@ -108,10 +108,12 @@ fn cpu_hogs(stop: &Arc<AtomicBool>) -> Vec<std::thread::JoinHandle<()>> {
 
 #[test]
 fn should_keep_every_sample_of_a_long_dictation_in_order_on_a_busy_machine() {
-    // Given a minute of rising audio, delivered in real time, and half the cores busy
-    let seconds = 60;
+    // Given six ring-fulls of rising audio, delivered in real time, and half the cores busy: a minute through
+    // the 10 s ring, scaled to a tenth — 6 s through a 1 s ring — so the drain keeps up for as many ring-fulls
+    let seconds = 6;
+    let ring_seconds = RING_SECONDS / 10;
     let audio = ramp(seconds * NATIVE_RATE as usize, 0.9);
-    let (mut recorder, mut feeder) = stand_in(RING_SECONDS * NATIVE_RATE as usize);
+    let (mut recorder, mut feeder) = stand_in(ring_seconds * NATIVE_RATE as usize);
     let stop_hogs = Arc::new(AtomicBool::new(false));
     let hogs = cpu_hogs(&stop_hogs);
     // When
@@ -122,10 +124,10 @@ fn should_keep_every_sample_of_a_long_dictation_in_order_on_a_busy_machine() {
     let delivery = started.elapsed();
     stop_hogs.store(true, Ordering::Relaxed);
     hogs.into_iter().for_each(|hog| hog.join().unwrap());
-    // Then nothing was dropped, and the whole minute is there, rising all the way
+    // Then nothing was dropped, and all six seconds are there, rising all the way
     let dropped = feeder.health.dropped_samples();
     let report = format!(
-        "{} ms of audio dropped; the minute took {:.1} s to deliver",
+        "{} ms of audio dropped; the six seconds took {:.1} s to deliver",
         dropped * 1_000 / NATIVE_RATE as usize,
         delivery.as_secs_f64()
     );

@@ -5,21 +5,24 @@ mod baseline;
 mod clippy;
 mod metrics;
 mod recipes;
+mod size;
 
 use baseline::Counts;
 use std::path::Path;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: voicepuncher-analyzers <tool> [--write-baseline]";
+const USAGE: &str =
+    "usage: voicepuncher-analyzers <clippy|recipes|metrics|size> [--write-baseline] | metrics --changed <base>";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let write = args.iter().any(|a| a == "--write-baseline");
-    let Some(tool) = args.iter().find(|a| !a.starts_with("--")) else {
+    let Some(tool) = args.first().filter(|a| !a.starts_with("--")) else {
         eprintln!("{USAGE}");
         return ExitCode::from(2);
     };
-    match run(tool).and_then(|counts| ratchet(tool, &counts, write)) {
+    let outcome = dispatch(tool, &args, write);
+    match outcome {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::FAILURE,
         Err(e) => {
@@ -27,6 +30,39 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Runs the tool the arguments name: `size`, `metrics --changed <base>`, or a ratcheted analyzer.
+fn dispatch(tool: &str, args: &[String], write: bool) -> Result<bool, String> {
+    let changed = args
+        .iter()
+        .position(|a| a == "--changed")
+        .map(|at| args.get(at + 1));
+    match (tool, changed) {
+        ("size", None) => size::run(Path::new("."), write),
+        ("metrics", Some(Some(base))) if !write => changed_metrics(base),
+        (_, Some(_)) => Err(format!(
+            "--changed takes a base and goes only with metrics, without --write-baseline\n{USAGE}"
+        )),
+        _ => run(tool).and_then(|counts| ratchet(tool, &counts, write)),
+    }
+}
+
+/// The metrics ratchet over the files changed against `base`; prints every breach, true when none.
+fn changed_metrics(base: &str) -> Result<bool, String> {
+    let config = Config::load()?;
+    let breaches = metrics::run_changed(
+        &config.metrics,
+        base,
+        Path::new(".config/analyzers/metrics.toml"),
+    )?;
+    for breach in &breaches {
+        println!("{breach}");
+    }
+    if breaches.is_empty() {
+        println!("✓ metrics: no changed function beyond .config/analyzers/metrics.toml");
+    }
+    Ok(breaches.is_empty())
 }
 
 /// Runs the named analyzer and returns its findings.

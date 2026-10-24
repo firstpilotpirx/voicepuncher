@@ -18,7 +18,7 @@ The stage journal of the last 7 days (1 500 runs) says why:
 
 Current stage: PoC. Target stage: PoC.
 Scope: the `justfile` recipes and stages (`static`, `test`, `check`, `full-check`), the stage inputs in `.config/stages.toml`, the analyzers (`analyzers/`), the slow recording test, the E2E scenario sets, AGENTS.md § How to verify a change and § TDD.
-Acceptance bar: `just static` runs in about 10 s after a one-file edit and fails on a size-budget, metrics, formatting or compile problem without running a test; `just test` stops at that stage on such a problem and otherwise runs in about 45 s; an overlay-only change runs none of the seams, outages and cues stages in `full-check`; a typical change's `full-check` takes a few minutes (target under 6 min); every spec requirement keeps a covering test (`spec_mirror` green).
+Acceptance bar: `just static` runs in about 10 s after a one-file edit and fails on a size-budget, metrics, formatting or compile problem without running a test; `just test` stops at that stage on such a problem and otherwise runs in about 45 s; an overlay-only change runs none of the seams, outages and cues stages in `full-check`; an overlay or menu bar change's `full-check` takes a few minutes (target under 6 min), and other changes skip the model stages their files do not feed (design § Expected `full-check`); every spec requirement keeps a covering test (`spec_mirror` green).
 Out of scope: the app's behavior; the hosted CI's runtime; the strict clippy ratchet (stays in `just lint`); running the model stages in parallel on the GPU; a nightly run on `main`.
 
 ## Capabilities

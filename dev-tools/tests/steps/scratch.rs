@@ -13,6 +13,7 @@ use super::Ran;
 const JUST: &str = r#"printf 'just %s\trecipe=%s\tfilter=%s\tscenarios=%s\n' "$*" "$VOICEPUNCHER_STAGES_RECIPE" "$VOICEPUNCHER_RERUN_FILTER" "$VOICEPUNCHER_RERUN_SCENARIOS" >> "$SCRATCH/calls"
 case "$3" in
     _it-real) if [ -f "$SCRATCH/skip-it-real" ]; then exit 77; fi ;;
+    _static) if [ -f "$SCRATCH/fail-static" ]; then exit 1; fi ;;
     _e2e-quick) if [ -f "$SCRATCH/wer" ]; then cat "$SCRATCH/wer" >> "$VOICEPUNCHER_STAGES_REPORT"; fi ;;
 esac
 exit 0"#;

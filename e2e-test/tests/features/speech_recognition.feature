@@ -107,25 +107,29 @@ Feature: speech-recognition
       Then the printed text repeats no phrase of the speech
       And the printed text misses at most one spoken word in ten
 
+      @seams_sample
       Examples:
         | language | condition                     |
         | Russian  | spoken fast                   |
+        | Russian  | with high background noise    |
+        | English  | with pauses between sentences |
+        | English  | through a phone-quality line  |
+
+      Examples:
+        | language | condition                     |
         | Russian  | with pauses between words     |
         | Russian  | with low background noise     |
         | Russian  | spoken quietly                |
         | Russian  | spoken slowly                 |
         | Russian  | with pauses between sentences |
-        | Russian  | with high background noise    |
         | Russian  | through a phone-quality line  |
         | Russian  | clipped                       |
         | Russian  | with short audio dropouts     |
         | English  | spoken slowly                 |
         | English  | spoken fast                   |
-        | English  | with pauses between sentences |
         | English  | with pauses between words     |
         | English  | with low background noise     |
         | English  | with high background noise    |
-        | English  | through a phone-quality line  |
         | English  | spoken quietly                |
         | English  | clipped                       |
         | English  | with short audio dropouts     |
@@ -138,12 +142,16 @@ Feature: speech-recognition
       When the user transcribes the recording file
       Then no run of more than five consecutive spoken words is missing from the printed text
 
+      @seams_sample
       Examples:
         | language | condition                     |
         | Russian  | with pauses between words     |
+        | English  | with pauses between sentences |
+
+      Examples:
+        | language | condition                     |
         | Russian  | with pauses between sentences |
         | English  | with pauses between words     |
-        | English  | with pauses between sentences |
 
     @seams
     Scenario Outline: English speech with a short pause after every word keeps every phrase
@@ -151,9 +159,13 @@ Feature: speech-recognition
       When the user transcribes the recording file
       Then no run of more than five consecutive spoken words is missing from the printed text
 
+      @seams_sample
       Examples:
         | seconds |
         | 0       |
+
+      Examples:
+        | seconds |
         | 0.7     |
         | 1.4     |
 

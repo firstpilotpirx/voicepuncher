@@ -25,8 +25,8 @@ pub struct FileMeasures {
 }
 
 /// Measures the file at workspace-relative `path` holding `source`.
-pub fn measure_source(path: &str, source: &str) -> FileMeasures {
-    let file = syn::parse_file(source).unwrap_or_else(|e| panic!("{path}: cannot parse: {e}"));
+pub fn measure_source(path: &str, source: &str) -> Result<FileMeasures, String> {
+    let file = syn::parse_file(source).map_err(|e| format!("{path}: cannot parse: {e}"))?;
     let mut visitor = Visitor {
         source,
         scope: vec![path.to_owned()],
@@ -44,11 +44,11 @@ pub fn measure_source(path: &str, source: &str) -> FileMeasures {
     for (id, count) in std::mem::take(&mut visitor.public) {
         visitor.measures.record(Kind::PublicMembers, id, count);
     }
-    FileMeasures {
+    Ok(FileMeasures {
         measures: visitor.measures,
         code_lines: lines,
         suppressions: visitor.suppressions,
-    }
+    })
 }
 
 struct Visitor<'a> {

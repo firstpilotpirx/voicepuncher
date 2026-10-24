@@ -26,7 +26,7 @@ fn function(attrs: &str, name: &str, code: usize, noise: usize) -> String {
 }
 
 fn measure(source: &str) -> Measures {
-    measure_source(PATH, source).measures
+    measure_source(PATH, source).unwrap().measures
 }
 
 fn listed(entries: &[(&str, &str, usize)]) -> Baseline {
@@ -34,7 +34,7 @@ fn listed(entries: &[(&str, &str, usize)]) -> Baseline {
         .iter()
         .map(|(kind, id, n)| format!("[{kind}]\n\"{id}\" = {n}\n"))
         .collect();
-    parse(&text)
+    parse(&text).unwrap()
 }
 
 fn found(source: &str, baseline: &Baseline) -> String {
@@ -160,7 +160,7 @@ fn should_fail_an_attribute_without_its_entry_and_an_entry_without_its_attribute
 #[test]
 fn should_report_a_budget_lint_silenced_outside_the_baseline() {
     let source = "#[allow(clippy::too_many_arguments)]\nfn f() {}\n#[allow(clippy::needless_return)]\nfn g() {}\n";
-    let suppressions = measure_source(PATH, source).suppressions;
+    let suppressions = measure_source(PATH, source).unwrap().suppressions;
     assert_eq!(
         suppressions,
         vec![format!("{PATH}: clippy::too_many_arguments")]

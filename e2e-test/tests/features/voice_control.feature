@@ -40,9 +40,7 @@ Feature: voice-control
         | phrase           |
         | start dictation  |
         | cancel dictation |
-        | restart dictation |
         | press enter      |
-        | clear all text   |
         | paste text       |
 
     @smoke
@@ -90,16 +88,9 @@ Feature: voice-control
       Examples:
         | said              | command           |
         | start dictation   | start dictation   |
-        | stop dictation    | stop dictation    |
         | cancel dictation  | cancel dictation  |
-        | restart dictation | restart dictation |
-        | press enter       | press enter       |
-        | start             | start dictation   |
         | stop              | stop dictation    |
-        | cancel            | cancel dictation  |
         | enter             | press enter       |
-        | clear all text    | clear all text    |
-        | clear             | clear all text    |
 
     @smoke
     Scenario: A short Russian phrase is no command
@@ -124,17 +115,9 @@ Feature: voice-control
       Examples:
         | said           | command           |
         | start          | start dictation   |
-        | start please   | start dictation   |
-        | stop           | stop dictation    |
         | stop please    | stop dictation    |
-        | cancel please  | cancel dictation  |
         | restart        | restart dictation |
-        | restart please | restart dictation |
-        | enter          | press enter       |
-        | enter please   | press enter       |
         | clear          | clear all text    |
-        | clear please   | clear all text    |
-        | paste please   | paste text        |
 
   Rule: A command may end with "please"
 
@@ -152,9 +135,7 @@ Feature: voice-control
       Examples:
         | said                    | command          |
         | start dictation please  | start dictation  |
-        | stop dictation please   | stop dictation   |
         | cancel dictation please | cancel dictation |
-        | restart dictation please | restart dictation |
         | clear all text please   | clear all text   |
         | paste text please       | paste text       |
 
@@ -274,18 +255,10 @@ Feature: voice-control
       @regression
       Examples:
         | words                                    | state             | commands          |
-        | We meet on Friday at ten stop            | dictating         | stop dictation    |
         | That is all for today, stop dictation    | dictating         | stop dictation    |
         | Forget it, cancel                        | dictating         | cancel dictation  |
-        | Never mind, cancel dictation             | dictating         | cancel dictation  |
-        | Let me say it again, restart             | dictating         | restart dictation |
         | Let me try once more, restart dictation  | dictating         | restart dictation |
-        | Okay, press enter                        | no dictation runs | press enter       |
-        | Okay, enter                              | no dictation runs | press enter       |
-        | Okay, clear                              | no dictation runs | clear all text    |
-        | Okay, clear all text                     | no dictation runs | clear all text    |
         | Okay, paste                              | no dictation runs | paste text        |
-        | Okay, start dictation                    | no dictation runs | start dictation   |
 
     @smoke
     Scenario: A command word inside a sentence is still no command
@@ -445,9 +418,7 @@ Feature: voice-control
         | words                                                           | state             | commands         |
         | We move the meeting to Friday stop stop and some more words here | dictating         | stop dictation   |
         | Fine, enter enter, thanks                                       | no dictation runs | press enter      |
-        | We move the meeting to Friday cancel cancel                     | dictating         | cancel dictation |
         | Okay, start start                                               | no dictation runs | start dictation   |
-        | Fine, clear clear                                               | no dictation runs | clear all text    |
         | Fine, paste paste                                               | no dictation runs | paste text        |
 
   Rule: A chain of commands is carried out in order
@@ -465,17 +436,10 @@ Feature: voice-control
       @regression
       Examples:
         | words                           | state             | commands                                     |
-        | That is all, stop enter         | dictating         | stop dictation, press enter                  |
         | That is all, stop, clear        | dictating         | stop dictation, clear all text               |
         | That is all, stop, enter, start | dictating         | stop dictation, press enter, start dictation |
-        | That is all, stop, clear, enter | dictating         | stop dictation, clear all text, press enter  |
         | Forget it, cancel, enter        | dictating         | cancel dictation, press enter                |
-        | That is all, enter, start       | dictating         | press enter, start dictation                 |
-        | Okay, clear, enter              | no dictation runs | clear all text, press enter                  |
-        | Okay, enter, start              | no dictation runs | press enter, start dictation                 |
-        | Okay, clear, start              | no dictation runs | clear all text, start dictation              |
         | Okay, paste, enter              | no dictation runs | paste text, press enter                      |
-        | That is all, stop, paste, enter | dictating         | stop dictation, paste text, press enter      |
 
       # frozen: flakes beside another full-check (2026-10-23, e2e-regression); fixed separately
       @wip

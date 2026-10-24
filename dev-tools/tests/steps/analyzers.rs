@@ -29,7 +29,7 @@ fn clippy_configuration(world: &mut WorkflowWorld) {
 
 #[given("the size check of the workspace")]
 fn size_check(world: &mut WorkflowWorld) {
-    world.text = repo_file("app/tests/it/size_budgets/budget.rs");
+    world.text = repo_file("analyzers/src/size/budget.rs");
 }
 
 #[given("the size baseline")]

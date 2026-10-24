@@ -86,6 +86,73 @@ Feature: change-workflow
       Then every function it lists is over cyclomatic complexity 10
       And it lists the duplicated lines with their count
 
+  Rule: A fast static check fails before any test runs
+
+    Scenario: A function over budget fails the static check without a test
+      Given a scratch workspace with a function of 41 code lines that the size baseline does not list
+      When the size analyzer runs there
+      Then it fails naming the function and its length
+      And no test binary holds the size check
+
+    Scenario: A new complex function in a changed file fails the static check
+      Given a scratch repository whose branch adds a function of cyclomatic complexity 12 that the metrics baseline does not list
+      When the metrics of the changed files run there
+      Then it fails naming the function and its complexity
+
+    Scenario: A compile error fails the static check
+      Given a scratch crate with a source file that does not compile
+      When the static recipe runs there
+      Then it fails naming the compile error
+      And the size and changed-metrics analyzers do not run
+
+    Scenario: The test recipe stops at the static check
+      Given a scratch repository whose static stage fails
+      When the stage runner runs the stages of the test recipe there
+      Then the run fails in its static stage
+      And its test stage does not run
+
+    Scenario: A clean tree passes the static check in seconds
+      Given the justfile
+      Then the static recipe checks formatting, compiles with clippy, then runs the size and changed-metrics analyzers
+      And the static recipe stops at the first check that fails
+      And the static recipe builds and runs no test
+      And the size and changed-metrics analyzers pass on the repository within 10 seconds
+
+  Rule: The full check runs only the stages an edit can affect
+
+    Scenario: An overlay change skips the seams, outages and start cues
+      Given main passed the full check
+      And a branch that changes only the overlay's drawing code
+      When the full check computes its stage keys on the branch
+      Then the chunk seams, outages and start cue stages are reused from main's pass
+
+    Scenario: A change to the chunking code runs the seams stage
+      Given main passed the full check
+      And a branch that changes how a dictation is cut into chunks
+      When the full check computes its stage keys on the branch
+      Then the chunk seams stage runs
+
+    Scenario: A file no stage names runs every stage
+      Given main passed the full check
+      And a branch that adds a source file no stage's inputs name
+      When the full check computes its stage keys on the branch
+      Then every model stage runs
+
+  Rule: The chunk seams stage runs a sample unless the chunking code changed
+
+    Scenario: A branch outside the chunking code runs the seam sample
+      Given main passed the full check
+      And a branch that changes the voice control code but not the chunking code
+      When the full check chooses its chunk seams stage on the branch
+      Then it prints that it runs the seam sample
+      And the seam sample runs only the sample's cases
+
+    Scenario: A branch that changes the chunking code runs the whole matrix
+      Given main passed the full check
+      And a branch that changes how a dictation is cut into chunks
+      When the full check chooses its chunk seams stage on the branch
+      Then it prints that it runs the whole seam matrix
+
   Rule: Every pull request has a hosted check
 
     Scenario: A clean pull request turns the check green

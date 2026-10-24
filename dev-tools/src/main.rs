@@ -17,6 +17,7 @@ mod locks;
 mod named;
 mod passes;
 mod process;
+mod seams;
 mod services;
 mod stages;
 
@@ -28,7 +29,7 @@ pub type Outcome = Result<u8, String>;
 type Command = fn(&[String]) -> Outcome;
 
 /// Every command, by the name a recipe calls it with.
-const COMMANDS: [(&str, Command); 24] = [
+const COMMANDS: [(&str, Command); 25] = [
     ("stages", stages::command),
     ("model-stages", |stages| Ok(stages::model::command(stages))),
     ("test-stage", stages::test::command),
@@ -41,6 +42,7 @@ const COMMANDS: [(&str, Command); 24] = [
     ("require-lock", locks::require_command),
     ("accuracy-stage", accuracy::command),
     ("accuracy-baseline", accuracy_baseline::command),
+    ("seams-stage", seams::command),
     ("filter", filters::command),
     ("gated-filter", filters::gated_command),
     ("keys", keys::command),

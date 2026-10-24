@@ -12,7 +12,7 @@ The proposal's measurements: `just test` fails late (58 % of its failures are si
 
 ### 1. `just static`: four checks, one recipe, first stage of `test`
 
-`_static` runs, under `set -euo pipefail`, in this order, each announced with `● <name>`:
+`_static` runs, under `set -euo pipefail`, in this order, fmt and clippy announced with `● <name>`, the analyzers printing their own `✓`/`✗` line:
 
 1. `cargo fmt --all -- --check` (0.7 s);
 2. `cargo clippy --workspace --all-targets -- -D warnings` (≈ 4 s after a one-file edit; checks test code without building a test binary, and holds the function budgets through `clippy.toml`);
@@ -85,11 +85,11 @@ The sample:
 - the seam sweep (`chunked_transcription`): lead-in 0 only — 10 of its 30 cases — when `VOICEPUNCHER_SEAM_SAMPLE=1`, which `_e2e-seams-sample` exports;
 - the `@seams` scenarios: their Examples split into a block tagged `@seams_sample` and the rest; the nextest profile `e2e-seams-sample` runs `@seams and @seams_sample and not @wip`. The sample rows: difficult conditions — Russian spoken fast, Russian with high background noise, English with pauses between sentences, English through a phone-quality line (4 of 20); pauses — Russian with pauses between words, English with pauses between sentences (2 of 4); lead-ins — 0 s (1 of 3).
 
-Estimated: 252 s → about 90 s. The sample keeps both languages, both pause kinds and a lead-in.
+Estimated: 324 s (the stage's median, proposal) → about 110 s. The sample keeps both languages, both pause kinds and a lead-in.
 
 ### 7. Fewer example rows
 
-Only the `@regression` rows of `voice_control.feature` (72 rows, run only by `full-check`) are cut: per outline, keep one row per command and drop the rows that differ only in a spoken form the `voice_forms` integration test already checks against the command spotting service, or only in the words around a command. Target: at most 4 regression rows per outline (72 → about 30). `@smoke` rows (2–3 per command) and every `@voice_samples` row stay. `spec_mirror` and the `feature-lint` keep every requirement covered. Gain ≈ 15 s; the larger savings are decisions 5 and 6.
+Only the `@regression` rows of `voice_control.feature` (72 rows, run only by `full-check`) are cut: per outline, keep at most one row per command, preferring the commands the outline's `@smoke` rows miss, and drop the rows that differ only in a spoken form the `voice_forms` integration test already checks against the command spotting service, or only in the words around a command. At most 4 regression rows per outline (72 → 36); every command keeps rows in other outlines and in the `@smoke` rows. `@smoke` rows (2–3 per command) and every `@voice_samples` row stay. `spec_mirror` and the `feature-lint` keep every requirement covered. Gain ≈ 15 s; the larger savings are decisions 5 and 6.
 
 ### Expected `full-check` (warm caches, no recognition-path change)
 
@@ -112,7 +112,7 @@ One branch; `just size-baseline` and `just analyzers-baseline` keep their names.
 
 ## Test mapping
 
-All in `dev-tools/tests/features/change_workflow.feature` (slice, harness `dev-tools/tests/cucumber_workflow.rs`), steps in `dev-tools/tests/steps/analyzers.rs` and `dev-tools/tests/steps/stage_choice.rs`.
+All in `dev-tools/tests/features/change_workflow.feature` (slice, harness `dev-tools/tests/cucumber_workflow.rs`), steps in `dev-tools/tests/steps/analyzers.rs` and `dev-tools/tests/steps/test_loop/` (`static_check.rs`, `stage_choice.rs`, `seam_sample.rs`).
 
 | Scenario | Test |
 |---|---|
@@ -120,7 +120,7 @@ All in `dev-tools/tests/features/change_workflow.feature` (slice, harness `dev-t
 | A compile error fails the static check (change-workflow) | slice `change_workflow.feature` `A compile error fails the static check` |
 | A new complex function in a changed file fails the static check (change-workflow) | slice `change_workflow.feature` `A new complex function in a changed file fails the static check` |
 | The test recipe stops at the static check (change-workflow) | slice `change_workflow.feature` `The test recipe stops at the static check` |
-| A clean tree passes the static check in seconds (change-workflow) | slice `change_workflow.feature` `A clean tree passes the static check in seconds` |
+| A clean tree passes the static check in seconds (change-workflow; the whole `just static` is timed by task 7.4 from the stage journal) | slice `change_workflow.feature` `A clean tree passes the static check in seconds` |
 | An overlay change skips the seams, outages and start cues (change-workflow) | slice `change_workflow.feature` `An overlay change skips the seams, outages and start cues` |
 | A change to the chunking code runs the seams stage (change-workflow) | slice `change_workflow.feature` `A change to the chunking code runs the seams stage` |
 | A file no stage names runs every stage (change-workflow) | slice `change_workflow.feature` `A file no stage names runs every stage` |

@@ -25,6 +25,16 @@ const CONDITIONS: [Condition; 5] = [
     Condition::WordPauses,
 ];
 const LEAD_INS_SECS: [f32; 3] = [0.0, 0.7, 1.4];
+
+/// The lead-ins of the sweep: lead-in 0 alone in the seam sample (`VOICEPUNCHER_SEAM_SAMPLE=1`, the
+/// `e2e-seams-sample` stage), all three in the whole matrix.
+fn lead_ins() -> &'static [f32] {
+    if std::env::var("VOICEPUNCHER_SEAM_SAMPLE").as_deref() == Ok("1") {
+        &LEAD_INS_SECS[..1]
+    } else {
+        &LEAD_INS_SECS
+    }
+}
 const MAX_LOST_BY_MERGE_SHARE: f64 = 0.02;
 const MAX_DROPPED_PHRASE_WORDS: usize = 5;
 
@@ -51,7 +61,7 @@ mod needs_stt {
         let mut cases = 0;
         for lang in Lang::ALL {
             for condition in CONDITIONS {
-                for lead_in in LEAD_INS_SECS {
+                for &lead_in in lead_ins() {
                     cases += 1;
                     let speech = AudioBuffer16k::new(synthesize(lang, condition, lead_in).unwrap());
                     // When

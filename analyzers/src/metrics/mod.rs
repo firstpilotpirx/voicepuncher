@@ -1,12 +1,14 @@
 //! `metrics`: complexity per function (rust-code-analysis), the module graph and the duplicated lines (jscpd),
 //! printed as a report and ratcheted per function over the cyclomatic threshold, per cycle, per crate's `unsafe`.
 
+mod changed;
 mod duplicates;
 mod functions;
 mod modules;
 mod report;
 
 use crate::baseline::Counts;
+pub use changed::run as run_changed;
 use functions::Function;
 use serde::Deserialize;
 use std::path::Path;
@@ -52,16 +54,7 @@ fn counts(
     graph: &modules::Graph,
     duplicates: &duplicates::Duplicates,
 ) -> Counts {
-    let mut counts = Counts::new();
-    for f in functions
-        .iter()
-        .filter(|f| f.cyclomatic > config.cyclomatic_threshold)
-    {
-        let entry = counts
-            .entry(format!("cyclomatic {}::{}", f.file, f.name))
-            .or_default();
-        *entry = (*entry).max(f.cyclomatic);
-    }
+    let mut counts = cyclomatic_counts(config, functions);
     for cycle in &graph.cycles {
         counts.insert(format!("cycle {}", cycle.join(" ")), 1);
     }
@@ -74,11 +67,27 @@ fn counts(
     counts
 }
 
-fn analyze(members: &[String]) -> Result<Vec<Function>, String> {
+/// The functions over the cyclomatic threshold, keyed `cyclomatic <file>::<name>`, the worst of a name's.
+fn cyclomatic_counts(config: &Config, functions: &[Function]) -> Counts {
+    let mut counts = Counts::new();
+    for f in functions
+        .iter()
+        .filter(|f| f.cyclomatic > config.cyclomatic_threshold)
+    {
+        let entry = counts
+            .entry(format!("cyclomatic {}::{}", f.file, f.name))
+            .or_default();
+        *entry = (*entry).max(f.cyclomatic);
+    }
+    counts
+}
+
+/// The functions of the given folders or files, measured by `rust-code-analysis-cli`.
+fn analyze(paths: &[String]) -> Result<Vec<Function>, String> {
     let mut command = Command::new("rust-code-analysis-cli");
     command.args(["-m", "-O", "json"]);
-    for member in members {
-        command.args(["-p", member]);
+    for path in paths {
+        command.args(["-p", path]);
     }
     let out = command
         .output()

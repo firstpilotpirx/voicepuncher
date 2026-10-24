@@ -13,9 +13,11 @@ const HEADER: &str = "\
 # have no measure here (0), clippy alone measures them.
 ";
 
-/// Reads a baseline from its TOML text; panics with the reason when the text is malformed.
-pub fn parse(text: &str) -> Baseline {
-    let table: toml::Table = text.parse().expect("size baseline: not TOML");
+/// Reads a baseline from its TOML text, or the reason it is malformed.
+pub fn parse(text: &str) -> Result<Baseline, String> {
+    let table: toml::Table = text
+        .parse()
+        .map_err(|e| format!("size baseline: not TOML: {e}"))?;
     let mut baseline = Baseline::new();
     for kind in Kind::ALL {
         let Some(units) = table.get(kind.key()) else {
@@ -23,18 +25,16 @@ pub fn parse(text: &str) -> Baseline {
         };
         let units = units
             .as_table()
-            .expect("size baseline: a kind is not a table");
+            .ok_or_else(|| format!("size baseline: [{}] is not a table", kind.key()))?;
         for (id, measure) in units {
             let measure = measure
                 .as_integer()
-                .expect("size baseline: a measure is not an integer");
-            baseline.insert(
-                (kind, id.clone()),
-                usize::try_from(measure).expect("negative measure"),
-            );
+                .and_then(|m| usize::try_from(m).ok())
+                .ok_or_else(|| format!("size baseline: {id} has no measure of zero or more"))?;
+            baseline.insert((kind, id.clone()), measure);
         }
     }
-    baseline
+    Ok(baseline)
 }
 
 /// The baseline the code holds now: every measured unit over budget and every size-baseline attribute.

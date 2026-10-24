@@ -8,7 +8,7 @@ publish = false
 [lints]
 workspace = true
 
-# The size_budgets test measures every member's source, so its part key (justfile _stage-keys) covers them all
+# The architecture, docs and spec-mirror tests read every member's source, so its part key (dev-tools keys) covers them all
 [package.metadata.stage-keys]
 tests-read-every-member = true
 
