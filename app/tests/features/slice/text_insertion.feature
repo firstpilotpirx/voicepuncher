@@ -1,7 +1,8 @@
 # The pipeline runs on its own thread with stand-ins: the recorder records one second, the
 # speech recognition service answers a fixed transcript, the focus is scripted, and the
-# paster and overlay record what they were asked to do. The steps block while they watch the
-# pipeline, so @serial keeps other scenarios from stalling them.
+# paster and overlay record what they were asked to do. The clipboard rule runs the macOS
+# paster on a pasteboard of its own, with a paste keystroke that sends nothing. The steps
+# block while they watch the pipeline, so @serial keeps other scenarios from stalling them.
 @text_insertion @slice @serial
 Feature: text-insertion
 
@@ -97,3 +98,63 @@ Feature: text-insertion
       And a button has keyboard focus
       When a dictation finishes
       Then the text is pasted at once
+
+  Rule: The focus decision is logged while the focus wait is on
+
+    Scenario: The log names the focused element and the decision
+      Given the focus wait is on
+      And a button has keyboard focus
+      When a dictation finishes
+      Then the log names the button's kind and says the app waits for focus
+
+    Scenario: The log says the focused element lies in web content
+      Given the focus wait is on
+      And a web page has keyboard focus and no text input on it has
+      When a dictation finishes
+      Then the log names the page's kind, says it lies in web content and says the app waits for focus
+
+  Rule: The paste keeps the user's clipboard
+
+    Scenario: A screenshot copied during the recording survives the paste
+      Given the user copies a screenshot to the clipboard while a recording runs
+      When a dictation is pasted
+      Then the clipboard holds the screenshot again after the paste
+
+    Scenario: Copied text survives the paste
+      Given the clipboard holds text the user copied
+      When a dictation is pasted
+      Then the clipboard holds that text again after the paste
+
+    Scenario: An empty clipboard stays empty
+      Given the clipboard is empty
+      When a dictation is pasted
+      Then the clipboard is empty again after the paste
+
+    Scenario: Quitting right after a paste still restores the clipboard
+      Given the clipboard holds text the user copied
+      And a dictation was just pasted and its restore delay has not run out
+      When the user quits the app
+      Then the clipboard holds the user's text again before the app ends
+
+    Scenario: A copy made after the paste is not overwritten
+      Given a dictation was just pasted and its restore delay has not run out
+      When the user copies something new
+      Then the clipboard keeps the new copy after the delay
+
+    Scenario: A second dictation within the delay keeps the user's clipboard
+      Given the clipboard holds text the user copied
+      And a dictation was just pasted and its restore delay has not run out
+      When a second dictation is pasted
+      Then the clipboard holds the user's text again after the paste, not the first dictation
+
+  Rule: The transcript is pasted without filler sounds
+
+    Scenario: Filler sounds are dropped from the pasted text
+      Given speech recognition returns "Эм, давай, э-э, созвонимся завтра утром."
+      When the user dictates and the dictation is pasted
+      Then the pasted text is "давай, созвонимся завтра утром."
+
+    Scenario: The transcript reaches the paste unchanged otherwise
+      Given speech recognition returns a transcript without filler sounds
+      When the user dictates and the dictation is pasted
+      Then the pasted text equals the transcript

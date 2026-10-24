@@ -62,3 +62,12 @@ Feature: dictation-pointer
       Given listening is on and no dictation runs for the dictation sign
       When the command spotting service stays away for longer than 5 seconds
       Then the overlay shows the commands-unavailable sign and no dictation sign shows
+
+  # The real dictation sign on the main thread, against the real pointer.
+  Rule: The dictation sign follows the pointer without getting in the way
+
+    Scenario: The dictation sign stands next to the pointer and lets clicks through
+      When the dictation sign shows for a recording
+      Then it stands right of and below the pointer
+      And it moves with the pointer and keeps its place beside it
+      And it lets clicks through and takes no keyboard focus

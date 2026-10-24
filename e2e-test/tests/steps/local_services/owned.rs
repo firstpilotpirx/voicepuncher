@@ -40,6 +40,10 @@ pub struct OwnedServices {
     heard: Option<std::result::Result<Option<String>, String>>,
     /// Where the log stood when the chunk was sent.
     sent_at: usize,
+    /// The confirmation thread a scenario asks confirmations of, without a service.
+    pub(super) confirmations: Option<super::hangs::confirming::Confirmations>,
+    /// The command spotting engine a scenario drives in this process, and what it reported.
+    pub scheduling: crate::steps::voice_control::spotting_service::scheduling::SchedulingRun,
 }
 
 impl OwnedServices {

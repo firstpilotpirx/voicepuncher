@@ -9,8 +9,9 @@ use cucumber::{given, then, when};
 
 use voicepuncher::core::domain::{Permission, PermissionStatus};
 
-use crate::steps::app_runtime::run;
-use crate::IntegrationWorld;
+use crate::{steps::app_runtime::run, IntegrationWorld};
+
+pub mod window;
 
 /// Longest the log may take to show a change.
 const REACTION: Duration = Duration::from_secs(2);

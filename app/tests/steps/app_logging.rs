@@ -16,6 +16,8 @@ use voicepuncher::adapters::secondary::logging::file::{
 
 use crate::IntegrationWorld;
 
+pub(crate) mod panic;
+
 const SERVICE_UNREACHABLE_EXIT: i32 = 2;
 /// `[time LEVEL thread target] message`, the line format of a terminal.
 const LINE_FORMAT: &str = r"^\[\S+ (ERROR|WARN |INFO |DEBUG|TRACE) \S+ \S+\] \S";
@@ -120,9 +122,7 @@ impl LoggingRun {
     }
 
     fn writer(&mut self) -> &mut RotatingFileWriter {
-        self.writer
-            .as_mut()
-            .expect("a Given step opened the writer")
+        self.writer.as_mut().expect("a writer is open")
     }
 
     fn open_writer(&mut self) {

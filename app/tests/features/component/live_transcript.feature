@@ -40,3 +40,24 @@ Feature: live-transcript
       When the user ends the dictation
       Then the overlay shows the speech recognition stage without that text
       And the pasted text is the stitched text of every part
+
+  # Drawn on the real overlay on the main thread.
+  Rule: The shown text keeps the overlay at a bounded size
+
+    Scenario: A long text shows its latest words
+      Given the overlay is ready
+      When a text longer than the overlay can show arrives during the recording
+      Then the text window shows the latest words after an ellipsis and the pill keeps its size
+
+  # On the microphone recorder's buffer, whose fill decides the warning.
+  Rule: The recording-limit warning appears only at the limit
+
+    Scenario: A short live recording logs no limit warning
+      Given a live recording shorter than the recording limit
+      When its last chunk cuts the recording at its end and the recording stops
+      Then the recording does not count as cut off at its limit
+
+    Scenario: A recording that reached the limit still warns
+      Given a recording whose audio fills the recording limit
+      When the recording stops
+      Then the recording counts as cut off at its limit

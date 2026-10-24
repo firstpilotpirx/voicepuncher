@@ -640,3 +640,113 @@ Feature: voice-control
       Given the app started the command spotting service and the speech recognition service for commands as two copies each, and listening is on
       When one copy of the speech recognition service for commands is killed and the user says "press enter" right away
       Then the Return key is pressed in the focused app
+
+  Rule: The app and the command spotting service agree on a protocol version
+
+    @smoke
+    Scenario: A client of another protocol version is refused
+      Given the command spotting service is running
+      When a client opens a connection to it with another protocol version
+      Then the service closes the connection with a reason naming the version it speaks
+
+    @smoke
+    Scenario: A malformed message closes the connection with a reason
+      Given the command spotting service is running
+      When a client connected with the right protocol version sends a message that is not valid
+      Then the service closes the connection with a reason saying the message could not be read
+
+    @smoke
+    Scenario: An audio frame of partial samples closes the connection with a reason
+      Given the command spotting service is running
+      When a client connected with the right protocol version sends an audio frame whose length is not a whole number of samples
+      Then the service closes the connection with a reason saying the frame holds partial samples
+
+  Rule: A command said twice in one utterance counts once
+
+    @smoke
+    Scenario: A repeated press enter presses Return once
+      When the speech recognition service for commands hears "Press enter. Press enter." in one utterance while no dictation runs
+      Then the command spotting service reports "press enter" once
+
+  Rule: A confirmation never waits past its deadline for a copy
+
+    @smoke
+    Scenario: Every copy for commands is busy past the deadline
+      Given every copy of the speech recognition service for commands is busy for longer than a confirmation's deadline
+      When the user says "press enter" and the command spotting service asks for its confirmation
+      Then the confirmation is logged as given up and ends without waiting much past its deadline, and no copy receives it
+
+    @smoke
+    Scenario: A copy frees before the deadline
+      Given every copy of the speech recognition service for commands is busy for one more second
+      When the user says "press enter" and the command spotting service asks for its confirmation
+      Then the confirmation is sent to the copy once it frees, and "press enter" is reported
+
+  Rule: A confirmation whose copy stalls goes to another copy
+
+    @smoke
+    Scenario: One copy for commands stalls mid-command
+      Given the speech recognition service for commands runs as two copies and the copy a confirmation reaches first stops answering
+      When the user says "press enter" and the command spotting service asks for its confirmation
+      Then the other copy confirms it within the confirmation's deadline and "press enter" is reported
+
+    @smoke
+    Scenario: Every copy for commands stalls
+      Given every copy of the speech recognition service for commands stops answering
+      When the user says "press enter" and the command spotting service asks for its confirmation
+      Then it ends as given up, not as speech heard without a command
+
+  Rule: A command is carried out once however fast its confirmation comes back
+
+    @smoke
+    Scenario: A command is carried out once while confirmations come back slowly
+      Given the command spotting service listens for the commands of a dictation
+      And every confirmation of a command comes back 2 seconds late
+      When the user says "We moved the weekly meeting to Friday restart restart and the notes begin here with a few more words for everyone" to the command spotting service as it is spoken
+      Then "restart dictation" is carried out exactly once
+
+    @smoke
+    Scenario: A chain is carried out the same at any confirmation speed
+      Given the command spotting service listens for the commands of a dictation and for "start dictation"
+      When the user says "We moved the weekly meeting stop enter start and the notes begin here" once while confirmations come back at once and once while each takes 2 seconds
+      Then every run carries out "stop dictation, press enter, start dictation", in that order and each once
+
+  Rule: Every check due for a spotted "start" is asked
+
+    @smoke
+    Scenario: A second check does not replace a check still waiting
+      Given a check of a spotted "start" waits its turn
+      When the first check of an earlier spotted "start" finds no command
+      Then both the waiting check and the second check of the earlier phrase are asked
+
+  Rule: A command confirmed slowly under load is still carried out
+
+    @smoke
+    Scenario: A stop right after dictated speech under load
+      Given the command spotting service listens for the commands of a dictation
+      And every confirmation of a command takes over a second, as under machine load
+      When the user says "We meet on Friday at ten stop" to the command spotting service as it is spoken
+      Then every run carries out "stop dictation", in that order and each once
+
+    @smoke
+    Scenario: A chain of commands under load
+      Given the command spotting service listens for the commands of a dictation and for "start dictation"
+      And every confirmation of a command takes over a second, as under machine load
+      When the user says "We moved the weekly meeting stop enter start and the notes begin here" to the command spotting service as it is spoken
+      Then every run carries out "stop dictation, press enter, start dictation", in that order and each once
+
+  Rule: Every event of audio accepted before a sync is out before the sync is answered
+
+    @smoke
+    Scenario: A command whose first hearing is empty under load is reported before the sync is answered
+      Given the command spotting service listens for the commands of standby
+      And the first hearing of the speech comes back empty and late, as under machine load, and the next one right
+      When the user says "clear text please" alone and the app asks for a sync right after the speech
+      Then the command spotting service reports "clear all text" before it answers the sync
+
+    @smoke
+    Scenario: A command whose half-pause hearing is misheard is reported before the sync is answered
+      Given the command spotting service listens for the commands of standby
+      And the hearing asked before the pause after the speech ends hears "clear" as "near", and the hearing of the whole speech hears it right
+      When the user says "okay clear" alone and the app asks for a sync right after the speech
+      Then the command spotting service reports "clear all text" before it answers the sync

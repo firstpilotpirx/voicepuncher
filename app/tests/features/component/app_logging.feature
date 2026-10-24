@@ -2,8 +2,8 @@
 # nowhere: with voice control on, its first service check comes before any permission check,
 # so it stops there with exit code 2 after logging its header and the error. A terminal is
 # the pty `script` gives it. The rotation scenarios drive the log file writer with a small
-# limit instead of 10 MB. "A panic is logged" is the panic hook's unit test: a panic cannot
-# be caused in the binary from outside.
+# limit instead of 10 MB. A panic cannot be caused in the binary from outside, so the panic
+# scenario installs the app's panic hook in this process and makes one of its threads panic.
 @app_logging @component
 Feature: app-logging
 
@@ -61,3 +61,10 @@ Feature: app-logging
       Given the logs folder does not exist yet
       When the app starts in hotkey mode without a terminal
       Then the first line of the session names the version, the process id, the config path, the macOS version and the architecture
+
+  Rule: A panic is logged
+
+    Scenario: A worker thread panics
+      Given the application is running in hotkey mode
+      When one of its threads panics
+      Then the log holds a line with the panic message, the file and line, and the thread's name

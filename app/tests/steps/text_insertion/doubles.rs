@@ -6,7 +6,7 @@ use super::{
     SoundPlayer, TextPaster, Transcriber, VisualIndicator, DICTATED, PIPELINE_LAG,
 };
 
-pub(super) struct ScriptedFocus(pub(super) Arc<Mutex<Focus>>);
+pub(crate) struct ScriptedFocus(pub(crate) Arc<Mutex<Focus>>);
 
 impl FocusProbe for ScriptedFocus {
     fn focused_element(&self) -> Result<Option<FocusedElement>> {
@@ -33,7 +33,7 @@ impl FocusProbe for ScriptedFocus {
     }
 }
 
-pub(super) struct OneSecondRecorder(pub(super) Arc<Mutex<Vec<Event>>>);
+pub(crate) struct OneSecondRecorder(pub(crate) Arc<Mutex<Vec<Event>>>);
 
 impl AudioRecorder for OneSecondRecorder {
     fn start(&mut self) -> Result<()> {
@@ -57,7 +57,7 @@ impl AudioRecorder for OneSecondRecorder {
     voicepuncher::records_whole_buffers_only!();
 }
 
-pub(super) struct FixedTranscript;
+pub(crate) struct FixedTranscript;
 
 impl Transcriber for FixedTranscript {
     fn transcribe(&mut self, _audio: &AudioBuffer16k) -> Result<Option<RawTranscript>> {
@@ -65,9 +65,9 @@ impl Transcriber for FixedTranscript {
     }
 }
 
-pub(super) struct RecordingPaster(
-    pub(super) Arc<Mutex<Vec<Event>>>,
-    pub(super) Arc<Mutex<Option<Instant>>>,
+pub(crate) struct RecordingPaster(
+    pub(crate) Arc<Mutex<Vec<Event>>>,
+    pub(crate) Arc<Mutex<Option<Instant>>>,
 );
 
 impl TextPaster for RecordingPaster {
@@ -89,9 +89,9 @@ impl TextPaster for RecordingPaster {
     }
 }
 
-pub(super) struct RecordingIndicator(
-    pub(super) Arc<Mutex<Vec<Event>>>,
-    pub(super) Arc<Mutex<Option<Instant>>>,
+pub(crate) struct RecordingIndicator(
+    pub(crate) Arc<Mutex<Vec<Event>>>,
+    pub(crate) Arc<Mutex<Option<Instant>>>,
 );
 
 impl VisualIndicator for RecordingIndicator {
@@ -114,10 +114,22 @@ impl VisualIndicator for RecordingIndicator {
     voicepuncher::shows_no_voice_control_signs!();
 }
 
-pub(super) struct Silent;
+pub(crate) struct Silent;
 
 impl SoundPlayer for Silent {
     fn play_start(&self) {}
     fn play_stop(&self) {}
     fn play_cancel(&self) {}
+}
+
+pub(crate) fn is_pasted_sign(e: &Event) -> bool {
+    matches!(e, Event::PastedSignShown)
+}
+
+pub(crate) fn is_pasted(e: &Event) -> bool {
+    matches!(e, Event::Pasted(_))
+}
+
+pub(crate) fn is_left_in_clipboard(e: &Event) -> bool {
+    matches!(e, Event::LeftInClipboard(_))
 }

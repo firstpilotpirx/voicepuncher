@@ -25,7 +25,7 @@ pub struct IntegrationWorld {
     pub ptt_signals: Option<Receiver<PttSignal>>,
     pub dictation_language: Option<String>,
     pub dictation: Option<steps::speech_recognition::Dictation>,
-    pub pasted: Option<String>,
+    pub extra: steps::shared::extra::Extra,
     pub loss: Option<steps::speech_recognition::losses::LossRun>,
     pub insertion: Option<steps::text_insertion::InsertionRun>,
     pub voice: Option<steps::voice_control::VoiceRun>,

@@ -8,6 +8,11 @@ use cucumber::{given, then};
 use crate::steps::{text_insertion, voice_control};
 use crate::IntegrationWorld;
 
+pub mod limit;
+pub mod overlay;
+pub mod pointer;
+mod spinner;
+
 /// The overlay event of the sign "press enter" shows.
 const ENTER_SIGN: &str = "enter sign";
 
@@ -15,8 +20,7 @@ const ENTER_SIGN: &str = "enter sign";
 fn pasted_sign_shows(world: &mut IntegrationWorld) -> Result<()> {
     voice_control::listening_on_given(world)?;
     voice_control::records_with_hotkey(world)?;
-    voice_control::ends_on_sign(voice_control::run(world), voice_control::PASTED_SIGN)?;
-    Ok(())
+    voice_control::ends_on_sign(voice_control::run(world), voice_control::PASTED_SIGN).map(drop)
 }
 
 #[then("the overlay shows the Pasted sign with no text window, then hides")]

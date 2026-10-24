@@ -7,6 +7,8 @@ use voicepuncher_test_steps::{shared_steps, SharedSteps};
 use super::{dictation_pointer, permissions_gate, voice_control};
 use crate::IntegrationWorld;
 
+pub mod extra;
+
 shared_steps!(IntegrationWorld);
 
 #[allow(

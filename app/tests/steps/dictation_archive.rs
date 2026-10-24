@@ -12,14 +12,10 @@ use anyhow::{anyhow, bail, Context, Result};
 use cucumber::{given, then, when};
 use tempfile::TempDir;
 
-use voicepuncher::adapters::secondary::archiving::filesystem::{
-    ArchiveSetup, FileSystemDictationArchive,
-};
-use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
 use voicepuncher::core::application::{
-    AudioRecorder, ChunkingCfg, PipelineInput, SoundPlayer, TextPaster, Transcriber,
-    VisualIndicator,
+    audio_recorder::LiveChunk, AudioRecorder, ChunkingCfg, PipelineInput, SoundPlayer, TextPaster,
+    Transcriber, VisualIndicator,
 };
 use voicepuncher::core::domain::{
     AudioBuffer16k, CleanedText, CommandPlacement, FailureNotice, PttSignal, RawTranscript,
@@ -30,6 +26,7 @@ use crate::steps::quiet_voice_control::{NoKeys, QuietSpotter};
 use crate::steps::voice_control::pipeline_log;
 use crate::IntegrationWorld;
 mod doubles;
+pub(crate) mod limit;
 use doubles::{AnsweringTranscriber, NotingOverlay, NotingPaster, Silent, TakesRecorder};
 
 const PHRASE: &str = "meeting moved to friday";
@@ -146,10 +143,9 @@ impl ArchiveRun {
                 ..PipelineConfig::default()
             },
         )
-        .with_archive(Box::new(FileSystemDictationArchive::new(
+        .with_archive(Box::new(limit::archive(
             self.archive_dir()?,
             ARCHIVE_SIZE_LIMIT_BYTES,
-            archive_setup(),
         )));
         if self.voice_control {
             pipeline = pipeline.with_voice_control(Box::new(QuietSpotter), Box::new(NoKeys));
@@ -368,13 +364,6 @@ fn entry_folders(dir: &Path) -> Result<Vec<PathBuf>> {
     folders.retain(|folder| folder.join(ENTRY_FILE).is_file());
     folders.sort();
     Ok(folders)
-}
-
-fn archive_setup() -> ArchiveSetup {
-    ArchiveSetup {
-        dictation_model: DICTATION_MODEL.to_owned(),
-        app_version: env!("CARGO_PKG_VERSION").to_owned(),
-    }
 }
 
 fn joined(parts: &[AudioBuffer16k]) -> AudioBuffer16k {

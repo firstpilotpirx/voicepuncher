@@ -361,8 +361,7 @@ fn recognition_without_text_window(world: &mut IntegrationWorld) -> Result<()> {
     let events = run(world).wait_until_over()?;
     // WHY: the overlay is handed no text with the speech recognition stage, so it has none to
     // show under the pill
-    position(&events, Event::Overlay(Overlay::RecognizingSpeech))?;
-    Ok(())
+    position(&events, Event::Overlay(Overlay::RecognizingSpeech)).map(drop)
 }
 
 #[then("the overlay shows the speech recognition stage, then the wait for focus")]

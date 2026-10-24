@@ -24,6 +24,8 @@ use crate::IntegrationWorld;
 
 /// The text the speech recognition service gives the second dictation.
 const SECOND_TEXT: &str = "The second dictation reaches the text field.";
+/// The error of a request to the stopped service.
+const SERVICE_STOPPED: &str = "the speech recognition service is not running";
 /// How long a stopped dictation waits for its transcript in these scenarios.
 const STOP_WAIT: Duration = Duration::from_millis(500);
 /// How long a step waits for the pipeline to show what it expects.
@@ -34,6 +36,7 @@ const STEP_WAIT: Duration = Duration::from_secs(5);
 enum Loss {
     WorkerDies,
     NeverAnswers,
+    ServiceStopped,
 }
 
 /// What a loss scenario shares with the pipeline thread.
@@ -59,6 +62,12 @@ fn worker_dies(world: &mut IntegrationWorld) {
 #[given("the speech recognition service never answers the last chunk of a dictation")]
 fn never_answers(world: &mut IntegrationWorld) {
     world.loss = Some(LossRun { loss: Some(Loss::NeverAnswers), ..LossRun::default() });
+}
+
+#[given("the speech recognition service has stopped before a dictation ends")]
+fn service_stopped(world: &mut IntegrationWorld) {
+    crate::steps::voice_control::pipeline_log();
+    world.loss = Some(LossRun { loss: Some(Loss::ServiceStopped), ..LossRun::default() });
 }
 
 /// A pipeline over the stand-ins of `run`, on a thread of its own.
@@ -152,6 +161,16 @@ fn speech_recognition_failed(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
+#[then("the failure of the first dictation is logged")]
+fn failure_logged(_world: &mut IntegrationWorld) -> Result<()> {
+    let log = crate::steps::voice_control::pipeline_log();
+    let errors = log.errors.lock().unwrap();
+    if !errors.iter().any(|e| e.contains(SERVICE_STOPPED)) {
+        bail!("no error names the stopped service: {:?}", *errors);
+    }
+    Ok(())
+}
+
 #[then("the text of the second dictation is pasted")]
 fn second_pasted(world: &mut IntegrationWorld) -> Result<()> {
     let pasted = run(world)?.pasted.lock().unwrap().clone();
@@ -208,6 +227,7 @@ impl Transcriber for FirstDictationLost {
         if audio.samples()[0] == 0 {
             match self.loss {
                 Loss::WorkerDies => panic!("the live transcription worker dies"),
+                Loss::ServiceStopped => bail!("{SERVICE_STOPPED}"),
                 Loss::NeverAnswers => {
                     if let Some(release) = self.release.take() {
                         let _ = release.recv();

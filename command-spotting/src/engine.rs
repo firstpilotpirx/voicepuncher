@@ -23,7 +23,7 @@ mod clip;
 mod confirming;
 mod pause;
 mod queued;
-mod spotted;
+pub mod spotted;
 mod stall;
 
 use confirming::{AskedJob, EarlyRehears, HalfPauseHearing, JobContext, Rehear};

@@ -9,7 +9,7 @@ pub mod rerun;
 #[cfg(test)]
 mod tests;
 
-use crate::context::{var, Context};
+use crate::context::{harnesses_filter, is_harness, var, Context};
 use crate::process::code;
 use crate::stages::child;
 use crate::Outcome;
@@ -41,16 +41,12 @@ pub fn selection(names: &[String]) -> Result<Vec<String>, String> {
                 .map(|(binary, test)| (binary, test.trim_start()))
                 .filter(|(binary, test)| !binary.is_empty() && !test.is_empty())
                 .ok_or_else(|| format!("\"{name}\" is neither `<package>::<binary> <test>`, `scenario: <name>` nor a bare test name"))?;
-            harness |=
-                binary.ends_with("::cucumber_integration") || binary.ends_with("::cucumber_e2e");
+            harness |= is_harness(binary);
             tests.push(format!("(binary_id(={binary}) & test(={test}))"));
         }
     }
     if !scenarios.is_empty() && !harness {
-        tests.extend([
-            "binary(=cucumber_integration)".to_string(),
-            "binary(=cucumber_e2e)".into(),
-        ]);
+        tests.push(harnesses_filter());
     }
     let mut lines = Vec::new();
     if !tests.is_empty() {

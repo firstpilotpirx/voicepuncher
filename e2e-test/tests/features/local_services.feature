@@ -184,3 +184,29 @@ Feature: local-services
       When one copy stops answering without exiting
       Then within 30 seconds the app has killed that copy and started it again, and it answers on its port
       And the other copies were never restarted
+
+  @serial @resilience
+  Rule: The command spotting service answers while its confirmations are slow
+
+    Scenario: Commands are spotted after a hung confirmation
+      Given the service scripts started the command spotting service
+      And the speech recognition service for commands never answers one confirmation
+      When an app streams speech that is no command and then "press enter" to the command spotting service
+      Then the command spotting service reports "press enter"
+      And the connection answered the app throughout, and the hung confirmation is logged as given up
+
+  @smoke
+  Rule: The command spotting service does not pile up confirmations
+
+    Scenario: A command said alone is confirmed by the second attempt
+      Given the speech recognition service for commands does not answer the first confirmation in time and answers the second
+      When the confirmation of "press enter" said alone is asked
+      Then the command spotting service reports "press enter"
+
+  @smoke
+  Rule: Confirmations waiting in the command spotting service are bounded
+
+    Scenario: A slow confirmation thread keeps every confirmation
+      Given the speech recognition service for commands answers every confirmation, late
+      When more confirmations than the bound are asked on one thread at once
+      Then every one of them is answered with what was heard

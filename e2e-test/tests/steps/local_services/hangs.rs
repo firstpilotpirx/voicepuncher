@@ -2,6 +2,8 @@
 //! scripts restart a command spotting service that stops answering its health check, and
 //! leave one that is merely slow alone.
 
+pub(super) mod confirming;
+
 use std::io::Read;
 use std::net::TcpListener;
 use std::time::{Duration, Instant};

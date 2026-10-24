@@ -1,8 +1,7 @@
 //! Voice control end to end: phrases spoken by `say` go through the real command spotting
 //! service and the app's recognizer; the app binary refuses to start without the service.
 
-use std::net::TcpListener;
-use std::process::Command;
+use std::{net::TcpListener, process::Command};
 
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
@@ -23,6 +22,7 @@ mod copies;
 pub(crate) mod hands_free;
 pub(crate) mod outages;
 pub(crate) mod session;
+pub(crate) mod spotting_service;
 
 pub use session::HandsFreeSession;
 

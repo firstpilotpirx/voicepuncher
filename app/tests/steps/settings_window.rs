@@ -3,6 +3,7 @@
 //! runtime, as the menu bar applies them.
 
 mod files;
+pub mod panels;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -23,8 +24,7 @@ use voicepuncher::config::Config;
 use voicepuncher::core::application::InputDevices;
 use voicepuncher::core::domain::HotKey;
 
-use crate::steps::app_runtime;
-use crate::IntegrationWorld;
+use crate::{steps::app_runtime, IntegrationWorld};
 
 const FIRST_HOTKEY: HotKey = HotKey::RightOption;
 const SECOND_HOTKEY: HotKey = HotKey::F19;

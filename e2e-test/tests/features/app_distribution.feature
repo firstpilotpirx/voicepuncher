@@ -98,7 +98,7 @@ Feature: app-distribution
       Then there is one folder for the speech recognition engine and one for the command spotting service
       And each holds its program and a version file
 
-  Rule: The engines are pinned
+  Rule: The engines are pinned to Homebrew and this workspace
 
     Scenario: A different Homebrew version is refused
       Given an engine lock that names a Homebrew formula version that is not installed
@@ -131,7 +131,7 @@ Feature: app-distribution
       When the signature of every bundled program and library is read
       Then each verifies and names the same signer as the application
 
-  Rule: The bundled engines use the GPU
+  Rule: The bundled speech recognition engine uses the GPU
 
     # The e2e-bundle stage of full-check, under the machine-wide lock: the bundle's own engines on the models
     @bundle_engines

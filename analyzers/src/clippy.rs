@@ -95,7 +95,7 @@ pub fn count(json_lines: &str, config: &Config) -> Counts {
         }
         places.insert((
             code.code.clone(),
-            span.file_name.clone(),
+            normalized(&span.file_name),
             span.line_start,
             span.column_start,
         ));
@@ -105,6 +105,22 @@ pub fn count(json_lines: &str, config: &Config) -> Counts {
         *counts.entry(format!("{lint} {file}")).or_default() += 1;
     }
     counts
+}
+
+/// `file` without its `.` and `dir/..` steps: a file another crate reaches by a `#[path]`
+/// module counts at its own place.
+fn normalized(file: &str) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for part in file.split('/') {
+        match part {
+            "." => {}
+            ".." if parts.last().is_some_and(|p| *p != "..") => {
+                parts.pop();
+            }
+            _ => parts.push(part),
+        }
+    }
+    parts.join("/")
 }
 
 fn exempt(config: &Config, lint: &str, file: &str) -> bool {
@@ -152,6 +168,15 @@ mod tests {
         let one = warning("clippy::use_self", "app/src/b.rs", 3);
         let counts = count(&format!("{one}\n{one}"), &config());
         assert_eq!(counts.get("clippy::use_self app/src/b.rs"), Some(&1));
+    }
+
+    #[test]
+    fn should_count_a_file_another_crate_reaches_by_path_at_its_own_place() {
+        let own = warning("clippy::use_self", "b/tests/c.rs", 3);
+        let reached = warning("clippy::use_self", "e/tests/x/../../../b/tests/./c.rs", 3);
+        let counts = count(&format!("{own}\n{reached}"), &config());
+        assert_eq!(counts.len(), 1);
+        assert_eq!(counts.get("clippy::use_self b/tests/c.rs"), Some(&1));
     }
 
     #[test]

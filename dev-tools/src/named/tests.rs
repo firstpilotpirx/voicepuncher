@@ -36,7 +36,7 @@ fn should_select_the_harnesses_each_running_only_the_named_scenario() {
     assert_eq!(
         selection(&names(&["scenario: A paste lands"])).unwrap(),
         [
-            "filter binary(=cucumber_integration) | binary(=cucumber_e2e)",
+            "filter binary(=cucumber_integration) | binary(=cucumber_e2e) | binary(=cucumber_workflow)",
             "scenario A paste lands",
             "name scenario: A paste lands"
         ]

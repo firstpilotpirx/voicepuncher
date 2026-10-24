@@ -4,6 +4,7 @@
 
 mod doubles;
 mod failed_confirmation;
+pub mod listening;
 mod speech_after_start;
 mod start_timing;
 
@@ -602,10 +603,9 @@ fn listening_on(world: &mut IntegrationWorld) -> Result<()> {
 
 #[then(expr = "saying {string} presses Return")]
 fn saying_presses_return(world: &mut IntegrationWorld, phrase: String) -> Result<()> {
-    let run = run(world);
-    run.start_when();
-    run.say_alone(&phrase)?;
-    run.wait_since_mark(|e| *e == Event::ReturnPressed)
+    run(world).start_when();
+    run(world).say_alone(&phrase)?;
+    run(world).wait_since_mark(|e| *e == Event::ReturnPressed)
 }
 
 #[then("the overlay is hidden")]

@@ -469,3 +469,33 @@ Feature: voice-control
       And no dictation runs
       When the user presses the hotkey once
       Then the log shows no voice start timing line
+
+  Rule: Listening comes back when the microphone stalls
+
+    Scenario: A microphone that stops delivering audio is opened again
+      Given listening is on and the microphone delivered audio
+      When the microphone stops delivering audio without reporting an error
+      Then within 3 seconds the app logs that the microphone stalled and opens it again
+      And the audio of the reopened microphone reaches the command spotting service
+
+    Scenario: A microphone that reports an error is opened again
+      Given listening is on with a microphone that is never judged stalled
+      When the microphone reports an error
+      Then the app opens it again
+
+    Scenario: A microphone that cannot be opened again is retried
+      Given the microphone stalled, and opening it fails twice and then succeeds
+      When the app tries to open the microphone again
+      Then the app keeps trying every second until it is open, logging the failure once
+
+    Scenario: The silent time keeps the capture times
+      Given the microphone was silent until it was opened again
+      When the reopened microphone delivers audio
+      Then that audio is streamed after silence, so its time in the stream is its capture time
+
+  Rule: Audio the command spotting service cannot keep up with is dropped and reported
+
+    Scenario: The app connects again after audio was dropped
+      Given listening is on with a command spotting service that will drop audio
+      When the command spotting service reports dropped audio
+      Then the service is counted as lost and the app reaches for it again

@@ -298,8 +298,7 @@ fn show_recognition_notice(run: &mut NoticesRun) -> Result<()> {
     run.start_hotkey_dictation()?;
     run.mark_stop();
     run.press_hotkey()?;
-    shown_notice(run)?;
-    Ok(())
+    shown_notice(run).map(drop)
 }
 
 #[given("speech recognition is not running")]

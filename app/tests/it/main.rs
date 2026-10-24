@@ -31,6 +31,7 @@ mod recording_filesystem;
 mod runtime_signal;
 mod size_budgets;
 mod soundplaying_macos;
+mod spec_mirror;
 mod test_layout;
 mod textpasting_macos;
 mod textpasting_stdio;

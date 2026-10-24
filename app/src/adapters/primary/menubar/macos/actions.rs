@@ -101,6 +101,8 @@ pub struct MacosMenuActions {
     open_permissions: Box<dyn Fn()>,
     open_download_models: Box<dyn Fn()>,
     services: Option<std::sync::Arc<dyn ServicesView>>,
+    /// Shows a folder in the file browser; false when it could not be shown.
+    show_folder: Box<dyn Fn(&Path) -> bool>,
 }
 
 impl MacosMenuActions {
@@ -129,6 +131,7 @@ impl MacosMenuActions {
             open_permissions: Box::new(|| log::warn!("menu: no Permissions window")),
             open_download_models: Box::new(|| log::warn!("menu: no Download window")),
             services: None,
+            show_folder: Box::new(show_in_file_browser),
         }
     }
 
@@ -147,6 +150,12 @@ impl MacosMenuActions {
     /// Permissions… calls `open`.
     pub fn with_permissions_window(mut self, open: Box<dyn Fn()>) -> Self {
         self.open_permissions = open;
+        self
+    }
+
+    /// Open Logs Folder shows the folder with `show` instead of the system's file browser.
+    pub fn with_file_browser(mut self, show: Box<dyn Fn(&Path) -> bool>) -> Self {
+        self.show_folder = show;
         self
     }
 }
@@ -173,8 +182,13 @@ impl MenuActions for MacosMenuActions {
         (self.open_download_models)();
     }
 
+    /// Creates the logs folder when it does not exist yet, then shows it.
     fn open_logs(&self) {
-        if !show_in_file_browser(&self.logs_dir) {
+        if let Err(e) = ensure_folder(&self.logs_dir) {
+            log::warn!("menu: cannot create {}: {e}", self.logs_dir.display());
+            return;
+        }
+        if !(self.show_folder)(&self.logs_dir) {
             log::warn!("menu: logs folder {} not shown", self.logs_dir.display());
         }
     }

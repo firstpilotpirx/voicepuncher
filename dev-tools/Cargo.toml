@@ -10,6 +10,11 @@ publish = false
 name = "dev-tools"
 path = "src/main.rs"
 
+# The Gherkin harness of the change-workflow capability (harness = false: cucumber reads the command line)
+[[test]]
+name = "cucumber_workflow"
+harness = false
+
 [lints]
 workspace = true
 
@@ -23,4 +28,6 @@ signal-hook = "=0.4.5"
 tempfile = "=3.27.0"
 
 [dev-dependencies]
+cucumber = "=0.23.0"
+futures = "=0.3.34"
 voicepuncher-test-steps = { path = "../test-steps" }

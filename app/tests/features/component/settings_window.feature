@@ -134,3 +134,75 @@ Feature: settings-window
       When the user opens the settings
       Then the tabs are General, Dictation, Sounds, Paste, Archive, Logging and Services
       And no control names text refinement
+
+  Rule: A first launch creates the configuration file with the defaults
+
+    Scenario: A first launch writes the default file
+      Given no configuration file exists
+      When the app starts over that configuration file
+      Then the configuration file exists with the default file's text
+      And the log says the file was created with the defaults
+
+    Scenario: The default file holds the defaults
+      When the default file is read as a configuration
+      Then it equals the configuration of an empty file
+
+    Scenario: The default file names every option
+      When the options of the default file are compared with the options the configuration accepts
+      Then every option the settings window shows is set in the default file, with a comment above it
+
+    Scenario: An existing file is kept
+      Given a configuration file with comments above and beside its options
+      When the app starts over that configuration file
+      Then the configuration file is unchanged
+
+  # The window is built with AppKit on the main thread; @serial keeps other scenarios from it.
+  @serial
+  Rule: Settings say what dictation and voice control wait for
+
+    Scenario: Voice control on while Accessibility is missing
+      Given voice control is switched on in the configuration file
+      And the runtime is waiting for Accessibility
+      When the user opens the General tab of the settings
+      Then a line under the voice control switch names Accessibility and says dictation and voice control start once it is granted
+
+    Scenario: No line once every permission is granted
+      Given the runtime waited for Accessibility and is Ready now
+      When the user opens the General tab of the settings
+      Then no waiting line is shown under the voice control switch
+
+  @serial
+  Rule: Sounds can be heard before saving
+
+    Scenario: Previewing a sound
+      Given the configuration file sets the hotkey to the right Command key
+      When the user picks a system sound for the stop sound and presses its play button
+      Then that sound plays
+      And the configuration file is unchanged
+
+  @serial
+  Rule: The Services tab holds the models and the services
+
+    Scenario: The Services tab shows the models
+      Given every needed model file is in the models folder
+      When the user opens the Services tab
+      Then it shows the models folder and reads that every model is present
+      And it offers Download models… and Show in Finder
+
+    Scenario: A new models folder is checked
+      Given the runtime is Ready with every model present
+      When the user picks an empty models folder in the Services tab and saves
+      Then the runtime waits for models and the Download window lists the files as Missing
+
+  Rule: The chosen microphone records
+
+    Scenario: A named microphone records
+      Given the configuration names a connected input device that is not the system default
+      When the recording opens its input device
+      Then the recording comes from the named device
+
+    Scenario: A named microphone that is not connected
+      Given the configuration names an input device that is not connected
+      When the recording opens its input device
+      Then the recording comes from the system default device
+      And the log names the missing device

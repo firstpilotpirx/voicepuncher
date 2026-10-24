@@ -35,6 +35,7 @@ use crate::IntegrationWorld;
 mod doubles;
 mod failures;
 pub(crate) mod models;
+pub(crate) mod reloads;
 mod services;
 use doubles::{
     FakeKeyboard, NoticeOverlay, Permissions, RecordingObserver, ScriptedFocus, StandInPaster,
@@ -178,7 +179,6 @@ impl RuntimeRun {
             runtime = runtime.with_models(models.gate());
         }
         runtime.observe(Box::new(RecordingObserver(Arc::clone(&self.events))));
-        let mut runtime = runtime;
         self.started = Some(runtime.start(self.config.clone()));
         self.runtime = Some(runtime);
     }

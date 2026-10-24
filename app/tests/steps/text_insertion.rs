@@ -21,12 +21,16 @@ use voicepuncher::core::domain::{
 };
 
 use crate::IntegrationWorld;
-mod doubles;
+pub(crate) mod clipboard;
+pub(crate) mod doubles;
+pub(crate) mod filler_sounds;
+mod focus_log;
 use doubles::{
-    FixedTranscript, OneSecondRecorder, RecordingIndicator, RecordingPaster, ScriptedFocus, Silent,
+    is_left_in_clipboard, is_pasted, is_pasted_sign, FixedTranscript, OneSecondRecorder,
+    RecordingIndicator, RecordingPaster, ScriptedFocus, Silent,
 };
 
-const DICTATED: &str = "Meeting moved to Friday.";
+pub(crate) const DICTATED: &str = "Meeting moved to Friday.";
 const WAIT_TIME: Duration = Duration::from_secs(3);
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 /// Longest a pipeline reaction may take in these scenarios.
@@ -39,7 +43,7 @@ const SETTLE: Duration = Duration::from_millis(300);
 const PIPELINE_LAG: Duration = Duration::from_millis(50);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Event {
+pub(crate) enum Event {
     RecordingStarted,
     WaitingShown,
     PastedSignShown,
@@ -50,7 +54,7 @@ enum Event {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum Focus {
+pub(crate) enum Focus {
     TextField,
     Button,
     WebPage,
@@ -195,18 +199,6 @@ pub(crate) fn hidden_without_pasted_sign(world: &mut IntegrationWorld) -> Result
         bail!("the overlay showed the Pasted sign: {:?}", run.events());
     }
     Ok(())
-}
-
-fn is_pasted_sign(e: &Event) -> bool {
-    matches!(e, Event::PastedSignShown)
-}
-
-fn is_pasted(e: &Event) -> bool {
-    matches!(e, Event::Pasted(_))
-}
-
-fn is_left_in_clipboard(e: &Event) -> bool {
-    matches!(e, Event::LeftInClipboard(_))
 }
 
 #[given("a text field has keyboard focus")]

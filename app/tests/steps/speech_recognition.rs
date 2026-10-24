@@ -22,8 +22,10 @@ use voicepuncher_e2e_test::speech::repeated_phrases;
 
 use crate::IntegrationWorld;
 
+pub mod client;
 mod doubles;
 pub mod losses;
+pub mod recording;
 use doubles::{CapturingPaster, ChunkingRecorder, FixedTranscripts, Silent};
 
 const CHUNK_THRESHOLD_SECS: u32 = 30;
@@ -152,11 +154,6 @@ fn second_chunk_fails(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("the text of the first and third chunks is pasted")]
-fn first_and_third_pasted(world: &mut IntegrationWorld) -> Result<()> {
-    pasted_as_spoken(world)
-}
-
 #[then("the lost second chunk is logged")]
 fn lost_chunk_logged(_world: &mut IntegrationWorld) -> Result<()> {
     let errors = crate::steps::voice_control::pipeline_log()
@@ -230,13 +227,14 @@ fn stop_dictation(world: &mut IntegrationWorld) -> Result<()> {
     // `run` only returns once the hotkey channel closes, after both presses were handled
     let _ = pipeline.run(rx);
     let pasted = pasted.lock().unwrap();
-    world.pasted = Some(pasted.first().cloned().context("nothing was pasted")?);
+    world.extra.pasted = Some(pasted.first().cloned().context("nothing was pasted")?);
     Ok(())
 }
 
 #[then("the pasted text contains every spoken word once, in order")]
 #[then("the pasted text contains every word of every chunk, in order")]
 #[then("the words before and after the overlap are kept")]
+#[then("the text of the first and third chunks is pasted")]
 fn pasted_as_spoken(world: &mut IntegrationWorld) -> Result<()> {
     let (spoken, pasted) = spoken_and_pasted(world)?;
     if pasted != spoken {
@@ -257,6 +255,10 @@ fn overlap_once(world: &mut IntegrationWorld) -> Result<()> {
 
 fn spoken_and_pasted(world: &IntegrationWorld) -> Result<(&'static str, &str)> {
     let spoken = world.dictation.as_ref().context("no dictation")?.spoken;
-    let pasted = world.pasted.as_deref().context("nothing was pasted")?;
+    let pasted = world
+        .extra
+        .pasted
+        .as_deref()
+        .context("nothing was pasted")?;
     Ok((spoken, pasted))
 }

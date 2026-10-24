@@ -307,6 +307,8 @@ pub struct PipelineLog {
     pub voice_starts: Mutex<Vec<(ThreadId, String)>>,
     /// Every line that reports the permissions.
     pub permissions: Mutex<Vec<String>>,
+    /// Every line that reports what had keyboard focus when a dictation was delivered.
+    pub focus: Mutex<Vec<String>>,
 }
 
 impl log::Log for PipelineLog {
@@ -326,6 +328,9 @@ impl log::Log for PipelineLog {
                 let line = record.args().to_string();
                 if line.starts_with("permissions: ") {
                     self.permissions.lock().unwrap().push(line.clone());
+                }
+                if line.starts_with("focus: ") {
+                    self.focus.lock().unwrap().push(line.clone());
                 }
                 if line.starts_with(VOICE_START_LINE) {
                     let thread = std::thread::current().id();

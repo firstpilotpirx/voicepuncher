@@ -4,6 +4,21 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// The Gherkin harnesses, whose one nextest test holds every scenario of the stage.
+pub const HARNESSES: [&str; 3] = ["cucumber_integration", "cucumber_e2e", "cucumber_workflow"];
+
+/// Whether a nextest binary id (`<package>::<binary>`) names a Gherkin harness.
+pub fn is_harness(binary: &str) -> bool {
+    binary
+        .rsplit_once("::")
+        .is_some_and(|(_, name)| HARNESSES.contains(&name))
+}
+
+/// The filterset of every Gherkin harness.
+pub fn harnesses_filter() -> String {
+    HARNESSES.map(|name| format!("binary(={name})")).join(" | ")
+}
+
 pub struct Context {
     pub just: String,
     pub justfile: PathBuf,

@@ -182,8 +182,8 @@ fn should_run_the_frozen_tests_in_their_stages_each_with_only_its_own_tests() {
     .unwrap();
     let plan = plan_lines(&effective(&repos.repo, true)).unwrap();
     for expected in [
-        "e2e-regression\tbinary(=cucumber_integration) | binary(=cucumber_e2e)\tNew flake",
-        "e2e-smoke-voice\t(binary_id(=voicepuncher::it) & test(=placed_commands::should_spot)) | binary(=cucumber_integration) | binary(=cucumber_e2e)\tOld flake\x1fVoice flake",
+        "e2e-regression\tbinary(=cucumber_integration) | binary(=cucumber_e2e) | binary(=cucumber_workflow)\tNew flake",
+        "e2e-smoke-voice\t(binary_id(=voicepuncher::it) & test(=placed_commands::should_spot)) | binary(=cucumber_integration) | binary(=cucumber_e2e) | binary(=cucumber_workflow)\tOld flake\x1fVoice flake",
     ] {
         assert!(plan.iter().any(|line| line == expected), "no line {expected:?} in {plan:#?}");
     }

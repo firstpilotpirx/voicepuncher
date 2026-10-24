@@ -16,8 +16,6 @@ use voicepuncher::adapters::primary::menubar::macos::actions::{
 use voicepuncher::adapters::primary::menubar::macos::indicator::{
     MenuModel, StatusItemCell, StatusItemSurface,
 };
-use voicepuncher::adapters::primary::menubar::macos::mapping::IconState;
-use voicepuncher::config::Config;
 use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineParts};
 use voicepuncher::core::application::{
@@ -31,12 +29,14 @@ use voicepuncher::core::domain::{
 use voicepuncher::runtime::{
     PipelineAssembler, Runtime, RuntimeObserver, RuntimeState, SharedVisualIndicator,
 };
+use voicepuncher::{adapters::primary::menubar::macos::mapping::IconState, config::Config};
 
 use crate::steps::pipeline_config::pipeline_config;
 use crate::steps::quiet_voice_control::{NoKeys, QuietSpotter};
 use crate::IntegrationWorld;
 
 mod doubles;
+pub mod menu_items;
 mod services;
 use doubles::{FakeKeyboard, QuietOverlay, StandInAssembler};
 

@@ -15,7 +15,7 @@ const SECOND_CHECK_AFTER_SECS: f32 = 0.3;
 
 /// Which check of a spotted phrase it is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Round {
+pub enum Round {
     First,
     /// Asked when the first heard "start" alone.
     Second,
@@ -24,7 +24,7 @@ pub(super) enum Round {
 /// A check to ask once the stream reaches `due`, for a phrase spotted ending at `said_end`
 /// in `utterance`; none: the utterance running when it falls due.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct DueCheck {
+pub struct DueCheck {
     pub said_end: usize,
     pub due: usize,
     pub round: Round,
@@ -33,7 +33,7 @@ pub(super) struct DueCheck {
 
 /// The checks spotted phrases ask for, until each is asked.
 #[derive(Debug, Default)]
-pub(super) struct SpottedChecks {
+pub struct SpottedChecks {
     waiting: Vec<DueCheck>,
 }
 

@@ -171,9 +171,9 @@ pub fn plan_lines(entries: &[Entry]) -> Result<Vec<String>, String> {
             let (mut filter, scenarios) = selection(entries);
             // Scenarios run inside their harness's test, which the selection must hold
             if !scenarios.is_empty() {
-                let harness = "binary(=cucumber_integration) | binary(=cucumber_e2e)";
+                let harness = crate::context::harnesses_filter();
                 filter = if filter.is_empty() {
-                    harness.into()
+                    harness
                 } else {
                     format!("{filter} | {harness}")
                 };

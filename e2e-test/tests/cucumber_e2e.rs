@@ -1,5 +1,9 @@
 //! Harness entry point for the E2E `.feature` files: World and `main()` only.
 
+/// The scripted hearing of the command spotting service's tests, shared with the steps that
+/// drive its confirmations; at the root, where its scripted copy looks for it.
+#[path = "../../command-spotting/tests/it/scripted_hearing/mod.rs"]
+mod scripted_hearing;
 #[allow(
     clippy::needless_pass_by_ref_mut,
     clippy::needless_pass_by_value,

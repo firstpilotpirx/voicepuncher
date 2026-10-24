@@ -60,6 +60,39 @@ Feature: app-runtime
       And a press of the first hotkey still starts a recording
       And the log names the reason the configuration was rejected
 
+  Rule: The runtime state is observable
+
+    Scenario: An observer sees every state in order
+      Given an observer registered before the runtime starts
+      When the runtime starts, reloads a valid configuration and stops
+      Then the observer saw Starting, Ready, Restarting, Ready, Stopped in that order
+
+    Scenario: A late observer learns the current state
+      Given the runtime is Ready
+      When an observer registers
+      Then the observer is told Ready at once
+
+  # The process sends the signal to itself; @serial keeps one scenario's signal from
+  # reaching another scenario's runtime.
+  Rule: A hang-up signal reloads the configuration
+
+    @serial
+    Scenario: Hang-up signal with an edited configuration file
+      Given the runtime is Ready from a configuration file
+      And the file was edited to a valid configuration with another hotkey
+      When the process receives the hang-up signal
+      Then the runtime reloads and the state is Ready
+      And the pipeline uses the hotkey from the edited file
+
+    @serial
+    Scenario: Hang-up signal with a broken configuration file
+      Given the runtime is Ready from a configuration file
+      And the file was edited so that it no longer validates
+      When the process receives the hang-up signal
+      Then the log names the reason the file was rejected
+      And the runtime state stays Ready
+      And the pipeline keeps its settings
+
   Rule: Stopping the runtime ends the pipeline
 
     Scenario: Stop while idle
@@ -75,6 +108,19 @@ Feature: app-runtime
       When the runtime stops
       Then the recording is cancelled and nothing is pasted
       And the runtime state is Stopped
+
+  Rule: The hotkey rebinds without a relaunch
+
+    Scenario: Single key rebinds
+      Given the binding is the first hotkey
+      When the binding changes to a second hotkey and the second hotkey is pressed and released
+      Then a press and a release are signalled
+      And a press of the first hotkey after the change signals nothing
+
+    Scenario: Chord half pressed when the binding changes
+      Given the binding is a chord and its modifier is held
+      When the binding changes to a single key and the chord's key is pressed
+      Then nothing is signalled
 
   Rule: The runtime waits for permissions
 

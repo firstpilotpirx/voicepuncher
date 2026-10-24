@@ -156,3 +156,62 @@ Feature: menu-bar-presence
       Given the app started the command spotting service and it is Failed
       When the user chooses Restart for it
       Then the app starts it again
+
+  Rule: The menu shows the wait for permissions
+
+    Scenario: A missing permission at launch
+      Given the runtime waits for Accessibility
+      When the user opens the menu
+      Then the status item shows the missing-permission icon, not the waiting icon
+      And the status line reads "Waiting for Accessibility…"
+
+    Scenario: Two missing permissions
+      Given the runtime waits for Accessibility and Input Monitoring
+      When the user opens the menu
+      Then the status line reads "Waiting for Accessibility and Input Monitoring…"
+
+    Scenario: The waiting item opens the Permissions window
+      Given the runtime waits for Accessibility
+      When the user chooses "Waiting for Accessibility…" in the menu
+      Then the Permissions window comes to the front
+
+  Rule: Permissions open from the menu
+
+    Scenario: Permissions while every permission is granted
+      Given the runtime is ready and no dictation runs
+      When the user chooses Permissions… in the menu
+      Then the Permissions window opens with all three rows marked Granted
+
+  Rule: The menu shows the wait for models
+
+    Scenario: A missing model at launch
+      Given the dictation model is missing when the app launches
+      When the user opens the menu
+      Then the status item shows the waiting icon
+      And the status line reads "Waiting for models — open Download models…"
+
+  Rule: Download models opens from the menu
+
+    Scenario: Download models while every model is present
+      Given the runtime is ready with every model present and the services the app manages
+      When the user chooses Download models… in the menu
+      Then the Download window opens with every row marked Present and Done enabled
+
+  Rule: The logs folder opens from the menu
+
+    Scenario: Open Logs Folder shows the folder
+      Given the logs folder exists
+      When the user chooses Open Logs Folder
+      Then the file browser shows the logs folder
+
+    Scenario: Open Logs Folder creates a missing folder
+      Given the logs folder does not exist
+      When the user chooses Open Logs Folder
+      Then the logs folder exists and the file browser shows it
+
+  Rule: The app has no Dock icon
+
+    Scenario: The bare binary shows no Dock icon
+      Given the app is started from a terminal
+      When it is running
+      Then the Dock shows no icon for it and the status item is in the menu bar

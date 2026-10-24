@@ -50,3 +50,13 @@ Feature: processing-stages
       Given the user records a dictation with the hotkey
       When the user ends a dictation with speech in it
       Then the overlay shows the speech recognition stage with no text window under it
+
+  # Drawn on the real overlay on the main thread.
+  Rule: Speech recognition shows an ear, its label and a spinner
+
+    Scenario: Speech recognition shows an ear, its label and a spinner
+      Given the overlay is ready
+      When the overlay shows speech recognition
+      Then the pill shows the icon "ear" and the label "Recognizing"
+      And a spinner turns beside them
+      And no text window shows

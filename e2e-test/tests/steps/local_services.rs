@@ -21,7 +21,7 @@ mod models;
 mod owned;
 mod warm_up;
 
-pub use managed::{capture_log, ManagedRun, Needed};
+pub use managed::{capture_log, log_mark, logged_since, ManagedRun, Needed};
 pub use models::Role;
 pub use owned::OwnedServices;
 

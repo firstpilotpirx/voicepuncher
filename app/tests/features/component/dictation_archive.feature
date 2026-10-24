@@ -61,6 +61,13 @@ Feature: dictation-archive
       When the user dictates a phrase
       Then its entry names no text refinement model and no refinement outcome
 
+  Rule: The archive stays within its size limit
+
+    Scenario: The oldest entries go first
+      Given an archive whose entries already fill its size limit
+      When a new entry is written
+      Then the oldest entries are removed until the archive fits, and the newest entries, the new one included, stay
+
   Rule: Archiving never costs a dictation
 
     Scenario: The archive folder cannot be written

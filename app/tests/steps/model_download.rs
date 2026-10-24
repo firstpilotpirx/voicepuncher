@@ -23,9 +23,10 @@ use voicepuncher::core::domain::model_catalog::{self, ModelFile, ModelKind, Mode
 use voicepuncher::runtime::models::needs_of;
 use voicepuncher::runtime::RuntimeState;
 
-use crate::steps::app_runtime::models::DICTATION_MODEL;
-use crate::steps::app_runtime::run as runtime_run;
+use crate::steps::app_runtime::{models::DICTATION_MODEL, run as runtime_run};
 use crate::IntegrationWorld;
+
+pub mod files;
 
 const GB: u64 = 1_000_000_000;
 

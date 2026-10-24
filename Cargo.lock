@@ -3198,6 +3198,8 @@ dependencies = [
 name = "voicepuncher-dev-tools"
 version = "0.1.0"
 dependencies = [
+ "cucumber",
+ "futures",
  "jiff",
  "regex",
  "rustix",

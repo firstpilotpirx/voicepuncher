@@ -6,10 +6,10 @@
 
 - Every requirement of every capability has a `Rule:` with at least one scenario in its `.feature` at the component or E2E level; where the behavior is only observable through AppKit, the scenario drives the real adapter behind the same steps the `_it` test uses today, and the `_it` test keeps only the adapter contract.
 - The push-to-talk spec gains the core requirement (hold → recording, release → transcription and paste, short press dropped) with scenarios the component harness runs on the fake hotkey listener; `@real_keyboard` stays as the manual scenario.
-- A check (a test of `architecture.rs` or a `kit` command) maps `### Requirement:` headings to `Rule:` headings per capability and fails on a requirement without a rule, so the mirror cannot decay.
+- A check (the test `spec_mirror` in `app/tests/it/spec_mirror/`) maps `### Requirement:` headings to `Rule:` headings per capability and fails on a requirement without a rule, so the mirror cannot decay.
 
 Current stage: PoC. Target stage: PoC.
-Scope: the four features named, the push-to-talk spec and feature, the mapping check, `AGENTS.md` § Gherkin.
+Scope: the `.feature` files of all 21 capabilities (a new `change_workflow.feature` with its harness in `dev-tools`), the push-to-talk spec and feature, the mapping check, `AGENTS.md` § Gherkin.
 Acceptance bar: the mapping check passes for all 21 capabilities; `just test` and the E2E smoke pass; the `spec-test-reviewer` reports no UNTRACED requirement on these capabilities.
 Out of scope: changing any requirement's meaning except adding the missing push-to-talk one.
 
@@ -21,11 +21,11 @@ Out of scope: changing any requirement's meaning except adding the missing push-
 
 ## Impact
 
-- `app/tests/features/component/{visual_feedback,text_insertion,processing_stages,push_to_talk}.feature`, `e2e-test/tests/features/local_services.feature`, their steps, `openspec/specs/push-to-talk/spec.md`, `app/tests/architecture.rs` (or a `kit` command), `AGENTS.md`.
+- the `.feature` files and steps of every capability under `app/tests/`, `e2e-test/tests/` and `dev-tools/tests/`, `openspec/specs/push-to-talk/spec.md`, `app/tests/it/spec_mirror/`, `AGENTS.md`.
 
 ## Open points
 
-- Whether the mapping check belongs to the kit (`kit spec-index` already reads requirements) or to the project; proposed: the kit, filed in agent-kit as part of `kit-metrics-command`, with the project calling it.
+- Settled at preparation: the mapping check is a test of this project (`spec_mirror`), not a kit command (design § Decisions 1).
 
 ## Release
 

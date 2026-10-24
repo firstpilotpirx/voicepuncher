@@ -66,3 +66,29 @@ Feature: model-download
       Given the runtime waits for models
       When the last missing file is downloaded and placed
       Then the runtime starts the services and becomes Ready once they answer
+
+  Rule: A model is present by its place and size
+
+    Scenario: A file of the wrong size is missing
+      Given the dictation model file in the models folder is shorter than the catalog size
+      When the app checks the models
+      Then the dictation model is Missing
+
+    Scenario: A model named by its variable counts as present
+      Given the variable for the dictation model names an existing file outside the models folder
+      When the app checks the models
+      Then the dictation model is Present
+
+  Rule: The same download runs headless
+
+    Scenario: A headless run with every file present
+      Given a folder that holds every catalog file
+      When the user runs the headless download of the models into that folder
+      Then nothing is fetched and every file is reported present
+      And the command exits 0
+
+    Scenario: A headless download that fails
+      Given a folder that misses one catalog file and a host for it that refuses connections
+      When the user runs the headless download of the models into that folder
+      Then the command names the failed file
+      And the command exits 1
