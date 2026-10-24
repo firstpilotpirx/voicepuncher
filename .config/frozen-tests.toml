@@ -25,3 +25,12 @@ recipe = "full-check"
 stage = "e2e-resilience"
 beside = "other sessions' full-checks under machine-lock load, 2026-10-23; failed in several branches"
 branch = "chore/stop-filing-changes-for-flaky-tests"
+
+[[frozen]]
+test = "scenario: The first request of a chunk hangs"
+frozen = "2026-10-24"
+recipe = "test"
+stage = "test"
+beside = "other sessions builds and tests under load; logged 2 hung attempts instead of 1"
+branch = "chore/tame-confirming-special-cases"
+
