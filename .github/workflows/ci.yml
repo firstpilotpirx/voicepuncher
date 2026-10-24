@@ -61,7 +61,7 @@ jobs:
         id: install
         run: |
           rustup toolchain install stable --profile minimal
-          brew install shellcheck
+          brew install shellcheck gitleaks trufflehog
           if [[ "${{ steps.tools.outputs.cache-hit }}" != true ]]; then just tools; fi
       # Saved at once, so a failing check later in the run still keeps the analyzers for the next one
       - uses: actions/cache/save@v6.1.0

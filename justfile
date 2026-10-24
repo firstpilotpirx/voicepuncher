@@ -178,6 +178,8 @@ typos_version := "1.51.1"
 rca_version := "0.0.25"
 jscpd_version := "4.0.5"
 shellcheck_version := "0.11.0"
+gitleaks_version := "8.30.1"
+trufflehog_version := "3.99.6"
 # The ratcheted analyzers (analyzers/), run from the workspace root
 analyzers := "cargo run --quiet --package voicepuncher-analyzers --"
 
@@ -190,7 +192,7 @@ _fmt:
 
 # Clippy on the whole workspace (warnings are errors) and every static analyzer against its baseline (AGENTS.md
 # § How to verify a change): the clippy groups, unused dependencies, the dependency policy, copy-pool's semver,
-# spelling, and shellcheck over the recipes; runs every analyzer, then fails on any that failed
+# spelling, shellcheck over the recipes, and the secret scanners over the history; runs every analyzer, then fails on any that failed
 lint: _dev-tools
     @{{locked}} _lint
 
@@ -211,6 +213,9 @@ _lint: _require-tools
     analyzer semver cargo +stable semver-checks --package voicepuncher-copy-pool --baseline-rev origin/main
     analyzer typos typos
     analyzer recipes {{analyzers}} recipes
+    # Secrets in any commit of any ref: the history, not only the tree, is what a push publishes
+    analyzer gitleaks gitleaks git --no-banner --redact --log-opts=--all .
+    analyzer trufflehog trufflehog git file://. --no-update --results=verified,unknown --fail
     if (( ${#failed[@]} > 0 )); then
         echo "✗ lint: ${failed[*]} failed — baselines in .config/analyzers/, rewritten by 'just analyzers-baseline'" >&2
         exit 1
@@ -259,6 +264,8 @@ _require-tools:
     want rust-code-analysis-cli {{rca_version}} "just tools" rust-code-analysis-cli --version
     want jscpd {{jscpd_version}} "just tools" jscpd --version
     want shellcheck {{shellcheck_version}} "brew install shellcheck" shellcheck --version
+    want gitleaks {{gitleaks_version}} "brew install gitleaks" gitleaks version
+    want trufflehog {{trufflehog_version}} "brew install trufflehog" trufflehog --version
     exit "$missing"
 
 # Rewrites app/tests/size_baseline.toml from the code (AGENTS.md § Architecture rules) by running `test` with
