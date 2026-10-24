@@ -1,4 +1,5 @@
 use super::*;
+use voicepuncher_voice_commands::{MishearingKind, MISHEARINGS, STOP};
 
 fn standby() -> PhraseMatcher {
     PhraseMatcher::new(&[
@@ -247,4 +248,60 @@ fn should_not_take_start_in_a_longer_sentence_as_a_near_miss() {
 fn should_not_take_a_phrase_outside_the_selected_set() {
     assert_eq!(standby().phrase_in("Stop dictation."), None);
     assert_eq!(dictating().phrase_in("Clear all text."), None);
+}
+
+#[test]
+fn should_read_every_alias_row_as_its_command() {
+    for row in MISHEARINGS
+        .iter()
+        .filter(|m| m.kind == MishearingKind::Alias)
+    {
+        // Given a matcher selecting the command the row stands for
+        let matcher = PhraseMatcher::new(&[row.means[0].to_owned()]);
+        // When
+        let phrase = matcher.phrase_in(&row.heard.join(" "));
+        // Then
+        assert_eq!(phrase.as_deref(), Some(row.means[0]), "{:?}", row.heard);
+    }
+}
+
+#[test]
+fn should_read_an_alias_row_ending_speech_as_its_command() {
+    for row in MISHEARINGS
+        .iter()
+        .filter(|m| m.kind == MishearingKind::Alias)
+    {
+        // Given the row's words said at the end of a sentence, its command selected
+        let said = format!("we meet on friday {}", row.heard.join(" "));
+        let words: Vec<&str> = said.split(' ').collect();
+        let matcher = PhraseMatcher::new(&[row.means[0].to_owned()]);
+        // When
+        let found = matcher.at_end(&words);
+        // Then
+        let expected = vec![row.means[0].to_owned()];
+        assert_eq!(found.map(|f| f.commands), Some(expected), "{said}");
+    }
+}
+
+#[test]
+fn should_close_a_chain_with_an_after_command_row() {
+    for row in MISHEARINGS
+        .iter()
+        .filter(|m| m.kind == MishearingKind::AfterCommand)
+    {
+        // Given "stop" said before the row's words in a dictation
+        let said = format!("stop {}", row.heard.join(" "));
+        let words: Vec<&str> = said.split(' ').collect();
+        // When
+        let found = dictating().anywhere(&words);
+        // Then
+        let mut expected = vec![STOP.to_owned()];
+        expected.extend(row.means.iter().map(|&p| p.to_owned()));
+        assert_eq!(found.map(|f| f.commands), Some(expected), "{said}");
+    }
+}
+
+#[test]
+fn should_read_the_words_of_a_cyrillic_transcript() {
+    assert_eq!(words("Стоп, пожалуйста."), ["стоп", "пожалуйста"]);
 }

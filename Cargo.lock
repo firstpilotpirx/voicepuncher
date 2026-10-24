@@ -3155,6 +3155,7 @@ dependencies = [
  "voicepuncher-copy-pool",
  "voicepuncher-e2e-test",
  "voicepuncher-test-steps",
+ "voicepuncher-voice-commands",
  "walkdir",
 ]
 
@@ -3184,6 +3185,7 @@ dependencies = [
  "ureq",
  "voicepuncher-copy-pool",
  "voicepuncher-test-steps",
+ "voicepuncher-voice-commands",
 ]
 
 [[package]]
@@ -3238,6 +3240,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
 ]
+
+[[package]]
+name = "voicepuncher-voice-commands"
+version = "0.1.0"
 
 [[package]]
 name = "walkdir"

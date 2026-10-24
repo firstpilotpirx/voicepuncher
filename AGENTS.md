@@ -2,7 +2,7 @@
 
 ## What this project is
 
-Push-to-talk voice-to-text menu bar application for macOS Apple Silicon; its command line remains for file mode and development (no terminal setup: a first launch writes the default configuration file). A Cargo workspace of four Rust crates (the application at `app/`, below). Fully offline: two local whisper.cpp speech recognition services — the one for dictation (`whisper-server`, large-v3-turbo q5_0, port 8081, what the app uses) and the one for commands (`whisper-server-commands`, small, port 8085, used only by the command spotting service to confirm utterances) — both reached over loopback HTTP and running on Metal, plus the command spotting service `voicepuncher-command-spotting` (crate `command-spotting/`, sherpa-onnx keyword spotting confirmed by the speech recognition service for commands) reached over a loopback WebSocket for voice control; in hotkey mode the app starts the services its configuration needs itself, adopts the ones already running and stops the ones it started at quit (`[services] manage`, on by default; off leaves them to the scripts); `just start-model-servers` starts all three (or the named ones) and restarts a service that crashes, until `just stop-model-servers`; each speech recognition service runs as three `whisper-server` copies on the ports 10000 above its own (a copy counts ready, in the scripts and in the app, only once it has transcribed a short warm-up utterance), which the clients find from its address and share through the crate `copy-pool/` (`VOICEPUNCHER_STT_INSTANCES`, `VOICEPUNCHER_COMMAND_STT_INSTANCES`, at most 4). No internet at runtime; loopback connections only.
+Push-to-talk voice-to-text menu bar application for macOS Apple Silicon; its command line remains for file mode and development (no terminal setup: a first launch writes the default configuration file). A Cargo workspace of Rust crates (the application at `app/`, below). Fully offline: two local whisper.cpp speech recognition services — the one for dictation (`whisper-server`, large-v3-turbo q5_0, port 8081, what the app uses) and the one for commands (`whisper-server-commands`, small, port 8085, used only by the command spotting service to confirm utterances) — both reached over loopback HTTP and running on Metal, plus the command spotting service `voicepuncher-command-spotting` (crate `command-spotting/`, sherpa-onnx keyword spotting confirmed by the speech recognition service for commands) reached over a loopback WebSocket for voice control; in hotkey mode the app starts the services its configuration needs itself, adopts the ones already running and stops the ones it started at quit (`[services] manage`, on by default; off leaves them to the scripts); `just start-model-servers` starts all three (or the named ones) and restarts a service that crashes, until `just stop-model-servers`; each speech recognition service runs as three `whisper-server` copies on the ports 10000 above its own (a copy counts ready, in the scripts and in the app, only once it has transcribed a short warm-up utterance), which the clients find from its address and share through the crate `copy-pool/` (`VOICEPUNCHER_STT_INSTANCES`, `VOICEPUNCHER_COMMAND_STT_INSTANCES`, at most 4). No internet at runtime; loopback connections only.
 
 **Product lifecycle stage:** PoC (Proof of Concept). The core workflow is demonstrated but the codebase is not yet hardened for daily use.
 
@@ -13,11 +13,12 @@ voicepuncher/
   app/          ← Rust menu bar application with a developer command line (hexagonal architecture)
   command-spotting/ ← Rust binary: the command spotting service (voice control)
   copy-pool/    ← Rust library: the copy pool, shared by app/ and command-spotting/
+  voice-commands/ ← Rust library: the voice commands declared once (phrases, forms, mishearings), used by command-spotting/ and checked by app/ tests
   dev-tools/    ← Rust binary: the stage runner and the service scripts behind the justfile
   test-steps/   ← Rust library (dev-dependency): `required_env`, the shared Gherkin steps, the test-check rules
   e2e-test/     ← Rust crate: accuracy benchmark + E2E scenarios
   docs/         ← Architecture documentation + ubiquitous language
-  Cargo.toml    ← Cargo workspace (members: app, command-spotting, copy-pool, dev-tools, e2e-test, test-steps)
+  Cargo.toml    ← Cargo workspace (members: app, command-spotting, copy-pool, dev-tools, e2e-test, test-steps, voice-commands)
   justfile      ← Task runner: all checks, E2E, benchmarks (`just` lists recipes)
 ```
 

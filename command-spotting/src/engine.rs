@@ -1,6 +1,5 @@
 //! Runs the keyword spotter and the voice activity detector over one connection's audio.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -15,8 +14,7 @@ use crate::confirm::{Hear, Heard, RecentAudio, UtteranceTranscriber};
 use crate::keywords::{self, Keyword, UnknownPhrases};
 use crate::matcher::PhraseMatcher;
 use crate::orderer::{EventOrderer, Segment, Spotted};
-use crate::outbox::Outbox;
-use crate::protocol::ServerEvent;
+use crate::protocol::{PhraseSelection, ServerEvent};
 use crate::worker::{ConfirmationWorker, JobKind};
 
 mod clip;
@@ -25,11 +23,12 @@ mod pause;
 mod queued;
 pub mod spotted;
 mod stall;
+mod state;
 
-use confirming::{AskedJob, EarlyRehears, HalfPauseHearing, JobContext, Rehear};
+use confirming::{ClosedSegment, JobContext};
 use pause::PauseWatch;
-use queued::CheckQueue;
-use spotted::{SpottedChecks, CHECKED_WHEN_SPOTTED};
+use spotted::CHECKED_WHEN_SPOTTED;
+use state::{Detector, Hearings, Jobs, Utterances};
 
 pub const SAMPLE_RATE: u32 = 16_000;
 const SILERO_WINDOW: usize = 512;
@@ -74,16 +73,16 @@ const FIRST_WINDOW_SECS: f32 = 2.0;
 /// "start" and the first word after it.
 const HEAD_CHECK_SECS: f32 = 1.5;
 /// How long after an utterance starts its start is first searched for a command opening
-/// speech, while "start" is listened for: the keyword spotter misses most of the user's
+/// speech, when the app asks for an early start: the keyword spotter misses most of the user's
 /// "start", so no spotted check comes.
 const EARLY_HEAD_CHECK_SECS: f32 = 1.0;
-/// The phrase the early check of an utterance's start is for.
-const STARTED_EARLY: &str = "start dictation";
 /// How far before the end of its utterance a command heard while it ran may end and still
 /// end the utterance: the detector holds speech this much past the last word.
 const TAIL_SLACK_SECS: f32 = 0.6;
 /// How late the voice activity detector notices speech has started.
 const ONSET_SECS: f32 = 0.3;
+/// How long a spotted trigger is kept for the segment it lies in.
+const TRIGGERS_KEPT_SECS: f32 = 10.0;
 
 pub struct EngineCfg {
     pub model_dir: PathBuf,
@@ -162,31 +161,15 @@ impl Engine {
             engine: self,
             conn,
             worker,
-            outbox: Outbox::default(),
-            next_job: 0,
-            jobs: HashMap::new(),
-            spotted_checks: SpottedChecks::default(),
-            checks: CheckQueue::default(),
-            heard_triggers: Vec::new(),
-            misheard: None,
-            early: EarlyRehears::default(),
-            half_pause: None,
-            stand_ins: HashMap::new(),
-            utterances: HashMap::new(),
-            current: None,
-            next_utterance: 0,
-            vad,
-            pause: PauseWatch::new(self.min_silence_samples),
+            jobs: Jobs::default(),
+            hearings: Hearings::default(),
+            utterances: Utterances::default(),
+            detector: Detector::new(vad, PauseWatch::new(self.min_silence_samples)),
             stream: None,
             triggers: None,
-            samples_seen: 0,
-            vad_pending: Vec::new(),
             orderer: EventOrderer::default(),
             recent: RecentAudio::new(samples_in(RECENT_AUDIO_SECS)),
             matcher: Arc::new(PhraseMatcher::new(&[])),
-            vad_fed: 0,
-            vad_offset: 0,
-            last_segment_end: 0,
         })
     }
 }
@@ -197,51 +180,18 @@ pub struct Session<'a> {
     conn: u64,
     /// Runs the confirmations by the speech recognition service; none without one.
     worker: Option<ConfirmationWorker>,
-    outbox: Outbox,
-    next_job: u64,
-    /// What each confirmation asked for, by job number, until its answer is applied.
-    jobs: HashMap<u64, AskedJob>,
-    /// The check a spotted "start" or "restart" asks of the running utterance.
-    spotted_checks: SpottedChecks,
-    /// The checks of running utterances waiting their turn behind the one asked.
-    checks: CheckQueue,
-    /// The triggers spotted in the last seconds: a short segment holding one is heard again
-    /// when its first hearing holds no command.
-    heard_triggers: Vec<Spotted>,
-    /// The last short segment whose first hearing held no command, with its job: a trigger
-    /// the spotter reports in it only after that answer has it heard again.
-    misheard: Option<(u64, Rehear)>,
-    /// The second hearings asked beside a short segment's first one.
-    early: EarlyRehears,
-    /// The hearing of a short utterance in standby asked at half its pause; it stands for the
-    /// utterance's segment when that same quiet run closes it.
-    half_pause: Option<HalfPauseHearing>,
-    /// Segment jobs a hearing at half the pause stands for, with where the segment's own clip
-    /// starts: an answer holding no command alone has the segment heard whole instead.
-    stand_ins: HashMap<u64, usize>,
-    /// The utterances with confirmations still to apply, and the one heard now.
-    utterances: HashMap<u64, Running>,
-    current: Option<u64>,
-    next_utterance: u64,
-    vad: VoiceActivityDetector,
-    /// Ends an utterance at a quiet pause the detector still holds as speech.
-    pause: PauseWatch,
+    jobs: Jobs,
+    hearings: Hearings,
+    utterances: Utterances,
+    detector: Detector,
     stream: Option<OnlineStream>,
     /// Spots the trigger-only keywords of the selected phrases, apart from `stream`: one firing
     /// there never resets the spotting of the phrases.
     triggers: Option<OnlineStream>,
-    samples_seen: usize,
-    vad_pending: Vec<f32>,
     orderer: EventOrderer,
     recent: RecentAudio,
     /// Shared with every job asked under it, so a late answer knows the phrases of its state.
     matcher: Arc<PhraseMatcher>,
-    /// Samples fed to the voice activity detector so far.
-    vad_fed: usize,
-    /// Samples fed before its last reset: its segment positions count from there.
-    vad_offset: usize,
-    /// Where the last utterance ended: the pre-roll of the next never reaches back past it.
-    last_segment_end: usize,
 }
 
 /// An utterance still being spoken, searched for commands while it runs.
@@ -269,12 +219,20 @@ struct Running {
 impl Session<'_> {
     /// Spots `phrases` from now on.
     pub fn listen_for(&mut self, phrases: &[String]) -> Result<(), UnknownPhrases> {
+        self.select(&PhraseSelection { phrases: phrases.to_vec(), early_start: None })
+    }
+
+    /// Spots the phrases of `selection` from now on, searching the start of an utterance early
+    /// as it says.
+    pub fn select(&mut self, selection: &PhraseSelection) -> Result<(), UnknownPhrases> {
+        let phrases = &selection.phrases;
         let selected = keywords::select(&self.engine.keywords, phrases)?;
         self.stream = Some(self.engine.spotter.create_stream_with_keywords(&selected));
         self.triggers = keywords::select_triggers(&self.engine.keywords, phrases)
             .filter(|_| self.engine.hear.is_some())
             .map(|lines| self.engine.spotter.create_stream_with_keywords(&lines));
-        self.matcher = Arc::new(PhraseMatcher::new(phrases));
+        self.matcher =
+            Arc::new(PhraseMatcher::new(phrases).with_early_start(selection.early_start));
         Ok(())
     }
 
@@ -287,10 +245,9 @@ impl Session<'_> {
             let spotted = self.spot(frame);
             // A phrase goes out from the orderer at once only when it belongs to the segment
             // that ended last: the spotter may report it after a quiet pause closed that one.
-            events.extend(self.outbox.send_in_last_segment(spotted));
+            events.extend(self.jobs.outbox.send_in_last_segment(spotted));
             events.extend(self.detect_speech(frame));
-            self.samples_seen += frame.len();
-            self.ask_spotted_check();
+            self.detector.samples_seen += frame.len();
             self.watch_running();
             self.confirm_unheld();
             events.extend(self.take_answers());
@@ -300,7 +257,7 @@ impl Session<'_> {
     }
 
     fn spot(&mut self, samples: &[f32]) -> Vec<ServerEvent> {
-        let position = seconds(self.samples_seen + samples.len());
+        let position = seconds(self.detector.samples_seen + samples.len());
         let spotter = &self.engine.spotter;
         if let Some(triggers) = self.triggers.as_ref() {
             // The spotter adds its own keywords, the phrases, to every stream: only a trigger
@@ -316,13 +273,14 @@ impl Session<'_> {
                     trigger.start,
                     trigger.end
                 );
-                self.spotted_checks.spotted(samples_in(trigger.end));
+                self.jobs.spotted_checks.spotted(samples_in(trigger.end));
                 self.hear_misheard_again(&trigger);
                 self.hear_pending_again(&trigger);
-                self.heard_triggers.push(trigger);
+                self.hearings.heard_triggers.push(trigger);
             }
         }
-        self.heard_triggers
+        self.hearings
+            .heard_triggers
             .retain(|t| t.end + TRIGGERS_KEPT_SECS > position);
         let Some(stream) = self.stream.as_ref() else {
             return Vec::new();
@@ -336,7 +294,7 @@ impl Session<'_> {
                 spotted.end
             );
             if self.worker.is_some() && CHECKED_WHEN_SPOTTED.contains(&spotted.phrase.as_str()) {
-                self.spotted_checks.spotted(samples_in(spotted.end));
+                self.jobs.spotted_checks.spotted(samples_in(spotted.end));
             }
             events.extend(self.orderer.phrase(spotted));
         }
@@ -344,25 +302,33 @@ impl Session<'_> {
     }
 
     fn detect_speech(&mut self, samples: &[f32]) -> Vec<ServerEvent> {
-        self.vad_pending.extend_from_slice(samples);
-        let windows = self.vad_pending.len() / SILERO_WINDOW;
-        for window in self.vad_pending.chunks_exact(SILERO_WINDOW).take(windows) {
-            self.vad.accept_waveform(&raised(window));
+        self.detector.vad_pending.extend_from_slice(samples);
+        let windows = self.detector.vad_pending.len() / SILERO_WINDOW;
+        for window in self
+            .detector
+            .vad_pending
+            .chunks_exact(SILERO_WINDOW)
+            .take(windows)
+        {
+            self.detector.vad.accept_waveform(&raised(window));
         }
-        self.vad_fed += windows * SILERO_WINDOW;
-        self.vad_pending.drain(..windows * SILERO_WINDOW);
+        self.detector.vad_fed += windows * SILERO_WINDOW;
+        self.detector.vad_pending.drain(..windows * SILERO_WINDOW);
         let mut events = self.take_segments(None);
-        let pause = self.pause.hear(samples, self.vad.detected());
+        let pause = self
+            .detector
+            .pause
+            .hear(samples, self.detector.vad.detected());
         self.drop_broken_half_pause_hearing();
         if let Some(quiet_from) = pause {
             // WHY: after a quiet word the detector holds speech up to 0.55 s into the pause,
             // so a short pause before more speech would never end the utterance.
-            self.vad.flush();
+            self.detector.vad.flush();
             events.extend(self.take_segments(Some(quiet_from)));
-            self.pause.forget();
+            self.detector.pause.forget();
         }
-        if let Some(quiet_from) = self.pause.take_half_pause() {
-            self.hear_at_half_pause(quiet_from, self.samples_seen + samples.len());
+        if let Some(quiet_from) = self.detector.pause.take_half_pause() {
+            self.hear_at_half_pause(quiet_from, self.detector.samples_seen + samples.len());
         }
         events
     }
@@ -371,9 +337,9 @@ impl Session<'_> {
     /// the pause began, at `quiet_from`.
     fn take_segments(&mut self, quiet_from: Option<usize>) -> Vec<ServerEvent> {
         let mut events = Vec::new();
-        while let Some(segment) = self.vad.front() {
-            self.vad.pop();
-            let start = self.vad_offset + segment.start().max(0) as usize;
+        while let Some(segment) = self.detector.vad.front() {
+            self.detector.vad.pop();
+            let start = self.detector.vad_offset + segment.start().max(0) as usize;
             let detected_end = start + segment.n().max(0) as usize;
             let end = quiet_from.map_or(detected_end, |q| q.clamp(start, detected_end));
             let bounds = Segment { start: seconds(start), end: seconds(end) };
@@ -382,21 +348,16 @@ impl Session<'_> {
                 save_speech(dir, bounds.start, &as_given(segment.samples()));
             }
             let segment_events = self.orderer.segment(bounds);
-            let quiet_level = self.pause.quiet_level();
-            events.extend(self.close_segment(
-                start,
-                end,
-                bounds,
-                segment_events,
-                quiet_level,
-                quiet_from.is_some(),
-            ));
-            self.last_segment_end = end;
+            let quiet_level = self.detector.pause.quiet_level();
+            let by_pause = quiet_from.is_some();
+            let closed = ClosedSegment { start, end, bounds, quiet_level, by_pause };
+            events.extend(self.close_segment(&closed, segment_events));
+            self.utterances.last_segment_end = end;
             // WHY: after some utterances the detector's state stops it noticing quiet
             // speech; a reset in the silence that closed the segment loses nothing.
-            self.vad.reset();
-            self.vad_offset = self.vad_fed;
-            self.pause.forget();
+            self.detector.vad.reset();
+            self.detector.vad_offset = self.detector.vad_fed;
+            self.detector.pause.forget();
         }
         events
     }
@@ -404,46 +365,59 @@ impl Session<'_> {
     /// Searches the utterance being spoken: its start for "start", and every second its
     /// last seconds for a doubled or chained command; a check due while another one waits
     /// for its answer waits its turn with the audio it was due for.
-    #[expect(clippy::too_many_lines, reason = "size baseline")]
-    fn watch_running(&mut self) {
-        if self.worker.is_none() || !self.vad.detected() {
-            self.close_current();
-            return;
-        }
-        let now = self.samples_seen;
-        let floor = self.last_segment_end;
-        let id = self.current_or_new(now.saturating_sub(samples_in(ONSET_SECS)).max(floor));
-        let Some(&Running { start, head_checked, early_head_checked, next_window, .. }) =
-            self.utterances.get(&id)
+    /// Searches the start of running utterance `id` for a command opening speech: early,
+    /// when the app asks for it, and once its first words are in.
+    fn check_head(&mut self, id: u64, now: usize) {
+        let Some(&Running { start, head_checked, early_head_checked, .. }) =
+            self.utterances.running.get(&id)
         else {
             return;
         };
         // WHY: only "start": a check this early may hear the words of a doubled "restart" at
         // the clip's end, and its segment would then carry out the last one again.
-        if !early_head_checked
+        let early = !early_head_checked
             && !head_checked
-            && self.matcher.selects(STARTED_EARLY)
-            && now - start >= samples_in(EARLY_HEAD_CHECK_SECS)
-        {
-            self.mark(id, |r| r.early_head_checked = true);
-            let from = self.pre_rolled(start);
-            self.ask_check(
-                JobKind::Head,
-                from,
-                now,
-                JobContext::Head { utterance: id, from, early: true },
-            );
+            && self.matcher.starts_early()
+            && now - start >= samples_in(EARLY_HEAD_CHECK_SECS);
+        let full = !head_checked && now - start >= samples_in(HEAD_CHECK_SECS);
+        if early {
+            self.ask_head(id, start, now, true);
         }
-        if !head_checked && now - start >= samples_in(HEAD_CHECK_SECS) {
-            self.mark(id, |r| r.head_checked = true);
-            let from = self.pre_rolled(start);
-            self.ask_check(
-                JobKind::Head,
-                from,
-                now,
-                JobContext::Head { utterance: id, from, early: false },
-            );
+        if full {
+            self.ask_head(id, start, now, false);
         }
+    }
+
+    /// Asks the check of the start of utterance `id`, which started at `start`, early or not.
+    fn ask_head(&mut self, id: u64, start: usize, now: usize, early: bool) {
+        self.mark(id, |r| {
+            if early {
+                r.early_head_checked = true;
+            } else {
+                r.head_checked = true;
+            }
+        });
+        let from = self.pre_rolled(start);
+        self.ask_check(
+            JobKind::Head,
+            from,
+            now,
+            JobContext::Head { utterance: id, from, early },
+        );
+    }
+
+    fn watch_running(&mut self) {
+        if self.worker.is_none() || !self.detector.vad.detected() {
+            self.close_current();
+            return;
+        }
+        let now = self.detector.samples_seen;
+        let floor = self.utterances.last_segment_end;
+        let id = self.current_or_new(now.saturating_sub(samples_in(ONSET_SECS)).max(floor));
+        let Some(&Running { start, next_window, .. }) = self.utterances.running.get(&id) else {
+            return;
+        };
+        self.check_head(id, now);
         if now >= next_window {
             self.mark(id, |r| r.next_window = now + samples_in(WINDOW_EVERY_SECS));
             let from = now
@@ -463,14 +437,14 @@ impl Session<'_> {
     /// of its last seconds once it ran longer. The timed checks stay: this one may hear too
     /// little of the speech after the command.
     fn ask_spotted_check(&mut self) {
-        let now = self.samples_seen;
-        let Some(check) = self.spotted_checks.take_due(now) else {
+        let now = self.detector.samples_seen;
+        let Some(check) = self.jobs.spotted_checks.take_due(now) else {
             return;
         };
         let Some((id, start)) = check
             .utterance
-            .or(self.current)
-            .and_then(|id| self.utterances.get(&id).map(|r| (id, r.start)))
+            .or(self.utterances.current)
+            .and_then(|id| self.utterances.running.get(&id).map(|r| (id, r.start)))
         else {
             return;
         };
@@ -499,11 +473,11 @@ impl Session<'_> {
 
     /// The utterance heard now, started at `start` when there is none yet.
     fn current_or_new(&mut self, start: usize) -> u64 {
-        if let Some(id) = self.current {
+        if let Some(id) = self.utterances.current {
             return id;
         }
         let id = self.new_utterance(start, samples_in(FIRST_WINDOW_SECS), false);
-        self.current = Some(id);
+        self.utterances.current = Some(id);
         id
     }
 
@@ -513,10 +487,13 @@ impl Session<'_> {
         first_window_after: usize,
         head_checked: bool,
     ) -> u64 {
-        let id = self.next_utterance;
-        self.next_utterance += 1;
-        let next_window = self.samples_seen.saturating_add(first_window_after);
-        self.utterances.insert(
+        let id = self.utterances.next_utterance;
+        self.utterances.next_utterance += 1;
+        let next_window = self
+            .detector
+            .samples_seen
+            .saturating_add(first_window_after);
+        self.utterances.running.insert(
             id,
             Running {
                 start,
@@ -534,13 +511,13 @@ impl Session<'_> {
     }
 
     fn mark(&mut self, utterance: u64, change: impl FnOnce(&mut Running)) {
-        if let Some(running) = self.utterances.get_mut(&utterance) {
+        if let Some(running) = self.utterances.running.get_mut(&utterance) {
             change(running);
         }
     }
 
     fn close_current(&mut self) {
-        if let Some(id) = self.current.take() {
+        if let Some(id) = self.utterances.current.take() {
             self.mark(id, |r| r.closed = true);
             self.forget_if_done(id);
         }
@@ -549,10 +526,11 @@ impl Session<'_> {
     fn forget_if_done(&mut self, utterance: u64) {
         if self
             .utterances
+            .running
             .get(&utterance)
             .is_some_and(|r| r.closed && r.jobs == 0)
         {
-            self.utterances.remove(&utterance);
+            self.utterances.running.remove(&utterance);
         }
     }
 
@@ -560,7 +538,7 @@ impl Session<'_> {
     fn pre_rolled(&self, start: usize) -> usize {
         start
             .saturating_sub(samples_in(PRE_ROLL_SECS))
-            .max(self.last_segment_end.min(start))
+            .max(self.utterances.last_segment_end.min(start))
     }
 }
 
@@ -586,14 +564,10 @@ fn decoded(
     found
 }
 
-/// How long a spotted trigger is kept for the segment it lies in.
-const TRIGGERS_KEPT_SECS: f32 = 10.0;
-
 fn samples_in(secs: f32) -> usize {
     (secs * SAMPLE_RATE as f32) as usize
 }
 
-/// Writes one speech segment as 16 kHz mono 16-bit WAV; a failure is only logged.
 /// `samples` as loud as the voice activity detector hears them.
 fn raised(samples: &[f32]) -> Vec<f32> {
     samples

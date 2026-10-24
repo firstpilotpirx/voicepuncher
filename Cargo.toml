@@ -1,5 +1,5 @@
 [workspace]
-members = ["analyzers", "app", "command-spotting", "copy-pool", "dev-tools", "e2e-test", "test-steps"]
+members = ["analyzers", "app", "command-spotting", "copy-pool", "dev-tools", "e2e-test", "test-steps", "voice-commands"]
 resolver = "2"
 
 # Size and complexity budgets (AGENTS.md § Architecture rules; thresholds in clippy.toml). A unit over budget on

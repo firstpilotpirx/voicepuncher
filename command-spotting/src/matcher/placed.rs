@@ -29,59 +29,15 @@ pub struct Found {
     pub placement: Placement,
 }
 
-/// How a command may be said: its phrase and the words of one way to say it.
-struct Form {
-    phrase: &'static str,
-    words: &'static [&'static str],
-}
+use voicepuncher_voice_commands::{
+    accepted_after, trailing, Form, Mishearing, MishearingKind, TrailingWord, DICTATING,
+    MISHEARINGS, RESTART, STANDBY, START,
+};
 
-const fn form(phrase: &'static str, words: &'static [&'static str]) -> Form {
-    Form { phrase, words }
-}
+use super::forms;
 
-const START: &str = "start dictation";
-const STOP: &str = "stop dictation";
-const CANCEL: &str = "cancel dictation";
-const RESTART: &str = "restart dictation";
-const ENTER: &str = "press enter";
-const CLEAR: &str = "clear all text";
-const PASTE: &str = "paste text";
-
-/// Longer forms first, so "stop dictation" wins over "stop".
-const FORMS: &[Form] = &[
-    form(CLEAR, &["clear", "all", "text"]),
-    form(START, &["start", "dictation"]),
-    form(START, &["star", "dictation"]),
-    form(START, &["stuck", "dictation"]),
-    form(STOP, &["stop", "dictation"]),
-    form(CANCEL, &["cancel", "dictation"]),
-    form(RESTART, &["restart", "dictation"]),
-    form(ENTER, &["press", "enter"]),
-    form(CLEAR, &["clear", "text"]),
-    form(PASTE, &["paste", "text"]),
-    form(ENTER, &["presenter"]),
-    form(START, &["start"]),
-    form(STOP, &["stop"]),
-    form(RESTART, &["restart"]),
-    form(ENTER, &["enter"]),
-    form(CLEAR, &["clear"]),
-    form(PASTE, &["paste"]),
-    form(CANCEL, &["cancel"]),
-];
-
-/// The phrases each state accepts; a dictation runs or it does not.
-const STANDBY: &[&str] = &[START, ENTER, CLEAR, PASTE];
-/// "enter" during a dictation ends it and presses Return.
-const DICTATING: &[&str] = &[STOP, CANCEL, RESTART, ENTER];
-
-/// The phrases accepted after `phrase` was carried out.
-fn accepted_after(phrase: &str) -> &'static [&'static str] {
-    if phrase == START || phrase == RESTART {
-        DICTATING
-    } else {
-        STANDBY
-    }
-}
+/// The most commands a chain holds.
+const LONGEST_CHAIN: usize = 3;
 
 /// A word of the transcript as the matcher reads it, with its index in the words given.
 struct Token {
@@ -124,17 +80,16 @@ fn difference_from(tokens: &[Token], form: &Form) -> Option<f32> {
     Some(total)
 }
 
-/// The command said at `from`, and how many tokens it takes with a trailing "please".
+/// The command said at `from`, and how many tokens it takes with a trailing word.
 fn command_at(tokens: &[Token], from: usize) -> Option<(&'static str, usize)> {
     let rest = tokens.get(from..)?;
     // The longest form said, and of those the closest: "restart dictation" is close to
     // "start dictation" too.
-    let (form, _) = FORMS
-        .iter()
-        .filter_map(|form| difference_from(rest, form).map(|d| (form, d)))
+    let (form, _) = forms()
+        .filter_map(|form| difference_from(rest, &form).map(|d| (form, d)))
         .min_by(|(a, da), (b, db)| b.words.len().cmp(&a.words.len()).then(da.total_cmp(db)))?;
     let mut used = form.words.len();
-    if rest.get(used).is_some_and(|t| t.text == super::POLITE_WORD) {
+    if rest.get(used).is_some_and(|t| trailing(&t.text).is_some()) {
         used += 1;
     }
     Some((form.phrase, used))
@@ -191,14 +146,14 @@ impl PhraseMatcher {
     }
 
     /// "start dictation" or "start" opening `words`, with more speech after it or closed by
-    /// "please".
+    /// a trailing word.
     pub fn start_at_head(&self, words: &[&str]) -> Option<Found> {
         let tokens = tokens(words);
         let (phrase, used) = command_at(&tokens, 0)?;
         // "start stop" ends the dictation it would start: no dictation at all.
         let command_follows = command_at(&tokens, used).is_some();
-        // "please" closes the command: nothing has to follow it.
-        let closed = used < tokens.len() || tokens[used - 1].text == super::POLITE_WORD;
+        // A trailing word closes the command: nothing has to follow it.
+        let closed = used < tokens.len() || trailing(&tokens[used - 1].text).is_some();
         (phrase == START && self.accepted().contains(&START) && closed && !command_follows).then(
             || Found {
                 commands: vec![START.to_owned()],
@@ -208,16 +163,6 @@ impl PhraseMatcher {
                 placement: Placement::Head,
             },
         )
-    }
-
-    /// Whether `found` is a start closed by "please" with nothing after it in `words`.
-    pub fn start_closed_by_please(&self, words: &[&str], found: &Found) -> bool {
-        let tokens = tokens(words);
-        found.placement == Placement::Head
-            && found.commands == [START]
-            && tokens
-                .last()
-                .is_some_and(|t| t.at == found.last && t.text == super::POLITE_WORD)
     }
 
     /// A doubled short form or a chain of two or three commands anywhere in `words`.
@@ -255,6 +200,15 @@ impl PhraseMatcher {
     }
 }
 
+/// The trailing word that closes `found`, a start with nothing after it in `words`.
+pub fn closing_word_of_start(words: &[&str], found: &Found) -> Option<&'static TrailingWord> {
+    let tokens = tokens(words);
+    let last = tokens.last().filter(|t| t.at == found.last)?;
+    (found.placement == Placement::Head && found.commands == [START])
+        .then(|| trailing(&last.text))
+        .flatten()
+}
+
 /// The commands said one after another from `first`, said in tokens `from..next`, each
 /// accepted after the one before and each once, "start" only last; with the tokens of each.
 fn chain_from(
@@ -263,19 +217,20 @@ fn chain_from(
     from: usize,
     mut next: usize,
 ) -> Vec<(&'static str, Range<usize>)> {
-    const LONGEST_CHAIN: usize = 3;
     let mut chain = vec![(first, from..next)];
     while chain.len() < LONGEST_CHAIN {
         let last = chain[chain.len() - 1].0;
         if last == START || last == RESTART {
             break;
         }
-        if chain.len() + 2 <= LONGEST_CHAIN
-            && ends_with_and_restart(tokens, next)
-            && accepted_after(last).contains(&ENTER)
-        {
-            // "enter start" said quickly, heard as "and restart", ends the chain.
-            chain.extend([(ENTER, next..next + 1), (START, next + 1..next + 2)]);
+        if let Some(row) = after_command_at(tokens, next, last, LONGEST_CHAIN - chain.len()) {
+            // Commands said quickly and heard as other words end the chain, one word each.
+            chain.extend(
+                row.means
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &c)| (c, next + i..next + i + 1)),
+            );
             break;
         }
         let Some((command, used)) = command_at(tokens, next) else {
@@ -290,14 +245,24 @@ fn chain_from(
     chain
 }
 
-/// "and restart" closes the transcript at `next`: how the speech recognition service hears
-/// a quick "enter start".
-fn ends_with_and_restart(tokens: &[Token], next: usize) -> bool {
-    let words: Vec<&str> = tokens[next.min(tokens.len())..]
+/// The after-command mishearing that closes the transcript at `next` after `last`, with
+/// at most `room` commands.
+fn after_command_at(
+    tokens: &[Token],
+    next: usize,
+    last: &str,
+    room: usize,
+) -> Option<&'static Mishearing> {
+    let rest: Vec<&str> = tokens[next.min(tokens.len())..]
         .iter()
         .map(|t| t.text.as_str())
         .collect();
-    words == ["and", "restart"]
+    MISHEARINGS.iter().find(|m| {
+        m.kind == MishearingKind::AfterCommand
+            && m.heard == rest.as_slice()
+            && m.means.len() <= room
+            && accepted_after(last).contains(&m.means[0])
+    })
 }
 
 #[cfg(test)]

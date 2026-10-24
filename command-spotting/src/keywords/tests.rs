@@ -83,3 +83,27 @@ fn should_reject_an_unknown_phrase_by_name() {
     assert_eq!(error, UnknownPhrases(phrases(&["open the door"])));
     assert_eq!(error.to_string(), "unknown phrases: open the door");
 }
+
+#[test]
+fn should_have_a_keyword_line_for_every_declared_command_and_none_else() {
+    // When
+    let keywords = parse(KEYWORDS);
+    // Then
+    let spotted: Vec<&str> = keywords
+        .iter()
+        .map(|k| k.phrase.as_str())
+        .filter(|phrase| !is_trigger(phrase))
+        .collect();
+    for phrase in &spotted {
+        assert!(
+            voicepuncher_voice_commands::COMMANDS.contains(phrase),
+            "keywords.txt spots {phrase:?}, which voice-commands does not declare"
+        );
+    }
+    for phrase in voicepuncher_voice_commands::COMMANDS {
+        assert!(
+            spotted.contains(&phrase),
+            "keywords.txt has no line for {phrase:?}"
+        );
+    }
+}

@@ -28,6 +28,7 @@ recognition_paths = '''
     app/src/core/domain/command_words.rs
     command-spotting/src/*
     command-spotting/keywords.txt
+    voice-commands/src/*
     app/src/adapters/secondary/commandspotting/websocket/client.rs
     app/src/core/domain/voice_command.rs
     app/src/core/domain/voice_command_recognizer.rs
@@ -89,6 +90,7 @@ stage_inputs = '''
     app/src/core/domain/cleaned_text.rs                e2e-regression,e2e-smoke-speech,accuracy
     app/src/core/domain/filler_sounds.rs               e2e-regression,e2e-smoke-speech,accuracy
     command-spotting/*                                 e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
+    voice-commands/*                                   e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
     app/src/adapters/secondary/commandspotting/*       e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
     app/src/adapters/secondary/keypressing/*           e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy
     app/src/core/application/pipeline/voice_control.rs e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-cues,e2e-smoke-services,accuracy

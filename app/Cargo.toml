@@ -125,6 +125,7 @@ rtrb = "=0.4.0"
 
 [dev-dependencies]
 voicepuncher-test-steps = { path = "../test-steps" }
+voicepuncher-voice-commands = { path = "../voice-commands" }
 mockall = "=0.13.1"
 tempfile = "=3.27.0"
 walkdir = "=2.5.0"

@@ -6,13 +6,14 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-const MEMBERS: [&str; 6] = [
+const MEMBERS: [&str; 7] = [
     "analyzers",
     "app",
     "command-spotting",
     "copy-pool",
     "dev-tools",
     "e2e-test",
+    "voice-commands",
 ];
 
 /// The workspace root: the parent of the `app` package.

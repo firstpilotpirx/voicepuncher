@@ -527,7 +527,7 @@
 ### Second hearing
 - **Type:** Rule of the *command spotting service*
 - **Definition:** When the confirmation of a short utterance hears no command but a *near miss*, the utterance is heard once more through its *steady clip*, and counts as the near-missed command only when that hearing says it as a whole. Its events wait for the second answer.
-- **Code:** `JobKind::Rehear`, `hear_again` in `command-spotting/src/engine/confirming.rs`
+- **Code:** `JobKind::Rehear`, `hear_again` in `command-spotting/src/engine/confirming/rehear.rs`
 
 ### Steady clip
 - **Type:** Value of the *command spotting service*

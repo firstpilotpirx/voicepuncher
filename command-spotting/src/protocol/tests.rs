@@ -10,6 +10,16 @@ fn should_parse_a_phrase_selection() {
 }
 
 #[test]
+fn should_read_a_selection_with_and_without_early_start() {
+    // When
+    let told: PhraseSelection =
+        serde_json::from_str(r#"{"phrases": ["press enter"], "early_start": false}"#).unwrap();
+    let untold: PhraseSelection = serde_json::from_str(r#"{"phrases": ["press enter"]}"#).unwrap();
+    // Then
+    assert_eq!((told.early_start, untold.early_start), (Some(false), None));
+}
+
+#[test]
 fn should_parse_a_sync_request() {
     // When
     let message: AppMessage = serde_json::from_str(r#"{"type":"sync","id":7}"#).unwrap();
@@ -33,7 +43,10 @@ fn should_parse_a_tagged_phrase_selection() {
     // Then
     assert_eq!(
         message,
-        AppMessage::Select(PhraseSelection { phrases: vec!["press enter".into()] })
+        AppMessage::Select(PhraseSelection {
+            phrases: vec!["press enter".into()],
+            early_start: None
+        })
     );
 }
 

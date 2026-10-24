@@ -8,6 +8,10 @@ pub use crate::matcher::Placement;
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct PhraseSelection {
     pub phrases: Vec<String>,
+    /// Whether the start of an utterance is searched early for a command opening speech;
+    /// an app that does not say it gets it when "start dictation" is among its phrases.
+    #[serde(default)]
+    pub early_start: Option<bool>,
 }
 
 /// The version of this protocol: the app says it in its first message, `hello`.

@@ -1,0 +1,10 @@
+[package]
+name = "voicepuncher-voice-commands"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+description = "The voice commands: their phrases, the ways to say them, the states that accept them and how speech recognition mishears them"
+publish = false
+
+[lints]
+workspace = true

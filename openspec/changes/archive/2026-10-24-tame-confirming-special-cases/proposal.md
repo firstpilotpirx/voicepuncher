@@ -4,16 +4,16 @@
 
 ## What Changes
 
-- Mishearings become data: one `NEAR_MISSES` table (phrase heard → command, with the recording that produced it) consulted by the matcher; the per-case branches in `confirming.rs` and `matcher.rs` go; a test runs the table against the voice samples.
+- Mishearings become data: one `NEAR_MISSES` table (phrase heard → command, with the recording that produced it) consulted by the matcher; the per-case branches in `confirming.rs` and `matcher.rs` go, except the three cases that work as mechanisms ("Restocked.", "okay, based", "at 10am"), which stay as code whose comments name the case only as an example (design § Context); a test runs the table against the voice samples.
 - One source for the commands, their forms and the states that accept them: a declaration (a Rust module or a data file) from which `keywords.txt` and the app's `command_words` are generated or checked by a test that fails on a drift.
 - The confirmation state machine is split by `JobContext`: one handler per context with the flags it needs as typed state, `apply_answer` and `close_segment` under the function budget, `Result<AskedJob, Vec<ServerEvent>>` replaced by an enum that says what it is; `Session` grouped into the sub-states it actually holds.
-- The engine takes a "the app started early" fact through the protocol as a plain input, not as matcher state.
+- The engine takes a "search the start early" fact through the protocol (`early_start`) instead of inferring it from the selected phrases; it travels with the phrases the matcher holds (design § 7).
 - `words()` handles Unicode letters; `is_check` lives once.
-- Stale doc comments (`engine.rs:620–621`), constants in the middle of methods (`:614`), the double `ask_spotted_check()` per frame (`:285–302`), and the two `impl PhraseMatcher` blocks are cleaned up on the way.
+- Stale doc comments (`engine.rs:620–621`), constants in the middle of methods (`:614`), the double `ask_spotted_check()` per frame (`:285–302`, now one call after the answers), and the two `impl PhraseMatcher` blocks are cleaned up on the way.
 
 Current stage: PoC. Target stage: PoC.
 Scope: `command-spotting/src/engine/**`, `matcher/**`, `keywords.rs`, `keywords.txt`, `app/src/core/domain/command_words.rs`, the `engine_it`, `placed_commands_it` and voice-sample tests.
-Acceptance bar: every `engine_it`, `placed_commands_it`, `voice_samples_it` and `@smoke`/`@regression` voice control scenario passes unchanged; no mishearing is handled by a branch in code; the drift test proves the three declarations agree; `confirming.rs` under the file budget.
+Acceptance bar: every `engine_it`, `placed_commands_it`, `voice_samples_it` and `@smoke`/`@regression` voice control scenario passes unchanged; no mishearing word is matched by a branch in code (the three mechanisms above stay, design § Context); the drift test proves the three declarations agree; `confirming.rs` under the file budget.
 Out of scope: stalls, queues and the protocol version (`command-spotting-stall-handling`); new commands.
 
 ## Capabilities

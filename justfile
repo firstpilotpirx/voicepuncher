@@ -43,7 +43,7 @@ full_check_model_stages := "e2e-smoke-voice e2e-regression e2e-resilience e2e-bu
 # The test modules of the voice control smoke part, the most failing first: every member's integration tests
 # build into its one `it` binary (tests/it/<module>.rs), so a part names modules; placed_commands is the command
 # spotting service's, the others the app's
-voice_smoke_modules := "placed_commands voice_forms voice_samples commandspotting_websocket"
+voice_smoke_modules := "placed_commands voice_forms mishearings voice_samples commandspotting_websocket"
 # Every test binary of the smoke parts in one cargo selection: each part's one nextest call builds exactly what
 # _build-e2e built before the machine lock, and picks its own modules with a filter (dev-tools filter smoke)
 smoke_parts_tests := "-p voicepuncher -p voicepuncher-command-spotting -p voicepuncher-e2e-test --test it --test cucumber_e2e"

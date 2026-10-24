@@ -14,7 +14,7 @@ use tungstenite::{Message, WebSocket};
 
 use crate::engine::{Engine, Session};
 use crate::health::{Beat, Health};
-use crate::protocol::{samples_from_bytes, AppMessage, ServerEvent};
+use crate::protocol::{samples_from_bytes, AppMessage, PhraseSelection, ServerEvent};
 
 /// How long a read on the socket waits before the I/O thread sends what is ready.
 const READ_WAIT: Duration = Duration::from_millis(10);
@@ -34,7 +34,7 @@ static NEXT_CONN: AtomicU64 = AtomicU64::new(1);
 enum Input {
     Hello(u32),
     Audio(Vec<f32>, Instant),
-    Select(Vec<String>),
+    Select(PhraseSelection),
     Sync(u64),
 }
 
@@ -176,7 +176,7 @@ fn read_input(
 fn text_input(text: &str, greeted: bool) -> Result<Input> {
     Ok(match serde_json::from_str::<AppMessage>(text) {
         Ok(AppMessage::Hello { version }) => Input::Hello(version),
-        Ok(AppMessage::Select(selection)) => Input::Select(selection.phrases),
+        Ok(AppMessage::Select(selection)) => Input::Select(selection),
         Ok(AppMessage::Sync { id }) => Input::Sync(id),
         Err(_) if !greeted => return Err(Refusal::no_hello().into()),
         Err(e) => return Err(Refusal::invalid(format!("malformed message: {e}")).into()),
@@ -202,9 +202,9 @@ fn process(
                 events
             }
             Ok(Input::Hello(_)) => Vec::new(),
-            Ok(Input::Select(phrases)) => match session.listen_for(&phrases) {
+            Ok(Input::Select(selection)) => match session.select(&selection) {
                 Ok(()) => {
-                    log::info!("conn={conn} listening for {phrases:?}");
+                    log::info!("conn={conn} listening for {:?}", selection.phrases);
                     Vec::new()
                 }
                 Err(unknown) => {

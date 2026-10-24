@@ -136,3 +136,15 @@ fn should_read_a_stall_and_dropped_audio_as_no_spotting_event() {
         );
     }
 }
+
+#[test]
+fn should_ask_for_an_early_start_only_while_start_dictation_is_listened_for() {
+    // When
+    let early = |commands| -> serde_json::Value {
+        serde_json::from_str::<serde_json::Value>(&selection_of(commands)).unwrap()["early_start"]
+            .clone()
+    };
+    // Then
+    assert_eq!(early(&VoiceCommand::STANDBY), serde_json::json!(true));
+    assert_eq!(early(&VoiceCommand::DICTATING), serde_json::json!(false));
+}

@@ -37,5 +37,6 @@ mod textpasting_macos;
 mod textpasting_stdio;
 mod transcription_openai;
 mod unsafe_impls;
+mod voice_commands;
 mod voice_forms;
 mod voice_samples;

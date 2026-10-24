@@ -28,10 +28,6 @@
 "app/tests/it/modelfetch_http.rs::serve" = 54
 "app/tests/it/transcription_openai.rs::spawn_copy" = 44
 "app/tests/steps/speech_recognition.rs::differing_overlap" = 60
-"command-spotting/src/engine.rs::Session::watch_running" = 48
-"command-spotting/src/engine/confirming.rs::Session::apply_answer" = 92
-"command-spotting/src/engine/confirming.rs::Session::close_segment" = 66
-"command-spotting/src/engine/confirming.rs::Session::place" = 42
 "command-spotting/src/engine/pause.rs::PauseWatch::hear" = 42
 "command-spotting/src/matcher/placed.rs::tests::should_find_a_chain_of_commands_anywhere" = 50
 "command-spotting/tests/it/placed_commands.rs::heard_finely_misheard" = 62
@@ -54,16 +50,14 @@
 "app/src/core/application/text_insertion.rs::insert_text" = 6
 "app/src/runtime/mod.rs::Supervisor::new" = 7
 "app/tests/steps/voice_control.rs::VoiceRun::send_segment" = 6
-"command-spotting/src/engine/confirming.rs::Session::ask_clip" = 6
-"command-spotting/src/engine/confirming.rs::Session::close_segment" = 7
-"command-spotting/src/engine/confirming.rs::Session::place" = 6
-"command-spotting/src/engine/confirming.rs::Session::submit" = 6
+"command-spotting/src/engine/confirming/ask.rs::Session::ask_clip" = 6
+"command-spotting/src/engine/confirming/ask.rs::Session::submit" = 6
 
 [file_lines]
-"app/src/adapters/primary/menubar/macos/mapping/tests.rs" = 389
-"app/src/adapters/primary/menubar/macos/status_item.rs" = 373
+"app/src/adapters/primary/menubar/macos/mapping/tests.rs" = 368
+"app/src/adapters/primary/menubar/macos/status_item.rs" = 369
 "app/src/adapters/primary/modeldownload/macos/mod.rs" = 378
-"app/src/adapters/primary/permissions/macos/mod.rs" = 431
+"app/src/adapters/primary/permissions/macos/mod.rs" = 429
 "app/src/adapters/secondary/commandspotting/websocket/mod.rs" = 334
 "app/src/adapters/secondary/localservices/catalog/mod.rs" = 470
 "app/src/adapters/secondary/localservices/catalog/tests.rs" = 375
@@ -81,28 +75,27 @@
 "app/src/core/application/pipeline/voice_control/tests.rs" = 802
 "app/src/core/application/text_insertion.rs" = 355
 "app/src/runtime/mod.rs" = 894
-"app/tests/it/architecture.rs" = 510
+"app/tests/it/architecture.rs" = 488
 "app/tests/it/commandspotting_reconnect.rs" = 512
 "app/tests/it/commandspotting_websocket.rs" = 418
 "app/tests/it/transcription_openai.rs" = 970
 "app/tests/main_thread/settings_macos.rs" = 317
 "app/tests/main_thread/visualfeedback_macos.rs" = 649
-"app/tests/steps/app_logging.rs" = 311
+"app/tests/steps/app_logging.rs" = 310
 "app/tests/steps/app_runtime.rs" = 796
-"app/tests/steps/dictation_archive.rs" = 506
+"app/tests/steps/dictation_archive.rs" = 496
 "app/tests/steps/dictation_pointer.rs" = 406
-"app/tests/steps/failure_notices.rs" = 487
-"app/tests/steps/launch_at_login.rs" = 325
+"app/tests/steps/failure_notices.rs" = 486
+"app/tests/steps/launch_at_login.rs" = 324
 "app/tests/steps/menu_bar_presence.rs" = 597
 "app/tests/steps/model_download.rs" = 567
-"app/tests/steps/processing_stages.rs" = 321
+"app/tests/steps/processing_stages.rs" = 320
 "app/tests/steps/settings_window.rs" = 528
-"app/tests/steps/text_insertion.rs" = 360
+"app/tests/steps/text_insertion.rs" = 355
 "app/tests/steps/voice_control.rs" = 1042
-"command-spotting/src/engine.rs" = 551
-"command-spotting/src/engine/confirming.rs" = 951
-"command-spotting/src/matcher/placed.rs" = 568
-"command-spotting/tests/it/engine.rs" = 1044
+"command-spotting/src/engine.rs" = 540
+"command-spotting/src/matcher/placed.rs" = 540
+"command-spotting/tests/it/engine.rs" = 1039
 "command-spotting/tests/it/placed_commands.rs" = 694
 "e2e-test/src/harness_args.rs" = 397
 "e2e-test/src/speech.rs" = 403
@@ -119,7 +112,6 @@
 "app/tests/cucumber_integration.rs::IntegrationWorld" = 18
 "app/tests/steps/app_runtime.rs::RuntimeRun" = 13
 "app/tests/steps/menu_bar_presence.rs::MenuBarRun" = 15
-"command-spotting/src/engine.rs::Session" = 28
 "e2e-test/tests/cucumber_e2e.rs::E2eWorld" = 23
 "e2e-test/tests/steps/app_distribution.rs::DistributionRun" = 13
 "e2e-test/tests/steps/local_services.rs::ScenarioServices" = 23
@@ -127,13 +119,13 @@
 [public_members]
 
 [directory_lines]
-"app/src/adapters/primary/settings/macos" = 2094
+"app/src/adapters/primary/settings/macos" = 2085
 "app/src/adapters/secondary/visualfeedback/macos" = 2757
 "app/src/core/application" = 3352
 "app/src/core/domain" = 2274
-"app/tests/it" = 5606
-"app/tests/steps" = 7146
-"command-spotting/tests/it" = 2050
+"app/tests/it" = 5604
+"app/tests/steps" = 7067
+"command-spotting/tests/it" = 2047
 "e2e-test/tests/steps" = 2335
 
 [excessive_nesting]
@@ -156,8 +148,7 @@
 "app/tests/it/transcription_openai.rs::spawn_resetting_stub" = 0
 "app/tests/steps/app_runtime/services.rs::<FakeServices as LocalServices>::progress" = 0
 "app/tests/steps/speech_recognition/losses.rs::<FirstDictationLost as Transcriber>::transcribe" = 0
-"command-spotting/src/engine/confirming.rs::EarlyRehears::retarget" = 0
-"command-spotting/src/engine/confirming.rs::Session::apply_answer" = 0
+"command-spotting/src/engine/confirming/rehear.rs::EarlyRehears::retarget" = 0
 "command-spotting/src/engine/pause.rs::PauseWatch::hear" = 0
 "command-spotting/src/matcher/placed.rs::PhraseMatcher::anywhere" = 0
 "e2e-test/src/concurrency.rs::map_concurrently" = 0
@@ -166,4 +157,3 @@
 "e2e-test/tests/steps/local_services/copies.rs::more_requests" = 0
 
 [cognitive_complexity]
-"command-spotting/src/engine/confirming.rs::Session::apply_answer" = 0

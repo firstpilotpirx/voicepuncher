@@ -66,9 +66,7 @@ impl SpottingClient {
 
     /// Spots the phrases of `commands` from now on.
     pub fn listen_for(&mut self, commands: &[VoiceCommand]) -> Result<()> {
-        let phrases: Vec<&str> = commands.iter().map(|c| c.phrase()).collect();
-        let selection = serde_json::json!({ "type": "select", "phrases": phrases }).to_string();
-        self.socket.send(Message::text(selection))?;
+        self.socket.send(Message::text(selection_of(commands)))?;
         Ok(())
     }
 
@@ -221,6 +219,15 @@ fn is_timeout(e: &std::io::Error) -> bool {
         e.kind(),
         std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
     )
+}
+
+/// The `select` message for `commands`: the start of an utterance is searched early while
+/// "start dictation" is among them.
+fn selection_of(commands: &[VoiceCommand]) -> String {
+    let phrases: Vec<&str> = commands.iter().map(|c| c.phrase()).collect();
+    let early_start = commands.contains(&VoiceCommand::StartDictation);
+    serde_json::json!({ "type": "select", "phrases": phrases, "early_start": early_start })
+        .to_string()
 }
 
 #[cfg(test)]

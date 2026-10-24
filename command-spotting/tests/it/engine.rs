@@ -4,8 +4,7 @@
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 
 use crate::common;
@@ -40,7 +39,7 @@ const ALL_PHRASES: [&str; 6] = [
 /// ONNX Runtime aborts when models load or run on several test threads at once.
 static ENGINE: OnceLock<Mutex<Engine>> = OnceLock::new();
 
-fn engine() -> MutexGuard<'static, Engine> {
+pub fn engine() -> MutexGuard<'static, Engine> {
     ENGINE
         .get_or_init(|| Mutex::new(load_engine()))
         .lock()
@@ -53,7 +52,7 @@ fn load_engine() -> Engine {
 
 /// The engine config, confirming utterances with the speech recognition service at
 /// `transcription_url` when given.
-fn engine_cfg(transcription_url: Option<String>) -> EngineCfg {
+pub fn engine_cfg(transcription_url: Option<String>) -> EngineCfg {
     let (model_dir, vad_model) = kws_models();
     EngineCfg {
         model_dir,
@@ -377,16 +376,20 @@ fn segment_ends(events: &[ServerEvent]) -> Vec<f32> {
         .collect()
 }
 
-/// The user's quiet "restart" said on its own, cut from their labelled recording with the
-/// margins the E2E scenarios use; none when the recordings are not on this machine.
-fn users_quiet_restart() -> Vec<f32> {
+/// The user's recording `session` of `~/.voicepuncher/voice-samples/`.
+fn users_session(session: &str) -> Vec<f32> {
     let root = required_env("VOICEPUNCHER_VOICE_SAMPLES");
-    let path = PathBuf::from(root).join("session-2.wav");
-    let audio: Vec<f32> = hound::WavReader::open(path)
+    hound::WavReader::open(PathBuf::from(root).join(format!("{session}.wav")))
         .unwrap()
         .samples::<i16>()
         .map(|s| f32::from(s.unwrap()) / f32::from(i16::MAX))
-        .collect();
+        .collect()
+}
+
+/// The user's quiet "restart" said on its own, cut from their labelled recording with the
+/// margins the E2E scenarios use; none when the recordings are not on this machine.
+fn users_quiet_restart() -> Vec<f32> {
+    let audio = users_session("session-2");
     let at = |secs: f32| (secs * SAMPLE_RATE as f32) as usize;
     // Labelled 27.23–27.52 s; 0.3 s before and 0.2 s after keep its first and last sounds.
     audio[at(26.93)..at(27.72)].to_vec()
@@ -395,13 +398,7 @@ fn users_quiet_restart() -> Vec<f32> {
 /// The user's first two recorded "start dictation"s (session-1, labelled 4.98–6.19 s and
 /// 6.58–7.41 s): 0.32 s of room between them, broken by a click at 6.42 s.
 fn users_two_start_dictations() -> Vec<f32> {
-    let root = required_env("VOICEPUNCHER_VOICE_SAMPLES");
-    let path = PathBuf::from(root).join("session-1.wav");
-    let audio: Vec<f32> = hound::WavReader::open(path)
-        .unwrap()
-        .samples::<i16>()
-        .map(|s| f32::from(s.unwrap()) / f32::from(i16::MAX))
-        .collect();
+    let audio = users_session("session-1");
     let at = |secs: f32| (secs * SAMPLE_RATE as f32) as usize;
     // From the session start: the detector hears the room before them as the app streams it;
     // silence after them closes the second one.

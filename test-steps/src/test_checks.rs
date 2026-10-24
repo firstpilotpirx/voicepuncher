@@ -10,7 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// The workspace members, as seen from the app's directory.
-const MEMBERS: [&str; 7] = [
+const MEMBERS: [&str; 8] = [
     "analyzers",
     "app",
     "command-spotting",
@@ -18,6 +18,7 @@ const MEMBERS: [&str; 7] = [
     "dev-tools",
     "e2e-test",
     "test-steps",
+    "voice-commands",
 ];
 /// The line a self-skipping test printed; only the cucumber tag gates keep it.
 const SKIP_LINE: &str = concat!("GATED", ":");

@@ -1,8 +1,10 @@
 //! Every integration test of the command spotting service in one binary: one link instead of one per file.
 
 mod common;
+mod early_start;
 mod engine;
 mod kws_models;
+mod mishearings;
 mod placed_commands;
 mod scripted_hearing;
 mod server;

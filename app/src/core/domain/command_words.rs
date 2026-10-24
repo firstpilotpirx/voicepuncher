@@ -7,7 +7,7 @@ use super::voice_command::VoiceCommand;
 
 /// The ways a command reaches a transcript: English, or written in Cyrillic when the
 /// speech recognition service took the dictation for Russian. Longer ways first.
-const COMMAND_FORMS: &[&[&str]] = &[
+pub const COMMAND_FORMS: &[&[&str]] = &[
     &["clear", "all", "text"],
     &["stop", "dictation"],
     &["cancel", "dictation"],
