@@ -3,6 +3,7 @@
 //! runs, the filters of the test selections, the engines and the local services.
 
 mod accuracy;
+mod accuracy_baseline;
 mod clock;
 mod context;
 mod engines;
@@ -27,7 +28,7 @@ pub type Outcome = Result<u8, String>;
 type Command = fn(&[String]) -> Outcome;
 
 /// Every command, by the name a recipe calls it with.
-const COMMANDS: [(&str, Command); 23] = [
+const COMMANDS: [(&str, Command); 24] = [
     ("stages", stages::command),
     ("model-stages", |stages| Ok(stages::model::command(stages))),
     ("test-stage", stages::test::command),
@@ -39,6 +40,7 @@ const COMMANDS: [(&str, Command); 23] = [
     ("locked", locks::locked_command),
     ("require-lock", locks::require_command),
     ("accuracy-stage", accuracy::command),
+    ("accuracy-baseline", accuracy_baseline::command),
     ("filter", filters::command),
     ("gated-filter", filters::gated_command),
     ("keys", keys::command),

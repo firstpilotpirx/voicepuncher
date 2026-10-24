@@ -1,7 +1,7 @@
 //! `dev-tools stage-times [since]`: the stage journal's summary for the runs since a date (`2026-10-01`) or a
 //! span (`7d`, default `30d`) — per recipe and stage the runs, median, total and failures, the reused runs and
 //! the time they saved; the lock wait; whether two runs' e2e lock holds overlapped; the failed tests, most
-//! first; runs and time per branch.
+//! first; runs and time per branch; the mean word error rate of the last accuracy runs per sample size.
 
 use crate::clock;
 use crate::Outcome;
@@ -11,6 +11,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
+mod accuracy;
 mod lines;
 use lines::{lock_lines, stage_table, test_and_branch_lines};
 
@@ -252,5 +253,6 @@ pub fn summary(
     stage_table(&totals, &mut out);
     lock_lines(&totals, &mut out);
     test_and_branch_lines(&totals, &mut out);
+    accuracy::trend(&runs, &mut out);
     Ok(out)
 }

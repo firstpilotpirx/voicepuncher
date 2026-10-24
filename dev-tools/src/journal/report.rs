@@ -1,6 +1,6 @@
 //! The report of one stage run: a line per event, appended by the runner and its model phase
 //! (`VOICEPUNCHER_STAGES_REPORT`) — `stage <mark> <stage> <seconds>`, `reused <stage> <pass record>` and
-//! `requested|locked|returned <lock class> <epoch seconds>`.
+//! `requested|locked|returned <lock class> <epoch seconds>`, and `wer <sample size> <mean>` from an accuracy stage.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -28,6 +28,8 @@ pub struct Report {
     pub marks: BTreeMap<String, Marks>,
     /// The stages that ran, in order, each with its mark and seconds.
     pub ran: Vec<(String, String, String)>,
+    /// The sample size and mean word error rate the last accuracy stage measured.
+    pub wer: Option<(u64, f64)>,
 }
 
 impl Report {
@@ -44,6 +46,9 @@ impl Report {
                 }
                 [kind @ ("requested" | "locked" | "returned"), class, at, ..] => {
                     report.mark(kind, class, at);
+                }
+                ["wer", sample, mean, ..] => {
+                    report.wer = sample.parse().ok().zip(mean.parse().ok());
                 }
                 _ => {}
             }

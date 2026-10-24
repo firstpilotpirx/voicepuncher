@@ -49,7 +49,11 @@ pub fn line(run: &Run, report: &Report, zone: &TimeZone) -> String {
         .collect();
     let recipe = run.recipe.clone().unwrap_or_else(|| "stages".into());
     let accuracy = run.accuracy.clone().map_or(Value::Null, Value::from);
-    let pairs: [(&str, Value); 14] = [
+    let wer = report.wer.map_or(
+        Value::Null,
+        |(sample, mean)| json!({"sample": sample, "mean": mean}),
+    );
+    let pairs: [(&str, Value); 15] = [
         ("started", json!(clock::iso(run.started, zone))),
         ("seconds", number(round1(run.ended - run.started))),
         ("worktree", json!(run.worktree.to_string_lossy())),
@@ -67,6 +71,7 @@ pub fn line(run: &Run, report: &Report, zone: &TimeZone) -> String {
             "failed_tests",
             json!(failed::tests(&run.log, run.interrupted)),
         ),
+        ("wer", wer),
     ];
     let body: Vec<String> = pairs
         .iter()

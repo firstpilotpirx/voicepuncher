@@ -17,9 +17,9 @@ const LOG: &str =
         FAIL [   1.234s] (3/10) voicepuncher::it placed_commands::should_spot
 ";
 
-const PLAIN: &str = r#"{"started":"1970-01-01T00:16:30+00:00","seconds":120.2,"worktree":"/nonexistent/worktree","branch":null,"commit":null,"recipe":"check","result":"failed","exit":1,"stages":[{"name":"fmt","result":"passed","seconds":12.3},{"from":{"branch":"feat/x","commit":"abc1234","finished":"2026-10-23T10:00:00+02:00","seconds":55.5,"worktree":"/w"},"name":"test","result":"reused","seconds":null},{"name":"build","result":"passed","seconds":40},{"name":"it-real","result":"skipped","seconds":0.4},{"name":"e2e-smoke-voice","result":"failed","seconds":61.75},{"name":"e2e-cues","result":"skipped","seconds":null}],"lock_wait":5.2,"lock_held":94.8,"locks":[{"class":"e2e","held":94.8,"locked":"1970-01-01T00:16:45+00:00","wait":5.2}],"accuracy":"accuracy: 10 recordings (e2e-quick) — x","failed_tests":["voicepuncher::it placed_commands::should_spot","voicepuncher::it slow::should_hang","voicepuncher::it other::should_stop","scenario: A paste lands","scenario: Second été"]}"#;
+const PLAIN: &str = r#"{"started":"1970-01-01T00:16:30+00:00","seconds":120.2,"worktree":"/nonexistent/worktree","branch":null,"commit":null,"recipe":"check","result":"failed","exit":1,"stages":[{"name":"fmt","result":"passed","seconds":12.3},{"from":{"branch":"feat/x","commit":"abc1234","finished":"2026-10-23T10:00:00+02:00","seconds":55.5,"worktree":"/w"},"name":"test","result":"reused","seconds":null},{"name":"build","result":"passed","seconds":40},{"name":"it-real","result":"skipped","seconds":0.4},{"name":"e2e-smoke-voice","result":"failed","seconds":61.75},{"name":"e2e-cues","result":"skipped","seconds":null}],"lock_wait":5.2,"lock_held":94.8,"locks":[{"class":"e2e","held":94.8,"locked":"1970-01-01T00:16:45+00:00","wait":5.2}],"accuracy":"accuracy: 10 recordings (e2e-quick) — x","failed_tests":["voicepuncher::it placed_commands::should_spot","voicepuncher::it slow::should_hang","voicepuncher::it other::should_stop","scenario: A paste lands","scenario: Second été"],"wer":null}"#;
 
-const CALLER: &str = r#"{"started":"1970-01-01T03:00:05+03:00","seconds":40,"worktree":"/nonexistent/worktree","branch":null,"commit":null,"recipe":"stages","result":"passed","exit":0,"stages":[{"name":"e2e-quick","result":"passed","seconds":30}],"lock_wait":"caller","lock_held":"caller","locks":[],"accuracy":null,"failed_tests":[]}"#;
+const CALLER: &str = r#"{"started":"1970-01-01T03:00:05+03:00","seconds":40,"worktree":"/nonexistent/worktree","branch":null,"commit":null,"recipe":"stages","result":"passed","exit":0,"stages":[{"name":"e2e-quick","result":"passed","seconds":30}],"lock_wait":"caller","lock_held":"caller","locks":[],"accuracy":null,"failed_tests":[],"wer":null}"#;
 
 fn fixture(dir: &Path) -> (Report, Run) {
     let pass = dir.join("pass.json");
@@ -58,6 +58,19 @@ fn should_write_the_journal_line_the_former_runner_wrote() {
     let dir = tempfile::tempdir().unwrap();
     let (report, run) = fixture(dir.path());
     assert_eq!(line(&run, &report, &TimeZone::UTC), PLAIN);
+}
+
+#[test]
+fn should_journal_the_mean_wer_the_accuracy_stage_reported() {
+    // Given: the accuracy stage appended its rate to the report
+    let dir = tempfile::tempdir().unwrap();
+    let (mut report, run) = fixture(dir.path());
+    report.wer = Report::parse("stage ✓ e2e-bench 120\nwer 100 0.0470\n").wer;
+    // When
+    let journaled = line(&run, &report, &TimeZone::UTC);
+    // Then
+    let expected = PLAIN.replace(r#""wer":null"#, r#""wer":{"mean":0.047,"sample":100}"#);
+    assert_eq!(journaled, expected);
 }
 
 #[test]

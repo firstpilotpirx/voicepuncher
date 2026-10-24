@@ -33,6 +33,8 @@ recognition_paths = '''
     app/src/core/domain/voice_command_recognizer.rs
     e2e-test/src/corpus.rs
     e2e-test/src/wer.rs
+    e2e-test/src/accuracy_gate.rs
+    e2e-test/accuracy_baseline.json
     e2e-test/src/concurrency.rs
     e2e-test/src/speech.rs
     e2e-test/src/voice_commands.rs
@@ -105,6 +107,8 @@ stage_inputs = '''
     e2e-test/tests/features/file_transcription.feature e2e-smoke-speech,accuracy
     e2e-test/tests/steps/file_transcription.rs         e2e-smoke-speech,accuracy
     e2e-test/src/wer.rs                                accuracy
+    e2e-test/src/accuracy_gate.rs                      accuracy
+    e2e-test/accuracy_baseline.json                    accuracy
     e2e-test/src/corpus.rs                             accuracy
     e2e-test/scripts/*                                 accuracy
     e2e-test/tests/features/local_services.feature     e2e-smoke-services,e2e-resilience

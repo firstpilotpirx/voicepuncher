@@ -24,4 +24,4 @@ Feature: file-transcription
     Scenario: Benchmark corpus is transcribed within the accuracy bar
       Given a fixed sample of 100 recordings of the benchmark corpus, half Russian and half English, with reference transcripts
       When the user transcribes every recording of the sample
-      Then the mean word error rate is below 30 %
+      Then the mean word error rate is no worse than the accepted baseline

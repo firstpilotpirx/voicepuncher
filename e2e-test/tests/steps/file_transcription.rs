@@ -4,6 +4,7 @@ use std::process::{Command, Output};
 use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 
+use voicepuncher_e2e_test::accuracy_gate::ratchet;
 use voicepuncher_e2e_test::concurrency::map_concurrently;
 use voicepuncher_e2e_test::corpus::{load_manifest, select_balanced};
 use voicepuncher_e2e_test::wer::wer;
@@ -14,7 +15,6 @@ use crate::E2eWorld;
 pub const STARTUP_FAILURE_EXIT_CODE: i32 = 2;
 /// An empty config: every setting at its default, never the user's own config file.
 pub const NO_CONFIG: &str = "/dev/null";
-const MAX_MEAN_WER: f64 = 0.30;
 /// Two recordings at a time: speech recognition of one overlaps the start and the end of the
 /// other, while each copy still handles one request at a time.
 const CONCURRENT_RECORDINGS: usize = 2;
@@ -104,15 +104,15 @@ pub(crate) fn no_permission_checked(world: &mut E2eWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("the mean word error rate is below 30 %")]
-fn mean_wer_below_bar(world: &mut E2eWorld) -> Result<()> {
+#[then("the mean word error rate is no worse than the accepted baseline")]
+fn mean_wer_within_baseline(world: &mut E2eWorld) -> Result<()> {
     let rates = &world.word_error_rates;
-    let mean = rates.iter().sum::<f64>() / rates.len() as f64;
-    eprintln!("  mean WER {mean:.3} over {} recordings\n", rates.len());
-    if mean >= MAX_MEAN_WER {
-        bail!("mean WER {mean:.3} is not below {MAX_MEAN_WER}");
-    }
-    Ok(())
+    let verdict = ratchet(rates.len(), rates.iter().sum::<f64>() / rates.len() as f64);
+    eprintln!(
+        "\n  {}\n",
+        verdict.as_ref().unwrap_or_else(|failure| failure)
+    );
+    verdict.map(drop).map_err(anyhow::Error::msg)
 }
 
 pub fn transcribe(recording: &Path, config: Option<&Path>) -> Result<Output> {

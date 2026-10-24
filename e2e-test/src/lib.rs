@@ -1,3 +1,4 @@
+pub mod accuracy_gate;
 pub mod concurrency;
 pub mod corpus;
 pub mod harness_args;

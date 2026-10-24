@@ -1,0 +1,6 @@
+{
+  "wer": {
+    "10": { "mean": 0.031, "commit": "5ee5fbd" },
+    "100": { "mean": 0.047, "commit": "5ee5fbd" }
+  }
+}

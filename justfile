@@ -125,9 +125,15 @@ full-check: _require-models _require-corpus _dev-tools
 # Summary of the stage journal for the runs since a date (2026-10-01) or a span (7d): per recipe and stage the
 # runs, median, total and failures, the runs that reused an earlier pass (left out of the times) and the time
 # they saved (the seconds of the passes they reused), with the total saved; the lock
-# wait; whether two runs' e2e lock holds overlapped (each overlapping pair); the failed tests, most first; runs and time per branch (a change's branch is <type>/<change>, so per change)
+# wait; whether two runs' e2e lock holds overlapped (each overlapping pair); the failed tests, most first; runs and time per branch (a change's branch is <type>/<change>, so per change);
+# the mean WER of the last accuracy runs per sample size
 stage-times since="30d": _dev-tools
     @{{dev_tools}} stage-times {{quote(since)}}
+
+# Accepts this checkout's last journaled mean WER per sample size as the accuracy baseline
+# (e2e-test/accuracy_baseline.json, with its commit); a baseline that gets worse is reviewed like code
+accuracy-baseline: _dev-tools
+    @{{dev_tools}} accuracy-baseline
 
 # Prints the accuracy stage full-check runs and why: `e2e-bench — <reason>` (100 recordings) or `e2e-quick —
 # <reason>` (10). 100 when VOICEPUNCHER_ACCURACY_SAMPLE=100 (any other value fails), when the changed paths
@@ -368,7 +374,7 @@ _e2e-regression: _require-nextest _require-models _build
     export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
     cargo nextest run --profile e2e-regression {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
-# WER accuracy on 10 samples (5 per language) — fails if mean WER > 30 %, and no command in 10 recordings of ordinary speech (~1 min)
+# WER accuracy on 10 samples (5 per language) — fails if mean WER is worse than the accepted baseline (e2e-test/accuracy_baseline.json) by more than the margin, and no command in 10 recordings of ordinary speech (~1 min)
 e2e-quick:
     @VOICEPUNCHER_STAGES_RECIPE=e2e-quick {{just_executable()}} _stages e2e-quick
 
@@ -427,7 +433,7 @@ _e2e-cues: _require-nextest _require-models _build
     export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
     cargo nextest run --profile e2e-cues {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
-# WER accuracy on a fixed sample of 100 recordings (50 per language), two at a time — fails if mean WER > 30 %, and no command in 20 recordings of ordinary speech (~3 min)
+# WER accuracy on a fixed sample of 100 recordings (50 per language), two at a time — fails if mean WER is worse than the accepted baseline (e2e-test/accuracy_baseline.json) by more than the margin, and no command in 20 recordings of ordinary speech (~3 min)
 e2e-bench:
     @VOICEPUNCHER_STAGES_RECIPE=e2e-bench {{just_executable()}} _stages e2e-bench
 
