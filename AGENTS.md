@@ -66,7 +66,7 @@ Every behavior change in stage 5 is test-first (`tdd` skill):
 2. **Green** — write the smallest code that makes it pass; rerun the same `just test-one` until it is green.
 3. **Refactor** — clean up, the same `just test-one` green; then `just test` once per task group, before its commit (it runs only the packages whose inputs changed).
 
-After every edit, `just static` (~10 s): formatting, clippy, the size budgets and the metrics of the changed files, stopping at the first that fails and running no test; it is also the first stage of `test`, `check` and `full-check`, so a size, metrics or compile problem never costs a test run.
+After every edit, `just static` (~10 s): formatting, clippy, the size budgets and the metrics of the changed files, stopping at the first that fails and running no test (a local run fixes the formatting and clippy's machine-applicable findings first and names the files it changed: review them like any edit); it is also the first stage of `test`, `check` and `full-check`, so a size, metrics or compile problem never costs a test run.
 
 `just test-one` runs the `test` stage with only the named tests, under its time limits and without the lock; it fails on a name that never ran (a typo never looks green), is journaled as `test-one` and is never a pass or the change's passing check. E2E scenarios need services: they run in their E2E recipe, and `just rerun-failed` after a failure.
 
@@ -103,7 +103,7 @@ All checks are `just` recipes (see `justfile`; no other scripts). A change is "v
 
 | When | Command | What it runs |
 |---|---|---|
-| After every edit | `just static` (~10 s, without the machine-wide lock) | fmt, clippy, the size analyzer, the metrics of the changed files; no test |
+| After every edit | `just static` (~10 s, without the machine-wide lock) | fmt, clippy, the size analyzer, the metrics of the changed files; no test. A local run first formats in place and, when clippy warns, applies its machine-applicable fixes (`dev-tools static-fix`), naming every file it changed; with `CI` set and in `full-check` it only checks |
 | At TDD Red and Green (§ TDD) | `just test-one <name>...` (seconds after the build, without the machine-wide lock) | only the named tests and slice/component scenarios |
 | Once per task group, before its commit | `just test` (~1 min, without the machine-wide lock) | `static`, then unit + architecture + integration tests, then `metrics` (below) |
 | Once per change, after the last task group and before verify (and after `kit sync-base` when its last line names it) | `just check` (~8.5 min; machine lock held ≈ 7.3 min) | fmt, `lint` (clippy `-D warnings` and the static analyzers, below), `test`, `metrics`, release build, E2E smoke, WER accuracy on 10 samples; incremental, the machine lock only for the model stages |

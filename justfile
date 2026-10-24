@@ -218,7 +218,8 @@ _lint: _require-tools
         exit 1
     fi
 
-# The fast static check after an edit (~10 s): formatting, clippy, the size budgets and the metrics of the changed files, stopping at the first that fails
+# The fast static check after an edit (~10 s): formatting, clippy, the size budgets and the metrics of the changed files, stopping at the first that fails;
+# a local run first formats and applies clippy's machine-applicable fixes, naming the files changed (dev-tools static-fix), CI and full-check only check
 static: _dev-tools
     @VOICEPUNCHER_STAGES_RECIPE=static {{just_executable()}} _stages static
 
@@ -226,9 +227,9 @@ _static:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "● fmt"
-    cargo fmt --all -- --check
+    {{dev_tools}} static-fix fmt
     echo "● clippy"
-    cargo clippy --workspace --all-targets -- -D warnings
+    {{dev_tools}} static-fix clippy
     {{analyzers}} size
     {{analyzers}} metrics --changed origin/main
 

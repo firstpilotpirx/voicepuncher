@@ -631,7 +631,7 @@ Every accuracy run SHALL record its sample size and mean word error rate in its 
 
 ### Requirement: A fast static check fails before any test runs
 
-`just static` SHALL check formatting, compile the workspace with clippy's default lints, check the size and complexity budgets and check the complexity of the functions in the files changed against `main`, and SHALL stop at the first check that fails, naming it, without building or running a test. After a one-file edit it SHALL take about 10 s. `just test` SHALL run the same checks as its first stage and SHALL run no test when one of them fails.
+`just static` SHALL check formatting, compile the workspace with clippy's default lints, check the size and complexity budgets and check the complexity of the functions in the files changed against `main`, and SHALL stop at the first check that fails, naming it, without building or running a test. In a local run (neither `CI` set nor the `full-check` recipe running it) it SHALL first apply clippy's machine-applicable fixes and format the workspace in place, SHALL print every file it changed, and SHALL then run the same checks; in a strict run (`CI` set, or `full-check`) it SHALL change no file and fail on what is unformatted or warned about. After a one-file edit it SHALL take about 10 s. `just test` SHALL run the same checks as its first stage and SHALL run no test when one of them fails.
 
 #### Scenario: A function over budget fails the static check without a test
 
@@ -665,6 +665,21 @@ Every accuracy run SHALL record its sample size and mean word error rate in its 
 - **GIVEN** one source file edited, formatted and within every budget
 - **WHEN** `just static` runs
 - **THEN** it passes within about 10 s
+
+#### Scenario: A local static check fixes formatting and clippy findings and goes on
+
+- **GIVEN** a source file that is not formatted and holds a clippy warning with a machine-applicable fix
+- **WHEN** `just static` runs locally
+- **THEN** the file is formatted and the warning fixed
+- **AND** it names the file it changed
+- **AND** it goes on to the budget and complexity checks
+
+#### Scenario: A strict static check fixes nothing
+
+- **GIVEN** a source file that is not formatted and holds a clippy warning with a machine-applicable fix
+- **WHEN** `just static` runs with `CI` set
+- **THEN** it fails on the formatting
+- **AND** the file is unchanged
 
 ### Requirement: The full check runs only the stages an edit can affect
 

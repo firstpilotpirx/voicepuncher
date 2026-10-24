@@ -3,3 +3,4 @@
 pub mod seam_sample;
 pub mod stage_choice;
 pub mod static_check;
+pub mod static_fix;

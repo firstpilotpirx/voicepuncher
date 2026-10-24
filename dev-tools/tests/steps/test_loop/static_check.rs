@@ -111,8 +111,8 @@ fn static_order(world: &mut WorkflowWorld) {
             .unwrap_or_else(|| panic!("_static lacks {needle}:\n{body}"))
     };
     let order = [
-        at("cargo fmt --all -- --check"),
-        at("cargo clippy --workspace --all-targets -- -D warnings"),
+        at("static-fix fmt"),
+        at("static-fix clippy"),
         at("size"),
         at("metrics --changed origin/main"),
     ];
@@ -145,19 +145,30 @@ fn broken_crate(world: &mut WorkflowWorld) {
 
 #[when("the static recipe runs there")]
 fn static_runs(world: &mut WorkflowWorld) {
+    run_static(world, None);
+}
+
+/// The `_static` body of the justfile run in the scratch crate, with stand-in analyzers and the prebuilt
+/// `dev-tools`; `CI` set to `ci` when given, otherwise a local run.
+pub fn run_static(world: &mut WorkflowWorld, ci: Option<&str>) {
     let scratch = scratch(world);
     let analyzers = scratch.script("analyzers", r#"echo "analyzers $*" >> "$SCRATCH/calls""#);
     let body = recipe_body(&repo_file("justfile"), "_static:")
-        .replace("{{analyzers}}", &analyzers.to_string_lossy());
+        .replace("{{analyzers}}", &analyzers.to_string_lossy())
+        .replace("{{dev_tools}}", env!("CARGO_BIN_EXE_dev-tools"));
     scratch.write("static.sh", &body);
-    let ran = Ran::of(
-        Command::new("bash")
-            .arg(scratch.path("static.sh"))
-            .current_dir(scratch.root())
-            .env("SCRATCH", scratch.path(""))
-            .env("CARGO_TARGET_DIR", scratch.path("target")),
-    );
-    world.ran = Some(ran);
+    let mut command = Command::new("bash");
+    command
+        .arg(scratch.path("static.sh"))
+        .current_dir(scratch.root())
+        .env("SCRATCH", scratch.path(""))
+        .env("CARGO_TARGET_DIR", scratch.path("target"))
+        .env("VOICEPUNCHER_STAGES_RECIPE", "static")
+        .env_remove("CI");
+    if let Some(ci) = ci {
+        command.env("CI", ci);
+    }
+    world.ran = Some(Ran::of(&mut command));
 }
 
 #[then("it fails naming the compile error")]

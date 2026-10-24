@@ -20,6 +20,7 @@ mod process;
 mod seams;
 mod services;
 mod stages;
+mod static_fix;
 
 use std::process::ExitCode;
 
@@ -29,7 +30,7 @@ pub type Outcome = Result<u8, String>;
 type Command = fn(&[String]) -> Outcome;
 
 /// Every command, by the name a recipe calls it with.
-const COMMANDS: [(&str, Command); 25] = [
+const COMMANDS: [(&str, Command); 26] = [
     ("stages", stages::command),
     ("model-stages", |stages| Ok(stages::model::command(stages))),
     ("test-stage", stages::test::command),
@@ -43,6 +44,7 @@ const COMMANDS: [(&str, Command); 25] = [
     ("accuracy-stage", accuracy::command),
     ("accuracy-baseline", accuracy_baseline::command),
     ("seams-stage", seams::command),
+    ("static-fix", static_fix::command),
     ("filter", filters::command),
     ("gated-filter", filters::gated_command),
     ("keys", keys::command),

@@ -118,6 +118,19 @@ Feature: change-workflow
       And the static recipe builds and runs no test
       And the size and changed-metrics analyzers pass on the repository within 10 seconds
 
+    Scenario: A local static check fixes formatting and clippy findings and goes on
+      Given a scratch crate with a source file that is not formatted and holds a machine-fixable clippy warning
+      When the static recipe runs there locally
+      Then the source file is formatted and the warning fixed
+      And it names the file it changed
+      And the size and changed-metrics analyzers run
+
+    Scenario: A strict static check fixes nothing
+      Given a scratch crate with a source file that is not formatted and holds a machine-fixable clippy warning
+      When the static recipe runs there with CI set
+      Then it fails on the formatting
+      And the source file is unchanged
+
   Rule: The full check runs only the stages an edit can affect
 
     Scenario: An overlay change skips the seams, outages and start cues
