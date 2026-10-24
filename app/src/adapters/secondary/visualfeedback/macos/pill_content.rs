@@ -249,24 +249,13 @@ mod tests {
     #[test]
     fn should_name_each_command_without_a_visible_effect_in_english() {
         let expected = [
-            (
-                VoiceCommand::PressEnter,
-                look("return", "Enter", IconTint::Content),
-            ),
-            (
-                VoiceCommand::ClearAllText,
-                look("delete.left", "Clear", IconTint::Content),
-            ),
-            (
-                VoiceCommand::PasteText,
-                look("doc.on.clipboard", "Paste", IconTint::Content),
-            ),
-            (
-                VoiceCommand::RestartDictation,
-                look("arrow.clockwise", "Restart", IconTint::Content),
-            ),
+            (VoiceCommand::PressEnter, "return", "Enter"),
+            (VoiceCommand::ClearAllText, "delete.left", "Clear"),
+            (VoiceCommand::PasteText, "doc.on.clipboard", "Paste"),
+            (VoiceCommand::RestartDictation, "arrow.clockwise", "Restart"),
         ];
-        for (command, sign) in expected {
+        for (command, symbol, label) in expected {
+            let sign = look(symbol, label, IconTint::Content);
             assert_eq!(command_sign(command), Some(sign), "{command:?}");
         }
     }

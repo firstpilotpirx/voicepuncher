@@ -3,22 +3,22 @@ use std::time::Duration;
 use super::AudioLevel;
 
 /// Time one column of the level waveform covers.
-pub const COLUMN_PERIOD: Duration = Duration::from_millis(200);
+pub const COLUMN_PERIOD: Duration = Duration::from_millis(100);
 /// Distance between neighbouring columns, in points.
-pub const COLUMN_PITCH_PT: f32 = 6.0;
+pub const COLUMN_PITCH_PT: f32 = 4.0;
 /// Height of a silent column (a dot), in points.
 pub const MIN_HEIGHT_PT: f32 = 2.0;
 /// Height of a column at full loudness, in points.
 pub const MAX_HEIGHT_PT: f32 = 28.0;
-/// Columns of a waveform that has the pill to itself: the last 6 s.
-pub const FULL_CAPACITY: usize = 30;
+/// Columns of a waveform that has the pill to itself: the last 9 s.
+pub const FULL_CAPACITY: usize = 90;
 /// Columns of a waveform that shares the pill with the commands-unavailable sign.
-pub const CAPACITY_BESIDE_SIGN: usize = 22;
+pub const CAPACITY_BESIDE_SIGN: usize = 78;
 
-const RISE_RATE: f32 = 0.35;
-const FALL_RATE: f32 = 0.12;
-const QUIET_DBFS: f32 = -50.0;
-const LOUD_DBFS: f32 = -10.0;
+const RISE_RATE: f32 = 0.6;
+const FALL_RATE: f32 = 0.3;
+const QUIET_DBFS: f32 = -62.0;
+const LOUD_DBFS: f32 = -28.0;
 
 /// Recent loudness of the microphone as a strip of columns, one per
 /// [`COLUMN_PERIOD`], that slides left as time passes: the model behind the
@@ -128,6 +128,12 @@ mod tests {
     const UPDATE_PERIOD: Duration = Duration::from_millis(20);
     const SPEECH_RMS: f32 = 0.3;
     const SILENCE_RMS: f32 = 0.001;
+    /// The user's room noise, -63 dBFS: just under the noise floor.
+    const ROOM_NOISE_RMS: f32 = 0.000_708;
+    /// The user's quiet speech, -52 dBFS (70th percentile of their recordings).
+    const QUIET_SPEECH_RMS: f32 = 0.002_5;
+    /// The user's loud speech, -35 dBFS.
+    const LOUD_SPEECH_RMS: f32 = 0.017_8;
 
     fn feed(history: &mut LevelHistory, rms: f32, from: Duration, to: Duration) {
         let mut at = from;
@@ -147,44 +153,48 @@ mod tests {
     }
 
     #[test]
-    fn should_draw_a_new_history_as_all_dots() {
-        // Given / When
-        let history = LevelHistory::new(FULL_CAPACITY, Duration::ZERO);
-        // Then
-        assert_eq!(heights(&history), vec![MIN_HEIGHT_PT; FULL_CAPACITY]);
-    }
-
-    #[test]
-    fn should_hold_as_many_columns_as_its_capacity() {
+    fn should_draw_a_new_history_as_as_many_dots_as_its_capacity() {
         // Given / When
         let history = LevelHistory::new(CAPACITY_BESIDE_SIGN, Duration::ZERO);
         // Then
-        assert_eq!(history.column_heights().count(), CAPACITY_BESIDE_SIGN);
+        assert_eq!(heights(&history), vec![MIN_HEIGHT_PT; CAPACITY_BESIDE_SIGN]);
+    }
+
+    /// The newest column after a second of a level of `rms`.
+    fn newest_after_a_second_of(rms: f32) -> f32 {
+        let mut history = LevelHistory::new(FULL_CAPACITY, Duration::ZERO);
+        feed(&mut history, rms, Duration::ZERO, secs(1.0));
+        heights(&history)[FULL_CAPACITY - 1]
     }
 
     #[test]
     fn should_draw_speech_as_tall_columns() {
-        // Given
-        let mut history = LevelHistory::new(FULL_CAPACITY, Duration::ZERO);
-        // When
-        feed(&mut history, SPEECH_RMS, Duration::ZERO, secs(1.0));
+        // Given / When
+        let newest = newest_after_a_second_of(SPEECH_RMS);
         // Then
-        let newest = heights(&history)[FULL_CAPACITY - 1];
         assert!(newest > 0.9 * MAX_HEIGHT_PT, "newest column {newest}");
     }
 
     #[test]
-    fn should_draw_silence_as_dots() {
-        // Given
-        let mut history = LevelHistory::new(FULL_CAPACITY, Duration::ZERO);
-        // When
-        feed(&mut history, SILENCE_RMS, Duration::ZERO, secs(1.0));
+    fn should_draw_room_noise_as_dots() {
+        // Given / When
+        let newest = newest_after_a_second_of(ROOM_NOISE_RMS);
         // Then
-        assert_eq!(heights(&history), vec![MIN_HEIGHT_PT; FULL_CAPACITY]);
+        assert_eq!(newest, MIN_HEIGHT_PT);
     }
 
     #[test]
-    fn should_add_five_columns_for_one_second_of_speech() {
+    fn should_draw_quiet_and_loud_speech_at_distinct_heights() {
+        // Given / When
+        let quiet = newest_after_a_second_of(QUIET_SPEECH_RMS);
+        let loud = newest_after_a_second_of(LOUD_SPEECH_RMS);
+        // Then
+        assert!(quiet > 2.0 * MIN_HEIGHT_PT, "quiet column {quiet}");
+        assert!(loud - quiet > MAX_HEIGHT_PT / 4.0, "loud {loud}");
+    }
+
+    #[test]
+    fn should_add_ten_columns_for_one_second_of_speech() {
         // Given
         let mut history = LevelHistory::new(FULL_CAPACITY, Duration::ZERO);
         // When
@@ -194,43 +204,30 @@ mod tests {
             .into_iter()
             .filter(|height| *height > MAX_HEIGHT_PT / 2.0)
             .count();
-        assert_eq!(tall, 5);
+        assert_eq!(tall, 10);
     }
 
     #[test]
-    fn should_still_show_speech_from_less_than_six_seconds_ago() {
+    fn should_still_show_speech_from_less_than_nine_seconds_ago() {
         // Given
         let mut history = LevelHistory::new(FULL_CAPACITY, Duration::ZERO);
         feed(&mut history, SPEECH_RMS, Duration::ZERO, secs(1.0));
         // When
-        feed(&mut history, SILENCE_RMS, secs(1.0), secs(6.5));
+        feed(&mut history, SILENCE_RMS, secs(1.0), secs(9.5));
         // Then
         let oldest = heights(&history)[0];
         assert!(oldest > 0.9 * MAX_HEIGHT_PT, "oldest column {oldest}");
     }
 
     #[test]
-    fn should_forget_speech_older_than_six_seconds() {
+    fn should_forget_speech_older_than_nine_seconds() {
         // Given
         let mut history = LevelHistory::new(FULL_CAPACITY, Duration::ZERO);
         feed(&mut history, SPEECH_RMS, Duration::ZERO, secs(10.0));
         // When
-        feed(&mut history, SILENCE_RMS, secs(10.0), secs(17.0));
+        feed(&mut history, SILENCE_RMS, secs(10.0), secs(20.0));
         // Then
         assert_eq!(heights(&history), vec![MIN_HEIGHT_PT; FULL_CAPACITY]);
-    }
-
-    #[test]
-    fn should_slide_half_a_pitch_in_a_tenth_of_a_second() {
-        // Given
-        let history = LevelHistory::new(FULL_CAPACITY, Duration::ZERO);
-        // When
-        let offset = history.slide_offset(secs(0.1));
-        // Then
-        assert!(
-            (offset - COLUMN_PITCH_PT / 2.0).abs() < 1e-4,
-            "offset {offset}"
-        );
     }
 
     #[test]
@@ -299,20 +296,21 @@ mod tests {
     }
 
     #[test]
-    fn should_map_minus_fifty_dbfs_and_below_to_no_loudness() {
-        assert_eq!(loudness(AudioLevel::from_rms(0.003)), 0.0);
+    fn should_map_the_noise_floor_and_below_to_no_loudness() {
+        assert_eq!(loudness(AudioLevel::from_rms(0.000_79)), 0.0, "-62 dBFS");
         assert_eq!(loudness(AudioLevel::SILENT), 0.0);
+        assert!(loudness(AudioLevel::from_rms(0.001_78)) > 0.0, "-55 dBFS");
     }
 
     #[test]
-    fn should_map_minus_ten_dbfs_and_above_to_full_loudness() {
-        assert_eq!(loudness(AudioLevel::from_rms(0.316_3)), 1.0);
+    fn should_map_loud_speech_and_above_to_full_loudness() {
+        assert_eq!(loudness(AudioLevel::from_rms(0.039_9)), 1.0, "-28 dBFS");
         assert_eq!(loudness(AudioLevel::from_rms(1.0)), 1.0);
     }
 
     #[test]
     fn should_map_dbfs_linearly_between_the_bounds() {
-        let minus_forty_dbfs = AudioLevel::from_rms(0.01);
-        assert!((loudness(minus_forty_dbfs) - 0.25).abs() < 1e-4);
+        let minus_forty_five_dbfs = loudness(AudioLevel::from_rms(0.005_623));
+        assert!((minus_forty_five_dbfs - 0.5).abs() < 1e-4);
     }
 }

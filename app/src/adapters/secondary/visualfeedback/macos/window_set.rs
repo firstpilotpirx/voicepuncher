@@ -16,7 +16,8 @@ use crate::adapters::main_queue::MainOnly;
 /// The overlay windows of every screen.
 pub(super) type Windows = Vec<Rc<WindowSet>>;
 
-const PILL_CORNER_RADIUS: f64 = PILL_HEIGHT / 2.0;
+/// About a third of the pill's height, the corners of a macOS notification, not a capsule.
+const PILL_CORNER_RADIUS: f64 = 18.0;
 /// The pill's width before its first state is drawn.
 const INITIAL_PILL_WIDTH: f64 = 200.0;
 /// Space between the top of the screen's visible area and the pill.
@@ -149,5 +150,16 @@ impl MainOnly<MainState> {
         self.get(mtm)
             .map(|state| state.windows.borrow().clone())
             .unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_round_the_pill_like_a_notification_not_a_capsule() {
+        let radius = std::hint::black_box(PILL_CORNER_RADIUS);
+        assert!(radius < PILL_HEIGHT / 2.5, "corner radius {radius}");
     }
 }

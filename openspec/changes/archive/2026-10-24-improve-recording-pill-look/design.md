@@ -40,6 +40,6 @@ The preparation settled the open points: the range and noise floor from these me
 | The waveform shows together with the record sign (visual-feedback) | component `visual_feedback.feature` `A new recording starts with a dotted waveform beside the record sign` |
 | The waveform keeps the last six seconds (visual-feedback) | unit `level_history.rs` `should_forget_speech_older_than_nine_seconds` |
 | The waveform moves at half its former pace (visual-feedback) | unit `level_history.rs` `should_add_ten_columns_for_one_second_of_speech` |
-| The record dot pulses in silence too (visual-feedback) | component `visual_feedback.feature` `The record dot pulses only without Reduce Motion, and the waveform still moves` |
+| The record dot pulses in silence too (visual-feedback) | main-thread `app/tests/main_thread/visualfeedback_macos.rs` `should_pulse_the_record_dot_in_silence` |
 
 The scenarios "The waveform keeps the last six seconds" and "The waveform moves at half its former pace" keep their titles (a MODIFIED requirement keeps every scenario title); their bodies now state nine seconds and ten columns a second.

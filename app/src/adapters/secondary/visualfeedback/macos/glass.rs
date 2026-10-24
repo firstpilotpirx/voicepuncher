@@ -23,7 +23,7 @@ pub(super) const OVERLAY_LEVEL: isize = 3;
 /// Room beside and under the glass for its shadow: the shadow's drop plus its blur.
 pub(super) const SHADOW_MARGIN: f64 = 32.0;
 const RIM_WIDTH: f64 = 1.0;
-const RIM_WHITE_ALPHA: f64 = 0.6;
+const RIM_WHITE_ALPHA: f64 = 0.15;
 /// The warm rim of tinted glass, `#FFD696`.
 const TINTED_RIM_RGB: (f64, f64, f64) = (1.0, 214.0 / 255.0, 150.0 / 255.0);
 const WAITING_RIM_ALPHA: f64 = 0.8;

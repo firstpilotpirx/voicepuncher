@@ -14,7 +14,7 @@ use crate::core::domain::level_history::{
 };
 use crate::core::domain::{AudioLevel, LevelHistory};
 
-const COLUMN_WIDTH: f64 = 2.5;
+const COLUMN_WIDTH: f64 = 2.0;
 /// A silent column, a dot, shows at this share of the content's opacity.
 const DOT_OPACITY: f32 = 0.45;
 /// The leftmost points over which old columns fade out.
@@ -153,9 +153,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn should_be_as_wide_as_thirty_columns_six_points_apart() {
-        assert_eq!(waveform_width(30), 176.5);
-        assert_eq!(waveform_width(22), 128.5);
+    fn should_be_as_wide_as_ninety_columns_four_points_apart() {
+        assert_eq!(waveform_width(90), 358.0);
+        assert_eq!(waveform_width(78), 310.0);
     }
 
     #[test]

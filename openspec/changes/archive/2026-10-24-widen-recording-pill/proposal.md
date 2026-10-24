@@ -50,3 +50,7 @@ Out of scope: the pill's colors, height and position, and the other changes of `
 
 SemVer: PATCH — a visual tweak of an existing widget.
 Target version: 0.37.5.
+
+## Absorbed by
+
+`improve-recording-pill-look`: it changes the same widget (the recording pill), so the length and the superellipse outline land there in one change and one release instead of two changes touching the same files.
