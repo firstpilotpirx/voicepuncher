@@ -55,11 +55,11 @@ impl Redraw {
     pub(crate) fn rebuild_and_draw(&self, mtm: MainThreadMarker) {
         let turn = Turn::next(&self.timer.pulse_generation);
         do_rebuild(mtm, &self.main);
-        let current_state = *lock(&self.timer.state);
-        self.draw(mtm, current_state, turn);
+        let current_state = lock(&self.timer.state).clone();
+        self.draw(mtm, &current_state, turn);
     }
 
-    pub(crate) fn draw(&self, mtm: MainThreadMarker, state: OverlayState, turn: Turn) {
+    pub(crate) fn draw(&self, mtm: MainThreadMarker, state: &OverlayState, turn: Turn) {
         let commands_unavailable = self.timer.commands_unavailable.load(Ordering::SeqCst);
         let main = (&self.main, mtm);
         let ws_vec = self.main.windows(mtm);

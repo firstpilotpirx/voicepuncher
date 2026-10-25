@@ -51,7 +51,7 @@ mod indicator;
 mod live_view;
 use live_view::{apply_live_transcript, MacosLiveTranscriptView};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum OverlayState {
     Hidden,
     Recording,
@@ -264,13 +264,13 @@ impl MacosVisualIndicator {
 
     /// Sets `state` and draws it on freshly built windows, on the main queue.
     fn show_state(&self, state: OverlayState) {
-        *lock(&self.state) = state;
+        *lock(&self.state) = state.clone();
         log::debug!("overlay: {state:?} requested");
         let turn = Turn::next(&self.pulse_generation);
         let redraw = self.redraw();
         on_main(move |mtm| {
             do_rebuild(mtm, &redraw.main);
-            redraw.draw(mtm, state, turn);
+            redraw.draw(mtm, &state, turn);
         });
     }
 
@@ -302,12 +302,12 @@ impl MacosVisualIndicator {
 
         on_main(move |mtm| {
             // WHY: read on the main queue, so a state shown after this signal was queued wins
-            let state = *lock(&redraw.timer.state);
+            let state = lock(&redraw.timer.state).clone();
             if matches!(state, OverlayState::FailureNotice(_)) {
                 return;
             }
             let turn = Turn::next(&redraw.timer.pulse_generation);
-            redraw.draw(mtm, state, turn);
+            redraw.draw(mtm, &state, turn);
         });
     }
 }

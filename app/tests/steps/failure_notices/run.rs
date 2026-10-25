@@ -14,6 +14,8 @@ pub(crate) enum Recognition {
     Answers,
     Fails,
     FailsOnFirstPart,
+    /// No copy answers and another program holds the service's own port.
+    PortTaken,
 }
 
 /// How the stand-ins behave in a scenario.
@@ -204,7 +206,7 @@ pub(super) fn overlay(events: &[Event]) -> Vec<Shown> {
     events
         .iter()
         .filter_map(|e| match e {
-            Event::Overlay(shown) => Some(*shown),
+            Event::Overlay(shown) => Some(shown.clone()),
             _ => None,
         })
         .collect()
@@ -233,9 +235,9 @@ pub(super) fn pasted(events: &[Event]) -> Vec<String> {
 /// The one notice the dictation that just ended showed.
 pub(super) fn shown_notice(run: &mut NoticesRun) -> Result<FailureNotice> {
     let events = run.wait_until_over()?;
-    match notices(&events)[..] {
-        [notice] => Ok(notice),
-        ref shown => bail!("expected one failure notice, got {shown:?}; events: {events:?}"),
+    match &notices(&events)[..] {
+        [notice] => Ok(notice.clone()),
+        shown => bail!("expected one failure notice, got {shown:?}; events: {events:?}"),
     }
 }
 

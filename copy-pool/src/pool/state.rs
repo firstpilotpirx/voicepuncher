@@ -4,6 +4,7 @@ use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use crate::address::ServiceAddress;
+use crate::probe::{ForeignProgram, Identity};
 
 /// A copy is hung once it held one request for this many times the request's wait.
 const HUNG_AFTER_WAITS: u32 = 2;
@@ -11,6 +12,8 @@ const HUNG_AFTER_WAITS: u32 = 2;
 struct Copy {
     port: u16,
     up: bool,
+    /// What the program on the port said it is, while it keeps accepting connections.
+    identity: Option<Identity>,
     busy: bool,
     leased_at: Option<Instant>,
     hung_after: Option<Instant>,
@@ -36,6 +39,7 @@ impl State {
             .map(|port| Copy {
                 port,
                 up: false,
+                identity: None,
                 busy: false,
                 leased_at: None,
                 hung_after: None,
@@ -79,12 +83,37 @@ impl State {
         self.copies.iter().map(|copy| copy.port).collect()
     }
 
-    /// Records which ports accept connections, in the order of `ports`.
-    pub(super) fn probed(&mut self, answers: &[bool]) {
-        for (copy, up) in self.copies.iter_mut().zip(answers) {
-            copy.up = *up;
+    /// What each port said it is, in the order of `ports`.
+    pub(super) fn identities(&self) -> Vec<Option<Identity>> {
+        self.copies
+            .iter()
+            .map(|copy| copy.identity.clone())
+            .collect()
+    }
+
+    /// The other program on the service's own port, if one holds it.
+    pub(super) fn foreign_on_service_port(&self) -> Option<ForeignProgram> {
+        match &self.copies[SERVICE_PORT].identity {
+            Some(Identity::Foreign(foreign)) => Some(foreign.clone()),
+            _ => None,
+        }
+    }
+
+    /// Records a probe round, in the order of `ports`: a port takes requests when it accepts
+    /// connections and said it is the service. Returns the other programs newly found.
+    pub(super) fn probed(&mut self, probed: Vec<Probed>) -> Vec<ForeignProgram> {
+        let mut found = Vec::new();
+        for (copy, probed) in self.copies.iter_mut().zip(probed) {
+            copy.up = probed.takes_requests();
+            let known_foreign = matches!(copy.identity, Some(Identity::Foreign(_)));
+            match &probed.identity {
+                Some(Identity::Foreign(foreign)) if !known_foreign => found.push(foreign.clone()),
+                _ => {}
+            }
+            copy.identity = probed.identity;
         }
         self.probed_once = true;
+        found
     }
 
     pub(super) fn enqueue(&mut self) -> u64 {
@@ -164,6 +193,26 @@ impl State {
         copy.leased_at = None;
         copy.hung_after = None;
         copy.up &= !refused;
+        if refused {
+            copy.identity = None;
+        }
         was_hung
+    }
+}
+
+/// What one probe round found on one port.
+pub(super) struct Probed {
+    pub(super) accepts: bool,
+    /// What the program said it is; `None` when it did not answer in time.
+    pub(super) identity: Option<Identity>,
+}
+
+impl Probed {
+    pub(super) fn closed() -> Self {
+        Self { accepts: false, identity: None }
+    }
+
+    pub(super) fn takes_requests(&self) -> bool {
+        self.accepts && self.identity == Some(Identity::Service)
     }
 }

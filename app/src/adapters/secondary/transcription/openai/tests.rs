@@ -13,6 +13,7 @@ fn should_connect_when_service_port_is_open() {
     // Given
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
+    let _copy = voicepuncher_test_steps::loopback::WhisperUntilClosed::on(listener);
     // When
     let transcriber = OpenAiTranscriber::connect(cfg_for_port(port)).unwrap();
     // Then

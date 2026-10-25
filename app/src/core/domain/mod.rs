@@ -22,7 +22,9 @@ pub use audio_buffer::AudioBuffer16k;
 pub use audio_level::AudioLevel;
 pub use cleaned_text::CleanedText;
 pub use command_words::{without_leading_command, without_trailing_command, COMMAND_FORMS};
-pub use failure_notice::{AccessibilityMissing, FailingPart, FailureNotice};
+pub use failure_notice::{
+    AccessibilityMissing, FailingPart, FailureNotice, ForeignProgram, ServicePortTaken,
+};
 pub use filler_sounds::{is_filler_sound, text_to_paste, without_filler_sounds};
 pub use hotkey::{HotKey, HotkeyBinding};
 pub use level_history::LevelHistory;

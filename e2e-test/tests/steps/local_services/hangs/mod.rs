@@ -52,6 +52,9 @@ async fn command_spotting_started(world: &mut E2eWorld) -> Result<()> {
 fn slow_speech_recognition(listener: TcpListener) {
     std::thread::spawn(move || {
         for mut stream in listener.incoming().flatten() {
+            if voicepuncher_test_steps::loopback::answered_as_whisper(&mut stream) {
+                continue;
+            }
             std::thread::spawn(move || {
                 let mut buf = vec![0u8; 65536];
                 let _ = stream.read(&mut buf);

@@ -65,6 +65,11 @@ impl ServiceAddress {
         Self { copy_offset: offset, ..self }
     }
 
+    /// How far above the service's port its copies listen.
+    pub(crate) fn copy_offset(&self) -> u32 {
+        self.copy_offset
+    }
+
     /// The service's own port.
     pub fn port(&self) -> u16 {
         self.port

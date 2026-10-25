@@ -298,15 +298,21 @@
 
 ### Copy
 - **Type:** External system (one process of a local service)
-- **Definition:** One process of a local service — a `whisper-server` of a *speech recognition service* or a `voicepuncher-command-spotting` of the *command spotting service*; a speech recognition copy answers one request at a time, a command spotting copy serves one connection's listening. With several copies, copy *n* listens on the service's port + its copy offset + *n* — 10000 for a speech recognition service, 41000 for command spotting (8082 → 49083–49086); − the offset when that would pass the last port; at most 4 copies — and nothing the app starts listens on the service's own port; a single copy listens on the service's own port. A client finds the copies from the service's address alone: the own port when it answers, else the copy ports.
+- **Definition:** One process of a local service — a `whisper-server` of a *speech recognition service* or a `voicepuncher-command-spotting` of the *command spotting service*; a speech recognition copy answers one request at a time, a command spotting copy serves one connection's listening. With several copies, copy *n* listens on the service's port + its copy offset + *n* — 10000 for a speech recognition service, 41000 for command spotting (8082 → 49083–49086); − the offset when that would pass the last port; at most 4 copies — and nothing the app starts listens on the service's own port; a single copy listens on the service's own port. A client finds the copies from the service's address alone: the own port when it answers, else the copy ports; a speech recognition port counts as a copy only once it answers as a whisper-server (its `GET /` page names whisper), so a *foreign program* on it is passed over.
 - **Code:** `copy-pool/src/address.rs` — `ServiceAddress::copy_ports`
 - **Synonyms to AVOID:** "instance", "backend", "replica", "worker"
 
 ### Copy pool
 - **Type:** Shared library (`copy-pool/`, used by the app's transcription adapter, its command spotting client and the command spotting service)
-- **Definition:** The *copies* of one local service as one client process sees them: which accept connections (probed every second), which are held, and the requests waiting for one, first come first served. A request whose copy refuses the connection or drops it goes to another copy; when no copy accepts connections, the client waits for one to come back (30 s) before it fails. One pool per process per service address and copy offset.
+- **Definition:** The *copies* of one local service as one client process sees them: which accept connections (probed every second), which are held, and the requests waiting for one, first come first served. A request whose copy refuses the connection or drops it goes to another copy; when no copy accepts connections, the client waits for one to come back (30 s) before it fails. One pool per process per service address and copy offset. A speech recognition pool asks each port once, when it starts accepting connections, whether it is a whisper-server; a *foreign program* found there is logged once and gets no request.
 - **Code:** `copy-pool/src/pool.rs` — `CopyPool`
 - **Synonyms to AVOID:** "load balancer", "proxy", "router"
+
+### Foreign program
+- **Type:** Value (what holds a port)
+- **Definition:** A program that is no *copy* of the service but listens on one of its ports — the service's own port or a copy port — named by its process name and pid. It gets no request; when it holds the service's own port and no copy answers, the *failure notice* of a lost dictation names the port and the program instead of telling the user to start the local services.
+- **Code:** `copy-pool/src/probe/mod.rs` — `ForeignProgram`; `app/src/core/domain/failure_notice/mod.rs` — `ForeignProgram`, `ServicePortTaken`, `FailingPart::ServicePortTaken`
+- **Synonyms to AVOID:** "squatter", "port conflict", "intruder"
 
 ### Lease
 - **Type:** Value (held by one request)

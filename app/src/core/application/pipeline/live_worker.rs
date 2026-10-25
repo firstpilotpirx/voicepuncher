@@ -5,6 +5,9 @@ use std::time::Instant;
 
 use crate::core::application::audio_recorder::LiveChunk;
 
+use crate::core::domain::FailingPart;
+
+use super::failure_notices::recognition_part;
 use super::live_transcript::LiveTranscript;
 use super::{lock_transcriber, LiveSessionResult, SharedTranscriber};
 
@@ -18,6 +21,7 @@ pub(super) fn run_live_worker(
 ) {
     let mut texts = Vec::new();
     let mut lost_chunks = 0usize;
+    let mut lost_to = None;
     let mut chunk_num = 0usize;
     while let Ok(chunk) = chunk_rx.recv() {
         chunk_num += 1;
@@ -27,12 +31,15 @@ pub(super) fn run_live_worker(
                 live_transcript.show(&texts);
             }
             Ok(None) => {}
-            Err(ChunkLost) => lost_chunks += 1,
+            Err(ChunkLost(part)) => {
+                lost_chunks += 1;
+                lost_to = Some(part);
+            }
         }
     }
     log::info!("live worker: {chunk_num} chunks done");
     if results_tx
-        .send(LiveSessionResult { texts, lost_chunks })
+        .send(LiveSessionResult { texts, lost_chunks, lost_to })
         .is_err()
     {
         log::debug!("live worker: the result of {chunk_num} chunks was received by nobody");
@@ -40,7 +47,7 @@ pub(super) fn run_live_worker(
 }
 
 /// Speech recognition failed on a chunk; the rest of the dictation is kept.
-struct ChunkLost;
+struct ChunkLost(FailingPart);
 
 /// The text of `chunk`, none when it held no speech.
 fn transcribe_chunk(
@@ -73,7 +80,7 @@ fn transcribe_chunk(
             log::error!(
                 "chunk {chunk_num} lost | {duration_secs:.1}s audio not transcribed, the rest of the dictation is kept: {e:#}"
             );
-            Err(ChunkLost)
+            Err(ChunkLost(recognition_part(&e)))
         }
     }
 }

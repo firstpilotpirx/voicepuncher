@@ -1,8 +1,8 @@
 //! Then steps: the notices shown and what was pasted.
 
 use super::{
-    bail, expect_notice, notices, overlay, pasted, run, shown_notice, then, Context, Event,
-    FailingPart, FailureNotice, IntegrationWorld, Result, Shown, VoiceCommand,
+    bail, expect_notice, notices, overlay, pasted, port_holder, run, shown_notice, then, Context,
+    Event, FailingPart, FailureNotice, IntegrationWorld, Result, Shown, VoiceCommand,
     LOCAL_SERVICES_REMEDY, NOTICE_DEADLINE, RAW_TRANSCRIPT,
 };
 
@@ -45,6 +45,21 @@ pub(super) fn dictation_lost(world: &mut IntegrationWorld) -> Result<()> {
         world,
         FailureNotice::DictationLost(FailingPart::SpeechRecognition),
     )
+}
+
+#[then("the overlay shows a failure notice that the dictation was lost because the port is held by that program, naming the port and the program")]
+pub(super) fn dictation_lost_to_port_holder(world: &mut IntegrationWorld) -> Result<()> {
+    let holder = port_holder();
+    let notice = shown_notice(run(world))?;
+    let expected = FailureNotice::DictationLost(FailingPart::ServicePortTaken(holder.clone()));
+    if notice != expected {
+        bail!("expected the notice {expected:?}, got {notice:?}");
+    }
+    let message = notice.message();
+    if !message.contains(&holder.port.to_string()) || !message.contains(&holder.program) {
+        bail!("the notice does not name the port and the program: {message:?}");
+    }
+    Ok(())
 }
 
 #[then("the text of the other parts is pasted")]
@@ -109,7 +124,7 @@ fn command_failed(world: &mut IntegrationWorld, phrase: String) -> Result<()> {
         .with_context(|| format!("{phrase:?} is not a voice command"))?;
     let expected = FailureNotice::CommandFailed(command, Some(FailingPart::Accessibility));
     let events = run(world).settled();
-    if notices(&events) != [expected] {
+    if notices(&events) != [expected.clone()] {
         bail!("expected the notice {expected:?}; events: {events:?}");
     }
     Ok(())

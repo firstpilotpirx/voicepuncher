@@ -10,9 +10,13 @@ fn every_notice() -> Vec<FailureNotice> {
         FailureNotice::RecordingNotStarted,
         FailureNotice::VoiceCommandsUnavailable,
     ];
-    for part in FailingPart::ALL {
-        notices.push(FailureNotice::DictationLost(part));
-        notices.push(FailureNotice::PartOfDictationLost(part));
+    let port_taken = FailingPart::ServicePortTaken(ForeignProgram {
+        port: 8081,
+        program: "com.docker.bac (pid 4194304)".to_owned(),
+    });
+    for part in FailingPart::ALL.into_iter().chain([port_taken]) {
+        notices.push(FailureNotice::DictationLost(part.clone()));
+        notices.push(FailureNotice::PartOfDictationLost(part.clone()));
         notices.push(FailureNotice::NotPasted(Some(part)));
     }
     for command in VoiceCommand::ALL {
@@ -148,4 +152,18 @@ fn should_describe_the_missing_accessibility_permission() {
         AccessibilityMissing.to_string(),
         "the Accessibility permission is missing"
     );
+}
+
+#[test]
+fn should_name_the_port_and_the_program_holding_it() {
+    let part = FailingPart::ServicePortTaken(ForeignProgram {
+        port: 8081,
+        program: "app (pid 28344)".to_owned(),
+    });
+    let notice = FailureNotice::DictationLost(part);
+    assert_eq!(
+        notice.message(),
+        "Dictation lost: port 8081 is held by app (pid 28344) — quit it"
+    );
+    assert_eq!(notice.part_name(), "STT");
 }

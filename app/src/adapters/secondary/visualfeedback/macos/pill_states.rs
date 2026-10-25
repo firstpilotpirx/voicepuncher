@@ -101,7 +101,7 @@ pub(super) fn apply_recording_state(
 /// The stage's breathing icon, its label and the spinner; no text window.
 pub(super) fn apply_processing_state(
     (main, mtm): (&SharedWindows, MainThreadMarker),
-    stage: OverlayState,
+    stage: &OverlayState,
     turn: Turn,
     commands_unavailable: bool,
 ) {
@@ -121,7 +121,7 @@ pub(super) fn apply_waiting_for_focus_state(
 ) {
     let look = PillLook {
         kind: PillKind::Sign,
-        sign: state_sign(OverlayState::WaitingForFocus),
+        sign: state_sign(&OverlayState::WaitingForFocus),
         breathes: true,
     };
     for ws in &main.windows(mtm) {

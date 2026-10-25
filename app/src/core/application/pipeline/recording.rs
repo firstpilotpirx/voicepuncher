@@ -144,7 +144,7 @@ impl Pipeline {
         clock.lap("drain");
         self.stop_recorder_quietly("after the live result");
         clock.lap("stop");
-        dictation.note_lost_chunks(result.lost_chunks, result.texts.is_empty());
+        dictation.note_lost_chunks(&result);
         dictation.trace_chunks(&result.texts, result.lost_chunks);
         match merge_live(&mut dictation, &result, &mut clock) {
             Ok(raw) => self.finish(dictation, &raw, clock, "(live)"),

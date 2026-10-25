@@ -94,7 +94,10 @@ impl VisualIndicator for RecordingIndicator {
         self.0.lock().unwrap().push(Event::Hidden);
     }
     fn show_failure_notice(&self, notice: &FailureNotice) {
-        self.0.lock().unwrap().push(Event::FailureNotice(*notice));
+        self.0
+            .lock()
+            .unwrap()
+            .push(Event::FailureNotice(notice.clone()));
     }
     voicepuncher::shows_no_voice_control_signs!();
 }

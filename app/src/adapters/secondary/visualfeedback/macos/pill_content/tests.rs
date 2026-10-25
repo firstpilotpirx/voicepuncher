@@ -17,7 +17,7 @@ fn look(symbol: &'static str, label: &'static str, tint: IconTint) -> SignLook {
 #[test]
 fn should_show_an_ear_and_recognizing_for_speech_recognition() {
     assert_eq!(
-        state_sign(OverlayState::RecognizingSpeech),
+        state_sign(&OverlayState::RecognizingSpeech),
         Some(look("ear", "Recognizing", IconTint::Content))
     );
 }
@@ -25,7 +25,7 @@ fn should_show_an_ear_and_recognizing_for_speech_recognition() {
 #[test]
 fn should_show_a_keyboard_and_click_a_text_field_while_waiting_for_focus() {
     assert_eq!(
-        state_sign(OverlayState::WaitingForFocus),
+        state_sign(&OverlayState::WaitingForFocus),
         Some(look("keyboard", "Click a text field", IconTint::Content))
     );
 }
@@ -40,8 +40,8 @@ fn should_show_a_green_check_and_pasted_after_a_paste() {
 
 #[test]
 fn should_show_no_sign_with_a_label_for_the_recording_or_the_hidden_overlay() {
-    assert_eq!(state_sign(OverlayState::Recording), None);
-    assert_eq!(state_sign(OverlayState::Hidden), None);
+    assert_eq!(state_sign(&OverlayState::Recording), None);
+    assert_eq!(state_sign(&OverlayState::Hidden), None);
 }
 
 #[test]
@@ -79,9 +79,9 @@ fn should_sign_a_failure_with_the_triangle_and_the_failing_part_short_name() {
         (FailingPart::Accessibility, "ACCESS"),
     ];
     for (part, name) in expected {
-        let notice = FailureNotice::DictationLost(part);
+        let notice = FailureNotice::DictationLost(part.clone());
         assert_eq!(
-            state_sign(OverlayState::FailureNotice(notice)),
+            state_sign(&OverlayState::FailureNotice(notice)),
             Some(look(FAILURE_SYMBOL, name, IconTint::FailureTriangle)),
             "{part:?}"
         );
@@ -92,7 +92,7 @@ fn should_sign_a_failure_with_the_triangle_and_the_failing_part_short_name() {
 fn should_sign_a_failure_without_a_part_as_failed() {
     let notice = FailureNotice::NotPasted(None);
     assert_eq!(
-        state_sign(OverlayState::FailureNotice(notice)),
+        state_sign(&OverlayState::FailureNotice(notice)),
         Some(look(FAILURE_SYMBOL, "FAILED", IconTint::FailureTriangle))
     );
 }
@@ -116,14 +116,14 @@ fn should_tint_the_glass_orange_while_waiting_and_amber_for_a_failure() {
         (OverlayState::Hidden, GlassTint::Clear),
     ];
     for (state, tint) in expected {
-        assert_eq!(glass_tint(state), tint, "{state:?}");
+        assert_eq!(glass_tint(&state), tint, "{state:?}");
     }
 }
 
 #[test]
 fn should_return_to_the_recording_after_a_sign_shown_during_it() {
     assert_eq!(
-        state_after_sign(OverlayState::Recording),
+        state_after_sign(&OverlayState::Recording),
         OverlayState::Recording
     );
 }
@@ -136,7 +136,7 @@ fn should_hide_after_a_sign_shown_outside_a_recording() {
         OverlayState::WaitingForFocus,
     ];
     for state in others {
-        assert_eq!(state_after_sign(state), OverlayState::Hidden, "{state:?}");
+        assert_eq!(state_after_sign(&state), OverlayState::Hidden, "{state:?}");
     }
 }
 

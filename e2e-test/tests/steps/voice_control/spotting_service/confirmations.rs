@@ -43,6 +43,9 @@ fn stand_in_copy(listener: TcpListener, decoding: Duration) {
 }
 
 fn answer(mut stream: TcpStream, decoding: Duration) {
+    if voicepuncher_test_steps::loopback::answered_as_whisper(&mut stream) {
+        return;
+    }
     let Ok(port) = stream.local_addr().map(|a| a.port()) else {
         return;
     };

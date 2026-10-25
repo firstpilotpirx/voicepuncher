@@ -4,7 +4,7 @@
 use cucumber::{given, then, when};
 use voicepuncher::test_doubles::prelude::*;
 
-use voicepuncher::core::domain::AccessibilityMissing;
+use voicepuncher::core::domain::{AccessibilityMissing, ForeignProgram, ServicePortTaken};
 
 use crate::IntegrationWorld;
 
@@ -31,6 +31,11 @@ const SETTLE: Duration = Duration::from_millis(200);
 const LONG_DICTATION_THRESHOLD_SECS: u32 = 5;
 const LOCAL_SERVICES_REMEDY: &str = "start the local services";
 
+/// The program the scenarios put on the own port of speech recognition.
+fn port_holder() -> ForeignProgram {
+    ForeignProgram { port: 8081, program: "app (pid 28344)".to_owned() }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Event {
     RecordingStarted,
@@ -38,7 +43,7 @@ pub(crate) enum Event {
     Overlay(Shown),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Shown {
     Recording,
     Stage,

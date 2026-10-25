@@ -23,8 +23,8 @@ impl Pipeline {
     /// Ends `dictation`, which delivered nothing, on the overlay: a part lost means the
     /// whole dictation was lost.
     pub(super) fn end_empty_cycle_on_overlay(&self, dictation: &mut Dictation) {
-        if let Some(FailureNotice::PartOfDictationLost(part)) = dictation.pending_notice {
-            dictation.pending_notice = Some(FailureNotice::DictationLost(part));
+        if let Some(FailureNotice::PartOfDictationLost(part)) = &dictation.pending_notice {
+            dictation.pending_notice = Some(FailureNotice::DictationLost(part.clone()));
         }
         self.end_cycle_on_overlay(dictation);
     }

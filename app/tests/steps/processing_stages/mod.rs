@@ -29,7 +29,7 @@ const SETTLE: Duration = Duration::from_millis(200);
 /// every run instead of now and then.
 const PIPELINE_LAG: Duration = Duration::from_millis(50);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Event {
     RecordingStarted,
     TranscriptionStarted,
@@ -38,7 +38,7 @@ pub(crate) enum Event {
     Overlay(Overlay),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Overlay {
     Recording,
     RecognizingSpeech,

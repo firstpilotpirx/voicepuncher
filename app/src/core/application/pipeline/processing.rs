@@ -9,12 +9,12 @@ use crate::core::application::{
     insert_text, DictationOutcome, DictationStart, FocusWait, FocusWaitCfg, StageTiming,
 };
 use crate::core::domain::{
-    text_to_paste, AudioBuffer16k, CleanedText, FailingPart, FailureNotice, RawTranscript,
+    text_to_paste, AudioBuffer16k, CleanedText, FailureNotice, RawTranscript,
 };
 
 use super::archiving::insertion_outcome;
 use super::dictation::Dictation;
-use super::failure_notices::not_pasted;
+use super::failure_notices::{not_pasted, recognition_part};
 use super::{lock_transcriber, Pipeline};
 
 /// The named stages a dictation ran since the user stopped it, in order, each with the
@@ -112,8 +112,7 @@ impl Pipeline {
         let raw = match transcribed {
             Err(e) => {
                 log::warn!("transcription failed, dropping cycle: {e:#}");
-                dictation
-                    .note_failure(FailureNotice::DictationLost(FailingPart::SpeechRecognition));
+                dictation.note_failure(FailureNotice::DictationLost(recognition_part(&e)));
                 return Err(DictationOutcome::SpeechRecognitionFailed);
             }
             Ok(None) => return Err(DictationOutcome::NoText),

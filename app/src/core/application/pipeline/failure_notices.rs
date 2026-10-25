@@ -1,5 +1,7 @@
 use crate::core::application::DictationOutcome;
-use crate::core::domain::{AccessibilityMissing, FailingPart, FailureNotice, VoiceCommand};
+use crate::core::domain::{
+    AccessibilityMissing, FailingPart, FailureNotice, ServicePortTaken, VoiceCommand,
+};
 
 use super::dictation::Dictation;
 use super::Pipeline;
@@ -19,7 +21,7 @@ enum Gravity {
     Lost,
 }
 
-fn gravity(notice: FailureNotice) -> Gravity {
+fn gravity(notice: &FailureNotice) -> Gravity {
     match notice {
         FailureNotice::PartOfDictationLost(_) => Gravity::PartLost,
         FailureNotice::NotPasted(_) => Gravity::NotPasted,
@@ -34,9 +36,20 @@ fn gravity(notice: FailureNotice) -> Gravity {
 /// The notice a cycle ends with once `notice` applies too: the graver of the two.
 pub(super) fn graver(pending: Option<FailureNotice>, notice: FailureNotice) -> FailureNotice {
     match pending {
-        Some(pending) if gravity(pending) >= gravity(notice) => pending,
+        Some(pending) if gravity(&pending) >= gravity(&notice) => pending,
         _ => notice,
     }
+}
+
+/// The part a speech recognition `error` failed on: the program on the service's own port
+/// when one holds it.
+pub(super) fn recognition_part(error: &anyhow::Error) -> FailingPart {
+    error
+        .chain()
+        .find_map(|cause| cause.downcast_ref::<ServicePortTaken>())
+        .map_or(FailingPart::SpeechRecognition, |taken| {
+            FailingPart::ServicePortTaken(taken.0.clone())
+        })
 }
 
 /// The notice of a paste that failed with `error`: the Accessibility permission when it
@@ -83,9 +96,9 @@ impl Pipeline {
     }
 
     /// Shows `notice` at once: the failure happened outside a dictation.
-    pub(super) fn show_failure_at_once(&self, notice: FailureNotice) {
+    pub(super) fn show_failure_at_once(&self, notice: &FailureNotice) {
         log::warn!("failure notice: {}", notice.message());
-        self.visual_indicator.show_failure_notice(&notice);
+        self.visual_indicator.show_failure_notice(notice);
     }
 
     /// Shows at once that the recorder did not start.
@@ -128,8 +141,14 @@ mod tests {
         ];
         for (at, graver_notice) in gravest_first.iter().enumerate() {
             for lighter in &gravest_first[at + 1..] {
-                assert_eq!(graver(Some(*graver_notice), *lighter), *graver_notice);
-                assert_eq!(graver(Some(*lighter), *graver_notice), *graver_notice);
+                assert_eq!(
+                    graver(Some(graver_notice.clone()), lighter.clone()),
+                    *graver_notice
+                );
+                assert_eq!(
+                    graver(Some(lighter.clone()), graver_notice.clone()),
+                    *graver_notice
+                );
             }
         }
     }

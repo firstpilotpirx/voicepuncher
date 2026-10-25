@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Copies of a speech recognition service are found from its address
-A client of a speech recognition service SHALL find the copies of the service from the service's address alone: when the service's own port answers as a speech recognition service it is the one copy; otherwise every port among the four that follow its port plus ten thousand (minus ten thousand when those would pass the last port) that answers as a speech recognition service is a copy. A port answers as a speech recognition service when its health check succeeds and it names itself a whisper-server; a program that accepts connections on a port but does not answer so SHALL never receive a request, whether it holds the service's own port or a copy's. A copy SHALL leave at its first refused connection to a request, and at a probe only when two attempts in a row get no connection, so one probe that is slow under machine load does not drop a copy that accepts connections; a copy SHALL join, again or anew, within a second of answering as a speech recognition service.
+A client of a speech recognition service SHALL find the copies of the service from the service's address alone: when the service's own port answers as a speech recognition service it is the one copy; otherwise every port among the four that follow its port plus ten thousand (minus ten thousand when those would pass the last port) that answers as a speech recognition service is a copy. A port answers as a speech recognition service when it answers the request for its start page (`GET /`) with a page that names it a whisper-server; a program that accepts connections on a port but does not answer so SHALL never receive a transcription request, whether it holds the service's own port or a copy's. A copy SHALL leave at its first refused connection to a request, and at a probe only when two attempts in a row get no connection, so one probe that is slow under machine load does not drop a copy that accepts connections; a copy SHALL join, again or anew, within a second of answering as a speech recognition service.
 
 #### Scenario: Three copies are found from the service address
 - **GIVEN** the service scripts started the speech recognition service for dictation as three copies
@@ -18,7 +18,7 @@ A client of a speech recognition service SHALL find the copies of the service fr
 #### Scenario: Another program on the service's own port is passed over
 - **GIVEN** the speech recognition service for dictation runs as three copies, and another program that is no speech recognition service listens on the service's own port
 - **WHEN** a client transcribes a dictation through the service's address
-- **THEN** the client sends its requests to the three copies, the dictation is transcribed, and the other program receives no request
+- **THEN** the client sends its requests to the three copies, the dictation is transcribed, and the other program receives no transcription request
 
 #### Scenario: Another program on a copy's port is passed over
 - **GIVEN** the speech recognition service for dictation runs as two copies, and another program that is no speech recognition service listens on the third copy's port

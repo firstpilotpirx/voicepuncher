@@ -47,6 +47,9 @@ fn as_heard_over_wav(samples: &[f32]) -> Vec<f32> {
 }
 
 fn answer(mut stream: TcpStream, hearing: &ScriptedHearing, decoding: Duration) {
+    if voicepuncher_test_steps::loopback::answered_as_whisper(&mut stream) {
+        return;
+    }
     let mut reader = BufReader::new(stream.try_clone().unwrap());
     let Some((request, length)) = head(&mut reader) else {
         return;

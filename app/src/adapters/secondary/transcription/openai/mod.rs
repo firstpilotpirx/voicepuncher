@@ -3,20 +3,21 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
-use voicepuncher_copy_pool::{CopyPool, Finish, PoolError, Ran};
+use voicepuncher_copy_pool::{CopyPool, Finish, Ran};
 
 use crate::adapters::secondary::http::agent;
-use crate::adapters::secondary::http::failure::Failure;
 use crate::config::TranscriptionCfg;
 use crate::core::application::transcriber::Transcriber;
 use crate::core::application::transcript_filter::strip_whisper_hallucinations;
 use crate::core::domain::{AudioBuffer16k, RawTranscript};
 
+mod attempt_failure;
 mod deadline;
 mod language;
 mod request;
 mod retries;
 
+use attempt_failure::AttemptFailure;
 pub use deadline::longest_wait;
 use deadline::request_deadline;
 use language::{retry_language, TranscriptionResponse};
@@ -42,36 +43,6 @@ pub struct OpenAiTranscriber {
     recovery_wait: Duration,
     /// A deadline every request takes instead of the one its audio length gives; test clients.
     request_deadline: Option<Duration>,
-}
-
-/// Why one attempt brought no answer.
-struct AttemptFailure {
-    failure: Failure,
-    /// What the service did, for the log.
-    what: String,
-    error: String,
-    /// Only the wait for a free copy ran out: the request still holds its place in the queue.
-    waiting: bool,
-}
-
-impl AttemptFailure {
-    fn of(error: &ureq::Error) -> Self {
-        let failure = Failure::of(error);
-        Self { failure, what: failure.describe(), error: error.to_string(), waiting: false }
-    }
-
-    fn of_pool(error: &PoolError) -> Self {
-        let (failure, what) = match error {
-            PoolError::NoFreeCopy { .. } => (Failure::TimedOut, "had no free copy in time"),
-            PoolError::NoCopies { .. } => (Failure::Dropped, "accepts no connections"),
-        };
-        Self {
-            failure,
-            what: what.to_owned(),
-            error: error.to_string(),
-            waiting: matches!(error, PoolError::NoFreeCopy { .. }),
-        }
-    }
 }
 
 impl OpenAiTranscriber {
@@ -179,12 +150,13 @@ impl OpenAiTranscriber {
             );
             let Some(pause) = pause else {
                 log::warn!("{failure} — giving up");
-                bail!(
+                let message = format!(
                     "speech recognition request to {} failed on copies {}: {}",
                     self.cfg.base_url,
                     ports_list(&tries.tried),
                     failed.error
-                )
+                );
+                return Err(failed.into_error(message));
             };
             log::warn!("{failure} — retrying in {}ms", pause.as_millis());
             thread::sleep(pause);
@@ -235,12 +207,7 @@ impl OpenAiTranscriber {
         let ran = lease.run(deadline, move |url| post(&agent, url, &body));
         match ran {
             Ran::Answered(answer) => answer,
-            Ran::GaveUp => Err(AttemptFailure {
-                failure: Failure::TimedOut,
-                what: Failure::TimedOut.describe(),
-                error: format!("copy {port} sent no answer in {}ms", deadline.as_millis()),
-                waiting: false,
-            }),
+            Ran::GaveUp => Err(AttemptFailure::no_answer(port, deadline)),
         }
     }
 }
@@ -254,12 +221,9 @@ fn post(agent: &ureq::Agent, url: &str, body: &[u8]) -> (Result<String, AttemptF
         .send_bytes(body);
     match sent {
         Ok(response) => {
-            let read = response.into_string().map_err(|e| AttemptFailure {
-                failure: Failure::Other,
-                what: "sent an unreadable answer".to_owned(),
-                error: e.to_string(),
-                waiting: false,
-            });
+            let read = response
+                .into_string()
+                .map_err(|e| AttemptFailure::unreadable(&e));
             (read, Finish::Answered)
         }
         Err(error) => {

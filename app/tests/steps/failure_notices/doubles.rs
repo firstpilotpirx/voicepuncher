@@ -3,8 +3,8 @@
 use super::{
     bail, record, AccessibilityMissing, AudioBuffer16k, AudioRecorder, ChunkingCfg, CleanedText,
     CommandSpotter, Event, Events, FailureNotice, KeyPresser, LiveChunk, Microphone, RawTranscript,
-    Receiver, Recognition, Result, Setup, Shown, TextPaster, Transcriber, VisualIndicator,
-    VoiceCommand, RAW_TRANSCRIPT,
+    Receiver, Recognition, Result, ServicePortTaken, Setup, Shown, TextPaster, Transcriber,
+    VisualIndicator, VoiceCommand, RAW_TRANSCRIPT,
 };
 
 /// Hands over one second of audio at the stop; for a long dictation it sends one part while
@@ -65,6 +65,7 @@ impl Transcriber for ScriptedTranscriber {
             Recognition::Answers => false,
             Recognition::Fails => true,
             Recognition::FailsOnFirstPart => self.calls == 1,
+            Recognition::PortTaken => return Err(ServicePortTaken(super::port_holder()).into()),
         };
         if fails {
             bail!("connection refused");
@@ -116,7 +117,7 @@ impl VisualIndicator for NotingOverlay {
     }
 
     fn show_failure_notice(&self, notice: &FailureNotice) {
-        record(&self.0, Event::Overlay(Shown::Notice(*notice)));
+        record(&self.0, Event::Overlay(Shown::Notice(notice.clone())));
     }
     voicepuncher::shows_no_voice_control_signs!();
 }

@@ -92,6 +92,12 @@ Feature: local-services
       When a client connects to the service by its address
       Then the client sends its requests to that copy on the service's own port
 
+    Scenario: Another program on the service's own port is passed over
+      Given the service scripts started the speech recognition service for dictation as three copies
+      And another program that is no speech recognition service listens on the service's own port
+      When a client connects to the service by its address
+      Then the client sends its requests to the three copies, and the other program receives no transcription request
+
   @smoke @serial
   Rule: A copy that stops does not stop the service
 

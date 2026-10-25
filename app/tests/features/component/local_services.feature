@@ -165,3 +165,10 @@ Feature: local-services
       Given the app listens through a command spotting service
       When the command spotting service reports that it stalled
       Then the stalled service is counted as lost and the app connects to it again
+
+  Rule: Another program on a speech recognition port is named in the log
+
+    Scenario: A program on the dictation port is logged once
+      Given another program that is no speech recognition service listens on the own port of the speech recognition service, which runs as one copy
+      When a client of the service transcribes two dictations
+      Then the log holds one warning naming that port, the program's name and its process id

@@ -5,7 +5,8 @@ use std::time::Duration;
 use voicepuncher_copy_pool::Place;
 
 use super::deadline::{RETRY_PAUSES, SLOW_RETRIES, SLOW_RETRY_PAUSE};
-use super::{AttemptFailure, Failure, OpenAiTranscriber};
+use super::{AttemptFailure, OpenAiTranscriber};
+use crate::adapters::secondary::http::failure::Failure;
 
 /// The attempts of one request: their count, the copies they went to and the request's
 /// place in the queue for a free copy.

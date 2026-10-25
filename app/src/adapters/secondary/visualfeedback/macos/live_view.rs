@@ -14,15 +14,15 @@ pub(super) struct MacosLiveTranscriptView {
 
 impl LiveTranscriptView for MacosLiveTranscriptView {
     fn show_live_transcript(&self, text: &str) {
-        self.live_transcript.update(*lock(&self.state), text);
+        self.live_transcript.update(&lock(&self.state), text);
         let state = Arc::clone(&self.state);
         let main = self.main.clone();
         let live_transcript = self.live_transcript.clone();
         on_main(move |mtm| {
             // WHY: read on the main queue, so a stage shown after this update was queued wins
-            let state = *lock(&state);
-            if LiveTranscriptText::draws_text_window(state) {
-                apply_live_transcript(&main.windows(mtm), live_transcript.shown(state).as_ref());
+            let state = lock(&state).clone();
+            if LiveTranscriptText::draws_text_window(&state) {
+                apply_live_transcript(&main.windows(mtm), live_transcript.shown(&state).as_ref());
             }
         });
     }

@@ -34,7 +34,10 @@ pub(super) fn speech_recognition_hanging_first(hung: usize) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     std::thread::spawn(move || {
-        for (n, stream) in listener.incoming().flatten().enumerate() {
+        let asked = listener.incoming().flatten().filter_map(|mut stream| {
+            (!voicepuncher_test_steps::loopback::answered_as_whisper(&mut stream)).then_some(stream)
+        });
+        for (n, stream) in asked.enumerate() {
             if n < hung {
                 // Never answered and never closed: the client waits on it.
                 std::mem::forget(stream);

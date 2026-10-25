@@ -82,7 +82,7 @@ impl VisualIndicator for NotingOverlay {
     fn show_failure_notice(&self, notice: &FailureNotice) {
         record(
             &self.events,
-            Event::Overlay(Overlay::FailureNotice(*notice)),
+            Event::Overlay(Overlay::FailureNotice(notice.clone())),
         );
     }
     voicepuncher::shows_no_voice_control_signs!();

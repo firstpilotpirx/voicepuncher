@@ -10,6 +10,9 @@ pub(super) fn spawn_answering_stub(
     let (tx, rx) = mpsc::channel();
     let mut answered = 0usize;
     let port = serve_each(move |mut stream| {
+        if voicepuncher_test_steps::loopback::answered_as_whisper(&mut stream) {
+            return;
+        }
         let answer = answers[answered.min(answers.len() - 1)];
         if let Some(request) = read_request(&mut stream, &StubReply::ok(answer)) {
             answered += 1;

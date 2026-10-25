@@ -46,6 +46,9 @@ const CLOSE_LIMIT: Duration = Duration::from_secs(5);
 /// A speech recognition service that takes every request and never answers it.
 fn speech_recognition_that_never_answers() -> u16 {
     serve_each(|mut stream| {
+        if voicepuncher_test_steps::loopback::answered_as_whisper(&mut stream) {
+            return;
+        }
         skip_request(&mut stream);
         // Never answered and never closed: the client waits on it.
         std::mem::forget(stream);

@@ -31,6 +31,22 @@ Feature: failure-notices
       Then the dictation's text is not pasted
       And the overlay shows a failure notice that the dictation was lost because speech recognition failed
 
+  Rule: A dictation lost to another program on the service port names it
+
+    Scenario: Another program holds the dictation port and no copy runs
+      Given another program holds the port of speech recognition and no copy of it runs
+      And the user is recording a hotkey dictation
+      When the user stops the hotkey dictation
+      Then the dictation's text is not pasted
+      And the overlay shows a failure notice that the dictation was lost because the port is held by that program, naming the port and the program
+
+    Scenario: Nothing listens on the dictation port and no copy runs
+      Given speech recognition is not running
+      And the user is recording a hotkey dictation
+      When the user stops the hotkey dictation
+      Then the overlay shows a failure notice that the dictation was lost because speech recognition failed
+      And the notice says to start the local services
+
   Rule: A partly lost dictation is announced
 
     Scenario: One chunk of a long dictation is lost

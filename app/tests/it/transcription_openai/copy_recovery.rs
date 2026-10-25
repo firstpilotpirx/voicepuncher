@@ -18,11 +18,12 @@ pub(super) fn should_transcribe_once_a_copy_comes_back_after_every_copy_went_dow
     // Given
     let (cfg, mut listeners) = free_copies(1);
     let port = listeners[0].local_addr().unwrap().port();
+    let copy = voicepuncher_test_steps::loopback::WhisperUntilClosed::on(listeners.remove(0));
     capturing_logger();
     let mut transcriber = OpenAiTranscriber::connect(cfg)
         .unwrap()
         .with_recovery_wait(RECOVERY_WAIT);
-    drop(listeners.remove(0));
+    copy.close();
     let comes_back = thread::spawn(move || {
         thread::sleep(COMES_BACK_AFTER);
         spawn_copy(
@@ -48,11 +49,17 @@ pub(super) fn should_fail_naming_the_copies_when_every_copy_refuses() {
         .iter()
         .map(|l| l.local_addr().unwrap().port())
         .collect();
+    let copies: Vec<voicepuncher_test_steps::loopback::WhisperUntilClosed> = listeners
+        .into_iter()
+        .map(voicepuncher_test_steps::loopback::WhisperUntilClosed::on)
+        .collect();
     capturing_logger();
     let mut transcriber = OpenAiTranscriber::connect(cfg)
         .unwrap()
         .with_recovery_wait(SHORT_RECOVERY_WAIT);
-    drop(listeners);
+    for copy in copies {
+        copy.close();
+    }
     // When
     let message = format!("{:#}", transcriber.transcribe(&half_second()).unwrap_err());
     // Then
@@ -166,6 +173,9 @@ pub(super) fn spawn_recording_copy(listener: TcpListener) -> Arc<Mutex<Vec<usize
     thread::spawn(move || {
         for stream in listener.incoming() {
             let mut stream = stream.unwrap();
+            if voicepuncher_test_steps::loopback::answered_as_whisper(&mut stream) {
+                continue;
+            }
             let reply = StubReply::ok(r#"{"text": "hello"}"#);
             if let Some(request) = read_request(&mut stream, &reply) {
                 recorded.lock().unwrap().push(request.body.len());

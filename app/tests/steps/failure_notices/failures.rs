@@ -11,6 +11,11 @@ pub(super) fn recognition_fails(world: &mut IntegrationWorld) {
     run(world).setup.recognition = Recognition::Fails;
 }
 
+#[given("another program holds the port of speech recognition and no copy of it runs")]
+pub(super) fn port_taken(world: &mut IntegrationWorld) {
+    run(world).setup.recognition = Recognition::PortTaken;
+}
+
 #[given("speech recognition fails on one part of a long dictation and answers the others")]
 pub(super) fn recognition_fails_on_one_part(world: &mut IntegrationWorld) {
     let run = run(world);

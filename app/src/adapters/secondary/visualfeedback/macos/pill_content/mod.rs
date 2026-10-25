@@ -53,7 +53,7 @@ const WAITING_SIGN: SignLook =
 
 /// The icon and label of `state`; `None` for the recording, which shows the record sign and the
 /// waveform instead, and for the hidden overlay.
-pub(super) fn state_sign(state: OverlayState) -> Option<SignLook> {
+pub(super) fn state_sign(state: &OverlayState) -> Option<SignLook> {
     match state {
         OverlayState::RecognizingSpeech => Some(RECOGNIZING_SIGN),
         OverlayState::WaitingForFocus => Some(WAITING_SIGN),
@@ -82,7 +82,7 @@ pub(super) fn command_sign(command: VoiceCommand) -> Option<SignLook> {
 }
 
 /// The tint of the glass in `state`.
-pub(super) fn glass_tint(state: OverlayState) -> GlassTint {
+pub(super) fn glass_tint(state: &OverlayState) -> GlassTint {
     match state {
         OverlayState::WaitingForFocus => GlassTint::Waiting,
         OverlayState::FailureNotice(_) => GlassTint::Failure,
@@ -94,7 +94,7 @@ pub(super) fn glass_tint(state: OverlayState) -> GlassTint {
 
 /// What the overlay shows once a command sign shown in `state` is over: the recording goes
 /// on, anything else was already over when the command ran.
-pub(super) fn state_after_sign(state: OverlayState) -> OverlayState {
+pub(super) fn state_after_sign(state: &OverlayState) -> OverlayState {
     match state {
         OverlayState::Recording => OverlayState::Recording,
         _ => OverlayState::Hidden,

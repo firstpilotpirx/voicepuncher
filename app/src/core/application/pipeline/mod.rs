@@ -22,7 +22,7 @@ use crate::core::application::{
     FocusWaitCfg, NoActivitySink, PipelineActivity, PipelineActivitySink, PipelineInput,
     SoundPlayer, TextPaster, Transcriber, VisualIndicator,
 };
-use crate::core::domain::{FailureNotice, Permission, PttSignal, RecordingMode};
+use crate::core::domain::{FailingPart, FailureNotice, Permission, PttSignal, RecordingMode};
 
 use self::dictation::Dictation;
 use self::voice_control::Voice;
@@ -43,6 +43,8 @@ pub(super) struct LiveSessionResult {
     pub(super) texts: Vec<String>,
     /// Chunks speech recognition failed on.
     pub(super) lost_chunks: usize,
+    /// The part the last lost chunk failed on.
+    pub(super) lost_to: Option<FailingPart>,
 }
 
 /// The one transcriber the pipeline and every live worker use: a worker that dies leaves it

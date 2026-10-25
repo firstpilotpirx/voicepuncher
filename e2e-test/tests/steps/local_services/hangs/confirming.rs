@@ -52,6 +52,9 @@ fn hanging_once(listener: TcpListener) {
     std::thread::spawn(move || {
         let mut held = Vec::new();
         for mut stream in listener.incoming().flatten() {
+            if voicepuncher_test_steps::loopback::answered_as_whisper(&mut stream) {
+                continue;
+            }
             let mut buf = vec![0u8; 65536];
             let _ = stream.read(&mut buf);
             if held.is_empty() {

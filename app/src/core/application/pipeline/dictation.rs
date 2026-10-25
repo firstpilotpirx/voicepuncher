@@ -7,7 +7,7 @@ use crate::core::domain::{
 };
 
 use super::failure_notices::graver;
-use super::LiveTranscriptionSession;
+use super::{LiveSessionResult, LiveTranscriptionSession};
 
 /// A dictation from its start cue to its close: what transcribes it while it records, the
 /// command words said in one breath with it, the notice it ends with and its archive trace.
@@ -44,16 +44,19 @@ impl Dictation {
     /// Keeps `notice` for the end of the dictation, unless a graver one is already pending.
     pub(super) fn note_failure(&mut self, notice: FailureNotice) {
         log::warn!("failure notice: {}", notice.message());
-        self.pending_notice = Some(graver(self.pending_notice, notice));
+        self.pending_notice = Some(graver(self.pending_notice.take(), notice));
     }
 
     /// Notes the chunks speech recognition lost: the whole dictation when none had text.
-    pub(super) fn note_lost_chunks(&mut self, lost_chunks: usize, no_text: bool) {
-        if lost_chunks == 0 {
+    pub(super) fn note_lost_chunks(&mut self, result: &LiveSessionResult) {
+        if result.lost_chunks == 0 {
             return;
         }
-        let part = FailingPart::SpeechRecognition;
-        self.note_failure(if no_text {
+        let part = result
+            .lost_to
+            .clone()
+            .unwrap_or(FailingPart::SpeechRecognition);
+        self.note_failure(if result.texts.is_empty() {
             FailureNotice::DictationLost(part)
         } else {
             FailureNotice::PartOfDictationLost(part)

@@ -241,7 +241,7 @@ impl VisualIndicator for Quiet {
     fn show_pasted(&self) {}
     fn hide(&self) {}
     fn show_failure_notice(&self, notice: &FailureNotice) {
-        self.0.lock().unwrap().push(*notice);
+        self.0.lock().unwrap().push(notice.clone());
     }
     voicepuncher::shows_no_voice_control_signs!();
 }

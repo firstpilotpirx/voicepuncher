@@ -103,7 +103,7 @@ impl Pipeline {
                 if self.voice.listening() =>
             {
                 // A command said in the segment is lost: say so, as when the service is away.
-                self.show_failure_at_once(FailureNotice::VoiceCommandsUnavailable);
+                self.show_failure_at_once(&FailureNotice::VoiceCommandsUnavailable);
             }
             PipelineInput::Spotting(event) => {
                 for spoken in self.recognize(event) {
@@ -136,7 +136,7 @@ impl Pipeline {
         voice.recognizer = VoiceCommandRecognizer::new();
         if let Err(e) = voice.spotter.start_listening(&VoiceCommand::STANDBY) {
             log::error!("voice control: cannot listen, command spotting service: {e:#}");
-            self.show_failure_at_once(FailureNotice::VoiceCommandsUnavailable);
+            self.show_failure_at_once(&FailureNotice::VoiceCommandsUnavailable);
             return;
         }
         voice.listening = true;
@@ -173,7 +173,7 @@ impl Pipeline {
             log::error!("voice control: \"{phrase}\" failed: {e:#}");
             // a recording that did not start shows its own notice already
             if !e.is::<RecordingNotStarted>() {
-                self.show_failure_at_once(command_failed(spoken.command, &e));
+                self.show_failure_at_once(&command_failed(spoken.command, &e));
             }
         }
     }
@@ -274,7 +274,7 @@ impl Pipeline {
             Ok(()) => self.confirm(command),
             Err(e) => {
                 log::error!("voice control: key press failed: {e:#}");
-                self.show_failure_at_once(command_failed(command, &e));
+                self.show_failure_at_once(&command_failed(command, &e));
             }
         }
     }

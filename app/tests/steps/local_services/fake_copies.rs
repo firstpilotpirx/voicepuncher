@@ -84,8 +84,7 @@ pub(super) fn serve(listener: TcpListener) -> FakeCopy {
 }
 
 fn answer(mut stream: TcpStream, copy: &FakeCopy, in_flight: &AtomicUsize) {
-    let mut first = [0u8; 1];
-    if stream.peek(&mut first).unwrap_or(0) == 0 {
+    if !voicepuncher_test_steps::loopback::is_request(&mut stream) {
         return;
     }
     copy.requests.fetch_add(1, Ordering::SeqCst);

@@ -109,8 +109,7 @@ fn accept(listener: &TcpListener, script: &Script) {
 /// Takes one request as the script says; a connection that sends nothing (the pool's probe)
 /// is no request.
 fn serve(mut stream: TcpStream, port: u16, script: &Script) {
-    let mut first = [0u8; 1];
-    if stream.peek(&mut first).unwrap_or(0) == 0 {
+    if !voicepuncher_test_steps::loopback::is_request(&mut stream) {
         return;
     }
     let index = script.next.fetch_add(1, Ordering::SeqCst);

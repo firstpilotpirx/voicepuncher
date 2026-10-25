@@ -47,7 +47,7 @@ impl VisualIndicator for MacosVisualIndicator {
     }
 
     fn show_failure_notice(&self, notice: &FailureNotice) {
-        self.show_state(OverlayState::FailureNotice(*notice));
+        self.show_state(OverlayState::FailureNotice(notice.clone()));
     }
 
     fn show_command_sign(&self, command: VoiceCommand) {
@@ -57,14 +57,14 @@ impl VisualIndicator for MacosVisualIndicator {
         let turn = Turn::next(&self.pulse_generation);
         let redraw = self.redraw();
         // The state stays what the command left, so a screen change redraws that state.
-        let after = state_after_sign(*lock(&self.state));
+        let after = state_after_sign(&lock(&self.state));
         log::debug!("overlay: command sign {} requested", sign.label);
 
         on_main(move |mtm| {
             do_rebuild(mtm, &redraw.main);
             apply_command_sign(&redraw.main.windows(mtm), sign);
             on_main_after(COMMAND_SIGN_MS, move |mtm| {
-                redraw_if_current(&redraw, mtm, after, turn);
+                redraw_if_current(&redraw, mtm, &after, turn);
             });
         });
     }
@@ -96,7 +96,7 @@ fn fade_out_if_current(main: SharedWindows, turn: Turn, commands_unavailable: Ar
 
 /// Draws `state` after a command sign, unless a later signal took over the overlay: its own
 /// drawing stands.
-fn redraw_if_current(redraw: &Redraw, mtm: MainThreadMarker, state: OverlayState, turn: Turn) {
+fn redraw_if_current(redraw: &Redraw, mtm: MainThreadMarker, state: &OverlayState, turn: Turn) {
     if turn.is_current() {
         redraw.draw(mtm, state, turn);
     }

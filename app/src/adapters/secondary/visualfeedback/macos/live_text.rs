@@ -54,22 +54,22 @@ impl LiveTranscriptText {
 
     /// Keeps `text` while the overlay shows the recording; an update that arrives after
     /// the recording ended is dropped.
-    pub(super) fn update(&self, state: OverlayState, text: &str) {
-        if state == OverlayState::Recording {
+    pub(super) fn update(&self, state: &OverlayState, text: &str) {
+        if *state == OverlayState::Recording {
             text.clone_into(&mut lock(&self.0));
         }
     }
 
     /// Whether the live transcript decides what the text window shows in `state`: only while
     /// recording; every other state puts its own text there.
-    pub(super) fn draws_text_window(state: OverlayState) -> bool {
-        state == OverlayState::Recording
+    pub(super) fn draws_text_window(state: &OverlayState) -> bool {
+        *state == OverlayState::Recording
     }
 
     /// What the text window shows in `state`; `None` hides it.
-    pub(super) fn shown(&self, state: OverlayState) -> Option<String> {
+    pub(super) fn shown(&self, state: &OverlayState) -> Option<String> {
         let text = lock(&self.0);
-        (state == OverlayState::Recording && !text.trim().is_empty())
+        (*state == OverlayState::Recording && !text.trim().is_empty())
             .then(|| latest_words(&text, LIVE_TRANSCRIPT_CHARS))
     }
 }
@@ -96,7 +96,7 @@ mod tests {
 
     fn recording_with(text: &str) -> LiveTranscriptText {
         let live = LiveTranscriptText::default();
-        live.update(OverlayState::Recording, text);
+        live.update(&OverlayState::Recording, text);
         live
     }
 
@@ -104,7 +104,7 @@ mod tests {
     fn should_show_the_text_while_recording() {
         let live = recording_with("we moved the meeting");
         assert_eq!(
-            live.shown(OverlayState::Recording).as_deref(),
+            live.shown(&OverlayState::Recording).as_deref(),
             Some("we moved the meeting")
         );
     }
@@ -117,7 +117,7 @@ mod tests {
             OverlayState::WaitingForFocus,
             OverlayState::Hidden,
         ] {
-            assert_eq!(live.shown(state), None, "{state:?}");
+            assert_eq!(live.shown(&state), None, "{state:?}");
         }
     }
 
@@ -125,14 +125,14 @@ mod tests {
     fn should_leave_the_text_window_to_a_failure_notice() {
         let notice = FailureNotice::DictationLost(FailingPart::SpeechRecognition);
         assert!(!LiveTranscriptText::draws_text_window(
-            OverlayState::FailureNotice(notice)
+            &OverlayState::FailureNotice(notice)
         ));
     }
 
     #[test]
     fn should_draw_the_text_window_while_recording() {
         assert!(LiveTranscriptText::draws_text_window(
-            OverlayState::Recording
+            &OverlayState::Recording
         ));
     }
 
@@ -143,7 +143,7 @@ mod tests {
             OverlayState::WaitingForFocus,
             OverlayState::Hidden,
         ] {
-            assert!(!LiveTranscriptText::draws_text_window(state), "{state:?}");
+            assert!(!LiveTranscriptText::draws_text_window(&state), "{state:?}");
         }
     }
 
@@ -151,13 +151,13 @@ mod tests {
     fn should_show_nothing_once_a_new_recording_starts() {
         let live = recording_with("an earlier dictation");
         live.clear();
-        assert_eq!(live.shown(OverlayState::Recording), None);
+        assert_eq!(live.shown(&OverlayState::Recording), None);
     }
 
     #[test]
     fn should_drop_an_update_that_arrives_after_the_recording_ended() {
         let live = LiveTranscriptText::default();
-        live.update(OverlayState::RecognizingSpeech, "the last chunk");
-        assert_eq!(live.shown(OverlayState::Recording), None);
+        live.update(&OverlayState::RecognizingSpeech, "the last chunk");
+        assert_eq!(live.shown(&OverlayState::Recording), None);
     }
 }

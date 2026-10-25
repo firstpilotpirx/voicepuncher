@@ -188,7 +188,7 @@ pub(super) fn overlay(events: &[Event]) -> Vec<Overlay> {
     events
         .iter()
         .filter_map(|e| match e {
-            Event::Overlay(o) => Some(*o),
+            Event::Overlay(o) => Some(o.clone()),
             _ => None,
         })
         .collect()

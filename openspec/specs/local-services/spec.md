@@ -205,7 +205,7 @@ The service scripts SHALL start, beside the speech recognition service for dicta
 - **AND** the speech recognition service for commands answered its confirmation with the small model, and the speech recognition service for dictation got no request
 
 ### Requirement: Copies of a speech recognition service are found from its address
-A client of a speech recognition service SHALL find the copies of the service from the service's address alone: when the service's own port accepts connections it is the one copy; otherwise every port among the four that follow its port plus ten thousand (minus ten thousand when those would pass the last port) that accepts a connection is a copy. A copy SHALL leave at its first refused connection to a request, and at a probe only when two attempts in a row get no connection, so one probe that is slow under machine load does not drop a copy that accepts connections; a copy SHALL join, again or anew, within a second of accepting connections.
+A client of a speech recognition service SHALL find the copies of the service from the service's address alone: when the service's own port answers as a speech recognition service it is the one copy; otherwise every port among the four that follow its port plus ten thousand (minus ten thousand when those would pass the last port) that answers as a speech recognition service is a copy. A port answers as a speech recognition service when it answers the request for its start page (`GET /`) with a page that names it a whisper-server; a program that accepts connections on a port but does not answer so SHALL never receive a transcription request, whether it holds the service's own port or a copy's. A copy SHALL leave at its first refused connection to a request, and at a probe only when two attempts in a row get no connection, so one probe that is slow under machine load does not drop a copy that accepts connections; a copy SHALL join, again or anew, within a second of answering as a speech recognition service.
 
 #### Scenario: Three copies are found from the service address
 - **GIVEN** the service scripts started the speech recognition service for dictation as three copies
@@ -216,6 +216,16 @@ A client of a speech recognition service SHALL find the copies of the service fr
 - **GIVEN** the service scripts started the speech recognition service for dictation as one copy
 - **WHEN** a client connects to the service by its address
 - **THEN** the client sends its requests to that copy on the service's own port
+
+#### Scenario: Another program on the service's own port is passed over
+- **GIVEN** the speech recognition service for dictation runs as three copies, and another program that is no speech recognition service listens on the service's own port
+- **WHEN** a client transcribes a dictation through the service's address
+- **THEN** the client sends its requests to the three copies, the dictation is transcribed, and the other program receives no transcription request
+
+#### Scenario: Another program on a copy's port is passed over
+- **GIVEN** the speech recognition service for dictation runs as two copies, and another program that is no speech recognition service listens on the third copy's port
+- **WHEN** a client transcribes a dictation through the service's address
+- **THEN** the client sends its requests to the two copies only
 
 #### Scenario: A copy that came back is used again
 - **GIVEN** a client of the speech recognition service, and one copy stopped accepting connections
@@ -526,3 +536,11 @@ When the app manages its services, it SHALL start the command spotting service a
 - **GIVEN** the service scripts run the command spotting service on its own port
 - **WHEN** the app launches with voice control on
 - **THEN** the app adopts it and starts no copy of it
+
+### Requirement: Another program on a speech recognition port is named in the log
+When another program that is no speech recognition service listens on the own port of a speech recognition service, or on one of its copies' ports, the client SHALL log a warning once per port, naming the port, the program's name and its process id, as long as the program stays there.
+
+#### Scenario: A program on the dictation port is logged once
+- **GIVEN** another program that is no speech recognition service listens on the own port of the speech recognition service for dictation
+- **WHEN** a client of the service transcribes two dictations
+- **THEN** the log holds one warning naming that port, the program's name and its process id

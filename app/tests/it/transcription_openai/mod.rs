@@ -31,4 +31,5 @@ use languages::*;
 mod copies;
 use copies::*;
 mod copy_recovery;
+mod foreign_program;
 use copy_recovery::*;

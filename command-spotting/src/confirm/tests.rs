@@ -73,6 +73,9 @@ fn answer_request(
     script: &[(Duration, &'static str)],
     counter: &AtomicUsize,
 ) {
+    if voicepuncher_test_steps::loopback::answered_as_whisper(&mut stream) {
+        return;
+    }
     let mut reader = BufReader::new(stream.try_clone().unwrap());
     let mut request = String::new();
     if reader.read_line(&mut request).unwrap_or(0) == 0 {
@@ -180,11 +183,12 @@ fn should_send_a_confirmation_refused_by_its_copy_to_the_other_copy() {
         (second, first)
     };
     let down_port = down.local_addr().unwrap().port();
+    let down = voicepuncher_test_steps::loopback::WhisperUntilClosed::on(down);
     let requests = serve_copy(up, PRESS_ENTER, Duration::ZERO);
     let transcriber = UtteranceTranscriber::new(&url).unwrap();
     // The first probe round saw both copies before one went down.
     assert!(CopyPool::shared(&url).unwrap().has_copies());
-    drop(down);
+    down.close();
     // When
     let heard = heard_by(&transcriber);
     // Then

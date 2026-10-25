@@ -2,7 +2,7 @@
 
 use super::{
     answers, ensure, found_copies, given, off_thread, services, short_speech, started_with, then,
-    transcribe, when, Context, E2eWorld, Result, SEVERAL_COPIES, THREE_COPIES,
+    transcribe, when, Context, E2eWorld, Result, ScenarioServices, SEVERAL_COPIES, THREE_COPIES,
 };
 
 #[given("the service scripts started the speech recognition service for dictation as three copies")]
@@ -36,16 +36,22 @@ pub(super) async fn client_connects(world: &mut E2eWorld) -> Result<()> {
 #[then("the client sends its requests to the three copies, and nothing listens on the service's own port")]
 pub(super) fn found_three(world: &mut E2eWorld) -> Result<()> {
     let services = services(world)?;
+    found_the_three_copies(services)?;
+    ensure!(
+        !answers(services.stt_port),
+        "something listens on the service's own port {}",
+        services.stt_port
+    );
+    Ok(())
+}
+
+/// The client found exactly the three copies the service scripts started.
+pub(super) fn found_the_three_copies(services: &ScenarioServices) -> Result<()> {
     let found = services.pool.found.clone().context("no client connected")?;
     ensure!(
         services.copy_ports.len() == THREE_COPIES as usize && found == services.copy_ports,
         "the client found the copies {found:?}, the service scripts started {:?}",
         services.copy_ports
-    );
-    ensure!(
-        !answers(services.stt_port),
-        "something listens on the service's own port {}",
-        services.stt_port
     );
     Ok(())
 }

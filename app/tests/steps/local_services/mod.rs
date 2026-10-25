@@ -6,6 +6,7 @@ mod catalog;
 mod catalog_copies;
 mod copies;
 mod fake_copies;
+mod foreign_program;
 mod home;
 mod scripts;
 mod stall;
@@ -27,6 +28,7 @@ pub struct LocalRun {
     supervised: Option<supervision::Supervised>,
     catalog: Option<catalog::CatalogRun>,
     copies: Option<copies::CopiesRun>,
+    foreign: Option<foreign_program::ForeignRun>,
     stall: Option<stall::StallRun>,
     scripts_config: Option<voicepuncher::config::Config>,
 }

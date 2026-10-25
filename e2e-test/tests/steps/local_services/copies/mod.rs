@@ -26,6 +26,8 @@ mod restart;
 mod start_failure;
 use start_failure::TakenPort;
 mod discovery;
+mod foreign;
+use foreign::ForeignListener;
 mod queueing;
 use queueing::answered;
 mod giving_up;
@@ -63,6 +65,8 @@ pub struct PoolRun {
     taken: Option<TakenPort>,
     /// The copies the client found from the service address.
     found: Option<Vec<u16>>,
+    /// Another program on the service's own port.
+    foreign: Option<ForeignListener>,
     /// The copy still transcribing a request its client gave up on.
     abandoned: Option<u16>,
     /// When the next request was answered: the requests the copy of the abandoned one and

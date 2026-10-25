@@ -39,6 +39,9 @@ pub(super) fn spawn_stub(reply: StubReply) -> (TranscriptionCfg, mpsc::Receiver<
 }
 
 pub(super) fn read_request(stream: &mut TcpStream, reply: &StubReply) -> Option<CapturedRequest> {
+    if voicepuncher_test_steps::loopback::answered_as_whisper(stream) {
+        return None;
+    }
     let mut reader = BufReader::new(stream.try_clone().unwrap());
     let mut request_line = String::new();
     if reader.read_line(&mut request_line).ok()? == 0 {
@@ -104,9 +107,11 @@ pub(super) fn spawn_counting_stub(
 ) -> (TranscriptionCfg, Arc<AtomicUsize>) {
     let attempts = Arc::new(AtomicUsize::new(0));
     let counter = Arc::clone(&attempts);
-    let port = serve_each(move |stream| {
+    let port = serve_each(move |mut stream| {
         let mut first = [0u8; 1];
-        if stream.peek(&mut first).unwrap_or(0) > 0 {
+        if !voicepuncher_test_steps::loopback::answered_as_whisper(&mut stream)
+            && stream.peek(&mut first).unwrap_or(0) > 0
+        {
             answer(counter.fetch_add(1, Ordering::SeqCst), stream);
         }
     });
@@ -136,6 +141,9 @@ pub(super) fn spawn_resetting_stub(
         let mut reset_done = false;
         for stream in listener.incoming() {
             let mut stream = stream.unwrap();
+            if voicepuncher_test_steps::loopback::answered_as_whisper(&mut stream) {
+                continue;
+            }
             if !reset_done {
                 reset_done = reset_after_first_answer(stream, body, &reset_rx, &done_tx);
                 continue;

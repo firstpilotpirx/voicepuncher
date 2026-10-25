@@ -6,10 +6,11 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, PoisonError, Weak};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::address::{AddressError, ServiceAddress};
-use crate::probe::{Probe, TcpProbe};
+use crate::address::{AddressError, ServiceAddress, SPEECH_RECOGNITION_COPY_OFFSET};
+use crate::probe::{ForeignProgram, Probe, TcpProbe, WhisperProbe};
 
 mod lease;
+mod round;
 mod state;
 
 pub use lease::Lease;
@@ -31,8 +32,9 @@ pub struct CopyState {
 pub enum PoolError {
     /// Every copy stayed busy for the whole wait.
     NoFreeCopy { address: String, waited: Duration },
-    /// No copy of the service accepts connections.
-    NoCopies { address: String },
+    /// No copy of the service accepts connections; `foreign` is the other program that holds
+    /// the service's own port, if one does.
+    NoCopies { address: String, foreign: Option<ForeignProgram> },
 }
 
 impl fmt::Display for PoolError {
@@ -43,9 +45,14 @@ impl fmt::Display for PoolError {
                 "every copy of the service at {address} stayed busy for {} ms",
                 waited.as_millis()
             ),
-            Self::NoCopies { address } => {
+            Self::NoCopies { address, foreign: None } => {
                 write!(f, "no copy of the service at {address} accepts connections")
             }
+            Self::NoCopies { address, foreign: Some(foreign) } => write!(
+                f,
+                "no copy of the service at {address} accepts connections, and port {} is held by {foreign}, which is not the service",
+                foreign.port
+            ),
         }
     }
 }
@@ -85,22 +92,30 @@ struct Inner {
 static POOLS: OnceLock<Mutex<HashMap<String, Weak<Inner>>>> = OnceLock::new();
 
 impl CopyPool {
-    /// The one pool of this process for the service at `url`, so every client of the
-    /// service shares its copies; each process starts its search at a copy of its own.
+    /// The one pool of this process for the speech recognition service at `url`, so every
+    /// client of the service shares its copies; each process starts its search at a copy of
+    /// its own. A port joins only once its program says it is a whisper-server.
     pub fn shared(url: &str) -> Result<Self, AddressError> {
         Ok(Self::shared_at(ServiceAddress::parse(url)?))
     }
 
-    /// As [`CopyPool::shared`], for an address whose copies may lie at another offset.
+    /// As [`CopyPool::shared`], for an address whose copies may lie at another offset; copies
+    /// at another offset than a speech recognition service's join once they accept
+    /// connections.
     pub fn shared_at(address: ServiceAddress) -> Self {
         let key = format!("{address} {:?}", address.copy_ports());
         let mut pools = unpoisoned(POOLS.get_or_init(Default::default).lock());
         if let Some(inner) = pools.get(&key).and_then(Weak::upgrade) {
             return Self { inner };
         }
-        let probe = TcpProbe::new(address.host());
         let offset = std::process::id() as usize;
-        let pool = Self::discover(address, probe, offset, PROBE_INTERVAL);
+        let pool = if address.copy_offset() == SPEECH_RECOGNITION_COPY_OFFSET {
+            let probe = WhisperProbe::new(address.host());
+            Self::discover(address, probe, offset, PROBE_INTERVAL)
+        } else {
+            let probe = TcpProbe::new(address.host());
+            Self::discover(address, probe, offset, PROBE_INTERVAL)
+        };
         pools.insert(key, Arc::downgrade(&pool.inner));
         pool
     }
@@ -202,10 +217,10 @@ impl Place {
                 state.leave_queue(ticket);
                 self.ticket = None;
                 self.inner.changed.notify_all();
-                return Err(self.inner.no_copy(false, wait));
+                return Err(self.inner.no_copy(&state, wait));
             }
             if now >= deadline {
-                return Err(self.inner.no_copy(true, wait));
+                return Err(self.inner.no_copy(&state, wait));
             }
             state = unpoisoned(self.inner.changed.wait_timeout(state, deadline - now)).0;
         }
@@ -227,12 +242,12 @@ impl Inner {
         Lease { inner: self.clone(), index, port, url, released: false }
     }
 
-    fn no_copy(&self, has_copies: bool, waited: Duration) -> PoolError {
+    fn no_copy(&self, state: &State, waited: Duration) -> PoolError {
         let address = self.address.to_string();
-        if has_copies {
+        if state.has_copies() {
             PoolError::NoFreeCopy { address, waited }
         } else {
-            PoolError::NoCopies { address }
+            PoolError::NoCopies { address, foreign: state.foreign_on_service_port() }
         }
     }
 
@@ -244,32 +259,6 @@ impl Inner {
     fn lock_probed(&self) -> MutexGuard<'_, State> {
         let state = self.lock();
         unpoisoned(self.changed.wait_while(state, |state| !state.probed_once))
-    }
-
-    /// Probes the service's own port, and the copy ports only when it does not answer; a
-    /// port missed once is probed once more at once, as a copy busy decoding under load
-    /// answers a probe late, and leaves only when both probes miss.
-    fn probe_round(&self) {
-        let ports = self.lock().ports();
-        let service_answers = self.probe.answers(ports[0]);
-        let copies = ports[1..]
-            .iter()
-            .map(|port| !service_answers && self.answers_twice_asked(*port));
-        let answers: Vec<bool> = std::iter::once(service_answers).chain(copies).collect();
-        let mut state = self.lock();
-        state.probed(&answers);
-        for (port, waited) in state.find_hung(Instant::now()) {
-            log::warn!(
-                "copy {port} hung: no answer in {} s (service at {})",
-                waited.as_secs(),
-                self.address
-            );
-        }
-        self.changed.notify_all();
-    }
-
-    fn answers_twice_asked(&self, port: u16) -> bool {
-        self.probe.answers(port) || self.probe.answers(port)
     }
 
     fn expect_answer_within(&self, index: usize, wait: Duration) {

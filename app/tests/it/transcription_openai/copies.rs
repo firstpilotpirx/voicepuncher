@@ -77,8 +77,7 @@ struct CopyCounters {
 /// Serves one connection as the turn of `script` it comes at says; a connection that sends
 /// nothing (the pool's probe) is not counted.
 fn serve_copy_request(mut stream: TcpStream, script: &[CopyTurn], counters: &CopyCounters) {
-    let mut first = [0u8; 1];
-    if stream.peek(&mut first).unwrap_or(0) == 0 {
+    if !voicepuncher_test_steps::loopback::is_request(&mut stream) {
         return;
     }
     let n = counters.requests.fetch_add(1, Ordering::SeqCst);
@@ -171,8 +170,9 @@ pub(super) fn should_skip_a_copy_closed_before_a_request() {
     capturing_logger();
     let closed = listeners.remove(0);
     let closed_port = closed.local_addr().unwrap().port();
+    let closed = voicepuncher_test_steps::loopback::WhisperUntilClosed::on(closed);
     let mut transcriber = OpenAiTranscriber::connect(cfg).unwrap();
-    drop(closed);
+    closed.close();
     // When
     let transcript = transcriber.transcribe(&half_second()).unwrap();
     // Then

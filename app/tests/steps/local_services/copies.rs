@@ -40,7 +40,7 @@ pub(super) struct CopiesRun {
     /// Fake copies that answer.
     copies: Vec<FakeCopy>,
     /// Copies that accept nothing once the request is on its way.
-    dying: Vec<TcpListener>,
+    dying: Vec<voicepuncher_test_steps::loopback::WhisperUntilClosed>,
     dying_ports: Vec<u16>,
     /// The copies' ports, as the copy pool scenarios name them.
     ports: Vec<u16>,
@@ -62,7 +62,10 @@ impl CopiesRun {
             .filter_map(|l| l.local_addr().ok())
             .map(|a| a.port())
             .collect();
-        self.dying = listeners;
+        self.dying = listeners
+            .into_iter()
+            .map(voicepuncher_test_steps::loopback::WhisperUntilClosed::on)
+            .collect();
     }
 }
 
@@ -252,7 +255,9 @@ fn client(base_url: &str) -> Result<OpenAiTranscriber> {
 fn request_sent(world: &mut IntegrationWorld) {
     let run = copies(world);
     let transcriber = client(&run.base_url);
-    run.dying.clear();
+    run.dying
+        .drain(..)
+        .for_each(voicepuncher_test_steps::loopback::WhisperUntilClosed::close);
     run.answers.push(transcribed(transcriber));
 }
 
