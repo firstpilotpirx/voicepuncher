@@ -6,7 +6,8 @@ The cause: a foreign program (a `go run` build, `/var/folders/.../go-build…/ex
 
 ## What Changes
 
-- The app never sends dictation audio to a program on the speech recognition port that is not a `whisper-server` copy it can recognize; it uses the copies it started or adopted.
+- A client of a speech recognition service (dictation and commands) counts a port as a copy only when it answers as a whisper-server, never when it merely accepts a connection; another program on the service's port is passed over and the copies are used.
+- The client logs once per port the program that holds it: port, name, process id.
 - When another program holds the port, the app says so in the notice and the log, naming the port and the process, instead of "start the local services".
 - The dictation is not lost while a healthy copy is reachable.
 
@@ -23,12 +24,14 @@ Out of scope: freeing the port, the command speech recognition and command spott
 
 ## Impact
 
-- the copy pool (`copy-pool/`), the app's speech recognition adapter and service management, the failure notice text
+- the copy pool (`copy-pool/`, used by the app and the command spotting service), the app's speech recognition adapter, the failure notice text, the copy-port wording in `AGENTS.md`
 
 ## Open points
 
-- Why the app reached only 8081 and not its copies on 18082–18084 (copies one port off from 18081–18083?): proposed found in design and fixed here.
-- Whether the same check applies to the command speech recognition (8085) and command spotting (8082) ports: proposed yes, same mechanism.
+- Why the app reached only 8081: the service manager checks that a port answers as a whisper-server, but the client's copy pool (`copy-pool/`) checks only that the port accepts a TCP connection, and takes the service's own port alone when it does. The copies on 18082–18084 are where they belong (port + 10001…10004); only the wording "ten thousand above" in `AGENTS.md` is loose and is corrected here.
+- The command speech recognition port (8085) shares the copy pool and gets the same check. The command spotting client (8082) already falls back to its copies when the WebSocket handshake fails, so it stays as it is.
+
+![The overlay after a lost dictation: the pill shows a warning sign and "STT"](assets/ac7943d5b9db.webp)
 
 ## Release
 
