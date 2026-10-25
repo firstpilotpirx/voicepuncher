@@ -148,8 +148,6 @@ Feature: local-services
   @serial @resilience
   Rule: Speech that is no command is confirmed quickly
 
-    # frozen: flakes beside another full-check (2026-10-20..23, e2e-resilience, six branches); fixed separately
-    @wip
     Scenario: Russian speech that makes speech recognition repeat itself
       Given voice control runs and the speech recognition service for commands is otherwise idle
       When the user says Russian counting and filler words

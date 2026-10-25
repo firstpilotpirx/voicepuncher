@@ -1,7 +1,7 @@
 //! The width of the overlay's pill.
 
-use anyhow::{ensure, Context, Result};
 use cucumber::then;
+use voicepuncher::test_doubles::prelude::*;
 
 use super::overlay;
 use crate::IntegrationWorld;

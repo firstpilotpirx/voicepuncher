@@ -46,13 +46,7 @@ fn scripted_with_pauses(parts: &[(&str, f32)]) -> (Vec<f32>, Vec<ScriptedWord>) 
     let mut script = Vec::new();
     for (words, pause_secs) in parts {
         for word in words.split_whitespace() {
-            let said = sound_only(speech(word));
-            script.push(ScriptedWord {
-                text: word.to_owned(),
-                said: stream.len()..stream.len() + said.len(),
-            });
-            stream.extend(said);
-            stream.extend(silence(WORD_GAP_SECS));
+            say_word(&mut stream, &mut script, word);
         }
         stream.extend(silence(*pause_secs));
     }

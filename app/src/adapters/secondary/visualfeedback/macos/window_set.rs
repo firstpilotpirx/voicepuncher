@@ -8,7 +8,7 @@ use objc2_foundation::{NSPoint, NSRect, NSSize};
 use super::glass::{GlassFinish, GlassPanel, ShadowStyle};
 use super::motion::reduce_motion;
 use super::pill_content::{GlassTint, PillKind};
-use super::pill_view::{PillLook, PillView, PILL_HEIGHT};
+use super::pill_view::{PillCanvas, PillLook, PillView, PILL_HEIGHT};
 use super::topology::ScreenTopology;
 use super::transcript_window::TranscriptWindow;
 use crate::adapters::main_queue::MainOnly;
@@ -78,13 +78,13 @@ impl WindowSet {
         visible_columns: usize,
     ) {
         self.panel.set_tint(tint);
-        let width = self.pill.draw(
-            look,
-            commands_unavailable && look.kind != PillKind::UnavailableAlone,
+        let canvas = PillCanvas {
+            commands_unavailable: commands_unavailable && look.kind != PillKind::UnavailableAlone,
             visible_columns,
-            self.panel.has_light_content(),
-            reduce_motion(),
-        );
+            light_content: self.panel.has_light_content(),
+            reduce_motion: reduce_motion(),
+        };
+        let width = self.pill.draw(look, canvas);
         self.set_pill_width(width);
         self.panel.show();
     }

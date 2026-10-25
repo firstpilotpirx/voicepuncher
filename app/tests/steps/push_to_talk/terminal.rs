@@ -1,17 +1,15 @@
 //! Runs the app's binary in a home of its own with nothing on its standard input, and reads
 //! the hotkey listener's sources and key classification.
 
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{ensure, Context, Result};
 use cucumber::{given, then, when};
 use tempfile::TempDir;
 
 use voicepuncher::adapters::primary::ptt::eventtap::keys::{
     classify, key_event, ChordState, TapKind, LEFT_OPTION, RIGHT_OPTION,
 };
-use voicepuncher::core::domain::{HotKey, PttSignal};
+use voicepuncher::core::domain::HotKey;
 
 use crate::IntegrationWorld;
 

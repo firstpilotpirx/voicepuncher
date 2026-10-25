@@ -5,8 +5,9 @@
 //! scenario proves the outcome: a short Russian phrase, the kind whisper took for Korean,
 //! comes out in Cyrillic with no Hangul.
 
-use anyhow::{bail, Result};
 use cucumber::{given, then};
+use voicepuncher::test_doubles::prelude::*;
+use voicepuncher_e2e_test::speech::split_words;
 
 use voicepuncher_e2e_test::speech::write_wav;
 use voicepuncher_e2e_test::speech_cache::{synthesized, SayRequest};
@@ -46,7 +47,7 @@ fn short_phrase(world: &mut E2eWorld, language: String) -> Result<()> {
 
 #[then("the printed text is the phrase in Russian, with no Korean characters")]
 fn russian_without_korean(world: &mut E2eWorld) -> Result<()> {
-    let printed = &world.stdout;
+    let printed = &world.app.stdout;
     if printed.chars().any(is_hangul) {
         bail!("the printed text holds Korean characters: {printed:?}");
     }
@@ -56,11 +57,14 @@ fn russian_without_korean(world: &mut E2eWorld) -> Result<()> {
     {
         bail!("the printed text holds letters outside the Cyrillic alphabet: {printed:?}");
     }
-    let spoken = words(SHORT_RUSSIAN_PHRASE);
-    if !words(printed).iter().any(|word| spoken.contains(word)) {
+    let spoken = split_words(SHORT_RUSSIAN_PHRASE);
+    if !split_words(printed)
+        .iter()
+        .any(|word| spoken.contains(word))
+    {
         bail!(
             "the printed text holds no word of {SHORT_RUSSIAN_PHRASE:?}: {printed:?}\nstderr:\n{}",
-            world.stderr
+            world.app.stderr
         );
     }
     Ok(())
@@ -68,12 +72,12 @@ fn russian_without_korean(world: &mut E2eWorld) -> Result<()> {
 
 #[then("the printed text holds the English words of the phrase, in Latin letters")]
 fn english_in_latin(world: &mut E2eWorld) -> Result<()> {
-    let printed = &world.stdout;
+    let printed = &world.app.stdout;
     if printed.chars().any(|c| c.is_alphabetic() && !c.is_ascii()) {
         bail!("the printed text holds letters outside the Latin alphabet: {printed:?}");
     }
-    let spoken = words(SHORT_ENGLISH_PHRASE);
-    let heard = words(printed);
+    let spoken = split_words(SHORT_ENGLISH_PHRASE);
+    let heard = split_words(printed);
     let missing: Vec<&String> = spoken.iter().filter(|word| !heard.contains(word)).collect();
     if !missing.is_empty() {
         bail!("the printed text lacks {missing:?} of {SHORT_ENGLISH_PHRASE:?}: {printed:?}");
@@ -87,13 +91,4 @@ fn is_cyrillic(c: char) -> bool {
 
 fn is_hangul(c: char) -> bool {
     matches!(c, '\u{1100}'..='\u{11FF}' | '\u{3130}'..='\u{318F}' | '\u{AC00}'..='\u{D7AF}')
-}
-
-/// Lower-case words without punctuation.
-fn words(text: &str) -> Vec<String> {
-    text.to_lowercase()
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|w| !w.is_empty())
-        .map(str::to_owned)
-        .collect()
 }

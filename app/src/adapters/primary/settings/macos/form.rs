@@ -1,6 +1,7 @@
 //! The open settings window: its controls over one settings session, and what Save,
 //! Revert, closing and the buttons beside the controls do.
 
+use crate::core::domain::conversions::index_isize;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
@@ -64,30 +65,20 @@ impl Form {
     }
 
     /// Saves; false when a value was refused and is marked.
-    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn save(&self) -> bool {
         self.collect();
         self.controls.iter().for_each(|control| control.mark(false));
-        let listener = Box::new(|status: ApplyStatus| {
-            dispatch_to_main(move || {
-                if let Some(form) = SHOWN.with(|shown| shown.borrow().upgrade()) {
-                    form.say(
-                        &status_text(&status),
-                        matches!(status, ApplyStatus::Rejected(_)),
-                    );
-                }
-            });
-        });
         self.say(SAVED, false);
-        let saved = self.session.borrow_mut().save(listener);
+        let saved = self.session.borrow_mut().save(Box::new(show_apply_status));
         match saved {
             Ok(()) => true,
             Err(refusal) => {
-                if let Some(control) = refusal.field.and_then(|field| {
+                let refused = refusal.field.and_then(|field| {
                     self.controls
                         .iter()
                         .find(|c| c.field.path() == field.path())
-                }) {
+                });
+                if let Some(control) = refused {
                     control.mark(true);
                 }
                 self.say(&refusal.message, true);
@@ -152,6 +143,13 @@ impl Form {
                 reveal(&super::files::resolve(&string(&control.read())));
             }),
             Event::ToggleAdvanced(place) => self.toggle_advanced(place),
+            window_event => self.handle_window_event(window_event),
+        }
+    }
+
+    /// An event of the window's own buttons, not of a field.
+    fn handle_window_event(&self, event: Event) {
+        match event {
             Event::Save => {
                 if self.save() {
                     self.models.refresh();
@@ -161,20 +159,23 @@ impl Form {
             Event::OpenLogs => reveal(&self.logs_dir),
             Event::LoginToggled => self.login_toggled(),
             Event::OpenLoginItems => open_login_items(),
-            Event::DownloadModels => {
-                if let Some(panel) = &self.models.panel {
-                    panel.open_download();
-                }
-            }
-            Event::ShowModels => {
-                if let Some(panel) = &self.models.panel {
-                    reveal(&panel.folder());
-                }
-            }
             Event::BecameKey => {
                 self.login.refresh();
                 self.models.refresh();
             }
+            models_event => self.handle_models_event(models_event),
+        }
+    }
+
+    /// An event of the models' buttons; nothing without the models panel.
+    fn handle_models_event(&self, event: Event) {
+        let Some(panel) = &self.models.panel else {
+            return;
+        };
+        match event {
+            Event::DownloadModels => panel.open_download(),
+            Event::ShowModels => reveal(&panel.folder()),
+            _ => {}
         }
     }
 
@@ -242,7 +243,8 @@ impl Form {
 
     /// Shows the tab at `place` in the toolbar.
     pub fn select_tab(&self, place: usize) {
-        self.controller.setSelectedTabViewItemIndex(place as isize);
+        self.controller
+            .setSelectedTabViewItemIndex(index_isize(place));
     }
 
     /// The status line of the first tab, as the window shows it.
@@ -252,6 +254,18 @@ impl Form {
             .map(|tab| tab.status.stringValue().to_string())
             .unwrap_or_default()
     }
+}
+
+/// Shows a save's apply status on the shown form, once the configuration was applied.
+fn show_apply_status(status: ApplyStatus) {
+    dispatch_to_main(move || {
+        if let Some(form) = SHOWN.with(|shown| shown.borrow().upgrade()) {
+            form.say(
+                &status_text(&status),
+                matches!(status, ApplyStatus::Rejected(_)),
+            );
+        }
+    });
 }
 
 fn string(value: &Value) -> String {

@@ -107,8 +107,6 @@ Feature: app-distribution
       And it says how to pin the formula
       And no engine folder is written
 
-    # frozen: hung past the bundle stage limit beside another full-check (2026-10-23, bundle); fixed separately
-    @wip
     Scenario: The pinned engines are staged
       Given the engine lock of the checkout
       When the engines are staged

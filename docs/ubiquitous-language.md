@@ -44,7 +44,7 @@
 ### Pipeline
 - **Type:** Use Case (Application Service)
 - **Definition:** The orchestrator that consumes `PttSignal`s and drives one full PTT cycle: `Pressed → start record → Released → stop record → transcribe → paste → Idle`. Holds a state machine; ignores signals while non-Idle (except in Recording).
-- **Code:** `app/src/core/application/pipeline.rs`
+- **Code:** `app/src/core/application/pipeline/mod.rs`
 - **States:** `Idle`, `Recording`, `Transcribing`, `Pasting`
 - **Synonyms to AVOID:** "controller", "engine", "manager"
 
@@ -169,7 +169,7 @@
 ### Failure notice
 - **Type:** Value Object (enum `FailureNotice`, with the failing part `FailingPart`)
 - **Definition:** The overlay telling the user that an action they started failed: what was lost (the dictation, part of it, the paste, the recording, a voice command, voice commands at all) and the failing part — speech recognition, command spotting, the microphone or the Accessibility permission — with the remedy when one is known ("start the local services", "check the Accessibility permission"). The pill shows a warning sign and the part's short name, the text window under it a sentence of at most two lines; it hides by itself after a few seconds, and any later signal replaces it. The log keeps the technical detail. `AccessibilityMissing` is the domain error a paste or key press fails with when the process is not trusted for accessibility.
-- **Code:** `app/src/core/domain/failure_notice.rs`
+- **Code:** `app/src/core/domain/failure_notice/mod.rs`
 - **Synonyms to AVOID:** "error popup", "alert", "toast", "notification" (macOS notifications are not used)
 
 ### Pasted sign
@@ -187,25 +187,25 @@
 ### Icon state
 - **Type:** Value (enum `IconState`, adapter)
 - **Definition:** What the `Status item` shows, picked from the dictation stage, the `Runtime state` and the voice control signs in one place: waiting (starting or restarting), the `Missing-permission icon` (waiting for permissions), ready, listening (voice control on), commands unavailable, recording, processing, waiting for focus, warning (while a `Failure notice` shows) and failed. A dictation outranks the commands-unavailable sign, which outranks listening, which outranks ready; a runtime state shows only while no dictation runs; a `Command sign` changes nothing. Each is an SF Symbol: a template image in the menu bar's ink, the recording one a filled microphone with a red dot, the processing one a waveform stepping every 400 ms (still under Reduce Motion).
-- **Code:** `app/src/adapters/primary/menubar/macos/mapping.rs`
+- **Code:** `app/src/adapters/primary/menubar/macos/mapping/mod.rs`
 - **Synonyms to AVOID:** "status", "badge", "icon" (alone)
 
 ### Missing-permission icon
 - **Type:** Value (`IconState::MissingPermission`, adapter)
 - **Definition:** The `Icon state` while the `Runtime` waits for a permission the user has to grant: a shield with a lock, apart from the hourglass of the other waits, so the menu bar says the app waits for the user, not for itself.
-- **Code:** `app/src/adapters/primary/menubar/macos/mapping.rs`
+- **Code:** `app/src/adapters/primary/menubar/macos/mapping/mod.rs`
 - **Synonyms to AVOID:** "lock icon", "permission badge"
 
 ### Status line
 - **Type:** Adapter concept (the menu's second line)
 - **Definition:** The `Icon state` in plain words, set when the menu opens: "Ready — hold Right Option to dictate" (or "press" in Toggle mode), "Recording — release Right Option to stop", "Recognizing speech…", "Waiting for a text field…", "Voice control: listening", "Starting…", "Restarting…", "Waiting for Accessibility and Input Monitoring…" (the missing permissions, named; choosing the line then opens the `Permissions window`), "Failed: " with the reason. Hotkeys are named as a person reads them ("Right Option", "Cmd+E").
-- **Code:** `StatusItemState::status_line`, `hotkey_name` in `app/src/adapters/primary/menubar/macos/mapping.rs`
+- **Code:** `StatusItemState::status_line`, `hotkey_name` in `app/src/adapters/primary/menubar/macos/mapping/mod.rs`
 - **Synonyms to AVOID:** "tooltip", "subtitle", "status" (alone)
 
 ### Config document
 - **Type:** Adapter-facing value (configuration layer)
 - **Definition:** The configuration file as the user wrote it — comments, order and the format of every value kept — that the `Settings window` edits: only the values the user changed are rewritten, a missing section is added at the end, a missing file is created on the first save, and a save replaces the file in one step. Its values are checked exactly as the loader checks a file before anything is written.
-- **Code:** `ConfigDocument` in `app/src/config/document.rs`
+- **Code:** `ConfigDocument` in `app/src/config/document/mod.rs`
 - **Synonyms to AVOID:** "config struct", "settings file" (alone), "serialised config"
 
 ### Settings window
@@ -223,7 +223,7 @@
 ### Field validation
 - **Type:** Primary adapter rule (settings window)
 - **Definition:** The check a value entered in the `Settings window` must pass before Save writes anything: a number or slider within its range, a service address on this Mac (loopback, the right scheme), a folder that exists or can be created, known language codes. A refused value marks its field, the window names the reason (the allowed range, "must be on this Mac"), and neither the file nor the running app changes.
-- **Code:** `validate` in `app/src/adapters/primary/settings/macos/validation.rs`
+- **Code:** `validate` in `app/src/adapters/primary/settings/macos/validation/mod.rs`
 - **Synonyms to AVOID:** "form validation", "sanity check"
 
 ### Processing stage
@@ -247,7 +247,7 @@
 ### Model download
 - **Type:** Use Case (Application Service)
 - **Definition:** Checks which needed catalog files are present and fetches the missing ones one at a time: resumed from their part, hashed while they stream, placed only when the sha256 matches (downloaded once more on a mismatch), the archive extracted; connection failures are retried after 2, 4 and 8 s, and nothing starts when the free space is short. The *Download window* and `--download-models` run it; the runtime waits for models (state *Waiting for models*) before it starts any service. The app's only use of the internet.
-- **Code:** `app/src/core/application/model_download.rs` (`ModelDownload`); ports `ModelStore`, `PartSink`, `ModelFetcher`, `DiskSpace`, `Clock`
+- **Code:** `app/src/core/application/model_download/mod.rs` (`ModelDownload`); ports `ModelStore`, `PartSink`, `ModelFetcher`, `DiskSpace`, `Clock`
 - **Synonyms to AVOID:** "installer", "updater", "sync"
 
 ### Download window
@@ -283,7 +283,7 @@
 ### Speech recognition service
 - **Type:** External system (outside the app process)
 - **Definition:** A process on the same machine that turns audio into a `RawTranscript` over the OpenAI Audio Transcriptions API — whisper.cpp `whisper-server` is the supported one. The service scripts run two: the *speech recognition service for dictation* and the *speech recognition service for commands*. The *service runtime* starts them in hotkey mode, or the user with `just start-model-servers`; the app connects to the one for dictation, checks it is reachable at startup, and rejects any address that is not loopback.
-- **Code:** `app/src/adapters/secondary/transcription/openai/` — `OpenAiTranscriber`; config section `[transcription]` (`app/src/config/transcription.rs`)
+- **Code:** `app/src/adapters/secondary/transcription/openai/` — `OpenAiTranscriber`; config section `[transcription]` (`app/src/config/transcription/mod.rs`)
 - **Synonyms to AVOID:** "STT server", "Whisper server" (names one implementation), "backend", "engine"
 
 ### Speech recognition service for dictation
@@ -334,25 +334,25 @@
 ### Chunk threshold
 - **Type:** Configuration value (`[transcription].chunk_threshold_secs`)
 - **Definition:** Recording length above which a dictation or a recording file is split into overlapping chunks, each transcribed through the speech recognition service, and the texts merged at the chunk seams. It also bounds every chunk, its overlap with the previous chunk included: the service hears at most 30 s at a time.
-- **Code:** `app/src/core/application/chunking.rs` — `ChunkingCfg`, `next_cut`, `split_into_chunks`
+- **Code:** `app/src/core/application/chunking/` — `ChunkingCfg`, `next_cut`, `split_into_chunks`
 - **Synonyms to AVOID:** "segment size", "window"
 
 ### Chunk seam
 - **Type:** Domain concept
 - **Definition:** Where two neighbouring chunks meet: the next chunk starts with the last seconds of the previous one (the overlap), so both transcripts contain those words, often worded a little differently. The merge aligns the two transcripts, keeps the overlap once and drops nothing where they share no words.
-- **Code:** `app/src/core/application/chunking.rs` — `merge_chunk_texts`
+- **Code:** `app/src/core/application/chunking/seam.rs` — `merge_chunk_texts`
 - **Synonyms to AVOID:** "boundary" (the cut point is only one side of a seam), "join"
 
 ### Pause
 - **Type:** Domain concept
 - **Definition:** A stretch of at least 160 ms in which every 20 ms frame is quieter than the noise floor allows: a gap between words or phrases, longer than a microphone dropout. A chunk ends in the middle of the longest pause within the lookback before the chunk threshold (the latest of equally long ones); without one it ends at the threshold.
-- **Code:** `app/src/core/application/chunking.rs` — `next_cut`, `MIN_PAUSE_MS`
+- **Code:** `app/src/core/application/chunking/cut.rs` — `next_cut`, `MIN_PAUSE_MS`
 - **Synonyms to AVOID:** "silence" (a single quiet frame inside a word is not a pause), "VAD"
 
 ### Noise floor
 - **Type:** Domain concept
 - **Definition:** The background loudness of a chunk, taken as the 10th percentile of its 20 ms frame loudness. A frame is quiet below twice the noise floor, but never above half the median frame; a frame below an RMS of 0.002 is always quiet. So pauses are found in noisy and in quiet recordings without a configured level.
-- **Code:** `app/src/core/application/chunking.rs` — `quiet_level`
+- **Code:** `app/src/core/application/chunking/cut.rs` — `quiet_level`
 - **Synonyms to AVOID:** "threshold", "VAD level"
 
 ### Text input focus
@@ -364,7 +364,7 @@
 ### Focus wait
 - **Type:** Application policy (`[paste].focus_wait_seconds`, default 300; 0 turns it off)
 - **Definition:** The time the app holds the final text back while no text input has focus, re-checking about every 100 ms and pasting as soon as one has. A hotkey press or the end of the wait time ends it without a paste: the text is left in the clipboard. The overlay shows the wait.
-- **Code:** `app/src/core/application/text_insertion.rs` — `insert_text`, `FocusWaitCfg`
+- **Code:** `app/src/core/application/text_insertion/mod.rs` — `insert_text`, `FocusWaitCfg`
 - **Synonyms to AVOID:** "retry", "paste delay"
 
 ### Dictation archive
@@ -460,7 +460,7 @@
 ### Voice control
 - **Type:** Mode of the app (opt-in, `[voice_control]` config section or `--voice-control`)
 - **Definition:** Hands-free operation alongside push-to-talk: *listening* stays on while the app runs, and spoken *voice commands* start, stop and cancel a dictation, press Enter, clear the focused text and paste the clipboard; the hotkey still records as push-to-talk.
-- **Code:** `app/src/core/application/pipeline/voice_control.rs` (`VoiceControl`: off or listening)
+- **Code:** `app/src/core/application/pipeline/voice_control/mod.rs` (`VoiceControl`: off or listening)
 - **Synonyms to AVOID:** "voice mode", "hands-free mode", "RecordingMode" (that is Toggle/Hold)
 
 ### Listening
@@ -471,31 +471,31 @@
 ### Away (command spotting service)
 - **Type:** State of *listening*
 - **Definition:** The *command spotting service* dropped the connection or answered nothing, not even a ping, for 5 s. Listening stays on, a running dictation keeps recording, no sound plays, and the app *reconnects*; once the service has been away for 5 s, the overlay shows the *Commands-unavailable sign* until it is back. Slow spotting results alone never make the service away.
-- **Code:** `PipelineInput::SpottingLost`; `lose_spotting` in `app/src/core/application/pipeline/voice_control.rs`
+- **Code:** `PipelineInput::SpottingLost`; `lose_spotting` in `app/src/core/application/pipeline/voice_control/mod.rs`
 - **Synonyms to AVOID:** "dead", "offline", "disconnected" (alone: the connection may be up while the service is slow)
 
 ### Confirmation failed
 - **Type:** Boundary signal (service event `confirmation_failed`)
 - **Definition:** The *command spotting service* got no answer for a closed speech segment from any copy of the *speech recognition service for commands*, within both attempts of its *confirmation deadline*: a command said in it is lost. A copy that sends nothing within its decoding budget and does not answer its health check counts as stalled, and the confirmation goes to another copy first. The app shows the *failure notice* that voice commands are unavailable at once; the recognizer ignores the event.
-- **Code:** `ServerEvent::ConfirmationFailed` in `command-spotting/src/protocol.rs`; `SpottingEvent::ConfirmationFailed` in `app/src/core/domain/voice_command_recognizer.rs`
+- **Code:** `ServerEvent::ConfirmationFailed` in `command-spotting/src/protocol/mod.rs`; `SpottingEvent::ConfirmationFailed` in `app/src/core/domain/voice_command_recognizer/mod.rs`
 - **Synonyms to AVOID:** "timeout" (a copy may time out and another still answer), "no command" (nothing heard is an answer)
 
 ### Stalled (command spotting service)
 - **Type:** State of a connection of the command spotting service (service event `stalled`)
 - **Definition:** A confirmation of the connection has run past every attempt it has (at least 10 s): its thread hangs, since every request is given up at its deadline. The service's `/health` answers 503, and it tells the app once; the app takes it as a loss and *reconnects*.
-- **Code:** `ConfirmationWorker::stalled_at` in `command-spotting/src/worker.rs`; `Beat::stalled` in `health.rs`
+- **Code:** `ConfirmationWorker::stalled_at` in `command-spotting/src/worker/mod.rs`; `Beat::stalled` in `health.rs`
 - **Synonyms to AVOID:** "slow" (a slow copy keeps answering within its deadlines), "stuck" (alone: audio waiting with no progress)
 
 ### Dropped audio
 - **Type:** Behavior of the command spotting service (service event `dropped`)
 - **Definition:** Audio arriving while the oldest audio waiting for a connection's processing has waited past 10 s is dropped on arrival (a burst the service keeps up with, such as a replay, is kept), and the service tells the app how many samples; the stream's clock no longer matches the app's, so the app takes it as a loss, *reconnects* and sends the *speech captured while the service was away*.
-- **Code:** `Beat::queued` in `command-spotting/src/health.rs`; `drop_audio` in `server.rs`
+- **Code:** `Beat::queued` in `command-spotting/src/health/mod.rs`; `drop_audio` in `server.rs`
 - **Synonyms to AVOID:** "lag" (audio that waited and was still processed)
 
 ### Protocol version (command spotting)
 - **Type:** Concept
 - **Definition:** The version of the messages between the app and the *command spotting service*, now 2: every connection opens with the app's `hello` naming it, and each message names its `type` (`hello`, `select`, `sync`). The service closes a connection of another version, or one without a `hello` first, naming both versions; a message it cannot read and an audio frame of partial samples close the connection with the reason.
-- **Code:** `PROTOCOL_VERSION`, `AppMessage` in `command-spotting/src/protocol.rs`; `command-spotting/src/server/refusal.rs`; `SpottingClient::connect`
+- **Code:** `PROTOCOL_VERSION`, `AppMessage` in `command-spotting/src/protocol/mod.rs`; `command-spotting/src/server/refusal.rs`; `SpottingClient::connect`
 - **Synonyms to AVOID:** "API version"
 
 ### Reconnect
@@ -507,7 +507,7 @@
 ### Back (command spotting service)
 - **Type:** Boundary signal
 - **Definition:** A *reconnect* succeeded: the new connection was told the commands of the current state and sent the *speech captured while the service was away*. The core resets the recognizer, plays the listening-on sound and listens again.
-- **Code:** `PipelineInput::SpottingBack`; `regain_spotting` in `app/src/core/application/pipeline/voice_control.rs`
+- **Code:** `PipelineInput::SpottingBack`; `regain_spotting` in `app/src/core/application/pipeline/voice_control/mod.rs`
 
 ### Speech captured while the service was away
 - **Type:** Concept
@@ -517,12 +517,12 @@
 ### Confirmation deadline
 - **Type:** Rule of the *command spotting service*
 - **Definition:** How long one confirmation by the *speech recognition service for commands* may take before the service gives it up (3 s, `--confirmation-deadline-secs`). The confirmation of a closed utterance is tried twice; a check of a running utterance is skipped while another one waits. Confirmations run off the audio path, so a slow one delays only its own check.
-- **Code:** `command-spotting/src/worker.rs`
+- **Code:** `command-spotting/src/worker/mod.rs`
 
 ### Near miss
 - **Type:** Rule of the *command spotting service*
 - **Definition:** What the *speech recognition service* hears in place of a command's short form, listed per command: "Start." or "Let's start." (at most three words ending in "start") while "restart dictation" is selected, since the user's quiet "restart" comes out so. A near miss is no command; it only asks for a *second hearing*.
-- **Code:** `NEAR_MISSES`, `PhraseMatcher::near_miss` in `command-spotting/src/matcher.rs`
+- **Code:** `NEAR_MISSES`, `PhraseMatcher::near_miss` in `command-spotting/src/matcher/mod.rs`
 
 ### Second hearing
 - **Type:** Rule of the *command spotting service*
@@ -537,20 +537,20 @@
 ### Health check
 - **Type:** Rule of the service scripts
 - **Definition:** Every 5 s the supervisor of the command spotting service asks `/health`; a service that answered once and then fails 3 checks in a row is killed and so restarted, with a note in its log. The command spotting service answers 503 when a connection has audio waiting and its processing made no progress for 10 s.
-- **Code:** `supervise` in `justfile`, `command-spotting/src/health.rs`
+- **Code:** `supervise` in `justfile`, `command-spotting/src/health/mod.rs`
 - **Synonyms to AVOID:** "heartbeat", "ping" (the app's pings check one connection)
 
 ### VoiceCommand
 - **Type:** Value Object (enum)
 - **Definition:** A spoken English command. `SpokenCommand` pairs it with when its words were said and its *command placement*: the whole utterance (the pause rule), the end of an utterance, "start" at its head, or a doubled form or *command chain* anywhere.
-- **Code:** `app/src/core/domain/voice_command.rs`, recognition (pause rule) in `app/src/core/domain/voice_command_recognizer.rs`
+- **Code:** `app/src/core/domain/voice_command.rs`, recognition (pause rule) in `app/src/core/domain/voice_command_recognizer/mod.rs`
 - **Variants:** `StartDictation` ("start dictation"), `StopDictation` ("stop dictation"), `CancelDictation` ("cancel dictation"), `RestartDictation` ("restart dictation"), `PressEnter` ("press enter"), `ClearAllText` ("clear all text"), `PasteText` ("paste text")
 - **Synonyms to AVOID:** "keyword", "hotword", "wake word", "voice shortcut"
 
 ### SpottingEvent
 - **Type:** Boundary signal
 - **Definition:** What the *command spotting service* reports about the audio it hears: speech started, speech ended, a phrase spotted with its start and end. Fed to the `VoiceCommandRecognizer`.
-- **Code:** `app/src/core/domain/voice_command_recognizer.rs`
+- **Code:** `app/src/core/domain/voice_command_recognizer/mod.rs`
 - **Variants:** `SpeechStarted`, `SpeechEnded`, `PhraseSpotted`, `CommandsSaid` (one to three commands said without a pause around them, carried out at once without the pause rule)
 
 ### Command placement
@@ -561,7 +561,7 @@
 ### Start cue
 - **Type:** Concept
 - **Definition:** What tells the user a dictation started: the start sound (the restart sound for "restart dictation"), the overlay's recording sign and the recording running. A voice start gives it as soon as its *voice command* is confirmed and logs `voice start: total=… hear=… confirm=… deliver=… cue=…` (ms from the capture time of the command's end).
-- **Code:** `app/src/core/application/pipeline/voice_control.rs`
+- **Code:** `app/src/core/application/pipeline/voice_control/mod.rs`
 - **Synonyms to AVOID:** "start signal", "beep"
 
 ### Command chain

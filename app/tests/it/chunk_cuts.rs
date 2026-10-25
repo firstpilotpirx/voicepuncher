@@ -17,12 +17,20 @@ const SILENT_RMS: f32 = 0.003;
 /// Silent frames in a row that make a pause of the speech.
 const PAUSE_MIN_FRAMES: usize = 5;
 
+/// How many of the chunk seams of `lang` spoken under `condition` fall in a pause, of how many.
+fn seams_in_pause(lang: Lang, condition: Condition, chunking: ChunkingCfg) -> (usize, usize) {
+    let (mut in_pause, mut seams) = (0, 0);
+    let speeches = synthesize_with_clean(lang, condition, &LEAD_INS_SECS).unwrap();
+    for (speech, clean) in speeches {
+        for cut in cuts(&speech, chunking) {
+            seams += 1;
+            in_pause += usize::from(is_in_pause(&clean, cut));
+        }
+    }
+    (in_pause, seams)
+}
+
 #[test]
-#[expect(
-    clippy::too_many_lines,
-    clippy::excessive_nesting,
-    reason = "size baseline"
-)]
 fn should_cut_most_chunk_seams_of_synthesized_speech_in_a_pause() {
     // Given
     let cfg = TranscriptionCfg::default();
@@ -41,31 +49,20 @@ fn should_cut_most_chunk_seams_of_synthesized_speech_in_a_pause() {
         .collect();
 
     // When
-    let results: Vec<(Lang, Condition, usize, usize)> = std::thread::scope(|scope| {
+    let results: Vec<(Lang, Condition, (usize, usize))> = std::thread::scope(|scope| {
+        // every case starts before the first is joined, so they run at once
         let handles: Vec<_> = cases
             .iter()
-            .map(|&(lang, condition)| {
-                scope.spawn(move || {
-                    let (mut in_pause, mut seams) = (0, 0);
-                    let speeches = synthesize_with_clean(lang, condition, &LEAD_INS_SECS).unwrap();
-                    for (speech, clean) in speeches {
-                        for cut in cuts(&speech, chunking) {
-                            seams += 1;
-                            in_pause += usize::from(is_in_pause(&clean, cut));
-                        }
-                    }
-                    (lang, condition, in_pause, seams)
-                })
-            })
+            .map(|&(lang, c)| scope.spawn(move || (lang, c, seams_in_pause(lang, c, chunking))))
             .collect();
-        handles.into_iter().map(|h| h.join().unwrap()).collect()
+        joined(handles)
     });
 
     // Then
     let (in_pause, seams) = results
         .iter()
-        .fold((0, 0), |(p, s), &(_, _, ip, n)| (p + ip, s + n));
-    for (lang, condition, ip, n) in &results {
+        .fold((0, 0), |(p, s), &(_, _, (ip, n))| (p + ip, s + n));
+    for (lang, condition, (ip, n)) in &results {
         eprintln!("  {lang:?} {condition:<16?} {ip}/{n} seams in a pause");
     }
     let share = in_pause as f64 / seams as f64;
@@ -115,4 +112,13 @@ fn is_in_pause(clean: &[i16], cut: usize) -> bool {
     let first = (0..at).rev().take_while(|&i| silent(i)).count();
     let last = (at + 1..frames).take_while(|&i| silent(i)).count();
     first + 1 + last >= PAUSE_MIN_FRAMES
+}
+
+/// The results of `handles`, joined in turn once every one has started.
+fn joined<T>(handles: Vec<std::thread::ScopedJoinHandle<'_, T>>) -> Vec<T> {
+    let mut results = Vec::with_capacity(handles.len());
+    for handle in handles {
+        results.push(handle.join().unwrap());
+    }
+    results
 }

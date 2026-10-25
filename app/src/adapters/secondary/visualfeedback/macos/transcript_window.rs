@@ -176,8 +176,18 @@ mod tests {
 
     #[test]
     fn should_ease_out_from_nothing_to_whole() {
-        assert_eq!(ease_out(0.0), 0.0);
-        assert_eq!(ease_out(1.0), 1.0);
+        assert!(
+            (ease_out(0.0) - 0.0).abs() < 1e-6,
+            "{} is not {}",
+            ease_out(0.0),
+            0.0
+        );
+        assert!(
+            (ease_out(1.0) - 1.0).abs() < 1e-6,
+            "{} is not {}",
+            ease_out(1.0),
+            1.0
+        );
         assert!(ease_out(0.5) > 0.5, "the rise slows down towards its end");
     }
 
@@ -189,6 +199,11 @@ mod tests {
         };
         let rect = glass_rect(pill, 20.0);
         assert_eq!(rect.origin, NSPoint { x: 260.0, y: 754.0 });
-        assert_eq!(rect.size.height, 38.0);
+        assert!(
+            (rect.size.height - 38.0).abs() < 1e-6,
+            "{} is not {}",
+            rect.size.height,
+            38.0
+        );
     }
 }

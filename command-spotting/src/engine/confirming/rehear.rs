@@ -18,14 +18,14 @@ impl Session<'_> {
     /// Hears the last short segment heard as no command again when `trigger`, reported
     /// after that answer, lies in it.
     pub(in crate::engine) fn hear_misheard_again(&mut self, trigger: &Spotted) {
-        let Some(phrase) =
-            keywords::served_by(&trigger.phrase).filter(|phrase| self.matcher.selects(phrase))
-        else {
+        let Some(phrase) = self.selected_phrase(trigger) else {
             return;
         };
-        let Some((job, segment)) = self.hearings.misheard.take_if(|(_, segment)| {
-            trigger.start < segment.bounds.end && trigger.end > segment.bounds.start
-        }) else {
+        let Some((job, segment)) = self
+            .hearings
+            .misheard
+            .take_if(|(_, segment)| lies_in(trigger, segment.bounds))
+        else {
             return;
         };
         let phrase = phrase.to_owned();
@@ -43,19 +43,26 @@ impl Session<'_> {
 
     /// Hears a short segment still being heard again at once when `trigger` lies in it.
     pub(in crate::engine) fn hear_pending_again(&mut self, trigger: &Spotted) {
-        let Some(phrase) =
-            keywords::served_by(&trigger.phrase).filter(|phrase| self.matcher.selects(phrase))
-        else {
+        let Some(phrase) = self.selected_phrase(trigger) else {
             return;
         };
-        let Some(at) = self.hearings.early.pending.iter().position(|(_, segment)| {
-            trigger.start < segment.bounds.end && trigger.end > segment.bounds.start
-        }) else {
+        let Some(at) = self
+            .hearings
+            .early
+            .pending
+            .iter()
+            .position(|(_, segment)| lies_in(trigger, segment.bounds))
+        else {
             return;
         };
         let (job, segment) = self.hearings.early.pending.remove(at);
         let phrase = phrase.to_owned();
         self.hear_early(job, Rehear { phrase, ..segment });
+    }
+
+    /// The phrase the listened-for command `trigger` serves, when it is selected.
+    fn selected_phrase(&self, trigger: &Spotted) -> Option<&'static str> {
+        keywords::served_by(&trigger.phrase).filter(|phrase| self.matcher.selects(phrase))
     }
 
     /// Asks the second hearing of the segment of job `job` beside its first one.
@@ -97,7 +104,7 @@ impl Session<'_> {
         );
         let origin = clip.origin;
         let context = JobContext::Rehear { utterance, bounds, origin, phrase };
-        self.ask_clip(JobKind::Rehear, clip.samples, origin, to, context)
+        self.ask_clip(JobKind::Rehear, clip.samples, origin..to, context)
     }
 
     /// The near-missed command, when the second hearing says it as a whole: of the segment
@@ -160,20 +167,15 @@ pub(super) enum EarlyAnswer {
 
 impl EarlyRehears {
     /// The second hearings of segment job `from` belong to segment job `to` now.
-    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     pub(super) fn retarget(&mut self, from: u64, to: u64) {
-        for (job, _) in &mut self.pending {
-            if *job == from {
-                *job = to;
-            }
-        }
-        for early in self.asked.values_mut() {
-            if let Early::Waiting { segment } | Early::Answered { segment, .. } = early {
-                if *segment == from {
-                    *segment = to;
-                }
-            }
-        }
+        let jobs = self.pending.iter_mut().map(|(job, _)| job);
+        let segments = self.asked.values_mut().filter_map(|early| match early {
+            Early::Waiting { segment } | Early::Answered { segment, .. } => Some(segment),
+            Early::Dropped => None,
+        });
+        jobs.chain(segments)
+            .filter(|segment| **segment == from)
+            .for_each(|segment| *segment = to);
     }
 
     /// The events the answer of second hearing `job` sends now: none while its segment's
@@ -229,4 +231,9 @@ pub(in crate::engine) struct Rehear {
     pub(super) to: usize,
     pub(super) quiet_level: f32,
     pub(super) phrase: String,
+}
+
+/// Whether `trigger` overlaps the segment `bounds`.
+fn lies_in(trigger: &Spotted, bounds: Segment) -> bool {
+    trigger.start < bounds.end && trigger.end > bounds.start
 }

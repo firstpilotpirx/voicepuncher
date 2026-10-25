@@ -2,19 +2,15 @@
 //! share the HID event tap. The synthetic Cmd+V of a paste once corrupted the listener's
 //! modifier tracking so that the next right-Option press was dropped.
 
-use std::sync::mpsc::{self, Receiver};
-use std::time::Duration;
-
-use anyhow::{ensure, Context, Result};
 use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation, CGEventType};
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use cucumber::{given, then, when};
 use objc2_app_kit::NSPasteboard;
+use voicepuncher::test_doubles::prelude::*;
 
 use voicepuncher::adapters::primary::ptt::eventtap::{keys::RIGHT_OPTION, EventTapHotkeyListener};
 use voicepuncher::adapters::secondary::textpasting::macos::MacOsTextPaster;
-use voicepuncher::core::application::{HotkeyListener, TextPaster};
-use voicepuncher::core::domain::{CleanedText, HotKey, HotkeyBinding, PttSignal};
+use voicepuncher::core::domain::{HotKey, HotkeyBinding};
 
 use crate::IntegrationWorld;
 
@@ -34,7 +30,7 @@ fn hotkey_pressed_twice(world: &mut IntegrationWorld) -> Result<()> {
     (0..2).try_for_each(|_| press_and_release_right_option())?;
     std::thread::sleep(SIGNAL_TIMEOUT);
     drain(&rx);
-    world.ptt_signals = Some(rx);
+    world.pipeline.ptt_signals = Some(rx);
     Ok(())
 }
 
@@ -43,7 +39,7 @@ fn app_pasted_text(world: &mut IntegrationWorld) -> Result<()> {
     // A pasteboard of its own, so the user's clipboard is never written
     let own = NSPasteboard::pasteboardWithUniqueName().name().to_string();
     let mut paster = MacOsTextPaster::new(PASTE_DELAY_MS).with_pasteboard(&own);
-    paster.paste(&CleanedText::new("voicepuncher-it-paste".to_owned())?)?;
+    paster.paste(&CleanedText::new("voicepuncher-it-paste")?)?;
     std::thread::sleep(POST_PASTE_SETTLE);
     drain(signals(world)?);
     Ok(())
@@ -65,7 +61,11 @@ fn press_and_release_registered(world: &mut IntegrationWorld) -> Result<()> {
 }
 
 fn signals(world: &IntegrationWorld) -> Result<&Receiver<PttSignal>> {
-    world.ptt_signals.as_ref().context("no hotkey listener")
+    world
+        .pipeline
+        .ptt_signals
+        .as_ref()
+        .context("no hotkey listener")
 }
 
 /// Posts right Option down (Alternate with its device bit) and up (no flag).

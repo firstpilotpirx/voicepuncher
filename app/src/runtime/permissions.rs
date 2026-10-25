@@ -78,13 +78,9 @@ impl Watched {
         }
     }
 
-    /// Checks again; logs a change and tells what the runtime should do about it.
-    pub(super) fn check(&mut self, pipeline_runs: bool) -> Verdict {
-        let report = self.watch.gate.report();
-        if report == self.last {
-            return Verdict::Unchanged;
-        }
-        log::info!("{}", report.log_line());
+    /// Keeps the revoked permissions still missing in `report`, and adds those it revoked
+    /// while the pipeline runs.
+    fn note_revoked(&mut self, report: &PermissionReport, pipeline_runs: bool) {
         let newly_revoked = report.revoked_since(&self.last);
         let missing = report.missing();
         self.revoked.retain(|p| missing.contains(p));
@@ -93,6 +89,16 @@ impl Watched {
                 self.revoked.push(permission);
             }
         }
+    }
+
+    /// Checks again; logs a change and tells what the runtime should do about it.
+    pub(super) fn check(&mut self, pipeline_runs: bool) -> Verdict {
+        let report = self.watch.gate.report();
+        if report == self.last {
+            return Verdict::Unchanged;
+        }
+        log::info!("{}", report.log_line());
+        self.note_revoked(&report, pipeline_runs);
         let was_open = self.last.all_granted();
         self.last = report;
         match (pipeline_runs, self.last.all_granted()) {

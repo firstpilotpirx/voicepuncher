@@ -68,43 +68,14 @@ impl PauseWatch {
     /// Hears `samples`, the stream's next ones; `speaking` tells whether an utterance runs.
     /// Gives the sample position where a quiet run began once it is long enough to end the
     /// utterance.
-    #[expect(
-        clippy::too_many_lines,
-        clippy::excessive_nesting,
-        reason = "size baseline"
-    )]
     pub(super) fn hear(&mut self, samples: &[f32], speaking: bool) -> Option<usize> {
         self.pending.extend_from_slice(samples);
         let mut pause = None;
         let frames = self.pending.len() / FRAME_SAMPLES;
         for n in 0..frames {
-            let frame = &self.pending[n * FRAME_SAMPLES..(n + 1) * FRAME_SAMPLES];
-            let at = self.position + n * FRAME_SAMPLES;
-            let loudness = rms(frame);
-            if self.recent.len() == FLOOR_FRAMES {
-                self.recent.pop_front();
-            }
-            self.recent.push_back(loudness);
-            if !speaking {
-                self.forget();
-                continue;
-            }
-            if self.is_quiet(loudness) {
-                if self.quiet_frames == 0 {
-                    self.quiet_from = at;
-                }
-                self.quiet_frames += 1;
-                if self.quiet_frames == GAP_FRAMES.min(self.min_quiet_frames) {
-                    self.gaps.push_back(self.quiet_from);
-                }
-                if self.quiet_frames >= self.min_quiet_frames && pause.is_none() {
-                    pause = Some(self.quiet_from);
-                }
-            } else {
-                self.loudest = self.loudest.max(loudness);
-                self.quiet_frames = 0;
-                self.half_told = false;
-            }
+            let loudness = rms(&self.pending[n * FRAME_SAMPLES..(n + 1) * FRAME_SAMPLES]);
+            let ended = self.hear_frame(loudness, self.position + n * FRAME_SAMPLES, speaking);
+            pause = pause.or(ended);
         }
         self.pending.drain(..frames * FRAME_SAMPLES);
         self.position += frames * FRAME_SAMPLES;
@@ -116,6 +87,33 @@ impl PauseWatch {
             self.gaps.pop_front();
         }
         pause
+    }
+
+    /// Hears one frame of `loudness` at sample `at`; gives where the quiet run began once it
+    /// is long enough to end the utterance.
+    fn hear_frame(&mut self, loudness: f32, at: usize, speaking: bool) -> Option<usize> {
+        if self.recent.len() == FLOOR_FRAMES {
+            self.recent.pop_front();
+        }
+        self.recent.push_back(loudness);
+        if !speaking {
+            self.forget();
+            return None;
+        }
+        if !self.is_quiet(loudness) {
+            self.loudest = self.loudest.max(loudness);
+            self.quiet_frames = 0;
+            self.half_told = false;
+            return None;
+        }
+        if self.quiet_frames == 0 {
+            self.quiet_from = at;
+        }
+        self.quiet_frames += 1;
+        if self.quiet_frames == GAP_FRAMES.min(self.min_quiet_frames) {
+            self.gaps.push_back(self.quiet_from);
+        }
+        (self.quiet_frames >= self.min_quiet_frames).then_some(self.quiet_from)
     }
 
     /// The loudness at or below which a frame of the utterance heard now is quiet.

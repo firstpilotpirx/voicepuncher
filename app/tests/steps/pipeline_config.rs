@@ -1,7 +1,7 @@
 //! The pipeline configuration a scenario's application configuration asks for.
 
 use voicepuncher::config::Config;
-use voicepuncher::core::application::pipeline::PipelineConfig;
+use voicepuncher::test_doubles::prelude::*;
 
 /// The pipeline configuration of `config`: its hotkey settings, dictations transcribed in one go.
 pub fn pipeline_config(config: &Config) -> PipelineConfig {

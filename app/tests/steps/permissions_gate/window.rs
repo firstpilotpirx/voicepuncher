@@ -2,10 +2,8 @@
 //! statuses are the app-runtime steps' System Settings; its buttons run the window's steps,
 //! which record the request, the page and the bundle they would show instead of showing them.
 
-use std::sync::{Arc, Mutex};
-
-use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
+use voicepuncher::test_doubles::prelude::*;
 
 use voicepuncher::adapters::primary::permissions::macos::mapping::{
     badge, button, settings_steps, RowButton, RowModel, SettingsStep, Shown, WindowModel,

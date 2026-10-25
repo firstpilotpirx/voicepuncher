@@ -1,6 +1,7 @@
 //! The window's views: a toolbar tab per [`Tab`], a grid of labelled rows on each, and the
 //! bottom bar with the status line, Revert and Save.
 
+use crate::core::domain::conversions::index_isize;
 use objc2::rc::Retained;
 use objc2::{MainThreadMarker, Message};
 use objc2_app_kit::{
@@ -54,13 +55,19 @@ impl TabViews {
     }
 }
 
+/// What the tabs show: the field controls, their notes and the extra rows.
+#[derive(Clone, Copy)]
+pub struct TabContent<'a> {
+    pub controls: &'a [FieldControl],
+    pub notes: &'a [(usize, String)],
+    pub login: &'a LoginRow,
+    pub models: &'a ModelsRow,
+}
+
 /// The tab view controller with every tab, and what each tab shows besides its controls.
 pub fn tabs(
     parts: &Parts,
-    controls: &[FieldControl],
-    notes: &[(usize, String)],
-    login: &LoginRow,
-    models: &ModelsRow,
+    content: TabContent<'_>,
 ) -> (Retained<NSTabViewController>, Vec<TabViews>) {
     let controller = NSTabViewController::new(parts.mtm);
     controller.setTabStyle(NSTabViewControllerTabStyle::Toolbar);
@@ -70,8 +77,7 @@ pub fn tabs(
         .enumerate()
         .map(|(place, tab)| {
             let page = NSViewController::new(parts.mtm);
-            let (view, views) =
-                tab_view(parts, &page, place as isize, controls, notes, login, models);
+            let (view, views) = tab_view(parts, &page, place, content);
             page.setView(&view);
             views.fit();
             let item = NSTabViewItem::tabViewItemWithViewController(&page);
@@ -88,21 +94,13 @@ fn symbol(name: &str) -> Option<Retained<NSImage>> {
     NSImage::imageWithSystemSymbolName_accessibilityDescription(&NSString::from_str(name), None)
 }
 
-#[expect(
-    clippy::too_many_lines,
-    clippy::too_many_arguments,
-    reason = "size baseline"
-)]
 fn tab_view(
     parts: &Parts,
     page: &NSViewController,
-    place: isize,
-    controls: &[FieldControl],
-    notes: &[(usize, String)],
-    login: &LoginRow,
-    models: &ModelsRow,
+    place: usize,
+    content: TabContent<'_>,
 ) -> (Retained<NSView>, TabViews) {
-    let tab = Tab::ALL[place as usize];
+    let tab = Tab::ALL[place];
     let grid = NSGridView::new(parts.mtm);
     grid.setRowSpacing(ROW_SPACING);
     grid.setColumnSpacing(COLUMN_SPACING);
@@ -114,30 +112,7 @@ fn tab_view(
         advanced: Vec::new(),
         notes: Vec::new(),
     };
-    add_rows(parts, &grid, &mut views, controls, notes, false);
-    if tab == Tab::General {
-        add_row(parts.mtm, &grid, Some(SWITCH_LABEL), &login.view);
-        add_row(parts.mtm, &grid, None, &login.note);
-    }
-    if tab == Tab::Services && models.panel.is_some() {
-        add_row(parts.mtm, &grid, Some(MODELS_LABEL), &models.view);
-    }
-    if controls
-        .iter()
-        .any(|c| c.field.tab == tab && c.field.advanced)
-    {
-        let disclosure = disclosure(parts, place);
-        add_row(parts.mtm, &grid, None, &disclosure);
-        add_rows(parts, &grid, &mut views, controls, notes, true);
-    }
-    if tab == Tab::Logging {
-        add_row(
-            parts.mtm,
-            &grid,
-            None,
-            &button(parts, LOGS_TITLE, Action::OPEN_LOGS, 0),
-        );
-    }
+    add_tab_rows(parts, &grid, &mut views, content, index_isize(place));
     let labels = grid.columnAtIndex(0);
     labels.setXPlacement(NSGridCellPlacement::Trailing);
     labels.setWidth(LABEL_COLUMN);
@@ -153,24 +128,54 @@ fn tab_view(
     (Retained::into_super(page), views)
 }
 
+/// Every row of the tab: its fields, the tab's own rows, then its advanced fields.
+fn add_tab_rows(
+    parts: &Parts,
+    grid: &NSGridView,
+    views: &mut TabViews,
+    content: TabContent<'_>,
+    place: isize,
+) {
+    let tab = views.tab;
+    add_rows(parts, grid, views, content, false);
+    if tab == Tab::General {
+        add_row(parts.mtm, grid, Some(SWITCH_LABEL), &content.login.view);
+        add_row(parts.mtm, grid, None, &content.login.note);
+    }
+    if tab == Tab::Services && content.models.panel.is_some() {
+        add_row(parts.mtm, grid, Some(MODELS_LABEL), &content.models.view);
+    }
+    if content
+        .controls
+        .iter()
+        .any(|c| c.field.tab == tab && c.field.advanced)
+    {
+        let disclosure = disclosure(parts, place);
+        add_row(parts.mtm, grid, None, &disclosure);
+        add_rows(parts, grid, views, content, true);
+    }
+    if tab == Tab::Logging {
+        let logs = button(parts, LOGS_TITLE, Action::OPEN_LOGS, 0);
+        add_row(parts.mtm, grid, None, &logs);
+    }
+}
+
 /// The rows of `views.tab`'s fields, the advanced ones hidden, each with its note under it.
-#[expect(clippy::too_many_arguments, reason = "size baseline")]
 fn add_rows(
     parts: &Parts,
     grid: &NSGridView,
     views: &mut TabViews,
-    controls: &[FieldControl],
-    notes: &[(usize, String)],
+    content: TabContent<'_>,
     advanced: bool,
 ) {
-    let fields = controls.iter().enumerate();
+    let fields = content.controls.iter().enumerate();
     for (index, control) in fields.filter(|(_, c)| c.field.tab == views.tab) {
         if control.field.advanced != advanced {
             continue;
         }
         let label = format!("{}{LABEL_SUFFIX}", control.field.label);
         let mut rows = vec![add_row(parts.mtm, grid, Some(&label), &control.view)];
-        for (_, note) in notes.iter().filter(|(field, _)| *field == index) {
+        for (_, note) in content.notes.iter().filter(|(field, _)| *field == index) {
             let note = note_label(parts.mtm, note);
             rows.push(add_row(parts.mtm, grid, None, &note));
             views.notes.push(note);

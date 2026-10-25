@@ -1,7 +1,7 @@
 //! Microphone capture shared by the dictation recorder and the command spotting stream.
 //!
-//! The input callback averages frames to mono and pushes them into a wait-free ring,
-//! allocating and locking nothing, so audio is never dropped for a held-up reader.
+//! The input callback averages frames to mono and pushes them into a wait-free ring, allocating and
+//! locking nothing, so audio is never dropped for a held-up reader.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::Receiver;
@@ -91,8 +91,8 @@ pub struct MicInput {
 impl MicInput {
     /// Opens the input device `input_device` names (see [`devices::open`]).
     ///
-    /// Its audio, mono at its own rate, comes out of the returned ring consumer; its level
-    /// goes to `level` as `f32` bits.
+    /// Its audio, mono at its own rate, comes out of the returned ring consumer; its level goes to
+    /// `level` as `f32` bits.
     pub fn open(input_device: &str, level: Arc<AtomicU32>) -> Result<(Self, Consumer<f32>)> {
         let device = devices::open(input_device)?;
         let supported = device.default_input_config()?;
@@ -201,7 +201,12 @@ mod tests {
         let (mut ring, _consumer) = RingBuffer::new(4);
         let (health, level) = health();
         on_frames(&[0.5, -0.5, 0.5, -0.5], 1, &mut ring, &health);
-        assert_eq!(f32::from_bits(level.load(Ordering::Relaxed)), 0.5);
+        assert!(
+            (f32::from_bits(level.load(Ordering::Relaxed)) - 0.5).abs() < 1e-6,
+            "{} is not {}",
+            f32::from_bits(level.load(Ordering::Relaxed)),
+            0.5
+        );
     }
 
     #[test]

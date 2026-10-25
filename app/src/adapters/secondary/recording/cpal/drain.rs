@@ -1,7 +1,7 @@
 //! The drain thread: the captured audio from the ring into the 16 kHz recording buffer.
 //!
-//! It pops the ring every few milliseconds, resamples and appends; at the stop it flushes
-//! the resampler's tail, so the recording ends where the microphone's audio ends.
+//! It pops the ring every few milliseconds, resamples and appends; at the stop it flushes the
+//! resampler's tail, so the recording ends where the microphone's audio ends.
 
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::Arc;
@@ -15,6 +15,7 @@ use super::capture::{CaptureHealth, CapturedAudio};
 use super::resampler::StreamResampler;
 use super::watchdog::Watchdog;
 use crate::core::application::PipelineInput;
+use crate::core::domain::conversions::saturating_i16;
 
 /// How often the ring is popped.
 pub const DRAIN_PERIOD: Duration = Duration::from_millis(5);
@@ -83,7 +84,7 @@ impl Drain {
 }
 
 pub fn float_to_i16(sample: f32) -> i16 {
-    (sample.clamp(-1.0, 1.0) * I16_MAX_F32) as i16
+    saturating_i16(sample.clamp(-1.0, 1.0) * I16_MAX_F32)
 }
 
 #[cfg(test)]

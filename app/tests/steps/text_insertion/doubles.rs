@@ -1,61 +1,46 @@
 //! The stand-ins of the text insertion scenarios.
 
 use super::{
-    bail, Arc, AudioBuffer16k, AudioRecorder, ChunkingCfg, CleanedText, Event, FailureNotice,
-    Focus, FocusProbe, FocusedElement, Instant, LiveChunk, Mutex, RawTranscript, Receiver, Result,
-    SoundPlayer, TextPaster, Transcriber, VisualIndicator, DICTATED, PIPELINE_LAG,
+    bail, Arc, AudioBuffer16k, CleanedText, Event, FailureNotice, Focus, FocusProbe,
+    FocusedElement, Instant, Mutex, RawTranscript, Result, TextPaster, Transcriber,
+    VisualIndicator, DICTATED, PIPELINE_LAG,
 };
 
 pub(crate) struct ScriptedFocus(pub(crate) Arc<Mutex<Focus>>);
 
 impl FocusProbe for ScriptedFocus {
     fn focused_element(&self) -> Result<Option<FocusedElement>> {
-        let element =
-            |role: &str, has_text_selection: bool, value_settable: bool, in_web_content: bool| {
-                Ok(Some(FocusedElement {
-                    role: role.to_owned(),
-                    has_text_selection,
-                    value_settable,
-                    in_web_content,
-                }))
-            };
-        match *self.0.lock().unwrap() {
-            Focus::TextField => element("AXTextField", true, true, false),
-            Focus::Button => element("AXButton", false, false, false),
-            Focus::WebPage => element("AXWebArea", false, false, true),
-            Focus::WebPageWithSelectedText => element("AXWebArea", true, false, true),
-            Focus::WebTextInput => element("AXTextField", true, true, true),
-            Focus::WebEditable => element("AXGroup", true, true, true),
-            Focus::TerminalWindow => element("AXWindow", false, false, false),
-            Focus::ListWithTextSelection => element("AXList", true, false, false),
-            Focus::Unreported => bail!("AX error -25204: cannot complete"),
-        }
+        let focus = *self.0.lock().unwrap();
+        let Some((role, has_text_selection, value_settable, in_web_content)) = reported(focus)
+        else {
+            bail!("AX error -25204: cannot complete");
+        };
+        Ok(Some(FocusedElement {
+            role: role.to_owned(),
+            has_text_selection,
+            value_settable,
+            in_web_content,
+        }))
     }
 }
 
-pub(crate) struct OneSecondRecorder(pub(crate) Arc<Mutex<Vec<Event>>>);
-
-impl AudioRecorder for OneSecondRecorder {
-    fn start(&mut self) -> Result<()> {
-        self.0.lock().unwrap().push(Event::RecordingStarted);
-        Ok(())
-    }
-
-    fn stop(&mut self) -> Result<AudioBuffer16k> {
-        Ok(AudioBuffer16k::new(vec![
-            1_000i16;
-            AudioBuffer16k::SAMPLE_RATE_HZ
-                as usize
-        ]))
-    }
-
-    fn start_live_chunks(&mut self, _cfg: ChunkingCfg) -> Result<Option<Receiver<LiveChunk>>> {
-        Ok(None)
-    }
-
-    fn flush_live_chunks(&mut self) {}
-    voicepuncher::records_whole_buffers_only!();
+/// The role, text selection, settable value and web content `focus` reports; none when it
+/// reports nothing.
+const fn reported(focus: Focus) -> Option<(&'static str, bool, bool, bool)> {
+    Some(match focus {
+        Focus::TextField => ("AXTextField", true, true, false),
+        Focus::Button => ("AXButton", false, false, false),
+        Focus::WebPage => ("AXWebArea", false, false, true),
+        Focus::WebPageWithSelectedText => ("AXWebArea", true, false, true),
+        Focus::WebTextInput => ("AXTextField", true, true, true),
+        Focus::WebEditable => ("AXGroup", true, true, true),
+        Focus::TerminalWindow => ("AXWindow", false, false, false),
+        Focus::ListWithTextSelection => ("AXList", true, false, false),
+        Focus::Unreported => return None,
+    })
 }
+
+pub(crate) type OneSecondRecorder = voicepuncher::test_doubles::OneSecondRecorder<Event>;
 
 pub(crate) struct FixedTranscript;
 
@@ -114,13 +99,7 @@ impl VisualIndicator for RecordingIndicator {
     voicepuncher::shows_no_voice_control_signs!();
 }
 
-pub(crate) struct Silent;
-
-impl SoundPlayer for Silent {
-    fn play_start(&self) {}
-    fn play_stop(&self) {}
-    fn play_cancel(&self) {}
-}
+pub(crate) use voicepuncher::test_doubles::Silent;
 
 pub(crate) fn is_pasted_sign(e: &Event) -> bool {
     matches!(e, Event::PastedSignShown)

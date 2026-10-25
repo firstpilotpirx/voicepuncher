@@ -5,6 +5,7 @@ use std::collections::VecDeque;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use crate::core::domain::conversions::{saturating_i16, saturating_usize};
 use crate::core::domain::AudioBuffer16k;
 
 const SAMPLE_RATE: f32 = AudioBuffer16k::SAMPLE_RATE_HZ as f32;
@@ -46,7 +47,7 @@ impl HeardAudio {
         let excess = self
             .samples
             .len()
-            .saturating_sub((HELD_SECS * SAMPLE_RATE) as usize);
+            .saturating_sub(saturating_usize(HELD_SECS * SAMPLE_RATE));
         self.samples.drain(..excess);
         self.first += excess;
         while self.blocks.front().is_some_and(|b| b.end <= self.first) {
@@ -59,7 +60,10 @@ impl HeardAudio {
     pub fn captured_at(&self, dated: Instant) -> Instant {
         let position = Self::position(dated.saturating_duration_since(self.audio_start));
         match self.blocks.iter().find(|b| b.end > position) {
-            Some(block) => block.captured_at - Self::span(block.end - position),
+            Some(block) => block
+                .captured_at
+                .checked_sub(Self::span(block.end - position))
+                .unwrap_or(block.captured_at),
             None => self.blocks.back().map_or(dated, |last| {
                 last.captured_at + Self::span(position - last.end)
             }),
@@ -103,10 +107,12 @@ impl HeardAudio {
     }
 
     fn skip_to(&self, since: Instant) -> usize {
-        let position = (since
-            .saturating_duration_since(self.audio_start)
-            .as_secs_f32()
-            * SAMPLE_RATE) as usize;
+        let position = saturating_usize(
+            since
+                .saturating_duration_since(self.audio_start)
+                .as_secs_f32()
+                * SAMPLE_RATE,
+        );
         position.saturating_sub(self.first).min(self.samples.len())
     }
 
@@ -115,7 +121,7 @@ impl HeardAudio {
         AudioBuffer16k::new(
             self.samples
                 .range(self.skip_to(since)..)
-                .map(|s| (s.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16)
+                .map(|s| saturating_i16(s.clamp(-1.0, 1.0) * f32::from(i16::MAX)))
                 .collect(),
         )
     }
@@ -141,7 +147,7 @@ mod tests {
         // Given one second heard
         let start = Instant::now();
         let mut heard = HeardAudio::new(start);
-        heard.push(&vec![0.5; SAMPLE_RATE as usize], start);
+        heard.push(&vec![0.5; saturating_usize(SAMPLE_RATE)], start);
         // When
         let last_quarter = heard.since(start + Duration::from_millis(750));
         // Then
@@ -152,15 +158,7 @@ mod tests {
     fn should_map_a_stream_position_to_its_capture_time_after_audio_was_lost() {
         // Given one second heard, three seconds that never arrived, then one more second
         let start = Instant::now();
-        let mut heard = HeardAudio::new(start);
-        heard.push(
-            &vec![0.0; SAMPLE_RATE as usize],
-            start + Duration::from_secs(1),
-        );
-        heard.push(
-            &vec![0.0; SAMPLE_RATE as usize],
-            start + Duration::from_secs(5),
-        );
+        let heard = heard_at(start, &[(1, 1), (1, 5)]);
         // When the middle of the second second, dated by its stream position, is mapped
         let captured = heard.captured_at(start + Duration::from_millis(1_500));
         // Then it was captured after the lost seconds
@@ -171,15 +169,7 @@ mod tests {
     fn should_map_a_stream_position_to_its_own_moment_when_no_audio_was_lost() {
         // Given two seconds heard as they were captured
         let start = Instant::now();
-        let mut heard = HeardAudio::new(start);
-        heard.push(
-            &vec![0.0; SAMPLE_RATE as usize],
-            start + Duration::from_secs(1),
-        );
-        heard.push(
-            &vec![0.0; SAMPLE_RATE as usize],
-            start + Duration::from_secs(2),
-        );
+        let heard = heard_at(start, &[(1, 1), (1, 2)]);
         // When
         let captured = heard.captured_at(start + Duration::from_millis(750));
         // Then
@@ -190,9 +180,7 @@ mod tests {
     fn should_date_a_capture_moment_by_its_stream_position_after_audio_was_lost() {
         // Given one second heard, three seconds that never arrived, then one more second
         let start = Instant::now();
-        let mut heard = HeardAudio::new(start);
-        heard.push(&vec![0.0; SECOND], start + Duration::from_secs(1));
-        heard.push(&vec![0.0; SECOND], start + Duration::from_secs(5));
+        let heard = heard_at(start, &[(1, 1), (1, 5)]);
         // When the moment the last sample was captured is dated
         let dated = heard.dated_at(start + Duration::from_secs(5));
         // Then it lies where that sample stands in the stream
@@ -203,9 +191,7 @@ mod tests {
     fn should_replay_the_speech_before_a_loss_after_audio_was_lost_earlier() {
         // Given one second heard, three seconds that never arrived, then two more seconds
         let start = Instant::now();
-        let mut heard = HeardAudio::new(start);
-        heard.push(&vec![0.0; SECOND], start + Duration::from_secs(1));
-        heard.push(&vec![0.0; 2 * SECOND], start + Duration::from_secs(6));
+        let heard = heard_at(start, &[(1, 1), (2, 6)]);
         // When the service is lost as the last sample is captured and the replay reaches
         // back to the sample captured one second before the loss
         let second_before_loss = heard.dated_at(start + Duration::from_secs(5));
@@ -240,10 +226,7 @@ mod tests {
     fn should_hold_only_the_last_seconds() {
         // Given twelve seconds heard
         let start = Instant::now();
-        let mut heard = HeardAudio::new(start);
-        for _ in 0..12 {
-            heard.push(&vec![0.0; SAMPLE_RATE as usize], Instant::now());
-        }
+        let heard = twelve_seconds_heard(start);
         // When asked from the start
         let all = heard.since(start);
         // Then only the held seconds come back
@@ -254,29 +237,44 @@ mod tests {
     fn should_replay_the_held_audio_from_a_moment_with_the_capture_time_of_its_first_sample() {
         // Given twelve seconds heard, ten of them held
         let start = Instant::now();
-        let mut heard = HeardAudio::new(start);
-        for _ in 0..12 {
-            heard.push(&vec![0.0; SAMPLE_RATE as usize], Instant::now());
-        }
+        let heard = twelve_seconds_heard(start);
         // When
         let (first_at, samples) = heard.replay_from(start + Duration::from_secs(9));
         // Then
         assert_eq!(first_at, start + Duration::from_secs(9));
-        assert_eq!(samples.len(), 3 * SAMPLE_RATE as usize);
+        assert_eq!(samples.len(), 3 * saturating_usize(SAMPLE_RATE));
     }
 
     #[test]
     fn should_replay_from_the_oldest_sample_held_when_asked_for_earlier() {
         // Given twelve seconds heard, ten of them held
         let start = Instant::now();
-        let mut heard = HeardAudio::new(start);
-        for _ in 0..12 {
-            heard.push(&vec![0.0; SAMPLE_RATE as usize], Instant::now());
-        }
+        let heard = twelve_seconds_heard(start);
         // When
         let (first_at, samples) = heard.replay_from(start);
         // Then
         assert_eq!(first_at, start + Duration::from_secs(2));
-        assert_eq!(samples.len(), 10 * SAMPLE_RATE as usize);
+        assert_eq!(samples.len(), 10 * saturating_usize(SAMPLE_RATE));
+    }
+
+    /// Audio heard from `start`: each entry is that many seconds captured that many seconds in.
+    fn heard_at(start: Instant, pushes: &[(usize, u64)]) -> HeardAudio {
+        let mut heard = HeardAudio::new(start);
+        for &(seconds, at) in pushes {
+            heard.push(
+                &vec![0.0; seconds * SECOND],
+                start + Duration::from_secs(at),
+            );
+        }
+        heard
+    }
+
+    /// Twelve seconds heard one after another, ten of them held.
+    fn twelve_seconds_heard(start: Instant) -> HeardAudio {
+        let mut heard = HeardAudio::new(start);
+        for _ in 0..12 {
+            heard.push(&vec![0.0; SECOND], Instant::now());
+        }
+        heard
     }
 }

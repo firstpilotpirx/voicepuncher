@@ -2,9 +2,8 @@
 //! answers: the connection must keep answering the app. Needs the models the justfile finds
 //! (`needs_kws_models`).
 
-use std::io::Read;
 use std::net::{TcpListener, TcpStream};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tungstenite::protocol::frame::coding::CloseCode;
@@ -14,8 +13,11 @@ use tungstenite::{Message, WebSocket};
 use crate::common;
 use crate::kws_models::kws_models;
 
+use voicepuncher_command_spotting::conversions::saturating_usize;
 use voicepuncher_command_spotting::engine::{Engine, EngineCfg, SAMPLE_RATE};
 use voicepuncher_command_spotting::server;
+use voicepuncher_test_steps::log_lines::{captured, LogLines};
+use voicepuncher_test_steps::loopback::{serve_each, skip_request};
 
 const FRAME_SAMPLES: usize = 1_600;
 const READ_WAIT: Duration = Duration::from_millis(10);
@@ -43,17 +45,11 @@ const CLOSE_LIMIT: Duration = Duration::from_secs(5);
 
 /// A speech recognition service that takes every request and never answers it.
 fn speech_recognition_that_never_answers() -> u16 {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    std::thread::spawn(move || {
-        let mut held = Vec::new();
-        for mut stream in listener.incoming().flatten() {
-            let mut buf = [0u8; 4096];
-            let _ = stream.read(&mut buf);
-            held.push(stream);
-        }
-    });
-    port
+    serve_each(|mut stream| {
+        skip_request(&mut stream);
+        // Never answered and never closed: the client waits on it.
+        std::mem::forget(stream);
+    })
 }
 
 fn engine_cfg(transcription_url: String) -> EngineCfg {
@@ -77,7 +73,7 @@ fn start_service(stt_port: u16) -> u16 {
     let engine = Arc::new(Engine::load(&cfg).expect("models load"));
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
-    std::thread::spawn(move || server::serve(listener, engine));
+    std::thread::spawn(move || server::serve(&listener, &engine));
     port
 }
 
@@ -108,7 +104,7 @@ fn handshake(port: u16) -> WebSocket<MaybeTlsStream<TcpStream>> {
 }
 
 fn speech_then_silence() -> Vec<f32> {
-    let silence = vec![0.0f32; (SILENCE_SECS * SAMPLE_RATE as f32) as usize];
+    let silence = vec![0.0f32; saturating_usize(SILENCE_SECS * SAMPLE_RATE as f32)];
     let mut audio = silence.clone();
     audio.extend(common::spoken_by(None, LONG_UTTERANCE));
     audio.extend(silence);
@@ -122,27 +118,9 @@ fn send_audio(socket: &mut WebSocket<MaybeTlsStream<TcpStream>>, samples: &[f32]
     }
 }
 
-/// Keeps every log line of the service, which runs in this process.
-struct Lines(Mutex<Vec<String>>);
-
-impl log::Log for Lines {
-    fn enabled(&self, _: &log::Metadata) -> bool {
-        true
-    }
-    fn log(&self, record: &log::Record) {
-        self.0.lock().unwrap().push(record.args().to_string());
-    }
-    fn flush(&self) {}
-}
-
-fn lines() -> &'static Lines {
-    static LINES: OnceLock<&'static Lines> = OnceLock::new();
-    LINES.get_or_init(|| {
-        let lines: &'static Lines = Box::leak(Box::new(Lines(Mutex::default())));
-        log::set_logger(lines).unwrap();
-        log::set_max_level(log::LevelFilter::Info);
-        lines
-    })
+/// Every log line of the service, which runs in this process.
+fn lines() -> &'static LogLines {
+    captured(log::LevelFilter::Info)
 }
 
 /// The longest time between two answers to pings sent every `PING_EVERY` while `audio`
@@ -156,14 +134,18 @@ fn longest_pong_gap(
     let (mut last_ping, mut last_answer, mut longest) = (started, started, Duration::ZERO);
     let mut last_frame = started;
     let mut frames = audio.chunks(FRAME_SAMPLES).cycle();
-    socket.send(Message::Ping(Default::default())).unwrap();
+    socket
+        .send(Message::Ping(tungstenite::Bytes::default()))
+        .unwrap();
     while started.elapsed() < watch_for {
         if last_frame.elapsed() >= FRAME {
             send_audio(socket, frames.next().unwrap_or_default());
             last_frame = Instant::now();
         }
         if last_ping.elapsed() >= PING_EVERY {
-            socket.send(Message::Ping(Default::default())).unwrap();
+            socket
+                .send(Message::Ping(tungstenite::Bytes::default()))
+                .unwrap();
             last_ping = Instant::now();
         }
         match socket.read() {
@@ -220,16 +202,9 @@ mod needs_kws_models {
             gap <= MAX_PONG_GAP,
             "the service went {gap:?} without answering a ping"
         );
-        let given_up: Vec<String> = lines()
-            .0
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|l| l.contains("given up after"))
-            .cloned()
-            .collect();
+
         assert!(
-            !given_up.is_empty(),
+            !lines().containing("given up after").is_empty(),
             "no hung confirmation was logged as given up"
         );
     }

@@ -94,6 +94,37 @@ pub fn freeze(root: &Path, fields: &[String; 4], day: &str) -> Outcome {
     to_main(root, test, &entry)
 }
 
+/// Adds the entry in a fresh worktree of main at `main` and pushes it; false when main moved
+/// during the push.
+fn push_entry(root: &Path, main: &Path, test: &str, entry: &str) -> Result<bool, String> {
+    let main_text = main.to_string_lossy();
+    git_ok(
+        root,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "--detach",
+            &main_text,
+            "origin/main",
+        ],
+    )?;
+    if !append(&main.join(LIST), test, entry)? {
+        println!("● main lists it already");
+        return Ok(true);
+    }
+    git_ok(main, &["add", LIST])?;
+    git_ok(
+        main,
+        &["commit", "-q", "-m", &format!("test: freeze {test}")],
+    )?;
+    let pushed = success_stdout(git(main).args(["push", "-q", "origin", "HEAD:main"])).is_some();
+    if pushed {
+        println!("✓ frozen on main: every worktree's next run leaves it out");
+    }
+    Ok(pushed)
+}
+
 /// Pushes the entry to main from a scratch worktree, three attempts.
 fn to_main(root: &Path, test: &str, entry: &str) -> Outcome {
     let scratch = tempfile::tempdir().map_err(|e| e.to_string())?;
@@ -107,29 +138,7 @@ fn to_main(root: &Path, test: &str, entry: &str) -> Outcome {
         git_ok(root, &["fetch", "-q", "origin", "main"])?;
         // A worktree of an earlier attempt goes first; on the first there is none
         let _ = remove();
-        git_ok(
-            root,
-            &[
-                "worktree",
-                "add",
-                "-q",
-                "--detach",
-                &main_text,
-                "origin/main",
-            ],
-        )?;
-        if !append(&main.join(LIST), test, entry)? {
-            println!("● main lists it already");
-            outcome = Ok(0);
-            break;
-        }
-        git_ok(&main, &["add", LIST])?;
-        git_ok(
-            &main,
-            &["commit", "-q", "-m", &format!("test: freeze {test}")],
-        )?;
-        if success_stdout(git(&main).args(["push", "-q", "origin", "HEAD:main"])).is_some() {
-            println!("✓ frozen on main: every worktree's next run leaves it out");
+        if push_entry(root, &main, test, entry)? {
             outcome = Ok(0);
             break;
         }

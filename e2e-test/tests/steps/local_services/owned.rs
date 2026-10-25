@@ -1,17 +1,14 @@
 //! Services the app starts as copies itself, through outages a step makes: a copy that
 //! stops answering, every dictation copy killed during a chunk.
 
-use std::time::Duration;
-
-use anyhow::{bail, ensure, Context, Result};
 use cucumber::{given, then, when};
+use voicepuncher::test_doubles::prelude::*;
 
 use voicepuncher::adapters::secondary::transcription::openai::OpenAiTranscriber;
-use voicepuncher::core::application::Transcriber;
-use voicepuncher::core::domain::{AudioBuffer16k, ServiceKind};
+use voicepuncher::core::domain::ServiceKind;
 use voicepuncher_e2e_test::speech_cache::{synthesized, SayRequest};
 
-use super::managed::{log_mark, logged_since, process_on, ManagedRun, Needed};
+use super::managed::{kill_copy, log_mark, logged_since, process_on, ManagedRun, Needed};
 use super::{healthy, wait_until};
 use crate::steps::off_thread;
 use crate::E2eWorld;
@@ -53,7 +50,7 @@ impl OwnedServices {
 }
 
 fn owned(world: &mut E2eWorld) -> &mut OwnedServices {
-    &mut world.owned_services
+    &mut world.services.owned_services
 }
 
 #[given(
@@ -88,32 +85,39 @@ fn copy_stops_answering(world: &mut E2eWorld) -> Result<()> {
 
 #[when("every copy of it is killed while a dictation's chunk is being transcribed")]
 async fn every_copy_killed_during_a_chunk(world: &mut E2eWorld) -> Result<()> {
-    off_thread(world, |world| {
-        let owned = owned(world);
-        let run = owned.run()?;
-        let speech =
-            synthesized(&SayRequest { voice: None, words_per_minute: None, text: CHUNK_SPEECH })?;
-        let mut transcriber = OpenAiTranscriber::connect(run.config.transcription.clone())?;
-        let sent_at = log_mark();
-        let chunk = std::thread::spawn(move || {
-            transcriber
-                .transcribe(&AudioBuffer16k::new(speech))
-                .map(|heard| heard.map(|text| text.as_str().to_owned()))
-                .map_err(|e| format!("{e:#}"))
-        });
-        std::thread::sleep(KILLED_AFTER);
-        for port in run.ports(ServiceKind::Dictation) {
-            run.kill(port)?;
-        }
-        owned.sent_at = sent_at;
-        owned.heard = Some(
-            chunk
-                .join()
-                .map_err(|_| anyhow::anyhow!("the chunk panicked"))?,
-        );
-        Ok(())
-    })
-    .await
+    off_thread(world, kill_every_copy_during_a_chunk).await
+}
+
+/// What `transcriber` heard in `speech`, or its error as text.
+fn transcribed(
+    transcriber: &mut OpenAiTranscriber,
+    speech: Vec<i16>,
+) -> std::result::Result<Option<String>, String> {
+    transcriber
+        .transcribe(&AudioBuffer16k::new(speech))
+        .map(|heard| heard.map(|text| text.as_str().to_owned()))
+        .map_err(|e| format!("{e:#}"))
+}
+
+/// Sends a chunk and kills every copy of the dictation service while it is transcribed.
+fn kill_every_copy_during_a_chunk(world: &mut E2eWorld) -> Result<()> {
+    let owned = owned(world);
+    let run = owned.run()?;
+    let speech =
+        synthesized(&SayRequest { voice: None, words_per_minute: None, text: CHUNK_SPEECH })?;
+    let mut transcriber = OpenAiTranscriber::connect(run.config.transcription.clone())?;
+    let sent_at = log_mark();
+    let chunk = std::thread::spawn(move || transcribed(&mut transcriber, speech));
+    std::thread::sleep(KILLED_AFTER);
+    let killed = run
+        .ports(ServiceKind::Dictation)
+        .into_iter()
+        .try_for_each(|port| kill_copy(port).map(drop));
+    let heard = chunk.join();
+    killed?;
+    owned.sent_at = sent_at;
+    owned.heard = Some(heard.map_err(|_| anyhow::anyhow!("the chunk panicked"))?);
+    Ok(())
 }
 
 #[then("within 30 seconds the app has killed that copy and started it again, and it answers on its port")]

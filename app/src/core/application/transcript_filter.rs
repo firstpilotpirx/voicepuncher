@@ -38,8 +38,9 @@ const LOOP_WORD_SHARE_NUMERATOR: usize = 4;
 const LOOP_WORD_SHARE_DENOMINATOR: usize = 10;
 
 /// The transcript without the known hallucinations of Whisper-family services: markers are
-/// removed, and so is every sentence holding a subtitle credit or subscription call. `None`
-/// when no speech is left: nothing, a phrase repeated in a loop, or a lone "you".
+/// removed, and so is every sentence holding a subtitle credit or subscription call.
+///
+/// `None` when no speech is left: nothing, a phrase repeated in a loop, or a lone "you".
 pub fn strip_whisper_hallucinations(text: &str) -> Option<String> {
     let without_markers = text
         .split_whitespace()

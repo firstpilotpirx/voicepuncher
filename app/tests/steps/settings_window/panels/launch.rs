@@ -1,9 +1,8 @@
 //! A first launch: the app's own command line started over a configuration file in the
 //! settings scenario's folder, and the built-in default file read as the app reads it.
 
-use std::process::{Command, Output, Stdio};
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, Context, Result};
 use cucumber::{then, when};
 use toml::Value;
 

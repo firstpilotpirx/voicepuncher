@@ -1,13 +1,13 @@
 //! The macOS paster on a pasteboard of the scenario's own, made with a unique name, so the
 //! user's clipboard is never touched; the paste keystroke is replaced by one that sends nothing.
 
-use anyhow::{ensure, Context, Result};
 use cucumber::{given, then, when};
 use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_app_kit::{NSPasteboard, NSPasteboardItem, NSPasteboardWriting};
 use objc2_foundation::{NSArray, NSData, NSString};
 use voicepuncher::adapters::secondary::textpasting::macos::MacOsTextPaster;
 use voicepuncher::core::{application::TextPaster, domain::CleanedText};
+use voicepuncher::test_doubles::prelude::*;
 
 use super::{Duration, Instant, DICTATED};
 use crate::IntegrationWorld;
@@ -56,7 +56,7 @@ impl ClipboardRun {
     fn paste(&mut self, restore_delay_ms: u64) -> Result<()> {
         let mut paster = MacOsTextPaster::with_paste_keystroke(restore_delay_ms, || Ok(()))
             .with_pasteboard(&self.pasteboard.name().to_string());
-        paster.paste(&CleanedText::new(DICTATED.to_owned())?)?;
+        paster.paste(&CleanedText::new(DICTATED)?)?;
         self.paster = Some(paster);
         Ok(())
     }
@@ -155,7 +155,7 @@ fn dictation_pasted(world: &mut IntegrationWorld) -> Result<()> {
 fn second_dictation_pasted(world: &mut IntegrationWorld) -> Result<()> {
     let run = clipboard(world);
     let paster = run.paster.as_mut().context("no dictation was pasted")?;
-    paster.paste(&CleanedText::new(DICTATED.to_owned())?)
+    paster.paste(&CleanedText::new(DICTATED)?)
 }
 
 #[when("the user quits the app")]

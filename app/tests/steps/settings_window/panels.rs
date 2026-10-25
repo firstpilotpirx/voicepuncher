@@ -3,12 +3,9 @@
 //! from its Sounds tab and the Models row of its Services tab over a models folder.
 
 use std::cell::Cell;
-use std::collections::HashMap;
-use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 use objc2::MainThreadMarker;
 use objc2_app_kit::{NSApplication, NSButton, NSSound};
@@ -32,7 +29,7 @@ use voicepuncher::adapters::primary::settings::macos::window::SettingsWindow;
 use voicepuncher::adapters::secondary::loginitem::macos::MacOsLoginItem;
 use voicepuncher::config::Config;
 use voicepuncher::core::domain::model_catalog;
-use voicepuncher::core::domain::{HotKey, Permission, RecordingMode};
+use voicepuncher::core::domain::{HotKey, Permission};
 use voicepuncher::runtime::models::needs_of;
 use voicepuncher::runtime::services::SystemClock;
 use voicepuncher::runtime::{CatalogModels, ModelsGate, PermissionsWait, RuntimeState};

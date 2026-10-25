@@ -5,6 +5,7 @@ use super::budget::{Kind, Measures};
 use super::measure::measure_source;
 use super::verdict::violations;
 use super::workspace::directory_measures;
+use std::fmt::Write as _;
 
 const PATH: &str = "app/src/fixture.rs";
 const MARKER: &str = "#[expect(clippy::too_many_lines, reason = \"size baseline\")]\n";
@@ -13,7 +14,7 @@ const MARKER: &str = "#[expect(clippy::too_many_lines, reason = \"size baseline\
 fn function(attrs: &str, name: &str, code: usize, noise: usize) -> String {
     let mut body = String::new();
     for i in 0..code {
-        body.push_str(&format!("    let _v{i} = {i};\n"));
+        let _ = writeln!(body, "    let _v{i} = {i};");
         if i < noise {
             body.push_str(if i % 2 == 0 {
                 "    // a comment\n"
@@ -32,8 +33,10 @@ fn measure(source: &str) -> Measures {
 fn listed(entries: &[(&str, &str, usize)]) -> Baseline {
     let text: String = entries
         .iter()
-        .map(|(kind, id, n)| format!("[{kind}]\n\"{id}\" = {n}\n"))
-        .collect();
+        .fold(String::new(), |mut text, (kind, id, n)| {
+            let _ = write!(text, "[{kind}]\n\"{id}\" = {n}\n");
+            text
+        });
     parse(&text).unwrap()
 }
 
@@ -78,7 +81,10 @@ fn should_pass_a_listed_function_that_shrank() {
 
 #[test]
 fn should_fail_a_listed_file_back_within_budget() {
-    let source: String = (0..280).map(|i| format!("const C{i}: u8 = 0;\n")).collect();
+    let source: String = (0..280).fold(String::new(), |mut text, i| {
+        let _ = writeln!(text, "const C{i}: u8 = 0;");
+        text
+    });
     let report = found(&source, &listed(&[("file_lines", PATH, 420)]));
     assert!(
         report.contains("fixture.rs: 280 code lines, back within the budget of 300; remove its size-baseline entry"),
@@ -88,7 +94,10 @@ fn should_fail_a_listed_file_back_within_budget() {
 
 #[test]
 fn should_fail_a_struct_with_too_many_fields() {
-    let fields: String = (0..13).map(|i| format!("    f{i}: u8,\n")).collect();
+    let fields: String = (0..13).fold(String::new(), |mut text, i| {
+        let _ = writeln!(text, "    f{i}: u8,");
+        text
+    });
     let report = found(&format!("struct Wide {{\n{fields}}}\n"), &Baseline::new());
     assert!(
         report.contains("struct_fields app/src/fixture.rs::Wide: 13 fields"),
@@ -98,9 +107,13 @@ fn should_fail_a_struct_with_too_many_fields() {
 
 #[test]
 fn should_fail_a_type_with_too_large_a_public_surface() {
-    let methods: String = (0..36)
-        .map(|i| format!("    pub fn m{i}(&self) {{}}\n    fn p{i}(&self) {{}}\n"))
-        .collect();
+    let methods: String = (0..36).fold(String::new(), |mut text, i| {
+        let _ = write!(
+            text,
+            "    pub fn m{i}(&self) {{}}\n    fn p{i}(&self) {{}}\n"
+        );
+        text
+    });
     let report = found(
         &format!("struct Big;\nimpl Big {{\n{methods}}}\n"),
         &Baseline::new(),

@@ -3,10 +3,12 @@
 //! the sync, and one that stops answering; and a pause of the client's own against a service
 //! that answers pings.
 
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpStream;
 use std::time::{Duration, Instant};
 
 use tungstenite::{Message, WebSocket};
+
+use crate::fake_websocket::{nothing_yet, serve_one};
 
 use voicepuncher::adapters::secondary::commandspotting::websocket::client::SpottingClient;
 
@@ -17,7 +19,6 @@ const QUICK_EVENTS: Duration = Duration::from_millis(200);
 const FRAMES: usize = 3;
 /// 100 ms of 16 kHz audio, as the app sends it.
 const FRAME_SAMPLES: usize = 1_600;
-const READ_WAIT: Duration = Duration::from_millis(10);
 /// The client's silence limit (5 s), less a margin: it must not give up before that.
 const PATIENT_FOR_AT_LEAST: Duration = Duration::from_millis(4_500);
 /// The silence limit plus a margin: a silent service is noticed within it.
@@ -38,79 +39,78 @@ const SYNC_GIVEN_UP_WITHIN: Duration = Duration::from_secs(4);
 /// A service that answers pings at once and each audio message with a speech start `delay`
 /// after it came, and a sync once every earlier audio message is answered.
 fn service_answering_late(delay: Duration) -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("ws://{}", listener.local_addr().unwrap());
-    std::thread::spawn(move || {
-        let (stream, _) = listener.accept().unwrap();
-        let socket = tungstenite::accept(stream).unwrap();
-        socket.get_ref().set_read_timeout(Some(READ_WAIT)).unwrap();
+    serve_one(move |socket| {
         answer_late(socket, delay);
-    });
-    url
+    })
 }
 
 /// Due answers in the order their messages came: events, or the answer to a sync.
 fn answer_late(mut socket: WebSocket<TcpStream>, delay: Duration) {
-    let mut due: Vec<(Instant, String)> = Vec::new();
-    let mut answered = 0u32;
-    loop {
-        match socket.read() {
+    let mut late = Late { due: Vec::new(), answered: 0, delay };
+    while late.take(socket.read()) && send_due(&mut socket, &mut late.due) {}
+}
+
+/// The answers not yet due, and how many audio messages came.
+struct Late {
+    due: Vec<(Instant, String)>,
+    answered: u32,
+    delay: Duration,
+}
+
+impl Late {
+    /// Queues the answer to what was read; false once the socket is closed.
+    fn take(&mut self, read: tungstenite::Result<Message>) -> bool {
+        match read {
             Ok(Message::Binary(_)) => {
-                answered += 1;
-                due.push((
-                    Instant::now() + delay,
-                    format!(r#"{{"event":"speech_start","t":{answered}}}"#),
+                self.answered += 1;
+                self.due.push((
+                    Instant::now() + self.delay,
+                    format!(r#"{{"event":"speech_start","t":{}}}"#, self.answered),
                 ));
             }
             Ok(Message::Text(text)) if text.contains(r#""type":"sync""#) => {
                 let sync: serde_json::Value = serde_json::from_str(text.as_str()).unwrap();
-                let at = due.last().map_or_else(Instant::now, |(at, _)| *at);
-                due.push((at, format!(r#"{{"event":"synced","id":{}}}"#, sync["id"])));
+                let at = self.due.last().map_or_else(Instant::now, |(at, _)| *at);
+                self.due
+                    .push((at, format!(r#"{{"event":"synced","id":{}}}"#, sync["id"])));
             }
             Ok(_) => {}
-            Err(tungstenite::Error::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-            Err(_) => return,
+            Err(e) if nothing_yet(&e) => {}
+            Err(_) => return false,
         }
-        while due.first().is_some_and(|(at, _)| *at <= Instant::now()) {
-            let (_, json) = due.remove(0);
-            if socket.send(Message::text(json)).is_err() {
-                return;
-            }
+        true
+    }
+}
+
+/// Sends the answers whose time has come; false once the socket is closed.
+fn send_due(socket: &mut WebSocket<TcpStream>, due: &mut Vec<(Instant, String)>) -> bool {
+    while due.first().is_some_and(|(at, _)| *at <= Instant::now()) {
+        let (_, json) = due.remove(0);
+        if socket.send(Message::text(json)).is_err() {
+            return false;
         }
     }
+    true
 }
 
 /// A service that answers pings, and reads everything else without ever answering it: the
 /// sync is never answered.
 fn service_never_answering_the_sync() -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("ws://{}", listener.local_addr().unwrap());
-    std::thread::spawn(move || {
-        let (stream, _) = listener.accept().unwrap();
-        let mut socket = tungstenite::accept(stream).unwrap();
-        socket.get_ref().set_read_timeout(Some(READ_WAIT)).unwrap();
-        loop {
-            match socket.read() {
-                Ok(_) => {}
-                Err(tungstenite::Error::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-                Err(_) => return,
-            }
+    serve_one(move |mut socket| loop {
+        match socket.read() {
+            Ok(_) => {}
+            Err(e) if nothing_yet(&e) => {}
+            Err(_) => return,
         }
-    });
-    url
+    })
 }
 
 /// A service that accepts the connection, then hangs: it never reads or answers again.
 fn hanging_service() -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("ws://{}", listener.local_addr().unwrap());
-    std::thread::spawn(move || {
-        let (stream, _) = listener.accept().unwrap();
-        let socket = tungstenite::accept(stream).unwrap();
+    serve_one(move |socket| {
         std::thread::sleep(Duration::from_secs(600));
         drop(socket);
-    });
-    url
+    })
 }
 
 fn client_with_audio_sent(url: &str) -> SpottingClient {

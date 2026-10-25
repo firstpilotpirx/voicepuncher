@@ -2,15 +2,13 @@
 //! command spotting service and the speech recognition service for commands as two copies
 //! each, and a step kills the copy the app listens with or one copy for commands.
 
-use std::time::Duration;
-
-use anyhow::{bail, ensure, Context, Result};
 use cucumber::{given, then, when};
+use voicepuncher::test_doubles::prelude::*;
 
 use voicepuncher::core::domain::ServiceKind;
 
 use super::hands_free::{Event, HandsFree};
-use crate::steps::local_services::{healthy, ManagedRun, Needed};
+use crate::steps::local_services::{connected_copy, healthy, kill_copy, ManagedRun, Needed};
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
@@ -23,11 +21,15 @@ const BACK_WITHIN: Duration = Duration::from_secs(30);
 const POLL: Duration = Duration::from_millis(250);
 
 fn hands_free(world: &E2eWorld) -> Result<&HandsFree> {
-    world.hands_free.as_ref().context("listening is not on")
+    world
+        .voice
+        .hands_free
+        .as_ref()
+        .context("listening is not on")
 }
 
 fn run(world: &mut E2eWorld) -> Result<&mut ManagedRun> {
-    world.owned_services.run()
+    world.services.owned_services.run()
 }
 
 #[given("the app started the command spotting service and the speech recognition service for commands as two copies each, and listening is on")]
@@ -38,8 +40,8 @@ async fn copies_listening(world: &mut E2eWorld) -> Result<()> {
         if !hands_free.saw(|e| *e == Event::Listening) {
             bail!("listening did not start: {:?}", hands_free.events());
         }
-        world.owned_services.run = Some(run);
-        world.hands_free = Some(hands_free);
+        world.services.owned_services.run = Some(run);
+        world.voice.hands_free = Some(hands_free);
         Ok(())
     })
     .await
@@ -50,11 +52,10 @@ async fn listening_copy_killed(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let run = run(world)?;
         let ports = run.ports(ServiceKind::CommandSpotting);
-        let port = run
-            .connected_copy(&ports)
+        let port = connected_copy(&ports)
             .with_context(|| format!("the app holds no connection to a copy among {ports:?}"))?;
-        let pid = run.kill(port)?;
-        world.owned_services.stopped = Some((port, pid));
+        let pid = kill_copy(port)?;
+        world.services.owned_services.stopped = Some((port, pid));
         let hands_free = hands_free(world)?;
         hands_free.keep_quiet(QUIET_AFTER_KILL)?;
         hands_free.say(COMMAND)?;
@@ -72,7 +73,7 @@ async fn commands_copy_killed(world: &mut E2eWorld) -> Result<()> {
         let port = *ports
             .first()
             .context("no copy of the speech recognition service for commands runs")?;
-        run.kill(port)?;
+        kill_copy(port)?;
         let hands_free = hands_free(world)?;
         hands_free.say(COMMAND)?;
         hands_free.saw(|e| *e == Event::ReturnPressed);
@@ -94,7 +95,11 @@ fn commands_never_unavailable(world: &mut E2eWorld) -> Result<()> {
 #[then("the killed copy answers again within 30 seconds")]
 async fn killed_copy_back(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
-        let (port, _) = world.owned_services.stopped.context("no copy was killed")?;
+        let (port, _) = world
+            .services
+            .owned_services
+            .stopped
+            .context("no copy was killed")?;
         let deadline = std::time::Instant::now() + BACK_WITHIN;
         while !healthy(port) {
             ensure!(

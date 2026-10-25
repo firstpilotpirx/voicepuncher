@@ -48,16 +48,16 @@ fn a_step(_world: &mut FixtureWorld) {}
 fn closed_gates() -> Vec<Gate> {
     vec![
         Gate::wip(),
-        Gate::voice_samples(Err(VarError::NotPresent)),
-        Gate::real_keyboard(Err(VarError::NotPresent)),
+        Gate::voice_samples(&Err(VarError::NotPresent)),
+        Gate::real_keyboard(&Err(VarError::NotPresent)),
     ]
 }
 
 fn open_gates() -> Vec<Gate> {
     vec![
         Gate::wip(),
-        Gate::voice_samples(Ok("/recordings".to_string())),
-        Gate::real_keyboard(Ok("1".to_string())),
+        Gate::voice_samples(&Ok("/recordings".to_string())),
+        Gate::real_keyboard(&Ok("1".to_string())),
     ]
 }
 
@@ -230,7 +230,7 @@ fn should_keep_the_command_line_selection_when_the_rerun_variable_is_empty() -> 
 
 #[test]
 fn should_close_the_voice_samples_gate_when_the_variable_is_unset() {
-    let gate = Gate::voice_samples(Err(VarError::NotPresent));
+    let gate = Gate::voice_samples(&Err(VarError::NotPresent));
     assert!(!gate.is_open());
     assert_eq!(
         gate.line(),
@@ -240,7 +240,7 @@ fn should_close_the_voice_samples_gate_when_the_variable_is_unset() {
 
 #[test]
 fn should_close_the_voice_samples_gate_when_the_variable_is_empty() {
-    let gate = Gate::voice_samples(Ok(String::new()));
+    let gate = Gate::voice_samples(&Ok(String::new()));
     assert!(!gate.is_open());
     assert_eq!(
         gate.line(),
@@ -250,25 +250,25 @@ fn should_close_the_voice_samples_gate_when_the_variable_is_empty() {
 
 #[test]
 fn should_open_the_voice_samples_gate_when_the_variable_names_a_path() {
-    let gate = Gate::voice_samples(Ok("/recordings".to_string()));
+    let gate = Gate::voice_samples(&Ok("/recordings".to_string()));
     assert!(gate.is_open());
     assert_eq!(gate.line(), None);
 }
 
 #[test]
 fn should_close_the_real_keyboard_gate_only_when_the_variable_is_unset() {
-    let closed = Gate::real_keyboard(Err(VarError::NotPresent));
+    let closed = Gate::real_keyboard(&Err(VarError::NotPresent));
     assert!(!closed.is_open());
     assert_eq!(
         closed.line(),
         Some("GATED: VOICEPUNCHER_REAL_KEYBOARD_IT not set, skipping @real_keyboard scenarios")
     );
-    assert!(Gate::real_keyboard(Ok(String::new())).is_open());
+    assert!(Gate::real_keyboard(&Ok(String::new())).is_open());
 }
 
 #[test]
 fn should_close_the_signing_identity_gate_when_the_variable_is_unset() {
-    let gate = Gate::signing_identity(Err(VarError::NotPresent));
+    let gate = Gate::signing_identity(&Err(VarError::NotPresent));
     assert!(!gate.is_open());
     assert_eq!(
         gate.line(),
@@ -278,7 +278,7 @@ fn should_close_the_signing_identity_gate_when_the_variable_is_unset() {
 
 #[test]
 fn should_close_the_signing_identity_gate_when_the_variable_is_empty() {
-    let gate = Gate::signing_identity(Ok(String::new()));
+    let gate = Gate::signing_identity(&Ok(String::new()));
     assert!(!gate.is_open());
     assert_eq!(
         gate.line(),
@@ -288,7 +288,7 @@ fn should_close_the_signing_identity_gate_when_the_variable_is_empty() {
 
 #[test]
 fn should_open_the_signing_identity_gate_when_the_variable_names_an_identity() {
-    let gate = Gate::signing_identity(Ok("voicepuncher".to_string()));
+    let gate = Gate::signing_identity(&Ok("voicepuncher".to_string()));
     assert!(gate.is_open());
     assert_eq!(gate.line(), None);
 }

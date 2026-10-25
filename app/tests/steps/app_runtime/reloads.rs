@@ -2,12 +2,8 @@
 //! signal that reloads the configuration file, and the hotkey binding the listener matches
 //! every key event against.
 
-use std::path::PathBuf;
-use std::sync::Arc;
 use std::thread::ThreadId;
-use std::time::{Duration, Instant};
 
-use anyhow::{bail, ensure, Context, Result};
 use cucumber::{given, then, when};
 use tempfile::TempDir;
 
@@ -15,8 +11,9 @@ use voicepuncher::adapters::primary::ptt::eventtap::keys::{
     classify, target, ChordState, KeyEvent, Target, KEY_E, LEFT_COMMAND, RIGHT_OPTION,
 };
 use voicepuncher::config::Config;
-use voicepuncher::core::domain::{HotKey, HotkeyBinding, PttSignal, RecordingMode};
+use voicepuncher::core::domain::{HotKey, HotkeyBinding};
 use voicepuncher::runtime::{signals, RuntimeState};
+use voicepuncher::test_doubles::prelude::*;
 
 use super::doubles::RecordingObserver;
 use super::{config_with, run, Event, FIRST_HOTKEY, REACTION, SECOND_HOTKEY};

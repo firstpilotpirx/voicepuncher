@@ -10,36 +10,3 @@
 # beside = "<what ran beside it>"        # other sessions' runs, the [machine-lock] holder
 # branch = "<the branch whose check failed>"
 
-[[frozen]]
-test = "scenario: The user's recorded restart restart followed by the new dictation at once"
-frozen = "2026-10-23"
-recipe = "full-check"
-stage = "e2e-smoke-voice"
-beside = "other sessions' full-checks under machine-lock load, 2026-10-23; failed in several branches"
-branch = "chore/stop-filing-changes-for-flaky-tests"
-
-[[frozen]]
-test = "scenario: Russian speech that makes speech recognition repeat itself"
-frozen = "2026-10-23"
-recipe = "full-check"
-stage = "e2e-resilience"
-beside = "other sessions' full-checks under machine-lock load, 2026-10-23; failed in several branches"
-branch = "chore/stop-filing-changes-for-flaky-tests"
-
-[[frozen]]
-test = "scenario: The first request of a chunk hangs"
-frozen = "2026-10-24"
-recipe = "test"
-stage = "test"
-beside = "other sessions builds and tests under load; logged 2 hung attempts instead of 1"
-branch = "chore/tame-confirming-special-cases"
-
-
-[[frozen]]
-test = "scenario: Restart restart followed by the new dictation at once gives its cue at once"
-frozen = "2026-10-24"
-recipe = "full-check"
-stage = "e2e-cues"
-beside = "nothing else locked; a full-check of fix/improve-recording-pill-look (overlay constants only), 735 ms vs 700 ms"
-branch = "fix/improve-recording-pill-look"
-

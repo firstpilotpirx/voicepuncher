@@ -22,8 +22,7 @@ impl LiveTranscript {
     /// Shows the chunk texts transcribed so far, stitched as the pasted transcript is.
     pub(super) fn show(&self, texts: &[String]) {
         if self.recording.load(Ordering::SeqCst) {
-            self.view
-                .show_live_transcript(&merge_chunk_texts(texts.to_vec()));
+            self.view.show_live_transcript(&merge_chunk_texts(texts));
         }
     }
 }

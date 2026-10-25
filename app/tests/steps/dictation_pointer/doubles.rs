@@ -1,15 +1,14 @@
 //! The stand-ins of the dictation pointer scenarios.
 
 use super::{
-    bail, record, Arc, AtomicBool, AudioBuffer16k, AudioRecorder, ChunkingCfg, CleanedText,
-    DictationSignState, Event, Events, FailureNotice, FocusProbe, FocusedElement, LiveChunk,
-    Ordering, Overlay, PointerSignView, RawTranscript, Receiver, Result, Sign, SoundPlayer,
-    TextPaster, Transcriber, VisualIndicator, SENTENCE, SERVICE_TIME,
+    bail, record, Arc, AtomicBool, AudioBuffer16k, DictationSignState, Event, Events,
+    FailureNotice, FocusProbe, FocusedElement, Ordering, Overlay, PointerSignView, RawTranscript,
+    Result, Sign, Transcriber, VisualIndicator, SENTENCE, SERVICE_TIME,
 };
 use voicepuncher::core::application::live_transcript_view::{
     HiddenLiveTranscript, LiveTranscriptView,
 };
-use voicepuncher::core::domain::VoiceCommand;
+use voicepuncher::test_doubles::prelude::*;
 
 /// The dictation sign's window as the adapter sees it.
 pub(super) struct NotingSign(pub(super) Events);
@@ -61,30 +60,7 @@ impl VisualIndicator for NotingOverlay {
     }
 }
 
-/// Hands over one second of audio at the stop.
-pub(super) struct OneSecondRecorder(pub(super) Events);
-
-impl AudioRecorder for OneSecondRecorder {
-    fn start(&mut self) -> Result<()> {
-        record(&self.0, Event::RecordingStarted);
-        Ok(())
-    }
-
-    fn stop(&mut self) -> Result<AudioBuffer16k> {
-        Ok(AudioBuffer16k::new(vec![
-            1_000i16;
-            AudioBuffer16k::SAMPLE_RATE_HZ
-                as usize
-        ]))
-    }
-
-    fn start_live_chunks(&mut self, _cfg: ChunkingCfg) -> Result<Option<Receiver<LiveChunk>>> {
-        Ok(None)
-    }
-
-    fn flush_live_chunks(&mut self) {}
-    voicepuncher::records_whole_buffers_only!();
-}
+pub(super) type OneSecondRecorder = voicepuncher::test_doubles::OneSecondRecorder<Event>;
 
 /// The speech recognition service: answers after a moment, or refuses the connection when
 /// it is down.
@@ -102,17 +78,7 @@ impl Transcriber for SlowTranscriber {
     }
 }
 
-pub(super) struct QuietPaster;
-
-impl TextPaster for QuietPaster {
-    fn paste(&mut self, _text: &CleanedText) -> Result<()> {
-        Ok(())
-    }
-
-    fn leave_in_clipboard(&mut self, _text: &CleanedText) -> Result<()> {
-        Ok(())
-    }
-}
+pub(super) use voicepuncher::test_doubles::DiscardingPaster as QuietPaster;
 
 /// A text field has keyboard focus, or a button while the flag is set.
 pub(super) struct SwitchableFocus(pub(super) Arc<AtomicBool>);
@@ -129,12 +95,4 @@ impl FocusProbe for SwitchableFocus {
     }
 }
 
-pub(super) struct Silent;
-
-impl SoundPlayer for Silent {
-    fn play_start(&self) {}
-    fn play_stop(&self) {}
-    fn play_cancel(&self) {}
-    fn play_listening_on(&self) {}
-    fn play_listening_off(&self) {}
-}
+pub(super) use voicepuncher::test_doubles::Silent;

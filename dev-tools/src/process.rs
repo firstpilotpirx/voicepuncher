@@ -43,6 +43,13 @@ pub fn git(dir: &Path) -> Command {
     command
 }
 
+/// Runs `git` in `dir` with `args` and fails the test when it fails.
+#[cfg(test)]
+pub fn git_ok(dir: &Path, args: &[&str]) {
+    let ok = git(dir).args(args).output().unwrap().status.success();
+    assert!(ok, "git {args:?}");
+}
+
 /// One line of `git` output without its newline, or nothing when it printed nothing.
 pub fn git_line(dir: &Path, args: &[&str]) -> Option<String> {
     let out = stdout(git(dir).args(args));

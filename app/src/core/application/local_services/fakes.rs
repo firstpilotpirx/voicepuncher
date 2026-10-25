@@ -115,7 +115,7 @@ impl FakeProcess {
 
 impl ServiceProcess for FakeProcess {
     fn id(&self) -> u32 {
-        self.index as u32 + 1
+        u32::try_from(self.index).unwrap() + 1
     }
 
     fn exited(&mut self) -> Option<String> {

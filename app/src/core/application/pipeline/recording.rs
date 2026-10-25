@@ -76,7 +76,9 @@ impl Pipeline {
             LiveTranscript::new(self.visual_indicator.live_transcript_view());
         std::thread::Builder::new()
             .name("live-transcription".into())
-            .spawn(move || run_live_worker(transcriber, chunk_rx, results_tx, live_transcript))?;
+            .spawn(move || {
+                run_live_worker(&transcriber, &chunk_rx, &results_tx, &live_transcript);
+            })?;
         Ok(Some(LiveTranscriptionSession { results_rx, recording_end }))
     }
 
@@ -144,7 +146,7 @@ impl Pipeline {
         clock.lap("stop");
         dictation.note_lost_chunks(result.lost_chunks, result.texts.is_empty());
         dictation.trace_chunks(&result.texts, result.lost_chunks);
-        match merge_live(&mut dictation, result, &mut clock) {
+        match merge_live(&mut dictation, &result, &mut clock) {
             Ok(raw) => self.finish(dictation, &raw, clock, "(live)"),
             Err(outcome) => self.end_without_text(dictation, outcome, &clock),
         }
@@ -203,14 +205,14 @@ impl Pipeline {
 /// The merged transcript of a live session's chunks, or how the dictation ends without one.
 fn merge_live(
     dictation: &mut Dictation,
-    result: LiveSessionResult,
+    result: &LiveSessionResult,
     clock: &mut StageClock,
 ) -> Result<RawTranscript, DictationOutcome> {
     if result.texts.is_empty() {
         log::info!("live session: no text ({})", clock.line());
         return Err(no_text_outcome(result.lost_chunks));
     }
-    let merged = merge_chunk_texts(result.texts);
+    let merged = merge_chunk_texts(&result.texts);
     clock.lap("merge");
     log::info!(
         "live session: {} chars merged ({})",

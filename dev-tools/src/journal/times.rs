@@ -36,21 +36,7 @@ pub fn command(args: &[String]) -> Outcome {
 /// The epoch second the summary starts at, and how it names that start.
 fn start(since: &str, now: f64, zone: &TimeZone) -> Result<(f64, String), String> {
     let refused = || format!("since '{since}': give a span like 7d or a date like 2026-10-01");
-    let from = if let Some(days) = since
-        .strip_suffix('d')
-        .filter(|days| days.chars().all(|c| c.is_ascii_digit()))
-    {
-        days.parse::<f64>()
-            .map_err(|_| refused())?
-            .mul_add(-86400.0, now)
-    } else {
-        let date: Date = since.parse().map_err(|_| refused())?;
-        if since.len() != 10 {
-            return Err(refused());
-        }
-        let midnight = date.to_zoned(zone.clone()).map_err(|_| refused())?;
-        midnight.timestamp().as_duration().as_secs_f64()
-    };
+    let from = start_second(since, now, zone).ok_or_else(refused)?;
     let instant = std::time::UNIX_EPOCH + std::time::Duration::from_secs_f64(from.floor().max(0.0));
     let at = jiff::Timestamp::try_from(instant).map_err(|_| refused())?;
     let mut period = at
@@ -61,6 +47,23 @@ fn start(since: &str, now: f64, zone: &TimeZone) -> Result<(f64, String), String
         let _ = write!(period, " ({since})");
     }
     Ok((from, period))
+}
+
+/// The epoch second `since` names: a span of days back from `now`, or a date's midnight in
+/// `zone`; none for anything else.
+fn start_second(since: &str, now: f64, zone: &TimeZone) -> Option<f64> {
+    let days = since
+        .strip_suffix('d')
+        .filter(|days| days.chars().all(|c| c.is_ascii_digit()));
+    if let Some(days) = days {
+        return Some(days.parse::<f64>().ok()?.mul_add(-86400.0, now));
+    }
+    let date: Date = since.parse().ok()?;
+    if since.len() != 10 {
+        return None;
+    }
+    let midnight = date.to_zoned(zone.clone()).ok()?;
+    Some(midnight.timestamp().as_duration().as_secs_f64())
 }
 
 /// `%.1fs` under a minute, `%dm %02ds` under an hour, else `%dh %02dm`.

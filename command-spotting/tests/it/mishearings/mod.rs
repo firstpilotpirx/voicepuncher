@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use voicepuncher_command_spotting::confirm::UtteranceTranscriber;
+use voicepuncher_command_spotting::conversions::saturating_usize;
 use voicepuncher_command_spotting::matcher::PhraseMatcher;
 use voicepuncher_voice_commands::{Recording, DICTATING, MISHEARINGS, STANDBY};
 
@@ -24,7 +25,7 @@ fn recorded(voice_samples: &str, recording: &Recording) -> Vec<f32> {
         .samples::<i16>()
         .map(|s| f32::from(s.unwrap()) / f32::from(i16::MAX))
         .collect();
-    let at = |secs: f32| ((secs * SAMPLE_RATE as f32) as usize).min(audio.len());
+    let at = |secs: f32| saturating_usize(secs * SAMPLE_RATE as f32).min(audio.len());
     audio[at(recording.at_secs - BEFORE_SECS)..at(recording.at_secs + AFTER_SECS)].to_vec()
 }
 

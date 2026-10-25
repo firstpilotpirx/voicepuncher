@@ -2,6 +2,7 @@
 
 use super::budget::{Kind, Measures};
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 
 pub type Baseline = BTreeMap<(Kind, String), usize>;
 
@@ -60,12 +61,9 @@ pub fn over_budget(kind: Kind, measure: usize) -> bool {
 pub fn render(baseline: &Baseline) -> String {
     let mut text = HEADER.to_owned();
     for kind in Kind::ALL {
-        text.push_str(&format!("\n[{}]\n", kind.key()));
+        let _ = write!(text, "\n[{}]\n", kind.key());
         for ((_, id), measure) in baseline.iter().filter(|((k, _), _)| *k == kind) {
-            text.push_str(&format!(
-                "{} = {measure}\n",
-                toml::Value::String(id.clone())
-            ));
+            let _ = writeln!(text, "{} = {measure}", toml::Value::String(id.clone()));
         }
     }
     text

@@ -1,10 +1,8 @@
 //! Pipelines that panic: the runtime stops one in order and starts another, unless the new
 //! one fails the same way at once.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, Result};
 use cucumber::{given, then, when};
 
 use voicepuncher::runtime::RuntimeState;
@@ -29,7 +27,7 @@ pub(super) enum Panics {
 
 /// Which pipelines of one run panic, and with what.
 #[derive(Debug)]
-pub(super) struct Plan {
+pub(crate) struct Plan {
     panics: Panics,
     message: String,
 }

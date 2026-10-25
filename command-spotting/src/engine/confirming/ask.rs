@@ -1,5 +1,6 @@
 //! The asking of confirmations: reserving a job, cutting its clip, and taking the answers.
 
+use std::ops::Range;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -17,7 +18,7 @@ impl Session<'_> {
         let answers = self
             .worker
             .as_ref()
-            .map(|w| w.answers())
+            .map(crate::worker::ConfirmationWorker::answers)
             .unwrap_or_default();
         let events = answers.into_iter().flat_map(|a| self.apply(a)).collect();
         self.ask_queued_check();
@@ -74,21 +75,19 @@ impl Session<'_> {
     ) -> Option<u64> {
         self.worker.as_ref()?;
         let audio = self.recent.between(from, to);
-        self.ask_clip(kind, audio, from, to, context)
+        self.ask_clip(kind, audio, from..to, context)
     }
 
-    /// Asks the worker what was said in `audio`, the stream from sample `from` to `to`.
-    #[expect(clippy::too_many_arguments, reason = "size baseline")]
+    /// Asks the worker what was said in `audio`, the samples `span` of the stream.
     pub(super) fn ask_clip(
         &mut self,
         kind: JobKind,
         audio: Vec<f32>,
-        from: usize,
-        to: usize,
+        span: Range<usize>,
         context: JobContext,
     ) -> Option<u64> {
         let n = self.reserve(kind, context)?;
-        self.submit(n, kind, audio, from, to);
+        self.submit(n, kind, audio, span);
         Some(n)
     }
 
@@ -114,21 +113,14 @@ impl Session<'_> {
         Some(n)
     }
 
-    /// Sends job `n` to the worker: what was said in `audio`, the stream from `from` to `to`.
-    #[expect(clippy::too_many_arguments, reason = "size baseline")]
-    pub(super) fn submit(
-        &mut self,
-        n: u64,
-        kind: JobKind,
-        audio: Vec<f32>,
-        from: usize,
-        to: usize,
-    ) {
+    /// Sends job `n` to the worker: what was said in `audio`, the samples `span` of the
+    /// stream.
+    pub(super) fn submit(&mut self, n: u64, kind: JobKind, audio: Vec<f32>, span: Range<usize>) {
         log::debug!(
             "job={} {kind:?} asks for {:.2}–{:.2}s",
             JobId { conn: self.conn, n },
-            seconds(from),
-            seconds(to)
+            seconds(span.start),
+            seconds(span.end)
         );
         if let Some(asked) = self.jobs.asked.get_mut(&n) {
             asked.asked = Instant::now();
@@ -183,7 +175,7 @@ impl Session<'_> {
             return;
         };
         let audio = self.recent.between(from, to);
-        self.submit(job, kind, audio, from, to);
+        self.submit(job, kind, audio, from..to);
         self.jobs.checks.asked(job);
     }
 }

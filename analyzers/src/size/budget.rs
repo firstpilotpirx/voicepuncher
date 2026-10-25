@@ -75,12 +75,10 @@ impl Kind {
 
     pub fn unit_name(self) -> &'static str {
         match self {
-            Self::FunctionLines => "code lines",
             Self::Parameters => "parameters",
-            Self::FileLines => "code lines",
+            Self::FileLines | Self::FunctionLines | Self::DirectoryLines => "code lines",
             Self::StructFields => "fields",
             Self::PublicMembers => "public members",
-            Self::DirectoryLines => "code lines",
             Self::Nesting | Self::Complexity => "",
         }
     }

@@ -6,8 +6,7 @@ use std::sync::Arc;
 
 use objc2::rc::Retained;
 use objc2::MainThreadMarker;
-use objc2_app_kit::{NSBackingStoreType, NSColor, NSWindow};
-use objc2_app_kit::{NSWindowCollectionBehavior, NSWindowStyleMask};
+use objc2_app_kit::NSWindow;
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 
 use super::sign_badge::{BadgeView, BADGE_SIZE};
@@ -139,29 +138,9 @@ fn build_window(mtm: MainThreadMarker) -> SignWindow {
         origin: NSPoint { x: 0.0, y: 0.0 },
         size: NSSize { width: BADGE_SIZE, height: BADGE_SIZE },
     };
-    // SAFETY: a fresh main-thread allocation (mtm), initialised once with plain values.
-    let window = unsafe {
-        NSWindow::initWithContentRect_styleMask_backing_defer(
-            mtm.alloc::<NSWindow>(),
-            frame,
-            NSWindowStyleMask::Borderless,
-            NSBackingStoreType::Buffered,
-            false,
-        )
-    };
-    // SAFETY: a Retained owns the window, so AppKit must not release it again on close.
-    unsafe { window.setReleasedWhenClosed(false) };
+    let window = super::glass::click_through_window(mtm, frame);
     window.setLevel(SIGN_LEVEL);
-    window.setOpaque(false);
     window.setHasShadow(true);
-    window.setBackgroundColor(Some(&NSColor::clearColor()));
-    window.setIgnoresMouseEvents(true);
-    window.setCollectionBehavior(
-        NSWindowCollectionBehavior::CanJoinAllSpaces
-            | NSWindowCollectionBehavior::Stationary
-            | NSWindowCollectionBehavior::IgnoresCycle
-            | NSWindowCollectionBehavior::FullScreenAuxiliary,
-    );
     let badge = BadgeView::build(mtm);
     window.setContentView(Some(badge.view()));
     SignWindow { window, badge }

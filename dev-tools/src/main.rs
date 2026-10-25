@@ -9,6 +9,7 @@ mod context;
 mod engines;
 mod filters;
 mod frozen;
+mod glob;
 mod journal;
 #[cfg(test)]
 mod justfile_rules;

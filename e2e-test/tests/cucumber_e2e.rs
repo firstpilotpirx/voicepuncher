@@ -30,11 +30,20 @@ pub struct E2eWorld {
     pub workdir: Option<tempfile::TempDir>,
     pub recording: Option<PathBuf>,
     pub spoken: Option<voicepuncher_e2e_test::speech::Lang>,
-    pub exit_status: Option<ExitStatus>,
-    pub corpus: Vec<voicepuncher_e2e_test::corpus::Sample>,
-    pub word_error_rates: Vec<f64>,
+    pub accuracy: AccuracyRun,
     pub config: Option<PathBuf>,
     pub transcription_url: Option<String>,
+    pub app: AppOutput,
+    pub voice: VoiceRun,
+    pub services: ServiceRuns,
+    pub archive: steps::dictation_archive::ArchiveRun,
+    pub distribution: steps::app_distribution::DistributionRun,
+}
+
+/// What the app under test printed and logged, and how its run ended.
+#[derive(Debug, Default)]
+pub struct AppOutput {
+    pub exit_status: Option<ExitStatus>,
     pub stdout: String,
     /// The app's log; after a file-mode run in which a copy of the speech recognition
     /// service sent no answer in time, the machine's load follows it.
@@ -42,19 +51,34 @@ pub struct E2eWorld {
     /// The log file of a hotkey-mode run, which logs nothing to a piped error output
     pub app_log: String,
     pub elapsed: Option<Duration>,
+}
+
+/// The voice control of the scenario and what it recognized.
+#[derive(Debug, Default)]
+pub struct VoiceRun {
     pub voice_control: bool,
-    /// The app under test starts its services itself; off leaves them to the service scripts.
-    pub manage_services: bool,
     pub command_spotting_url: Option<String>,
     pub recognized: Vec<voicepuncher::core::domain::VoiceCommand>,
     pub listened_before_secs: f32,
     pub hands_free: Option<steps::voice_control::HandsFree>,
     pub session: Option<steps::voice_control::HandsFreeSession>,
+}
+
+/// The corpus sample of an accuracy scenario and its word error rates.
+#[derive(Debug, Default)]
+pub struct AccuracyRun {
+    pub corpus: Vec<voicepuncher_e2e_test::corpus::Sample>,
+    pub word_error_rates: Vec<f64>,
+}
+
+/// The local services of the scenario.
+#[derive(Debug, Default)]
+pub struct ServiceRuns {
+    /// The app under test starts its services itself; off leaves them to the service scripts.
+    pub manage_services: bool,
     pub local_services: Option<steps::local_services::ScenarioServices>,
     /// Services the app's own supervisor started for the scenario, and their outages.
     pub owned_services: steps::local_services::OwnedServices,
-    pub archive: steps::dictation_archive::ArchiveRun,
-    pub distribution: steps::app_distribution::DistributionRun,
 }
 
 impl E2eWorld {
@@ -73,22 +97,22 @@ impl E2eWorld {
     /// Keeps the app's output of a file-mode run; when its log shows a copy of the speech
     /// recognition service that sent no answer in time, the machine's load now follows the log.
     pub fn note_app_output(&mut self, output: &std::process::Output) {
-        self.exit_status = Some(output.status);
-        self.stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        self.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        self.app.exit_status = Some(output.status);
+        self.app.stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        self.app.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         if let Some(load) = voicepuncher_e2e_test::unanswered_copies::load_beside(
-            &self.stderr,
+            &self.app.stderr,
             voicepuncher_e2e_test::machine_load::report,
         ) {
-            self.stderr.push('\n');
-            self.stderr.push_str(&load);
+            self.app.stderr.push('\n');
+            self.app.stderr.push_str(&load);
         }
     }
 
     /// The printed text and the app's log (with the machine's load behind an unanswered
     /// copy), for a failure about the printed text.
     pub fn printed_and_log(&self) -> String {
-        format!("printed: {}\nstderr:\n{}", self.stdout, self.stderr)
+        format!("printed: {}\nstderr:\n{}", self.app.stdout, self.app.stderr)
     }
 }
 
@@ -100,7 +124,6 @@ impl E2eWorld {
 /// cucumber never gets the selection (`--name`, `--tags`, `CUCUMBER_FILTER_TAGS`): it would apply
 /// it instead of the filter, and the gates with it. `scenario_filter::split` takes it out of the
 /// options and into the one filter that requires both.
-#[expect(clippy::too_many_lines, reason = "size baseline")]
 fn main() {
     // One nextest test, `scenarios`, is the whole run; any other command line is cucumber's own
     let Some(command_line) = harness_args::cucumber_command_line() else {
@@ -108,21 +131,14 @@ fn main() {
     };
     // check and full-check stop at the first failed scenario
     let command_line =
-        harness_args::with_fail_fast(command_line, std::env::var(harness_args::FAIL_FAST_VAR));
+        harness_args::with_fail_fast(command_line, &std::env::var(harness_args::FAIL_FAST_VAR));
     // The app's log lines, such as its `voice start:` timing, only for the modules RUST_LOG names;
     // the scenarios read the warnings and notes the app logs whatever RUST_LOG says
     steps::local_services::capture_log(
         env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("off")).build(),
     );
-    // The user's recorded commands stay on the machine; scenarios that need them run only
-    // where they exist.
-    let gates = vec![
-        Gate::wip(),
-        Gate::voice_samples(std::env::var("VOICEPUNCHER_VOICE_SAMPLES")),
-        Gate::signing_identity(std::env::var("VOICEPUNCHER_SIGNING_IDENTITY")),
-    ];
     let (opts, filter) =
-        scenario_filter::split(Opts::<_, _, _, Empty>::parse_from(command_line), gates);
+        scenario_filter::split(Opts::<_, _, _, Empty>::parse_from(command_line), gates());
     let filter = filter.narrowed_by_environment();
     for line in filter.gated_lines() {
         eprintln!("{line}");
@@ -138,16 +154,7 @@ fn main() {
     futures::executor::block_on(
         E2eWorld::cucumber()
             .max_concurrent_scenarios(concurrent_scenarios)
-            .which_scenario(|feature, rule, scenario| {
-                if RUN_ALONE
-                    .iter()
-                    .any(|tag| has_tag(feature, rule, scenario, tag))
-                {
-                    ScenarioType::Serial
-                } else {
-                    ScenarioType::Concurrent
-                }
-            })
+            .which_scenario(scenario_type)
             .before(move |_feature, _rule, scenario, _world| {
                 Box::pin(async move {
                     if hang_probe {
@@ -165,4 +172,30 @@ fn main() {
                 filter.runs(feature, rule, scenario)
             }),
     );
+}
+
+/// The gates of the run. The user's recorded commands stay on the machine; scenarios that
+/// need them run only where they exist.
+fn gates() -> Vec<Gate> {
+    vec![
+        Gate::wip(),
+        Gate::voice_samples(&std::env::var("VOICEPUNCHER_VOICE_SAMPLES")),
+        Gate::signing_identity(&std::env::var("VOICEPUNCHER_SIGNING_IDENTITY")),
+    ]
+}
+
+/// Serial for the scenarios tagged [`RUN_ALONE`], concurrent for every other.
+fn scenario_type(
+    feature: &cucumber::gherkin::Feature,
+    rule: Option<&cucumber::gherkin::Rule>,
+    scenario: &cucumber::gherkin::Scenario,
+) -> ScenarioType {
+    if RUN_ALONE
+        .iter()
+        .any(|tag| has_tag(feature, rule, scenario, tag))
+    {
+        ScenarioType::Serial
+    } else {
+        ScenarioType::Concurrent
+    }
 }

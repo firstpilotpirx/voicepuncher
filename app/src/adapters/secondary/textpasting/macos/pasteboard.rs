@@ -1,5 +1,7 @@
-//! A pasteboard through `AppKit`, the general one unless named: the text a paste puts there, and a snapshot of every item with
-//! every type's data, so whatever the user had copied (text, an image, files) is put back after the paste.
+//! A pasteboard through `AppKit`, the general one unless named.
+//!
+//! The text a paste puts there, and a snapshot of every item with every type's data, so
+//! whatever the user had copied (text, an image, files) is put back after the paste.
 
 use anyhow::{bail, Result};
 use objc2::rc::Retained;
@@ -11,7 +13,7 @@ use objc2_foundation::{NSArray, NSData, NSString};
 const PLAIN_TEXT_TYPE: &str = "public.utf8-plain-text";
 
 /// One pasteboard item: each of its types with that type's data.
-type ItemData = Vec<(String, Vec<u8>)>;
+pub type ItemData = Vec<(String, Vec<u8>)>;
 
 /// The change count of a pasteboard: it moves on every write, by this process or another.
 pub(super) type ChangeCount = isize;
@@ -99,7 +101,8 @@ impl PasteboardSnapshot {
     }
 }
 
-fn read_item(item: &NSPasteboardItem) -> ItemData {
+/// The data types of `item` with their bytes.
+pub fn read_item(item: &NSPasteboardItem) -> ItemData {
     item.types()
         .iter()
         .filter_map(|data_type: Retained<NSString>| {
@@ -109,7 +112,8 @@ fn read_item(item: &NSPasteboardItem) -> ItemData {
         .collect()
 }
 
-fn build_item(types: &ItemData) -> Retained<NSPasteboardItem> {
+/// A new pasteboard item holding `types`.
+pub fn build_item(types: &ItemData) -> Retained<NSPasteboardItem> {
     let item: Retained<NSPasteboardItem> = NSPasteboardItem::new();
     for (data_type, bytes) in types {
         item.setData_forType(&NSData::with_bytes(bytes), &NSString::from_str(data_type));

@@ -7,6 +7,7 @@
 use std::time::{Duration, Instant};
 
 use voicepuncher_command_spotting::confirm::{Hear, UtteranceTranscriber};
+use voicepuncher_e2e_test::conversions::saturating_usize;
 use voicepuncher_e2e_test::speech::Lang;
 use voicepuncher_e2e_test::speech_cache::{synthesized, SayRequest};
 
@@ -26,8 +27,8 @@ fn confirmations_of_russian_speech_stay_under_two_seconds() {
         .expect("VOICEPUNCHER_TRANSCRIPTION_URL names the speech recognition service");
     let transcriber = UtteranceTranscriber::new(&url).unwrap();
     let speech = russian_speech();
-    let window = (WINDOW_SECS * SAMPLE_RATE_HZ as f32) as usize;
-    let step = (STEP_SECS * SAMPLE_RATE_HZ as f32) as usize;
+    let window = saturating_usize(WINDOW_SECS * SAMPLE_RATE_HZ as f32);
+    let step = saturating_usize(STEP_SECS * SAMPLE_RATE_HZ as f32);
     let mut times: Vec<Duration> = (0..=speech.len() - window)
         .step_by(step)
         .map(|start| {
@@ -39,7 +40,7 @@ fn confirmations_of_russian_speech_stay_under_two_seconds() {
         })
         .collect();
     times.sort();
-    let at = |share: f64| times[((times.len() - 1) as f64 * share).round() as usize];
+    let at = |share: f64| times[saturating_usize(((times.len() - 1) as f64 * share).round())];
     let worst = *times.last().expect("windows");
     eprintln!(
         "{} windows: p50 {:.3} s, p95 {:.3} s, max {:.3} s, over 2 s: {}",

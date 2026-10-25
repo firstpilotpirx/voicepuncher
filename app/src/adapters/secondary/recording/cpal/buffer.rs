@@ -4,6 +4,7 @@
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
+use crate::core::domain::conversions::saturating_usize;
 use crate::core::domain::AudioBuffer16k;
 
 const RATE: usize = AudioBuffer16k::SAMPLE_RATE_HZ as usize;
@@ -88,7 +89,7 @@ impl RecordingBuffer {
 
 /// Number of 16 kHz samples captured between `started` and `cut`.
 pub fn samples_before(started: Instant, cut: Instant) -> usize {
-    (cut.saturating_duration_since(started).as_secs_f64() * RATE as f64) as usize
+    saturating_usize(cut.saturating_duration_since(started).as_secs_f64() * RATE as f64)
 }
 
 #[cfg(test)]
@@ -144,7 +145,7 @@ mod tests {
     #[test]
     fn should_take_only_the_samples_left_when_the_buffer_was_cut_after_its_length_was_read() {
         let buffer = RecordingBuffer::new(100_000);
-        buffer.append(&[1; 16_000]);
+        buffer.append(&vec![1; 16_000]);
         let read_len = buffer.len();
         buffer.cut_at(10_000);
         assert_eq!(buffer.between(4_000, read_len).len(), 6_000);

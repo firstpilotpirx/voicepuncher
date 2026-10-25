@@ -196,8 +196,11 @@ fn lint_runs_text_analyzers(_world: &mut WorkflowWorld) {
 
 #[then("every finding it lists names a file of the repository and a count above zero")]
 fn findings_exist(world: &mut WorkflowWorld) {
+    assert!(
+        world.text.contains("\n[findings]\n"),
+        "the clippy baseline has no findings table"
+    );
     let findings = entries(&world.text, Some("findings"));
-    assert!(!findings.is_empty(), "the clippy baseline lists nothing");
     for (finding, count) in findings {
         let file = finding.split_once(' ').map_or(finding, |(_, file)| file);
         assert!(count > 0, "{finding} = {count}");
@@ -280,13 +283,10 @@ fn complex_functions(world: &mut WorkflowWorld, threshold: u64) {
     );
 }
 
-#[then("it lists the duplicated lines with their count")]
-fn duplicated_lines(world: &mut WorkflowWorld) {
+#[then("it lists no duplicated lines, so any copy-pasted code fails")]
+fn no_duplicated_lines(world: &mut WorkflowWorld) {
     let count = entries(&world.text, Some("findings"))
         .into_iter()
         .find(|(name, _)| *name == "duplicated_lines");
-    assert!(
-        count.is_some_and(|(_, lines)| lines > 0),
-        "no duplicated_lines count"
-    );
+    assert!(count.is_none(), "duplicated lines listed: {count:?}");
 }

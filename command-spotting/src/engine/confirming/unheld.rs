@@ -37,7 +37,7 @@ impl Session<'_> {
         &self,
         reading: &PhraseMatcher,
         heard: &Heard,
-        spotted: Spotted,
+        spotted: &Spotted,
         from: usize,
     ) -> Option<ServerEvent> {
         let phrase = reading.phrase_in(&heard.text)?;

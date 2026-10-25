@@ -1,9 +1,9 @@
 //! The input device a recording opens for the configured microphone: the app's choice among
 //! the Mac's device names, and the real system default when the named one is not connected.
 
-use anyhow::{bail, Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait};
 use cucumber::{given, then, when};
+use voicepuncher::test_doubles::prelude::*;
 
 use voicepuncher::adapters::secondary::recording::cpal::devices::{numbered, open, position};
 

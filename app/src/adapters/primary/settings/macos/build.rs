@@ -53,7 +53,15 @@ pub fn control(parts: &Parts, field: &'static Field, tag: isize) -> FieldControl
     let (view, outlined, widget) = built;
     let control = FieldControl::new(field, view, outlined, widget);
     control.show(&parts.session.value(field));
-    if let (Control::PopUp(Choices::Sounds), Widget::PopUp(..)) = (field.control, &control.widget) {
+    with_play_button(parts, control, tag)
+}
+
+/// A sound's pop-up with the button that plays the chosen sound after it; any other control
+/// as it is.
+fn with_play_button(parts: &Parts, control: FieldControl, tag: isize) -> FieldControl {
+    if let (Control::PopUp(Choices::Sounds), Widget::PopUp(..)) =
+        (control.field.control, &control.widget)
+    {
         let play = button(parts, PLAY_TITLE, Action::PLAY, tag);
         return with_view_after(parts.mtm, control, &play);
     }

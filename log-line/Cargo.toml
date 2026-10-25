@@ -1,0 +1,14 @@
+[package]
+name = "voicepuncher-log-line"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+description = "The form of one log line, shared by the app and the command spotting service"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+env_logger = "=0.11.10"
+log = "=0.4.29"

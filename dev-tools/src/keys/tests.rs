@@ -2,9 +2,9 @@
 //! edits move them.
 
 use super::{compute, Inputs};
+use crate::process::git_ok;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 const TOOLCHAIN: &str = "rustc 1.88.0 (fake)\nhost: aarch64-apple-darwin\ncargo 1.88.0 (fake)\ncargo-nextest 0.9.146\njust 1.59.0\n25A1\n";
 const TABLE: &str = "openspec/*                                     none
@@ -85,27 +85,15 @@ fn put(root: &Path, path: &str, text: &str) {
     std::fs::write(file, format!("{text}\n")).unwrap();
 }
 
-fn git(root: &Path, args: &[&str]) {
-    let ok = Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(args)
-        .output()
-        .unwrap()
-        .status
-        .success();
-    assert!(ok, "git {args:?}");
-}
-
 /// The fixture repository the golden keys were computed on.
 fn fixture() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     for (path, text) in FILES {
         put(dir.path(), path, text);
     }
-    git(dir.path(), &["init", "-q"]);
-    git(dir.path(), &["add", "Cargo.toml", "app"]);
-    git(
+    git_ok(dir.path(), &["init", "-q"]);
+    git_ok(dir.path(), &["add", "Cargo.toml", "app"]);
+    git_ok(
         dir.path(),
         &[
             "-c",

@@ -2,18 +2,15 @@
 //! tells it to, that a confirmation stalled.
 
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use voicepuncher::adapters::secondary::commandspotting::websocket::test_stream::{
+    open_stream, OpenStream,
+};
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{ensure, Context, Result};
 use cucumber::{given, then, when};
 use tungstenite::Message;
 
 use voicepuncher::adapters::secondary::commandspotting::websocket::AudioStream;
-use voicepuncher::core::application::PipelineInput;
-use voicepuncher::core::domain::VoiceCommand;
 
 use super::local;
 use crate::IntegrationWorld;
@@ -22,7 +19,6 @@ const STALLED: &str = r#"{"event":"stalled","waited_ms":12000}"#;
 const READ_WAIT: Duration = Duration::from_millis(10);
 /// The client reports the loss and is back on a new connection well within this.
 const BACK_WITHIN: Duration = Duration::from_secs(5);
-const MIC_RATE_HZ: u32 = 48_000;
 /// A tenth of a second of silence at the microphone's rate.
 const SILENCE: usize = 4_800;
 
@@ -88,16 +84,7 @@ fn serve(stream: TcpStream, stall: &AtomicBool) {
 fn app_listens(world: &mut IntegrationWorld) -> Result<()> {
     let (stall, accepted) = (Arc::default(), Arc::default());
     let url = fake_service(&stall, &accepted)?;
-    let (audio, audio_rx) = mpsc::channel();
-    let (inputs_tx, inputs) = mpsc::channel();
-    let stream = AudioStream::start(
-        &url,
-        &VoiceCommand::STANDBY,
-        Instant::now(),
-        MIC_RATE_HZ,
-        audio_rx,
-        inputs_tx,
-    )?;
+    let OpenStream { stream, audio, inputs } = open_stream(&url, &VoiceCommand::STANDBY)?;
     local(world).stall =
         Some(StallRun { stream: Some(stream), audio, inputs, stall, accepted, got: Vec::new() });
     Ok(())

@@ -1,9 +1,9 @@
 //! Steps of `local_services.feature` about the warm-up of a speech recognition copy: the
 //! service scripts report a copy ready only after its first transcription.
 
-use anyhow::{bail, ensure, Context, Result};
 use cucumber::{then, when};
 use regex::Regex;
+use voicepuncher::test_doubles::prelude::*;
 
 use super::copies::{REQUEST_LOG_LINE, WARM_UP_FILE};
 use super::{services, ScenarioServices, COMMAND_SPEECH_RECOGNITION, SPEECH_RECOGNITION};
@@ -18,6 +18,7 @@ impl ScenarioServices {
     /// by the copy's port: the time of its first transcription, if the line names one.
     fn command_copies_ready(&self) -> Result<Vec<(u16, Option<u64>)>> {
         let (_, output) = self
+            .run
             .starts
             .iter()
             .find(|(name, _)| name == COMMAND_SPEECH_RECOGNITION)

@@ -13,6 +13,7 @@
 //! output is also copied to a log of the run, where the journal finds the failed tests.
 
 pub mod child;
+mod environment;
 pub mod it_real;
 pub mod model;
 mod table;
@@ -25,10 +26,11 @@ use crate::context::{var, Context};
 use crate::journal::{self, report::Report};
 use crate::locks::{command_on_test_ports, Lock};
 use crate::process::{code, Interrupt};
-use crate::{frozen, keys, passes, Outcome};
+use crate::{keys, passes, Outcome};
+use environment::{export_run, reuses_passes};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
-use std::io::{IsTerminal, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 /// The stages that run at the utility quality of service clamp, so they yield the CPU to another run's model stages.
@@ -88,27 +90,17 @@ impl Runner {
         let temp = || tempfile::NamedTempFile::new().map_err(|e| e.to_string());
         let (report, log) = (temp()?, temp()?);
         let context = Context::from_env();
-        // Single-threaded here: the children of every phase inherit what is set now
-        std::env::set_var("VOICEPUNCHER_STAGES_REPORT", report.path());
-        // Behind the copy to the log cargo and nextest see no terminal: they keep their colors when this run has one
-        if std::io::stdout().is_terminal() && var("CARGO_TERM_COLOR").is_none() {
-            std::env::set_var("CARGO_TERM_COLOR", "always");
-        }
-        export_frozen(&context);
-        let caller = lock.held_by_caller();
-        if caller {
-            std::env::set_var("VOICEPUNCHER_STAGES_CALLER_LOCK", "1");
-        }
+        let caller = export_run(&context, &lock, report.path());
         let keys = keys::of_this_run(&context, &stages).unwrap_or_else(|error| {
             eprintln!("✗ the stage keys could not be computed ({error}): every stage runs and no pass is recorded");
             Vec::new()
         });
         let rerun = var("VOICEPUNCHER_RERUN_FILTER").is_some()
             || var("VOICEPUNCHER_RERUN_SCENARIOS").is_some();
-        let reuse = if var("VOICEPUNCHER_REUSE_STAGES").as_deref() == Some("0") || rerun {
-            BTreeMap::new()
-        } else {
+        let reuse = if reuses_passes(rerun) {
             passed(&keys)
+        } else {
+            BTreeMap::new()
         };
         let interrupt = Interrupt::watch();
         Ok(Self {
@@ -317,19 +309,6 @@ impl Runner {
             &journal::path(),
             &journal::line(&run, report, &crate::clock::local_zone()),
         )
-    }
-}
-
-/// The frozen tests, once per run: a nested run and `frozen-tests run` keep what their caller set.
-fn export_frozen(context: &Context) {
-    if std::env::var_os("VOICEPUNCHER_FROZEN_FILTER").is_some() {
-        return;
-    }
-    let (filter, scenarios, lines) = frozen::exports(&context.stage_root());
-    std::env::set_var("VOICEPUNCHER_FROZEN_FILTER", filter);
-    std::env::set_var("VOICEPUNCHER_FROZEN_SCENARIOS", scenarios);
-    for line in lines {
-        println!("{line}");
     }
 }
 

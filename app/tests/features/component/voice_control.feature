@@ -462,7 +462,7 @@ Feature: voice-control
       Given listening is on
       And some seconds of microphone audio never reached the command spotting service earlier
       When the user says "start" and stays silent
-      Then the logged total matches the time from the end of "start" to the start cue within 0.1 s
+      Then the logged total matches the time from the end of the command to the start cue within 0.1 s
 
     Scenario: A hotkey start logs no voice start timing
       Given listening is on

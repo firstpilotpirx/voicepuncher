@@ -80,13 +80,16 @@ fn ramp(samples: usize, top: f32) -> Vec<f32> {
         .collect()
 }
 
-/// Feeds `audio` frame by frame, `speed` times faster than real time.
-fn feed(feeder: &mut Feeder, audio: &[f32], speed: u32) {
+/// Feeds `audio` frame by frame, `speed` times faster than real time; returns when the last frame went in.
+fn feed(feeder: &mut Feeder, audio: &[f32], speed: u32) -> Instant {
     let pace = Duration::from_millis(10) / speed;
+    let mut last_frame = Instant::now();
     for frame in audio.chunks(FRAME) {
         feeder.push(frame);
+        last_frame = Instant::now();
         std::thread::sleep(pace);
     }
+    last_frame
 }
 
 /// Spins half the cores until `stop` is set.
@@ -248,9 +251,8 @@ fn should_report_the_device_error_as_a_recording_failure_once() {
 fn should_report_a_stream_gone_silent_for_a_second_as_a_recording_failure() {
     let (mut recorder, mut feeder, failures) = failing_stand_in();
     recorder.start().unwrap();
-    feed(&mut feeder, &ramp(NATIVE_RATE as usize / 5, 0.5), 1);
-    // the last frame went in one pace (10 ms) before this moment
-    let last_audio = Instant::now();
+    // timed from the last frame itself, not after the pace that follows it, which stretches under load
+    let last_audio = feed(&mut feeder, &ramp(NATIVE_RATE as usize / 5, 0.5), 1);
     assert!(failures.recv_timeout(Duration::from_millis(900)).is_err());
     let reason = failure_reason(failures.recv_timeout(Duration::from_secs(2)).unwrap());
     assert!(last_audio.elapsed() >= Duration::from_millis(980));

@@ -1,11 +1,9 @@
 //! Steps of the service runtime: adoption, starts that fail, quit and the services' own logs.
 
-use std::time::Duration;
-
-use anyhow::{bail, ensure, Context, Result};
 use cucumber::{given, then, when};
+use voicepuncher::test_doubles::prelude::*;
 
-use voicepuncher::adapters::secondary::localservices::catalog::{needed, Needs};
+pub(crate) use voicepuncher::adapters::secondary::localservices::catalog::{needed, Needs};
 use voicepuncher::config::Config;
 use voicepuncher::core::application::local_services::{CHECK_INTERVAL, FAILED_CHECKS};
 use voicepuncher::core::domain::{ServiceKind, ServiceState};

@@ -11,6 +11,13 @@ use crate::config::Config;
 use crate::core::application::{ProbeAnswer, ServiceProbe};
 use crate::core::domain::{ServiceKind, ServiceSpec};
 
+mod engines;
+pub use engines::*;
+mod args;
+pub use args::*;
+mod found;
+use found::{existing, file_name_starts, first_problem, newest, shown};
+
 const WHISPER: &str = "whisper-server";
 const COMMAND_SPOTTING: &str = "voicepuncher-command-spotting";
 const DICTATION_MODEL: &str = "ggml-large-v3-turbo-q5_0.bin";
@@ -24,138 +31,6 @@ const ENGINES_DIR: &str = "engines";
 /// The file of an engine folder that holds the engine's version, written by `just engines`.
 const VERSION_FILE: &str = "VERSION";
 
-/// The engine folder inside the bundle that holds a program.
-fn engine_folder(program: &str) -> &'static str {
-    match program {
-        WHISPER => "whisper",
-        _ => "command-spotting",
-    }
-}
-
-/// What the services are looked up on: the home folder, the environment, `$PATH`, the
-/// folder of the running program and its processor cores.
-#[derive(Debug, Clone, Default)]
-pub struct Machine {
-    pub home: PathBuf,
-    pub env: HashMap<String, String>,
-    pub path: Vec<PathBuf>,
-    pub app_dir: Option<PathBuf>,
-    pub cores: usize,
-}
-
-impl Machine {
-    pub fn current() -> Self {
-        Self {
-            home: dirs::home_dir().unwrap_or_default(),
-            env: std::env::vars().collect(),
-            path: std::env::var_os("PATH")
-                .map(|path| std::env::split_paths(&path).collect())
-                .unwrap_or_default(),
-            app_dir: std::env::current_exe()
-                .ok()
-                .and_then(|exe| exe.parent().map(Path::to_path_buf)),
-            cores: std::thread::available_parallelism().map_or(1, usize::from),
-        }
-    }
-
-    fn var(&self, name: &str) -> Option<PathBuf> {
-        self.env
-            .get(name)
-            .filter(|value| !value.trim().is_empty())
-            .map(PathBuf::from)
-    }
-}
-
-/// Where a service's program came from, for the log.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EngineSource {
-    Bundle,
-    /// The variable that names the program.
-    Environment(String),
-    Path,
-    BuildFolder,
-}
-
-/// A service's program, where it came from and its version when known.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EngineOrigin {
-    pub program: String,
-    pub version: Option<String>,
-    pub source: EngineSource,
-}
-
-impl std::fmt::Display for EngineOrigin {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.version {
-            Some(version) => write!(f, "{} {version}", self.program)?,
-            None => write!(f, "{} (version unknown)", self.program)?,
-        }
-        match &self.source {
-            EngineSource::Bundle => write!(f, " from the bundle"),
-            EngineSource::Environment(var) => write!(f, " from {var}"),
-            EngineSource::Path => write!(f, " from $PATH"),
-            EngineSource::BuildFolder => write!(f, " from the build folder"),
-        }
-    }
-}
-
-/// Where a looked-up program came from — a variable naming it, the bundle's engine folders,
-/// `$PATH`, else the build folder — and its version: the version file of its folder, else the
-/// version folder of a Homebrew installation (`Cellar/<formula>/<version>/…`) it links to.
-pub fn engine_origin(program: &Path, machine: &Machine) -> EngineOrigin {
-    let named_by = machine
-        .env
-        .iter()
-        .filter(|(_, value)| Path::new(value.trim()) == program)
-        .map(|(name, _)| name.clone())
-        .min();
-    let source = if let Some(var) = named_by {
-        EngineSource::Environment(var)
-    } else if machine
-        .app_dir
-        .as_ref()
-        .is_some_and(|dir| program.starts_with(dir.join(ENGINES_DIR)))
-    {
-        EngineSource::Bundle
-    } else if program
-        .parent()
-        .is_some_and(|dir| machine.path.iter().any(|on_path| on_path == dir))
-    {
-        EngineSource::Path
-    } else {
-        EngineSource::BuildFolder
-    };
-    EngineOrigin {
-        program: program
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default(),
-        version: folder_version(program).or_else(|| cellar_version(program)),
-        source,
-    }
-}
-
-fn folder_version(program: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(program.with_file_name(VERSION_FILE)).ok()?;
-    Some(text.trim().to_string()).filter(|version| !version.is_empty())
-}
-
-fn cellar_version(program: &Path) -> Option<String> {
-    let resolved = program.canonicalize().ok()?;
-    let parts: Vec<String> = resolved
-        .components()
-        .map(|part| part.as_os_str().to_string_lossy().into_owned())
-        .collect();
-    let cellar = parts.iter().position(|part| part == "Cellar")?;
-    parts.get(cellar + 2).cloned()
-}
-
-/// The optional services the configuration turns on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Needs {
-    pub voice_control: bool,
-}
-
 impl Needs {
     pub fn of(cfg: &Config) -> Self {
         Self { voice_control: cfg.voice_control.enabled }
@@ -163,8 +38,10 @@ impl Needs {
 }
 
 /// Every service process the configuration needs, in start order: the speech recognition
-/// service for commands before the command spotting service, which asks it. A speech
-/// recognition service that already runs as other copies than configured is taken as it runs.
+/// service for commands before the command spotting service, which asks it.
+///
+/// A speech recognition service that already runs as other copies than configured is taken as it
+/// runs.
 pub fn needed(
     cfg: &Config,
     needs: Needs,
@@ -365,7 +242,11 @@ impl<'a> Lookup<'a> {
         let var = "VOICEPUNCHER_KWS_BINARY";
         let hint = "build it with 'cargo build --release -p voicepuncher-command-spotting'";
         self.engine(COMMAND_SPOTTING, var, hint).or_else(|missing| {
-            let app_dir = self.machine.app_dir.as_ref().ok_or(missing.clone())?;
+            let app_dir = self
+                .machine
+                .app_dir
+                .as_ref()
+                .ok_or_else(|| missing.clone())?;
             [
                 app_dir.join(COMMAND_SPOTTING),
                 app_dir.join("../release").join(COMMAND_SPOTTING),
@@ -449,99 +330,6 @@ fn running_copies(
         .filter(|&port| probe.answer(kind, port) == ProbeAnswer::Ready)
         .collect();
     (!answering.is_empty()).then_some(answering)
-}
-
-/// `dev-tools`'s `whisper_args`, without the program.
-pub fn whisper_args(model: &str, port: u16, threads: usize, vad: &str) -> Vec<String> {
-    let port = port.to_string();
-    let threads = threads.to_string();
-    [
-        "-m",
-        model,
-        "--host",
-        "127.0.0.1",
-        "--port",
-        &port,
-        "--inference-path",
-        "/v1/audio/transcriptions",
-        "-l",
-        "auto",
-        "-t",
-        &threads,
-        "-bo",
-        "1",
-        "-nf",
-        "-sns",
-        "-mc",
-        "0",
-        "--vad",
-        "-vm",
-        vad,
-        "-vsd",
-        "2000",
-        "-vp",
-        "500",
-        "-nlp",
-    ]
-    .map(String::from)
-    .to_vec()
-}
-
-/// `dev-tools`'s command spotting service line, without the program.
-pub fn command_spotting_args(
-    port: u16,
-    model_dir: &str,
-    vad: &str,
-    commands_url: &str,
-) -> Vec<String> {
-    let port = port.to_string();
-    [
-        "--port",
-        &port,
-        "--model-dir",
-        model_dir,
-        "--vad-model",
-        vad,
-        "--transcription-url",
-        commands_url,
-    ]
-    .map(String::from)
-    .to_vec()
-}
-
-fn existing(path: PathBuf, var: &str) -> Result<PathBuf, Missing> {
-    if path.exists() {
-        Ok(path)
-    } else {
-        Err(format!("{} not found (set by {var})", path.display()))
-    }
-}
-
-fn shown(found: &Result<PathBuf, Missing>) -> String {
-    found
-        .as_ref()
-        .map(|path| path.display().to_string())
-        .unwrap_or_default()
-}
-
-fn first_problem<const N: usize>(found: [&Result<PathBuf, Missing>; N]) -> Option<String> {
-    found
-        .into_iter()
-        .find_map(|item| item.as_ref().err().cloned())
-}
-
-/// The most recently changed of `found`; of equally recent ones, the first by name.
-fn newest(found: Vec<PathBuf>) -> Option<PathBuf> {
-    found.into_iter().max_by_key(|path| {
-        let changed = path.metadata().and_then(|meta| meta.modified()).ok();
-        (changed, std::cmp::Reverse(path.clone()))
-    })
-}
-
-fn file_name_starts(path: &Path, prefix: &str) -> bool {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.starts_with(prefix))
 }
 
 fn has_extension(path: &Path, extension: &str) -> bool {

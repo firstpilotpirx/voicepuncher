@@ -1,10 +1,10 @@
 //! The stand-ins of the app runtime scenarios.
 
 use super::{
-    push, Arc, AtomicUsize, CleanedText, CommandSpotter, Event, Events, FailureNotice, FocusProbe,
-    FocusedElement, HotKey, HotkeyBinding, HotkeyListener, JoinHandle, Mutex, Ordering, Part,
-    Permission, PermissionProbe, PermissionStatus, PermissionsGate, PttSignal, Result,
-    RuntimeObserver, RuntimeState, Sender, SoundPlayer, TextPaster, VisualIndicator, VoiceCommand,
+    push, Arc, AtomicUsize, CleanedText, CommandSpotter, Event, Events, FailureNotice, HotKey,
+    HotkeyBinding, HotkeyListener, JoinHandle, Mutex, Ordering, Part, Permission, PermissionProbe,
+    PermissionStatus, PermissionsGate, PttSignal, Result, RuntimeObserver, RuntimeState, Sender,
+    SoundPlayer, TextPaster, VisualIndicator, VoiceCommand,
 };
 
 pub(super) struct StandInPaster(pub(super) Part);
@@ -50,25 +50,6 @@ impl VisualIndicator for NoticeOverlay {
     voicepuncher::shows_no_voice_control_signs!();
 }
 
-pub(super) struct ScriptedFocus(pub(super) Arc<Mutex<bool>>);
-
-impl FocusProbe for ScriptedFocus {
-    fn focused_element(&self) -> Result<Option<FocusedElement>> {
-        let text_field = *self.0.lock().unwrap();
-        Ok(Some(FocusedElement {
-            role: if text_field {
-                "AXTextField"
-            } else {
-                "AXButton"
-            }
-            .to_owned(),
-            has_text_selection: text_field,
-            value_settable: text_field,
-            in_web_content: false,
-        }))
-    }
-}
-
 pub(super) struct StandInSpotter(pub(super) Part);
 
 impl CommandSpotter for StandInSpotter {
@@ -100,7 +81,7 @@ impl RuntimeObserver for RecordingObserver {
 /// The keyboard the runtime's listener reads: a press reaches the runtime only when the key
 /// is the one the binding holds at that moment, as the real listener matches every event.
 #[derive(Clone, Default)]
-pub(super) struct FakeKeyboard {
+pub(crate) struct FakeKeyboard {
     pub(super) wired: Arc<Mutex<Option<Wiring>>>,
 }
 

@@ -28,30 +28,11 @@ fn panic_line(info: &PanicHookInfo) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
-
     use super::*;
-
-    struct CapturedLines(Mutex<Vec<String>>);
-
-    impl log::Log for CapturedLines {
-        fn enabled(&self, _metadata: &log::Metadata) -> bool {
-            true
-        }
-
-        fn log(&self, record: &log::Record) {
-            self.0.lock().unwrap().push(record.args().to_string());
-        }
-
-        fn flush(&self) {}
-    }
-
-    static LINES: CapturedLines = CapturedLines(Mutex::new(Vec::new()));
 
     #[test]
     fn should_log_the_message_place_and_thread_of_a_panic() {
-        log::set_logger(&LINES).expect("one logger per test process");
-        log::set_max_level(log::LevelFilter::Error);
+        let lines = voicepuncher_test_steps::log_lines::captured(log::LevelFilter::Error);
         install_panic_hook();
 
         let worker = std::thread::Builder::new()
@@ -60,9 +41,8 @@ mod tests {
             .unwrap();
 
         assert!(worker.join().is_err());
-        let lines = LINES.0.lock().unwrap();
-        let line = lines.iter().find(|l| l.starts_with("panic: boom at "));
-        let line = line.expect("the panic is logged");
+        let logged = lines.starting_with("panic: boom at ");
+        let line = logged.first().expect("the panic is logged");
         let place = regex::Regex::new(r"panic_hook\.rs:\d+ on thread worker$").unwrap();
         assert!(place.is_match(line), "{line}");
         assert!(line.ends_with(" on thread worker"), "{line}");

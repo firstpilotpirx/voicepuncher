@@ -1,7 +1,5 @@
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 
 use voicepuncher_e2e_test::accuracy_gate::ratchet;
@@ -52,7 +50,7 @@ fn benchmark_sample(world: &mut E2eWorld, size: usize) -> Result<()> {
             );
         }
     }
-    world.corpus = samples;
+    world.accuracy.corpus = samples;
     Ok(())
 }
 
@@ -70,18 +68,18 @@ async fn transcribe_recording(world: &mut E2eWorld) -> Result<()> {
 #[when("the user transcribes every recording of the sample")]
 async fn transcribe_sample(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, move |world| {
-        let outputs = map_concurrently(&world.corpus, CONCURRENT_RECORDINGS, |sample| {
+        let outputs = map_concurrently(&world.accuracy.corpus, CONCURRENT_RECORDINGS, |sample| {
             transcribe(&sample.path, None)
         });
         eprintln!("\n  {:<20} {:<4} {:>7} {:>8}", "id", "lang", "dur", "wer");
-        for (sample, output) in world.corpus.iter().zip(outputs) {
+        for (sample, output) in world.accuracy.corpus.iter().zip(outputs) {
             let hypothesis = String::from_utf8_lossy(&output?.stdout).trim().to_owned();
             let rate = wer(&sample.reference, &hypothesis);
             eprintln!(
                 "  {:<20} {:<4} {:>7.1} {:>8.3}",
                 sample.id, sample.lang, sample.duration_s, rate
             );
-            world.word_error_rates.push(rate);
+            world.accuracy.word_error_rates.push(rate);
         }
         Ok(())
     })
@@ -90,7 +88,7 @@ async fn transcribe_sample(world: &mut E2eWorld) -> Result<()> {
 
 #[then("the app does not exit with a startup failure")]
 fn no_startup_failure(world: &mut E2eWorld) -> Result<()> {
-    let status = world.exit_status.context("the app did not run")?;
+    let status = world.app.exit_status.context("the app did not run")?;
     if status.code() == Some(STARTUP_FAILURE_EXIT_CODE) {
         bail!("the app exited with a startup failure ({status})");
     }
@@ -98,7 +96,12 @@ fn no_startup_failure(world: &mut E2eWorld) -> Result<()> {
 }
 
 pub(crate) fn no_permission_checked(world: &mut E2eWorld) -> Result<()> {
-    if let Some(line) = world.stderr.lines().find(|l| l.contains("permissions:")) {
+    if let Some(line) = world
+        .app
+        .stderr
+        .lines()
+        .find(|l| l.contains("permissions:"))
+    {
         bail!("file mode checked the permissions: {line}");
     }
     Ok(())
@@ -106,7 +109,7 @@ pub(crate) fn no_permission_checked(world: &mut E2eWorld) -> Result<()> {
 
 #[then("the mean word error rate is no worse than the accepted baseline")]
 fn mean_wer_within_baseline(world: &mut E2eWorld) -> Result<()> {
-    let rates = &world.word_error_rates;
+    let rates = &world.accuracy.word_error_rates;
     let verdict = ratchet(rates.len(), rates.iter().sum::<f64>() / rates.len() as f64);
     eprintln!(
         "\n  {}\n",
@@ -118,14 +121,14 @@ fn mean_wer_within_baseline(world: &mut E2eWorld) -> Result<()> {
 pub fn transcribe(recording: &Path, config: Option<&Path>) -> Result<Output> {
     let mut cmd = transcribe_command(recording, config)?;
     cmd.output()
-        .with_context(|| format!("failed to spawn {:?}", cmd.get_program()))
+        .with_context(|| format!("failed to spawn {}", cmd.get_program().display()))
 }
 
 /// The app's command line that transcribes `recording` through the local services.
 pub fn transcribe_command(recording: &Path, config: Option<&Path>) -> Result<Command> {
     let mut cmd = Command::new(sut_bin());
     cmd.arg("--config")
-        .arg(config.unwrap_or(Path::new(NO_CONFIG)))
+        .arg(config.unwrap_or_else(|| Path::new(NO_CONFIG)))
         .arg("--input-file")
         .arg(recording)
         .arg("--transcription-url")
@@ -134,11 +137,10 @@ pub fn transcribe_command(recording: &Path, config: Option<&Path>) -> Result<Com
 }
 
 pub fn sut_bin() -> PathBuf {
-    std::env::var("VOICEPUNCHER_BIN")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/release/voicepuncher")
-        })
+    std::env::var("VOICEPUNCHER_BIN").map_or_else(
+        |_| Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/release/voicepuncher"),
+        PathBuf::from,
+    )
 }
 
 pub fn env(name: &str) -> Result<String> {

@@ -1,6 +1,6 @@
 //! The doubles of the pipeline's unit tests: quiet ones, noting ones and failing ones.
 
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use anyhow::anyhow;
 
@@ -172,42 +172,8 @@ pub(super) fn noting_activity() -> (Box<dyn PipelineActivitySink>, Noted<Pipelin
     )
 }
 
-/// Every line the pipeline logs at info and above, for the lines the manual run reads.
-pub(crate) struct CapturedLog(Mutex<Vec<String>>);
-
-impl log::Log for CapturedLog {
-    fn enabled(&self, metadata: &log::Metadata) -> bool {
-        metadata.level() <= log::Level::Info
-    }
-
-    fn log(&self, record: &log::Record) {
-        self.0.lock().unwrap().push(record.args().to_string());
-    }
-
-    fn flush(&self) {}
-}
-
-impl CapturedLog {
-    pub(crate) fn lines_starting_with(&self, prefix: &str) -> Vec<String> {
-        self.0
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|line| line.starts_with(prefix))
-            .cloned()
-            .collect()
-    }
-}
-
-/// The process's log, captured from the first call on; nextest runs each test in a process
-/// of its own, so it holds one test's lines.
-pub(crate) fn captured_log() -> &'static CapturedLog {
-    static LOG: OnceLock<&'static CapturedLog> = OnceLock::new();
-    LOG.get_or_init(|| {
-        let log: &'static CapturedLog = Box::leak(Box::new(CapturedLog(Mutex::new(Vec::new()))));
-        if log::set_logger(log).is_ok() {
-            log::set_max_level(log::LevelFilter::Info);
-        }
-        log
-    })
+/// The process's log at info and above, captured from the first call on; nextest runs each
+/// test in a process of its own, so it holds one test's lines.
+pub(crate) fn captured_log() -> &'static voicepuncher_test_steps::log_lines::LogLines {
+    voicepuncher_test_steps::log_lines::captured(log::LevelFilter::Info)
 }

@@ -111,29 +111,25 @@ impl Lock {
 
     /// The command line that runs `command` under the quiet lock in the shared mode.
     pub fn quiet(&self, command: &[OsString]) -> Vec<OsString> {
-        let Some(wrapper) = &self.wrapper else {
-            return command.to_vec();
-        };
-        let mut line = vec![
-            "env".into(),
-            dir_setting(&self.quiet_dir()),
-            wrapper.clone().into_os_string(),
-            "--shared".into(),
-        ];
-        line.extend(command.iter().cloned());
-        line
+        self.under(&self.quiet_dir(), &["--shared"], command)
     }
 
     /// The command line that runs `command` under the machine lock exclusively.
     pub fn machine(&self, command: &[OsString]) -> Vec<OsString> {
+        self.under(self.dir.as_os_str(), &[], command)
+    }
+
+    /// The command line that runs `command` under the lock in `dir`, the wrapper given `flags`.
+    fn under(&self, dir: &std::ffi::OsStr, flags: &[&str], command: &[OsString]) -> Vec<OsString> {
         let Some(wrapper) = &self.wrapper else {
             return command.to_vec();
         };
         let mut line = vec![
             "env".into(),
-            dir_setting(self.dir.as_os_str()),
+            dir_setting(dir),
             wrapper.clone().into_os_string(),
         ];
+        line.extend(flags.iter().map(OsString::from));
         line.extend(command.iter().cloned());
         line
     }

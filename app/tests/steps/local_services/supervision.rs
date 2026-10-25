@@ -2,12 +2,7 @@
 //! note their starts and pids in the scenario's folder, a probe answers on the ports a step
 //! says, and the steps move the clock.
 
-use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
-use std::sync::Arc;
-use std::time::{Duration, Instant};
-
-use anyhow::{bail, Context, Result};
+use voicepuncher::test_doubles::prelude::*;
 
 use voicepuncher::adapters::secondary::localservices::process::ProcessLauncher;
 use voicepuncher::core::application::{Clock, Services};

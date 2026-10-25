@@ -3,10 +3,8 @@
 //! command's words was fed to the moment the stand-in sound player got the start (or restart)
 //! sound.
 
-use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 
 use voicepuncher_e2e_test::machine_load;
@@ -15,11 +13,8 @@ use voicepuncher_e2e_test::voice_commands::{
     from_first_sound, silence, spoken_by, without_trailing_silence,
 };
 
-use super::speech_after_start::{cut, forms_of, BEFORE_RESTART, SENTENCE};
-use super::{
-    env, room_noise, session_of, until_last_sound, Event, Expected, HandsFreeSession,
-    ENGLISH_VOICE, SAMPLE_RATE_HZ,
-};
+use super::speech_after_start::{BEFORE_RESTART, SENTENCE};
+use super::{env, session_of, Expected, HandsFreeSession, ENGLISH_VOICE, SAMPLE_RATE_HZ};
 use crate::E2eWorld;
 
 /// 20 ms per message: a real microphone delivers audio about this often.
@@ -30,28 +25,19 @@ const CUE_WAIT: Duration = Duration::from_secs(5);
 /// WHY: decoding is deterministic, so the same audio misheard once ("Capsule dictation")
 /// is misheard the same way again; another voice is a new chance.
 const CANCEL_VOICES: [&str; 2] = [ENGLISH_VOICE, "Samantha"];
-/// Room noise before each of the user's recorded starts, as in a real stream.
-const ROOM_BEFORE_SECS: f32 = 1.0;
 /// How long a dictation runs before the "restart" said on its own.
-const DICTATED_SECS: f32 = 20.0;
 /// Said during the dictation before a restart, one after another.
 const DICTATED: [&str; 3] = [
     BEFORE_RESTART,
     "Please bring the slides to the review on Monday",
     "The train leaves at seven and arrives before noon",
 ];
-/// The user's labelled recording session holding their starts from standby.
-const RECORDED_STARTS_SESSION: &str = "session-2";
-/// The ways of saying a start from standby that are only the command's words.
-const START_FORMS: [&str; 3] = ["start", "start start", "start please"];
 
 /// One voice start the scenario timed.
 #[derive(Debug, Clone)]
 pub(super) struct MeasuredStart {
     /// What started the dictation and what followed it, for the report.
     label: String,
-    /// The events of the session before the command was said.
-    events_before: usize,
     /// When the sample that ends the command's words was fed.
     words_ended: Instant,
     /// Where the command's words end in the stream the command spotting service heard, in
@@ -59,7 +45,7 @@ pub(super) struct MeasuredStart {
     words_end_in_stream: f32,
     /// When the last sample of the speech after the command was fed, if speech followed.
     speech_ended: Option<Instant>,
-    cue: Option<Instant>,
+    pub(super) cue: Option<Instant>,
     /// The confirmations the command spotting service cut short while the cue was awaited.
     cut_short: Vec<String>,
 }
@@ -100,7 +86,7 @@ impl HandsFreeSession {
         let began = Instant::now();
         let mut words_ended = None;
         for (n, frame) in samples.chunks(REAL_TIME_FRAME_SAMPLES).enumerate() {
-            let due = began + frame_time * n as u32;
+            let due = began + frame_time * u32::try_from(n).unwrap();
             std::thread::sleep(due.saturating_duration_since(Instant::now()));
             self.hear(frame)?;
             if words_ended.is_none() && (n + 1) * REAL_TIME_FRAME_SAMPLES >= words_end {
@@ -113,14 +99,13 @@ impl HandsFreeSession {
 
     /// Says `audio`, whose command's words end at sample `words_end`, then lets the room be
     /// heard until a dictation starts, and times the start cue.
-    fn time_start(
+    pub(super) fn time_start(
         &self,
         label: String,
         audio: &[f32],
         words_end: usize,
         room: &[f32],
     ) -> Result<MeasuredStart> {
-        let events_before = self.events().len();
         let cues_before = self.cues.lock().unwrap().len();
         let heard_before = self.microphone.captured.lock().unwrap().len();
         let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
@@ -129,7 +114,6 @@ impl HandsFreeSession {
         let cue = self.next_cue(cues_before, room, fed)?;
         let measured = MeasuredStart {
             label,
-            events_before,
             words_ended,
             words_end_in_stream: (heard_before + words_end) as f32 / SAMPLE_RATE_HZ,
             speech_ended: (audio.len() > words_end).then_some(fed),
@@ -149,7 +133,8 @@ impl HandsFreeSession {
         let deadline = Instant::now() + CUE_WAIT;
         let frame_time = Duration::from_secs_f32(REAL_TIME_FRAME_SAMPLES as f32 / SAMPLE_RATE_HZ);
         for (n, frame) in room.chunks(REAL_TIME_FRAME_SAMPLES).cycle().enumerate() {
-            if let Some(cue) = self.cues.lock().unwrap().get(seen).copied() {
+            let cue = self.cues.lock().unwrap().get(seen).copied();
+            if let Some(cue) = cue {
                 return Ok(Some(cue));
             }
             if Instant::now() >= deadline {
@@ -157,7 +142,7 @@ impl HandsFreeSession {
             }
             // WHY: a sleep of one frame after each frame runs slower than real time, so the
             // pause after a command would reach the service later than it was said.
-            let due = last_fed + frame_time * (n as u32 + 1);
+            let due = last_fed + frame_time * (u32::try_from(n).unwrap() + 1);
             std::thread::sleep(due.saturating_duration_since(Instant::now()));
             self.hear(frame)?;
         }
@@ -167,7 +152,7 @@ impl HandsFreeSession {
     /// Ends a dictation the scenario started, without transcribing it: after a pause, so
     /// "cancel dictation" is an utterance of its own, and once more in another voice when
     /// it was not heard.
-    fn cancel_dictation(&self, room: &[f32]) -> Result<()> {
+    pub(super) fn cancel_dictation(&self, room: &[f32]) -> Result<()> {
         for voice in CANCEL_VOICES {
             let seen = self.events().len();
             self.hear_timed(room, room.len())?;
@@ -190,6 +175,15 @@ impl HandsFreeSession {
             .cloned()
             .context("no voice start was timed")
     }
+
+    /// The last voice start, which must be the one `said` began.
+    fn last_start_of(&self, said: &str) -> Result<MeasuredStart> {
+        let start = self.last_start()?;
+        if !start.label.contains(said) {
+            bail!("the last voice start was {}, not \"{said}\"", start.label);
+        }
+        Ok(start)
+    }
 }
 
 /// `said` in a synthesized voice, cut after its last sound.
@@ -197,7 +191,7 @@ fn synthesized_command(said: &str) -> Result<Vec<f32>> {
     Ok(without_trailing_silence(spoken_by(ENGLISH_VOICE, said)?))
 }
 
-fn sentence_at_once() -> Result<Vec<f32>> {
+pub(super) fn sentence_at_once() -> Result<Vec<f32>> {
     Ok(from_first_sound(spoken_by(ENGLISH_VOICE, SENTENCE)?))
 }
 
@@ -214,12 +208,12 @@ fn check_within(start: &MeasuredStart, bound_secs: f32) -> Result<()> {
     Ok(())
 }
 
-#[given(expr = "someone has dictated for about {int} s")]
-fn dictated_for(world: &mut E2eWorld, _secs: u32) -> Result<()> {
+#[given(expr = "someone has dictated for about {float} s")]
+fn dictated_for(world: &mut E2eWorld, secs: f32) -> Result<()> {
     let session = session_of(world)?;
     let mut audio = Vec::new();
     for sentence in DICTATED.iter().cycle() {
-        if audio.len() as f32 >= DICTATED_SECS * SAMPLE_RATE_HZ {
+        if audio.len() as f32 >= secs * SAMPLE_RATE_HZ {
             break;
         }
         audio.extend(spoken_by(ENGLISH_VOICE, sentence)?);
@@ -227,12 +221,8 @@ fn dictated_for(world: &mut E2eWorld, _secs: u32) -> Result<()> {
     session.hear_timed(&audio, audio.len()).map(|_| ())
 }
 
-#[when(expr = "someone says {string} and {word} sentence without a pause")]
-fn says_command_and_sentence_at_once(
-    world: &mut E2eWorld,
-    said: String,
-    _which: String,
-) -> Result<()> {
+#[when(expr = "someone says {string} and a/another sentence without a pause")]
+fn says_command_and_sentence_at_once(world: &mut E2eWorld, said: String) -> Result<()> {
     let session = session_of(world)?;
     let mut audio = synthesized_command(&said)?;
     let words_end = audio.len();
@@ -251,52 +241,11 @@ fn says_command_alone(world: &mut E2eWorld, said: String) -> Result<()> {
     Ok(())
 }
 
-#[when(
-    "each of the user's recorded starts is played, on its own and followed at once by a sentence"
-)]
-fn recorded_starts(world: &mut E2eWorld) -> Result<()> {
-    let session = session_of(world)?;
-    let root = PathBuf::from(env("VOICEPUNCHER_VOICE_SAMPLES")?);
-    let forms: Vec<_> = forms_of(&root, RECORDED_STARTS_SESSION)?
-        .into_iter()
-        .filter(|form| {
-            form.state == "standby"
-                && form.commands == ["start dictation"]
-                && START_FORMS.contains(&form.said.as_str())
-        })
-        .collect();
-    if forms.is_empty() {
-        bail!("no recorded starts in {RECORDED_STARTS_SESSION}");
-    }
-    let room = room_noise(0.8)?;
-    for form in &forms {
-        for followed in [false, true] {
-            let mut audio = room_noise(ROOM_BEFORE_SECS)?;
-            audio.extend(until_last_sound(cut(&root, RECORDED_STARTS_SESSION, form)?));
-            let words_end = audio.len();
-            if followed {
-                audio.extend(sentence_at_once()?);
-            }
-            let after = if followed {
-                "followed by speech"
-            } else {
-                "alone"
-            };
-            let label = format!("recorded \"{}\" at {} s {after}", form.said, form.start);
-            let start = session.time_start(label, &audio, words_end, &room)?;
-            if start.cue.is_some() {
-                session.cancel_dictation(&room)?;
-            }
-        }
-    }
-    Ok(())
-}
-
 #[then(
     expr = "the start cue comes within {float} s of the end of {string}, while the sentence is still being said"
 )]
-fn cue_while_speaking(world: &mut E2eWorld, bound_secs: f32, _said: String) -> Result<()> {
-    let start = session_of(world)?.last_start()?;
+fn cue_while_speaking(world: &mut E2eWorld, bound_secs: f32, said: String) -> Result<()> {
+    let start = session_of(world)?.last_start_of(&said)?;
     check_within(&start, bound_secs)?;
     match (start.cue, start.speech_ended) {
         (Some(cue), Some(speech_ended)) if cue < speech_ended => Ok(()),
@@ -308,28 +257,13 @@ fn cue_while_speaking(world: &mut E2eWorld, bound_secs: f32, _said: String) -> R
 }
 
 #[then(expr = "the start cue comes within {float} s of the end of {string}")]
-fn cue_within(world: &mut E2eWorld, bound_secs: f32, _said: String) -> Result<()> {
-    check_within(&session_of(world)?.last_start()?, bound_secs)
+fn cue_within(world: &mut E2eWorld, bound_secs: f32, said: String) -> Result<()> {
+    check_within(&session_of(world)?.last_start_of(&said)?, bound_secs)
 }
 
 #[then(expr = "the start cue of the new dictation comes within {float} s of the end of {string}")]
-fn restart_cue_within(world: &mut E2eWorld, bound_secs: f32, _said: String) -> Result<()> {
-    check_within(&session_of(world)?.last_start()?, bound_secs)
-}
-
-#[then(
-    expr = "the Return key is pressed and the start cue comes within {float} s of the end of {string}"
-)]
-fn return_and_cue_within(world: &mut E2eWorld, bound_secs: f32, _said: String) -> Result<()> {
-    let session = session_of(world)?;
-    let start = session.last_start()?;
-    if !session.events()[start.events_before..].contains(&Event::ReturnPressed) {
-        bail!(
-            "the Return key was not pressed; events: {:?}",
-            session.events()
-        );
-    }
-    check_within(&start, bound_secs)
+fn restart_cue_within(world: &mut E2eWorld, bound_secs: f32, said: String) -> Result<()> {
+    check_within(&session_of(world)?.last_start_of(&said)?, bound_secs)
 }
 
 #[then(

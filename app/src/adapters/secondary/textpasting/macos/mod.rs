@@ -8,7 +8,7 @@ use crate::adapters::secondary::permissions::macos::process_is_trusted_for_acces
 use crate::core::application::text_paster::TextPaster;
 use crate::core::domain::{AccessibilityMissing, CleanedText};
 
-mod pasteboard;
+pub mod pasteboard;
 mod restore;
 
 use pasteboard::{Board, ChangeCount, PasteboardSnapshot};
@@ -136,7 +136,7 @@ mod tests {
         // Given
         let mut paster = MacOsTextPaster::with_paste_keystroke(0, || Ok(()));
         paster.trusted = || false;
-        let text = CleanedText::new("hello".to_owned()).unwrap();
+        let text = CleanedText::new("hello").unwrap();
         // When
         let error = paster.paste(&text).unwrap_err();
         // Then

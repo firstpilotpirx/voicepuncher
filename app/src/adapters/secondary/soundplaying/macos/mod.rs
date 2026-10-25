@@ -3,29 +3,29 @@ use std::path::PathBuf;
 use crate::core::application::SoundPlayer;
 
 pub struct MacosSoundPlayer {
-    start_path: Option<PathBuf>,
-    stop_path: Option<PathBuf>,
-    cancel_path: Option<PathBuf>,
-    listening_on_path: Option<PathBuf>,
-    listening_off_path: Option<PathBuf>,
-    enter_path: Option<PathBuf>,
-    clear_path: Option<PathBuf>,
-    paste_path: Option<PathBuf>,
-    restart_path: Option<PathBuf>,
+    start: Option<PathBuf>,
+    stop: Option<PathBuf>,
+    cancel: Option<PathBuf>,
+    listening_on: Option<PathBuf>,
+    listening_off: Option<PathBuf>,
+    enter: Option<PathBuf>,
+    clear: Option<PathBuf>,
+    paste: Option<PathBuf>,
+    restart: Option<PathBuf>,
 }
 
 impl MacosSoundPlayer {
     pub fn new(start_sound: &str, stop_sound: &str, cancel_sound: &str) -> Self {
         Self {
-            start_path: Self::resolve(start_sound),
-            stop_path: Self::resolve(stop_sound),
-            cancel_path: Self::resolve(cancel_sound),
-            listening_on_path: None,
-            listening_off_path: None,
-            enter_path: None,
-            clear_path: None,
-            paste_path: None,
-            restart_path: None,
+            start: Self::resolve(start_sound),
+            stop: Self::resolve(stop_sound),
+            cancel: Self::resolve(cancel_sound),
+            listening_on: None,
+            listening_off: None,
+            enter: None,
+            clear: None,
+            paste: None,
+            restart: None,
         }
     }
 
@@ -35,8 +35,8 @@ impl MacosSoundPlayer {
         listening_on_sound: &str,
         listening_off_sound: &str,
     ) -> Self {
-        self.listening_on_path = Self::resolve(listening_on_sound);
-        self.listening_off_path = Self::resolve(listening_off_sound);
+        self.listening_on = Self::resolve(listening_on_sound);
+        self.listening_off = Self::resolve(listening_off_sound);
         self
     }
 
@@ -48,10 +48,10 @@ impl MacosSoundPlayer {
         paste_sound: &str,
         restart_sound: &str,
     ) -> Self {
-        self.enter_path = Self::resolve(enter_sound);
-        self.clear_path = Self::resolve(clear_sound);
-        self.paste_path = Self::resolve(paste_sound);
-        self.restart_path = Self::resolve(restart_sound);
+        self.enter = Self::resolve(enter_sound);
+        self.clear = Self::resolve(clear_sound);
+        self.paste = Self::resolve(paste_sound);
+        self.restart = Self::resolve(restart_sound);
         self
     }
 
@@ -92,7 +92,7 @@ impl MacosSoundPlayer {
         }
     }
 
-    fn play_if_set(path: &Option<PathBuf>) {
+    fn play_if_set(path: Option<&PathBuf>) {
         if let Some(path) = path {
             Self::play_async(path);
         }
@@ -101,45 +101,45 @@ impl MacosSoundPlayer {
 
 impl SoundPlayer for MacosSoundPlayer {
     fn play_start(&self) {
-        if let Some(ref path) = self.start_path {
+        if let Some(ref path) = self.start {
             Self::play_async(path);
         }
     }
 
     fn play_stop(&self) {
-        if let Some(ref path) = self.stop_path {
+        if let Some(ref path) = self.stop {
             Self::play_async(path);
         }
     }
 
     fn play_cancel(&self) {
-        if let Some(ref path) = self.cancel_path {
+        if let Some(ref path) = self.cancel {
             Self::play_async(path);
         }
     }
 
     fn play_listening_on(&self) {
-        Self::play_if_set(&self.listening_on_path);
+        Self::play_if_set(self.listening_on.as_ref());
     }
 
     fn play_listening_off(&self) {
-        Self::play_if_set(&self.listening_off_path);
+        Self::play_if_set(self.listening_off.as_ref());
     }
 
     fn play_enter(&self) {
-        Self::play_if_set(&self.enter_path);
+        Self::play_if_set(self.enter.as_ref());
     }
 
     fn play_clear(&self) {
-        Self::play_if_set(&self.clear_path);
+        Self::play_if_set(self.clear.as_ref());
     }
 
     fn play_paste(&self) {
-        Self::play_if_set(&self.paste_path);
+        Self::play_if_set(self.paste.as_ref());
     }
 
     fn play_restart(&self) {
-        Self::play_if_set(&self.restart_path);
+        Self::play_if_set(self.restart.as_ref());
     }
 }
 

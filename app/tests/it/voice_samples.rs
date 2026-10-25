@@ -1,21 +1,19 @@
 //! The user's own recorded voice commands, heard as one continuous stream through the real
-//! command spotting service and the app's recognizer, the phrase set switched before each
+//! command spotting service and the app's `command_recognizer`, the phrase set switched before each
 //! utterance as the app switches it with its state. The recordings stay on the machine
 //! (`~/.voicepuncher/voice-samples/<session>.wav` and `<session>/manifest.jsonl`); the justfile
 //! sets `VOICEPUNCHER_VOICE_SAMPLES` when they exist and `VOICEPUNCHER_COMMAND_SPOTTING_URL`
 //! when the service runs. Without either the test is skipped.
 
-use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use serde::Deserialize;
 
 use voicepuncher::adapters::secondary::commandspotting::websocket::client::SpottingClient;
+use voicepuncher::core::domain::conversions::saturating_usize;
 use voicepuncher::core::domain::{SpokenCommand, VoiceCommand, VoiceCommandRecognizer};
 use voicepuncher_e2e_test::concurrency::map_concurrently;
-use voicepuncher_e2e_test::speech::read_wav;
 use voicepuncher_e2e_test::voice_commands::SYNC_ANSWER_LIMIT;
-use voicepuncher_test_steps::required_env;
 
 const SAMPLE_RATE_HZ: f32 = 16_000.0;
 const FRAME_SAMPLES: usize = 1_600;
@@ -37,37 +35,10 @@ struct Utterance {
     unclear: bool,
 }
 
-/// A recorded session: the whole recording and its labelled utterances.
-struct Session {
-    name: String,
-    audio: Vec<f32>,
-    utterances: Vec<Utterance>,
-}
+type Session = crate::recorded_sessions::Session<Utterance>;
 
 fn sessions() -> (String, Vec<Session>) {
-    let url = required_env("VOICEPUNCHER_COMMAND_SPOTTING_URL");
-    let root = required_env("VOICEPUNCHER_VOICE_SAMPLES");
-    let mut dirs: Vec<PathBuf> = std::fs::read_dir(&root)
-        .unwrap()
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.join("manifest.jsonl").is_file() && p.with_extension("wav").is_file())
-        .collect();
-    dirs.sort();
-    (url, dirs.iter().map(|dir| load(dir)).collect())
-}
-
-fn load(dir: &Path) -> Session {
-    let utterances = std::fs::read_to_string(dir.join("manifest.jsonl"))
-        .unwrap()
-        .lines()
-        .map(|line| serde_json::from_str(line).unwrap())
-        .collect();
-    let audio = read_wav(&dir.with_extension("wav"))
-        .unwrap()
-        .into_iter()
-        .map(|s| f32::from(s) / f32::from(i16::MAX))
-        .collect();
-    Session { name: dir.file_name().unwrap().to_string_lossy().into_owned(), audio, utterances }
+    crate::recorded_sessions::sessions("manifest.jsonl")
 }
 
 /// The phrases the app listens for in the state where `command` is accepted.
@@ -80,21 +51,21 @@ fn listened_for(command: VoiceCommand) -> &'static [VoiceCommand] {
 }
 
 fn sample_at(secs: f32) -> usize {
-    (secs * SAMPLE_RATE_HZ) as usize
+    saturating_usize(secs * SAMPLE_RATE_HZ)
 }
 
 /// Every command the app recognizes in the session, with its time in the recording.
 fn recognized_in(url: &str, session: &Session) -> Vec<(f32, VoiceCommand)> {
     let audio_start = Instant::now();
     let mut client = SpottingClient::connect(url, audio_start).unwrap();
-    let mut recognizer = VoiceCommandRecognizer::new();
+    let mut command_recognizer = VoiceCommandRecognizer::new();
     let mut recognized = Vec::new();
     let mut sent = 0;
-    for (i, utterance) in session.utterances.iter().enumerate() {
+    for (i, utterance) in session.labels.iter().enumerate() {
         let command = VoiceCommand::from_phrase(&utterance.command).expect("known command");
         client.listen_for(listened_for(command)).unwrap();
         let until = session
-            .utterances
+            .labels
             .get(i + 1)
             .map_or(session.audio.len(), |next| sample_at(next.start));
         for stretch in session.audio[sent..until.max(sent)].chunks(SAMPLES_BETWEEN_WAITS) {
@@ -102,7 +73,7 @@ fn recognized_in(url: &str, session: &Session) -> Vec<(f32, VoiceCommand)> {
                 client.send_audio(frame).unwrap();
             }
             for event in client.events_for_sent_audio(SYNC_ANSWER_LIMIT).unwrap() {
-                recognized.extend(recognizer.feed(event));
+                recognized.extend(command_recognizer.feed(event));
             }
         }
         sent = until.max(sent);
@@ -160,20 +131,11 @@ fn compare_session(
     misses: &mut Vec<String>,
     extras: &mut Vec<String>,
 ) -> usize {
-    let groups = groups(&session.utterances);
+    let groups = groups(&session.labels);
     let mut heard = vec![0usize; groups.len()];
     for (at, command) in recognized {
-        let nearest = groups
-            .iter()
-            .enumerate()
-            .filter(|(index, g)| {
-                VoiceCommand::from_phrase(&g[0].command) == Some(command)
-                    && heard[*index] < g.len()
-                    && distance(g, at) <= PLACEMENT_TOLERANCE_SECS
-            })
-            .min_by(|(_, a), (_, b)| distance(a, at).total_cmp(&distance(b, at)));
-        match nearest {
-            Some((index, _)) => heard[index] += 1,
+        match nearest_group(&groups, &heard, command, at) {
+            Some(index) => heard[index] += 1,
             None => extras.push(format!("{}: {command:?} at {at:.2}s", session.name)),
         }
     }
@@ -189,6 +151,25 @@ fn compare_session(
         }
     }
     counted
+}
+
+/// The group nearest `at` that recorded `command` and is not yet heard as often as it was said.
+fn nearest_group(
+    groups: &[Vec<&Utterance>],
+    heard: &[usize],
+    command: VoiceCommand,
+    at: f32,
+) -> Option<usize> {
+    groups
+        .iter()
+        .enumerate()
+        .filter(|(index, g)| {
+            VoiceCommand::from_phrase(&g[0].command) == Some(command)
+                && heard[*index] < g.len()
+                && distance(g, at) <= PLACEMENT_TOLERANCE_SECS
+        })
+        .min_by(|(_, a), (_, b)| distance(a, at).total_cmp(&distance(b, at)))
+        .map(|(index, _)| index)
 }
 
 /// A recorded command recognized `heard` times instead of once.

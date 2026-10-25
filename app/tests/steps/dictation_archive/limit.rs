@@ -1,10 +1,9 @@
 //! The archive's size limit: the real archive over a temporary folder, filled with entries of
 //! one second of audio each, then written to once more.
 
-use std::path::{Path, PathBuf};
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{ensure, Context, Result};
 use cucumber::{given, then, when};
 use tempfile::TempDir;
 
@@ -15,7 +14,6 @@ use voicepuncher::core::application::dictation_archive::{
     ArchiveEntry, DictationOutcome, DictationStart,
 };
 use voicepuncher::core::application::DictationArchive;
-use voicepuncher::core::domain::AudioBuffer16k;
 
 use super::{entry_folders, DICTATION_MODEL, PHRASE, SAMPLES_PER_PART};
 use crate::IntegrationWorld;

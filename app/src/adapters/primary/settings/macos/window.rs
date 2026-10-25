@@ -1,6 +1,7 @@
 //! The settings window as the menu opens it: one at a time, brought to the front when it is
 //! open already, built afresh from the file when it was closed.
 
+use crate::core::domain::conversions::index_isize;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -14,7 +15,7 @@ use objc2_foundation::NSString;
 
 use super::build::{control, Parts};
 use super::form::Form;
-use super::layout::tabs;
+use super::layout::{tabs, TabContent};
 use super::login::LoginSwitch;
 use super::login_row::LoginRow;
 use super::models_row::{ModelsPanel, ModelsRow};
@@ -98,12 +99,15 @@ impl SettingsWindow {
         let controls: Vec<_> = FIELDS
             .iter()
             .enumerate()
-            .map(|(tag, field)| control(&parts, field, tag as isize))
+            .map(|(tag, field)| control(&parts, field, index_isize(tag)))
             .collect();
         let notes = placed_notes(session.notes(), &(self.permissions_wait)());
         let login = LoginRow::new(&parts, LoginSwitch::new(Arc::clone(&self.login_item)));
         let models = ModelsRow::new(&parts, self.models.clone());
-        let (controller, tab_views) = tabs(&parts, &controls, &notes, &login, &models);
+        let (controller, tab_views) = tabs(
+            &parts,
+            TabContent { controls: &controls, notes: &notes, login: &login, models: &models },
+        );
         let window = NSWindow::windowWithContentViewController(&controller);
         window.setTitle(&NSString::from_str(TITLE));
         window.setToolbarStyle(NSWindowToolbarStyle::Preference);

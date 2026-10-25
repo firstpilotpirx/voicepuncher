@@ -14,11 +14,7 @@ mod supervision_steps;
 
 use std::collections::HashSet;
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
-
-use anyhow::{Context, Result};
+use voicepuncher::test_doubles::prelude::*;
 
 use voicepuncher::core::application::{Clock, ProbeAnswer, ServiceProbe};
 use voicepuncher::core::domain::ServiceKind;

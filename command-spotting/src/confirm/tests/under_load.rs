@@ -13,7 +13,7 @@ fn transcriber_of_live_copy(decodings: Vec<Duration>) -> (UtteranceTranscriber, 
 #[test]
 fn should_hear_nothing_when_a_live_copy_decodes_past_the_budget() {
     // Given: the recent confirmations came back quickly
-    let lines = crate::test_log::captured();
+    let lines = voicepuncher_test_steps::log_lines::captured(log::LevelFilter::Trace);
     let (transcriber, requests) = transcriber_of_live_copy(vec![
         Duration::ZERO,
         Duration::ZERO,

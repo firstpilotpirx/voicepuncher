@@ -1,8 +1,8 @@
 //! The recording buffer the microphone recorder fills: whether it counts as cut off at the
 //! recording limit decides the recorder's recording-limit warning.
 
-use anyhow::{ensure, Context, Result};
 use cucumber::{given, then, when};
+use voicepuncher::test_doubles::prelude::*;
 
 use voicepuncher::adapters::secondary::recording::cpal::buffer::RecordingBuffer;
 

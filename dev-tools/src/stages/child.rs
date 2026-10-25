@@ -47,23 +47,29 @@ pub fn run(command: &mut Command, interrupt: &Interrupt, log: Option<&Path>) -> 
         }
     };
     let copies = log.map_or_else(Vec::new, |log| copies(&mut child, log));
+    let code = wait(&mut child, interrupt);
+    for copy in copies {
+        let _ = copy.join();
+    }
+    code
+}
+
+/// Waits for `child` to end and returns its exit code; TERM once when this process is asked
+/// to stop.
+fn wait(child: &mut std::process::Child, interrupt: &Interrupt) -> i32 {
     let mut told = false;
-    let code = loop {
+    loop {
         match child.try_wait() {
-            Ok(Some(status)) => break exit_code(status),
+            Ok(Some(status)) => return exit_code(status),
             Ok(None) => {}
-            Err(_) => break 1,
+            Err(_) => return 1,
         }
         if interrupt.raised() && !told {
             terminate(child.id());
             told = true;
         }
         std::thread::sleep(Duration::from_millis(50));
-    };
-    for copy in copies {
-        let _ = copy.join();
     }
-    code
 }
 
 /// Copies the child's output and errors to the log, each on a thread of its own.

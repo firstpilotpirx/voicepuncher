@@ -1,8 +1,8 @@
 //! The dictation recorder over cpal.
 //!
-//! The microphone's audio goes through a wait-free ring (`capture`) into a drain thread
-//! (`drain`) that resamples it into one 16 kHz recording buffer (`buffer`); the live
-//! watcher (`watcher`) cuts chunks out of that buffer.
+//! The microphone's audio goes through a wait-free ring (`capture`) into a drain thread (`drain`)
+//! that resamples it into one 16 kHz recording buffer (`buffer`); the live watcher (`watcher`) cuts
+//! chunks out of that buffer.
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::Sender;
@@ -124,7 +124,7 @@ impl CpalAudioRecorder {
 
     /// Records from the input device `name` names (see [`devices::open`]).
     pub fn with_input_device(mut self, name: &str) -> Self {
-        self.input_device = name.to_owned();
+        name.clone_into(&mut self.input_device);
         self
     }
 
@@ -148,8 +148,8 @@ impl AudioRecorder for CpalAudioRecorder {
     fn start(&mut self) -> Result<()> {
         self.last_recording = None;
         let source = (self.open)(&self.input_device, Arc::clone(&self.level_register))?;
-        let max_samples =
-            self.max_recording_seconds as usize * AudioBuffer16k::SAMPLE_RATE_HZ as usize;
+        let max_samples = usize::try_from(self.max_recording_seconds).unwrap_or(usize::MAX)
+            * AudioBuffer16k::SAMPLE_RATE_HZ as usize;
         let buffer = Arc::new(RecordingBuffer::new(max_samples));
         let drain = drain::spawn(
             source.audio,

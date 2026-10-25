@@ -91,9 +91,9 @@ fn should_open_a_stalled_microphone_again_and_send_its_audio() {
     assert!(audio_until(&audio, 0.25).iter().any(|&s| is(s, 0.5)));
     assert_eq!(calls.load(Ordering::SeqCst), 2);
     let stalled = "command spotting: microphone delivered no audio";
-    assert_eq!(log.lines_starting_with(stalled).len(), 1);
+    assert_eq!(log.starting_with(stalled).len(), 1);
     assert_eq!(
-        log.lines_starting_with("command spotting: microphone open again")
+        log.starting_with("command spotting: microphone open again")
             .len(),
         1
     );
@@ -130,7 +130,7 @@ fn should_retry_a_failed_reopen_until_it_succeeds() {
     assert!(second.is_ok(), "the keeper gave up");
     assert_eq!(calls.load(Ordering::SeqCst), 4);
     let failed = "command spotting: cannot open the microphone again";
-    assert_eq!(log.lines_starting_with(failed).len(), 1, "logged once");
+    assert_eq!(log.starting_with(failed).len(), 1, "logged once");
 }
 
 #[test]

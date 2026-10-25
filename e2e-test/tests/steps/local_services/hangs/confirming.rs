@@ -4,14 +4,11 @@
 
 use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::atomic::AtomicU32;
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{anyhow, ensure, Context, Result};
 use cucumber::{given, then, when};
 
-use voicepuncher::core::domain::VoiceCommand;
 use voicepuncher_command_spotting::confirm::{Hear, Heard};
 use voicepuncher_command_spotting::worker::{Answer, ConfirmationWorker, Job, JobId, JobKind};
 use voicepuncher_e2e_test::voice_commands::{
@@ -84,7 +81,7 @@ fn one_confirmation_hangs(world: &mut E2eWorld) -> Result<()> {
 async fn streams_after_speech(world: &mut E2eWorld, phrase: String) -> Result<()> {
     off_thread(world, move |world| {
         let services = services(world)?;
-        services.log_before_speech = Some(log_len(services)?);
+        services.watched.log_before_speech = Some(log_len(services)?);
         let mut audio = speech_as_f32()?;
         audio.extend(spoken_with_pauses(&phrase)?);
         // every stretch of audio waits for the service's answer, so a service that stops
@@ -94,7 +91,7 @@ async fn streams_after_speech(world: &mut E2eWorld, phrase: String) -> Result<()
             &audio,
             &VoiceCommand::STANDBY,
         )?;
-        world.recognized = recognized_commands(events);
+        world.voice.recognized = recognized_commands(events);
         Ok(())
     })
     .await
@@ -132,12 +129,14 @@ impl Hear for LateAtFirst {
 
 fn confirmations_with(world: &mut E2eWorld, hear: LateAtFirst) -> Result<()> {
     let worker = ConfirmationWorker::start(CONNECTION, Arc::new(hear), DEADLINE)?;
-    world.owned_services.confirmations = Some(Confirmations { worker, answers: Vec::new() });
+    world.services.owned_services.confirmations =
+        Some(Confirmations { worker, answers: Vec::new() });
     Ok(())
 }
 
 fn confirmations(world: &mut E2eWorld) -> Result<&mut Confirmations> {
     world
+        .services
         .owned_services
         .confirmations
         .as_mut()
@@ -169,7 +168,7 @@ fn said_alone(world: &mut E2eWorld, phrase: String) -> Result<()> {
         .filter_map(|a| a.heard.as_ref())
         .map(|h| h.text.clone())
         .collect();
-    world.recognized = heard
+    world.voice.recognized = heard
         .iter()
         .filter_map(|text| VoiceCommand::from_phrase(text.trim()))
         .collect();

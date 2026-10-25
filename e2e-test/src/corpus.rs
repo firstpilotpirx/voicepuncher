@@ -14,7 +14,7 @@ pub struct Sample {
 
 pub fn load_manifest(manifest_path: &Path) -> Result<Vec<Sample>> {
     let content = std::fs::read_to_string(manifest_path)
-        .with_context(|| format!("failed to read manifest at {manifest_path:?}"))?;
+        .with_context(|| format!("failed to read manifest at {}", manifest_path.display()))?;
 
     let manifest_dir = manifest_path.parent().unwrap_or_else(|| Path::new("."));
 

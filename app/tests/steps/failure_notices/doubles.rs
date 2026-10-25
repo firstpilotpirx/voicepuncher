@@ -1,10 +1,10 @@
 //! The stand-ins of the failure notices scenarios.
 
 use super::{
-    bail, mpsc, record, AccessibilityMissing, AudioBuffer16k, AudioRecorder, ChunkingCfg,
-    CleanedText, CommandSpotter, Event, Events, FailureNotice, Instant, KeyPresser, LiveChunk,
-    RawTranscript, Receiver, Recognition, Result, Setup, Shown, SoundPlayer, TextPaster,
-    Transcriber, VisualIndicator, VoiceCommand, RAW_TRANSCRIPT,
+    bail, record, AccessibilityMissing, AudioBuffer16k, AudioRecorder, ChunkingCfg, CleanedText,
+    CommandSpotter, Event, Events, FailureNotice, KeyPresser, LiveChunk, Microphone, RawTranscript,
+    Receiver, Recognition, Result, Setup, Shown, TextPaster, Transcriber, VisualIndicator,
+    VoiceCommand, RAW_TRANSCRIPT,
 };
 
 /// Hands over one second of audio at the stop; for a long dictation it sends one part while
@@ -12,29 +12,18 @@ use super::{
 pub(super) struct PartsRecorder {
     pub(super) events: Events,
     pub(super) setup: Setup,
-    pub(super) parts: Option<mpsc::Sender<LiveChunk>>,
+    pub(super) parts: voicepuncher::test_doubles::OneSecondParts,
 }
 
 impl PartsRecorder {
     pub(super) fn new(events: Events, setup: Setup) -> Self {
-        Self { events, setup, parts: None }
-    }
-
-    pub(super) fn one_second() -> AudioBuffer16k {
-        AudioBuffer16k::new(vec![1_000i16; AudioBuffer16k::SAMPLE_RATE_HZ as usize])
-    }
-
-    pub(super) fn send_part(&self) {
-        if let Some(parts) = &self.parts {
-            let _ =
-                parts.send(LiveChunk { audio: Self::one_second(), enqueued_at: Instant::now() });
-        }
+        Self { events, setup, parts: voicepuncher::test_doubles::OneSecondParts::default() }
     }
 }
 
 impl AudioRecorder for PartsRecorder {
     fn start(&mut self) -> Result<()> {
-        if self.setup.microphone_fails {
+        if self.setup.microphone == Microphone::CannotOpen {
             bail!("the microphone cannot be opened");
         }
         record(&self.events, Event::RecordingStarted);
@@ -42,26 +31,18 @@ impl AudioRecorder for PartsRecorder {
     }
 
     fn stop(&mut self) -> Result<AudioBuffer16k> {
-        if self.setup.nothing_recorded {
+        if self.setup.microphone == Microphone::RecordsNothing {
             return Ok(AudioBuffer16k::new(Vec::new()));
         }
-        Ok(Self::one_second())
+        Ok(voicepuncher::test_doubles::one_second_of_sound())
     }
 
     fn start_live_chunks(&mut self, _cfg: ChunkingCfg) -> Result<Option<Receiver<LiveChunk>>> {
-        if !self.setup.long_dictation {
-            return Ok(None);
-        }
-        let (tx, rx) = mpsc::channel();
-        self.parts = Some(tx);
-        self.send_part();
-        Ok(Some(rx))
+        Ok(self.setup.long_dictation.then(|| self.parts.start()))
     }
 
     fn flush_live_chunks(&mut self) {
-        self.send_part();
-        // the transcription of the parts ends with the last one
-        self.parts = None;
+        self.parts.flush();
     }
     voicepuncher::records_whole_buffers_only!();
 }
@@ -194,10 +175,4 @@ impl KeyPresser for ScriptedKeys {
     }
 }
 
-pub(super) struct Silent;
-
-impl SoundPlayer for Silent {
-    fn play_start(&self) {}
-    fn play_stop(&self) {}
-    fn play_cancel(&self) {}
-}
+pub(super) use voicepuncher::test_doubles::Silent;

@@ -81,7 +81,7 @@ impl AskedJob {
     fn timing(&self) -> Timing {
         Timing {
             asked_at: seconds(self.asked_at),
-            took_ms: self.asked.elapsed().as_millis() as u64,
+            took_ms: u64::try_from(self.asked.elapsed().as_millis()).unwrap_or(u64::MAX),
         }
     }
 }
@@ -102,6 +102,7 @@ pub(super) struct SegmentSpan {
 mod answer;
 mod ask;
 mod half_pause;
+mod heard;
 mod place;
 mod rehear;
 mod segment;
@@ -115,14 +116,14 @@ pub(super) use segment::ClosedSegment;
 impl JobContext {
     fn utterance(&self) -> Option<u64> {
         match self {
-            JobContext::Head { utterance, .. }
-            | JobContext::Window { utterance, .. }
-            | JobContext::Spotted { utterance, .. }
-            | JobContext::Segment { utterance, .. }
-            | JobContext::Tail { utterance, .. }
-            | JobContext::HalfPause { utterance }
-            | JobContext::Rehear { utterance, .. } => Some(*utterance),
-            JobContext::Unheld { .. } => None,
+            Self::Head { utterance, .. }
+            | Self::Window { utterance, .. }
+            | Self::Spotted { utterance, .. }
+            | Self::Segment { utterance, .. }
+            | Self::Tail { utterance, .. }
+            | Self::HalfPause { utterance }
+            | Self::Rehear { utterance, .. } => Some(*utterance),
+            Self::Unheld { .. } => None,
         }
     }
 
@@ -130,7 +131,7 @@ impl JobContext {
     /// confirmation, as the segment's own decides.
     fn failed(&self) -> Option<ServerEvent> {
         match self {
-            JobContext::Segment { segment, .. } => Some(ServerEvent::ConfirmationFailed {
+            Self::Segment { segment, .. } => Some(ServerEvent::ConfirmationFailed {
                 start: segment.bounds.start,
                 end: segment.bounds.end,
             }),
@@ -158,7 +159,7 @@ impl JobContext {
     /// What a second hearing of this short segment needs, before any phrase is known.
     fn short_segment(&self) -> Option<Rehear> {
         match self {
-            JobContext::Segment { segment, .. } if segment.short => self.rehear(String::new()),
+            Self::Segment { segment, .. } if segment.short => self.rehear(String::new()),
             _ => None,
         }
     }
@@ -166,7 +167,7 @@ impl JobContext {
     /// What a second hearing of this segment as a near miss of `phrase` needs.
     fn rehear(&self, phrase: String) -> Option<Rehear> {
         match self {
-            JobContext::Segment { utterance, segment } => Some(Rehear {
+            Self::Segment { utterance, segment } => Some(Rehear {
                 utterance: *utterance,
                 bounds: segment.bounds,
                 from: segment.from,
@@ -182,7 +183,7 @@ impl JobContext {
     /// command.
     fn tail_check(&self) -> Option<(u64, usize, usize)> {
         match self {
-            JobContext::Segment { utterance, segment } if segment.tail_check => Some((
+            Self::Segment { utterance, segment } if segment.tail_check => Some((
                 *utterance,
                 segment.end.saturating_sub(samples_in(TAIL_CHECK_SECS)),
                 segment.to,

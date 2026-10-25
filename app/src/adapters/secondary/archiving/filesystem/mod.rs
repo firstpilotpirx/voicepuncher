@@ -71,7 +71,7 @@ fn free_name(dir: &Path, base: &str) -> String {
     if !taken(base) {
         return base.to_owned();
     }
-    (FIRST_DUPLICATE_NUMBER..)
+    (FIRST_DUPLICATE_NUMBER..=u32::MAX)
         .map(|number| format!("{base}-{number}"))
         .find(|name| !taken(name))
         .unwrap_or_else(|| base.to_owned())

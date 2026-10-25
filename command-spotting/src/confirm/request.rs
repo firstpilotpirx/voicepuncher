@@ -3,6 +3,7 @@
 
 use std::io::Cursor;
 
+use crate::conversions::saturating_i16;
 use anyhow::Result;
 
 pub(super) const BOUNDARY: &str = "voicepuncher-command-spotting-3f9a";
@@ -29,7 +30,9 @@ pub(super) fn wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>> {
     let mut cursor = Cursor::new(Vec::new());
     let mut writer = hound::WavWriter::new(&mut cursor, spec)?;
     for sample in samples {
-        writer.write_sample((sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16)?;
+        writer.write_sample(saturating_i16(
+            sample.clamp(-1.0, 1.0) * f32::from(i16::MAX),
+        ))?;
     }
     writer.finalize()?;
     Ok(cursor.into_inner())

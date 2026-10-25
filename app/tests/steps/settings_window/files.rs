@@ -1,8 +1,7 @@
 //! The configuration files the settings scenarios start from.
 
 use std::collections::BTreeSet;
-
-use anyhow::{ensure, Result};
+use voicepuncher::test_doubles::prelude::*;
 
 use voicepuncher::adapters::primary::settings::macos::table::{FIELDS, KEPT, RETIRED};
 use voicepuncher::config::Config;

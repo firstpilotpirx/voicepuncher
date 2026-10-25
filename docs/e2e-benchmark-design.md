@@ -164,7 +164,7 @@ emit results/YYYY-MM-DD_HHMM/summary.md
 | `VOICEPUNCHER_BENCH_MODELS_DIR` | `~/.voicepuncher` | Root for benchmark model files |
 
 Tests that require models are skipped (not failed) when the env vars are absent —
-same pattern as `app/tests/it/transcription_openai.rs`.
+same pattern as `app/tests/it/transcription_openai/`.
 
 ### WER/CER computation
 

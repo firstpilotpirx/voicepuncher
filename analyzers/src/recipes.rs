@@ -32,15 +32,21 @@ pub fn run() -> Result<Counts, String> {
     let dump: Value = serde_json::from_str(&dump).map_err(|e| format!("just --dump: {e}"))?;
     let dir = std::env::temp_dir().join(format!("voicepuncher-recipes-{}", std::process::id()));
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let counts = count_findings(&scripts(&dump), &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    counts
+}
+
+/// The findings of every one of `scripts`, each written to a file of its own in `dir`.
+fn count_findings(scripts: &[Script], dir: &Path) -> Result<Counts, String> {
     let mut counts = Counts::new();
-    for script in scripts(&dump) {
+    for script in scripts {
         let file = dir.join(script.recipe.replace('/', "_"));
         std::fs::write(&file, &script.text).map_err(|e| format!("{}: {e}", file.display()))?;
-        for code in check(&script, &file)? {
+        for code in check(script, &file)? {
             *counts.entry(code).or_default() += 1;
         }
     }
-    let _ = std::fs::remove_dir_all(&dir);
     Ok(counts)
 }
 
@@ -102,40 +108,39 @@ pub fn scripts(dump: &Value) -> Vec<Script> {
     };
     recipes
         .iter()
-        .filter_map(|(name, recipe)| {
-            let lines: Vec<String> = recipe.get("body")?.as_array()?.iter().map(line).collect();
-            let shebang = recipe
-                .get("shebang")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            let language = if !shebang {
-                Language::Sh
-            } else if lines.first()?.contains("perl") {
-                Language::Perl
-            } else if lines.first()?.contains("sh") {
-                Language::Bash
-            } else {
-                return None;
-            };
-            let lines = lines.into_iter().map(|l| {
-                if shebang {
-                    l
-                } else {
-                    l.trim_start_matches(['@', '-']).to_owned()
-                }
-            });
-            let text = if shebang {
-                String::new()
-            } else {
-                "#!/bin/sh\n".to_owned()
-            };
-            Some(Script {
-                recipe: name.clone(),
-                language,
-                text: text + &lines.collect::<Vec<_>>().join("\n") + "\n",
-            })
-        })
+        .filter_map(|(name, recipe)| script(name, recipe))
         .collect()
+}
+
+/// The script of the recipe `name`; none for a body in a language no tool checks.
+fn script(name: &str, recipe: &Value) -> Option<Script> {
+    let lines: Vec<String> = recipe.get("body")?.as_array()?.iter().map(line).collect();
+    let shebang = recipe
+        .get("shebang")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if !shebang {
+        let body: Vec<&str> = lines
+            .iter()
+            .map(|l| l.trim_start_matches(['@', '-']))
+            .collect();
+        let text = format!("#!/bin/sh\n{}\n", body.join("\n"));
+        return Some(Script { recipe: name.to_owned(), language: Language::Sh, text });
+    }
+    let language = shebang_language(lines.first()?)?;
+    let text = lines.join("\n") + "\n";
+    Some(Script { recipe: name.to_owned(), language, text })
+}
+
+/// The language a shebang line names; none for one no tool checks.
+fn shebang_language(first: &str) -> Option<Language> {
+    if first.contains("perl") {
+        Some(Language::Perl)
+    } else if first.contains("sh") {
+        Some(Language::Bash)
+    } else {
+        None
+    }
 }
 
 /// One body line: its text fragments, each interpolation as the placeholder.

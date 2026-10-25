@@ -2,10 +2,8 @@
 //! status item up as the app does and asks the system how it shows the process.
 
 use std::sync::atomic::AtomicU32;
-use std::sync::Arc;
-use std::time::Duration;
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 use objc2::MainThreadMarker;
 use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};

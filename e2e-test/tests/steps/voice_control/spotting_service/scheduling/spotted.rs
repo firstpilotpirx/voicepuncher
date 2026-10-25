@@ -1,8 +1,8 @@
 //! The checks the command spotting service asks of a running utterance when it spots
 //! "start" or "restart" in it, through its `SpottedChecks`.
 
-use anyhow::{bail, Result};
 use cucumber::{given, then, when};
+use voicepuncher::test_doubles::prelude::*;
 
 use voicepuncher_command_spotting::engine::spotted::{Round, SpottedChecks};
 

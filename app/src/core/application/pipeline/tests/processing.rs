@@ -74,7 +74,7 @@ fn should_log_the_stop_to_paste_line_with_every_stage_and_the_total() {
     // When
     press(&mut pipeline);
     // Then
-    let lines = log.lines_starting_with("stop→paste: ");
+    let lines = log.starting_with("stop→paste: ");
     let line = lines.last().expect("a stop→paste line");
     assert_eq!(stage_names(line), ["stop", "transcribe", "paste", "total"]);
 }

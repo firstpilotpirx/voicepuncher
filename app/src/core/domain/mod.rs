@@ -2,6 +2,7 @@ pub mod audio_buffer;
 pub mod audio_level;
 pub mod cleaned_text;
 pub mod command_words;
+pub mod conversions;
 pub mod failure_notice;
 pub mod filler_sounds;
 pub mod hotkey;

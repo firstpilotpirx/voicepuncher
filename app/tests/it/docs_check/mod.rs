@@ -9,11 +9,12 @@ use regex::Regex;
 use walkdir::WalkDir;
 
 /// The top-level entries a documented repository path starts with.
-const ROOTS: [&str; 9] = [
+const ROOTS: [&str; 10] = [
     "app/",
     "command-spotting/",
     "copy-pool/",
     "voice-commands/",
+    "log-line/",
     "e2e-test/",
     "docs/",
     ".config/",

@@ -9,7 +9,7 @@ use crate::WorkflowWorld;
 #[given("a branch that changes the voice control code but not the chunking code")]
 fn voice_control_branch(world: &mut WorkflowWorld) {
     scratch(world).write(
-        "repo/app/src/core/application/pipeline/voice_control.rs",
+        "repo/app/src/core/application/pipeline/voice_control/mod.rs",
         "pub fn listen() {}\n",
     );
 }
@@ -41,7 +41,7 @@ fn prints_matrix(world: &mut WorkflowWorld) {
     let chosen = chosen(world);
     assert!(
         chosen.starts_with(
-            "e2e-seams — chunking paths changed: app/src/core/application/chunking.rs"
+            "e2e-seams — chunking paths changed: app/src/core/application/chunking/mod.rs"
         ),
         "{chosen}"
     );

@@ -85,7 +85,7 @@ fn should_adopt_a_service_that_already_answers() {
     assert_eq!(harness.state(), ServiceState::Adopted);
     assert!(!harness.unit.status().owned);
     assert_eq!(harness.spawns.count(), 0);
-    assert_eq!(log.lines_starting_with("services: adopted").len(), 1);
+    assert_eq!(log.starting_with("services: adopted").len(), 1);
 }
 
 #[test]
@@ -102,7 +102,7 @@ fn should_start_a_service_nothing_answers_for_and_count_it_ready_once_it_answers
     assert_eq!(harness.state(), ServiceState::Ready);
     assert!(harness.unit.status().owned);
     assert_eq!(harness.spawns.count(), 1);
-    let ready = log.lines_starting_with("services: command spotting service 8080 ready in");
+    let ready = log.starting_with("services: command spotting service 8080 ready in");
     assert_eq!(ready.len(), 1);
 }
 

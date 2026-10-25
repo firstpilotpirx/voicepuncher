@@ -43,7 +43,13 @@ use window_set::{MainState, SharedWindows, WindowSet, Windows};
 pub use glass::GlassFinish;
 pub use pointer_sign::MacosPointerSign;
 
-use super::pointer_sign::{FAILURE_NOTICE_LIFETIME, PASTED_SIGN_LIFETIME};
+use super::pointer_sign::{FAILURE_NOTICE_LIFETIME, PASTED_SIGN_MS};
+
+mod redraw;
+use redraw::{build_windows, collect_topology, do_rebuild, screen_change_handler, Redraw};
+mod indicator;
+mod live_view;
+use live_view::{apply_live_transcript, MacosLiveTranscriptView};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OverlayState {
@@ -56,8 +62,6 @@ enum OverlayState {
 
 /// How long a command sign stays before the overlay shows again what it showed before.
 const COMMAND_SIGN_MS: i64 = 1_000;
-/// How long the Pasted sign shows before the overlay fades out.
-const PASTED_SIGN_MS: i64 = PASTED_SIGN_LIFETIME.as_millis() as i64;
 
 /// How long a failure notice stays before the overlay hides.
 const NOTICE_DURATION: Duration = FAILURE_NOTICE_LIFETIME;
@@ -305,204 +309,6 @@ impl MacosVisualIndicator {
             let turn = Turn::next(&redraw.timer.pulse_generation);
             redraw.draw(mtm, state, turn);
         });
-    }
-}
-
-/// Rebuilds the windows for the screens of the moment and redraws the current state.
-fn screen_change_handler(redraw: Redraw) -> Arc<dyn Fn() + Send + Sync + 'static> {
-    Arc::new(move || {
-        let redraw = redraw.clone();
-        on_main(move |mtm| redraw.rebuild_and_draw(mtm));
-    })
-}
-
-fn build_windows(mtm: MainThreadMarker) -> Windows {
-    let screens = NSScreen::screens(mtm);
-    if screens.is_empty() {
-        return vec![WindowSet::build(mtm, FALLBACK_SCREEN)];
-    }
-    (0..screens.count())
-        .map(|i| WindowSet::build(mtm, screens.objectAtIndex(i).visibleFrame()))
-        .collect()
-}
-
-fn do_rebuild(mtm: MainThreadMarker, main: &SharedWindows) {
-    if let Some(main) = main.get(mtm) {
-        main.windows.replace(build_windows(mtm));
-        main.topology.replace(collect_topology(mtm));
-    }
-}
-
-fn collect_topology(mtm: MainThreadMarker) -> ScreenTopology {
-    let screens = NSScreen::screens(mtm);
-    let frames: Vec<NSRect> = (0..screens.count())
-        .map(|i| screens.objectAtIndex(i).visibleFrame())
-        .collect();
-    ScreenTopology { frames }
-}
-
-/// What draws a state of the overlay on the windows of the moment, with the
-/// commands-unavailable sign while it is on.
-#[derive(Clone)]
-struct Redraw {
-    main: SharedWindows,
-    feed: LevelFeed,
-    live_transcript: LiveTranscriptText,
-    timer: NoticeTimer,
-}
-
-impl Redraw {
-    /// Rebuilds the windows for the screens of the moment and draws the current state.
-    fn rebuild_and_draw(&self, mtm: MainThreadMarker) {
-        let turn = Turn::next(&self.timer.pulse_generation);
-        do_rebuild(mtm, &self.main);
-        let current_state = *lock(&self.timer.state);
-        self.draw(mtm, current_state, turn);
-    }
-
-    fn draw(&self, mtm: MainThreadMarker, state: OverlayState, turn: Turn) {
-        let commands_unavailable = self.timer.commands_unavailable.load(Ordering::SeqCst);
-        let main = (&self.main, mtm);
-        let ws_vec = self.main.windows(mtm);
-        log::debug!("overlay: {state:?} shown on {} screen(s)", ws_vec.len());
-        match state {
-            OverlayState::Recording => {
-                let shown = self.live_transcript.shown(state);
-                apply_recording_state(
-                    &self.main,
-                    mtm,
-                    turn,
-                    self.feed.clone(),
-                    commands_unavailable,
-                );
-                apply_live_transcript(&ws_vec, shown);
-            }
-            OverlayState::RecognizingSpeech => {
-                apply_processing_state(main, state, turn, commands_unavailable);
-            }
-            OverlayState::WaitingForFocus => {
-                apply_waiting_for_focus_state(main, turn, commands_unavailable);
-            }
-            OverlayState::FailureNotice(notice) => {
-                show_notice(main, &notice, turn.generation, self.timer.clone());
-            }
-            OverlayState::Hidden => apply_hidden_state(&ws_vec, commands_unavailable),
-        }
-    }
-}
-
-impl VisualIndicator for MacosVisualIndicator {
-    fn show_recording(&self) {
-        self.live_transcript.clear();
-        *lock(&self.feed.wave) = LevelWave::starting_now();
-        self.show_state(OverlayState::Recording);
-    }
-
-    fn show_recognizing_speech(&self) {
-        self.show_state(OverlayState::RecognizingSpeech);
-    }
-
-    fn show_waiting_for_focus(&self) {
-        self.show_state(OverlayState::WaitingForFocus);
-    }
-
-    fn hide(&self) {
-        self.hide_overlay();
-    }
-
-    #[expect(clippy::excessive_nesting, reason = "size baseline")]
-    fn show_pasted(&self) {
-        let turn = Turn::next(&self.pulse_generation);
-        let main = self.main.clone();
-        let commands_unavailable = Arc::clone(&self.commands_unavailable);
-        // The sign hides itself, so a screen change draws the overlay hidden.
-        *lock(&self.state) = OverlayState::Hidden;
-        log::debug!("overlay: Pasted sign requested");
-
-        on_main(move |mtm| {
-            if !turn.is_current() {
-                return;
-            }
-            apply_pasted_sign(&main.windows(mtm));
-            on_main_after(PASTED_SIGN_MS, move |_| {
-                // WHY: a later signal took over the overlay; its own drawing stands
-                if turn.is_current() {
-                    fade_out_then_hide(main, turn, commands_unavailable);
-                }
-            });
-        });
-    }
-
-    fn show_failure_notice(&self, notice: &FailureNotice) {
-        self.show_state(OverlayState::FailureNotice(*notice));
-    }
-
-    #[expect(clippy::excessive_nesting, reason = "size baseline")]
-    fn show_command_sign(&self, command: VoiceCommand) {
-        let Some(sign) = command_sign(command) else {
-            return;
-        };
-        let turn = Turn::next(&self.pulse_generation);
-        let redraw = self.redraw();
-        // The state stays what the command left, so a screen change redraws that state.
-        let after = state_after_sign(*lock(&self.state));
-        log::debug!("overlay: command sign {} requested", sign.label);
-
-        on_main(move |mtm| {
-            do_rebuild(mtm, &redraw.main);
-            apply_command_sign(&redraw.main.windows(mtm), sign);
-            on_main_after(COMMAND_SIGN_MS, move |mtm| {
-                // WHY: a later signal took over the overlay; its own drawing stands
-                if turn.is_current() {
-                    redraw.draw(mtm, after, turn);
-                }
-            });
-        });
-    }
-
-    fn show_commands_unavailable(&self) {
-        self.set_commands_unavailable(true);
-    }
-
-    fn hide_commands_unavailable(&self) {
-        self.set_commands_unavailable(false);
-    }
-
-    fn live_transcript_view(&self) -> Box<dyn LiveTranscriptView> {
-        Box::new(MacosLiveTranscriptView {
-            state: Arc::clone(&self.state),
-            main: self.main.clone(),
-            live_transcript: self.live_transcript.clone(),
-        })
-    }
-}
-
-/// Draws the live transcript under the pill of every screen while the recording runs.
-struct MacosLiveTranscriptView {
-    state: Arc<Mutex<OverlayState>>,
-    main: SharedWindows,
-    live_transcript: LiveTranscriptText,
-}
-
-impl LiveTranscriptView for MacosLiveTranscriptView {
-    fn show_live_transcript(&self, text: &str) {
-        self.live_transcript.update(*lock(&self.state), text);
-        let state = Arc::clone(&self.state);
-        let main = self.main.clone();
-        let live_transcript = self.live_transcript.clone();
-        on_main(move |mtm| {
-            // WHY: read on the main queue, so a stage shown after this update was queued wins
-            let state = *lock(&state);
-            if LiveTranscriptText::draws_text_window(state) {
-                apply_live_transcript(&main.windows(mtm), live_transcript.shown(state));
-            }
-        });
-    }
-}
-
-fn apply_live_transcript(windows: &[Rc<WindowSet>], shown: Option<String>) {
-    for ws in windows {
-        ws.show_live_transcript(shown.as_deref());
     }
 }
 

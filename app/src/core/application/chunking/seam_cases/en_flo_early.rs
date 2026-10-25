@@ -1,0 +1,180 @@
+//! The recorded seams of en Flo, lead-ins 0 to 1.4 s.
+
+use super::SeamCase;
+
+pub(super) const CASES: &[SeamCase] = &[
+    SeamCase {
+        recording: "en Flo, slow, lead-in 0 s",
+        tail: "the service, and the response time dropped from two seconds",
+        head: "Once time dropped from 2 seconds to 40 milliseconds. In",
+        merged: "the service, and the response time dropped from 2 seconds to 40 milliseconds. In",
+    },
+    SeamCase {
+        recording: "en Flo, slow, lead-in 0.7 s",
+        tail: "service, and the response time dropped from time to time.",
+        head: "The response time dropped from 2 seconds to 40 milliseconds.",
+        merged: "service, and the response time dropped from 2 seconds to 40 milliseconds.",
+    },
+    SeamCase {
+        recording: "en Flo, slow, lead-in 1.4 s, seam 1",
+        tail: "added the index, restarted the service, and the response to",
+        head: "service, and the response time dropped from 2 seconds to",
+        merged: "added the index, restarted the service, and the response time dropped from 2 seconds to",
+    },
+    SeamCase {
+        recording: "en Flo, slow, lead-in 1.4 s, seam 2",
+        tail: "the documentation and sent a short report the project leads.",
+        head: "to the project leads.",
+        merged: "the documentation and sent a short report the project leads.",
+    },
+    SeamCase {
+        recording: "en Flo, normal, lead-in 0 s",
+        tail: "evening we discussed how to split the large payment mod",
+        head: "how to split the large payment module into several small",
+        merged: "evening we discussed how to split the large payment module into several small",
+    },
+    SeamCase {
+        recording: "en Flo, normal, lead-in 0.7 s",
+        tail: "the evening we discussed how to split the large package.",
+        head: "we discussed how to split the large payment module into",
+        merged: "the evening we discussed how to split the large payment module into",
+    },
+    SeamCase {
+        recording: "en Flo, fast, lead-in 0 s",
+        tail: "a clear interface. We also need tests for refunds, because",
+        head: "We also need tests for refunds, because bugs were found",
+        merged: "a clear interface. We also need tests for refunds, because bugs were found",
+    },
+    SeamCase {
+        recording: "en Flo, fast, lead-in 0.7 s",
+        tail: "have a clear interface. We also need tests for reflux.",
+        head: "We also need tests for refunds, because bugs were found",
+        merged: "have a clear interface. We also need tests for refunds, because bugs were found",
+    },
+    SeamCase {
+        recording: "en Flo, sentence pauses, lead-in 0 s",
+        tail: "restarted the service, and the response time dropped from two",
+        head: "and the response time dropped from 2 seconds to 40",
+        merged: "restarted the service, and the response time dropped from 2 seconds to 40",
+    },
+    SeamCase {
+        recording: "en Flo, sentence pauses, lead-in 0.7 s, seam 1",
+        tail: "added the index, restarted the service, and the response to",
+        head: "We started the service, and the response time dropped from",
+        merged: "added the index, restarted the service, and the response time dropped from",
+    },
+    SeamCase {
+        recording: "en Flo, sentence pauses, lead-in 0.7 s, seam 2",
+        tail: "there twice already. Here's the report to the project lead.",
+        head: "short report to the project lead.",
+        merged: "there twice already. Here's the report to the project lead.",
+    },
+    SeamCase {
+        recording: "en Flo, sentence pauses, lead-in 1.4 s, seam 1",
+        tail: "I added the index, restarted the service, and the rest",
+        head: "Restarted the service, and the response time dropped from 2",
+        merged: "I added the index, restarted the service, and the response time dropped from 2",
+    },
+    SeamCase {
+        recording: "en Flo, sentence pauses, lead-in 1.4 s, seam 2",
+        tail: "there twice already. sent a short report to the project",
+        head: "and send a short report to the project lead.",
+        merged: "there twice already. sent a short report to the project lead.",
+    },
+    SeamCase {
+        recording: "en Flo, word pauses, lead-in 0 s, seam 3",
+        tail: "the large payment module into several small parts. Clear interface",
+        head: "Clear interface. We also need tests for refunds because bugs",
+        merged: "the large payment module into several small parts. Clear interface. We also need tests for refunds because bugs",
+    },
+    SeamCase {
+        recording: "en Flo, word pauses, lead-in 0.7 s, seam 2",
+        tail: "added the index, restarted the service, and the response time",
+        head: "Time dropped from 2 seconds to 40 milliseconds. In the",
+        merged: "added the index, restarted the service, and the response time dropped from 2 seconds to 40 milliseconds. In the",
+    },
+    SeamCase {
+        recording: "en Flo, word pauses, lead-in 0.7 s, seam 3",
+        tail: "large payment module into several small parts. A clear answer.",
+        head: "a clear interface. We also need tests for refunds because",
+        merged: "large payment module into several small parts. A clear interface. We also need tests for refunds because",
+    },
+    SeamCase {
+        recording: "en Flo, word pauses, lead-in 1.4 s, seam 2",
+        tail: "I added the index, restarted the service, and The response?",
+        head: "The response time dropped from 2 seconds to 40 milliseconds.",
+        merged: "I added the index, restarted the service, and The response time dropped from 2 seconds to 40 milliseconds.",
+    },
+    SeamCase {
+        recording: "en Flo, word pauses, lead-in 1.4 s, seam 3",
+        tail: "the large payment module into several small parts. have a",
+        head: "and have a clear interface. We also need tests for",
+        merged: "the large payment module into several small parts. have a clear interface. We also need tests for",
+    },
+    SeamCase {
+        recording: "en Flo, low noise, lead-in 0.7 s",
+        tail: "In the evening we discussed how to split the large",
+        head: "we discussed how to split the large payment module into",
+        merged: "In the evening we discussed how to split the large payment module into",
+    },
+    SeamCase {
+        recording: "en Flo, high noise, lead-in 0 s",
+        tail: "evening we discussed how to split the large payment mod",
+        head: "out a split the large payment module into several small",
+        merged: "evening we discussed how to split the large payment module into several small",
+    },
+    SeamCase {
+        recording: "en Flo, high noise, lead-in 0.7 s",
+        tail: "In the evening we discussed how to split a large",
+        head: "we discussed how to split the large payment module into",
+        merged: "In the evening we discussed how to split the large payment module into",
+    },
+    SeamCase {
+        recording: "en Flo, phone band, lead-in 0 s",
+        tail: "evening we discussed how to split the large payment mod",
+        head: "out to split the large payment module into several small",
+        merged: "evening we discussed how to split the large payment module into several small",
+    },
+    SeamCase {
+        recording: "en Flo, quiet, lead-in 0 s",
+        tail: "evening we discussed how to split the large payment module",
+        head: "how to split the large payment module into several small",
+        merged: "evening we discussed how to split the large payment module into several small",
+    },
+    SeamCase {
+        recording: "en Flo, dropouts, lead-in 0 s",
+        tail: "the evening we discussed how to split the large payment",
+        head: "how to split the large payment module into several small",
+        merged: "the evening we discussed how to split the large payment module into several small",
+    },
+    SeamCase {
+        recording: "en Flo, tempo x1.25, lead-in 1.4 s",
+        tail: "should be responsible for one thing only and have a",
+        head: "responsible for one thing only and have a clear interface.",
+        merged: "should be responsible for one thing only and have a clear interface.",
+    },
+    SeamCase {
+        recording: "en Flo, tempo x0.8, lead-in 0 s",
+        tail: "index, restarted the service, and the response time dropped from",
+        head: "The response time dropped from 2 seconds to 40 milliseconds.",
+        merged: "index, restarted the service, and the response time dropped from 2 seconds to 40 milliseconds.",
+    },
+    SeamCase {
+        recording: "en Flo, tempo x0.8, lead-in 0.7 s, seam 1",
+        tail: "the index, restarted the service, and the response to the",
+        head: "service, and the response time dropped from 2 seconds to",
+        merged: "the index, restarted the service, and the response time dropped from 2 seconds to",
+    },
+    SeamCase {
+        recording: "en Flo, tempo x0.8, lead-in 0.7 s, seam 2",
+        tail: "were found there twice already. the report to the project",
+        head: "short report to the project leads.",
+        merged: "were found there twice already. the report to the project leads.",
+    },
+    SeamCase {
+        recording: "en Flo, tempo x0.8, lead-in 1.4 s, seam 2",
+        tail: "found there twice already. a short report to the broad",
+        head: "send a short report to the project lead.",
+        merged: "found there twice already. a short report to the project lead.",
+    },
+];

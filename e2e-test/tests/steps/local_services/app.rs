@@ -1,10 +1,9 @@
 //! The app in hotkey mode starting the services it needs itself, on ports of the scenario's
 //! own, and stopping them when it is told to end.
 
-use std::process::{Child, Command, ExitStatus, Stdio};
-use std::time::Duration;
+use std::process::ExitStatus;
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, ensure, Context, Result};
 use cucumber::{given, then, when};
 use voicepuncher::adapters::primary::menubar::macos::system_quit::SYSTEM_QUIT_NOTE;
 use voicepuncher::adapters::secondary::logging::file::{logs_dir, LOG_FILE_NAME};
@@ -67,7 +66,7 @@ fn ports_free_models_on_disk(world: &mut E2eWorld) -> Result<()> {
             "{variable} names no file: {path} — run 'just models'"
         );
     }
-    world.local_services = Some(ScenarioServices::on_free_ports()?);
+    world.services.local_services = Some(ScenarioServices::on_free_ports()?);
     Ok(())
 }
 
@@ -91,7 +90,28 @@ async fn app_launches_and_system_quits(world: &mut E2eWorld) -> Result<()> {
 fn launch_ready_and_end(world: &mut E2eWorld, end: fn(u32) -> Result<()>) -> Result<()> {
     let port = services(world)?.stt_port;
     let home = tempfile::tempdir()?;
-    let config = home.path().join("config.toml");
+    let child = spawn_app(home.path(), port)?;
+    let pid = child.id();
+    let launched = LaunchedApp { home: Some(home), child: Some(child), ..LaunchedApp::default() };
+    services(world)?.app = Some(launched);
+    let app = app(world)?;
+    let ready = wait_until(READY_WITHIN, || app.log().contains(READY_NOTE));
+    app.answered = ready && healthy(port);
+    end_app(app, pid, end)
+}
+
+/// Ends the app with `end` and keeps how it exited.
+fn end_app(app: &mut LaunchedApp, pid: u32, end: fn(u32) -> Result<()>) -> Result<()> {
+    end(pid)?;
+    let child = app.child.as_mut().context("the app is gone")?;
+    app.exit = wait_for_exit(child, ENDED_WITHIN)?;
+    Ok(())
+}
+
+/// Starts the app in `home`, a home of its own: the app logs, and its services log, there,
+/// never to the user's; it manages one copy of the dictation service on `port`.
+fn spawn_app(home: &std::path::Path, port: u16) -> Result<std::process::Child> {
+    let config = home.join("config.toml");
     std::fs::write(
         &config,
         format!(
@@ -99,26 +119,15 @@ fn launch_ready_and_end(world: &mut E2eWorld, end: fn(u32) -> Result<()>) -> Res
              [services]\nmanage = true\ndictation_copies = 1\n"
         ),
     )?;
-    // A home of its own: the app logs, and its services log, there, never to the user's
-    let child = Command::new(sut_bin())
+    Command::new(sut_bin())
         .arg("--config")
         .arg(&config)
-        .env("HOME", home.path())
+        .env("HOME", home)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .context("failed to spawn the app")?;
-    let pid = child.id();
-    let launched = LaunchedApp { home: Some(home), child: Some(child), ..LaunchedApp::default() };
-    services(world)?.app = Some(launched);
-    let app = app(world)?;
-    let ready = wait_until(READY_WITHIN, || app.log().contains(READY_NOTE));
-    app.answered = ready && healthy(port);
-    end(pid)?;
-    let child = app.child.as_mut().context("the app is gone")?;
-    app.exit = wait_for_exit(child, ENDED_WITHIN)?;
-    Ok(())
+        .context("failed to spawn the app")
 }
 
 /// Sends the app the quit Apple Event that logout, shutdown and Activity Monitor send.

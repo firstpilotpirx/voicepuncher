@@ -11,39 +11,39 @@ recognition_paths = '''
     copy-pool/src/*
     app/src/main.rs
     app/src/adapters/primary/cli/*
-    app/src/config.rs
     app/src/config/*
     app/src/adapters/secondary/recording/filesystem/*
     app/src/adapters/secondary/transcription/*
     app/src/adapters/secondary/http/*
     app/src/adapters/secondary/textpasting/stdio/*
-    app/src/core/application/pipeline.rs
-    app/src/core/application/chunking.rs
+    app/src/core/application/pipeline/mod.rs
+    app/src/core/application/chunking/*
     app/src/core/application/transcriber.rs
     app/src/core/application/transcript_filter.rs
     app/src/core/domain/audio_buffer.rs
     app/src/core/domain/raw_transcript.rs
     app/src/core/domain/cleaned_text.rs
     app/src/core/domain/filler_sounds.rs
-    app/src/core/domain/command_words.rs
+    app/src/core/domain/command_words/*
     command-spotting/src/*
     command-spotting/keywords.txt
     voice-commands/src/*
-    app/src/adapters/secondary/commandspotting/websocket/client.rs
+    app/src/adapters/secondary/commandspotting/websocket/client/*
     app/src/core/domain/voice_command.rs
-    app/src/core/domain/voice_command_recognizer.rs
+    app/src/core/domain/voice_command_recognizer/mod.rs
     e2e-test/src/corpus.rs
     e2e-test/src/wer.rs
     e2e-test/src/accuracy_gate.rs
     e2e-test/accuracy_baseline.json
     e2e-test/src/concurrency.rs
     e2e-test/src/speech.rs
+    e2e-test/src/speech/*
     e2e-test/src/voice_commands.rs
     e2e-test/src/scenario_filter/mod.rs
     e2e-test/tests/cucumber_e2e.rs
     e2e-test/tests/steps/mod.rs
     e2e-test/tests/steps/file_transcription.rs
-    e2e-test/tests/steps/voice_control.rs
+    e2e-test/tests/steps/voice_control/mod.rs
     e2e-test/tests/features/file_transcription.feature
     e2e-test/tests/features/voice_control.feature
     justfile
@@ -54,16 +54,15 @@ recognition_paths = '''
 # (e2e-seams-sample): how a dictation is cut into chunks and transcribed, and the seam tests. Globs as above; the
 # Cargo files count as for recognition_paths. A branch that adds a file on this path adds it here
 chunking_paths = '''
-    app/src/core/application/chunking.rs
-    app/src/core/application/chunking_seam_cases.rs
+    app/src/core/application/chunking/*
     app/src/core/domain/audio_buffer.rs
     app/src/adapters/secondary/transcription/*
-    app/src/config.rs
     app/src/config/*
     app/tests/it/chunked_transcription.rs
     e2e-test/src/speech.rs
+    e2e-test/src/speech/*
     e2e-test/tests/features/speech_recognition.feature
-    e2e-test/tests/steps/speech_recognition.rs
+    e2e-test/tests/steps/speech_recognition/mod.rs
     e2e-test/tests/steps/speech_recognition/*
 '''
 
@@ -98,12 +97,12 @@ stage_inputs = '''
     app/tests/steps/*                                  code
     app/tests/it/*                                     code
     app/tests/main_thread/*                            code
-    app/tests/it/transcription_openai.rs               e2e-smoke-speech
-    app/tests/it/commandspotting_websocket.rs          e2e-smoke-voice
+    app/tests/it/transcription_openai/*                e2e-smoke-speech
+    app/tests/it/commandspotting_websocket/*           e2e-smoke-voice
     app/tests/it/voice_samples.rs                      e2e-smoke-voice
     app/tests/it/voice_forms.rs                        e2e-smoke-voice
     app/tests/it/chunked_transcription.rs              e2e-seams,e2e-seams-sample
-    app/src/core/application/chunking_seam_cases.rs    e2e-seams,e2e-seams-sample
+    app/src/core/application/chunking/seam_cases/*   e2e-seams,e2e-seams-sample
     app/src/adapters/secondary/visualfeedback/macos/*  e2e-smoke-voice,e2e-bundle
     app/src/adapters/primary/menubar/macos/*           e2e-smoke-voice,e2e-bundle
     app/src/adapters/primary/settings/macos/*          e2e-smoke-voice,e2e-bundle
@@ -114,18 +113,18 @@ stage_inputs = '''
     voice-commands/*                                   e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,e2e-smoke-services,accuracy
     app/src/adapters/secondary/commandspotting/*       e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,e2e-smoke-services,accuracy
     app/src/adapters/secondary/keypressing/*           e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,e2e-smoke-services,accuracy
-    app/src/core/application/pipeline/voice_control.rs e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,e2e-smoke-services,accuracy
+    app/src/core/application/pipeline/voice_control/* e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,e2e-smoke-services,accuracy
     app/src/core/application/command_spotter.rs        e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,e2e-smoke-services,accuracy
     app/src/core/application/key_presser.rs            e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,e2e-smoke-services,accuracy
     app/src/core/domain/voice_command*.rs              e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,e2e-smoke-services,accuracy
-    app/src/core/domain/command_words.rs               e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,e2e-smoke-services,accuracy
+    app/src/core/domain/command_words/*                e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,e2e-smoke-services,accuracy
     app/src/core/domain/voice_start_timing.rs          e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,e2e-smoke-services,accuracy
     e2e-test/src/voice_commands.rs                     e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,accuracy
     e2e-test/tests/features/voice_control.feature      e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,accuracy
-    e2e-test/tests/steps/voice_control.rs              e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,accuracy
+    e2e-test/tests/steps/voice_control/mod.rs              e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,accuracy
     e2e-test/tests/steps/voice_control/*               e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,accuracy
     e2e-test/tests/features/speech_recognition.feature e2e-smoke-speech,e2e-seams,e2e-seams-sample
-    e2e-test/tests/steps/speech_recognition.rs         e2e-smoke-speech,e2e-seams,e2e-seams-sample
+    e2e-test/tests/steps/speech_recognition/mod.rs         e2e-smoke-speech,e2e-seams,e2e-seams-sample
     e2e-test/tests/steps/speech_recognition/*          e2e-smoke-speech,e2e-seams,e2e-seams-sample
     e2e-test/tests/features/file_transcription.feature e2e-smoke-speech,accuracy
     e2e-test/tests/steps/file_transcription.rs         e2e-smoke-speech,accuracy
@@ -135,7 +134,7 @@ stage_inputs = '''
     e2e-test/src/corpus.rs                             accuracy
     e2e-test/scripts/*                                 accuracy
     e2e-test/tests/features/local_services.feature     e2e-smoke-services,e2e-resilience
-    e2e-test/tests/steps/local_services.rs             e2e-smoke-services,e2e-resilience
+    e2e-test/tests/steps/local_services/mod.rs             e2e-smoke-services,e2e-resilience
     e2e-test/tests/steps/local_services/*              e2e-smoke-services,e2e-resilience
     e2e-test/tests/features/dictation_archive.feature  e2e-smoke-speech
     e2e-test/tests/steps/dictation_archive.rs          e2e-smoke-speech

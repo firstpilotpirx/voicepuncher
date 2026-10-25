@@ -1,11 +1,8 @@
 //! The services a configuration needs, looked up by the catalog on a home of the scenario's
 //! own: its models, its `$PATH` and, for a bundled app, its engine folders.
 
-use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, ensure, Context, Result};
 use cucumber::{given, then, when};
 
 use voicepuncher::adapters::secondary::localservices::catalog::{

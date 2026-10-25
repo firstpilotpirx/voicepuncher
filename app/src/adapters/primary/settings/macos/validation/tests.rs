@@ -8,14 +8,14 @@ fn home() -> PathBuf {
     std::env::temp_dir()
 }
 
-fn check(section: &str, key: &str, value: Value) -> Result<(), String> {
-    validate(find(section, key).unwrap(), &value, &home())
+fn check(section: &str, key: &str, value: &Value) -> Result<(), String> {
+    validate(find(section, key).unwrap(), value, &home())
 }
 
 #[test]
 fn should_refuse_a_minimum_press_below_its_range_naming_the_range() {
     // When
-    let result = check("hotkey", "min_press_ms", Value::Integer(5));
+    let result = check("hotkey", "min_press_ms", &Value::Integer(5));
     // Then
     assert_eq!(
         result,
@@ -26,8 +26,8 @@ fn should_refuse_a_minimum_press_below_its_range_naming_the_range() {
 #[test]
 fn should_accept_a_number_at_either_end_of_its_range() {
     // When
-    let low = check("hotkey", "min_press_ms", Value::Integer(50));
-    let high = check("hotkey", "min_press_ms", Value::Integer(1000));
+    let low = check("hotkey", "min_press_ms", &Value::Integer(50));
+    let high = check("hotkey", "min_press_ms", &Value::Integer(1000));
     // Then
     assert_eq!((low, high), (Ok(()), Ok(())));
 }
@@ -35,7 +35,7 @@ fn should_accept_a_number_at_either_end_of_its_range() {
 #[test]
 fn should_refuse_a_temperature_above_its_slider() {
     // When
-    let result = check("transcription", "temperature", Value::Float(1.5));
+    let result = check("transcription", "temperature", &Value::Float(1.5));
     // Then
     assert_eq!(
         result,
@@ -49,7 +49,7 @@ fn should_refuse_a_service_address_on_another_machine() {
     let result = check(
         "transcription",
         "base_url",
-        Value::String("http://10.0.0.7:8081/v1".into()),
+        &Value::String("http://10.0.0.7:8081/v1".into()),
     );
     // Then
     assert_eq!(
@@ -64,7 +64,7 @@ fn should_refuse_an_http_address_for_the_voice_control_service() {
     let result = check(
         "voice_control",
         "url",
-        Value::String("http://127.0.0.1:8082".into()),
+        &Value::String("http://127.0.0.1:8082".into()),
     );
     // Then
     assert!(result.is_err());
@@ -76,9 +76,9 @@ fn should_refuse_an_unknown_or_empty_language_list() {
     let unknown = check(
         "transcription",
         "languages",
-        Value::Array(vec![Value::String("xx".into())]),
+        &Value::Array(vec![Value::String("xx".into())]),
     );
-    let empty = check("transcription", "languages", Value::Array(vec![]));
+    let empty = check("transcription", "languages", &Value::Array(vec![]));
     // Then
     assert!(unknown.unwrap_err().contains("xx"));
     assert!(empty.is_err());
@@ -93,7 +93,7 @@ fn should_refuse_a_folder_inside_a_file() {
     let result = check(
         "archive",
         "dir",
-        Value::String(inside.to_string_lossy().into_owned()),
+        &Value::String(inside.to_string_lossy().into_owned()),
     );
     // Then
     assert!(result.is_err());
@@ -108,7 +108,7 @@ fn should_accept_a_folder_that_does_not_exist_yet_but_can_be_created() {
     let result = check(
         "archive",
         "dir",
-        Value::String(missing.to_string_lossy().into_owned()),
+        &Value::String(missing.to_string_lossy().into_owned()),
     );
     // Then
     assert_eq!(result, Ok(()));

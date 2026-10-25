@@ -5,13 +5,14 @@ use super::measure::measure_source;
 use std::collections::BTreeMap;
 use std::path::Path;
 
-const MEMBERS: [&str; 7] = [
+const MEMBERS: [&str; 8] = [
     "analyzers",
     "app",
     "command-spotting",
     "copy-pool",
     "dev-tools",
     "e2e-test",
+    "log-line",
     "voice-commands",
 ];
 

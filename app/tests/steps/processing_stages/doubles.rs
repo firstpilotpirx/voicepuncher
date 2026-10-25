@@ -1,10 +1,9 @@
 //! The stand-ins of the processing stages scenarios.
 
 use super::{
-    mpsc, record, AudioBuffer16k, AudioRecorder, ChunkingCfg, CleanedText, Event, Events,
-    FailureNotice, FocusProbe, FocusedElement, Instant, LiveChunk, Overlay, RawTranscript,
-    Receiver, Result, SoundPlayer, TextPaster, Transcriber, VisualIndicator, PIPELINE_LAG,
-    SENTENCE, SERVICE_TIME,
+    record, AudioBuffer16k, AudioRecorder, ChunkingCfg, Event, Events, FailureNotice, FocusProbe,
+    FocusedElement, LiveChunk, Overlay, RawTranscript, Receiver, Result, Transcriber,
+    VisualIndicator, PIPELINE_LAG, SENTENCE, SERVICE_TIME,
 };
 
 /// Hands over one second of audio at the stop; recorded in parts, it sends one part while
@@ -12,20 +11,7 @@ use super::{
 pub(super) struct PartsRecorder {
     pub(super) events: Events,
     pub(super) in_parts: bool,
-    pub(super) parts: Option<mpsc::Sender<LiveChunk>>,
-}
-
-impl PartsRecorder {
-    pub(super) fn one_second() -> AudioBuffer16k {
-        AudioBuffer16k::new(vec![1_000i16; AudioBuffer16k::SAMPLE_RATE_HZ as usize])
-    }
-
-    pub(super) fn send_part(&self) {
-        if let Some(parts) = &self.parts {
-            let _ =
-                parts.send(LiveChunk { audio: Self::one_second(), enqueued_at: Instant::now() });
-        }
-    }
+    pub(super) parts: voicepuncher::test_doubles::OneSecondParts,
 }
 
 impl AudioRecorder for PartsRecorder {
@@ -35,23 +21,15 @@ impl AudioRecorder for PartsRecorder {
     }
 
     fn stop(&mut self) -> Result<AudioBuffer16k> {
-        Ok(Self::one_second())
+        Ok(voicepuncher::test_doubles::one_second_of_sound())
     }
 
     fn start_live_chunks(&mut self, _cfg: ChunkingCfg) -> Result<Option<Receiver<LiveChunk>>> {
-        if !self.in_parts {
-            return Ok(None);
-        }
-        let (tx, rx) = mpsc::channel();
-        self.parts = Some(tx);
-        self.send_part();
-        Ok(Some(rx))
+        Ok(self.in_parts.then(|| self.parts.start()))
     }
 
     fn flush_live_chunks(&mut self) {
-        self.send_part();
-        // the transcription of the parts ends with the last one
-        self.parts = None;
+        self.parts.flush();
     }
     voicepuncher::records_whole_buffers_only!();
 }
@@ -73,18 +51,7 @@ impl Transcriber for NotingTranscriber {
     }
 }
 
-pub(super) struct NotingPaster(pub(super) Events);
-
-impl TextPaster for NotingPaster {
-    fn paste(&mut self, _text: &CleanedText) -> Result<()> {
-        record(&self.0, Event::Pasted);
-        Ok(())
-    }
-
-    fn leave_in_clipboard(&mut self, text: &CleanedText) -> Result<()> {
-        self.paste(text)
-    }
-}
+pub(super) type NotingPaster = voicepuncher::test_doubles::NotingPaster<Event>;
 
 pub(super) struct NotingOverlay {
     pub(super) events: Events,
@@ -135,12 +102,4 @@ impl FocusProbe for FocusOnButton {
     }
 }
 
-pub(super) struct Silent;
-
-impl SoundPlayer for Silent {
-    fn play_start(&self) {}
-    fn play_stop(&self) {}
-    fn play_cancel(&self) {}
-    fn play_listening_on(&self) {}
-    fn play_listening_off(&self) {}
-}
+pub(super) use voicepuncher::test_doubles::Silent;

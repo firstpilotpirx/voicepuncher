@@ -41,7 +41,10 @@ impl SignalRouter {
     }
 
     /// Forwards every signal from `hotkeys` until the listener ends.
-    pub fn spawn_forwarding(&self, hotkeys: Receiver<PttSignal>) -> JoinHandle<()> {
+    pub fn spawn_forwarding(
+        &self,
+        hotkeys: Receiver<PttSignal>,
+    ) -> std::io::Result<JoinHandle<()>> {
         let router = self.clone();
         std::thread::Builder::new()
             .name("hotkey-router".into())
@@ -50,7 +53,6 @@ impl SignalRouter {
                     router.forward(signal);
                 }
             })
-            .expect("failed to spawn hotkey router thread")
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Option<Sender<PipelineInput>>> {
@@ -116,7 +118,7 @@ mod tests {
         let (pipeline_tx, pipeline_rx) = mpsc::channel();
         router.route_to(pipeline_tx);
         let (hotkey_tx, hotkey_rx) = mpsc::channel();
-        let forwarder = router.spawn_forwarding(hotkey_rx);
+        let forwarder = router.spawn_forwarding(hotkey_rx).unwrap();
         // When
         hotkey_tx.send(PttSignal::Cancel).unwrap();
         drop(hotkey_tx);

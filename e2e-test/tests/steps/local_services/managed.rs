@@ -2,11 +2,9 @@
 //! services it starts as copies, the processes a step kills or pauses by port, and the log
 //! lines the clients wrote meanwhile.
 
-use std::process::Command;
-use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::sync::OnceLock;
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{anyhow, bail, Context, Result};
 use voicepuncher::adapters::secondary::localservices::catalog::Machine;
 use voicepuncher::config::Config;
 use voicepuncher::core::domain::{ServiceKind, ServiceStatus};
@@ -42,7 +40,7 @@ impl std::fmt::Debug for ManagedRun {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ManagedRun")
             .field("statuses", &self.view.statuses())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -58,26 +56,9 @@ impl Drop for ManagedRun {
 impl ManagedRun {
     /// Starts what `needed` names on free ports, from the models the `justfile` exports,
     /// and waits until every copy answers.
-    #[expect(clippy::too_many_lines, reason = "size baseline")]
     pub fn start(needed: Needed) -> Result<Self> {
         let home = tempfile::tempdir()?;
-        let mut config = Config::default();
-        config.transcription.base_url = format!(
-            "http://127.0.0.1:{}/v1",
-            free_service_port(SPEECH_RECOGNITION_COPY_OFFSET)?
-        );
-        config.services.dictation_copies = needed.dictation_copies;
-        config.services.commands_url = format!(
-            "http://127.0.0.1:{}/v1",
-            free_service_port(SPEECH_RECOGNITION_COPY_OFFSET)?
-        );
-        config.services.command_copies = 2;
-        config.services.command_spotting_copies = 2;
-        config.voice_control.enabled = needed.voice_control;
-        config.voice_control.url = format!(
-            "ws://127.0.0.1:{}",
-            free_service_port(COMMAND_SPOTTING_COPY_OFFSET)?
-        );
+        let config = Self::config_for(needed)?;
         let mut machine = Machine::current();
         machine.home = home.path().to_path_buf();
         machine.env.insert(
@@ -105,6 +86,28 @@ impl ManagedRun {
         Ok(run)
     }
 
+    /// The configuration of the services `needed` names, each on a free port.
+    fn config_for(needed: Needed) -> Result<Config> {
+        let mut config = Config::default();
+        config.transcription.base_url = format!(
+            "http://127.0.0.1:{}/v1",
+            free_service_port(SPEECH_RECOGNITION_COPY_OFFSET)?
+        );
+        config.services.dictation_copies = needed.dictation_copies;
+        config.services.commands_url = format!(
+            "http://127.0.0.1:{}/v1",
+            free_service_port(SPEECH_RECOGNITION_COPY_OFFSET)?
+        );
+        config.services.command_copies = 2;
+        config.services.command_spotting_copies = 2;
+        config.voice_control.enabled = needed.voice_control;
+        config.voice_control.url = format!(
+            "ws://127.0.0.1:{}",
+            free_service_port(COMMAND_SPOTTING_COPY_OFFSET)?
+        );
+        Ok(config)
+    }
+
     /// The ports of the copies of `kind`, in port order.
     pub fn ports(&self, kind: ServiceKind) -> Vec<u16> {
         let mut ports: Vec<u16> = self
@@ -121,46 +124,39 @@ impl ManagedRun {
         self.view.statuses()
     }
 
-    /// The process of the copy on `port`.
-    pub fn process(&self, port: u16) -> Option<u32> {
-        process_on(port)
-    }
-
-    /// Kills the copy on `port` at once; returns its process.
-    pub fn kill(&self, port: u16) -> Result<u32> {
-        let pid = self
-            .process(port)
-            .with_context(|| format!("no service process listens on port {port}"))?;
-        signal(pid, "-KILL")?;
-        Ok(pid)
-    }
-
     /// Stops the copy on `port` without ending it, so it no longer answers; returns its process.
     pub fn pause(&mut self, port: u16) -> Result<u32> {
-        let pid = self
-            .process(port)
+        let pid = process_on(port)
             .with_context(|| format!("no service process listens on port {port}"))?;
         signal(pid, "-STOP")?;
         self.paused.push(pid);
         Ok(pid)
     }
 
-    /// The copy on one of `ports` this process holds a connection to.
-    pub fn connected_copy(&self, ports: &[u16]) -> Option<u16> {
-        let me = std::process::id();
-        ports.iter().copied().find(|port| {
-            let Some(service) = self.process(*port) else {
-                return false;
-            };
-            let holders = established(*port);
-            holders.contains(&service) && holders.contains(&me)
-        })
-    }
-
     /// The scenario's home: it holds the services' logs, for a failure message.
     pub fn home(&self) -> &std::path::Path {
         self.home.path()
     }
+}
+
+/// Kills the service copy on `port` at once; returns its process.
+pub fn kill_copy(port: u16) -> Result<u32> {
+    let pid =
+        process_on(port).with_context(|| format!("no service process listens on port {port}"))?;
+    signal(pid, "-KILL")?;
+    Ok(pid)
+}
+
+/// The service copy on one of `ports` this process holds a connection to.
+pub fn connected_copy(ports: &[u16]) -> Option<u16> {
+    let me = std::process::id();
+    ports.iter().copied().find(|port| {
+        let Some(service) = process_on(*port) else {
+            return false;
+        };
+        let holders = established(*port);
+        holders.contains(&service) && holders.contains(&me)
+    })
 }
 
 /// A free port whose copy ports at `offset` are free too, so nothing else is taken for a copy.

@@ -1,13 +1,10 @@
 //! The app's speech recognition client against the stand-in service of `service`: what it
 //! sends again, what it gives up and what it logs, through `OpenAiTranscriber`.
 
-use std::time::{Duration, Instant};
-
-use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
+use voicepuncher::test_doubles::prelude::*;
 
 use voicepuncher::adapters::secondary::transcription::openai::OpenAiTranscriber;
-use voicepuncher::core::domain::AudioBuffer16k;
 use voicepuncher::{config::TranscriptionCfg, core::application::Transcriber};
 
 mod requests;
@@ -274,7 +271,12 @@ fn other_copy_answered(world: &mut IntegrationWorld) -> Result<()> {
 
 #[then("the hung attempt is logged")]
 fn hang_logged(world: &mut IntegrationWorld) -> Result<()> {
-    let logged = logged(world, "did not answer in time")? + logged(world, " sent no answer in ")?;
+    // An attempt the copy pool gave up on logs both phrases in one line: count each line once
+    let logged = service_run(world)?
+        .warnings
+        .iter()
+        .filter(|w| w.contains("did not answer in time") || w.contains(" sent no answer in "))
+        .count();
     if logged != 1 {
         bail!(
             "{logged} hung attempts logged: {:?}",

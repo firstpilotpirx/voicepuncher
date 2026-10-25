@@ -2,10 +2,8 @@
 //! ports of the scenario's own: a speech recognition service for commands that stops
 //! answering for a while, a command spotting service that is killed and started again by the scripts.
 
-use std::process::Command;
-use std::time::Duration;
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, ensure, Context, Result};
 use cucumber::{given, then, when};
 
 use super::hands_free::{Event, HandsFree, SENTENCE};
@@ -27,11 +25,16 @@ const STAYS_AWAY: Duration = Duration::from_secs(8);
 const POLL: Duration = Duration::from_millis(250);
 
 fn hands_free(world: &E2eWorld) -> Result<&HandsFree> {
-    world.hands_free.as_ref().context("listening is not on")
+    world
+        .voice
+        .hands_free
+        .as_ref()
+        .context("listening is not on")
 }
 
 fn scenario_services(world: &mut E2eWorld) -> Result<&mut ScenarioServices> {
     world
+        .services
         .local_services
         .as_mut()
         .context("the services were not started")
@@ -42,7 +45,7 @@ async fn own_services(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let mut services = ScenarioServices::for_outages()?;
         services.start(&["whisper-server-commands", "voicepuncher-command-spotting"])?;
-        world.local_services = Some(services);
+        world.services.local_services = Some(services);
         Ok(())
     })
     .await
@@ -51,11 +54,7 @@ async fn own_services(world: &mut E2eWorld) -> Result<()> {
 #[given("listening is on with them")]
 fn listening_on_own_services(world: &mut E2eWorld) -> Result<()> {
     let url = scenario_services(world)?.command_spotting_url();
-    let hands_free = HandsFree::start(url);
-    if !hands_free.saw(|e| *e == Event::Listening) {
-        bail!("listening did not start: {:?}", hands_free.events());
-    }
-    world.hands_free = Some(hands_free);
+    world.voice.hands_free = Some(HandsFree::listening(url)?);
     Ok(())
 }
 
@@ -147,35 +146,42 @@ pub(crate) fn overlay_hidden(world: &mut E2eWorld) -> Result<()> {
 /// Holds what restarts the command spotting service, kills the service and lets it start
 /// again only after `STAYS_AWAY`; waits until the app has it back.
 pub(crate) async fn command_spotting_stays_away(world: &mut E2eWorld) -> Result<()> {
-    off_thread(world, |world| {
-        let services = scenario_services(world)?;
-        let supervisor = services
-            .command_spotting_supervisor()
-            .context("no supervisor of the command spotting service was found")?;
-        let pid = services
-            .command_spotting_process()
-            .context("no command spotting service process was found")?;
-        services.pause(supervisor)?;
-        Command::new("kill")
-            .args(["-9", &pid.to_string()])
-            .status()?;
-        hands_free(world)?.keep_quiet(STAYS_AWAY)?;
-        let services = scenario_services(world)?;
-        services.resume(supervisor)?;
-        let port = services.kws_port();
-        ensure!(
-            wait_for(BACK_WITHIN, || healthy(port)),
-            "the scripts did not start the command spotting service again within {BACK_WITHIN:?}"
-        );
-        let hands_free = hands_free(world)?;
-        wait_for(BACK_WITHIN, || {
-            hands_free
-                .events()
-                .contains(&Event::CommandsUnavailableHidden)
-        });
-        Ok(())
-    })
-    .await
+    off_thread(world, keep_command_spotting_away).await
+}
+
+/// Kills the command spotting service while its supervisor is held, for [`STAYS_AWAY`].
+fn keep_command_spotting_away(world: &mut E2eWorld) -> Result<()> {
+    let services = scenario_services(world)?;
+    let supervisor = services
+        .command_spotting_supervisor()
+        .context("no supervisor of the command spotting service was found")?;
+    let pid = services
+        .command_spotting_process()
+        .context("no command spotting service process was found")?;
+    services.pause(supervisor)?;
+    Command::new("kill")
+        .args(["-9", &pid.to_string()])
+        .status()?;
+    hands_free(world)?.keep_quiet(STAYS_AWAY)?;
+    let services = scenario_services(world)?;
+    services.resume(supervisor)?;
+    let port = services.kws_port();
+    ensure!(
+        wait_for(BACK_WITHIN, || healthy(port)),
+        "the scripts did not start the command spotting service again within {BACK_WITHIN:?}"
+    );
+    back_in_app(world)
+}
+
+/// Waits until the app took down its sign that commands are unavailable.
+fn back_in_app(world: &mut E2eWorld) -> Result<()> {
+    let hands_free = hands_free(world)?;
+    wait_for(BACK_WITHIN, || {
+        hands_free
+            .events()
+            .contains(&Event::CommandsUnavailableHidden)
+    });
+    Ok(())
 }
 
 fn wait_for(limit: Duration, condition: impl Fn() -> bool) -> bool {

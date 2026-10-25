@@ -108,6 +108,11 @@ pub fn test_fns(source: &str, main_thread: bool) -> Vec<TestFn> {
 }
 
 fn fn_name(line: &str) -> Option<String> {
+    // A restricted visibility (`pub(super)`, `pub(crate)`) is dropped like `pub`
+    let line = line
+        .strip_prefix("pub(")
+        .and_then(|rest| rest.split_once(") "))
+        .map_or(line, |(_, rest)| rest);
     let rest = line
         .strip_prefix("pub fn ")
         .or_else(|| line.strip_prefix("async fn "))

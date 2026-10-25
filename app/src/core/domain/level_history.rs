@@ -22,7 +22,9 @@ const LOUD_DBFS: f32 = -28.0;
 
 /// Recent loudness of the microphone as a strip of columns, one per
 /// [`COLUMN_PERIOD`], that slides left as time passes: the model behind the
-/// level waveform. Times are offsets from any fixed origin chosen by the caller.
+/// level waveform.
+///
+/// Times are offsets from any fixed origin chosen by the caller.
 #[derive(Clone, Debug)]
 pub struct LevelHistory {
     columns: Vec<f32>,
@@ -76,7 +78,8 @@ impl LevelHistory {
             self.push(self.window_peak);
             self.window_peak = self.level;
         }
-        let into_current_period = (elapsed.as_nanos() % period_nanos) as u64;
+        let into_current_period =
+            u64::try_from(elapsed.as_nanos() % period_nanos).unwrap_or(u64::MAX);
         self.window_start = at - Duration::from_nanos(into_current_period);
     }
 
@@ -180,7 +183,10 @@ mod tests {
         // Given / When
         let newest = newest_after_a_second_of(ROOM_NOISE_RMS);
         // Then
-        assert_eq!(newest, MIN_HEIGHT_PT);
+        assert!(
+            (newest - MIN_HEIGHT_PT).abs() < 1e-6,
+            "{newest} is not {MIN_HEIGHT_PT}"
+        );
     }
 
     #[test]
@@ -282,7 +288,12 @@ mod tests {
         // When
         history.advance_to(COLUMN_PERIOD);
         // Then
-        assert_eq!(history.slide_offset(COLUMN_PERIOD), 0.0);
+        assert!(
+            (history.slide_offset(COLUMN_PERIOD) - 0.0).abs() < 1e-6,
+            "{} is not {}",
+            history.slide_offset(COLUMN_PERIOD),
+            0.0
+        );
     }
 
     #[test]
@@ -292,20 +303,39 @@ mod tests {
         // When
         let offset = history.slide_offset(COLUMN_PERIOD * 3);
         // Then
-        assert_eq!(offset, COLUMN_PITCH_PT);
+        assert!(
+            (offset - COLUMN_PITCH_PT).abs() < 1e-6,
+            "{offset} is not {COLUMN_PITCH_PT}"
+        );
     }
 
     #[test]
     fn should_map_the_noise_floor_and_below_to_no_loudness() {
-        assert_eq!(loudness(AudioLevel::from_rms(0.000_79)), 0.0, "-62 dBFS");
-        assert_eq!(loudness(AudioLevel::SILENT), 0.0);
+        assert!(
+            (loudness(AudioLevel::from_rms(0.000_79)) - 0.0).abs() < 1e-6,
+            "-62 dBFS"
+        );
+        assert!(
+            (loudness(AudioLevel::SILENT) - 0.0).abs() < 1e-6,
+            "{} is not {}",
+            loudness(AudioLevel::SILENT),
+            0.0
+        );
         assert!(loudness(AudioLevel::from_rms(0.001_78)) > 0.0, "-55 dBFS");
     }
 
     #[test]
     fn should_map_loud_speech_and_above_to_full_loudness() {
-        assert_eq!(loudness(AudioLevel::from_rms(0.039_9)), 1.0, "-28 dBFS");
-        assert_eq!(loudness(AudioLevel::from_rms(1.0)), 1.0);
+        assert!(
+            (loudness(AudioLevel::from_rms(0.039_9)) - 1.0).abs() < 1e-6,
+            "-28 dBFS"
+        );
+        assert!(
+            (loudness(AudioLevel::from_rms(1.0)) - 1.0).abs() < 1e-6,
+            "{} is not {}",
+            loudness(AudioLevel::from_rms(1.0)),
+            1.0
+        );
     }
 
     #[test]

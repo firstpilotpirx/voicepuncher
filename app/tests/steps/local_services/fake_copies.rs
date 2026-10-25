@@ -4,9 +4,7 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+use voicepuncher::test_doubles::prelude::*;
 
 use voicepuncher_copy_pool::ServiceAddress;
 

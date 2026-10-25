@@ -4,12 +4,10 @@
 //! confirmation times are read from the command spotting service's log.
 
 use std::io::{Read, Seek, SeekFrom};
-use std::time::Duration;
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{ensure, Context, Result};
 use cucumber::{given, then, when};
 
-use voicepuncher::core::domain::VoiceCommand;
 use voicepuncher_e2e_test::voice_commands::{
     recognized_commands, spoken_by, spoken_with_pauses, spotting_events,
 };
@@ -48,7 +46,7 @@ async fn voice_control_on_idle_service(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let mut services = ScenarioServices::with_copies(None)?;
         services.start(&[COMMAND_SPEECH_RECOGNITION, COMMAND_SPOTTING])?;
-        world.local_services = Some(services);
+        world.services.local_services = Some(services);
         Ok(())
     })
     .await
@@ -68,7 +66,7 @@ async fn says_russian_speech_then(world: &mut E2eWorld, phrase: String) -> Resul
 /// outside a dictation; keeps where the log stood before, and what was recognized.
 fn hear(world: &mut E2eWorld, command: Option<&str>) -> Result<()> {
     let services = services(world)?;
-    services.log_before_speech = Some(log_len(services)?);
+    services.watched.log_before_speech = Some(log_len(services)?);
     let mut audio = Vec::new();
     for phrase in RUSSIAN_SPEECH {
         audio.extend(spoken_by(RUSSIAN_VOICE, phrase)?);
@@ -81,7 +79,7 @@ fn hear(world: &mut E2eWorld, command: Option<&str>) -> Result<()> {
         &audio,
         &VoiceCommand::STANDBY,
     )?;
-    world.recognized = recognized_commands(events);
+    world.voice.recognized = recognized_commands(events);
     Ok(())
 }
 
@@ -92,6 +90,7 @@ pub(super) fn log_len(services: &ScenarioServices) -> Result<u64> {
 /// The command spotting service's log since the speech began.
 pub(super) fn log_since_speech(services: &ScenarioServices) -> Result<String> {
     let from = services
+        .watched
         .log_before_speech
         .context("no speech was streamed")?;
     let mut log = std::fs::File::open(services.command_spotting_log())?;
@@ -145,9 +144,9 @@ fn reports(world: &mut E2eWorld, phrase: String) -> Result<()> {
     let expected =
         VoiceCommand::from_phrase(&phrase).with_context(|| format!("{phrase:?} is no command"))?;
     ensure!(
-        world.recognized.contains(&expected),
+        world.voice.recognized.contains(&expected),
         "{expected:?} was not reported; recognized {:?}",
-        world.recognized
+        world.voice.recognized
     );
     Ok(())
 }

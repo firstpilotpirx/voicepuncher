@@ -1,4 +1,8 @@
 //! Harness entry point for the slice and component `.feature` files: World and `main()` only.
+#![allow(
+    clippy::future_not_send,
+    reason = "the world holds main-thread window models (Rc); cucumber runs it on one thread"
+)]
 
 #[allow(
     clippy::needless_pass_by_ref_mut,
@@ -22,10 +26,17 @@ const FEATURES: &str = "tests/features";
 
 #[derive(Debug, Default, World)]
 pub struct IntegrationWorld {
+    pub extra: steps::shared::extra::Extra,
+    pub pipeline: PipelineRuns,
+    pub app: AppRuns,
+}
+
+/// The runs of a scenario that drives the dictation pipeline.
+#[derive(Debug, Default)]
+pub struct PipelineRuns {
     pub ptt_signals: Option<Receiver<PttSignal>>,
     pub dictation_language: Option<String>,
     pub dictation: Option<steps::speech_recognition::Dictation>,
-    pub extra: steps::shared::extra::Extra,
     pub loss: Option<steps::speech_recognition::losses::LossRun>,
     pub insertion: Option<steps::text_insertion::InsertionRun>,
     pub voice: Option<steps::voice_control::VoiceRun>,
@@ -34,6 +45,11 @@ pub struct IntegrationWorld {
     pub notices: Option<steps::failure_notices::NoticesRun>,
     pub pointer: Option<steps::dictation_pointer::PointerRun>,
     pub archive: Option<steps::dictation_archive::ArchiveRun>,
+}
+
+/// The runs of a scenario that drives the app around the pipeline.
+#[derive(Debug, Default)]
+pub struct AppRuns {
     pub runtime: Option<steps::app_runtime::RuntimeRun>,
     pub menu_bar: Option<steps::menu_bar_presence::MenuBarRun>,
     pub logging: Option<steps::app_logging::LoggingRun>,
@@ -63,7 +79,7 @@ fn main() {
     };
     let gates = vec![
         Gate::wip(),
-        Gate::real_keyboard(std::env::var("VOICEPUNCHER_REAL_KEYBOARD_IT")),
+        Gate::real_keyboard(&std::env::var("VOICEPUNCHER_REAL_KEYBOARD_IT")),
     ];
     let (opts, filter) =
         scenario_filter::split(Opts::<_, _, _, Empty>::parse_from(command_line), gates);

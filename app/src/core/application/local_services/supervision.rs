@@ -179,13 +179,13 @@ impl Supervision {
                 self.process = Some(process);
                 self.state = ServiceState::Starting { attempt: self.attempt };
             }
-            Err(e) => self.start_failed(senses.now, format!("{e:#}")),
+            Err(e) => self.start_failed(senses.now, &format!("{e:#}")),
         }
     }
 
     fn watch_start(&mut self, senses: &Senses) {
         if let Some(exit) = self.exited() {
-            return self.start_failed(senses.now, format!("exited ({exit})"));
+            return self.start_failed(senses.now, &format!("exited ({exit})"));
         }
         let warmed = (senses.probe.answer(self.spec.kind, self.spec.port) == ProbeAnswer::Ready)
             .then(|| senses.probe.warm_up(self.spec.kind, self.spec.port))
@@ -204,14 +204,14 @@ impl Supervision {
             self.state = ServiceState::Ready;
         } else if senses.now.duration_since(self.since) >= READINESS_LIMIT {
             self.kill();
-            self.start_failed(senses.now, "not ready within 60 s".into());
+            self.start_failed(senses.now, "not ready within 60 s");
         }
     }
 
-    fn start_failed(&mut self, now: Instant, reason: String) {
+    fn start_failed(&mut self, now: Instant, reason: &str) {
         self.failed_starts += 1;
         if self.failed_starts < FAILED_STARTS {
-            return self.schedule_restart(now, &reason);
+            return self.schedule_restart(now, reason);
         }
         self.fail(format!(
             "the {} could not start {} times in a row ({reason}); see {}",
@@ -260,12 +260,20 @@ impl Supervision {
         self.pause = (self.pause * 2).min(LONGEST_PAUSE);
     }
 
-    fn watch_adopted(&mut self, senses: &Senses) {
+    /// The service's answer when its next check is due, which schedules the one after it.
+    fn due_answer(&mut self, senses: &Senses) -> Option<ProbeAnswer> {
         if senses.now < self.next_at {
-            return;
+            return None;
         }
         self.next_at = senses.now + CHECK_INTERVAL;
-        if senses.probe.answer(self.spec.kind, self.spec.port) != ProbeAnswer::Closed {
+        Some(senses.probe.answer(self.spec.kind, self.spec.port))
+    }
+
+    fn watch_adopted(&mut self, senses: &Senses) {
+        let Some(answer) = self.due_answer(senses) else {
+            return;
+        };
+        if answer != ProbeAnswer::Closed {
             self.failed_checks = 0;
             return;
         }
@@ -280,11 +288,7 @@ impl Supervision {
     }
 
     fn wait_for_return(&mut self, senses: &Senses) {
-        if senses.now < self.next_at {
-            return;
-        }
-        self.next_at = senses.now + CHECK_INTERVAL;
-        if senses.probe.answer(self.spec.kind, self.spec.port) == ProbeAnswer::Ready {
+        if self.due_answer(senses) == Some(ProbeAnswer::Ready) {
             log::info!("services: {} answers again — adopted", self.spec.label);
             self.failed_checks = 0;
             self.state = ServiceState::Adopted;

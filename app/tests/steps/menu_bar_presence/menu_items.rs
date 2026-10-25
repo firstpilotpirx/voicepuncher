@@ -3,12 +3,9 @@
 //! windows and file browser are recorded instead of shown.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::Arc;
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 use tempfile::TempDir;
 
@@ -179,7 +176,7 @@ pub(super) fn items(world: &mut IntegrationWorld) -> &mut MenuItemsRun {
 
 /// The scenario's menu actions and the status item's run, borrowed together.
 fn with_actions(world: &mut IntegrationWorld, act: impl FnOnce(&MacosMenuActions)) {
-    let bar = world.menu_bar.get_or_insert_with(MenuBarRun::default);
+    let bar = world.app.menu_bar.get_or_insert_with(MenuBarRun::default);
     let items = world
         .extra
         .ui

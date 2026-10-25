@@ -2,10 +2,8 @@
 //! streams in real time, as from a microphone, so the command spotting service reports the
 //! command while the next words are already being said.
 
-use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 use serde::Deserialize;
 
@@ -15,10 +13,12 @@ use voicepuncher_e2e_test::voice_commands::{
 };
 
 use super::{
-    command_audio, env, room_noise, session_of, to_f32, words, CommandVoice, Event, Expected,
+    command_audio, env, room_noise, session_of, to_f32, CommandVoice, Event, Expected,
     HandsFreeSession, ENGLISH_VOICE, SAMPLE_RATE_HZ,
 };
 use crate::E2eWorld;
+use voicepuncher_e2e_test::conversions::saturating_usize;
+use voicepuncher_e2e_test::speech::split_words;
 
 /// The dictation said right after the command; its first words are what a late start loses.
 pub(super) const SENTENCE: &str = "Coffee machine on the third floor is broken";
@@ -56,7 +56,7 @@ pub(super) struct Form {
 }
 
 fn samples_in(secs: f32) -> usize {
-    (secs * SAMPLE_RATE_HZ) as usize
+    saturating_usize(secs * SAMPLE_RATE_HZ)
 }
 
 /// A recording cut after its last 10 ms louder than 3 % of its loudest: the room's silence
@@ -215,14 +215,9 @@ fn says_command_and_sentence(world: &mut E2eWorld, said: String) -> Result<()> {
 }
 
 #[when(
-    expr = "someone says {string}, pauses for about {float} s and says {word} sentence, and later ends the dictation"
+    expr = "someone says {string}, pauses for about {float} s and says a/another sentence, and later ends the dictation"
 )]
-fn says_command_pause_sentence(
-    world: &mut E2eWorld,
-    said: String,
-    pause_secs: f32,
-    _which: String,
-) -> Result<()> {
+fn says_command_pause_sentence(world: &mut E2eWorld, said: String, pause_secs: f32) -> Result<()> {
     let mut audio = without_trailing_silence(spoken_by(ENGLISH_VOICE, &said)?);
     audio.extend(silence(pause_secs));
     audio.extend(from_first_sound(spoken_by(ENGLISH_VOICE, SENTENCE)?));
@@ -230,9 +225,9 @@ fn says_command_pause_sentence(
 }
 
 #[when(
-    expr = "the user's recorded {string} is followed at once by {word} sentence, and the dictation later ends"
+    expr = "the user's recorded {string} is followed at once by a/another sentence, and the dictation later ends"
 )]
-fn recorded_command_and_sentence(world: &mut E2eWorld, said: String, _which: String) -> Result<()> {
+fn recorded_command_and_sentence(world: &mut E2eWorld, said: String) -> Result<()> {
     let mut audio = room_noise(SAY_PAUSE_SECS)?;
     audio.extend(recorded_form(&said)?);
     audio.extend(without_lead_pause(spoken_by(ENGLISH_VOICE, SENTENCE)?));
@@ -241,21 +236,24 @@ fn recorded_command_and_sentence(world: &mut E2eWorld, said: String, _which: Str
 
 /// Whether `pasted` holds a word of a command that starts a dictation.
 fn holds_a_start_word(pasted: &str) -> bool {
-    words(pasted)
+    split_words(pasted)
         .iter()
         .any(|w| START_WORDS.contains(&w.as_str()))
 }
 
 /// Whether `pasted` holds every word of the sentence, its first words included.
 fn holds_whole_sentence(pasted: &str) -> bool {
-    let pasted_words = words(pasted);
-    words(SENTENCE).iter().all(|w| pasted_words.contains(w))
+    let pasted_words = split_words(pasted);
+    split_words(SENTENCE)
+        .iter()
+        .all(|w| pasted_words.contains(w))
 }
 
 #[then(expr = "the whole sentence, its first words included, is pasted without {string}")]
 fn whole_sentence_pasted(world: &mut E2eWorld, command_word: String) -> Result<()> {
     let pasted = session_of(world)?.last_pasted()?;
-    let has_command_word = words(&pasted).contains(&command_word) || holds_a_start_word(&pasted);
+    let has_command_word =
+        split_words(&pasted).contains(&command_word) || holds_a_start_word(&pasted);
     if has_command_word || !holds_whole_sentence(&pasted) {
         bail!("pasted {pasted:?}, expected all of {SENTENCE:?} without {command_word:?}");
     }
@@ -264,8 +262,8 @@ fn whole_sentence_pasted(world: &mut E2eWorld, command_word: String) -> Result<(
 
 pub(crate) fn only_other_sentence(world: &mut E2eWorld) -> Result<()> {
     let pasted = session_of(world)?.last_pasted()?;
-    let pasted_words = words(&pasted);
-    let earlier_kept = words(BEFORE_RESTART)
+    let pasted_words = split_words(&pasted);
+    let earlier_kept = split_words(BEFORE_RESTART)
         .iter()
         .any(|w| w.len() > 3 && pasted_words.contains(w));
     if earlier_kept || holds_a_start_word(&pasted) || !holds_whole_sentence(&pasted) {

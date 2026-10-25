@@ -23,7 +23,7 @@ const MODEL_STAGES: [&str; 11] = [
     "e2e-bench",
 ];
 const OVERLAY: &str = "repo/app/src/adapters/secondary/visualfeedback/macos/pill.rs";
-const CHUNKING: &str = "repo/app/src/core/application/chunking.rs";
+const CHUNKING: &str = "repo/app/src/core/application/chunking/mod.rs";
 
 /// `<stage> <key>` lines as a map.
 fn keys(text: &str) -> BTreeMap<String, String> {

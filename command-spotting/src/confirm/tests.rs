@@ -172,7 +172,7 @@ const EPHEMERAL_PORTS: u16 = 49_152;
 #[test]
 fn should_send_a_confirmation_refused_by_its_copy_to_the_other_copy() {
     // Given two copies; the one this process tries first stops accepting connections
-    let lines = crate::test_log::captured();
+    let lines = voicepuncher_test_steps::log_lines::captured(log::LevelFilter::Trace);
     let (url, first, second) = two_copies();
     let (down, up) = if std::process::id() % 2 == 0 {
         (first, second)
@@ -186,9 +186,7 @@ fn should_send_a_confirmation_refused_by_its_copy_to_the_other_copy() {
     assert!(CopyPool::shared(&url).unwrap().has_copies());
     drop(down);
     // When
-    let heard = transcriber
-        .transcribe(&[0.0; 1_600], SAMPLE_RATE, Duration::from_secs(2))
-        .unwrap();
+    let heard = heard_by(&transcriber);
     // Then
     assert_eq!(heard.text, " press enter");
     assert_eq!(requests.load(Ordering::SeqCst), 1);
@@ -208,7 +206,7 @@ const SAMPLE_RATE: u32 = 16_000;
 #[test]
 fn should_give_a_confirmation_up_unsent_when_every_copy_stays_busy_past_its_deadline() {
     // Given
-    let lines = crate::test_log::captured();
+    let lines = voicepuncher_test_steps::log_lines::captured(log::LevelFilter::Trace);
     let (url, requests) = spawn_copy(PRESS_ENTER);
     let transcriber = UtteranceTranscriber::new(&url).unwrap();
     let held = CopyPool::shared(&url).unwrap().lease(DEADLINE).unwrap();
@@ -242,9 +240,7 @@ fn should_send_a_confirmation_to_the_copy_that_frees_before_its_deadline() {
         held.finished();
     });
     // When
-    let heard = transcriber
-        .transcribe(&[0.0; 1_600], SAMPLE_RATE, Duration::from_secs(2))
-        .unwrap();
+    let heard = heard_by(&transcriber);
     // Then
     assert_eq!(heard.text, " press enter");
     assert_eq!(requests.load(Ordering::SeqCst), 1);
@@ -253,7 +249,7 @@ fn should_send_a_confirmation_to_the_copy_that_frees_before_its_deadline() {
 #[test]
 fn should_send_a_confirmation_its_copy_does_not_answer_within_the_budget_to_the_other_copy() {
     // Given two copies; the one this process tries first decodes past the budget
-    let lines = crate::test_log::captured();
+    let lines = voicepuncher_test_steps::log_lines::captured(log::LevelFilter::Trace);
     let (url, first, second) = two_copies();
     let (slow, fast) = if std::process::id() % 2 == 0 {
         (first, second)
@@ -332,4 +328,11 @@ fn should_join_the_pieces_of_a_word() {
     // Then
     assert_eq!(heard.word_texts(), [" top", " ender."]);
     assert_eq!((heard.words[1].start, heard.words[1].end), (0.3, 0.7));
+}
+
+/// What `transcriber` hears in a tenth of a second of silence, within 2 s.
+fn heard_by(transcriber: &UtteranceTranscriber) -> Heard {
+    transcriber
+        .transcribe(&[0.0; 1_600], SAMPLE_RATE, Duration::from_secs(2))
+        .unwrap()
 }

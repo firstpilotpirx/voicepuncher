@@ -35,22 +35,25 @@ pub(super) fn handshake_any(url: &str) -> Result<WebSocket<MaybeTlsStream<TcpStr
 
 /// A WebSocket connection to `url`, given up after `CONNECT_WAIT` at each step.
 fn handshake(url: &str) -> Result<WebSocket<MaybeTlsStream<TcpStream>>> {
-    let parsed = url::Url::parse(url)?;
+    let stream = connect(&url::Url::parse(url)?)?;
+    stream.set_read_timeout(Some(CONNECT_WAIT))?;
+    stream.set_write_timeout(Some(CONNECT_WAIT))?;
+    let (socket, _) = tungstenite::client(url, MaybeTlsStream::Plain(stream))
+        .map_err(|e| anyhow!("WebSocket handshake: {e}"))?;
+    Ok(socket)
+}
+
+/// A TCP connection to the first address of `url` that takes one within `CONNECT_WAIT`.
+fn connect(url: &url::Url) -> Result<TcpStream> {
     let mut refused = anyhow!("no address for {url}");
-    let stream = parsed
-        .socket_addrs(|| None)?
+    url.socket_addrs(|| None)?
         .iter()
         .find_map(|addr| {
             TcpStream::connect_timeout(addr, CONNECT_WAIT)
                 .map_err(|e| refused = e.into())
                 .ok()
         })
-        .ok_or(refused)?;
-    stream.set_read_timeout(Some(CONNECT_WAIT))?;
-    stream.set_write_timeout(Some(CONNECT_WAIT))?;
-    let (socket, _) = tungstenite::client(url, MaybeTlsStream::Plain(stream))
-        .map_err(|e| anyhow!("WebSocket handshake: {e}"))?;
-    Ok(socket)
+        .ok_or(refused)
 }
 
 #[cfg(test)]

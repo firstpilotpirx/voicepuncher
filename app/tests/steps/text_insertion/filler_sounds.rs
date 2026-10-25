@@ -2,8 +2,8 @@
 //! its own thread with the text-insertion stand-ins and a speech recognition stand-in that
 //! answers the scenario's transcript.
 
-use anyhow::ensure;
 use cucumber::{given, then, when};
+use voicepuncher::test_doubles::prelude::*;
 
 use super::doubles::{OneSecondRecorder, RecordingIndicator, RecordingPaster, Silent};
 use super::{
@@ -63,7 +63,7 @@ fn dictate(transcript: &str) -> Result<String> {
     let events: Arc<Mutex<Vec<Event>>> = Arc::default();
     let mut pipeline = Pipeline::new(
         PipelineParts {
-            recorder: Box::new(OneSecondRecorder(Arc::clone(&events))),
+            recorder: Box::new(OneSecondRecorder::new(&events, Event::RecordingStarted)),
             transcriber: Box::new(Returns(transcript.to_owned())),
             paster: Box::new(RecordingPaster(Arc::clone(&events), Arc::default())),
             sound_player: Box::new(Silent),

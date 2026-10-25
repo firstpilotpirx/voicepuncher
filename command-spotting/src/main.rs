@@ -53,7 +53,7 @@ struct Args {
 
 fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
-        .format(log_line)
+        .format(voicepuncher_log_line::log_line)
         .init();
     let args = Args::parse();
     if !args.host.is_loopback() {
@@ -84,23 +84,7 @@ fn main() -> Result<()> {
         args.host,
         args.port
     );
-    server::serve(listener, Arc::new(engine))
-}
-
-/// One log line with the thread that wrote it (`conn-<n>-io`, `conn-<n>-proc`,
-/// `conn-<n>-confirm`), so one connection traces across its threads.
-fn log_line(buf: &mut env_logger::fmt::Formatter, record: &log::Record) -> std::io::Result<()> {
-    use std::io::Write;
-    let thread = std::thread::current();
-    writeln!(
-        buf,
-        "[{} {:<5} {} {}] {}",
-        buf.timestamp(),
-        record.level(),
-        thread.name().unwrap_or("-"),
-        record.target(),
-        record.args()
-    )
+    server::serve(&listener, &Arc::new(engine))
 }
 
 #[cfg(test)]
@@ -113,7 +97,12 @@ mod tests {
         let args =
             Args::try_parse_from(["service", "--model-dir", "m", "--vad-model", "v"]).unwrap();
         // Then
-        assert_eq!(args.min_silence_secs, 0.3);
+        assert!(
+            (args.min_silence_secs - 0.3).abs() < 1e-6,
+            "{} is not {}",
+            args.min_silence_secs,
+            0.3
+        );
     }
 
     #[test]
@@ -122,6 +111,11 @@ mod tests {
         let args =
             Args::try_parse_from(["service", "--model-dir", "m", "--vad-model", "v"]).unwrap();
         // Then
-        assert_eq!(args.confirmation_deadline_secs, 3.0);
+        assert!(
+            (args.confirmation_deadline_secs - 3.0).abs() < 1e-6,
+            "{} is not {}",
+            args.confirmation_deadline_secs,
+            3.0
+        );
     }
 }

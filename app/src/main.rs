@@ -96,12 +96,12 @@ fn download_models(cli: &Cli, config_path: &Path) -> anyhow::Result<i32> {
         Config::default()
     };
     if let Some(dir) = &cli.models_dir {
-        config.services.models_dir = dir.clone();
+        config.services.models_dir.clone_from(dir);
     }
     let needs = ModelNeeds::ALL;
     Ok(voicepuncher::runtime::models::download_headless(
         &CatalogModels::current(),
-        config.services.resolved_models_dir(&home()),
+        &config.services.resolved_models_dir(&home()),
         needs,
         Arc::new(SystemClock),
         &mut std::io::stderr(),
@@ -152,7 +152,7 @@ fn run_file_mode(input_path: &Path, config: &Config, archives: bool) -> anyhow::
 fn init_stderr_logger(level: log::LevelFilter) {
     env_logger::Builder::new()
         .filter_level(level)
-        .format(log_line)
+        .format(voicepuncher_log_line::log_line)
         .init();
 }
 
@@ -171,23 +171,7 @@ fn init_file_logger(level: log::LevelFilter) {
     let tee = TeeWriter::new(file, terminal_stderr());
     env_logger::Builder::new()
         .filter_level(level)
-        .format(log_line)
+        .format(voicepuncher_log_line::log_line)
         .target(env_logger::Target::Pipe(Box::new(tee)))
         .init();
-}
-
-/// One log line with the thread that wrote it, so a session traces across the pipeline,
-/// command spotting and transcription threads: `[time LEVEL thread target] message`.
-fn log_line(buf: &mut env_logger::fmt::Formatter, record: &log::Record) -> std::io::Result<()> {
-    use std::io::Write;
-    let thread = std::thread::current();
-    writeln!(
-        buf,
-        "[{} {:<5} {} {}] {}",
-        buf.timestamp(),
-        record.level(),
-        thread.name().unwrap_or("-"),
-        record.target(),
-        record.args()
-    )
 }

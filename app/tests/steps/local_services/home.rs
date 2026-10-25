@@ -1,12 +1,9 @@
 //! A home of the scenario's own for the catalog: its models, its `$PATH` folder and the
 //! engine folders of a bundle next to the app.
 
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{Context, Result};
-
-use voicepuncher::adapters::secondary::localservices::catalog::Machine;
+pub(crate) use voicepuncher::adapters::secondary::localservices::catalog::Machine;
 
 pub(super) const WHISPER: &str = "whisper-server";
 pub(super) const COMMAND_SPOTTING: &str = "voicepuncher-command-spotting";

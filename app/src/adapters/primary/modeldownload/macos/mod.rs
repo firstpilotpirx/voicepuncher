@@ -1,12 +1,14 @@
-//! The Download window: one row per model file the configuration needs with its purpose, size
-//! and status, one bar for the total, the free space, and Open Folder, Quit, Download (Cancel
-//! while it runs, Retry after a failure) and Done. It opens when the runtime waits for models,
-//! and from the menu and the Services tab at any time; the download runs on a thread of its
-//! own and every event is drawn on the main thread.
+//! The Download window.
+//!
+//! One row per model file the configuration needs with its purpose, size and status, one bar for
+//! the total, the free space, and Open Folder, Quit, Download (Cancel while it runs, Retry after a
+//! failure) and Done.
+//!
+//! It opens when the runtime waits for models, and from the menu and the Services tab at any time;
+//! the download runs on a thread of its own and every event is drawn on the main thread.
 
 pub mod mapping;
 
-use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -14,12 +16,12 @@ use std::time::{Duration, Instant};
 
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
-use objc2::{define_class, msg_send, sel, MainThreadMarker, MainThreadOnly};
+use objc2::{define_class, sel, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSApplication, NSColor, NSFont, NSFontWeightMedium, NSProgressIndicator,
+    NSApplication, NSButton, NSColor, NSFont, NSFontWeightMedium, NSProgressIndicator,
     NSProgressIndicatorStyle, NSTextAlignment, NSView, NSWindow,
 };
-use objc2_foundation::{NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString};
+use objc2_foundation::{NSObject, NSObjectProtocol, NSRect, NSString};
 
 use crate::adapters::appkit::{self, label, push_button, wrapping};
 use crate::adapters::main_queue::dispatch_to_main;
@@ -28,6 +30,9 @@ use crate::core::application::{DownloadEvent, ModelDownload};
 use crate::runtime::{RuntimeObserver, RuntimeState};
 
 use mapping::{human_size, status_text, MainButton, WindowModel};
+
+mod view;
+use view::content;
 
 const WIDTH: f64 = 560.0;
 const HEIGHT: f64 = 440.0;
@@ -44,12 +49,9 @@ const PROGRESS_EVERY: Duration = Duration::from_millis(100);
 /// Builds the download of the files the current configuration needs, with its models folder.
 pub type DownloadSource = Box<dyn Fn() -> (ModelDownload, PathBuf)>;
 
-thread_local! {
-    /// The window, reached by the work dispatched to the main queue.
-    static WINDOW: RefCell<Option<Window>> = const { RefCell::new(None) };
-}
+appkit::kept_window_slot!(ShownWindow);
 
-struct Window {
+struct ShownWindow {
     window: Retained<NSWindow>,
     target: Retained<WindowTarget>,
     source: DownloadSource,
@@ -57,7 +59,7 @@ struct Window {
     /// Set by Cancel; a new one for every download.
     cancel: Arc<AtomicBool>,
     shown_once: bool,
-    quit: Option<Box<dyn Fn()>>,
+    quit: Option<appkit::QuitAction>,
 }
 
 /// The Download window of the app.
@@ -68,7 +70,7 @@ impl DownloadWindow {
     pub fn install(mtm: MainThreadMarker, source: DownloadSource) -> Self {
         let window = build_window(mtm);
         let target = WindowTarget::new(mtm);
-        WINDOW.set(Some(Window {
+        WINDOW.set(Some(ShownWindow {
             window,
             target,
             source,
@@ -81,12 +83,8 @@ impl DownloadWindow {
     }
 
     /// What Quit does.
-    pub fn set_quit(&self, quit: Box<dyn Fn()>) {
-        WINDOW.with_borrow_mut(|state| {
-            if let Some(state) = state {
-                state.quit = Some(quit);
-            }
-        });
+    pub fn set_quit(&self, quit: appkit::QuitAction) {
+        appkit::set_quit(&WINDOW, quit);
     }
 
     /// Opens the window on Waiting for models.
@@ -163,10 +161,10 @@ fn redraw() {
     });
 }
 
-fn apply(event: DownloadEvent) {
+fn apply(event: &DownloadEvent) {
     WINDOW.with_borrow_mut(|state| {
         if let Some(model) = state.as_mut().and_then(|s| s.model.as_mut()) {
-            model.apply(&event);
+            model.apply(event);
         }
     });
     redraw();
@@ -200,7 +198,7 @@ fn main_button() {
     };
     let spawned = std::thread::Builder::new()
         .name("model-download".into())
-        .spawn(move || run(download, &cancel));
+        .spawn(move || run(&download, &cancel));
     if let Err(e) = spawned {
         log::warn!("models: the download did not start: {e}");
         dispatch_to_main(ended);
@@ -208,7 +206,7 @@ fn main_button() {
 }
 
 /// The download thread: every event to the main thread, progress at most every 100 ms.
-fn run(download: ModelDownload, cancel: &AtomicBool) {
+fn run(download: &ModelDownload, cancel: &AtomicBool) {
     let last_progress = Mutex::new(None::<Instant>);
     let summary = download.download_missing(
         &mut |event: &DownloadEvent| {
@@ -225,7 +223,7 @@ fn run(download: ModelDownload, cancel: &AtomicBool) {
             }
             log_event(event);
             let event = event.clone();
-            dispatch_to_main(move || apply(event));
+            dispatch_to_main(move || apply(&event));
         },
         cancel,
     );
@@ -266,19 +264,11 @@ fn quit() {
             state.cancel.store(true, Ordering::SeqCst);
         }
     });
-    let quit = WINDOW.with_borrow_mut(|state| state.as_mut().and_then(|s| s.quit.take()));
-    match quit {
-        Some(quit) => quit(),
-        None => std::process::exit(0),
-    }
+    appkit::quit(&WINDOW);
 }
 
 fn close() {
-    WINDOW.with_borrow(|state| {
-        if let Some(state) = state {
-            state.window.orderOut(None);
-        }
-    });
+    appkit::close(&WINDOW);
 }
 
 fn build_window(mtm: MainThreadMarker) -> Retained<NSWindow> {
@@ -288,113 +278,6 @@ fn build_window(mtm: MainThreadMarker) -> Retained<NSWindow> {
 /// Frame `height` high, `y` points below the content's top edge.
 fn below_top(x: f64, y: f64, width: f64, height: f64) -> NSRect {
     appkit::below_top(HEIGHT, x, y, width, height)
-}
-
-#[expect(clippy::too_many_lines, reason = "size baseline")]
-fn content(mtm: MainThreadMarker, target: &WindowTarget, model: &WindowModel) -> Retained<NSView> {
-    let view = NSView::initWithFrame(
-        mtm.alloc::<NSView>(),
-        NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(WIDTH, HEIGHT)),
-    );
-    let text_width = WIDTH - 2.0 * MARGIN;
-    let intro = wrapping(mtm, &model.intro(), &NSFont::systemFontOfSize(13.0));
-    intro.setFrame(below_top(MARGIN, 14.0, text_width, 36.0));
-    view.addSubview(&intro);
-    for (index, row) in model.rows.iter().enumerate() {
-        let top = TABLE_TOP + index as f64 * ROW_HEIGHT;
-        let name = label(
-            mtm,
-            row.name,
-            // SAFETY: an immutable framework constant, set before any Rust code runs.
-            &NSFont::monospacedSystemFontOfSize_weight(12.0, unsafe { NSFontWeightMedium }),
-        );
-        name.setFrame(below_top(MARGIN, top, SIZE_X - MARGIN, 16.0));
-        view.addSubview(&name);
-        let purpose = label(mtm, row.purpose, &NSFont::systemFontOfSize(11.0));
-        purpose.setTextColor(Some(&NSColor::secondaryLabelColor()));
-        purpose.setFrame(below_top(MARGIN, top + 17.0, SIZE_X - MARGIN, 15.0));
-        view.addSubview(&purpose);
-        let size = label(
-            mtm,
-            &human_size(row.size_bytes),
-            &NSFont::systemFontOfSize(12.0),
-        );
-        size.setAlignment(NSTextAlignment::Right);
-        size.setFrame(below_top(SIZE_X, top, SIZE_WIDTH, 16.0));
-        view.addSubview(&size);
-        let status = wrapping(
-            mtm,
-            &status_text(&row.status),
-            &NSFont::systemFontOfSize(11.0),
-        );
-        let colour = match row.status {
-            mapping::RowStatus::Present => NSColor::systemGreenColor(),
-            mapping::RowStatus::Failed(_) => NSColor::systemRedColor(),
-            _ => NSColor::labelColor(),
-        };
-        status.setTextColor(Some(&colour));
-        status.setFrame(below_top(STATUS_X, top, WIDTH - MARGIN - STATUS_X, 32.0));
-        view.addSubview(&status);
-    }
-    let below_table = TABLE_TOP + model.rows.len() as f64 * ROW_HEIGHT + 8.0;
-    let bar = NSProgressIndicator::initWithFrame(
-        mtm.alloc::<NSProgressIndicator>(),
-        below_top(MARGIN, below_table, text_width, 12.0),
-    );
-    bar.setStyle(NSProgressIndicatorStyle::Bar);
-    bar.setIndeterminate(false);
-    bar.setMinValue(0.0);
-    bar.setMaxValue(1.0);
-    bar.setDoubleValue(model.total_fraction());
-    view.addSubview(&bar);
-    let total = label(mtm, &model.total_line(), &NSFont::systemFontOfSize(12.0));
-    total.setTextColor(Some(&NSColor::secondaryLabelColor()));
-    total.setFrame(below_top(MARGIN, below_table + 16.0, text_width, 16.0));
-    view.addSubview(&total);
-    let (space, red) = model.space_line();
-    let space = label(mtm, &space, &NSFont::systemFontOfSize(12.0));
-    if red {
-        space.setTextColor(Some(&NSColor::systemRedColor()));
-    }
-    space.setFrame(below_top(MARGIN, below_table + 34.0, text_width, 16.0));
-    view.addSubview(&space);
-    let footer = HEIGHT - 42.0;
-    let open = push_button(mtm, target, mapping::OPEN_FOLDER, sel!(openFolder:));
-    open.setFrame(below_top(MARGIN, footer, BUTTON_WIDTH + 10.0, 28.0));
-    view.addSubview(&open);
-    let quit = push_button(mtm, target, mapping::QUIT, sel!(quit:));
-    quit.setFrame(below_top(
-        MARGIN + BUTTON_WIDTH + 16.0,
-        footer,
-        BUTTON_WIDTH,
-        28.0,
-    ));
-    view.addSubview(&quit);
-    let done = push_button(mtm, target, mapping::DONE, sel!(done:));
-    done.setEnabled(model.done_enabled());
-    done.setFrame(below_top(
-        WIDTH - MARGIN - BUTTON_WIDTH,
-        footer,
-        BUTTON_WIDTH,
-        28.0,
-    ));
-    view.addSubview(&done);
-    let main = model.main_button();
-    let download = push_button(mtm, target, main.title(), sel!(download:));
-    download.setEnabled(model.main_enabled());
-    if main != MainButton::Cancel && !model.done_enabled() {
-        download.setKeyEquivalent(&NSString::from_str("\r"));
-    } else if model.done_enabled() {
-        done.setKeyEquivalent(&NSString::from_str("\r"));
-    }
-    download.setFrame(below_top(
-        WIDTH - MARGIN - 2.0 * BUTTON_WIDTH - 8.0,
-        footer,
-        BUTTON_WIDTH,
-        28.0,
-    ));
-    view.addSubview(&download);
-    view
 }
 
 define_class!(
@@ -431,8 +314,6 @@ define_class!(
 
 impl WindowTarget {
     fn new(mtm: MainThreadMarker) -> Retained<Self> {
-        let this = Self::alloc(mtm).set_ivars(());
-        // SAFETY: `NSObject`'s `init` on a freshly allocated object.
-        unsafe { msg_send![super(this), init] }
+        appkit::new_plain_object(mtm)
     }
 }

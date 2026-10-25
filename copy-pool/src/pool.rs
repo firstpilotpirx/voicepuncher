@@ -120,7 +120,7 @@ impl CopyPool {
         let watched = Arc::downgrade(&inner);
         let spawned = thread::Builder::new()
             .name("copy-probe".into())
-            .spawn(move || watch(watched, interval));
+            .spawn(move || watch(&watched, interval));
         if spawned.is_err() {
             inner.probe_round();
         }
@@ -296,7 +296,7 @@ impl Inner {
 }
 
 /// Probes the copies at once and then every `interval` while the pool is in use.
-fn watch(inner: Weak<Inner>, interval: Duration) {
+fn watch(inner: &Weak<Inner>, interval: Duration) {
     loop {
         let Some(pool) = inner.upgrade() else {
             return;

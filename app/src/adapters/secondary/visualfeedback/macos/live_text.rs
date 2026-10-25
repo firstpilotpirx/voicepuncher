@@ -56,7 +56,7 @@ impl LiveTranscriptText {
     /// the recording ended is dropped.
     pub(super) fn update(&self, state: OverlayState, text: &str) {
         if state == OverlayState::Recording {
-            *lock(&self.0) = text.to_owned();
+            text.clone_into(&mut lock(&self.0));
         }
     }
 

@@ -32,52 +32,76 @@ mod tests {
 
     #[test]
     fn should_clamp_nan_to_silent() {
-        assert_eq!(AudioLevel::from_rms(f32::NAN).value(), 0.0);
+        assert!(
+            (AudioLevel::from_rms(f32::NAN).value() - 0.0).abs() < 1e-6,
+            "{} is not {}",
+            AudioLevel::from_rms(f32::NAN).value(),
+            0.0
+        );
     }
 
     #[test]
     fn should_clamp_positive_infinity_to_silent() {
-        assert_eq!(AudioLevel::from_rms(f32::INFINITY).value(), 0.0);
+        assert!(
+            (AudioLevel::from_rms(f32::INFINITY).value() - 0.0).abs() < 1e-6,
+            "{} is not {}",
+            AudioLevel::from_rms(f32::INFINITY).value(),
+            0.0
+        );
     }
 
     #[test]
     fn should_clamp_negative_infinity_to_silent() {
-        assert_eq!(AudioLevel::from_rms(f32::NEG_INFINITY).value(), 0.0);
+        assert!(
+            (AudioLevel::from_rms(f32::NEG_INFINITY).value() - 0.0).abs() < 1e-6,
+            "{} is not {}",
+            AudioLevel::from_rms(f32::NEG_INFINITY).value(),
+            0.0
+        );
     }
 
     #[test]
     fn should_clamp_negative_rms_to_zero() {
-        assert_eq!(AudioLevel::from_rms(-0.5).value(), 0.0);
+        assert!(
+            (AudioLevel::from_rms(-0.5).value() - 0.0).abs() < 1e-6,
+            "{} is not {}",
+            AudioLevel::from_rms(-0.5).value(),
+            0.0
+        );
     }
 
     #[test]
     fn should_clamp_rms_above_one_to_one() {
-        assert_eq!(AudioLevel::from_rms(1.5).value(), 1.0);
+        assert!(
+            (AudioLevel::from_rms(1.5).value() - 1.0).abs() < 1e-6,
+            "{} is not {}",
+            AudioLevel::from_rms(1.5).value(),
+            1.0
+        );
     }
 
     #[test]
     fn should_round_trip_bits_for_zero() {
-        let level = AudioLevel::from_rms(0.0);
-        assert_eq!(
-            AudioLevel::from_bits(level.to_bits()).value(),
-            level.value()
-        );
+        assert_round_trips(0.0);
     }
 
     #[test]
     fn should_round_trip_bits_for_half() {
-        let level = AudioLevel::from_rms(0.5);
-        assert_eq!(
-            AudioLevel::from_bits(level.to_bits()).value(),
-            level.value()
-        );
+        assert_round_trips(0.5);
     }
 
     #[test]
     fn should_round_trip_bits_for_one() {
-        let level = AudioLevel::from_rms(1.0);
-        assert_eq!(
-            AudioLevel::from_bits(level.to_bits()).value(),
+        assert_round_trips(1.0);
+    }
+
+    /// Asserts that the level of `rms` comes back the same from its bits.
+    fn assert_round_trips(rms: f32) {
+        let level = AudioLevel::from_rms(rms);
+        let back = AudioLevel::from_bits(level.to_bits()).value();
+        assert!(
+            (back - level.value()).abs() < 1e-6,
+            "{back} is not {}",
             level.value()
         );
     }

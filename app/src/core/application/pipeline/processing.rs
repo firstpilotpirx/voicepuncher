@@ -1,11 +1,12 @@
 //! What a stopped dictation goes through: speech recognition, the filler-sound cleanup,
 //! delivery, the overlay's end and the archive entry; file mode runs the same stages once.
 
+use crate::core::domain::conversions::millis_u64;
 use std::time::Instant;
 
 use crate::core::application::chunking::{merge_chunk_texts, split_into_chunks};
 use crate::core::application::{
-    insert_text, DictationOutcome, DictationStart, FocusWaitCfg, StageTiming,
+    insert_text, DictationOutcome, DictationStart, FocusWait, FocusWaitCfg, StageTiming,
 };
 use crate::core::domain::{
     text_to_paste, AudioBuffer16k, CleanedText, FailingPart, FailureNotice, RawTranscript,
@@ -36,14 +37,14 @@ impl StageClock {
 
     /// Ends `stage` now and starts the next one.
     pub(super) fn lap(&mut self, stage: &'static str) {
-        let ms = self.stage_started.elapsed().as_millis() as u64;
+        let ms = millis_u64(self.stage_started.elapsed());
         self.stages.push(StageTiming { stage, ms });
         self.stage_started = Instant::now();
     }
 
     /// Ends the clock: the total since the user's stop is its last stage.
     fn total(&mut self) {
-        let ms = self.started.elapsed().as_millis() as u64;
+        let ms = millis_u64(self.started.elapsed());
         self.stages.push(StageTiming { stage: "total", ms });
     }
 
@@ -130,11 +131,14 @@ impl Pipeline {
         let insertion = insert_text(
             cleaned,
             self.paster.as_mut(),
-            self.focus.as_ref().map(|focus| focus.probe.as_ref()),
+            FocusWait {
+                probe: self.focus.as_ref().map(|focus| focus.probe.as_ref()),
+                cfg: self
+                    .focus
+                    .as_ref()
+                    .map_or(FocusWaitCfg::OFF, |focus| focus.cfg),
+            },
             self.visual_indicator.as_ref(),
-            self.focus
-                .as_ref()
-                .map_or(FocusWaitCfg::OFF, |focus| focus.cfg),
             &mut || self.inbox.hotkey_pressed(),
         );
         if let Err(e) = &insertion {
@@ -163,7 +167,7 @@ impl Pipeline {
         };
         clock.lap("transcribe");
         dictation.trace_chunks(&texts, 0);
-        let raw = RawTranscript::new(merge_chunk_texts(texts)).ok();
+        let raw = RawTranscript::new(merge_chunk_texts(&texts)).ok();
         let cleaned = raw.as_ref().and_then(text_to_paste);
         if let Some(raw) = &raw {
             dictation.trace_transcript(raw, cleaned.as_ref());

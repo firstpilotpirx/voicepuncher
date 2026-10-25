@@ -84,7 +84,7 @@ Feature: change-workflow
     Scenario: A new complex function fails the metrics
       Given the metrics baseline
       Then every function it lists is over cyclomatic complexity 10
-      And it lists the duplicated lines with their count
+      And it lists no duplicated lines, so any copy-pasted code fails
 
   Rule: A fast static check fails before any test runs
 

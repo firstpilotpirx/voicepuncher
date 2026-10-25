@@ -25,7 +25,7 @@ fn should_warn_once_naming_every_retired_setting() {
     parse(raw, "old.toml").unwrap();
     // Then
     assert_eq!(
-        log.lines_starting_with("config: old.toml:"),
+        log.starting_with("config: old.toml:"),
         ["config: old.toml: [refinement], [llm], services.refinement_copies retired with text refinement, ignored"]
     );
 }

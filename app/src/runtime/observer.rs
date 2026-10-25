@@ -35,6 +35,14 @@ pub enum RuntimeState {
     Failed(String),
 }
 
+const fn on_off(on: bool) -> &'static str {
+    if on {
+        "on"
+    } else {
+        "off"
+    }
+}
+
 impl fmt::Display for RuntimeState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -42,7 +50,7 @@ impl fmt::Display for RuntimeState {
             Self::Ready { hotkey, voice_control, .. } => write!(
                 f,
                 "ready (hotkey {hotkey}, voice control {})",
-                if *voice_control { "on" } else { "off" }
+                on_off(*voice_control)
             ),
             Self::Restarting => write!(f, "restarting"),
             Self::StartingServices { ready, total } => {

@@ -6,7 +6,7 @@ use crate::context::{table as justfile_table, Context};
 use crate::journal::report::{Report, Row};
 use crate::process::Interrupt;
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const JUSTFILE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../justfile"));
 
@@ -82,17 +82,10 @@ fn should_lock_every_stage_from_the_first_model_stage_on() {
 #[test]
 fn should_skip_a_stage_exiting_77_and_go_on_without_a_pass() {
     let dir = tempfile::tempdir().unwrap();
-    let just = script(
+    let (context, report) = with_just(
         dir.path(),
-        "just",
         "case \"$3\" in _probe-skipped) exit 77 ;; _probe-passed) exit 0 ;; esac\nexit 1",
     );
-    let context = Context {
-        just: just.to_string_lossy().into_owned(),
-        justfile: dir.path().join("justfile"),
-        root: dir.path().into(),
-    };
-    let report = dir.path().join("report");
     let stages = ["probe-skipped".to_string(), "probe-passed".into()];
     assert_eq!(
         model::run(&context, &stages, Some(&report), &Interrupt::watch()),
@@ -121,13 +114,7 @@ fn should_skip_a_stage_exiting_77_and_go_on_without_a_pass() {
 #[test]
 fn should_stop_the_model_stages_at_the_first_failure() {
     let dir = tempfile::tempdir().unwrap();
-    let just = script(dir.path(), "just", "exit 3");
-    let context = Context {
-        just: just.to_string_lossy().into_owned(),
-        justfile: dir.path().join("justfile"),
-        root: dir.path().into(),
-    };
-    let report = dir.path().join("report");
+    let (context, report) = with_just(dir.path(), "exit 3");
     let stages = ["first".to_string(), "second".into()];
     assert_eq!(
         model::run(&context, &stages, Some(&report), &Interrupt::watch()),
@@ -217,4 +204,15 @@ fn should_refuse_before_the_first_stage_without_the_lock() {
     let refused = super::run(&["fmt".into()], lock).unwrap_err();
     assert!(refused.contains(crate::locks::INSTALL), "{refused}");
     assert!(!ran.exists(), "a stage ran before the refusal");
+}
+
+/// A context whose `just` is a script of `body` in `dir`, and the report file there.
+fn with_just(dir: &Path, body: &str) -> (Context, PathBuf) {
+    let just = script(dir, "just", body);
+    let context = Context {
+        just: just.to_string_lossy().into_owned(),
+        justfile: dir.join("justfile"),
+        root: dir.into(),
+    };
+    (context, dir.join("report"))
 }

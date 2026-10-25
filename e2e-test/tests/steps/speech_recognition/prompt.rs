@@ -1,9 +1,11 @@
 //! The configured prompt of dictation: a domain term it names is written as the prompt
 //! writes it, in every window of a long chunk, and no text of one request reaches another.
 
-use anyhow::{bail, Context, Result};
 use cucumber::{given, then};
+use std::fmt::Write as _;
+use voicepuncher::test_doubles::prelude::*;
 
+use voicepuncher_e2e_test::conversions::saturating_usize;
 use voicepuncher_e2e_test::machine_load;
 use voicepuncher_e2e_test::speech::{write_wav, Lang};
 use voicepuncher_e2e_test::speech_cache::{synthesized, SayRequest};
@@ -45,9 +47,7 @@ fn one_chunk(world: &mut E2eWorld) -> Result<()> {
         .clone()
         .context("no configuration was written")?;
     let mut config = std::fs::read_to_string(&path)?;
-    config.push_str(&format!(
-        "chunk_threshold_secs = {ONE_CHUNK_THRESHOLD_SECS}\n"
-    ));
+    let _ = writeln!(config, "chunk_threshold_secs = {ONE_CHUNK_THRESHOLD_SECS}");
     std::fs::write(&path, config)?;
     Ok(())
 }
@@ -93,11 +93,11 @@ fn unrelated_sentence(world: &mut E2eWorld) -> Result<()> {
 
 #[then("the printed text holds the term as written in the prompt")]
 fn term_as_in_prompt(world: &mut E2eWorld) -> Result<()> {
-    if !world.stdout.contains(DOMAIN_TERM) {
+    if !world.app.stdout.contains(DOMAIN_TERM) {
         bail!(
             "the printed text lacks {DOMAIN_TERM:?}: {:?}\nstderr:\n{}",
-            world.stdout,
-            world.stderr
+            world.app.stdout,
+            world.app.stderr
         );
     }
     Ok(())
@@ -106,7 +106,7 @@ fn term_as_in_prompt(world: &mut E2eWorld) -> Result<()> {
 #[then("the printed text holds no word of the first sentence that the second one does not say")]
 fn no_echo(world: &mut E2eWorld) -> Result<()> {
     let second = words(UNRELATED_SENTENCE);
-    let printed = words(&world.stdout);
+    let printed = words(&world.app.stdout);
     let echoed: Vec<String> = words(FIRST_SENTENCE)
         .into_iter()
         .filter(|w| !second.contains(w) && printed.contains(w))
@@ -114,7 +114,7 @@ fn no_echo(world: &mut E2eWorld) -> Result<()> {
     if !echoed.is_empty() {
         bail!(
             "the second dictation echoes {echoed:?} of the first: {:?}",
-            world.stdout
+            world.app.stdout
         );
     }
     Ok(())
@@ -127,7 +127,7 @@ fn russian(text: &str) -> Result<Vec<i16>> {
 /// Russian speech without the term, at least `secs` long.
 fn russian_speech_of(secs: f32) -> Result<Vec<i16>> {
     let mut samples = Vec::new();
-    while (samples.len() as f32) < secs * SAMPLE_RATE_HZ {
+    while samples.len() < saturating_usize(secs * SAMPLE_RATE_HZ) {
         samples.extend(russian(Lang::Ru.text())?);
     }
     Ok(samples)

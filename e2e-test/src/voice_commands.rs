@@ -8,6 +8,7 @@ use anyhow::Result;
 use voicepuncher::adapters::secondary::commandspotting::websocket::client::SpottingClient;
 use voicepuncher::core::domain::{SpottingEvent, VoiceCommand, VoiceCommandRecognizer};
 
+use crate::conversions::saturating_usize;
 use crate::speech_cache::{synthesized, SayRequest};
 
 const SAMPLE_RATE_HZ: f32 = 16_000.0;
@@ -40,7 +41,7 @@ pub fn spoken_by(voice: &str, words: &str) -> Result<Vec<f32>> {
 }
 
 fn spoken(voice: Option<&str>, words: &str) -> Result<Vec<f32>> {
-    let pause = vec![0.0f32; (PAUSE_SECS * SAMPLE_RATE_HZ) as usize];
+    let pause = vec![0.0f32; saturating_usize(PAUSE_SECS * SAMPLE_RATE_HZ)];
     let speech = synthesized(&SayRequest { voice, words_per_minute: None, text: words })?
         .into_iter()
         .map(|s| f32::from(s) / f32::from(i16::MAX));
@@ -55,7 +56,7 @@ fn spoken(voice: Option<&str>, words: &str) -> Result<Vec<f32>> {
 /// `spoken_by` speech without the pause it puts before the words; the short silence `say`
 /// starts with stays.
 pub fn without_lead_pause(mut audio: Vec<f32>) -> Vec<f32> {
-    audio.split_off(((PAUSE_SECS * SAMPLE_RATE_HZ) as usize).min(audio.len()))
+    audio.split_off(saturating_usize(PAUSE_SECS * SAMPLE_RATE_HZ).min(audio.len()))
 }
 
 /// `say` speech from its first sound: without the pause `spoken_by` puts before it and the
@@ -89,7 +90,7 @@ pub fn at_quiet_level(audio: Vec<f32>) -> Vec<f32> {
 
 /// `secs` of silence at 16 kHz.
 pub fn silence(secs: f32) -> Vec<f32> {
-    vec![0.0f32; (secs * SAMPLE_RATE_HZ) as usize]
+    vec![0.0f32; saturating_usize(secs * SAMPLE_RATE_HZ)]
 }
 
 /// Every spotting event the service reports for `audio`, listening for `commands`.
@@ -130,33 +131,49 @@ fn accepted_after(command: VoiceCommand) -> &'static [VoiceCommand] {
 }
 
 /// The commands the app carries out for `audio`, starting in the state that accepts
-/// `commands`: like the app, it carries out a command only in a state that accepts it and
-/// then listens for the phrases of the state the command leads to, from the next frame on.
+/// `commands`.
+///
+/// Like the app, it carries out a command only in a state that accepts it and then listens for the
+/// phrases of the state the command leads to, from the next frame on.
 pub fn carried_out_by_app(
     url: &str,
     audio: &[f32],
     commands: &'static [VoiceCommand],
 ) -> Result<Vec<VoiceCommand>> {
     let mut client = SpottingClient::connect(url, Instant::now())?;
-    let mut accepted = commands;
-    client.listen_for(accepted)?;
-    let mut recognizer = VoiceCommandRecognizer::new();
-    let mut carried_out = Vec::new();
-    let mut hear = |client: &mut SpottingClient, events: Vec<SpottingEvent>| -> Result<()> {
-        for spoken in events.into_iter().flat_map(|e| recognizer.feed(e)) {
-            if accepted.contains(&spoken.command) {
-                carried_out.push(spoken.command);
-                accepted = accepted_after(spoken.command);
-                client.listen_for(accepted)?;
-            }
-        }
-        Ok(())
+    client.listen_for(commands)?;
+    let mut app = AppStates {
+        accepted: commands,
+        recognizer: VoiceCommandRecognizer::new(),
+        carried_out: Vec::new(),
     };
     for frame in audio.chunks(FRAME_SAMPLES) {
         client.send_audio(frame)?;
         let events = client.events_for_sent_audio(SYNC_ANSWER_LIMIT)?;
-        hear(&mut client, events)?;
+        app.hear(&mut client, events)?;
     }
     client.close();
-    Ok(carried_out)
+    Ok(app.carried_out)
+}
+
+/// The commands the app accepts as it carries them out.
+struct AppStates {
+    accepted: &'static [VoiceCommand],
+    recognizer: VoiceCommandRecognizer,
+    carried_out: Vec<VoiceCommand>,
+}
+
+impl AppStates {
+    /// Carries out the commands `events` make that the state accepts, each moving the client
+    /// on to the phrases of the state it leads to.
+    fn hear(&mut self, client: &mut SpottingClient, events: Vec<SpottingEvent>) -> Result<()> {
+        for spoken in events.into_iter().flat_map(|e| self.recognizer.feed(e)) {
+            if self.accepted.contains(&spoken.command) {
+                self.carried_out.push(spoken.command);
+                self.accepted = accepted_after(spoken.command);
+                client.listen_for(self.accepted)?;
+            }
+        }
+        Ok(())
+    }
 }

@@ -1,12 +1,12 @@
 //! Finds the spinner and the label on the real overlay by walking the app's windows, so no
 //! inspector is added to the overlay itself.
 
-use anyhow::{ensure, Context, Result};
 use cucumber::then;
 use objc2::rc::Retained;
 use objc2::MainThreadMarker;
 use objc2_app_kit::{NSApplication, NSProgressIndicator, NSTextField, NSView};
 use objc2_foundation::NSRect;
+use voicepuncher::test_doubles::prelude::*;
 
 use crate::IntegrationWorld;
 

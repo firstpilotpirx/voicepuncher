@@ -7,8 +7,8 @@
 use std::ops::Range;
 use std::time::Duration;
 
+use voicepuncher_command_spotting::audio::SAMPLE_RATE;
 use voicepuncher_command_spotting::confirm::{Hear, Heard, TimedWord};
-use voicepuncher_command_spotting::engine::SAMPLE_RATE;
 
 /// Samples of a clip compared with the stream to find where the clip lies.
 const PROBE_SAMPLES: usize = 64;
@@ -60,7 +60,7 @@ impl ScriptedHearing {
         if self.completes_cut_words {
             word.said.start
         } else {
-            (word.said.start + word.said.end) / 2
+            usize::midpoint(word.said.start, word.said.end)
         }
     }
 

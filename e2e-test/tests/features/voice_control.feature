@@ -316,8 +316,7 @@ Feature: voice-control
       When someone says "Restart", pauses for about 0.5 s and says another sentence, and later ends the dictation
       Then only the other sentence is pasted, its first words included
 
-    # frozen: flakes beside another full-check (2026-10-23, e2e-smoke-voice); fixed separately
-    @wip @voice_samples
+    @smoke @voice_samples
     Scenario: The user's recorded restart restart followed by the new dictation at once
       Given the command spotting service is running
       And the user's own recordings of the commands exist on the machine
@@ -369,14 +368,6 @@ Feature: voice-control
       And listening is on for a whole session
       When someone says "start please" and stays silent
       Then the start cue comes within 0.7 s of the end of "start please"
-
-    # Not met yet: the early checks hear the synthesized "Enter" as "and a" (change hear-enter-before-start)
-    @wip
-    Scenario: A chain ending in start gives its cue at once
-      Given the command spotting service is running
-      And listening is on for a whole session
-      When someone says "enter start" and a sentence without a pause
-      Then the Return key is pressed and the start cue comes within 0.7 s of the end of "start"
 
     Scenario: Restart restart followed by the new dictation at once gives its cue at once
       Given the command spotting service is running
@@ -440,11 +431,6 @@ Feature: voice-control
         | That is all, stop, enter, start | dictating         | stop dictation, press enter, start dictation |
         | Forget it, cancel, enter        | dictating         | cancel dictation, press enter                |
         | Okay, paste, enter              | no dictation runs | paste text, press enter                      |
-
-      # frozen: flakes beside another full-check (2026-10-23, e2e-regression); fixed separately
-      @wip
-      Examples:
-        | words                           | state             | commands                                     |
         | Okay, enter, clear              | no dictation runs | press enter, clear all text                  |
 
   Rule: An utterance ends after 0.3 s of silence

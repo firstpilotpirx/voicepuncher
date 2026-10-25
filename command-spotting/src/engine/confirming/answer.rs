@@ -9,13 +9,10 @@ use crate::orderer::Segment;
 use crate::protocol::{ServerEvent, Timing};
 use crate::worker::{Answer, JobId, JobKind};
 
-use super::super::spotted::Round;
 use super::super::Session;
 
-use super::place::HeardClip;
-use super::{
-    head_command, spotted_command, timed, AskedJob, EarlyAnswer, JobContext, Rehear, SegmentSpan,
-};
+use super::half_pause::HalfPauseAnswer;
+use super::{timed, AskedJob, EarlyAnswer, JobContext, Rehear, SegmentSpan};
 
 /// What becomes of an answered job.
 enum Standing {
@@ -24,6 +21,16 @@ enum Standing {
     /// The job stood for a segment now heard whole through its own clip: these events
     /// resolve it, and the segment's wait for that hearing.
     HeardWhole(Vec<ServerEvent>),
+}
+
+/// The hearings an answer may leave wanting.
+struct Wanting {
+    /// A second hearing of a short segment that nearly said a command.
+    rehear: Option<Rehear>,
+    /// The short segment, kept when it is heard as nothing.
+    short_segment: Option<Rehear>,
+    /// The utterance and bounds of the segment's tail, heard when nothing else is.
+    tail: Option<(u64, usize, usize)>,
 }
 
 /// What the second hearings asked early made of a segment's answer.
@@ -135,20 +142,35 @@ impl Session<'_> {
             .map(|event| timed(event, timing))
             .collect();
         let (events, early) = self.with_early_hearing(n, is_segment, is_rehear, events);
-        let heard_again = early.pending
-            || match rehear {
-                Some(rehear) if events.is_empty() && !early.heard => self.hear_again(n, rehear),
-                _ => false,
-            };
-        if short_segment.is_some() {
-            self.hearings.misheard = short_segment
-                .filter(|_| events.is_empty() && !heard_again && !early.heard)
+        let wanting = Wanting { rehear, short_segment, tail };
+        self.hear_more(n, events.is_empty(), &early, wanting);
+        self.resolve_answer(id, (utterance, is_check), timing, events)
+    }
+
+    /// Asks the hearings job `n`'s answer leaves wanting: a second hearing of a short
+    /// segment that nearly said a command, else of the segment's tail; remembers a short
+    /// segment heard as nothing.
+    fn hear_more(&mut self, n: u64, nothing: bool, early: &EarlyHearing, wanting: Wanting) {
+        let heard_again =
+            early.pending || self.heard_again(n, nothing && !early.heard, wanting.rehear);
+        let unheard = nothing && !heard_again;
+        if wanting.short_segment.is_some() {
+            self.hearings.misheard = wanting
+                .short_segment
+                .filter(|_| unheard && !early.heard)
                 .map(|segment| (n, segment));
         }
-        if events.is_empty() && !heard_again {
-            self.hear_tail(n, tail);
+        if unheard {
+            self.hear_tail(n, wanting.tail);
         }
-        self.resolve_answer(id, (utterance, is_check), timing, events)
+    }
+
+    /// Whether job `n`'s short segment is heard again, as `rehear` asks, when `unheard`.
+    fn heard_again(&mut self, n: u64, unheard: bool, rehear: Option<Rehear>) -> bool {
+        match rehear {
+            Some(rehear) if unheard => self.hear_again(n, rehear),
+            _ => false,
+        }
     }
 
     /// Keeps what a hearing at half the pause heard, for the segment it may stand for.
@@ -157,7 +179,9 @@ impl Session<'_> {
             return;
         }
         if let Some(half_pause) = self.hearings.half_pause.as_mut().filter(|h| h.job == n) {
-            half_pause.answer = Some(heard.cloned());
+            half_pause.answer = heard
+                .cloned()
+                .map_or(HalfPauseAnswer::NothingHeard, HalfPauseAnswer::Heard);
         }
     }
 
@@ -270,61 +294,6 @@ impl Session<'_> {
             self.forget_if_done(utterance);
         }
         self.jobs.outbox.resolve(id.n, is_check, events)
-    }
-
-    /// The event `heard` makes of the confirmation asked with `context` when the stream had
-    /// come to `asked_at`, read with `reading`.
-    fn apply_heard(
-        &mut self,
-        reading: &PhraseMatcher,
-        heard: Heard,
-        context: JobContext,
-        asked_at: usize,
-    ) -> Option<ServerEvent> {
-        let clip = |from| HeardClip { heard: &heard, from, end: Some(asked_at) };
-        let whole = |from| HeardClip { heard: &heard, from, end: None };
-        match context {
-            JobContext::Head { utterance, from, early: false } => {
-                self.place(clip(from), utterance, |w| head_command(reading, w))
-            }
-            // "start" heard alone may be cut off before the word after it, as the first
-            // spotted check may hear it: "start stop" starts nothing.
-            JobContext::Head { utterance, from, early: true } => {
-                self.place(clip(from), utterance, |w| {
-                    spotted_command(reading, w, true, Round::First)
-                })
-            }
-            JobContext::Spotted { utterance, from, at_head, round, said_end } => {
-                let found = self.place(clip(from), utterance, |w| {
-                    spotted_command(reading, w, at_head, round)
-                });
-                // The first check may come before the command ends: "start" alone at the
-                // head, or the second "restart" of "restart restart" cut off by the clip.
-                if found.is_none() && round == Round::First {
-                    self.jobs.found_nothing(said_end, asked_at, utterance);
-                }
-                found
-            }
-            JobContext::Window { utterance, from } => {
-                let found = self.place(whole(from), utterance, |w| reading.anywhere(w));
-                self.mark(utterance, |r| r.last_window = Some((heard, from)));
-                found
-            }
-            JobContext::Segment { utterance, segment } => {
-                self.apply_segment(reading, &heard, utterance, segment)
-            }
-            JobContext::Unheld { spotted, from } => {
-                self.apply_unheld(reading, &heard, spotted, from)
-            }
-            // Its answer waits for the segment it may stand for.
-            JobContext::HalfPause { .. } => None,
-            JobContext::Tail { utterance, from } => {
-                self.place_anywhere_or_at_end(reading, whole(from), utterance)
-            }
-            JobContext::Rehear { bounds, origin, phrase, .. } => {
-                self.apply_rehear(reading, &heard, (bounds, origin), phrase)
-            }
-        }
     }
 
     /// The selected phrase a trigger spotted within `bounds` serves: the keyword spotter heard

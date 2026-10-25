@@ -24,9 +24,11 @@ test_paths = ["analyzers/tests/", "app/tests/", "command-spotting/tests/", "copy
 "clippy::redundant_pub_crate" = "conflicts with the pub(crate) style inside private modules"
 "clippy::option_if_let_else" = "nursery lint whose map_or_else rewrites read worse than the if let"
 "clippy::significant_drop_tightening" = "nursery lint with known false positives on guards held on purpose"
+"clippy::cast_precision_loss" = "sample, frame and millisecond counts into f32/f64 never come near 2^24; a conversion helper per cast says nothing more"
+"clippy::suboptimal_flops" = "mul_add rewrites of the audio and timing math read worse and change no result that matters"
 
 [metrics]
-members = ["analyzers", "app", "command-spotting", "copy-pool", "dev-tools", "e2e-test", "test-steps", "voice-commands"]
+members = ["analyzers", "app", "command-spotting", "copy-pool", "dev-tools", "e2e-test", "log-line", "test-steps", "voice-commands"]
 # A function over this cyclomatic complexity is listed in .config/analyzers/metrics.toml (cognitive complexity is
 # gated by clippy's size budgets)
 cyclomatic_threshold = 10

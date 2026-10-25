@@ -1,5 +1,3 @@
 # Baseline of `voicepuncher-analyzers recipes`: the findings left, which may only shrink.
 # Rewritten by `just analyzers-baseline`; a rewrite that adds or raises an entry is reviewed like code.
 [findings]
-"shellcheck _require-release-identity SC2157" = 1
-"shellcheck test SC2209" = 1

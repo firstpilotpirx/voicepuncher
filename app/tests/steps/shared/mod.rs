@@ -1,7 +1,7 @@
 //! The steps both harnesses use (`SharedSteps`, crate `test-steps`) at the slice and component
 //! level: each runs the step function this harness keeps for it.
 
-use anyhow::{bail, Result};
+use voicepuncher::test_doubles::prelude::*;
 use voicepuncher_test_steps::{shared_steps, SharedSteps};
 
 use super::{dictation_pointer, permissions_gate, voice_control};

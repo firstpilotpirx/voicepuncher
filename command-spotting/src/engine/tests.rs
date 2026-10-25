@@ -78,7 +78,7 @@ fn should_not_place_a_phrase_before_the_stream_started() {
     // When
     let (start, _) = phrase_span(0.5, &[0.1, 0.8]);
     // Then
-    assert_eq!(start, 0.0);
+    assert!((start - 0.0).abs() < 1e-6, "{} is not {}", start, 0.0);
 }
 
 #[test]

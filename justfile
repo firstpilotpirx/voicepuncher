@@ -286,7 +286,7 @@ size-baseline:
 # model stages (dev-tools stages)
 # Every test of the app, the command spotting service and the E2E harness under cargo-nextest, each within its time limit, without the machine lock (~1 min)
 test:
-    @VOICEPUNCHER_STAGES_RECIPE=test {{just_executable()}} _stages static test metrics
+    @VOICEPUNCHER_STAGES_RECIPE='test' {{just_executable()}} _stages static test metrics
 
 # Runs only the named tests and slice/component scenarios in the `test` stage (dev-tools named-run): the TDD Red
 # and Green steps (AGENTS.md § TDD), with the test stage's build, nextest config and time limits, unlocked;
@@ -585,8 +585,7 @@ dmg: _require-create-dmg bundle
 _sign path:
     #!/usr/bin/env bash
     set -euo pipefail
-    identity={{quote(signing_identity)}}
-    if [[ -z "$identity" ]]; then
+    if identity={{quote(signing_identity)}}; [[ -z "$identity" ]]; then
         echo "● VOICEPUNCHER_SIGNING_IDENTITY is unset: signing ad-hoc — the bundle has no stable identity, so macOS asks for every permission again after each build (README § Release checklist)" >&2
         identity="-"
     fi
@@ -615,7 +614,7 @@ _require-signing-identity:
 _require-release-identity:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [[ -z {{quote(signing_identity)}} ]]; then
+    if identity={{quote(signing_identity)}}; [[ -z "$identity" ]]; then
         echo "✗ VOICEPUNCHER_SIGNING_IDENTITY is unset — a release is signed with the self-signed certificate, so that updates keep their permissions" >&2
         {{just_executable()}} --justfile {{quote(justfile())}} _signing-identity-steps >&2
         exit 1

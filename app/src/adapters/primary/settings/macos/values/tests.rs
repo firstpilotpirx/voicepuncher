@@ -26,7 +26,7 @@ fn should_show_the_default_of_a_value_the_file_leaves_out() {
     // Then
     assert_eq!(
         value,
-        Value::Integer(Config::default().hotkey.min_press_ms as i64)
+        Value::Integer(i64::try_from(Config::default().hotkey.min_press_ms).unwrap())
     );
 }
 

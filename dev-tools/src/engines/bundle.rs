@@ -95,28 +95,20 @@ fn signer(file: &Path) -> String {
         .join("\n")
 }
 
-fn engine(
-    app: &Path,
-    (folder, program, flag): (&str, &str, &str),
-    app_signer: &str,
-) -> Result<(), String> {
-    let dir = app.join("Contents/MacOS/engines").join(folder);
-    let runs = dir
-        .join(program)
-        .metadata()
-        .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0);
-    if !runs
-        || dir
-            .join("VERSION")
-            .metadata()
-            .map_or(true, |meta| meta.len() == 0)
-    {
-        return Err(format!(
-            "bundle lacks engines/{folder}/{program} or its VERSION"
-        ));
-    }
-    check_folder(&dir, &format!("engines/{folder}"))?;
-    for file in files(&dir) {
+/// Whether `path` is a file anyone may run.
+fn is_program(path: &Path) -> bool {
+    path.metadata()
+        .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+}
+
+/// Whether `path` is empty or missing.
+fn is_empty_file(path: &Path) -> bool {
+    path.metadata().map_or(true, |meta| meta.len() == 0)
+}
+
+/// Every file of `dir` verifies and is signed by `app_signer`.
+fn signed_by(dir: &Path, app_signer: &str) -> Result<(), String> {
+    for file in files(dir) {
         let shown = file.to_string_lossy();
         if capture("codesign", &["--verify", "--strict", &shown]).is_err() {
             return Err(format!("{shown}: signature does not verify"));
@@ -125,6 +117,22 @@ fn engine(
             return Err(format!("{shown} is not signed by the app's signer"));
         }
     }
+    Ok(())
+}
+
+fn engine(
+    app: &Path,
+    (folder, program, flag): (&str, &str, &str),
+    app_signer: &str,
+) -> Result<(), String> {
+    let dir = app.join("Contents/MacOS/engines").join(folder);
+    if !is_program(&dir.join(program)) || is_empty_file(&dir.join("VERSION")) {
+        return Err(format!(
+            "bundle lacks engines/{folder}/{program} or its VERSION"
+        ));
+    }
+    check_folder(&dir, &format!("engines/{folder}"))?;
+    signed_by(&dir, app_signer)?;
     let ran = Command::new(dir.join(program))
         .arg(flag)
         .current_dir("/")

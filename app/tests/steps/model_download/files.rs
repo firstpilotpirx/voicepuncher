@@ -2,11 +2,8 @@
 //! and the headless download, run as the app's own command line with every address on a port
 //! that refuses connections.
 
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 use tempfile::TempDir;
 

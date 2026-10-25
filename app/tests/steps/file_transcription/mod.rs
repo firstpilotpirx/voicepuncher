@@ -3,10 +3,8 @@
 //! exit code and outputs; the options are read from the command line's definition.
 
 use std::collections::BTreeSet;
-use std::path::PathBuf;
-use std::process::{Command, Output, Stdio};
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{ensure, Context, Result};
 use clap::CommandFactory;
 use cucumber::{given, then, when};
 use regex::Regex;

@@ -36,18 +36,32 @@ pub fn selection(names: &[String]) -> Result<Vec<String>, String> {
         } else if !name.contains(char::is_whitespace) && !name.is_empty() {
             tests.push(format!("test({name})"));
         } else {
-            let (binary, test) = name
-                .split_once(char::is_whitespace)
-                .map(|(binary, test)| (binary, test.trim_start()))
-                .filter(|(binary, test)| !binary.is_empty() && !test.is_empty())
-                .ok_or_else(|| format!("\"{name}\" is neither `<package>::<binary> <test>`, `scenario: <name>` nor a bare test name"))?;
-            harness |= is_harness(binary);
-            tests.push(format!("(binary_id(={binary}) & test(={test}))"));
+            let (filter, of_harness) = exact_test(name)?;
+            harness |= of_harness;
+            tests.push(filter);
         }
     }
     if !scenarios.is_empty() && !harness {
         tests.push(harnesses_filter());
     }
+    Ok(selection_lines(&tests, &scenarios, names))
+}
+
+/// The filter of `<package>::<binary> <test>`, and whether the binary is a Gherkin harness.
+fn exact_test(name: &str) -> Result<(String, bool), String> {
+    let (binary, test) = name
+        .split_once(char::is_whitespace)
+        .map(|(binary, test)| (binary, test.trim_start()))
+        .filter(|(binary, test)| !binary.is_empty() && !test.is_empty())
+        .ok_or_else(|| format!("\"{name}\" is neither `<package>::<binary> <test>`, `scenario: <name>` nor a bare test name"))?;
+    Ok((
+        format!("(binary_id(={binary}) & test(={test}))"),
+        is_harness(binary),
+    ))
+}
+
+/// The selection's lines: the filter of `tests`, a line per scenario and one per name.
+fn selection_lines(tests: &[String], scenarios: &[String], names: &[String]) -> Vec<String> {
     let mut lines = Vec::new();
     if !tests.is_empty() {
         lines.push(format!("filter {}", tests.join(" | ")));
@@ -58,7 +72,7 @@ pub fn selection(names: &[String]) -> Result<Vec<String>, String> {
             .map(|scenario| format!("scenario {scenario}")),
     );
     lines.extend(names.iter().map(|name| format!("name {name}")));
-    Ok(lines)
+    lines
 }
 
 /// The named tests and scenarios a run's log shows no sign of, one `  <name>` line each: an exact name needs

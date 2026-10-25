@@ -7,8 +7,11 @@ use crate::protocol::ServerEvent;
 use crate::worker::{Answer, JobId, JobKind};
 
 use super::super::pause::first_sound;
-use super::super::{samples_in, seconds, Session, FIRST_WINDOW_SECS, POST_ROLL_SECS, WINDOW_SECS};
+use super::super::{
+    samples_in, seconds, HeadCheck, Session, FIRST_WINDOW_SECS, POST_ROLL_SECS, WINDOW_SECS,
+};
 
+use super::half_pause::HalfPauseAnswer;
 use super::place::HeardClip;
 use super::{HalfPauseHearing, JobContext, SegmentSpan};
 
@@ -75,7 +78,7 @@ impl Session<'_> {
             .unwrap_or_else(|| self.new_utterance(start, usize::MAX, true));
         self.mark(utterance, |r| {
             r.closed = true;
-            r.head_checked = true;
+            r.head = HeadCheck::Checked;
             r.next_window = usize::MAX;
         });
         utterance
@@ -87,8 +90,9 @@ impl Session<'_> {
         self.hearings.half_pause.take().filter(|h| {
             short
                 && match &h.answer {
-                    None => true,
-                    Some(heard) => heard.as_ref().is_some_and(|h| self.said_alone(h)),
+                    HalfPauseAnswer::Awaited => true,
+                    HalfPauseAnswer::Heard(heard) => self.said_alone(heard),
+                    HalfPauseAnswer::NothingHeard => false,
                 }
         })
     }
@@ -118,7 +122,7 @@ impl Session<'_> {
         (from, to): (usize, usize),
     ) -> (Option<u64>, Option<Heard>) {
         match half_pause {
-            Some(HalfPauseHearing { job, answer: None, .. }) => {
+            Some(HalfPauseHearing { job, answer: HalfPauseAnswer::Awaited, .. }) => {
                 log::debug!("job={job} heard at half the pause stands for its segment");
                 if let Some(asked) = self.jobs.asked.get_mut(&job) {
                     asked.context = context;
@@ -126,8 +130,8 @@ impl Session<'_> {
                 self.hearings.stand_ins.insert(job, own_from);
                 (Some(job), None)
             }
-            Some(HalfPauseHearing { answer: Some(heard), .. }) => {
-                (self.reserve(JobKind::Segment, context), heard)
+            Some(HalfPauseHearing { answer, .. }) => {
+                (self.reserve(JobKind::Segment, context), answer.heard())
             }
             None => (self.ask(JobKind::Segment, from, to, context), None),
         }
@@ -149,10 +153,10 @@ impl Session<'_> {
         reading: &PhraseMatcher,
         heard: &Heard,
         utterance: u64,
-        segment: SegmentSpan,
+        segment: &SegmentSpan,
     ) -> Option<ServerEvent> {
         let SegmentSpan { end, bounds, short, from, .. } = segment;
-        if short {
+        if *short {
             if let Some(phrase) = reading.phrase_in(&heard.text) {
                 log::info!("conn={} utterance → {phrase:?}", self.conn);
                 // The detector notices speech up to 0.7 s late: the first word's time is
@@ -174,8 +178,8 @@ impl Session<'_> {
             .running
             .get_mut(&utterance)
             .and_then(|r| r.last_window.take());
-        let clip = HeardClip { heard, from, end: None };
+        let clip = HeardClip { heard, from: *from, end: None };
         self.place_anywhere_or_at_end(reading, clip, utterance)
-            .or_else(|| self.tail_heard_while_running(reading, last_window, end, utterance))
+            .or_else(|| self.tail_heard_while_running(reading, last_window, *end, utterance))
     }
 }

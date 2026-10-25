@@ -9,6 +9,7 @@ use objc2_app_kit::{NSColor, NSView};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use objc2_quartz_core::{CALayer, CATransaction};
 
+use crate::core::domain::conversions::narrow_f32;
 use crate::core::domain::level_history::{
     COLUMN_PITCH_PT, FULL_CAPACITY, MAX_HEIGHT_PT, MIN_HEIGHT_PT,
 };
@@ -117,7 +118,7 @@ impl WaveformView {
 
 /// Opacity of a column at `x`: dots dimmer than speech, both fading out near the left edge.
 fn column_opacity(x: f64, height: f32) -> f32 {
-    let fade = (x / FADE_WIDTH).clamp(0.0, 1.0) as f32;
+    let fade = narrow_f32((x / FADE_WIDTH).clamp(0.0, 1.0));
     let base = if height <= MIN_HEIGHT_PT {
         DOT_OPACITY
     } else {
@@ -154,19 +155,49 @@ mod tests {
 
     #[test]
     fn should_be_as_wide_as_its_columns_four_points_apart() {
-        assert_eq!(waveform_width(160), 638.0);
-        assert_eq!(waveform_width(148), 590.0);
+        assert!(
+            (waveform_width(160) - 638.0).abs() < 1e-6,
+            "{} is not {}",
+            waveform_width(160),
+            638.0
+        );
+        assert!(
+            (waveform_width(148) - 590.0).abs() < 1e-6,
+            "{} is not {}",
+            waveform_width(148),
+            590.0
+        );
     }
 
     #[test]
     fn should_draw_a_dot_dimmer_than_a_column_of_speech() {
-        assert_eq!(column_opacity(60.0, MIN_HEIGHT_PT), DOT_OPACITY);
-        assert_eq!(column_opacity(60.0, 20.0), 1.0);
+        assert!(
+            (column_opacity(60.0, MIN_HEIGHT_PT) - DOT_OPACITY).abs() < 1e-6,
+            "{} is not {}",
+            column_opacity(60.0, MIN_HEIGHT_PT),
+            DOT_OPACITY
+        );
+        assert!(
+            (column_opacity(60.0, 20.0) - 1.0).abs() < 1e-6,
+            "{} is not {}",
+            column_opacity(60.0, 20.0),
+            1.0
+        );
     }
 
     #[test]
     fn should_fade_out_columns_near_the_left_edge() {
-        assert_eq!(column_opacity(15.0, 20.0), 0.5);
-        assert_eq!(column_opacity(-3.0, 20.0), 0.0);
+        assert!(
+            (column_opacity(15.0, 20.0) - 0.5).abs() < 1e-6,
+            "{} is not {}",
+            column_opacity(15.0, 20.0),
+            0.5
+        );
+        assert!(
+            (column_opacity(-3.0, 20.0) - 0.0).abs() < 1e-6,
+            "{} is not {}",
+            column_opacity(-3.0, 20.0),
+            0.0
+        );
     }
 }

@@ -4,7 +4,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Maps `items` through `f` on at most `max_concurrent` threads at a time and
 /// returns the results in input order.
-#[expect(clippy::excessive_nesting, reason = "size baseline")]
 pub fn map_concurrently<T, R, F>(items: &[T], max_concurrent: usize, f: F) -> Vec<R>
 where
     T: Sync,
@@ -14,18 +13,7 @@ where
     let next = AtomicUsize::new(0);
     let mut indexed: Vec<(usize, R)> = std::thread::scope(|scope| {
         let workers: Vec<_> = (0..max_concurrent.max(1))
-            .map(|_| {
-                scope.spawn(|| {
-                    let mut done = Vec::new();
-                    loop {
-                        let i = next.fetch_add(1, Ordering::SeqCst);
-                        let Some(item) = items.get(i) else {
-                            return done;
-                        };
-                        done.push((i, f(item)));
-                    }
-                })
-            })
+            .map(|_| scope.spawn(|| take_in_turn(items, &next, &f)))
             .collect();
         workers
             .into_iter()
@@ -34,6 +22,16 @@ where
     });
     indexed.sort_by_key(|(i, _)| *i);
     indexed.into_iter().map(|(_, r)| r).collect()
+}
+
+/// Maps the items `next` hands out, one at a time, until none is left; each result with
+/// its item's index.
+fn take_in_turn<T, R>(items: &[T], next: &AtomicUsize, f: impl Fn(&T) -> R) -> Vec<(usize, R)> {
+    std::iter::from_fn(|| {
+        let i = next.fetch_add(1, Ordering::SeqCst);
+        items.get(i).map(|item| (i, f(item)))
+    })
+    .collect()
 }
 
 #[cfg(test)]

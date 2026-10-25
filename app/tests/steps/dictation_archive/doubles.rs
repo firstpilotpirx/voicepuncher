@@ -1,9 +1,9 @@
 //! The stand-ins of the dictation archive scenarios.
 
 use super::{
-    anyhow, joined, mpsc, Answers, AudioBuffer16k, AudioRecorder, ChunkingCfg, CleanedText, Event,
-    Events, FailureNotice, Instant, LiveChunk, RawTranscript, Receiver, Result, Sender,
-    SoundPlayer, Takes, TextPaster, Transcriber, VisualIndicator,
+    anyhow, joined, mpsc, Answers, AudioBuffer16k, AudioRecorder, ChunkingCfg, Event, Events,
+    FailureNotice, Instant, LiveChunk, RawTranscript, Receiver, Result, Sender, Takes, Transcriber,
+    VisualIndicator,
 };
 
 /// Hands over the audio queued for each recording; recorded in chunks, it sends all parts
@@ -77,21 +77,7 @@ impl Transcriber for AnsweringTranscriber {
     }
 }
 
-pub(super) struct NotingPaster(pub(super) Events);
-
-impl TextPaster for NotingPaster {
-    fn paste(&mut self, text: &CleanedText) -> Result<()> {
-        self.0
-            .lock()
-            .unwrap()
-            .push(Event::Pasted(text.as_str().to_owned()));
-        Ok(())
-    }
-
-    fn leave_in_clipboard(&mut self, text: &CleanedText) -> Result<()> {
-        self.paste(text)
-    }
-}
+pub(super) type NotingPaster = voicepuncher::test_doubles::NotingPaster<Event>;
 
 pub(super) struct NotingOverlay(pub(super) Events);
 
@@ -115,10 +101,4 @@ impl VisualIndicator for NotingOverlay {
     voicepuncher::shows_no_voice_control_signs!();
 }
 
-pub(super) struct Silent;
-
-impl SoundPlayer for Silent {
-    fn play_start(&self) {}
-    fn play_stop(&self) {}
-    fn play_cancel(&self) {}
-}
+pub(super) use voicepuncher::test_doubles::Silent;

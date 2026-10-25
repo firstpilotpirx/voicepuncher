@@ -72,12 +72,16 @@ pub(super) fn refuse_or_end(
     error: anyhow::Error,
 ) -> Result<()> {
     match error.downcast::<Refusal>() {
-        Ok(refusal) => refuse(socket, conn, refusal),
+        Ok(refusal) => refuse(socket, conn, &refusal),
         Err(error) => Err(error),
     }
 }
 
-pub(super) fn refuse(socket: &mut WebSocket<TcpStream>, conn: u64, refusal: Refusal) -> Result<()> {
+pub(super) fn refuse(
+    socket: &mut WebSocket<TcpStream>,
+    conn: u64,
+    refusal: &Refusal,
+) -> Result<()> {
     log::warn!("conn={conn} refusing the connection: {refusal}");
     let mut end = refusal.reason.len().min(MOST_REASON_BYTES);
     while !refusal.reason.is_char_boundary(end) {

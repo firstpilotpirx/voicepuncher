@@ -9,6 +9,7 @@ use std::sync::{Condvar, Mutex};
 use std::time::Duration;
 
 use voicepuncher_command_spotting::confirm::{Hear, Heard};
+use voicepuncher_command_spotting::conversions::saturating_usize;
 use voicepuncher_command_spotting::engine::{Session, SAMPLE_RATE};
 use voicepuncher_command_spotting::protocol::ServerEvent;
 
@@ -120,5 +121,5 @@ impl Hear for Clocked {
 
 /// `duration` of speech, in samples.
 pub fn samples(duration: Duration) -> usize {
-    (duration.as_secs_f64() * f64::from(SAMPLE_RATE)) as usize
+    saturating_usize(duration.as_secs_f64() * f64::from(SAMPLE_RATE))
 }

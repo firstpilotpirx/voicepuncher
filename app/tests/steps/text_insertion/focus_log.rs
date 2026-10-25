@@ -1,10 +1,8 @@
 //! The focus decision the pipeline logs for every dictation it delivers while the focus wait
 //! is on, read from the logger the scenarios share.
 
-use std::time::{Duration, Instant};
-
-use anyhow::{bail, Context, Result};
 use cucumber::{given, then};
+use voicepuncher::test_doubles::prelude::*;
 
 use super::REACTION;
 use crate::steps::voice_control::pipeline_log;

@@ -1,12 +1,13 @@
 //! The system control of one field: the value it shows, the value the user set in it, and
 //! the red outline of a refused value.
 
+use crate::core::domain::conversions::index_isize;
 use std::cell::RefCell;
 
 use objc2::rc::Retained;
 use objc2_app_kit::{
-    NSButton, NSColor, NSControlStateValueOff, NSControlStateValueOn, NSPathControl, NSPopUpButton,
-    NSSlider, NSStepper, NSSwitch, NSTextField, NSTextView, NSView,
+    NSButton, NSColor, NSControlStateValue, NSControlStateValueOff, NSControlStateValueOn,
+    NSPathControl, NSPopUpButton, NSSlider, NSStepper, NSSwitch, NSTextField, NSTextView, NSView,
 };
 use objc2_foundation::{NSString, NSURL};
 use toml::Value;
@@ -64,19 +65,9 @@ impl FieldControl {
     pub fn show(&self, value: &Value) {
         self.shown.replace(value.clone());
         match &self.widget {
-            Widget::Switch(switch) => switch.setState(if value.as_bool() == Some(true) {
-                NSControlStateValueOn
-            } else {
-                NSControlStateValueOff
-            }),
+            Widget::Switch(switch) => switch.setState(state(value.as_bool() == Some(true))),
             Widget::PopUp(popup, choices) => select(popup, &mut choices.borrow_mut(), value),
-            Widget::Radio(buttons) => buttons.iter().for_each(|(button, choice)| {
-                button.setState(if choice == value {
-                    NSControlStateValueOn
-                } else {
-                    NSControlStateValueOff
-                });
-            }),
+            Widget::Radio(buttons) => show_radio(buttons, value),
             Widget::Number { text, stepper } => {
                 text.setStringValue(&NSString::from_str(&plain(value)));
                 stepper.setDoubleValue(number(value).unwrap_or_default());
@@ -99,15 +90,8 @@ impl FieldControl {
         let shown = self.shown.borrow().clone();
         match &self.widget {
             Widget::Switch(switch) => Value::Boolean(switch.state() == NSControlStateValueOn),
-            Widget::PopUp(popup, choices) => usize::try_from(popup.indexOfSelectedItem())
-                .ok()
-                .and_then(|index| choices.borrow().get(index).map(|c| c.value.clone()))
-                .unwrap_or(shown),
-            Widget::Radio(buttons) => buttons
-                .iter()
-                .find(|(button, _)| button.state() == NSControlStateValueOn)
-                .map(|(_, value)| value.clone())
-                .unwrap_or(shown),
+            Widget::PopUp(popup, choices) => selected(popup, &choices.borrow()).unwrap_or(shown),
+            Widget::Radio(buttons) => chosen(buttons).unwrap_or(shown),
             Widget::Number { text, .. } => typed_number(&text.stringValue().to_string(), &shown),
             Widget::Slider { slider, .. } => kept_slider(slider.doubleValue(), shown),
             Widget::Text(text) => Value::String(text.stringValue().to_string()),
@@ -132,6 +116,36 @@ impl FieldControl {
     }
 }
 
+/// The state of a switch or radio button that is on when `on`.
+const fn state(on: bool) -> NSControlStateValue {
+    if on {
+        NSControlStateValueOn
+    } else {
+        NSControlStateValueOff
+    }
+}
+
+/// Turns on the radio button of `value` and every other off.
+fn show_radio(buttons: &[(Retained<NSButton>, Value)], value: &Value) {
+    for (button, choice) in buttons {
+        button.setState(state(choice == value));
+    }
+}
+
+/// The value of the choice the pop-up selects.
+fn selected(popup: &NSPopUpButton, choices: &[Choice]) -> Option<Value> {
+    let index = usize::try_from(popup.indexOfSelectedItem()).ok()?;
+    choices.get(index).map(|choice| choice.value.clone())
+}
+
+/// The value of the radio button that is on.
+fn chosen(buttons: &[(Retained<NSButton>, Value)]) -> Option<Value> {
+    let (_, value) = buttons
+        .iter()
+        .find(|(button, _)| button.state() == NSControlStateValueOn)?;
+    Some(value.clone())
+}
+
 /// Selects the choice holding `value`; a value none offers (a microphone that is not
 /// connected) is added under its own name, so the window never changes it unasked.
 fn select(popup: &NSPopUpButton, choices: &mut Vec<Choice>, value: &Value) {
@@ -143,7 +157,7 @@ fn select(popup: &NSPopUpButton, choices: &mut Vec<Choice>, value: &Value) {
         choices.push(Choice { title, value: value.clone() });
         choices.len() - 1
     };
-    popup.selectItemAtIndex(index as isize);
+    popup.selectItemAtIndex(index_isize(index));
 }
 
 /// The folder's own words (`~/…`) are kept; the path control shows where they lead.
@@ -182,7 +196,9 @@ fn typed_number(text: &str, shown: &Value) -> Value {
 fn kept_slider(position: f64, shown: Value) -> Value {
     let rounded = (position * SLIDER_STEPS).round() / SLIDER_STEPS;
     match number(&shown) {
-        Some(n) if (n * SLIDER_STEPS).round() / SLIDER_STEPS == rounded => shown,
+        Some(n) if ((n * SLIDER_STEPS).round() / SLIDER_STEPS - rounded).abs() < f64::EPSILON => {
+            shown
+        }
         _ => Value::Float(rounded),
     }
 }

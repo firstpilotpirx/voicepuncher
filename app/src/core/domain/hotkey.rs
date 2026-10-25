@@ -72,52 +72,51 @@ impl HotKey {
 
     /// The hotkey as a person reads it: "Right Option", "Cmd+E".
     pub fn human_name(self) -> &'static str {
-        match self {
-            Self::RightOption => "Right Option",
-            Self::RightControl => "Right Control",
-            Self::RightShift => "Right Shift",
-            Self::RightCommand => "Right Command",
-            Self::LeftOption => "Left Option",
-            Self::LeftControl => "Left Control",
-            Self::Fn => "Fn",
-            Self::CapsLock => "Caps Lock",
-            Self::Space => "Space",
-            Self::CmdE => "Cmd+E",
-            Self::LeftOptionE => "Option+E",
-            Self::F13 => "F13",
-            Self::F14 => "F14",
-            Self::F15 => "F15",
-            Self::F16 => "F16",
-            Self::F17 => "F17",
-            Self::F18 => "F18",
-            Self::F19 => "F19",
-        }
+        self.names().human
+    }
+
+    /// The names of this hotkey: `NAMES` lists every hotkey in declaration order.
+    fn names(self) -> &'static Names {
+        &NAMES[self as usize]
     }
 }
 
+/// How a hotkey is written in the configuration and how a person reads it.
+struct Names {
+    key: HotKey,
+    config: &'static str,
+    human: &'static str,
+}
+
+const fn names(key: HotKey, config: &'static str, human: &'static str) -> Names {
+    Names { key, config, human }
+}
+
+/// Every hotkey's names, in the order the enum declares them.
+const NAMES: [Names; 18] = [
+    names(HotKey::RightOption, "RightOption", "Right Option"),
+    names(HotKey::RightControl, "RightControl", "Right Control"),
+    names(HotKey::RightShift, "RightShift", "Right Shift"),
+    names(HotKey::RightCommand, "RightCommand", "Right Command"),
+    names(HotKey::LeftOption, "LeftOption", "Left Option"),
+    names(HotKey::LeftControl, "LeftControl", "Left Control"),
+    names(HotKey::Fn, "Fn", "Fn"),
+    names(HotKey::CapsLock, "CapsLock", "Caps Lock"),
+    names(HotKey::Space, "Space", "Space"),
+    names(HotKey::CmdE, "CmdE", "Cmd+E"),
+    names(HotKey::LeftOptionE, "LeftOptionE", "Option+E"),
+    names(HotKey::F13, "F13", "F13"),
+    names(HotKey::F14, "F14", "F14"),
+    names(HotKey::F15, "F15", "F15"),
+    names(HotKey::F16, "F16", "F16"),
+    names(HotKey::F17, "F17", "F17"),
+    names(HotKey::F18, "F18", "F18"),
+    names(HotKey::F19, "F19", "F19"),
+];
+
 impl std::fmt::Display for HotKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            Self::RightOption => "RightOption",
-            Self::RightControl => "RightControl",
-            Self::RightShift => "RightShift",
-            Self::RightCommand => "RightCommand",
-            Self::LeftOption => "LeftOption",
-            Self::LeftControl => "LeftControl",
-            Self::Fn => "Fn",
-            Self::CapsLock => "CapsLock",
-            Self::Space => "Space",
-            Self::CmdE => "CmdE",
-            Self::LeftOptionE => "LeftOptionE",
-            Self::F13 => "F13",
-            Self::F14 => "F14",
-            Self::F15 => "F15",
-            Self::F16 => "F16",
-            Self::F17 => "F17",
-            Self::F18 => "F18",
-            Self::F19 => "F19",
-        };
-        write!(f, "{s}")
+        f.write_str(self.names().config)
     }
 }
 
@@ -125,27 +124,11 @@ impl std::str::FromStr for HotKey {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> anyhow::Result<Self> {
-        match s {
-            "RightOption" => Ok(Self::RightOption),
-            "RightControl" => Ok(Self::RightControl),
-            "RightShift" => Ok(Self::RightShift),
-            "RightCommand" => Ok(Self::RightCommand),
-            "LeftOption" => Ok(Self::LeftOption),
-            "LeftControl" => Ok(Self::LeftControl),
-            "Fn" => Ok(Self::Fn),
-            "CapsLock" => Ok(Self::CapsLock),
-            "Space" => Ok(Self::Space),
-            "CmdE" => Ok(Self::CmdE),
-            "LeftOptionE" => Ok(Self::LeftOptionE),
-            "F13" => Ok(Self::F13),
-            "F14" => Ok(Self::F14),
-            "F15" => Ok(Self::F15),
-            "F16" => Ok(Self::F16),
-            "F17" => Ok(Self::F17),
-            "F18" => Ok(Self::F18),
-            "F19" => Ok(Self::F19),
-            other => anyhow::bail!("unknown hotkey: {other}"),
-        }
+        NAMES
+            .iter()
+            .find(|names| names.config == s)
+            .map(|names| names.key)
+            .ok_or_else(|| anyhow::anyhow!("unknown hotkey: {s}"))
     }
 }
 
@@ -195,6 +178,13 @@ mod tests {
         // Then
         assert_eq!(names.len(), HotKey::ALL.len());
         assert_eq!(parsed, HotKey::ALL);
+    }
+
+    #[test]
+    fn should_list_the_names_of_every_hotkey_at_its_own_place() {
+        for key in HotKey::ALL {
+            assert_eq!(key.names().key, key);
+        }
     }
 
     #[test]

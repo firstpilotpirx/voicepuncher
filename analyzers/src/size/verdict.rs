@@ -13,8 +13,8 @@ pub fn violations(measures: &Measures, baseline: &Baseline) -> Vec<String> {
         }
     }
     for (kind, id) in baseline.keys() {
-        let measured = kind.budget().is_none() || measures.units.contains_key(&(*kind, id.clone()));
-        if !measured {
+        let kept = kind.budget().is_none() || measures.units.contains_key(&(*kind, id.clone()));
+        if !kept {
             found.push(format!(
                 "{} {id}: listed in the size baseline but gone; remove its entry",
                 kind.key()
@@ -30,14 +30,13 @@ fn judge(kind: Kind, measure: usize, listed: Option<usize>) -> Option<String> {
     let budget = kind.budget()?;
     match listed {
         None if over_budget(kind, measure) => Some(format!("{measure} {unit}, over the budget of {budget}")),
-        None => None,
         Some(_) if !over_budget(kind, measure) => Some(format!(
             "{measure} {unit}, back within the budget of {budget}; remove its size-baseline entry and attribute"
         )),
         Some(listed) if measure > listed => {
             Some(format!("grew from {listed} to {measure} {unit} (budget {budget}); shrink it"))
         }
-        Some(_) => None,
+        Some(_) | None => None,
     }
 }
 

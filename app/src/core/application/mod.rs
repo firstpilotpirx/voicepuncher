@@ -52,8 +52,34 @@ pub use pipeline_activity::{NoActivitySink, PipelineActivity, PipelineActivitySi
 pub use pipeline_input::PipelineInput;
 pub use sound_player::SoundPlayer;
 pub use text_insertion::{
-    hotkey_pressed_during_wait, insert_text, FocusWaitCfg, Insertion, WaitEnd,
+    hotkey_pressed_during_wait, insert_text, FocusWait, FocusWaitCfg, Insertion, WaitEnd,
 };
 pub use text_paster::TextPaster;
 pub use transcriber::Transcriber;
 pub use visual_indicator::VisualIndicator;
+
+/// The mocks of the ports, for one glob import in the unit tests.
+#[cfg(test)]
+pub(crate) mod prelude {
+    pub(crate) use super::audio_recorder::MockAudioRecorder;
+    pub(crate) use super::command_spotter::MockCommandSpotter;
+    pub(crate) use super::hotkey_listener::MockHotkeyListener;
+    pub(crate) use super::key_presser::MockKeyPresser;
+    pub(crate) use super::sound_player::MockSoundPlayer;
+    pub(crate) use super::text_paster::MockTextPaster;
+    pub(crate) use super::transcriber::MockTranscriber;
+    pub(crate) use super::visual_indicator::MockVisualIndicator;
+
+    /// An overlay that takes every dictation state and sign it is shown.
+    pub(crate) fn accepting_overlay() -> MockVisualIndicator {
+        let mut overlay = MockVisualIndicator::new();
+        overlay.expect_show_recording().return_const(());
+        overlay.expect_show_recognizing_speech().return_const(());
+        overlay.expect_show_waiting_for_focus().return_const(());
+        overlay.expect_show_pasted().return_const(());
+        overlay.expect_hide().return_const(());
+        overlay.expect_show_command_sign().return_const(());
+        overlay.expect_show_failure_notice().return_const(());
+        overlay
+    }
+}

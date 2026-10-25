@@ -98,9 +98,7 @@ impl Hear for HangingCheck {
 #[test]
 fn should_answer_a_segment_while_a_check_hangs() {
     // Given
-    let (release, released) = mpsc::channel();
-    let hear = Arc::new(HangingCheck { released: std::sync::Mutex::new(released) });
-    let worker = ConfirmationWorker::start(1, hear, DEADLINE).unwrap();
+    let (worker, release) = worker_with_hanging_check();
     let check = Job { audio: vec![CHECK_SAMPLE; 1_600], ..job(1, JobKind::Head) };
     // When
     worker.submit(check);
@@ -114,9 +112,7 @@ fn should_answer_a_segment_while_a_check_hangs() {
 #[test]
 fn should_answer_a_second_hearing_while_a_segment_hangs() {
     // Given
-    let (release, released) = mpsc::channel();
-    let hear = Arc::new(HangingCheck { released: std::sync::Mutex::new(released) });
-    let worker = ConfirmationWorker::start(1, hear, DEADLINE).unwrap();
+    let (worker, release) = worker_with_hanging_check();
     let segment = Job { audio: vec![CHECK_SAMPLE; 1_600], ..job(1, JobKind::Segment) };
     // When
     worker.submit(segment);
@@ -148,26 +144,17 @@ fn should_count_a_job_unanswered_on_its_thread_and_untaken_until_its_answer_is_t
     assert!(after.unanswered.iter().all(|(_, n)| *n == 0), "{after:?}");
 }
 
-use crate::test_log::captured;
-
 #[test]
 fn should_name_the_job_its_kind_and_its_attempt_in_every_line_about_it() {
     // Given
-    let lines = captured();
+    let lines = voicepuncher_test_steps::log_lines::captured(log::LevelFilter::Trace);
     let hear = Arc::new(Scripted { failures: 1, calls: AtomicU32::new(0), text: " enter" });
     let worker = ConfirmationWorker::start(7, hear, DEADLINE).unwrap();
     // When
     worker.submit(job_of(7, 3, JobKind::Segment));
     worker.next_answer(WAIT).unwrap();
     // Then
-    let about: Vec<String> = lines
-        .0
-        .lock()
-        .unwrap()
-        .iter()
-        .filter(|l| l.contains("job=7.3"))
-        .cloned()
-        .collect();
+    let about = lines.containing("job=7.3");
     assert!(about.iter().any(|l| l.contains("queued")), "{about:?}");
     assert!(
         about
@@ -201,10 +188,8 @@ fn should_count_head_and_window_as_checks_of_a_running_utterance() {
 #[test]
 fn should_fail_a_job_at_once_when_its_stalled_thread_already_has_its_most_unanswered_jobs() {
     // Given a thread whose running job hangs, with 4 jobs unanswered
-    let lines = captured();
-    let (release, released) = mpsc::channel();
-    let hear = Arc::new(HangingCheck { released: std::sync::Mutex::new(released) });
-    let worker = ConfirmationWorker::start(1, hear, DEADLINE).unwrap();
+    let lines = voicepuncher_test_steps::log_lines::captured(log::LevelFilter::Trace);
+    let (worker, release) = worker_with_hanging_check();
     for n in 1..=4 {
         worker.submit(Job { audio: vec![CHECK_SAMPLE; 1_600], ..job(n, JobKind::Segment) });
     }
@@ -256,9 +241,7 @@ fn should_queue_jobs_past_the_bound_while_the_thread_keeps_answering() {
 #[test]
 fn should_count_a_job_running_past_its_attempts_as_stalled() {
     // Given
-    let (release, released) = mpsc::channel();
-    let hear = Arc::new(HangingCheck { released: std::sync::Mutex::new(released) });
-    let worker = ConfirmationWorker::start(1, hear, DEADLINE).unwrap();
+    let (worker, release) = worker_with_hanging_check();
     // When
     worker.submit(Job { audio: vec![CHECK_SAMPLE; 1_600], ..job(1, JobKind::Head) });
     std::thread::sleep(Duration::from_millis(100));
@@ -283,4 +266,14 @@ fn should_bound_a_job_by_its_attempts_and_never_below_ten_seconds() {
         stall_bound(2, Duration::from_secs(5)),
         Duration::from_secs(12)
     );
+}
+
+/// A worker whose checks hang until the returned sender is dropped.
+fn worker_with_hanging_check() -> (ConfirmationWorker, mpsc::Sender<()>) {
+    let (release, released) = mpsc::channel();
+    let hear = Arc::new(HangingCheck { released: std::sync::Mutex::new(released) });
+    (
+        ConfirmationWorker::start(1, hear, DEADLINE).unwrap(),
+        release,
+    )
 }

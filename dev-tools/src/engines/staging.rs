@@ -39,18 +39,7 @@ impl Staging<'_> {
             // Extended attributes only stop a signature: a file without them needs nothing
             let _ = crate::process::status(Command::new("xattr").arg("-c").arg(dir.join(file)));
         }
-        // The compiled-in folders of the formulae (ggml's GGML_BACKEND_DIR), so a backend is never loaded from them
-        let folders: Vec<String> = match &self.sources.cellar {
-            Some(cellar) => self
-                .lock
-                .optional(&format!("{engine}.formulae"))
-                .iter()
-                .map(|(formula, version)| {
-                    format!("{}/{formula}/{version}/libexec", cellar.display())
-                })
-                .collect(),
-            None => Vec::new(),
-        };
+        let folders = self.formula_folders(engine);
         for file in from.keys() {
             relocate::relocate(&dir.join(file), file, &folders)?;
         }
@@ -61,6 +50,19 @@ impl Staging<'_> {
                 field(self.lock.section(engine, "the lock")?, "version")
             ),
         )
+    }
+
+    /// The compiled-in folders of the formulae (ggml's `GGML_BACKEND_DIR`), so a backend is never
+    /// loaded from them.
+    fn formula_folders(&self, engine: &str) -> Vec<String> {
+        let Some(cellar) = &self.sources.cellar else {
+            return Vec::new();
+        };
+        self.lock
+            .optional(&format!("{engine}.formulae"))
+            .iter()
+            .map(|(formula, version)| format!("{}/{formula}/{version}/libexec", cellar.display()))
+            .collect()
     }
 
     fn command_spotting(&self) -> Result<(), String> {

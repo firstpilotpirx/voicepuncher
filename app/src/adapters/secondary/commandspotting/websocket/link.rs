@@ -117,7 +117,7 @@ mod tests {
     #[test]
     fn should_grow_the_pause_between_attempts_up_to_four_seconds() {
         let pauses: Vec<u64> = (0..7)
-            .map(|n| LinkTimings::default().reconnect_pause(n).as_millis() as u64)
+            .map(|n| u64::try_from(LinkTimings::default().reconnect_pause(n).as_millis()).unwrap())
             .collect();
         assert_eq!(pauses, [250, 500, 1_000, 2_000, 4_000, 4_000, 4_000]);
     }
@@ -129,14 +129,14 @@ mod tests {
         // When
         let start = LinkTimings::default().replay_start(lost_at, None);
         // Then
-        assert_eq!(start, lost_at - Duration::from_secs(5));
+        assert_eq!(start, lost_at.checked_sub(Duration::from_secs(5)).unwrap());
     }
 
     #[test]
     fn should_not_replay_audio_of_a_command_already_reported() {
         // Given
         let lost_at = Instant::now() + Duration::from_secs(60);
-        let command_end = lost_at - Duration::from_secs(2);
+        let command_end = lost_at.checked_sub(Duration::from_secs(2)).unwrap();
         // When
         let start = LinkTimings::default().replay_start(lost_at, Some(command_end));
         // Then
@@ -149,14 +149,14 @@ mod tests {
         let timings = LinkTimings::default().faster(10);
         // When
         let pauses: Vec<u64> = (0..5)
-            .map(|n| timings.reconnect_pause(n).as_millis() as u64)
+            .map(|n| u64::try_from(timings.reconnect_pause(n).as_millis()).unwrap())
             .collect();
         let lost_at = Instant::now() + Duration::from_secs(60);
         // Then
         assert_eq!(pauses, [25, 50, 100, 200, 400]);
         assert_eq!(
             timings.replay_start(lost_at, None),
-            lost_at - Duration::from_millis(500)
+            lost_at.checked_sub(Duration::from_millis(500)).unwrap()
         );
     }
 

@@ -2,13 +2,13 @@
 //! pointer and whether it takes input — the calls the main-thread tests of `visualfeedback_macos`
 //! make.
 
-use anyhow::{ensure, Context, Result};
 use core_graphics::display::CGDisplay;
 use core_graphics::geometry::CGPoint;
 use cucumber::{then, when};
 use objc2::MainThreadMarker;
 use objc2_app_kit::NSEvent;
 use objc2_foundation::NSPoint;
+use voicepuncher::test_doubles::prelude::*;
 
 use voicepuncher::adapters::secondary::visualfeedback::macos::MacosPointerSign;
 use voicepuncher::adapters::secondary::visualfeedback::pointer_sign::{

@@ -27,7 +27,7 @@ pub(super) struct NoticeTimer {
 /// Draws `notice` on every screen, on the main queue, and hides it once its time is over.
 pub(super) fn show_notice(
     (main, mtm): (&SharedWindows, MainThreadMarker),
-    notice: &FailureNotice,
+    notice: FailureNotice,
     generation: u64,
     timer: NoticeTimer,
 ) {
@@ -48,8 +48,8 @@ pub(super) fn show_notice(
 
 /// Amber glass with the warning triangle and the failing part's short name, steady, with no
 /// text window; the message goes to the log.
-fn apply_failure_notice(windows: &[Rc<WindowSet>], notice: &FailureNotice) {
-    let state = OverlayState::FailureNotice(*notice);
+fn apply_failure_notice(windows: &[Rc<WindowSet>], notice: FailureNotice) {
+    let state = OverlayState::FailureNotice(notice);
     let look = PillLook { kind: PillKind::Sign, sign: state_sign(state), breathes: false };
     log::warn!("overlay: failure notice: {}", notice.message());
     for ws in windows {

@@ -68,37 +68,40 @@ fn comment_above(before: &[&str]) -> String {
 
 /// Every violation of the allowlist rule, as one message each.
 fn violations(found: &[Found], allowed: &[Allowed]) -> Vec<String> {
-    let listed = |f: &Found| {
+    let mut messages: Vec<String> = found.iter().filter_map(|f| unlisted(f, allowed)).collect();
+    messages.extend(
         allowed
             .iter()
-            .any(|a| a.file == f.file && a.ty == f.ty && a.marker == f.marker)
-    };
-    let mut messages = Vec::new();
-    for f in found {
-        if !listed(f) {
-            messages.push(format!(
-                "{}: unsafe impl {} for {} is not in ALLOWED",
-                f.file, f.marker, f.ty
-            ));
-        } else if !f.commented {
-            messages.push(format!(
-                "{}: unsafe impl {} for {} has no // SAFETY: comment above it",
-                f.file, f.marker, f.ty
-            ));
-        }
-    }
-    for a in allowed {
-        if !found
-            .iter()
-            .any(|f| a.file == f.file && a.ty == f.ty && a.marker == f.marker)
-        {
-            messages.push(format!(
-                "{}: no unsafe impl {} for {} left; remove its ALLOWED entry",
-                a.file, a.marker, a.ty
-            ));
-        }
-    }
+            .filter(|a| !found.iter().any(|f| lists(a, f)))
+            .map(|a| {
+                format!(
+                    "{}: no unsafe impl {} for {} left; remove its ALLOWED entry",
+                    a.file, a.marker, a.ty
+                )
+            }),
+    );
     messages
+}
+
+fn lists(a: &Allowed, f: &Found) -> bool {
+    a.file == f.file && a.ty == f.ty && a.marker == f.marker
+}
+
+/// What is wrong with an impl found in the code: not listed, or listed without its comment.
+fn unlisted(f: &Found, allowed: &[Allowed]) -> Option<String> {
+    if !allowed.iter().any(|a| lists(a, f)) {
+        Some(format!(
+            "{}: unsafe impl {} for {} is not in ALLOWED",
+            f.file, f.marker, f.ty
+        ))
+    } else if !f.commented {
+        Some(format!(
+            "{}: unsafe impl {} for {} has no // SAFETY: comment above it",
+            f.file, f.marker, f.ty
+        ))
+    } else {
+        None
+    }
 }
 
 /// Every thread-crossing impl of the workspace's `.rs` files.

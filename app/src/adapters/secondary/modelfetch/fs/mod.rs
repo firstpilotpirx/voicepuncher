@@ -1,8 +1,10 @@
-//! The models folder on disk: which catalog files are present, the `NAME.part` files a
-//! download appends to and hashes, their placing by rename, the archive's extraction with
-//! `/usr/bin/tar`, and the folder's free space.
+//! The models folder on disk.
+//!
+//! Which catalog files are present, the `NAME.part` files a download appends to and hashes, their
+//! placing by rename, the archive's extraction with `/usr/bin/tar`, and the folder's free space.
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -178,8 +180,10 @@ impl PartSink for FsPart {
             .clone()
             .finalize()
             .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect()
+            .fold(String::new(), |mut text, byte| {
+                let _ = write!(text, "{byte:02x}");
+                text
+            })
     }
 }
 

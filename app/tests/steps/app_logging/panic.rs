@@ -1,10 +1,9 @@
 //! The app's panic hook, installed in this process as `main` installs it in hotkey mode, over
 //! the logger the scenarios read: a thread of the process panics and the log is read back.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Once;
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{ensure, Context, Result};
 use cucumber::{given, then, when};
 use regex::Regex;
 

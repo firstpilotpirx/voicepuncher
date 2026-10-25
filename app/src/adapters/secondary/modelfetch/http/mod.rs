@@ -26,8 +26,77 @@ impl Default for HttpModelFetcher {
     }
 }
 
+impl HttpModelFetcher {
+    /// Asks for `url` from byte `from` on; `None` when the part already holds the whole file.
+    fn request(&self, url: &str, from: u64) -> Result<Option<ureq::Response>, FetchError> {
+        let mut request = self.agent.get(url);
+        if from > 0 {
+            request = request.set("Range", &format!("bytes={from}-"));
+        }
+        match request.call() {
+            Ok(response) => Ok(Some(response)),
+            // the part already holds the whole file
+            Err(ureq::Error::Status(416, _)) if from > 0 => Ok(None),
+            Err(ureq::Error::Status(code, _)) if code >= 500 => {
+                Err(FetchError::Connection(format!("HTTP {code} from {url}")))
+            }
+            Err(ureq::Error::Status(code, _)) => {
+                Err(FetchError::Server(format!("HTTP {code} from {url}")))
+            }
+            Err(ureq::Error::Transport(transport)) => {
+                Err(FetchError::Connection(transport.to_string()))
+            }
+        }
+    }
+}
+
+/// Appends the body of `response` to `sink`, telling `received` the part's length after
+/// every chunk; fails when the stream ends before its stated length.
+fn append_body(
+    response: ureq::Response,
+    sink: &mut dyn PartSink,
+    received: &mut dyn FnMut(u64),
+    cancel: &AtomicBool,
+) -> Result<(), FetchError> {
+    let expected = response
+        .header("Content-Length")
+        .and_then(|length| length.parse::<u64>().ok());
+    let start = sink.len();
+    copy_into(response.into_reader(), sink, received, cancel)?;
+    let got = sink.len() - start;
+    match expected {
+        Some(expected) if got < expected => Err(FetchError::Connection(format!(
+            "the stream ended after {got} of {expected} bytes"
+        ))),
+        _ => Ok(()),
+    }
+}
+
+/// Copies `reader` into `sink` chunk by chunk, telling `received` the part's length after
+/// each, until it ends or `cancel` is set.
+fn copy_into(
+    mut reader: impl Read,
+    sink: &mut dyn PartSink,
+    received: &mut dyn FnMut(u64),
+    cancel: &AtomicBool,
+) -> Result<(), FetchError> {
+    let mut buffer = vec![0; CHUNK];
+    loop {
+        if cancel.load(Ordering::SeqCst) {
+            return Err(FetchError::Cancelled);
+        }
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|e| FetchError::Connection(e.to_string()))?;
+        if read == 0 {
+            return Ok(());
+        }
+        sink.write(&buffer[..read]).map_err(FetchError::Disk)?;
+        received(sink.len());
+    }
+}
+
 impl ModelFetcher for HttpModelFetcher {
-    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn fetch(
         &self,
         url: &str,
@@ -39,55 +108,14 @@ impl ModelFetcher for HttpModelFetcher {
             return Err(FetchError::Cancelled);
         }
         let from = sink.len();
-        let mut request = self.agent.get(url);
-        if from > 0 {
-            request = request.set("Range", &format!("bytes={from}-"));
-        }
-        let response = match request.call() {
-            Ok(response) => response,
-            // the part already holds the whole file
-            Err(ureq::Error::Status(416, _)) if from > 0 => return Ok(()),
-            Err(ureq::Error::Status(code, _)) if code >= 500 => {
-                return Err(FetchError::Connection(format!("HTTP {code} from {url}")))
-            }
-            Err(ureq::Error::Status(code, _)) => {
-                return Err(FetchError::Server(format!("HTTP {code} from {url}")))
-            }
-            Err(ureq::Error::Transport(transport)) => {
-                return Err(FetchError::Connection(transport.to_string()))
-            }
+        let Some(response) = self.request(url, from)? else {
+            return Ok(());
         };
         match response.status() {
-            206 => {}
             200 if from > 0 => sink.restart().map_err(FetchError::Disk)?,
-            200 => {}
+            200 | 206 => {}
             code => return Err(FetchError::Server(format!("HTTP {code} from {url}"))),
         }
-        let expected = response
-            .header("Content-Length")
-            .and_then(|length| length.parse::<u64>().ok());
-        let start = sink.len();
-        let mut reader = response.into_reader();
-        let mut buffer = vec![0; CHUNK];
-        loop {
-            if cancel.load(Ordering::SeqCst) {
-                return Err(FetchError::Cancelled);
-            }
-            let read = reader
-                .read(&mut buffer)
-                .map_err(|e| FetchError::Connection(e.to_string()))?;
-            if read == 0 {
-                break;
-            }
-            sink.write(&buffer[..read]).map_err(FetchError::Disk)?;
-            received(sink.len());
-        }
-        let got = sink.len() - start;
-        match expected {
-            Some(expected) if got < expected => Err(FetchError::Connection(format!(
-                "the stream ended after {got} of {expected} bytes"
-            ))),
-            _ => Ok(()),
-        }
+        append_body(response, sink, received, cancel)
     }
 }

@@ -3154,6 +3154,7 @@ dependencies = [
  "url",
  "voicepuncher-copy-pool",
  "voicepuncher-e2e-test",
+ "voicepuncher-log-line",
  "voicepuncher-test-steps",
  "voicepuncher-voice-commands",
  "walkdir",
@@ -3182,10 +3183,10 @@ dependencies = [
  "serde",
  "serde_json",
  "sherpa-onnx",
- "tempfile",
  "tungstenite",
  "ureq",
  "voicepuncher-copy-pool",
+ "voicepuncher-log-line",
  "voicepuncher-test-steps",
  "voicepuncher-voice-commands",
 ]
@@ -3237,10 +3238,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "voicepuncher-log-line"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "log",
+]
+
+[[package]]
 name = "voicepuncher-test-steps"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "hound",
+ "log",
+ "tempfile",
 ]
 
 [[package]]

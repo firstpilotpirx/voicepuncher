@@ -23,7 +23,7 @@ impl HeardClip<'_> {
 
     /// The stream sample in the middle of `word`.
     fn middle(&self, word: usize) -> usize {
-        (self.at(word, |w| w.start) + self.at(word, |w| w.end)) / 2
+        usize::midpoint(self.at(word, |w| w.start), self.at(word, |w| w.end))
     }
 }
 
@@ -43,22 +43,7 @@ impl Session<'_> {
             Some(word) => self.speech_end_after(clip, &found, word.cut_secs)?,
             None => 0,
         };
-        let reported_until = self
-            .utterances
-            .running
-            .get(&utterance)
-            .map_or(0, |r| r.reported_until);
-        // Word times differ by about 0.1 s between two clips of the same speech: a command
-        // lies after the report when the middle of its first word does; a doubled command
-        // whose first word was reported alone ("start" heard before "start start") is not.
-        let kept = if clip.at(found.first, |w| w.start) < reported_until {
-            found
-                .spans
-                .iter()
-                .position(|&(first, _)| clip.middle(first) > reported_until)?
-        } else {
-            0
-        };
+        let kept = self.first_unreported(clip, &found, utterance)?;
         let start = clip.at(found.spans[kept].0, |w| w.start);
         let end = clip.at(found.last, |w| w.end).max(speech_end);
         if let Some(running) = self.utterances.running.get_mut(&utterance) {
@@ -73,6 +58,32 @@ impl Session<'_> {
             placement: found.placement,
             timing: None,
         })
+    }
+
+    /// The first of `found`'s commands after what the utterance already reported; none when
+    /// it reported them all.
+    fn first_unreported(
+        &self,
+        clip: HeardClip<'_>,
+        found: &Found,
+        utterance: u64,
+    ) -> Option<usize> {
+        let reported_until = self
+            .utterances
+            .running
+            .get(&utterance)
+            .map_or(0, |r| r.reported_until);
+        // Word times differ by about 0.1 s between two clips of the same speech: a command
+        // lies after the report when the middle of its first word does; a doubled command
+        // whose first word was reported alone ("start" heard before "start start") is not.
+        if clip.at(found.first, |w| w.start) < reported_until {
+            found
+                .spans
+                .iter()
+                .position(|&(first, _)| clip.middle(first) > reported_until)
+        } else {
+            Some(0)
+        }
     }
 
     /// Where the speech ended after a start closed by a trailing word (0: not known, the

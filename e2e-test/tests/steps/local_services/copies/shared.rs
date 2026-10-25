@@ -3,16 +3,12 @@
 //! machine, and a request that gets no transcript is named with the machine's load.
 
 use std::num::NonZeroUsize;
-use std::process::{Child, Command, Stdio};
-use std::time::Duration;
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{ensure, Context, Result};
 use cucumber::{given, then, when};
 
 use voicepuncher::adapters::secondary::transcription::openai::OpenAiTranscriber;
 use voicepuncher::config::TranscriptionCfg;
-use voicepuncher::core::application::Transcriber;
-use voicepuncher::core::domain::AudioBuffer16k;
 use voicepuncher_e2e_test::machine_load;
 use voicepuncher_e2e_test::speech_cache::{synthesized, SayRequest};
 

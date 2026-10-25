@@ -80,19 +80,11 @@ pub fn command(args: &[String]) -> Outcome {
     };
     let (lock_path, out) = (Path::new(lock_path), PathBuf::from(out));
     let shown = lock_path.to_string_lossy().into_owned();
-    let text =
-        std::fs::read_to_string(lock_path).map_err(|e| format!("engine lock {shown}: {e}"))?;
-    let lock = EngineLock::parse(&text, &shown)?;
-    let lock_sha = sha256(lock_path)?;
+    let (lock, lock_sha) = read_lock(lock_path, &shown)?;
     let stamp = out.join(".lock-sha256");
-    let kept = std::fs::read_to_string(&stamp).is_ok_and(|held| held.trim_end() == lock_sha)
-        && ENGINES.iter().all(|engine| out.join(engine).is_dir());
+    let kept = staged_from(&out, &stamp, &lock_sha);
     let sources = verified(&lock, &shown)?;
-    std::fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
-    let stage = tempfile::Builder::new()
-        .prefix("engines.")
-        .tempdir_in(&out)
-        .map_err(|e| e.to_string())?;
+    let stage = stage_in(&out)?;
     let fresh: Vec<&str> = if kept {
         vec!["command-spotting"]
     } else {
@@ -104,16 +96,45 @@ pub fn command(args: &[String]) -> Outcome {
         stage: stage.path(),
         root: Context::from_env().root,
     };
-    staging.stage(&fresh)?;
-    for engine in fresh.iter().copied().chain(["licenses"]) {
-        // A folder of an earlier staging goes first; on the first there is none
-        let _ = std::fs::remove_dir_all(out.join(engine));
-        std::fs::rename(stage.path().join(engine), out.join(engine))
-            .map_err(|e| format!("{}/{engine}: {e}", out.display()))?;
-    }
+    staging
+        .stage(&fresh)
+        .and_then(|()| move_staged(stage.path(), &out, &fresh))?;
     write(&stamp, &format!("{lock_sha}\n"))?;
     summary(&out, &fresh);
     Ok(0)
+}
+
+/// The engine lock at `lock_path`, shown as `shown`, and its checksum.
+fn read_lock(lock_path: &Path, shown: &str) -> Result<(EngineLock, String), String> {
+    let text =
+        std::fs::read_to_string(lock_path).map_err(|e| format!("engine lock {shown}: {e}"))?;
+    Ok((EngineLock::parse(&text, shown)?, sha256(lock_path)?))
+}
+
+/// A fresh staging folder inside `out`, which it creates.
+fn stage_in(out: &Path) -> Result<tempfile::TempDir, String> {
+    std::fs::create_dir_all(out).map_err(|e| format!("{}: {e}", out.display()))?;
+    tempfile::Builder::new()
+        .prefix("engines.")
+        .tempdir_in(out)
+        .map_err(|e| e.to_string())
+}
+
+/// Whether `out` holds every engine, staged from the lock whose checksum `stamp` holds.
+fn staged_from(out: &Path, stamp: &Path, lock_sha: &str) -> bool {
+    std::fs::read_to_string(stamp).is_ok_and(|held| held.trim_end() == lock_sha)
+        && ENGINES.iter().all(|engine| out.join(engine).is_dir())
+}
+
+/// Moves the `fresh` engines and the licenses from `stage` into `out`.
+fn move_staged(stage: &Path, out: &Path, fresh: &[&str]) -> Result<(), String> {
+    for engine in fresh.iter().copied().chain(["licenses"]) {
+        // A folder of an earlier staging goes first; on the first there is none
+        let _ = std::fs::remove_dir_all(out.join(engine));
+        std::fs::rename(stage.join(engine), out.join(engine))
+            .map_err(|e| format!("{}/{engine}: {e}", out.display()))?;
+    }
+    Ok(())
 }
 
 /// The sources of every engine, each version and checksum as the lock pins it; fails naming every difference.

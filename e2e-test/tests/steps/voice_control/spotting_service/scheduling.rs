@@ -3,13 +3,9 @@
 //! word by word, and the scripted hearing of its tests answers each confirmation a set time
 //! later in the speech (the stream clock), however busy the machine is.
 
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
-
-use anyhow::{bail, Result};
 use cucumber::{given, then, when};
+use voicepuncher::test_doubles::prelude::*;
 
-use voicepuncher::core::domain::VoiceCommand;
 use voicepuncher_command_spotting::engine::{Engine, EngineCfg, Session};
 use voicepuncher_command_spotting::protocol::ServerEvent;
 use voicepuncher_e2e_test::speech_cache::{synthesized, SayRequest};
@@ -55,7 +51,7 @@ pub struct SchedulingRun {
 }
 
 fn run(world: &mut E2eWorld) -> &mut SchedulingRun {
-    &mut world.owned_services.scheduling
+    &mut world.services.owned_services.scheduling
 }
 
 fn engine_cfg() -> EngineCfg {

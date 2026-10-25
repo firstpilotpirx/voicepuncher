@@ -6,6 +6,7 @@ use rubato::{
     Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
 };
 
+use crate::core::domain::conversions::saturating_usize;
 use crate::core::domain::AudioBuffer16k;
 
 const CHUNK_FRAMES: usize = 1_024;
@@ -78,7 +79,7 @@ impl StreamResampler {
         };
         let rest: Vec<f32> = std::mem::take(&mut self.pending);
         let mut out = flushed(inner, Some(&rest));
-        let expected = (self.frames_in as f64 * self.ratio).round() as usize;
+        let expected = saturating_usize((self.frames_in as f64 * self.ratio).round());
         while self.frames_out + out.len() < expected {
             let more = flushed(inner, None);
             if more.is_empty() {

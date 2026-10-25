@@ -11,17 +11,17 @@ use super::{lock_transcriber, LiveSessionResult, SharedTranscriber};
 /// Transcribes every chunk of `chunk_rx` as it comes, shows the text so far in
 /// `live_transcript`, and sends the texts and the count of lost chunks once the channel ends.
 pub(super) fn run_live_worker(
-    transcriber: SharedTranscriber,
-    chunk_rx: mpsc::Receiver<LiveChunk>,
-    results_tx: mpsc::SyncSender<LiveSessionResult>,
-    live_transcript: LiveTranscript,
+    transcriber: &SharedTranscriber,
+    chunk_rx: &mpsc::Receiver<LiveChunk>,
+    results_tx: &mpsc::SyncSender<LiveSessionResult>,
+    live_transcript: &LiveTranscript,
 ) {
     let mut texts = Vec::new();
     let mut lost_chunks = 0usize;
     let mut chunk_num = 0usize;
     while let Ok(chunk) = chunk_rx.recv() {
         chunk_num += 1;
-        match transcribe_chunk(&transcriber, &chunk, chunk_num) {
+        match transcribe_chunk(transcriber, &chunk, chunk_num) {
             Ok(Some(text)) => {
                 texts.push(text);
                 live_transcript.show(&texts);

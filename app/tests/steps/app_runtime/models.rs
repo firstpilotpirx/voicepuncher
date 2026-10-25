@@ -2,10 +2,8 @@
 //! files of the catalog size (sparse, so a multi-gigabyte model costs no disk), checked by the
 //! app's own catalog gate.
 
-use std::collections::HashMap;
-use std::path::PathBuf;
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, Result};
 use cucumber::{given, then, when};
 use tempfile::TempDir;
 
@@ -109,14 +107,7 @@ impl RuntimeRun {
         self.state_becomes(|s| matches!(s, RuntimeState::Ready { .. }))?;
         let waited =
             self.position(|e| matches!(e, Event::State(RuntimeState::WaitingForModels { .. })))?;
-        let states: Vec<RuntimeState> = self.events()[waited + 1..]
-            .iter()
-            .filter_map(|event| match event {
-                Event::State(state) if *state != RuntimeState::Starting => Some(state.clone()),
-                _ => None,
-            })
-            .filter(|state| !matches!(state, RuntimeState::WaitingForModels { .. }))
-            .collect();
+        let states = states_on_the_way(&self.events()[waited + 1..]);
         match states.as_slice() {
             [RuntimeState::StartingServices { .. }, .., RuntimeState::Ready { .. }] => Ok(()),
             _ => bail!("expected Starting services and then Ready, got {states:?}"),
@@ -196,4 +187,16 @@ fn services_are_started(world: &mut IntegrationWorld) -> Result<()> {
 #[then("the observer is told Starting services and then Ready once the models are present")]
 fn starting_services_then_ready(world: &mut IntegrationWorld) -> Result<()> {
     run(world).starting_services_then_ready()
+}
+
+/// The states the events tell, without Starting and Waiting for models.
+fn states_on_the_way(events: &[Event]) -> Vec<RuntimeState> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            Event::State(state) if *state != RuntimeState::Starting => Some(state.clone()),
+            _ => None,
+        })
+        .filter(|state| !matches!(state, RuntimeState::WaitingForModels { .. }))
+        .collect()
 }

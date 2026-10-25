@@ -4,38 +4,24 @@
 //! line and log show the model it loaded.
 
 use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, ensure, Context, Result};
 use cucumber::{given, then, when};
 use regex::Regex;
 
-use voicepuncher::core::domain::VoiceCommand;
 use voicepuncher_e2e_test::voice_commands::{
     recognized_commands, spoken_with_pauses, spotting_events,
 };
 
 use super::confirmations::{log_len, log_since_speech, ANSWERED, GIVEN_UP};
 use super::copies::{client_requests, short_speech, transcribe};
+use super::model_home::{link_models, COMMAND_MODEL, DICTATION_MODEL};
 use super::{
     service_process, services, ScenarioServices, COMMAND_SPEECH_RECOGNITION, SPEECH_RECOGNITION,
 };
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
-/// The dictation model `just models` downloads.
-const DICTATION_MODEL: &str = "ggml-large-v3-turbo-q5_0.bin";
-/// The commands model `just models` downloads.
-const COMMAND_MODEL: &str = "ggml-small.bin";
-const DICTATION_MODEL_VAR: &str = "VOICEPUNCHER_WHISPER_MODEL";
-const COMMAND_MODEL_VAR: &str = "VOICEPUNCHER_COMMAND_WHISPER_MODEL";
-/// A file named like a Whisper model, larger than every real one, that is no model: a rule
-/// that takes the largest model file would start a service on it, which then fails to load.
-const LARGER_FILE: &str = "ggml-larger-than-any-model.bin";
-const LARGER_FILE_BYTES: u64 = 2 << 30;
-/// The voice activity detection models the services load beside a Whisper model.
-const VAD_MODEL_PREFIX: &str = "ggml-silero-";
 /// A model the user names, under a name the scripts never look for.
 const NAMED_MODEL: &str = "whisper-named-by-the-user.bin";
 
@@ -69,21 +55,9 @@ impl ScenarioServices {
     /// names beside a larger file that is no model.
     fn in_model_home() -> Result<Self> {
         let mut services = Self::with_copies(Some(1))?;
-        services.command_copies = Some(1);
+        services.options.command_copies = Some(1);
         let home = tempfile::tempdir()?;
-        let models = home.path().join(".voicepuncher").join("models");
-        std::fs::create_dir_all(&models)?;
-        for (file, var) in [
-            (DICTATION_MODEL, DICTATION_MODEL_VAR),
-            (COMMAND_MODEL, COMMAND_MODEL_VAR),
-        ] {
-            std::os::unix::fs::symlink(downloaded_model(file, var)?, models.join(file))?;
-        }
-        for vad in vad_models() {
-            let file = vad.file_name().context("a VAD model has a file name")?;
-            std::os::unix::fs::symlink(&vad, models.join(file))?;
-        }
-        std::fs::File::create(models.join(LARGER_FILE))?.set_len(LARGER_FILE_BYTES)?;
+        link_models(&home.path().join(".voicepuncher").join("models"))?;
         services.home = Some(home);
         Ok(services)
     }
@@ -105,15 +79,15 @@ impl ScenarioServices {
     pub(super) fn start_each(&mut self, names: &[&str]) -> Result<()> {
         for name in names {
             let output = self.just(&["start-model-servers", name])?;
-            self.starts.push(((*name).to_owned(), output));
+            self.run.starts.push(((*name).to_owned(), output));
         }
         Ok(())
     }
 
     /// Starts both speech recognition services with the models the scripts pick by default.
     pub fn start_without_naming_models(&mut self) -> Result<()> {
-        self.default_speech_model = true;
-        self.default_command_model = true;
+        self.options.default_speech_model = true;
+        self.options.default_command_model = true;
         self.start_each(&[SPEECH_RECOGNITION, COMMAND_SPEECH_RECOGNITION])
     }
 
@@ -129,8 +103,8 @@ impl ScenarioServices {
         std::fs::create_dir_all(&named_dir)?;
         let named = named_dir.join(NAMED_MODEL);
         std::os::unix::fs::symlink(self.default_model_in_home(COMMAND_MODEL)?, &named)?;
-        self.speech_model = Some(named);
-        self.default_command_model = true;
+        self.options.speech_model = Some(named);
+        self.options.default_command_model = true;
         self.start_each(&[SPEECH_RECOGNITION, COMMAND_SPEECH_RECOGNITION])
     }
 
@@ -146,7 +120,11 @@ impl ScenarioServices {
 
     /// Fails unless the speech recognition service for dictation runs the model the user named.
     pub fn check_runs_named_dictation_model(&self) -> Result<()> {
-        let model = self.speech_model.clone().context("no model was named")?;
+        let model = self
+            .options
+            .speech_model
+            .clone()
+            .context("no model was named")?;
         self.check_loads(Role::Dictation, &model)
     }
 
@@ -165,11 +143,11 @@ impl ScenarioServices {
 
     /// Fails unless the speech recognition service of `role` started, runs `model` (its command
     /// line and its log say so) and transcribes a short utterance.
-    #[expect(clippy::too_many_lines, reason = "size baseline")]
     fn check_loads(&self, role: Role, model: &Path) -> Result<()> {
         let label = role.label();
         let log = std::fs::read_to_string(self.speech_log(role)).unwrap_or_default();
         let (_, output) = self
+            .run
             .starts
             .iter()
             .find(|(name, _)| name == role.name())
@@ -190,21 +168,7 @@ impl ScenarioServices {
             );
         }
         let port = self.port_of(role);
-        let pid = service_process(port)
-            .with_context(|| format!("no process of the {label} on port {port}"))?;
-        let command_line = command_line(pid)?;
-        ensure!(
-            command_line.contains(&format!("-m {} ", model.display())),
-            "the {label} runs {command_line:?}, not on {}",
-            model.display()
-        );
-        let loaded = loaded_model(&log)
-            .with_context(|| format!("the {label}'s log names no model it loaded:\n{log}"))?;
-        ensure!(
-            Path::new(&loaded) == model,
-            "the {label} loaded {loaded}, not {}",
-            model.display()
-        );
+        check_runs(label, port, model, &log)?;
         let heard = transcribe(&format!("http://127.0.0.1:{port}/v1"), short_speech()?)?;
         ensure!(
             !heard.trim().is_empty(),
@@ -214,39 +178,24 @@ impl ScenarioServices {
     }
 }
 
-/// Where a downloaded model is: the run's model variable when it names a file of this name
-/// (a checked copy kept elsewhere), else the user's `~/.voicepuncher/` or its `models/`.
-fn downloaded_model(file: &str, var: &str) -> Result<PathBuf> {
-    if let Some(named) = std::env::var_os(var).map(PathBuf::from) {
-        if named.file_name() == Some(OsStr::new(file)) && named.is_file() {
-            return Ok(named);
-        }
-    }
-    user_model_dirs()
-        .into_iter()
-        .map(|dir| dir.join(file))
-        .find(|path| path.is_file())
-        .with_context(|| format!("{file} is not on disk: run 'just models' or name it in {var}"))
-}
-
-fn vad_models() -> Vec<PathBuf> {
-    user_model_dirs()
-        .into_iter()
-        .filter_map(|dir| std::fs::read_dir(dir).ok())
-        .flatten()
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.file_name()
-                .and_then(OsStr::to_str)
-                .is_some_and(|name| name.starts_with(VAD_MODEL_PREFIX) && name.ends_with(".bin"))
-        })
-        .collect()
-}
-
-fn user_model_dirs() -> Vec<PathBuf> {
-    let root = PathBuf::from(std::env::var_os("HOME").expect("HOME is set")).join(".voicepuncher");
-    vec![root.join("models"), root]
+/// Fails unless the process of the service on `port` runs `model` and its `log` says it loaded it.
+fn check_runs(label: &str, port: u16, model: &Path, log: &str) -> Result<()> {
+    let pid = service_process(port)
+        .with_context(|| format!("no process of the {label} on port {port}"))?;
+    let command_line = command_line(pid)?;
+    ensure!(
+        command_line.contains(&format!("-m {} ", model.display())),
+        "the {label} runs {command_line:?}, not on {}",
+        model.display()
+    );
+    let loaded = loaded_model(log)
+        .with_context(|| format!("the {label}'s log names no model it loaded:\n{log}"))?;
+    ensure!(
+        Path::new(&loaded) == model,
+        "the {label} loaded {loaded}, not {}",
+        model.display()
+    );
+    Ok(())
 }
 
 /// The model whisper-server says it loads in `text`, its log or the scripts' report.
@@ -274,7 +223,7 @@ fn model_scenario(world: &mut E2eWorld) -> Result<&mut ScenarioServices> {
 
 #[given("the models that the service scripts download are on disk")]
 fn downloaded_models_on_disk(world: &mut E2eWorld) -> Result<()> {
-    world.local_services = Some(ScenarioServices::in_model_home()?);
+    world.services.local_services = Some(ScenarioServices::in_model_home()?);
     Ok(())
 }
 
@@ -286,7 +235,7 @@ async fn all_services_started(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let services = model_scenario(world)?;
         services.home = None;
-        services.default_command_model = true;
+        services.options.default_command_model = true;
         services.start(&[])
     })
     .await
@@ -296,14 +245,14 @@ async fn all_services_started(world: &mut E2eWorld) -> Result<()> {
 async fn app_streams(world: &mut E2eWorld, phrase: String) -> Result<()> {
     off_thread(world, move |world| {
         let services = model_scenario(world)?;
-        services.log_before_speech = Some(log_len(services)?);
+        services.watched.log_before_speech = Some(log_len(services)?);
         let audio = spoken_with_pauses(&phrase)?;
         let events = spotting_events(
             &services.command_spotting_url(),
             &audio,
             &VoiceCommand::STANDBY,
         )?;
-        world.recognized = recognized_commands(events);
+        world.voice.recognized = recognized_commands(events);
         Ok(())
     })
     .await

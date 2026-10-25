@@ -4,10 +4,8 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Output;
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{ensure, Context, Result};
 use cucumber::{given, then, when};
 
 use super::{checkout, just, path_str, text};
@@ -169,13 +167,7 @@ fn holds_locked_files(world: &mut E2eWorld) -> Result<()> {
     let out = staged(world)?;
     let lock = read_lock(&checkout_lock())?;
     for engine in ENGINES {
-        let table = lock.get(engine).context(format!("no [{engine}]"))?;
-        let mut expected: Vec<String> = match lock.get(&format!("{engine}.from")) {
-            Some(files) => files.keys().cloned().collect(),
-            None => vec![table.get("program").context("no program")?.clone()],
-        };
-        expected.push(VERSION_FILE.to_string());
-        expected.sort();
+        let expected = locked_files(&lock, engine)?;
         let mut found: Vec<String> = fs::read_dir(out.join(engine))?
             .map(|entry| Ok(entry?.file_name().to_string_lossy().into_owned()))
             .collect::<Result<_>>()?;
@@ -186,6 +178,21 @@ fn holds_locked_files(world: &mut E2eWorld) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// The files the lock lists for `engine`, with its version file, sorted.
+fn locked_files(
+    lock: &BTreeMap<String, BTreeMap<String, String>>,
+    engine: &str,
+) -> Result<Vec<String>> {
+    let table = lock.get(engine).context(format!("no [{engine}]"))?;
+    let mut expected: Vec<String> = match lock.get(&format!("{engine}.from")) {
+        Some(files) => files.keys().cloned().collect(),
+        None => vec![table.get("program").context("no program")?.clone()],
+    };
+    expected.push(VERSION_FILE.to_string());
+    expected.sort();
+    Ok(expected)
 }
 
 #[then("each engine's version file holds the lock's version")]

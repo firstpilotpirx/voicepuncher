@@ -60,7 +60,12 @@ mod tests {
 
     #[test]
     fn should_return_zero_for_identical_strings() {
-        assert_eq!(wer("hello world", "hello world"), 0.0);
+        assert!(
+            (wer("hello world", "hello world") - 0.0).abs() < 1e-6,
+            "{} is not {}",
+            wer("hello world", "hello world"),
+            0.0
+        );
     }
 
     #[test]
@@ -71,21 +76,41 @@ mod tests {
 
     #[test]
     fn should_return_zero_for_both_empty() {
-        assert_eq!(wer("", ""), 0.0);
+        assert!(
+            (wer("", "") - 0.0).abs() < 1e-6,
+            "{} is not {}",
+            wer("", ""),
+            0.0
+        );
     }
 
     #[test]
     fn should_return_one_for_empty_reference_non_empty_hypothesis() {
-        assert_eq!(wer("", "something"), 1.0);
+        assert!(
+            (wer("", "something") - 1.0).abs() < 1e-6,
+            "{} is not {}",
+            wer("", "something"),
+            1.0
+        );
     }
 
     #[test]
     fn should_normalize_punctuation_and_case() {
-        assert_eq!(wer("Hello, World!", "hello world"), 0.0);
+        assert!(
+            (wer("Hello, World!", "hello world") - 0.0).abs() < 1e-6,
+            "{} is not {}",
+            wer("Hello, World!", "hello world"),
+            0.0
+        );
     }
 
     #[test]
     fn should_normalize_yo_to_ye_for_russian() {
-        assert_eq!(wer("ёлка", "елка"), 0.0);
+        assert!(
+            (wer("ёлка", "елка") - 0.0).abs() < 1e-6,
+            "{} is not {}",
+            wer("ёлка", "елка"),
+            0.0
+        );
     }
 }

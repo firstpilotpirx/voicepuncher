@@ -2,10 +2,7 @@
 //! scripted hearing of the command spotting service's tests, served as a loaded copy over
 //! HTTP, or wrong in the hearings asked before a set point of the speech.
 
-use std::sync::Arc;
-use std::time::Duration;
-
-use anyhow::Result;
+use voicepuncher::test_doubles::prelude::*;
 use voicepuncher_command_spotting::confirm::{Hear, Heard, UtteranceTranscriber};
 
 use crate::scripted_hearing::ScriptedHearing;

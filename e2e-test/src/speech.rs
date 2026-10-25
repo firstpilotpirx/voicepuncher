@@ -1,11 +1,14 @@
 //! Synthesized test speech under recording conditions, and the seam metrics that judge a
 //! transcript of it: phrases repeated at a chunk seam, and spoken words that went missing.
 
-use std::path::Path;
-
-use anyhow::{bail, Context, Result};
+use anyhow::Result;
 
 use crate::speech_cache::{synthesized, SayRequest};
+pub use voicepuncher_test_steps::speech_cache::{read_wav, write_wav};
+
+mod transcript_checks;
+use crate::conversions::{saturating_i16, saturating_usize};
+pub use transcript_checks::*;
 
 pub const SAMPLE_RATE_HZ: u32 = 16_000;
 
@@ -143,7 +146,7 @@ pub fn synthesize_with_clean(
 
 /// `speech` after `lead_in_secs` of silence, degraded by `condition`, and the clean copy.
 fn after_lead_in(speech: &[i16], condition: Condition, lead_in_secs: f32) -> (Vec<i16>, Vec<i16>) {
-    let mut samples = vec![0i16; (lead_in_secs * SAMPLE_RATE_HZ as f32) as usize];
+    let mut samples = vec![0i16; saturating_usize(lead_in_secs * SAMPLE_RATE_HZ as f32)];
     samples.extend_from_slice(speech);
     let clean = samples.clone();
     condition.degrade(&mut samples);
@@ -159,34 +162,6 @@ fn say(lang: Lang, condition: Condition) -> Result<Vec<i16>> {
     })
 }
 
-pub fn read_wav(path: &Path) -> Result<Vec<i16>> {
-    let mut reader =
-        hound::WavReader::open(path).with_context(|| format!("open {}", path.display()))?;
-    let spec = reader.spec();
-    if spec.sample_rate != SAMPLE_RATE_HZ || spec.channels != 1 || spec.bits_per_sample != 16 {
-        bail!("{} is not 16 kHz mono 16-bit", path.display());
-    }
-    reader
-        .samples::<i16>()
-        .collect::<Result<_, _>>()
-        .context("read WAV samples")
-}
-
-pub fn write_wav(path: &Path, samples: &[i16]) -> Result<()> {
-    let spec = hound::WavSpec {
-        channels: 1,
-        sample_rate: SAMPLE_RATE_HZ,
-        bits_per_sample: 16,
-        sample_format: hound::SampleFormat::Int,
-    };
-    let mut writer = hound::WavWriter::create(path, spec)?;
-    for &s in samples {
-        writer.write_sample(s)?;
-    }
-    writer.finalize()?;
-    Ok(())
-}
-
 /// Deterministic xorshift, so every run hears the same noise and dropouts.
 struct Rng(u64);
 
@@ -200,7 +175,7 @@ impl Rng {
 }
 
 fn clamp_i16(v: f32) -> i16 {
-    v.round().clamp(f32::from(i16::MIN), f32::from(i16::MAX)) as i16
+    saturating_i16(v.round().clamp(f32::from(i16::MIN), f32::from(i16::MAX)))
 }
 
 /// Low-passed white noise (a pink-ish hum) at `amplitude` of full scale.
@@ -224,13 +199,13 @@ fn gain(samples: &mut [i16], factor: f32) {
 /// 120 ms of silence every 0.6–1.7 s, like a microphone that drops out.
 fn dropouts(samples: &mut [i16]) {
     let rate = SAMPLE_RATE_HZ as f32;
-    let len = (0.12 * rate) as usize;
+    let len = saturating_usize(0.12 * rate);
     let mut rng = Rng(7);
-    let mut at = (rate * (0.5 + rng.next_unit() * 1.2)) as usize;
+    let mut at = saturating_usize(rate * (0.5 + rng.next_unit() * 1.2));
     while at < samples.len() {
         let end = (at + len).min(samples.len());
         samples[at..end].fill(0);
-        at += (rate * (0.6 + rng.next_unit() * 1.1)) as usize;
+        at += saturating_usize(rate * (0.6 + rng.next_unit() * 1.1));
     }
 }
 
@@ -238,8 +213,8 @@ fn dropouts(samples: &mut [i16]) {
 fn phone_band(samples: &mut Vec<i16>) {
     let mut x: Vec<f32> = samples.iter().map(|&s| f32::from(s)).collect();
     for _ in 0..2 {
-        biquad(&mut x, Biquad::high_pass(300.0));
-        biquad(&mut x, Biquad::low_pass(3400.0));
+        biquad(&mut x, &Biquad::high_pass(300.0));
+        biquad(&mut x, &Biquad::low_pass(3400.0));
     }
     for pair in x.chunks_mut(2) {
         let held = pair[0];
@@ -262,7 +237,7 @@ impl Biquad {
         let alpha = sin / (2.0 * Self::Q);
         let a0 = 1.0 + alpha;
         let (b0, b1) = if high {
-            ((1.0 + cos) / 2.0, -(1.0 + cos))
+            (f32::midpoint(1.0, cos), -(1.0 + cos))
         } else {
             ((1.0 - cos) / 2.0, 1.0 - cos)
         };
@@ -278,7 +253,7 @@ impl Biquad {
     }
 }
 
-fn biquad(x: &mut [f32], f: Biquad) {
+fn biquad(x: &mut [f32], f: &Biquad) {
     let (mut x1, mut x2, mut y1, mut y2) = (0.0, 0.0, 0.0, 0.0);
     for v in x.iter_mut() {
         let x0 = *v;
@@ -288,191 +263,5 @@ fn biquad(x: &mut [f32], f: Biquad) {
     }
 }
 
-/// Words lowercased, `ё` read as `е`, every non-alphanumeric character dropped.
-pub fn normalized_words(text: &str) -> Vec<String> {
-    text.split_whitespace()
-        .map(|w| {
-            w.to_lowercase()
-                .replace('ё', "е")
-                .chars()
-                .filter(|c| c.is_alphanumeric())
-                .collect::<String>()
-        })
-        .filter(|w| !w.is_empty())
-        .collect()
-}
-
-/// Spoken word pairs that occur more often in the transcript than in the spoken text — the
-/// trace a chunk seam leaves when it keeps the overlap twice. A pair never spoken is a
-/// recognition error, measured by WER, however often it is heard.
-pub fn repeated_phrases(spoken: &str, transcript: &str) -> Vec<String> {
-    use std::collections::HashMap;
-    fn pairs(words: &[String]) -> HashMap<String, usize> {
-        let mut counts = HashMap::new();
-        for w in words.windows(2) {
-            *counts.entry(format!("{} {}", w[0], w[1])).or_insert(0) += 1;
-        }
-        counts
-    }
-    let spoken = pairs(&normalized_words(spoken));
-    let mut repeated: Vec<String> = pairs(&normalized_words(transcript))
-        .into_iter()
-        .filter(|(pair, n)| spoken.get(pair).is_some_and(|said| n > said))
-        .map(|(pair, _)| pair)
-        .collect();
-    repeated.sort();
-    repeated
-}
-
-/// Spoken words of the longest phrase the transcript dropped: in every gap between two
-/// words both texts share in order, the spoken words beyond those the transcript puts in
-/// their place. A misheard phrase fills its gap and counts nothing.
-pub fn dropped_phrase_len(spoken: &str, transcript: &str) -> usize {
-    let s = normalized_words(spoken);
-    let t = normalized_words(transcript);
-    // lcs[i][j]: longest common subsequence of s[i..] and t[j..]
-    let mut lcs = vec![vec![0usize; t.len() + 1]; s.len() + 1];
-    for i in (0..s.len()).rev() {
-        for j in (0..t.len()).rev() {
-            lcs[i][j] = if s[i] == t[j] {
-                lcs[i + 1][j + 1] + 1
-            } else {
-                lcs[i + 1][j].max(lcs[i][j + 1])
-            };
-        }
-    }
-    let (mut i, mut j) = (0, 0);
-    let (mut gap_start_s, mut gap_start_t) = (0, 0);
-    let mut longest = 0;
-    while i < s.len() && j < t.len() {
-        if s[i] == t[j] {
-            longest = longest.max((i - gap_start_s).saturating_sub(j - gap_start_t));
-            i += 1;
-            j += 1;
-            (gap_start_s, gap_start_t) = (i, j);
-        } else if lcs[i + 1][j] >= lcs[i][j + 1] {
-            i += 1;
-        } else {
-            j += 1;
-        }
-    }
-    longest.max((s.len() - gap_start_s).saturating_sub(t.len() - gap_start_t))
-}
-
-/// Share of spoken words that the transcript does not contain in order (longest common
-/// subsequence of normalized words).
-pub fn missing_word_share(spoken: &str, transcript: &str) -> f64 {
-    let s = normalized_words(spoken);
-    let t = normalized_words(transcript);
-    if s.is_empty() {
-        return 0.0;
-    }
-    let mut row = vec![0usize; t.len() + 1];
-    for sw in &s {
-        let mut diagonal = 0;
-        for (j, tw) in t.iter().enumerate() {
-            let above = row[j + 1];
-            row[j + 1] = if sw == tw {
-                diagonal + 1
-            } else {
-                above.max(row[j])
-            };
-            diagonal = above;
-        }
-    }
-    (s.len() - row[t.len()]) as f64 / s.len() as f64
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn should_find_a_phrase_repeated_at_a_seam() {
-        let spoken = "у которой миллион граней и мы на эти грани можем";
-        let transcript = "у которой миллион граней. Миллион граней, и мы на эти грани можем";
-        assert_eq!(repeated_phrases(spoken, transcript), vec!["миллион граней"]);
-    }
-
-    #[test]
-    fn should_ignore_a_phrase_the_speech_itself_repeats() {
-        let spoken = "да да конечно да да";
-        assert!(repeated_phrases(spoken, "Да, да, конечно. Да, да.").is_empty());
-    }
-
-    #[test]
-    fn should_not_count_a_pair_heard_twice_that_was_never_spoken() {
-        let spoken = "we decided how to split the work for the team";
-        let transcript = "we decided our test with the work with the team";
-        assert!(repeated_phrases(spoken, transcript).is_empty());
-    }
-
-    #[test]
-    fn should_report_no_missing_words_for_the_same_text() {
-        assert_eq!(missing_word_share("Hello, World!", "hello world"), 0.0);
-    }
-
-    #[test]
-    fn should_count_dropped_words() {
-        let share = missing_word_share("one two three four", "one four");
-        assert!((share - 0.5).abs() < 1e-9, "{share}");
-    }
-
-    #[test]
-    fn should_count_a_dropped_phrase() {
-        assert_eq!(dropped_phrase_len("a b c d e f g h", "a b g h"), 4);
-    }
-
-    #[test]
-    fn should_not_count_a_misheard_phrase() {
-        let spoken = "индекс по полю даты создания так и не построили";
-        let transcript = "индекс попа людат и создание так и не построили";
-        assert_eq!(dropped_phrase_len(spoken, transcript), 0);
-    }
-
-    #[test]
-    fn should_count_a_phrase_replaced_by_a_shorter_one() {
-        let spoken = "at the end of a day I updated a report to the lead";
-        let transcript = "at the Jordan reports to the lead";
-        assert_eq!(dropped_phrase_len(spoken, transcript), 6);
-    }
-
-    #[test]
-    fn should_count_words_dropped_at_the_end() {
-        assert_eq!(dropped_phrase_len("one two three four five", "one two"), 3);
-    }
-
-    #[test]
-    fn should_read_yo_as_ye() {
-        assert_eq!(normalized_words("Ещё отчёт"), vec!["еще", "отчет"]);
-    }
-
-    #[test]
-    fn should_keep_the_clean_speech_aligned_with_the_degraded_one() {
-        for condition in [Condition::NoiseHigh, Condition::Dropouts] {
-            let speeches = synthesize_with_clean(Lang::En, condition, &[0.0, 0.7]).unwrap();
-            let [(_, first), (degraded, clean)] = speeches.as_slice() else {
-                panic!("{condition:?}: one speech per lead-in expected");
-            };
-            assert_eq!(clean.len(), degraded.len(), "{condition:?}");
-            assert_eq!(clean.len(), first.len() + 11_200, "{condition:?}");
-            assert_ne!(clean, degraded, "{condition:?}");
-        }
-    }
-
-    #[test]
-    #[expect(clippy::excessive_nesting, reason = "size baseline")]
-    fn should_synthesize_speech_longer_than_the_chunk_threshold_in_every_condition() {
-        std::thread::scope(|scope| {
-            for lang in Lang::ALL {
-                for condition in Condition::ALL {
-                    scope.spawn(move || {
-                        let samples = synthesize(lang, condition, 0.0).unwrap();
-                        let secs = samples.len() as f32 / SAMPLE_RATE_HZ as f32;
-                        assert!(secs > 30.0, "{lang:?} {condition:?}: only {secs:.1} s");
-                    });
-                }
-            }
-        });
-    }
-}
+mod tests;

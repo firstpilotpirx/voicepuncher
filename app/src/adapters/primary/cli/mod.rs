@@ -86,10 +86,10 @@ impl Cli {
             cfg.hotkey.key = key;
         }
         if let Some(url) = &self.transcription_url {
-            cfg.transcription.base_url = url.clone();
+            cfg.transcription.base_url.clone_from(url);
         }
         if let Some(dir) = &self.archive_dir {
-            cfg.archive.dir = dir.clone();
+            cfg.archive.dir.clone_from(dir);
             cfg.archive.enabled = true;
         }
         if self.no_archive {

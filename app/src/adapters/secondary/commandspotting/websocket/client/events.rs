@@ -72,45 +72,64 @@ pub(super) fn to_spotting_event(
     audio_start: Instant,
     arrived_at: Instant,
 ) -> Option<SpottingEvent> {
-    let at = |secs: f32| audio_start + Duration::from_secs_f32(secs.max(0.0));
-    let report = |end: f32, confirmation: Option<Confirmation>| {
-        Some(ReportTiming {
-            words_ended: at(end),
-            confirmation: confirmation.map(|c| ConfirmationTiming {
-                asked_at: at(c.asked_at),
-                took: Duration::from_millis(c.took_ms),
-            }),
-            arrived_at,
-        })
-    };
+    let times = Times { audio_start, arrived_at };
     Some(match event {
-        ServiceEvent::SpeechStart { t } => SpottingEvent::SpeechStarted(at(t)),
-        ServiceEvent::SpeechEnd { t } => SpottingEvent::SpeechEnded(at(t)),
+        ServiceEvent::SpeechStart { t } => SpottingEvent::SpeechStarted(times.at(t)),
+        ServiceEvent::SpeechEnd { t } => SpottingEvent::SpeechEnded(times.at(t)),
         ServiceEvent::Phrase { phrase, start, end, timing } => SpottingEvent::PhraseSpotted {
             phrase,
-            start: at(start),
-            end: at(end),
-            timing: report(end, timing),
+            start: times.at(start),
+            end: times.at(end),
+            timing: Some(times.report(end, timing)),
         },
         ServiceEvent::Command { commands, start, end, placement, timing } => {
             SpottingEvent::CommandsSaid {
                 commands: commands
                     .iter()
-                    .filter_map(|phrase| VoiceCommand::from_phrase(phrase))
+                    .filter_map(|p| VoiceCommand::from_phrase(p))
                     .collect(),
-                start: at(start),
-                end: at(end),
+                start: times.at(start),
+                end: times.at(end),
                 placement: placement.into(),
-                timing: report(end, timing),
+                timing: Some(times.report(end, timing)),
             }
         }
         ServiceEvent::ConfirmationFailed { start, end } => {
-            SpottingEvent::ConfirmationFailed { start: at(start), end: at(end) }
+            SpottingEvent::ConfirmationFailed { start: times.at(start), end: times.at(end) }
         }
         ServiceEvent::Synced { .. }
         | ServiceEvent::Stalled { .. }
         | ServiceEvent::Dropped { .. } => return None,
     })
+}
+
+/// The instants of one service event's times.
+struct Times {
+    audio_start: Instant,
+    arrived_at: Instant,
+}
+
+impl Times {
+    /// `secs` since the first sample as an instant; a time before it is the first sample's.
+    fn at(&self, secs: f32) -> Instant {
+        self.audio_start + Duration::from_secs_f32(secs.max(0.0))
+    }
+
+    /// How a report whose words ended at `end` came about.
+    fn report(&self, end: f32, confirmation: Option<Confirmation>) -> ReportTiming {
+        ReportTiming {
+            words_ended: self.at(end),
+            confirmation: confirmation.map(|c| self.confirmation(&c)),
+            arrived_at: self.arrived_at,
+        }
+    }
+
+    fn confirmation(&self, confirmation: &Confirmation) -> ConfirmationTiming {
+        ConfirmationTiming {
+            asked_at: self.at(confirmation.asked_at),
+            took: Duration::from_millis(confirmation.took_ms),
+        }
+    }
 }
 
 impl From<Placement> for CommandPlacement {

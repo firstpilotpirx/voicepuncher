@@ -16,20 +16,26 @@ use std::process::Command;
 pub fn command(args: &[String]) -> Outcome {
     let held = var("VOICEPUNCHER_E2E_SERVICES_HELD").is_some();
     match args {
-        [what] if what == "start" => {
-            if held {
-                return Ok(0);
-            }
-            outcome(start_for_e2e(&Settings::from_env()?))
-        }
-        [what] if what == "stop" => {
-            if held || var("VOICEPUNCHER_TEST_PORTS").is_none() {
-                return Ok(0);
-            }
-            outcome(stop(&Settings::from_env()?, &[], &mut std::io::stdout()))
-        }
+        [what] if what == "start" => start_command(held),
+        [what] if what == "stop" => stop_command(held),
         _ => Err("usage: dev-tools model-servers-for-e2e start|stop".into()),
     }
+}
+
+/// `start`: nothing while check or full-check holds the services.
+fn start_command(held: bool) -> Outcome {
+    if held {
+        return Ok(0);
+    }
+    outcome(start_for_e2e(&Settings::from_env()?))
+}
+
+/// `stop`: nothing while check or full-check holds the services, nor off the test ports.
+fn stop_command(held: bool) -> Outcome {
+    if held || var("VOICEPUNCHER_TEST_PORTS").is_none() {
+        return Ok(0);
+    }
+    outcome(stop(&Settings::from_env()?, &[], &mut std::io::stdout()))
 }
 
 /// Stops what a killed locked run left, checks that every test port is free, starts every service and names what

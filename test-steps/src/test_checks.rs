@@ -10,13 +10,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// The workspace members, as seen from the app's directory.
-const MEMBERS: [&str; 8] = [
+const MEMBERS: [&str; 9] = [
     "analyzers",
     "app",
     "command-spotting",
     "copy-pool",
     "dev-tools",
     "e2e-test",
+    "log-line",
     "test-steps",
     "voice-commands",
 ];
@@ -82,6 +83,14 @@ fn should_name_a_test_that_checks_nothing() {
         found,
         ["a.rs::should_run: checks nothing: add an assertion that can fail, or delete it"]
     );
+}
+
+#[test]
+fn should_take_no_helper_after_a_restricted_test_for_a_test() {
+    let source = "#[test]\npub(super) fn should_run() {\n    assert!(works());\n}\n\n\
+                  fn helper() -> u8 {\n    1\n}\n";
+    let found = violations_in(Path::new("a.rs"), source);
+    assert!(found.is_empty(), "{found:?}");
 }
 
 #[test]

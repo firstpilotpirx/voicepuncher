@@ -134,8 +134,8 @@ impl SettingsSession {
         for (field, value) in &self.edits {
             document.set(field.section, field.key, to_item(value));
         }
-        let saved = document.to_config().map_err(unattributed)?;
-        document.save(&self.path).map_err(unattributed)?;
+        let saved = document.to_config().map_err(|e| unattributed(&e))?;
+        document.save(&self.path).map_err(|e| unattributed(&e))?;
         self.document = document;
         self.saved = saved;
         self.edits.clear();
@@ -152,7 +152,7 @@ impl SettingsSession {
     }
 }
 
-fn unattributed(error: anyhow::Error) -> Refusal {
+fn unattributed(error: &anyhow::Error) -> Refusal {
     Refusal { field: None, message: format!("{error:#}") }
 }
 

@@ -1,10 +1,8 @@
 //! The services the app manages, as the menu shows them: the status item's observer told the
 //! runtime starts them, and the menu's actions over a view of services set by the scenario.
 
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 use voicepuncher::adapters::primary::menubar::macos::actions::{MacosMenuActions, MenuActions};
 use voicepuncher::adapters::primary::menubar::macos::mapping::{offers_restart, service_line};
@@ -68,12 +66,13 @@ fn with_services(world: &mut IntegrationWorld, statuses: Vec<ServiceStatus>) {
     )
     .with_services(Arc::clone(&view) as Arc<dyn ServicesView>);
     run.actions = Some(actions);
-    run.services_view = Some(view);
+    run.services.view = Some(view);
 }
 
 fn service_menu(world: &mut IntegrationWorld) -> Result<&ServiceMenu> {
     run(world)
-        .service_menu
+        .services
+        .menu
         .as_ref()
         .context("the Services submenu was not opened")
 }
@@ -137,7 +136,7 @@ fn user_opens_services(world: &mut IntegrationWorld) -> Result<()> {
         .as_ref()
         .and_then(voicepuncher::adapters::primary::menubar::macos::actions::MenuActions::services)
         .context("the menu offers no Services submenu")?;
-    run.service_menu = Some(
+    run.services.menu = Some(
         statuses
             .iter()
             .map(|status| (status.port, service_line(status), offers_restart(status)))
@@ -189,7 +188,7 @@ fn restart_for_dictation_only(world: &mut IntegrationWorld) -> Result<()> {
 
 #[then("the app starts it again")]
 fn started_again(world: &mut IntegrationWorld) -> Result<()> {
-    let view = run(world).services_view.as_ref().context("no services")?;
+    let view = run(world).services.view.as_ref().context("no services")?;
     let restarted = view.restarted.lock().unwrap().clone();
     if restarted != [COMMAND_SPOTTING] {
         bail!("the menu asked to restart {restarted:?}");

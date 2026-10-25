@@ -1,17 +1,9 @@
 //! Drives the real pipeline in Hold mode on the stand-ins of the text insertion scenarios: a
 //! press starts the recording, a release ends it, and the paster records what it pasted.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc::{self, Sender};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, ensure, Context, Result};
 use cucumber::{given, then, when};
-
-use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
-use voicepuncher::core::application::{PipelineInput, Transcriber};
-use voicepuncher::core::domain::{AudioBuffer16k, PttSignal, RawTranscript, RecordingMode};
 
 use crate::steps::text_insertion::doubles::{
     FixedTranscript, OneSecondRecorder, RecordingIndicator, RecordingPaster, Silent,
@@ -51,7 +43,7 @@ impl HoldRun {
         let (tx, rx) = mpsc::channel();
         let events = &self.events;
         let parts = PipelineParts {
-            recorder: Box::new(OneSecondRecorder(Arc::clone(events))),
+            recorder: Box::new(OneSecondRecorder::new(events, Event::RecordingStarted)),
             transcriber: Box::new(CountingTranscript(Arc::clone(&self.transcribed))),
             paster: Box::new(RecordingPaster(Arc::clone(events), Arc::default())),
             sound_player: Box::new(Silent),

@@ -1,7 +1,7 @@
 # kit config of voicepuncher (agent-kit README § Project config)
 version_file: app/Cargo.toml
 checks:
-  build_inputs: ["app/**", "command-spotting/**", "copy-pool/**", "dev-tools/**", "analyzers/**", "e2e-test/**", "test-steps/**", ".config/**", "Cargo.toml", "Cargo.lock", "justfile"]
+  build_inputs: ["app/**", "command-spotting/**", "copy-pool/**", "log-line/**", "dev-tools/**", "analyzers/**", "e2e-test/**", "test-steps/**", ".config/**", "Cargo.toml", "Cargo.lock", "justfile"]
   after_edit: just test
   after_group: just check
   before_merge: just full-check
@@ -11,7 +11,7 @@ manual_run:
   overlay: ["app/src/adapters/secondary/visualfeedback/**"]
   paste: ["app/src/adapters/secondary/textpasting/**"]
   permissions: ["app/src/adapters/secondary/permissions/**", "app/packaging/**"]
-  voice control: ["app/src/adapters/secondary/commandspotting/**", "app/src/adapters/secondary/keypressing/**", "app/src/core/application/pipeline/voice_control.rs"]
+  voice control: ["app/src/adapters/secondary/commandspotting/**", "app/src/adapters/secondary/keypressing/**", "app/src/core/application/pipeline/voice_control/**"]
 release:
   command: just release
 panel:

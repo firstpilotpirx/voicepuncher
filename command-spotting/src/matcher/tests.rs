@@ -1,7 +1,8 @@
 use super::*;
 use voicepuncher_voice_commands::{MishearingKind, MISHEARINGS, STOP};
 
-fn standby() -> PhraseMatcher {
+/// The phrases heard in standby.
+pub(super) fn standby() -> PhraseMatcher {
     PhraseMatcher::new(&[
         "start dictation".into(),
         "press enter".into(),
@@ -10,7 +11,8 @@ fn standby() -> PhraseMatcher {
     ])
 }
 
-fn dictating() -> PhraseMatcher {
+/// The phrases heard during a dictation.
+pub(super) fn dictating() -> PhraseMatcher {
     PhraseMatcher::new(&[
         "stop dictation".into(),
         "cancel dictation".into(),

@@ -41,12 +41,42 @@ const MAX_DROPPED_PHRASE_WORDS: usize = 5;
 mod needs_stt {
     use super::*;
 
+    /// What went wrong when `lang` spoken under `condition` after `lead_in` was transcribed
+    /// in chunks and merged; none when nothing did.
+    fn merge_failure(
+        transcriber: &mut OpenAiTranscriber,
+        chunking: ChunkingCfg,
+        (lang, condition, lead_in): (Lang, Condition, f32),
+    ) -> Option<String> {
+        let speech = AudioBuffer16k::new(synthesize(lang, condition, lead_in).unwrap());
+        let texts: Vec<String> = split_into_chunks(&speech, chunking)
+            .iter()
+            .filter_map(|chunk| transcriber.transcribe(chunk).unwrap())
+            .map(|raw| raw.as_str().to_owned())
+            .collect();
+        let merged = merge_chunk_texts(&texts);
+        let repeated = repeated_phrases(lang.text(), &merged);
+        let missing = missing_word_share(lang.text(), &merged);
+        let joined = texts.join(" ");
+        let lost_by_merge = missing - missing_word_share(lang.text(), &joined);
+        let dropped = dropped_phrase_len(lang.text(), &joined);
+        let case = format!("{lang:?} {condition:?} lead-in {lead_in} s");
+        eprintln!(
+            "  {case:<36} repeated={repeated:?} missing={missing:.3} lost_by_merge={lost_by_merge:.3} dropped_phrase={dropped}"
+        );
+        let failed = !repeated.is_empty()
+            || lost_by_merge > MAX_LOST_BY_MERGE_SHARE
+            || dropped > MAX_DROPPED_PHRASE_WORDS;
+        failed.then(|| {
+            format!(
+                "{case}: repeated {repeated:?}, merge dropped {:.1} % of the recognized words, chunks dropped a phrase of {dropped} words\n    merged: {merged}\n    chunks:\n      {}",
+                lost_by_merge * 100.0,
+                texts.join("\n      ")
+            )
+        })
+    }
+
     #[test]
-    #[expect(
-        clippy::too_many_lines,
-        clippy::excessive_nesting,
-        reason = "size baseline"
-    )]
     fn should_merge_chunked_speech_without_repeating_or_dropping_a_phrase() {
         // Given
         let base_url = required_env("VOICEPUNCHER_TRANSCRIPTION_URL");
@@ -57,47 +87,22 @@ mod needs_stt {
             vad_lookback_secs: cfg.vad_lookback_secs,
         };
         let mut transcriber = OpenAiTranscriber::connect(cfg).unwrap();
-        let mut failures = Vec::new();
-        let mut cases = 0;
-        for lang in Lang::ALL {
-            for condition in CONDITIONS {
-                for &lead_in in lead_ins() {
-                    cases += 1;
-                    let speech = AudioBuffer16k::new(synthesize(lang, condition, lead_in).unwrap());
-                    // When
-                    let texts: Vec<String> = split_into_chunks(&speech, chunking)
-                        .iter()
-                        .filter_map(|chunk| transcriber.transcribe(chunk).unwrap())
-                        .map(|raw| raw.as_str().to_owned())
-                        .collect();
-                    let merged = merge_chunk_texts(texts.clone());
-                    // Then
-                    let repeated = repeated_phrases(lang.text(), &merged);
-                    let missing = missing_word_share(lang.text(), &merged);
-                    let joined = texts.join(" ");
-                    let lost_by_merge = missing - missing_word_share(lang.text(), &joined);
-                    let dropped = dropped_phrase_len(lang.text(), &joined);
-                    let case = format!("{lang:?} {condition:?} lead-in {lead_in} s");
-                    eprintln!(
-                        "  {case:<36} repeated={repeated:?} missing={missing:.3} lost_by_merge={lost_by_merge:.3} dropped_phrase={dropped}"
-                    );
-                    if !repeated.is_empty()
-                        || lost_by_merge > MAX_LOST_BY_MERGE_SHARE
-                        || dropped > MAX_DROPPED_PHRASE_WORDS
-                    {
-                        failures.push(format!(
-                            "{case}: repeated {repeated:?}, merge dropped {:.1} % of the recognized words, chunks dropped a phrase of {dropped} words\n    merged: {merged}\n    chunks:\n      {}",
-                            lost_by_merge * 100.0,
-                            texts.join("\n      ")
-                        ));
-                    }
-                }
-            }
-        }
+        let cases: Vec<(Lang, Condition, f32)> = Lang::ALL
+            .into_iter()
+            .flat_map(|lang| CONDITIONS.into_iter().map(move |c| (lang, c)))
+            .flat_map(|(lang, c)| lead_ins().iter().map(move |&l| (lang, c, l)))
+            .collect();
+        // When
+        let failures: Vec<String> = cases
+            .iter()
+            .filter_map(|&case| merge_failure(&mut transcriber, chunking, case))
+            .collect();
+        // Then
         assert!(
             failures.is_empty(),
-            "{} of {cases} chunked transcriptions failed:\n{}",
+            "{} of {} chunked transcriptions failed:\n{}",
             failures.len(),
+            cases.len(),
             failures.join("\n")
         );
     }

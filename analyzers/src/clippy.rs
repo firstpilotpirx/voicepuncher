@@ -144,9 +144,9 @@ mod tests {
         }
     }
 
-    fn warning(lint: &str, file: &str, line: u64) -> String {
+    fn warning(code: &str, file: &str, line: u64) -> String {
         format!(
-            r#"{{"reason":"compiler-message","message":{{"level":"warning","code":{{"code":"{lint}"}},"spans":[{{"file_name":"{file}","line_start":{line},"column_start":5,"is_primary":true}}]}}}}"#
+            r#"{{"reason":"compiler-message","message":{{"level":"warning","code":{{"code":"{code}"}},"spans":[{{"file_name":"{file}","line_start":{line},"column_start":5,"is_primary":true}}]}}}}"#
         )
     }
 

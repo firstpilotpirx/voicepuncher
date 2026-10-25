@@ -7,6 +7,7 @@
 | `app/` | Rust menu bar application (with a developer command line and file mode) — hexagonal architecture (Ports & Adapters + DDD) |
 | `command-spotting/` | Rust binary: the command spotting service (voice control) |
 | `copy-pool/` | Rust library: the *copy pool* — routes requests to the copies of a speech recognition service, used by `app/` and `command-spotting/` |
+| `log-line/` | Rust library: the form of one log line (`[time LEVEL thread target] message`), used by `app/` and `command-spotting/` |
 | `e2e-test/` | Rust benchmark and E2E tests against the compiled binary |
 | `docs/` | Documentation (ubiquitous language, architecture, E2E benchmark design) |
 | `dist/` | Gitignored output of `just bundle` and `just dmg`: `voicepuncher.app`, `voicepuncher-vX.Y.Z.dmg` and its `.sha256` |
@@ -18,9 +19,9 @@
 | Path | Layer | Purpose |
 |---|---|---|
 | `app/src/core/domain/` | Domain | Value objects: `AudioBuffer16k`, `RawTranscript`, `CleanedText`, `HotKey`, `PttSignal`, `RecordingMode` |
-| `app/src/core/application/pipeline.rs` | Application | `Pipeline` use case — orchestrates one full PTT cycle, holds the state machine |
+| `app/src/core/application/pipeline/mod.rs` | Application | `Pipeline` use case — orchestrates one full PTT cycle, holds the state machine |
 | `app/src/core/domain/model_catalog.rs` | Domain | `CATALOG` — the model files with pinned address, sha256, size and purpose; `needed` picks a configuration's |
-| `app/src/core/application/model_download.rs` | Application | `ModelDownload` use case — check the models folder, download the missing files with resume, retries and checksums; its ports `ModelStore`, `ModelFetcher`, `DiskSpace` |
+| `app/src/core/application/model_download/mod.rs` | Application | `ModelDownload` use case — check the models folder, download the missing files with resume, retries and checksums; its ports `ModelStore`, `ModelFetcher`, `DiskSpace` |
 | `app/src/core/application/permissions_gate.rs` | Application | `PermissionsGate` use case and `PermissionReport` — the three permissions, their statuses, requests and System Settings links |
 | `app/src/core/application/audio_recorder.rs` | Port | `AudioRecorder` trait |
 | `app/src/core/application/hotkey_listener.rs` | Port | `HotkeyListener` trait |
@@ -58,10 +59,10 @@
 | `app/src/adapters/secondary/modelfetch/http/` | Secondary adapter | `HttpModelFetcher` — fetches a model file over HTTPS with `ureq`, resuming a part with a Range request |
 | `app/src/adapters/secondary/modelfetch/fs/` | Secondary adapter | `FsModelStore`, `FsDiskSpace` — the models folder: presence, `NAME.part` files and their sha256, placing, archive extraction, free space |
 | `app/src/adapters/secondary/permissions/macos/` | Secondary adapter | `MacOsPermissionProbe` — macOS TCC status, requests, deep links and the responsible app |
-| `app/src/config.rs`, `app/src/config/` | Config | TOML config loading with `serde`; `Config` is the root struct; `[transcription]` and `[whisper]` migration error in `config/transcription.rs`, retired `[refinement]` and `[llm]` sections ignored with one warning in `config.rs`, loopback check in `config/loopback.rs`; `config/document.rs` — `ConfigDocument`, the file as `toml_edit` keeps it, so a Save changes only the edited keys |
+| `app/src/config/` | Config | TOML config loading with `serde`; `Config` is the root struct; `[transcription]` and `[whisper]` migration error in `config/transcription/`, retired `[refinement]` and `[llm]` sections ignored with one warning in `config/mod.rs`, loopback check in `config/loopback.rs`; `config/document/` — `ConfigDocument`, the file as `toml_edit` keeps it, so a Save changes only the edited keys |
 | `app/src/main.rs` | Composition root | Wires adapters + use cases into a runnable; no business logic |
 | `app/packaging/` | Packaging | Sources of the application bundle: `Info.plist` template (version filled in by `just bundle`), `icons/` (`icon-1024.png` and `voicepuncher.iconset/`, turned into `.icns` by `iconutil`), `dmg-background.png`; `engines.lock` (the pinned engines: source, version and sha256 of each file, the license sources), `licenses/` (licenses no engine source carries: ONNX Runtime's) and the gitignored `engines/` that `just engines` stages (one folder per engine, `licenses/`); checked by `app/tests/it/packaging.rs` |
-| `app/tests/it/architecture.rs` | Architecture test | Import-graph assertions (layer dependency rule, naming rules, structure rules); `test_layout.rs` beside it keeps every integration test inside `tests/it/` |
+| `app/tests/it/architecture/` | Architecture test | Import-graph assertions (layer dependency rule, naming rules, structure rules); `test_layout/` beside it keeps every integration test inside `tests/it/` |
 | `app/tests/it/{feature}_{tech}.rs` | Integration tests | One module per adapter, all built into the one `it` binary that `app/tests/it/main.rs` roots (one link per member instead of one per file); the macOS tests that need the main thread live in `app/tests/main_thread/` |
 | `app/tests/features/{slice,component}/<capability>.feature` | Slice / component tests | Gherkin scenarios written from `openspec/specs/<capability>/spec.md`; run by `app/tests/cucumber_integration.rs`, steps in `app/tests/steps/<capability>.rs` |
 

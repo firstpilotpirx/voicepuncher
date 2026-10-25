@@ -3,7 +3,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
-use voicepuncher_copy_pool::{CopyPool, Finish, Place, PoolError, Ran};
+use voicepuncher_copy_pool::{CopyPool, Finish, PoolError, Ran};
 
 use crate::adapters::secondary::http::agent;
 use crate::adapters::secondary::http::failure::Failure;
@@ -15,11 +15,13 @@ use crate::core::domain::{AudioBuffer16k, RawTranscript};
 mod deadline;
 mod language;
 mod request;
+mod retries;
 
 pub use deadline::longest_wait;
-use deadline::{request_deadline, RETRY_PAUSES, SLOW_RETRIES, SLOW_RETRY_PAUSE};
+use deadline::request_deadline;
 use language::{retry_language, TranscriptionResponse};
 use request::{encode_wav, multipart_body, normalize_transcript};
+use retries::{Retries, Tries};
 
 const TRANSCRIPTIONS_PATH: &str = "audio/transcriptions";
 const SLOW_REQUEST_LOG_MS: u128 = 600;
@@ -144,7 +146,7 @@ impl OpenAiTranscriber {
             audio.duration_ms(),
             deadline.as_millis()
         );
-        let json = self.post_with_retries(Arc::new(body), deadline)?;
+        let json = self.post_with_retries(&Arc::new(body), deadline)?;
         serde_json::from_str(&json)
             .with_context(|| format!("unexpected speech recognition response: {json}"))
     }
@@ -155,67 +157,36 @@ impl OpenAiTranscriber {
     /// for a free copy ran out asks again at once and keeps its place in the queue. Once
     /// the dropped connections are used up and no copy accepts connections, the request
     /// waits once for a copy to come back and starts its dropped connections over.
-    #[expect(clippy::excessive_nesting, reason = "size baseline")]
-    #[expect(clippy::too_many_lines, reason = "size baseline")]
-    fn post_with_retries(&self, body: Arc<Vec<u8>>, deadline: Duration) -> Result<String> {
-        let (mut dropped, mut slow, mut attempt) = (0usize, 0u32, 0u32);
-        let mut waited_for_copy = false;
-        let mut tried: Vec<u16> = Vec::new();
-        let mut place = self.pool.place();
+    fn post_with_retries(&self, body: &Arc<Vec<u8>>, deadline: Duration) -> Result<String> {
+        let mut tries = Tries::new(self.pool.place());
+        let mut retries = Retries::default();
         loop {
-            attempt += 1;
+            tries.attempt += 1;
             let started = Instant::now();
-            let failed = match self.attempt(&body, deadline, attempt, &mut tried, &mut place) {
+            let failed = match self.attempt(body, deadline, &mut tries) {
                 Ok(text) => return Ok(text),
                 Err(failed) => failed,
             };
-            let pause = match failed.failure {
-                Failure::Dropped if dropped < RETRY_PAUSES.len() => {
-                    dropped += 1;
-                    Some(RETRY_PAUSES[dropped - 1])
-                }
-                Failure::Dropped if !waited_for_copy && !self.pool.has_copies() => {
-                    waited_for_copy = true;
-                    self.wait_for_copy().then(|| {
-                        dropped = 0;
-                        Duration::ZERO
-                    })
-                }
-                Failure::TimedOut | Failure::Busy(_) if slow < SLOW_RETRIES => {
-                    slow += 1;
-                    Some(if failed.waiting {
-                        Duration::ZERO
-                    } else {
-                        SLOW_RETRY_PAUSE
-                    })
-                }
-                _ => None,
-            };
+            let pause = retries.pause(&failed, self);
+            let failure = format!(
+                "speech recognition service {} (request={} attempt {}, after {}ms, deadline {}ms): {}",
+                failed.what,
+                self.requests,
+                tries.attempt,
+                started.elapsed().as_millis(),
+                deadline.as_millis(),
+                failed.error
+            );
             let Some(pause) = pause else {
-                log::warn!(
-                    "speech recognition service {} (request={} attempt {attempt}, after {}ms, deadline {}ms): {} — giving up",
-                    failed.what,
-                    self.requests,
-                    started.elapsed().as_millis(),
-                    deadline.as_millis(),
-                    failed.error
-                );
+                log::warn!("{failure} — giving up");
                 bail!(
                     "speech recognition request to {} failed on copies {}: {}",
                     self.cfg.base_url,
-                    ports_list(&tried),
+                    ports_list(&tries.tried),
                     failed.error
                 )
             };
-            log::warn!(
-                "speech recognition service {} (request={} attempt {attempt}, after {}ms, deadline {}ms): {} — retrying in {}ms",
-                failed.what,
-                self.requests,
-                started.elapsed().as_millis(),
-                deadline.as_millis(),
-                failed.error,
-                pause.as_millis()
-            );
+            log::warn!("{failure} — retrying in {}ms", pause.as_millis());
             thread::sleep(pause);
         }
     }
@@ -241,25 +212,24 @@ impl OpenAiTranscriber {
 
     /// One attempt on a free copy, waiting at most `deadline` in `place` for the copy and
     /// again for its answer; a copy given up on stays held until it answered.
-    #[expect(clippy::too_many_arguments, reason = "size baseline")]
     fn attempt(
         &self,
         body: &Arc<Vec<u8>>,
         deadline: Duration,
-        attempt: u32,
-        tried: &mut Vec<u16>,
-        place: &mut Place,
+        tries: &mut Tries,
     ) -> Result<String, AttemptFailure> {
-        let lease = place
-            .lease_avoiding(deadline, tried)
+        let lease = tries
+            .place
+            .lease_avoiding(deadline, &tries.tried)
             .map_err(|e| AttemptFailure::of_pool(&e))?;
         let port = lease.port();
-        if !tried.contains(&port) {
-            tried.push(port);
+        if !tries.tried.contains(&port) {
+            tries.tried.push(port);
         }
         log::debug!(
-            "speech recognition: request={} attempt {attempt} on copy {port}",
-            self.requests
+            "speech recognition: request={} attempt {} on copy {port}",
+            self.requests,
+            tries.attempt
         );
         let (agent, body) = (self.agent.clone(), Arc::clone(body));
         let ran = lease.run(deadline, move |url| post(&agent, url, &body));
@@ -339,47 +309,4 @@ impl Transcriber for OpenAiTranscriber {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::net::TcpListener;
-
-    fn cfg_for_port(port: u16) -> TranscriptionCfg {
-        TranscriptionCfg {
-            base_url: format!("http://127.0.0.1:{port}/v1"),
-            ..TranscriptionCfg::default()
-        }
-    }
-
-    #[test]
-    fn should_connect_when_service_port_is_open() {
-        // Given
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        // When
-        let transcriber = OpenAiTranscriber::connect(cfg_for_port(port)).unwrap();
-        // Then
-        let ports: Vec<u16> = transcriber.pool.snapshot().iter().map(|c| c.port).collect();
-        assert_eq!(ports, [port]);
-    }
-
-    #[test]
-    fn should_report_address_and_start_command_when_port_is_closed() {
-        // Given
-        let port = TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
-        // When
-        let message = OpenAiTranscriber::connect(cfg_for_port(port))
-            .err()
-            .unwrap()
-            .to_string();
-        // Then
-        assert!(
-            message.contains(&format!("127.0.0.1:{port}/v1")),
-            "{message}"
-        );
-        assert!(message.contains("just start-model-servers"), "{message}");
-    }
-}
+mod tests;

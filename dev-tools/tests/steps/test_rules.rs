@@ -118,7 +118,7 @@ fn workspace_members(world: &mut WorkflowWorld) {
 
 #[given("the paste tests")]
 fn paste_tests(world: &mut WorkflowWorld) {
-    world.text = repo_file("app/tests/it/textpasting_macos.rs");
+    world.text = repo_file("app/tests/it/macos/textpasting_macos.rs");
 }
 
 #[given(expr = "a recipe text with {string} and no comment on it or above it")]

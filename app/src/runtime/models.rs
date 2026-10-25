@@ -96,12 +96,12 @@ impl CatalogModels {
 /// file to `out`; the process's exit code: 0 when every file is present at the end, else 1.
 pub fn download_headless(
     models: &CatalogModels,
-    folder: PathBuf,
+    folder: &Path,
     needs: ModelNeeds,
     clock: Arc<dyn Clock>,
     out: &mut dyn Write,
 ) -> i32 {
-    let download = models.download(folder.clone(), needs, clock);
+    let download = models.download(folder.to_path_buf(), needs, clock);
     let report = download.check();
     let _ = writeln!(
         out,
@@ -132,7 +132,6 @@ fn headless_line(event: &DownloadEvent, last_percent: &mut Option<u64>) -> Optio
             *last_percent = None;
             Some(format!("{name}: downloading"))
         }
-        DownloadEvent::Verifying(name) => Some(format!("{name}: verifying the part")),
         DownloadEvent::Progress { name, received, total, .. } => {
             let percent = (received * 100).checked_div(*total).unwrap_or(100) / 10 * 10;
             (*last_percent != Some(percent)).then(|| {
@@ -140,6 +139,15 @@ fn headless_line(event: &DownloadEvent, last_percent: &mut Option<u64>) -> Optio
                 format!("{name}: {percent} %")
             })
         }
+        DownloadEvent::AllPresent => Some("every model is present".into()),
+        file_event => file_line(file_event),
+    }
+}
+
+/// The line of an event about one file after its download started.
+fn file_line(event: &DownloadEvent) -> Option<String> {
+    match event {
+        DownloadEvent::Verifying(name) => Some(format!("{name}: verifying the part")),
         DownloadEvent::Retrying { name, attempt, pause } => Some(format!(
             "{name}: no connection, try {} in {} s",
             attempt + 1,
@@ -151,7 +159,7 @@ fn headless_line(event: &DownloadEvent, last_percent: &mut Option<u64>) -> Optio
         DownloadEvent::Done(name) => Some(format!("{name}: done")),
         DownloadEvent::Failed { name, failure } => Some(format!("{name}: failed: {failure}")),
         DownloadEvent::Cancelled(name) => Some(format!("{name}: cancelled")),
-        DownloadEvent::AllPresent => Some("every model is present".into()),
+        _ => None,
     }
 }
 

@@ -6,21 +6,29 @@
 //! lines; else 10.
 
 use crate::context::{var, Context};
-use crate::keys::rules::glob_matches;
+use crate::glob::glob_matches;
 use crate::process::{git, success_stdout};
 use crate::Outcome;
 use std::collections::BTreeSet;
 use std::path::Path;
 
 pub fn command(args: &[String]) -> Outcome {
+    let sample = var("VOICEPUNCHER_ACCURACY_SAMPLE");
+    print_choice(args, ACCURACY.table, |root, base, patterns| {
+        choose(root, base, sample.as_deref(), patterns)
+    })
+}
+
+/// Prints the stage `choose` picks from the paths changed against the base `args` name
+/// (`origin/main` when none) and the patterns of `table`, with its reason.
+pub fn print_choice(
+    args: &[String],
+    table: &str,
+    choose: impl FnOnce(&Path, &str, &str) -> Result<(&'static str, String), String>,
+) -> Outcome {
     let base = args.first().map_or("origin/main", String::as_str);
     let context = Context::from_env();
-    let (stage, reason) = choose(
-        &context.root,
-        base,
-        var("VOICEPUNCHER_ACCURACY_SAMPLE").as_deref(),
-        &context.table(ACCURACY.table)?,
-    )?;
+    let (stage, reason) = choose(&context.root, base, &context.table(table)?)?;
     println!("{stage} — {reason}");
     Ok(0)
 }
@@ -156,19 +164,7 @@ fn beyond_version(root: &Path, merge_base: &str, path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Command;
-
-    fn git_in(root: &Path, args: &[&str]) {
-        let ok = Command::new("git")
-            .arg("-C")
-            .arg(root)
-            .args(args)
-            .output()
-            .unwrap()
-            .status
-            .success();
-        assert!(ok, "git {args:?}");
-    }
+    use crate::process::git_ok;
 
     fn repository() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
@@ -177,9 +173,9 @@ mod tests {
             "[package]\nversion = \"1.0.0\"\nname = \"x\"\n",
         )
         .unwrap();
-        git_in(dir.path(), &["init", "-q", "-b", "main"]);
-        git_in(dir.path(), &["add", "."]);
-        git_in(
+        git_ok(dir.path(), &["init", "-q", "-b", "main"]);
+        git_ok(dir.path(), &["add", "."]);
+        git_ok(
             dir.path(),
             &[
                 "-c",

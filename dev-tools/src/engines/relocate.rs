@@ -100,21 +100,35 @@ pub fn relocate(path: &Path, file: &str, folders: &[String]) -> Result<(), Strin
         &capture("otool", &["-L", &text])?,
         &capture("otool", &["-l", &text])?,
     );
-    if !args.is_empty() {
-        let mut all: Vec<&str> = args.iter().map(String::as_str).collect();
-        all.push(&text);
-        capture("install_name_tool", &all)?;
-    }
-    if !folders.is_empty() {
-        let mut bytes = std::fs::read(path).map_err(|e| format!("{text}: {e}"))?;
-        if blank(&mut bytes, folders) > 0 {
-            std::fs::write(path, bytes).map_err(|e| format!("{text}: {e}"))?;
-        }
-    }
+    rename_references(&args, &text)?;
+    blank_folders(path, folders)?;
     capture(
         "codesign",
         &["--force", "--sign", "-", "--timestamp=none", &text],
     )?;
+    Ok(())
+}
+
+/// Applies the `install_name_tool` arguments `args` to the file `text` names.
+fn rename_references(args: &[String], text: &str) -> Result<(), String> {
+    if args.is_empty() {
+        return Ok(());
+    }
+    let mut all: Vec<&str> = args.iter().map(String::as_str).collect();
+    all.push(text);
+    capture("install_name_tool", &all).map(drop)
+}
+
+/// Blanks every one of `folders` the file at `path` names.
+fn blank_folders(path: &Path, folders: &[String]) -> Result<(), String> {
+    if folders.is_empty() {
+        return Ok(());
+    }
+    let text = path.to_string_lossy();
+    let mut bytes = std::fs::read(path).map_err(|e| format!("{text}: {e}"))?;
+    if blank(&mut bytes, folders) > 0 {
+        std::fs::write(path, bytes).map_err(|e| format!("{text}: {e}"))?;
+    }
     Ok(())
 }
 

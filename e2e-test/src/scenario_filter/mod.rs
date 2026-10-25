@@ -1,6 +1,8 @@
 //! Which scenarios a Gherkin harness runs: those its command line selects (`--name`, `--tags` or
-//! `CUCUMBER_FILTER_TAGS`) that every gate of the harness admits. A gate holds a tag back: `@wip`
-//! always, a tag that needs something on the machine while that is missing.
+//! `CUCUMBER_FILTER_TAGS`) that every gate of the harness admits.
+//!
+//! A gate holds a tag back: `@wip` always, a tag that needs something on the machine while that is
+//! missing.
 
 use cucumber::cli::{Args, Opts};
 use cucumber::gherkin::tagexpr::TagOperation;
@@ -38,26 +40,26 @@ impl Gate {
     /// `@voice_samples`: runs where the user's recordings exist, from the value of
     /// `VOICEPUNCHER_VOICE_SAMPLES` (`std::env::var`).
     /// Unset and empty both close it, each with its own line.
-    pub fn voice_samples(value: Result<String, std::env::VarError>) -> Self {
+    pub fn voice_samples(value: &Result<String, std::env::VarError>) -> Self {
         Self::closed_by_variable(
             VOICE_SAMPLES_TAG,
             VOICE_SAMPLES_VARIABLE,
-            unset_or_empty(&value),
+            unset_or_empty(value),
         )
     }
 
     /// `@signing_identity`: runs where the code-signing certificate is named, from the value of
     /// `VOICEPUNCHER_SIGNING_IDENTITY` (`std::env::var`). Unset and empty both close it.
-    pub fn signing_identity(value: Result<String, std::env::VarError>) -> Self {
+    pub fn signing_identity(value: &Result<String, std::env::VarError>) -> Self {
         Self::closed_by_variable(
             SIGNING_IDENTITY_TAG,
             SIGNING_IDENTITY_VARIABLE,
-            unset_or_empty(&value),
+            unset_or_empty(value),
         )
     }
 
     /// `@real_keyboard`: runs with `VOICEPUNCHER_REAL_KEYBOARD_IT` set to any value.
-    pub fn real_keyboard(value: Result<String, std::env::VarError>) -> Self {
+    pub fn real_keyboard(value: &Result<String, std::env::VarError>) -> Self {
         let state = value.is_err().then_some("not set");
         Self::closed_by_variable(REAL_KEYBOARD_TAG, REAL_KEYBOARD_VARIABLE, state)
     }

@@ -1,9 +1,8 @@
 //! The stand-ins of the speech recognition scenarios.
 
 use super::{
-    bail, mpsc, Arc, AudioBuffer16k, AudioRecorder, ChunkingCfg, CleanedText, Context,
-    FailureNotice, Instant, LiveChunk, Mutex, RawTranscript, Receiver, Result, SoundPlayer,
-    TextPaster, Transcriber, VisualIndicator,
+    bail, mpsc, Arc, AudioBuffer16k, AudioRecorder, ChunkingCfg, CleanedText, Context, Instant,
+    LiveChunk, Mutex, RawTranscript, Receiver, Result, TextPaster, Transcriber,
 };
 
 /// Delivers `chunks` one-second live chunks; the first sample numbers the chunk.
@@ -12,23 +11,13 @@ pub(super) struct ChunkingRecorder {
 }
 
 impl AudioRecorder for ChunkingRecorder {
-    fn start(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn stop(&mut self) -> Result<AudioBuffer16k> {
-        Ok(AudioBuffer16k::new(Vec::new()))
-    }
+    voicepuncher::records_nothing!();
 
     fn start_live_chunks(&mut self, _cfg: ChunkingCfg) -> Result<Option<Receiver<LiveChunk>>> {
         let (tx, rx) = mpsc::channel();
         for n in 0..self.chunks {
-            let mut samples = vec![1_000i16; AudioBuffer16k::SAMPLE_RATE_HZ as usize];
-            samples[0] = n as i16;
-            tx.send(LiveChunk {
-                audio: AudioBuffer16k::new(samples),
-                enqueued_at: Instant::now(),
-            })?;
+            let audio = voicepuncher::test_doubles::numbered_second(n);
+            tx.send(LiveChunk { audio, enqueued_at: Instant::now() })?;
         }
         Ok(Some(rx))
     }
@@ -42,7 +31,7 @@ pub(super) struct FixedTranscripts(pub(super) Vec<&'static str>, pub(super) Opti
 
 impl Transcriber for FixedTranscripts {
     fn transcribe(&mut self, audio: &AudioBuffer16k) -> Result<Option<RawTranscript>> {
-        let n = audio.samples()[0] as usize;
+        let n = usize::try_from(audio.samples()[0]).unwrap();
         if self.1 == Some(n) {
             bail!("speech recognition request failed: every attempt timed out");
         }
@@ -64,20 +53,4 @@ impl TextPaster for CapturingPaster {
     }
 }
 
-pub(super) struct Silent;
-
-impl SoundPlayer for Silent {
-    fn play_start(&self) {}
-    fn play_stop(&self) {}
-    fn play_cancel(&self) {}
-}
-
-impl VisualIndicator for Silent {
-    fn show_recording(&self) {}
-    fn show_recognizing_speech(&self) {}
-    fn show_waiting_for_focus(&self) {}
-    fn show_pasted(&self) {}
-    fn hide(&self) {}
-    fn show_failure_notice(&self, _notice: &FailureNotice) {}
-    voicepuncher::shows_no_voice_control_signs!();
-}
+pub(super) use voicepuncher::test_doubles::Silent;

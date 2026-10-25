@@ -27,17 +27,8 @@ pub fn listed(root: &Path) -> Result<Vec<String>, String> {
     Ok(files)
 }
 
-/// The object hash of each file, from one `git hash-object --stdin-paths`.
-pub fn hashed(root: &Path, files: &[String]) -> Result<BTreeMap<String, String>, String> {
-    if files.is_empty() {
-        return Ok(BTreeMap::new());
-    }
-    let mut child = git(root)
-        .args(["hash-object", "--stdin-paths"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("git hash-object: {e}"))?;
+/// Writes `files` to `git hash-object`'s input and reads its whole output.
+fn exchange(child: &mut std::process::Child, files: &[String]) -> Result<String, String> {
     let mut input = child.stdin.take().ok_or("git hash-object: no stdin")?;
     let paths: String = files
         .iter()
@@ -54,6 +45,21 @@ pub fn hashed(root: &Path, files: &[String]) -> Result<BTreeMap<String, String>,
         .map_err(|e| format!("git hash-object: {e}"))?;
     let _ = writer.join();
     let _ = child.wait();
+    Ok(text)
+}
+
+/// The object hash of each file, from one `git hash-object --stdin-paths`.
+pub fn hashed(root: &Path, files: &[String]) -> Result<BTreeMap<String, String>, String> {
+    if files.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let mut child = git(root)
+        .args(["hash-object", "--stdin-paths"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("git hash-object: {e}"))?;
+    let text = exchange(&mut child, files)?;
     let hashes: Vec<&str> = text.lines().collect();
     if hashes.len() != files.len() {
         return Err(format!(

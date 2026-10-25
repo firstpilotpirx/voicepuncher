@@ -2,10 +2,8 @@
 //! library references, their signatures and the licenses beside them.
 
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{ensure, Context, Result};
 use cucumber::{then, when};
 
 use super::engines::{checkout_lock, read_lock, ENGINES, VERSION_FILE};
@@ -47,7 +45,7 @@ fn bundle(world: &E2eWorld) -> Result<PathBuf> {
 }
 
 /// The program each engine folder runs, from the lock.
-fn program(engine: &str) -> Result<String> {
+pub(super) fn program(engine: &str) -> Result<String> {
     read_lock(&checkout_lock())?
         .get(engine)
         .and_then(|table| table.get("program"))

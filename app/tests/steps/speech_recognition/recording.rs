@@ -2,10 +2,9 @@
 //! pushes frames into the capture ring as its callback would, and the scenario reads the
 //! recording and the live chunks the recorder makes of it.
 
-use std::sync::{atomic::AtomicU32, mpsc::Receiver, Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::{atomic::AtomicU32, mpsc::Receiver};
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 use rtrb::{Producer, RingBuffer};
 
@@ -13,8 +12,6 @@ use voicepuncher::adapters::secondary::recording::cpal::{
     capture::{on_frames, CaptureHealth, RING_SECONDS},
     CpalAudioRecorder, Source,
 };
-use voicepuncher::core::application::audio_recorder::LiveChunk;
-use voicepuncher::core::application::{AudioRecorder, ChunkingCfg};
 
 use crate::steps::voice_control::pipeline_log;
 use crate::IntegrationWorld;

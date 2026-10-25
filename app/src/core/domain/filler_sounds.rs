@@ -50,7 +50,7 @@ pub fn text_to_paste(raw: &RawTranscript) -> Option<CleanedText> {
     } else {
         spoken
     };
-    CleanedText::new(text).ok()
+    CleanedText::new(&text).ok()
 }
 
 #[cfg(test)]

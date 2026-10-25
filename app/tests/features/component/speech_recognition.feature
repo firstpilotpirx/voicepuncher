@@ -142,6 +142,7 @@ Feature: speech-recognition
       When a recording is transcribed through the speech recognition service
       Then the transcript the service returns is passed on
       And another copy answered, and the copy that failed the first request got no second attempt
+      And the hung attempt is logged
 
   Rule: The wait for a transcript follows the length of the audio
 

@@ -32,7 +32,7 @@ impl Session<'_> {
             JobContext::HalfPause { utterance },
         ) {
             self.hearings.half_pause =
-                Some(HalfPauseHearing { job, quiet_from, from, answer: None });
+                Some(HalfPauseHearing { job, quiet_from, from, answer: HalfPauseAnswer::Awaited });
         }
     }
 
@@ -61,5 +61,24 @@ pub(in crate::engine) struct HalfPauseHearing {
     /// Where its audio starts.
     pub(super) from: usize,
     /// What was heard, once answered.
-    pub(super) answer: Option<Option<Heard>>,
+    pub(super) answer: HalfPauseAnswer,
+}
+
+/// What a hearing at half the pause has answered so far.
+pub(in crate::engine) enum HalfPauseAnswer {
+    /// No answer yet.
+    Awaited,
+    Heard(Heard),
+    /// It answered and heard nothing.
+    NothingHeard,
+}
+
+impl HalfPauseAnswer {
+    /// What it heard; none before its answer or when it heard nothing.
+    pub(super) fn heard(self) -> Option<Heard> {
+        match self {
+            Self::Heard(heard) => Some(heard),
+            Self::Awaited | Self::NothingHeard => None,
+        }
+    }
 }

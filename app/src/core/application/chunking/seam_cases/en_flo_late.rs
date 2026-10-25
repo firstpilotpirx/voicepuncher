@@ -1,0 +1,186 @@
+//! The recorded seams of en Flo, lead-ins 2.1 to 3.5 s.
+
+use super::SeamCase;
+
+pub(super) const CASES: &[SeamCase] = &[
+    SeamCase {
+        recording: "en Flo, slow, lead-in 2.1 s, seam 1",
+        tail: "I added the index, restarted the service, and the rest",
+        head: "We started the service, and the response time dropped from",
+        merged: "I added the index, restarted the service, and the response time dropped from",
+    },
+    SeamCase {
+        recording: "en Flo, slow, lead-in 2.1 s, seam 2",
+        tail: "were found there twice already. report to the project lead.",
+        head: "report to the project leads.",
+        merged: "were found there twice already. report to the project leads.",
+    },
+    SeamCase {
+        recording: "en Flo, slow, lead-in 2.8 s, seam 2",
+        tail: "found there twice already. a short report to the project",
+        head: "a short report to the project leads.",
+        merged: "found there twice already. a short report to the project leads.",
+    },
+    SeamCase {
+        recording: "en Flo, slow, lead-in 3.5 s, seam 1",
+        tail: "built after the migration. I added the index, restarted the",
+        head: "The index restarted the service, and the response time dropped",
+        merged: "built after the migration. I added the index, restarted the service, and the response time dropped",
+    },
+    SeamCase {
+        recording: "en Flo, slow, lead-in 3.5 s, seam 2",
+        tail: "day I updated the documentation. and sent ashore through ports",
+        head: "and send a short report to the project lead.",
+        merged: "day I updated the documentation. and send a short report to the project lead.",
+    },
+    SeamCase {
+        recording: "en Flo, fast, lead-in 2.1 s",
+        tail: "responsible for one thing only and have a clear interface.",
+        head: "one thing only and have a clear interface. We also",
+        merged: "responsible for one thing only and have a clear interface. We also",
+    },
+    SeamCase {
+        recording: "en Flo, fast, lead-in 2.8 s",
+        tail: "should be responsible for one thing only and have a",
+        head: "be responsible for one thing only and have a clear",
+        merged: "should be responsible for one thing only and have a clear",
+    },
+    SeamCase {
+        recording: "en Flo, sentence pauses, lead-in 2.1 s, seam 1",
+        tail: "after the migration. I added the index, restarted the service,",
+        head: "index, restarted the service, and the response time dropped from",
+        merged: "after the migration. I added the index, restarted the service, and the response time dropped from",
+    },
+    SeamCase {
+        recording: "en Flo, sentence pauses, lead-in 2.1 s, seam 2",
+        tail: "there twice already. and sent a short report to the",
+        head: "and send a short report to the project lead.",
+        merged: "there twice already. and sent a short report to the project lead.",
+    },
+    SeamCase {
+        recording: "en Flo, sentence pauses, lead-in 2.8 s, seam 2",
+        tail: "found there twice already. the documentation and send a short",
+        head: "the documentation and send a short report to the project",
+        merged: "found there twice already. the documentation and send a short report to the project",
+    },
+    SeamCase {
+        recording: "en Flo, sentence pauses, lead-in 3.5 s, seam 1",
+        tail: "was never built after the migration. I added the index.",
+        head: "I added the index, restarted the service, and the response",
+        merged: "was never built after the migration. I added the index, restarted the service, and the response",
+    },
+    SeamCase {
+        recording: "en Flo, sentence pauses, lead-in 3.5 s, seam 2",
+        tail: "were found there twice already. I updated the documentation and",
+        head: "I updated the documentation and sent a short report to",
+        merged: "were found there twice already. I updated the documentation and sent a short report to",
+    },
+    SeamCase {
+        recording: "en Flo, word pauses, lead-in 2.1 s, seam 1",
+        tail: "list every Friday afternoon. Then I opened the server logs.",
+        head: "server logs and saw that the database was answering slower",
+        merged: "list every Friday afternoon. Then I opened the server logs and saw that the database was answering slower",
+    },
+    SeamCase {
+        recording: "en Flo, word pauses, lead-in 2.1 s, seam 2",
+        tail: "I added the index, restarted the service, And the response?",
+        head: "and the response time dropped from 2 seconds to 40",
+        merged: "I added the index, restarted the service, And the response time dropped from 2 seconds to 40",
+    },
+    SeamCase {
+        recording: "en Flo, word pauses, lead-in 2.1 s, seam 3",
+        tail: "should be responsible for one thing only, and have a",
+        head: "and have a clear interface. We also need tests for",
+        merged: "should be responsible for one thing only, and have a clear interface. We also need tests for",
+    },
+    SeamCase {
+        recording: "en Flo, word pauses, lead-in 2.8 s, seam 1",
+        tail: "the list every Friday afternoon. Then I opened the server.",
+        head: "the server logs and saw that the database was answering",
+        merged: "the list every Friday afternoon. Then I opened the server logs and saw that the database was answering",
+    },
+    SeamCase {
+        recording: "en Flo, word pauses, lead-in 2.8 s, seam 2",
+        tail: "migration. I added the index, restarted the server logs, service.",
+        head: "and the response time dropped from 2 seconds to 40",
+        merged: "migration. I added the index, restarted the server logs, service. and the response time dropped from 2 seconds to 40",
+    },
+    SeamCase {
+        recording: "en Flo, word pauses, lead-in 2.8 s, seam 3",
+        tail: "part should be responsible for one thing, Only a second.",
+        head: "only and have a clear interface. We also need tests",
+        merged: "part should be responsible for one thing, Only a second. only and have a clear interface. We also need tests",
+    },
+    SeamCase {
+        recording: "en Flo, word pauses, lead-in 2.8 s, seam 4",
+        tail: "documentation and sent a short report to the Project leads.",
+        head: "Project leads.",
+        merged: "documentation and sent a short report to the Project leads.",
+    },
+    SeamCase {
+        recording: "en Flo, word pauses, lead-in 3.5 s, seam 1",
+        tail: "the list every Friday afternoon. Then I opened the site.",
+        head: "I opened the server logs and saw that the database",
+        merged: "the list every Friday afternoon. Then I opened the server logs and saw that the database",
+    },
+    SeamCase {
+        recording: "en Flo, word pauses, lead-in 3.5 s, seam 2",
+        tail: "the migration. I added the index, restarted the service and",
+        head: "the service and the response time dropped from 2 seconds",
+        merged: "the migration. I added the index, restarted the service and the response time dropped from 2 seconds",
+    },
+    SeamCase {
+        recording: "en Flo, word pauses, lead-in 3.5 s, seam 3",
+        tail: "parts. Each part should be responsible for one thing only",
+        head: "Thing only and have a clear interface We also need",
+        merged: "parts. Each part should be responsible for one thing only and have a clear interface We also need",
+    },
+    SeamCase {
+        recording: "en Flo, word pauses, lead-in 3.5 s, seam 4",
+        tail: "the documentation and sent a short report to the project",
+        head: "The project leads.",
+        merged: "the documentation and sent a short report to the project leads.",
+    },
+    SeamCase {
+        recording: "en Flo, low noise, lead-in 2.1 s",
+        tail: "2 seconds to 40 milliseconds. In the evening we discussed",
+        head: "In the evening we discussed how to split the large",
+        merged: "2 seconds to 40 milliseconds. In the evening we discussed how to split the large",
+    },
+    SeamCase {
+        recording: "en Flo, tempo x1.25, lead-in 2.8 s",
+        tail: "into several small parts. Each part should be responsible for",
+        head: "Each part should be responsible for one thing only and",
+        merged: "into several small parts. Each part should be responsible for one thing only and",
+    },
+    SeamCase {
+        recording: "en Flo, tempo x1.25, lead-in 3.5 s",
+        tail: "large payment module into several small parts. Each part should",
+        head: "several small parts. Each part should be responsible for one",
+        merged: "large payment module into several small parts. Each part should be responsible for one",
+    },
+    SeamCase {
+        recording: "en Flo, tempo x0.8, lead-in 2.1 s, seam 2",
+        tail: "day I updated the documentation, and sent ashore through ports",
+        head: "and sent a short report to the project lead.",
+        merged: "day I updated the documentation, and sent a short report to the project lead.",
+    },
+    SeamCase {
+        recording: "en Flo, tempo x0.8, lead-in 2.8 s, seam 2",
+        tail: "bugs were found there twice already. and said to sure",
+        head: "documentation and send a short report to the project lead.",
+        merged: "bugs were found there twice already. and said to sure documentation and send a short report to the project lead.",
+    },
+    SeamCase {
+        recording: "en Flo, tempo x0.8, lead-in 3.5 s, seam 1",
+        tail: "after the migration. I added the index, reset, and the",
+        head: "I added the index, restarted the service, and the response",
+        merged: "after the migration. I added the index, restarted the service, and the response",
+    },
+    SeamCase {
+        recording: "en Flo, tempo x0.8, lead-in 3.5 s, seam 2",
+        tail: "because bugs were found there twice already. the documentation and",
+        head: "the documentation and sent a short report to the project",
+        merged: "because bugs were found there twice already. the documentation and sent a short report to the project",
+    },
+];

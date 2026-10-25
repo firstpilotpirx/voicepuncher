@@ -194,7 +194,12 @@ fn should_open_from_the_menu_with_every_row_present_and_done_enabled() {
     // Then
     assert!(model.rows.iter().all(|r| r.status == RowStatus::Present));
     assert!(model.done_enabled());
-    assert_eq!(model.total_fraction(), 1.0);
+    assert!(
+        (model.total_fraction() - 1.0).abs() < 1e-6,
+        "{} is not {}",
+        model.total_fraction(),
+        1.0
+    );
 }
 
 #[test]

@@ -2,19 +2,15 @@
 //! reads what its first screen shows through the overlay's own inspectors — the calls the
 //! main-thread tests of `visualfeedback_macos` make.
 
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::atomic::AtomicU32;
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{ensure, Context, Result};
 use cucumber::{given, then, when};
 use objc2::MainThreadMarker;
 use objc2_app_kit::NSWorkspace;
 use objc2_foundation::{NSDate, NSRunLoop};
 
 use voicepuncher::adapters::secondary::visualfeedback::macos::MacosVisualIndicator;
-use voicepuncher::core::application::VisualIndicator;
-use voicepuncher::core::domain::{FailingPart, FailureNotice, VoiceCommand};
 
 use crate::IntegrationWorld;
 

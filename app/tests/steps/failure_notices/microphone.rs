@@ -1,18 +1,15 @@
 //! A microphone that fails or disappears while a dictation runs.
 
-use anyhow::{bail, Result};
 use cucumber::{given, then, when};
+use voicepuncher::test_doubles::prelude::*;
 
-use voicepuncher::core::application::PipelineInput;
-use voicepuncher::core::domain::{FailingPart, FailureNotice};
-
-use super::{expect_notice, run, NOTICE_DEADLINE};
+use super::{expect_notice, run, Microphone, NOTICE_DEADLINE};
 use crate::IntegrationWorld;
 
 #[given("a dictation has just started, nothing recorded yet")]
 fn dictation_just_started(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
-    run.setup.nothing_recorded = true;
+    run.setup.microphone = Microphone::RecordsNothing;
     run.start_hotkey_dictation()
 }
 

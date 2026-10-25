@@ -31,10 +31,9 @@ fn tested(run: &Value) -> bool {
             .any(|stage| text(stage, "result") != "skipped")
 }
 
-/// The plan of a rerun from the journal's text.
-pub fn plan(journal: &str, worktree: &Path, names: &[String]) -> Result<Plan, String> {
-    let worktree = worktree.to_string_lossy();
-    let last = journal
+/// The last run of `worktree` in the journal's text that tested something.
+fn last_run(journal: &str, worktree: &str) -> Result<Value, String> {
+    journal
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
         .filter(|run| text(run, "worktree") == worktree && tested(run))
@@ -44,7 +43,21 @@ pub fn plan(journal: &str, worktree: &Path, names: &[String]) -> Result<Plan, St
                 "no run of this worktree in the stage journal ({})",
                 journal::path().display()
             )
-        })?;
+        })
+}
+
+/// What a rerun of `names` runs, as its line says it.
+fn count(names: &[String]) -> String {
+    if names.is_empty() {
+        "no named test, so the whole stage".to_string()
+    } else {
+        format!("{} test(s)", names.len())
+    }
+}
+
+/// The plan of a rerun from the journal's text.
+pub fn plan(journal: &str, worktree: &Path, names: &[String]) -> Result<Plan, String> {
+    let last = last_run(journal, &worktree.to_string_lossy())?;
     let what = format!(
         "the last run ({}, {})",
         text(&last, "recipe"),
@@ -64,12 +77,10 @@ pub fn plan(journal: &str, worktree: &Path, names: &[String]) -> Result<Plan, St
     } else {
         names.to_vec()
     };
-    let count = if names.is_empty() {
-        "no named test, so the whole stage".to_string()
-    } else {
-        format!("{} test(s)", names.len())
-    };
-    let say = vec![format!("● rerun of {what}: stage {stage}, {count}")];
+    let say = vec![format!(
+        "● rerun of {what}: stage {stage}, {}",
+        count(&names)
+    )];
     Ok(Plan { stage: (!stage.is_empty()).then_some(stage), names, say })
 }
 

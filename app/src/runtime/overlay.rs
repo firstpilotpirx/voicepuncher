@@ -72,10 +72,8 @@ mod tests {
     use crate::core::application::live_transcript_view::MockLiveTranscriptView;
     use crate::core::application::visual_indicator::MockVisualIndicator;
 
-    #[test]
-    #[expect(clippy::too_many_lines, reason = "size baseline")]
-    fn should_forward_every_call_to_the_shared_overlay() {
-        // Given
+    /// An overlay that expects every call of [`VisualIndicator`] once.
+    fn expect_each_call_once() -> MockVisualIndicator {
         let mut overlay = MockVisualIndicator::new();
         overlay.expect_show_recording().once().return_const(());
         overlay
@@ -110,6 +108,13 @@ mod tests {
             .expect_live_transcript_view()
             .once()
             .returning(|| Box::new(MockLiveTranscriptView::new()));
+        overlay
+    }
+
+    #[test]
+    fn should_forward_every_call_to_the_shared_overlay() {
+        // Given
+        let overlay = expect_each_call_once();
         let shared = SharedVisualIndicator::new(Box::new(overlay));
         let forwarding: Box<dyn VisualIndicator> = Box::new(shared.clone());
         // When

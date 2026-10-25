@@ -4,12 +4,9 @@
 //! service on loopback).
 
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
-use std::sync::mpsc::{self, Receiver};
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::sync::atomic::AtomicU32;
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{anyhow, bail, Context, Result};
 use cucumber::{given, then, when};
 use rtrb::{Producer, RingBuffer};
 use tungstenite::Message;
@@ -17,10 +14,8 @@ use tungstenite::Message;
 use voicepuncher::adapters::secondary::commandspotting::websocket::kept_mic::{
     KeeperTimings, KeptMic, MicOpener, OpenMic,
 };
-use voicepuncher::adapters::secondary::commandspotting::websocket::AudioStream;
+use voicepuncher::adapters::secondary::commandspotting::websocket::{AudioStream, MicrophoneAudio};
 use voicepuncher::adapters::secondary::recording::cpal::capture::{on_frames, CaptureHealth};
-use voicepuncher::core::application::PipelineInput;
-use voicepuncher::core::domain::{AudioBuffer16k, VoiceCommand};
 
 use super::pipeline_log;
 use crate::IntegrationWorld;
@@ -311,9 +306,7 @@ fn reports_dropped(world: &mut IntegrationWorld) -> Result<()> {
     let stream = AudioStream::start(
         &url,
         &VoiceCommand::STANDBY,
-        Instant::now(),
-        48_000,
-        heard,
+        MicrophoneAudio { audio: heard, native_rate: 48_000, captured_from: Instant::now() },
         inputs_tx,
     )?;
     let deadline = Instant::now() + WAIT;

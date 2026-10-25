@@ -4,7 +4,7 @@ use crate::core::domain::raw_transcript::EmptyTranscript;
 pub struct CleanedText(String);
 
 impl CleanedText {
-    pub fn new(s: String) -> Result<Self, EmptyTranscript> {
+    pub fn new(s: &str) -> Result<Self, EmptyTranscript> {
         if s.trim().is_empty() {
             Err(EmptyTranscript)
         } else {
@@ -26,7 +26,7 @@ mod tests {
         // Given
         let input = " hello ".to_owned();
         // When
-        let result = CleanedText::new(input).unwrap();
+        let result = CleanedText::new(&input).unwrap();
         // Then
         assert_eq!(result.as_str(), "hello");
     }
@@ -36,7 +36,7 @@ mod tests {
         // Given
         let input = String::new();
         // When
-        let result = CleanedText::new(input);
+        let result = CleanedText::new(&input);
         // Then
         assert!(result.is_err());
     }
@@ -46,7 +46,7 @@ mod tests {
         // Given
         let input = "   \n\t".to_owned();
         // When
-        let result = CleanedText::new(input);
+        let result = CleanedText::new(&input);
         // Then
         assert!(result.is_err());
     }

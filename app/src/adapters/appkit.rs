@@ -1,12 +1,98 @@
 //! The `AppKit` building blocks the permissions and download windows share.
 
+use std::cell::RefCell;
+use std::thread::LocalKey;
+
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Sel};
-use objc2::MainThreadMarker;
+use objc2::{msg_send, ClassType, DefinedClass, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSBackingStoreType, NSButton, NSFont, NSTextAlignment, NSTextField, NSWindow, NSWindowStyleMask,
+    NSBackingStoreType, NSButton, NSFont, NSTextAlignment, NSTextField, NSView, NSWindow,
+    NSWindowStyleMask,
 };
-use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
+use objc2_foundation::{NSObject, NSPoint, NSRect, NSSize, NSString};
+
+/// What Quit of a window does.
+pub type QuitAction = Box<dyn Fn()>;
+
+/// A window an adapter keeps on the main thread, with what its Quit button does.
+pub trait KeptWindow {
+    /// The window itself.
+    fn window(&self) -> &NSWindow;
+    /// What Quit does, when it was set.
+    fn quit_action(&mut self) -> &mut Option<QuitAction>;
+}
+
+/// Declares `WINDOW`, the main thread's slot of the kept window `$shown`, whose fields
+/// `window` and `quit` hold the window and what its Quit does.
+macro_rules! kept_window_slot {
+    ($shown:ident) => {
+        thread_local! {
+            /// The window, reached by the work dispatched to the main queue.
+            static WINDOW: std::cell::RefCell<Option<$shown>> =
+                const { std::cell::RefCell::new(None) };
+        }
+
+        impl $crate::adapters::appkit::KeptWindow for $shown {
+            fn window(&self) -> &objc2_app_kit::NSWindow {
+                &self.window
+            }
+
+            fn quit_action(&mut self) -> &mut Option<$crate::adapters::appkit::QuitAction> {
+                &mut self.quit
+            }
+        }
+    };
+}
+pub(crate) use kept_window_slot;
+
+/// The main thread's slot of a kept window.
+pub type WindowSlot<W> = LocalKey<RefCell<Option<W>>>;
+
+/// Sets what Quit of the window in `slot` does.
+pub fn set_quit<W: KeptWindow>(slot: &'static WindowSlot<W>, quit: QuitAction) {
+    slot.with_borrow_mut(|state| {
+        if let Some(state) = state {
+            *state.quit_action() = Some(quit);
+        }
+    });
+}
+
+/// Runs what Quit of the window in `slot` does; exits the process when nothing was set.
+pub fn quit<W: KeptWindow>(slot: &'static WindowSlot<W>) {
+    let quit = slot.with_borrow_mut(|state| state.as_mut().and_then(|s| s.quit_action().take()));
+    match quit {
+        Some(quit) => quit(),
+        None => std::process::exit(0),
+    }
+}
+
+/// Hides the window in `slot`.
+pub fn close<W: KeptWindow>(slot: &'static WindowSlot<W>) {
+    slot.with_borrow(|state| {
+        if let Some(state) = state {
+            state.window().orderOut(None);
+        }
+    });
+}
+
+/// A new object of `T`, a class defined on `NSObject` without instance variables.
+pub fn new_plain_object<T>(mtm: MainThreadMarker) -> Retained<T>
+where
+    T: DefinedClass<Ivars = ()> + ClassType<Super = NSObject> + MainThreadOnly,
+{
+    let this = T::alloc(mtm).set_ivars(());
+    // SAFETY: `NSObject`'s `init` on a freshly allocated object.
+    unsafe { msg_send![super(this), init] }
+}
+
+/// An empty content view `width` by `height`.
+pub fn content_view(mtm: MainThreadMarker, width: f64, height: f64) -> Retained<NSView> {
+    NSView::initWithFrame(
+        mtm.alloc::<NSView>(),
+        NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(width, height)),
+    )
+}
 
 /// A titled window with a close button, `width` by `height`, kept when closed.
 pub fn titled_window(

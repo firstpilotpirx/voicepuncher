@@ -4,11 +4,8 @@
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{Context, Result};
 use voicepuncher_copy_pool::ServiceAddress;
 
 /// The text the stand-in service hears in every recording it answers.

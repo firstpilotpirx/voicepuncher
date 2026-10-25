@@ -1,30 +1,26 @@
 use std::collections::HashMap;
-use std::io::{Read, Write};
-use std::net::TcpListener;
+use std::io::Write;
 
-use voicepuncher::adapters::secondary::localservices::catalog::{needed, Machine, Needs};
+use voicepuncher_test_steps::loopback::{serve_each, skip_request};
+
+pub(crate) use voicepuncher::adapters::secondary::localservices::catalog::{
+    needed, Machine, Needs,
+};
 use voicepuncher::adapters::secondary::localservices::process::HttpProbe;
 use voicepuncher::config::Config;
 use voicepuncher::core::domain::ServiceKind;
 
 /// A whisper-server stand-in on a free port: healthy, and named on its start page.
 fn whisper_on_free_port() -> u16 {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    std::thread::spawn(move || {
-        for stream in listener.incoming() {
-            let Ok(mut stream) = stream else { continue };
-            let mut request = [0u8; 1024];
-            let _ = stream.read(&mut request);
-            let body = "Whisper.cpp Server";
-            let _ = write!(
-                stream,
-                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                body.len()
-            );
-        }
-    });
-    port
+    serve_each(|mut stream| {
+        skip_request(&mut stream);
+        let body = "Whisper.cpp Server";
+        let _ = write!(
+            stream,
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+    })
 }
 
 #[test]

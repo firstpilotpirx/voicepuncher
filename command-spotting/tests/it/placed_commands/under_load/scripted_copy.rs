@@ -11,6 +11,7 @@ use std::time::Duration;
 use voicepuncher_command_spotting::confirm::Hear;
 
 use crate::scripted_hearing::ScriptedHearing;
+use voicepuncher_command_spotting::conversions::saturating_i16;
 
 const HEALTH_PREFIX: &str = "GET /health";
 const WAV_PART_START: &[u8] = b"Content-Type: audio/wav\r\n\r\n";
@@ -38,7 +39,10 @@ pub fn serve(hearing: ScriptedHearing, decoding: Duration) -> String {
 fn as_heard_over_wav(samples: &[f32]) -> Vec<f32> {
     samples
         .iter()
-        .map(|s| f32::from((s.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16) / f32::from(i16::MAX))
+        .map(|s| {
+            f32::from(saturating_i16(s.clamp(-1.0, 1.0) * f32::from(i16::MAX)))
+                / f32::from(i16::MAX)
+        })
         .collect()
 }
 

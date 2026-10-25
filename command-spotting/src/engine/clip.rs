@@ -163,7 +163,12 @@ mod tests {
         // When
         let clip = steady_clip(&audio, 0, 0.0);
         // Then
-        assert_eq!(clip.gain, MAX_GAIN);
+        assert!(
+            (clip.gain - MAX_GAIN).abs() < 1e-6,
+            "{} is not {}",
+            clip.gain,
+            MAX_GAIN
+        );
     }
 
     #[test]
@@ -173,7 +178,12 @@ mod tests {
         // When
         let clip = steady_clip(&audio, 0, 0.0);
         // Then
-        assert_eq!(clip.gain, 1.0);
+        assert!(
+            (clip.gain - 1.0).abs() < 1e-6,
+            "{} is not {}",
+            clip.gain,
+            1.0
+        );
         assert_eq!(clip.samples.last(), Some(&0.3));
     }
 }

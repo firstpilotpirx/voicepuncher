@@ -1,21 +1,10 @@
 //! Stand-ins for the ports the pipeline drives in the voice-control scenarios. Each records
 //! what it was asked to do as an `Event` in one shared, ordered log.
 
-use std::sync::mpsc::Receiver;
-use std::sync::{Arc, Mutex};
 use std::thread::ThreadId;
-use std::time::{Duration, Instant};
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::Result;
-
-use voicepuncher::core::application::audio_recorder::LiveChunk;
-use voicepuncher::core::application::{
-    AudioRecorder, ChunkingCfg, CommandSpotter, KeyPresser, SoundPlayer, TextPaster, Transcriber,
-    VisualIndicator,
-};
-use voicepuncher::core::domain::{
-    AudioBuffer16k, CleanedText, FailureNotice, RawTranscript, VoiceCommand,
-};
+use voicepuncher::core::domain::conversions::saturating_usize;
 
 /// The stand-ins' audio rate: one sample per millisecond is enough to measure a lead-in.
 const SAMPLES_PER_SEC: f32 = AudioBuffer16k::SAMPLE_RATE_HZ as f32;
@@ -77,11 +66,7 @@ impl AudioRecorder for NotingRecorder {
         Ok(AudioBuffer16k::new(vec![1_000i16; one_second]))
     }
 
-    fn start_live_chunks(&mut self, _cfg: ChunkingCfg) -> Result<Option<Receiver<LiveChunk>>> {
-        Ok(None)
-    }
-
-    fn flush_live_chunks(&mut self) {}
+    voicepuncher::no_live_chunks!();
 
     fn truncate_at(&mut self, cut: Instant) {
         *self.cut.lock().unwrap() = Some(cut);
@@ -91,7 +76,9 @@ impl AudioRecorder for NotingRecorder {
     /// is transcribed with the recording.
     fn begin_with(&mut self, lead_in: AudioBuffer16k) {
         let now = Instant::now();
-        let heard_from = now - Duration::from_millis(lead_in.duration_ms());
+        let heard_from = now
+            .checked_sub(Duration::from_millis(lead_in.duration_ms()))
+            .unwrap();
         let heard: Vec<(Instant, String)> = self
             .said_before
             .drain(..)
@@ -129,18 +116,7 @@ impl Transcriber for SpeechBeforeCut {
     }
 }
 
-pub struct RecordingPaster(pub Events);
-
-impl TextPaster for RecordingPaster {
-    fn paste(&mut self, text: &CleanedText) -> Result<()> {
-        record(&self.0, Event::Pasted(text.as_str().to_owned()));
-        Ok(())
-    }
-
-    fn leave_in_clipboard(&mut self, text: &CleanedText) -> Result<()> {
-        self.paste(text)
-    }
-}
+pub type RecordingPaster = voicepuncher::test_doubles::NotingPaster<Event>;
 
 pub struct RecordingKeyPresser(pub Events);
 
@@ -291,7 +267,7 @@ impl CommandSpotter for ScriptedSpotter {
         let secs = Instant::now()
             .saturating_duration_since(since)
             .as_secs_f32();
-        AudioBuffer16k::new(vec![0; (secs * SAMPLES_PER_SEC) as usize])
+        AudioBuffer16k::new(vec![0; saturating_usize(secs * SAMPLES_PER_SEC)])
     }
 }
 

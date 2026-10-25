@@ -60,7 +60,7 @@ fn run_worker_over(answers: Vec<Option<&'static str>>, view: MockLiveTranscriptV
     let (results_tx, _results_rx) = mpsc::sync_channel(1);
     let (live_transcript, _recording_end) = LiveTranscript::new(Box::new(view));
     let transcriber: SharedTranscriber = Arc::new(Mutex::new(Box::new(transcriber)));
-    run_live_worker(transcriber, chunk_rx, results_tx, live_transcript);
+    run_live_worker(&transcriber, &chunk_rx, &results_tx, &live_transcript);
 }
 
 #[test]

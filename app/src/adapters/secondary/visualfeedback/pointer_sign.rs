@@ -37,8 +37,10 @@ pub trait PointerSignView: Send + Sync + 'static {
     fn hide(&self);
 }
 
+/// How long the overlay shows the Pasted sign, and the Pasted badge with it, in milliseconds.
+pub const PASTED_SIGN_MS: i64 = 500;
 /// How long the overlay shows the Pasted sign, and the Pasted badge with it.
-pub const PASTED_SIGN_LIFETIME: Duration = Duration::from_millis(500);
+pub const PASTED_SIGN_LIFETIME: Duration = Duration::from_millis(PASTED_SIGN_MS.unsigned_abs());
 /// How long the overlay shows a failure notice, and the failure badge with it.
 pub const FAILURE_NOTICE_LIFETIME: Duration = Duration::from_secs(4);
 
@@ -56,9 +58,11 @@ impl Default for SignLifetimes {
     }
 }
 
-/// The overlay, plus the dictation sign while a dictation runs: each overlay signal shows its
-/// badge, the Pasted and failure badges hide themselves after their lifetime, hiding the
-/// overlay hides the sign, and a command sign or the commands-unavailable sign leave it as it is.
+/// The overlay, plus the dictation sign while a dictation runs.
+///
+/// Each overlay signal shows its badge, the Pasted and failure badges hide themselves after their
+/// lifetime, hiding the overlay hides the sign, and a command sign or the commands-unavailable sign
+/// leave it as it is.
 pub struct PointerSignIndicator<V, S> {
     overlay: V,
     sign: Arc<S>,
@@ -169,7 +173,7 @@ mod tests {
     }
 
     #[derive(Clone, Default)]
-    struct Sign(Arc<Mutex<Vec<SignCall>>>);
+    pub(crate) struct Sign(Arc<Mutex<Vec<SignCall>>>);
 
     impl Sign {
         fn calls(&self) -> Vec<SignCall> {
@@ -188,15 +192,7 @@ mod tests {
     }
 
     fn quiet_overlay() -> MockVisualIndicator {
-        let mut overlay = MockVisualIndicator::new();
-        overlay.expect_show_recording().return_const(());
-        overlay.expect_show_recognizing_speech().return_const(());
-        overlay.expect_show_waiting_for_focus().return_const(());
-        overlay.expect_show_pasted().return_const(());
-        overlay.expect_hide().return_const(());
-        overlay.expect_show_command_sign().return_const(());
-        overlay.expect_show_failure_notice().return_const(());
-        overlay
+        crate::core::application::prelude::accepting_overlay()
     }
 
     fn indicator(sign: &Sign) -> PointerSignIndicator<MockVisualIndicator, Sign> {

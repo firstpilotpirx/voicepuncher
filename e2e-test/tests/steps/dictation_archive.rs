@@ -1,9 +1,8 @@
 //! Steps of `dictation_archive.feature`: which recording-file runs write an archive entry.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, ensure, Context, Result};
 use cucumber::{given, then, when};
 use serde_json::Value;
 
@@ -125,9 +124,9 @@ fn one_entry_written(world: &mut E2eWorld) -> Result<()> {
     );
     let pasted = json["pasted_text"].as_str().unwrap_or_default().trim();
     ensure!(
-        pasted == world.stdout,
+        pasted == world.app.stdout,
         "the archived text {pasted:?} is not the printed text {:?}",
-        world.stdout
+        world.app.stdout
     );
     Ok(())
 }
@@ -144,9 +143,9 @@ fn entry_from_recording_file(world: &mut E2eWorld) -> Result<()> {
 }
 
 fn ensure_succeeded(world: &E2eWorld) -> Result<()> {
-    let status = world.exit_status.context("the app did not run")?;
+    let status = world.app.exit_status.context("the app did not run")?;
     if !status.success() {
-        bail!("the app failed ({status}):\n{}", world.stderr);
+        bail!("the app failed ({status}):\n{}", world.app.stderr);
     }
     Ok(())
 }

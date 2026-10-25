@@ -29,9 +29,9 @@ hound = "=3.5.1"
 voicepuncher = { path = "../app" }
 cucumber = "=0.23.0"
 regex = "=1.12.3"
+voicepuncher-test-steps = { path = "../test-steps" }
 
 [dev-dependencies]
-voicepuncher-test-steps = { path = "../test-steps" }
 env_logger = "=0.11.10"
 log = "=0.4.29"
 voicepuncher-command-spotting = { path = "../command-spotting" }

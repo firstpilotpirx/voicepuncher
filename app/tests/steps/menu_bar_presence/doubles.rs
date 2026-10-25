@@ -1,12 +1,11 @@
 //! The stand-ins of the menu bar presence scenarios.
 
 use super::{
-    bail, pipeline_config, set, Arc, AudioBuffer16k, AudioRecorder, ChunkingCfg, CleanedText,
-    Config, Duration, FailureNotice, Flag, FocusProbe, FocusWaitCfg, FocusedElement, HotkeyBinding,
-    HotkeyListener, JoinHandle, LiveChunk, Mutex, NoKeys, Parts, Pipeline, PipelineAssembler,
-    PipelineInput, PipelineParts, PttSignal, QuietSpotter, RawTranscript, Receiver, Result, Sender,
-    SharedVisualIndicator, SoundPlayer, TextPaster, Transcriber, VisualIndicator, DICTATED,
-    FOCUS_POLL, POLL, SILENT_SERVICE_ERROR,
+    bail, pipeline_config, set, Arc, AudioBuffer16k, AudioRecorder, CleanedText, Config, Duration,
+    Flag, FocusProbe, FocusWaitCfg, FocusedElement, HotkeyBinding, HotkeyListener, JoinHandle,
+    Mutex, NoKeys, Parts, Pipeline, PipelineAssembler, PipelineInput, PipelineParts, PttSignal,
+    QuietSpotter, RawTranscript, Receiver, Result, Sender, SharedVisualIndicator, SoundPlayer,
+    TextPaster, Transcriber, VisualIndicator, DICTATED, FOCUS_POLL, POLL, SILENT_SERVICE_ERROR,
 };
 
 /// Builds every pipeline from stand-ins over the overlay the status item decorates.
@@ -58,20 +57,7 @@ impl AudioRecorder for StandInRecorder {
         Ok(())
     }
 
-    fn stop(&mut self) -> Result<AudioBuffer16k> {
-        Ok(AudioBuffer16k::new(vec![
-            1_000i16;
-            AudioBuffer16k::SAMPLE_RATE_HZ
-                as usize
-        ]))
-    }
-
-    fn start_live_chunks(&mut self, _cfg: ChunkingCfg) -> Result<Option<Receiver<LiveChunk>>> {
-        Ok(None)
-    }
-
-    fn flush_live_chunks(&mut self) {}
-    voicepuncher::records_whole_buffers_only!();
+    voicepuncher::hands_over_one_second!();
 }
 
 /// Answers with the dictated sentence, fails when the service is down, and waits while held.
@@ -115,16 +101,12 @@ impl SoundPlayer for StandInSounds {
 pub(super) struct QuietOverlay;
 
 impl VisualIndicator for QuietOverlay {
-    fn show_recording(&self) {}
-    fn show_recognizing_speech(&self) {}
-    fn show_waiting_for_focus(&self) {}
-    fn show_pasted(&self) {}
-    fn hide(&self) {}
-    fn show_failure_notice(&self, _notice: &FailureNotice) {}
+    voicepuncher::shows_no_dictation_states!();
     voicepuncher::shows_no_voice_control_signs!();
 }
 
-pub(super) struct ScriptedFocus(pub(super) Flag);
+/// A focus a scenario switches between a text field and a button.
+pub(crate) struct ScriptedFocus(pub(crate) Flag);
 
 impl FocusProbe for ScriptedFocus {
     fn focused_element(&self) -> Result<Option<FocusedElement>> {
@@ -145,7 +127,7 @@ impl FocusProbe for ScriptedFocus {
 
 /// The keyboard the runtime's listener reads.
 #[derive(Clone, Default)]
-pub(super) struct FakeKeyboard {
+pub(crate) struct FakeKeyboard {
     pub(super) wired: Arc<Mutex<Option<Sender<PttSignal>>>>,
 }
 

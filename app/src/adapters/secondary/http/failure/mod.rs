@@ -22,12 +22,11 @@ impl Failure {
             ureq::Error::Status(code, _) if *code >= 500 || *code == TOO_MANY_REQUESTS => {
                 Self::Busy(*code)
             }
-            ureq::Error::Status(..) => Self::Other,
             ureq::Error::Transport(_) if is_dropped_connection(error) => Self::Dropped,
             ureq::Error::Transport(transport) if io_errors(transport).any(is_timeout) => {
                 Self::TimedOut
             }
-            ureq::Error::Transport(_) => Self::Other,
+            ureq::Error::Transport(_) | ureq::Error::Status(..) => Self::Other,
         }
     }
 

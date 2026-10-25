@@ -4,7 +4,7 @@
 
 use std::io::Write;
 use std::path::Path;
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -13,13 +13,10 @@ use anyhow::Result;
 
 use voicepuncher::adapters::secondary::visualfeedback::quiet::QuietVisualIndicator;
 use voicepuncher::config::Config;
-use voicepuncher::core::application::audio_recorder::LiveChunk;
 use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
-use voicepuncher::core::application::{
-    AudioRecorder, ChunkingCfg, HotkeyListener, PipelineInput, SoundPlayer, TextPaster, Transcriber,
-};
+use voicepuncher::core::application::{AudioRecorder, HotkeyListener, PipelineInput, Transcriber};
 use voicepuncher::core::domain::{
-    AudioBuffer16k, CleanedText, HotKey, HotkeyBinding, PttSignal, RawTranscript, RecordingMode,
+    AudioBuffer16k, HotKey, HotkeyBinding, PttSignal, RawTranscript, RecordingMode,
 };
 use voicepuncher::runtime::signals;
 use voicepuncher::runtime::{PipelineAssembler, Runtime, RuntimeObserver, RuntimeState};
@@ -55,16 +52,7 @@ fn should_keep_the_settings_when_the_edited_file_does_not_load() {
     hang_up();
     // Then
     wait_for_rejection("Bogus");
-    std::thread::sleep(SETTLE);
-    assert_eq!(
-        states.lock().unwrap().last(),
-        Some(&RuntimeState::Ready {
-            hotkey: HotKey::F13,
-            recording_mode: RecordingMode::Toggle,
-            voice_control: false
-        })
-    );
-    assert!(!states.lock().unwrap().contains(&RuntimeState::Restarting));
+    assert_still_ready_on_f13(&states);
     drop(runtime);
 }
 
@@ -81,6 +69,13 @@ fn should_keep_the_settings_when_the_edited_file_does_not_validate() {
     hang_up();
     // Then
     wait_for_rejection("transcription.base_url");
+    assert_still_ready_on_f13(&states);
+    drop(runtime);
+}
+
+/// Asserts that, once things settle, the runtime still runs the F13 settings it had and never
+/// restarted.
+fn assert_still_ready_on_f13(states: &States) {
     std::thread::sleep(SETTLE);
     assert_eq!(
         states.lock().unwrap().last(),
@@ -91,7 +86,6 @@ fn should_keep_the_settings_when_the_edited_file_does_not_validate() {
         })
     );
     assert!(!states.lock().unwrap().contains(&RuntimeState::Restarting));
-    drop(runtime);
 }
 
 fn wait_for_rejection(reason: &str) {
@@ -238,19 +232,9 @@ impl HotkeyListener for NoKeyboard {
 struct SilentRecorder;
 
 impl AudioRecorder for SilentRecorder {
-    fn start(&mut self) -> Result<()> {
-        Ok(())
-    }
+    voicepuncher::records_nothing!();
 
-    fn stop(&mut self) -> Result<AudioBuffer16k> {
-        Ok(AudioBuffer16k::new(Vec::new()))
-    }
-
-    fn start_live_chunks(&mut self, _cfg: ChunkingCfg) -> Result<Option<Receiver<LiveChunk>>> {
-        Ok(None)
-    }
-
-    fn flush_live_chunks(&mut self) {}
+    voicepuncher::no_live_chunks!();
     voicepuncher::records_whole_buffers_only!();
 }
 
@@ -262,22 +246,6 @@ impl Transcriber for NoSpeech {
     }
 }
 
-struct NoPaste;
+use voicepuncher::test_doubles::DiscardingPaster as NoPaste;
 
-impl TextPaster for NoPaste {
-    fn paste(&mut self, _text: &CleanedText) -> Result<()> {
-        Ok(())
-    }
-
-    fn leave_in_clipboard(&mut self, _text: &CleanedText) -> Result<()> {
-        Ok(())
-    }
-}
-
-struct Silent;
-
-impl SoundPlayer for Silent {
-    fn play_start(&self) {}
-    fn play_stop(&self) {}
-    fn play_cancel(&self) {}
-}
+use voicepuncher::test_doubles::Silent;

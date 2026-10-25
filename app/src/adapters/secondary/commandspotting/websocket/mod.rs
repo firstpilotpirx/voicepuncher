@@ -1,6 +1,7 @@
-//! `CommandSpotter` over the command spotting service's loopback WebSocket: while listening,
-//! the microphone streams to the service on a worker thread, and the service's events go
-//! into the pipeline's input channel.
+//! `CommandSpotter` over the command spotting service's loopback WebSocket.
+//!
+//! While listening, the microphone streams to the service on a worker thread, and the service's
+//! events go into the pipeline's input channel.
 
 pub mod client;
 mod heard;
@@ -26,6 +27,10 @@ use kept_mic::{KeeperTimings, KeptMic, MicOpener};
 pub use link::LinkTimings;
 use link::Outage;
 
+mod stream;
+pub mod test_stream;
+use stream::{stream_to_service, Stream};
+
 /// How long the worker waits between rounds while the service is away.
 const AWAY_WAIT: Duration = Duration::from_millis(10);
 
@@ -35,6 +40,13 @@ static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
 enum Control {
     ListenFor(Vec<VoiceCommand>),
     Stop,
+}
+
+/// The audio a microphone captures: its samples, their rate and when the first was captured.
+pub struct MicrophoneAudio<A> {
+    pub audio: A,
+    pub native_rate: u32,
+    pub captured_from: Instant,
 }
 
 /// Audio streaming to the service on a worker thread, whatever captures it.
@@ -50,37 +62,24 @@ impl AudioStream {
     /// resampled to 16 kHz; the service's events go to `inputs`. When the service goes
     /// away the worker reaches for it again until stopped, and tells `inputs` of the loss
     /// and of the return.
-    #[expect(clippy::too_many_arguments, reason = "size baseline")]
     pub fn start(
         url: &str,
         commands: &[VoiceCommand],
-        audio_start: Instant,
-        native_rate: u32,
-        audio: impl CapturedAudio,
+        microphone: MicrophoneAudio<impl CapturedAudio>,
         inputs: Sender<PipelineInput>,
     ) -> Result<Self> {
-        Self::start_with_timings(
-            url,
-            commands,
-            audio_start,
-            native_rate,
-            audio,
-            inputs,
-            LinkTimings::default(),
-        )
+        Self::start_with_timings(url, commands, microphone, inputs, LinkTimings::default())
     }
 
     /// As `start`, pacing the attempts after a loss and the replay by `timings`.
-    #[expect(clippy::too_many_arguments, reason = "size baseline")]
     pub fn start_with_timings(
         url: &str,
         commands: &[VoiceCommand],
-        audio_start: Instant,
-        native_rate: u32,
-        audio: impl CapturedAudio,
+        microphone: MicrophoneAudio<impl CapturedAudio>,
         inputs: Sender<PipelineInput>,
         timings: LinkTimings,
     ) -> Result<Self> {
+        let MicrophoneAudio { audio, native_rate, captured_from: audio_start } = microphone;
         let mut client = SpottingClient::connect(url, audio_start)?;
         client.listen_for(commands)?;
         let session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
@@ -146,7 +145,7 @@ impl WebSocketCommandSpotter {
 
     /// Listens on the input device `name` names (see [`devices::open`]).
     pub fn with_input_device(mut self, name: &str) -> Self {
-        self.input_device = name.to_owned();
+        name.clone_into(&mut self.input_device);
         self
     }
 }
@@ -165,9 +164,11 @@ impl CommandSpotter for WebSocketCommandSpotter {
         let stream = AudioStream::start(
             &self.url,
             commands,
-            started_at,
-            AudioBuffer16k::SAMPLE_RATE_HZ,
-            audio,
+            MicrophoneAudio {
+                audio,
+                native_rate: AudioBuffer16k::SAMPLE_RATE_HZ,
+                captured_from: started_at,
+            },
             self.inputs.clone(),
         )?;
         log::info!("command spotting: streaming to the service");
@@ -199,202 +200,4 @@ impl CommandSpotter for WebSocketCommandSpotter {
 enum Link {
     Up(Box<SpottingClient>),
     Away(Outage),
-}
-
-/// What the streaming worker owns.
-struct Stream {
-    url: String,
-    session: u64,
-    link: Link,
-    /// How the attempts after a loss are paced and how far back the replay reaches.
-    timings: LinkTimings,
-    /// The commands listened for now, sent again to a new connection.
-    commands: Vec<VoiceCommand>,
-    /// The end of the last command reported: a replay never reaches back to it.
-    last_command_end: Option<Instant>,
-    resampler: StreamResampler,
-    audio: Box<dyn CapturedAudio>,
-    control: Receiver<Control>,
-    inputs: Sender<PipelineInput>,
-    heard: Arc<Mutex<HeardAudio>>,
-}
-
-/// Runs until told to stop; a lost service is reported once, a long outage once, and its
-/// return once.
-fn stream_to_service(mut stream: Stream) {
-    loop {
-        match stream.control.try_recv() {
-            Ok(Control::ListenFor(commands)) => stream.listen_for(commands),
-            Ok(Control::Stop) | Err(TryRecvError::Disconnected) => return stream.close(),
-            Err(TryRecvError::Empty) => {}
-        }
-        stream.stream_audio();
-        match &stream.link {
-            Link::Up(_) => stream.exchange(),
-            Link::Away(_) => stream.reach_for_service(),
-        }
-    }
-}
-
-impl Stream {
-    fn listen_for(&mut self, commands: Vec<VoiceCommand>) {
-        log::info!(
-            "command spotting: session={} listening for {commands:?}",
-            self.session
-        );
-        self.commands = commands;
-        if let Link::Up(client) = &mut self.link {
-            if let Err(e) = client.listen_for(&self.commands) {
-                self.lose(e);
-            }
-        }
-    }
-
-    /// Holds every sample captured, and sends it while the service is there.
-    fn stream_audio(&mut self) {
-        let captured = self.audio.take();
-        let samples = self.resampler.push(&captured);
-        if samples.is_empty() {
-            return;
-        }
-        if let Ok(mut heard) = self.heard.lock() {
-            heard.push(&samples, Instant::now());
-        }
-        if let Link::Up(client) = &mut self.link {
-            if let Err(e) = client.send_audio(&samples) {
-                self.lose(e);
-            }
-        }
-    }
-
-    /// Checks that the service answers and passes its events on.
-    fn exchange(&mut self) {
-        let Link::Up(client) = &mut self.link else {
-            return;
-        };
-        let events = client.keep_alive().and_then(|()| client.read_events());
-        match events {
-            Ok(events) => {
-                for mut event in events {
-                    self.note_command_end(&event);
-                    self.to_capture_times(&mut event);
-                    let _ = self.inputs.send(PipelineInput::Spotting(event));
-                }
-            }
-            Err(e) => self.lose(e),
-        }
-    }
-
-    /// The report times of `event`, dated by stream position, as the moments that audio was
-    /// captured: they fall behind the clock once audio was lost. Its own times stay, as the
-    /// lead-in is taken by them.
-    fn to_capture_times(&self, event: &mut SpottingEvent) {
-        let (SpottingEvent::PhraseSpotted { timing: Some(report), .. }
-        | SpottingEvent::CommandsSaid { timing: Some(report), .. }) = event
-        else {
-            return;
-        };
-        let Ok(heard) = self.heard.lock() else {
-            return;
-        };
-        report.words_ended = heard.captured_at(report.words_ended);
-        if let Some(confirmation) = report.confirmation.as_mut() {
-            confirmation.asked_at = heard.captured_at(confirmation.asked_at);
-        }
-    }
-
-    fn note_command_end(&mut self, event: &SpottingEvent) {
-        let end = match event {
-            SpottingEvent::PhraseSpotted { end, .. } | SpottingEvent::CommandsSaid { end, .. } => {
-                *end
-            }
-            _ => return,
-        };
-        self.last_command_end = Some(self.last_command_end.map_or(end, |last| last.max(end)));
-    }
-
-    fn lose(&mut self, error: anyhow::Error) {
-        log::error!("command spotting: session={} lost: {error:#}", self.session);
-        let lost_at = Instant::now();
-        if let Link::Up(client) = std::mem::replace(
-            &mut self.link,
-            Link::Away(Outage::since(lost_at, self.timings)),
-        ) {
-            client.close();
-        }
-        let _ = self.inputs.send(PipelineInput::SpottingLost);
-    }
-
-    /// Tries the service again when the pause after the last attempt is over; tells the
-    /// pipeline once when the outage has lasted too long for the replay to hide it.
-    #[expect(clippy::too_many_lines, reason = "size baseline")]
-    fn reach_for_service(&mut self) {
-        let Link::Away(outage) = &mut self.link else {
-            return;
-        };
-        let now = Instant::now();
-        if outage.became_long(now) {
-            let _ = self.inputs.send(PipelineInput::SpottingStillAway);
-        }
-        if !outage.due(now) {
-            std::thread::sleep(AWAY_WAIT);
-            return;
-        }
-        // The loss dated by stream position, as the command ends and the replay are.
-        let lost_at = outage.lost_at;
-        let replay_from = self
-            .timings
-            .replay_start(heard::dated(&self.heard, lost_at), self.last_command_end);
-        match self.reconnect(replay_from) {
-            Ok((client, replayed)) => {
-                self.session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
-                log::info!(
-                    "command spotting: session={} back after {:.1}s away, {:.1}s of audio sent again",
-                    self.session,
-                    lost_at.elapsed().as_secs_f32(),
-                    replayed.as_secs_f32()
-                );
-                self.link = Link::Up(Box::new(client));
-                let _ = self.inputs.send(PipelineInput::SpottingBack);
-            }
-            Err(e) => {
-                let Link::Away(outage) = &mut self.link else {
-                    return;
-                };
-                let pause = outage.failed(now);
-                if link::attempt_logged(outage.failed_attempts) {
-                    log::info!(
-                        "command spotting: session={} attempt {} to reach {} failed, next in {}ms: {e:#}",
-                        self.session,
-                        outage.failed_attempts,
-                        self.url,
-                        pause.as_millis()
-                    );
-                }
-            }
-        }
-    }
-
-    /// A new connection, told the current commands and sent the audio held from `replay_from`.
-    fn reconnect(&self, replay_from: Instant) -> Result<(SpottingClient, Duration)> {
-        let (audio_start, samples) = self.heard.lock().map_or_else(
-            |_| (Instant::now(), Vec::new()),
-            |heard| heard.replay_from(replay_from),
-        );
-        let mut client = SpottingClient::connect(&self.url, audio_start)?;
-        client.listen_for(&self.commands)?;
-        if !samples.is_empty() {
-            client.send_audio(&samples)?;
-        }
-        let replayed =
-            Duration::from_secs_f32(samples.len() as f32 / AudioBuffer16k::SAMPLE_RATE_HZ as f32);
-        Ok((client, replayed))
-    }
-
-    fn close(self) {
-        if let Link::Up(client) = self.link {
-            client.close();
-        }
-        log::info!("command spotting: session={} closed", self.session);
-    }
 }

@@ -1,24 +1,9 @@
 //! Dictations whose speech recognition goes wrong: the live worker dies, or a request never
 //! answers. Each dictation delivers one live chunk numbered by the recording it belongs to.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, Mutex};
-use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
-
-use voicepuncher::core::application::audio_recorder::LiveChunk;
-use voicepuncher::core::application::pipeline::{Pipeline, PipelineConfig, PipelineParts};
-use voicepuncher::core::application::{
-    AudioRecorder, ChunkingCfg, PipelineInput, SoundPlayer, TextPaster, Transcriber,
-    VisualIndicator,
-};
-use voicepuncher::core::domain::{
-    AudioBuffer16k, CleanedText, FailingPart, FailureNotice, PttSignal, RawTranscript,
-};
 
 use crate::IntegrationWorld;
 
@@ -51,23 +36,23 @@ pub struct LossRun {
 }
 
 fn run(world: &mut IntegrationWorld) -> Result<&mut LossRun> {
-    world.loss.as_mut().context("no loss scenario")
+    world.pipeline.loss.as_mut().context("no loss scenario")
 }
 
 #[given("the live transcription worker of a dictation stops without a result")]
 fn worker_dies(world: &mut IntegrationWorld) {
-    world.loss = Some(LossRun { loss: Some(Loss::WorkerDies), ..LossRun::default() });
+    world.pipeline.loss = Some(LossRun { loss: Some(Loss::WorkerDies), ..LossRun::default() });
 }
 
 #[given("the speech recognition service never answers the last chunk of a dictation")]
 fn never_answers(world: &mut IntegrationWorld) {
-    world.loss = Some(LossRun { loss: Some(Loss::NeverAnswers), ..LossRun::default() });
+    world.pipeline.loss = Some(LossRun { loss: Some(Loss::NeverAnswers), ..LossRun::default() });
 }
 
 #[given("the speech recognition service has stopped before a dictation ends")]
 fn service_stopped(world: &mut IntegrationWorld) {
     crate::steps::voice_control::pipeline_log();
-    world.loss = Some(LossRun { loss: Some(Loss::ServiceStopped), ..LossRun::default() });
+    world.pipeline.loss = Some(LossRun { loss: Some(Loss::ServiceStopped), ..LossRun::default() });
 }
 
 /// A pipeline over the stand-ins of `run`, on a thread of its own.
@@ -124,19 +109,27 @@ fn press_during_wait(world: &mut IntegrationWorld) -> Result<()> {
         press(&inputs)?;
     }
     let noticed = wait_until(STEP_WAIT, || !run.notices.lock().unwrap().is_empty());
-    if let Some(release) = run.release.take() {
-        let _ = release.send(());
-    }
-    // the recording the press during the wait started is stopped
-    press(&inputs)?;
-    drop(inputs);
-    thread
-        .join()
-        .map_err(|_| anyhow::anyhow!("the pipeline thread panicked"))?;
+    release_and_stop(run, inputs, thread)?;
     if !noticed {
         bail!("no failure notice within {STEP_WAIT:?} of the stop");
     }
     Ok(())
+}
+
+/// Ends the wait, stops the recording the press during it started and joins the pipeline.
+fn release_and_stop(
+    run: &mut LossRun,
+    inputs: Sender<PipelineInput>,
+    thread: JoinHandle<()>,
+) -> Result<()> {
+    if let Some(release) = run.release.take() {
+        let _ = release.send(());
+    }
+    press(&inputs)?;
+    drop(inputs);
+    thread
+        .join()
+        .map_err(|_| anyhow::anyhow!("the pipeline thread panicked"))
 }
 
 fn wait_until(limit: Duration, mut done: impl FnMut() -> bool) -> bool {
@@ -194,20 +187,13 @@ fn press_started_recording(world: &mut IntegrationWorld) -> Result<()> {
 struct OneChunkRecorder(Arc<AtomicUsize>);
 
 impl AudioRecorder for OneChunkRecorder {
-    fn start(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn stop(&mut self) -> Result<AudioBuffer16k> {
-        Ok(AudioBuffer16k::new(Vec::new()))
-    }
+    voicepuncher::records_nothing!();
 
     fn start_live_chunks(&mut self, _cfg: ChunkingCfg) -> Result<Option<Receiver<LiveChunk>>> {
         let n = self.0.fetch_add(1, Ordering::SeqCst);
-        let mut samples = vec![1_000i16; AudioBuffer16k::SAMPLE_RATE_HZ as usize];
-        samples[0] = n as i16;
+        let audio = voicepuncher::test_doubles::numbered_second(n);
         let (tx, rx) = mpsc::channel();
-        tx.send(LiveChunk { audio: AudioBuffer16k::new(samples), enqueued_at: Instant::now() })?;
+        tx.send(LiveChunk { audio, enqueued_at: Instant::now() })?;
         Ok(Some(rx))
     }
 
@@ -222,16 +208,13 @@ struct FirstDictationLost {
 }
 
 impl Transcriber for FirstDictationLost {
-    #[expect(clippy::excessive_nesting, reason = "size baseline")]
     fn transcribe(&mut self, audio: &AudioBuffer16k) -> Result<Option<RawTranscript>> {
         if audio.samples()[0] == 0 {
             match self.loss {
                 Loss::WorkerDies => panic!("the live transcription worker dies"),
                 Loss::ServiceStopped => bail!("{SERVICE_STOPPED}"),
                 Loss::NeverAnswers => {
-                    if let Some(release) = self.release.take() {
-                        let _ = release.recv();
-                    }
+                    let _ = self.release.take().map(|release| release.recv());
                     return Ok(Some(RawTranscript::new("A late answer.".to_owned())?));
                 }
             }
@@ -240,18 +223,7 @@ impl Transcriber for FirstDictationLost {
     }
 }
 
-struct CapturingPaster(Arc<Mutex<Vec<String>>>);
-
-impl TextPaster for CapturingPaster {
-    fn paste(&mut self, text: &CleanedText) -> Result<()> {
-        self.0.lock().unwrap().push(text.as_str().to_owned());
-        Ok(())
-    }
-
-    fn leave_in_clipboard(&mut self, _text: &CleanedText) -> Result<()> {
-        bail!("the text was left in the clipboard instead of pasted")
-    }
-}
+use super::doubles::CapturingPaster;
 
 /// Plays nothing and keeps the failure notices it is shown.
 struct Quiet(Arc<Mutex<Vec<FailureNotice>>>);

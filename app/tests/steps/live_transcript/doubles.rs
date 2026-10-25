@@ -3,21 +3,15 @@
 use super::{
     mpsc, send_part, Arc, AudioBuffer16k, AudioRecorder, ChunkingCfg, CleanedText, FailureNotice,
     LiveChunk, LiveTranscriptView, Log, Mutex, Parts, RawTranscript, Receiver, Result, Shown,
-    SoundPlayer, TextPaster, Transcriber, VecDeque, VisualIndicator,
+    TextPaster, Transcriber, VecDeque, VisualIndicator,
 };
-use voicepuncher::core::domain::VoiceCommand;
+use voicepuncher::test_doubles::prelude::*;
 
 /// Hands over a part only when the scenario sends one; the last part comes at the flush.
 pub(super) struct PartsOnDemand(pub(super) Parts);
 
 impl AudioRecorder for PartsOnDemand {
-    fn start(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn stop(&mut self) -> Result<AudioBuffer16k> {
-        Ok(AudioBuffer16k::new(Vec::new()))
-    }
+    voicepuncher::records_nothing!();
 
     fn start_live_chunks(&mut self, _cfg: ChunkingCfg) -> Result<Option<Receiver<LiveChunk>>> {
         let (tx, rx) = mpsc::channel();
@@ -109,12 +103,4 @@ impl LiveTranscriptView for NotingView {
     }
 }
 
-pub(super) struct Silent;
-
-impl SoundPlayer for Silent {
-    fn play_start(&self) {}
-    fn play_stop(&self) {}
-    fn play_cancel(&self) {}
-    fn play_listening_on(&self) {}
-    fn play_listening_off(&self) {}
-}
+pub(super) use voicepuncher::test_doubles::Silent;

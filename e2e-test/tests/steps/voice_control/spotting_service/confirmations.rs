@@ -7,10 +7,8 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use voicepuncher::test_doubles::prelude::*;
 
-use anyhow::{bail, Context, Result};
 use cucumber::{given, then, when};
 
 use voicepuncher_command_spotting::confirm::UtteranceTranscriber;
@@ -159,12 +157,12 @@ async fn confirm(world: &mut E2eWorld) -> Result<()> {
         let mark = log_mark();
         let started = Instant::now();
         let outcome = transcriber.transcribe(&[0.0; 1_600], 16_000, DEADLINE);
-        world.elapsed = Some(started.elapsed());
-        world.stdout = match outcome {
+        world.app.elapsed = Some(started.elapsed());
+        world.app.stdout = match outcome {
             Ok(heard) => heard.text.trim().to_owned(),
             Err(e) => format!("failed: {e:#}"),
         };
-        world.stderr = logged_since(mark, "").join("\n");
+        world.app.stderr = logged_since(mark, "").join("\n");
         Ok(())
     })
     .await
@@ -181,19 +179,23 @@ fn single_port(world: &E2eWorld) -> Result<u16> {
 
 #[then("the confirmation is logged as given up and ends without waiting much past its deadline, and no copy receives it")]
 fn given_up_unsent(world: &mut E2eWorld) -> Result<()> {
-    let took = world.elapsed.context("nothing was confirmed")?;
+    let took = world.app.elapsed.context("nothing was confirmed")?;
     let received = ANSWERED.lock().unwrap().contains(&single_port(world)?);
     let url = world.transcription_url.as_deref().unwrap_or_default();
     let logged = world
+        .app
         .stderr
         .lines()
         .any(|l| l.contains("confirmation given up unsent") && l.contains(url));
-    if !world.stdout.starts_with("failed") || !logged || took > DEADLINE + PAST_DEADLINE || received
+    if !world.app.stdout.starts_with("failed")
+        || !logged
+        || took > DEADLINE + PAST_DEADLINE
+        || received
     {
         bail!(
             "{:?} after {took:?}, received: {received}, log: {}",
-            world.stdout,
-            world.stderr
+            world.app.stdout,
+            world.app.stderr
         );
     }
     Ok(())
@@ -202,8 +204,8 @@ fn given_up_unsent(world: &mut E2eWorld) -> Result<()> {
 #[then("the confirmation is sent to the copy once it frees, and \"press enter\" is reported")]
 fn sent_once_free(world: &mut E2eWorld) -> Result<()> {
     let received = ANSWERED.lock().unwrap().contains(&single_port(world)?);
-    if world.stdout != "press enter" || !received {
-        bail!("{:?}, received by the copy: {received}", world.stdout);
+    if world.app.stdout != "press enter" || !received {
+        bail!("{:?}, received by the copy: {received}", world.app.stdout);
     }
     Ok(())
 }
@@ -212,17 +214,24 @@ fn sent_once_free(world: &mut E2eWorld) -> Result<()> {
     "the other copy confirms it within the confirmation's deadline and \"press enter\" is reported"
 )]
 fn other_copy_confirms(world: &mut E2eWorld) -> Result<()> {
-    let took = world.elapsed.context("nothing was confirmed")?;
-    if world.stdout != "press enter" || took >= DEADLINE || !world.stderr.contains("another copy") {
-        bail!("{:?} after {took:?}, log: {}", world.stdout, world.stderr);
+    let took = world.app.elapsed.context("nothing was confirmed")?;
+    if world.app.stdout != "press enter"
+        || took >= DEADLINE
+        || !world.app.stderr.contains("another copy")
+    {
+        bail!(
+            "{:?} after {took:?}, log: {}",
+            world.app.stdout,
+            world.app.stderr
+        );
     }
     Ok(())
 }
 
 #[then("it ends as given up, not as speech heard without a command")]
 fn ends_given_up(world: &mut E2eWorld) -> Result<()> {
-    if !world.stdout.starts_with("failed") {
-        bail!("the confirmation ended as {:?}", world.stdout);
+    if !world.app.stdout.starts_with("failed") {
+        bail!("the confirmation ended as {:?}", world.app.stdout);
     }
     Ok(())
 }

@@ -1,11 +1,12 @@
 pub mod accuracy_gate;
 pub mod concurrency;
+pub mod conversions;
 pub mod corpus;
 pub mod harness_args;
 pub mod machine_load;
 pub mod scenario_filter;
 pub mod speech;
-pub mod speech_cache;
+pub use voicepuncher_test_steps::speech_cache;
 pub mod stalled_copies;
 pub mod unanswered_copies;
 pub mod voice_commands;

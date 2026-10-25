@@ -14,16 +14,16 @@ pub fn parent_application() -> String {
     let parent = std::os::unix::process::parent_id();
     let mut pid = parent;
     for _ in 0..MAX_ANCESTORS {
-        let Some((ppid, command)) = process_entry(pid) else {
+        let Some((parent_pid, command)) = process_entry(pid) else {
             break;
         };
         if let Some(app) = application_name(&command) {
             return app;
         }
-        if ppid <= 1 {
+        if parent_pid <= 1 {
             break;
         }
-        pid = ppid;
+        pid = parent_pid;
     }
     process_entry(parent).map_or_else(
         || UNKNOWN_APP.into(),
@@ -38,8 +38,8 @@ fn process_entry(pid: u32) -> Option<(u32, String)> {
         .output()
         .ok()?;
     let line = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let (ppid, command) = line.split_once(char::is_whitespace)?;
-    Some((ppid.trim().parse().ok()?, command.trim().to_string()))
+    let (parent_pid, command) = line.split_once(char::is_whitespace)?;
+    Some((parent_pid.trim().parse().ok()?, command.trim().to_string()))
 }
 
 /// `iTerm` for `/Applications/iTerm.app/Contents/MacOS/iTerm2`.
