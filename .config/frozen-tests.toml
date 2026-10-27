@@ -10,3 +10,12 @@
 # beside = "<what ran beside it>"        # other sessions' runs, the [machine-lock] holder
 # branch = "<the branch whose check failed>"
 
+
+[[frozen]]
+test = "voicepuncher::it docs_check::should_pass_when_every_named_thing_exists"
+frozen = "2026-10-27"
+recipe = "full-check"
+stage = "test"
+beside = "the whole test stage under load (1539 tests); 16 s alone, 120 s limit"
+branch = "feat/reduce-voice-start-latency"
+
