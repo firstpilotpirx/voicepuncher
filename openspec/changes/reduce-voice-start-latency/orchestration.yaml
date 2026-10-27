@@ -1,0 +1,3 @@
+depends_on:
+  - change: log-voice-command-history
+    why: the confirmation switch writes the Whisper verdict into its command history entry and edits its Session and EngineCfg
