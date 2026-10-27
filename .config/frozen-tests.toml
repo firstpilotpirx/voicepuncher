@@ -28,3 +28,12 @@ stage = "test"
 beside = "the whole test stage of full-check, other worktrees building beside it; drawn after 74.6 ms against 50 ms"
 branch = "feat/show-dictation-history-window"
 
+
+[[frozen]]
+test = "scenario: Restart, a short pause, then speech that starts like another word"
+frozen = "2026-10-28"
+recipe = "full-check"
+stage = "e2e-smoke-voice"
+beside = "machine lock held by this run alone (wait 0.1 s); other sessions building beside it"
+branch = "fix/restart-crashed-services"
+
