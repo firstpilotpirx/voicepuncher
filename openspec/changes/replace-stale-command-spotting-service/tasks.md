@@ -12,13 +12,12 @@
 
 ## 3. Adoption checks the protocol and replaces a stale copy
 
-- [ ] 3.1 Red: supervision unit tests in `app/src/core/application/local_services/supervision_tests.rs`: another version at adoption is stopped and replaced with one log line; the same version is adopted; a refused stop fails the service naming the port; an adopted copy answering again with another version is replaced
-- [ ] 3.2 Green: `ServiceProbe::protocol`, the launcher's stop of the listener on a port, and the protocol branch of `decide` and `wait_for_return` in `supervision.rs`, with the fakes in `fakes.rs`
-- [ ] 3.3 Red: adapter integration tests in `app/tests/it/` for the stop of the listener: a listener with the program's file name is stopped, one of another name is left running
-- [ ] 3.4 Green: the stop in `app/src/adapters/secondary/localservices/process/` (`lsof` by port, name check, SIGTERM then SIGKILL after the stop grace) and `HttpProbe::protocol` through the greeting
-- [ ] 3.5 Red: scenarios "A copy left by an older app is replaced at launch", "A copy of the same protocol version is adopted as before" and "Another program refusing the app's protocol is not stopped" under a new `Rule: A command spotting copy of another protocol version is replaced` in `local_services.feature`
-- [ ] 3.6 Green: steps for them in `app/tests/steps/local_services/`
-- [ ] 3.7 `just test` and commit
+- [ ] 3.1 Red: supervision unit tests in `app/src/core/application/local_services/`: another version at the decision has its holder stopped and the app's own copy started, with one log line; the same version is adopted; a foreign holder fails the service naming the port
+- [ ] 3.2 Green: `ServiceProbe::protocol` with its fake in `fakes.rs`, and the protocol branch of `Supervision::decide` calling `stop_holder`
+- [ ] 3.3 Green: `HttpProbe::protocol` in `app/src/adapters/secondary/localservices/process/probe.rs` through the greeting
+- [ ] 3.4 Red: scenarios "A copy left by an older app is replaced at launch", "A copy of the same protocol version is adopted as before" and "Another program refusing the app's protocol is not stopped" under a new `Rule: A command spotting copy of another protocol version is replaced` in `local_services.feature`
+- [ ] 3.5 Green: steps for them in `app/tests/steps/local_services/`
+- [ ] 3.6 `just test` and commit
 
 ## 4. A refusal while voice control runs rechecks the copy
 

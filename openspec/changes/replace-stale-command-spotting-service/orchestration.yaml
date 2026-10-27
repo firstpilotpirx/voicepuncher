@@ -1,0 +1,3 @@
+depends_on:
+  - change: restart-crashed-services
+    why: adds ServiceLauncher::stop_holder and makes decide the single adopt-or-start decision, which the replacement builds on
