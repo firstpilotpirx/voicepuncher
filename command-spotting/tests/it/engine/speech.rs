@@ -40,6 +40,7 @@ pub fn engine_cfg(transcription_url: Option<String>) -> EngineCfg {
         transcription_url,
         max_command_secs: 3.0,
         confirmation_deadline: Duration::from_secs(3),
+        command_history: None,
     }
 }
 

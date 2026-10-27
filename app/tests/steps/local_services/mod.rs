@@ -4,6 +4,7 @@
 
 mod catalog;
 mod catalog_copies;
+mod catalog_history;
 mod copies;
 mod fake_copies;
 mod foreign_program;

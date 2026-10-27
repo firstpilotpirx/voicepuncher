@@ -6,6 +6,7 @@ pub mod confirm;
 pub mod conversions;
 pub mod engine;
 pub mod health;
+pub mod history;
 pub mod keywords;
 pub mod matcher;
 pub mod orderer;

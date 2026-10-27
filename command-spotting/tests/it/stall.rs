@@ -29,6 +29,7 @@ fn engine() -> Engine {
         transcription_url: None,
         max_command_secs: 3.0,
         confirmation_deadline: DEADLINE,
+        command_history: None,
     };
     Engine::load(&cfg).expect("models load")
 }

@@ -143,10 +143,15 @@ pub struct ArchiveCfg {
     pub enabled: bool,
     pub dir: PathBuf,
     pub max_size_mb: u64,
+    /// Keep every voice command in the command history, written by the command spotting
+    /// services the app starts.
+    pub keep_commands: bool,
 }
 
 const DEFAULT_ARCHIVE_DIR: &str = "~/.voicepuncher/history";
 const DEFAULT_ARCHIVE_MAX_SIZE_MB: u64 = 2048;
+/// The command history's folder, under the home folder beside the dictation archive's.
+const COMMAND_HISTORY_DIR: &str = ".voicepuncher/command-history";
 const BYTES_PER_MEGABYTE: u64 = 1024 * 1024;
 const HOME_DIR_PREFIX: &str = "~";
 
@@ -154,6 +159,11 @@ impl ArchiveCfg {
     /// The size limit of the archive in bytes.
     pub fn max_size_bytes(&self) -> u64 {
         self.max_size_mb.saturating_mul(BYTES_PER_MEGABYTE)
+    }
+
+    /// The command history's folder under `home`; none when commands are not kept.
+    pub fn command_history_dir(&self, home: &Path) -> Option<PathBuf> {
+        self.keep_commands.then(|| home.join(COMMAND_HISTORY_DIR))
     }
 
     /// The archive folder with a leading `~` replaced by `home`.
@@ -171,6 +181,7 @@ impl Default for ArchiveCfg {
             enabled: true,
             dir: PathBuf::from(DEFAULT_ARCHIVE_DIR),
             max_size_mb: DEFAULT_ARCHIVE_MAX_SIZE_MB,
+            keep_commands: true,
         }
     }
 }

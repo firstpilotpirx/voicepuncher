@@ -385,6 +385,24 @@
 - **Code:** `app/src/core/application/dictation_archive.rs`
 - **Synonyms to AVOID:** "record", "history item", "log entry"
 
+### Command history
+- **Type:** Folder written by the command spotting service (`CommandHistory`, `Recorder`)
+- **Definition:** The local folder (`~/.voicepuncher/command-history/`, `[archive] keep_commands`, on by default) where the command spotting services the app starts keep a *command history entry* for every utterance in which the keyword spotter spotted a selected phrase or the speech recognition service for commands heard a command; ordinary speech leaves none. Kept within the *dictation archive*'s size limit by removing the oldest entries; a service given no folder (the service scripts, tests, benchmarks) keeps nothing; never sent anywhere.
+- **Code:** `command-spotting/src/history/`; `app/src/adapters/secondary/localservices/catalog/args.rs` — `CommandHistoryArgs`
+- **Synonyms to AVOID:** "history" (alone — the dictation archive's folder), "command log", "recordings"
+
+### Command history entry
+- **Type:** Value Object (`Entry` in `command-spotting/src/history/`)
+- **Definition:** What the *command history* keeps of one speech segment, in a folder of its own named by its start: the audio as the microphone gave it (at most its last 10 s), every phrase the keyword spotter spotted in it with its tokens (the spotter gives no score), every hearing of the speech recognition service for commands with its kind, span and text, the transcript, the commands reported to the app with whether that service heard them, and the *command history outcome*.
+- **Code:** `command-spotting/src/history/entry.rs`
+- **Synonyms to AVOID:** "archive entry" (a dictation's), "sample", "log entry"
+
+### Command history outcome
+- **Type:** Value Object (`Outcome`: `agreed`, `corrected`, `rejected`, `missed`)
+- **Definition:** How the two models of voice control compared on one utterance: **agreed** — the speech recognition service heard only commands the keyword spotter spotted; **corrected** — it heard another command; **rejected** — the spotter spotted a phrase and the speech recognition service heard no command (the spotter's phrase may still have been reported); **missed** — the speech recognition service heard a command the spotter did not spot.
+- **Code:** `command-spotting/src/history/outcome.rs`
+- **Synonyms to AVOID:** "result", "status", "verdict"
+
 ### Log file
 - **Type:** Adapter output (no port: logging goes through the `log` facade)
 - **Definition:** `~/.voicepuncher/logs/voicepuncher.log`, where the app in hotkey mode writes every log line of a session, starting with a launch header (version, process id, config path, macOS version, architecture); a terminal, when there is one, gets the same lines. File mode never writes it.

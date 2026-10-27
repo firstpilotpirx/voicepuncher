@@ -107,6 +107,7 @@ pub fn threads(cores: usize, copies: usize) -> usize {
 struct Lookup<'a> {
     machine: &'a Machine,
     model_dirs: Vec<PathBuf>,
+    command_history: Option<CommandHistoryArgs>,
 }
 
 /// Something looked for and not found: what, and the hint to get it.
@@ -130,7 +131,8 @@ impl<'a> Lookup<'a> {
                 model_dirs.push(dir);
             }
         }
-        Self { machine, model_dirs }
+        let command_history = CommandHistoryArgs::of(&cfg.archive, &machine.home);
+        Self { machine, model_dirs, command_history }
     }
 
     fn whisper(
@@ -180,7 +182,14 @@ impl<'a> Lookup<'a> {
         let kind = ServiceKind::CommandSpotting;
         let service = Service { kind, binary: COMMAND_SPOTTING, program, problem, copies };
         self.copies(&service, &address, probe, |port, _| {
-            command_spotting_args(port, &shown(&model_dir), &shown(&vad), commands_url)
+            let history = self.command_history.as_ref();
+            command_spotting_args(
+                port,
+                &shown(&model_dir),
+                &shown(&vad),
+                commands_url,
+                history,
+            )
         })
     }
 

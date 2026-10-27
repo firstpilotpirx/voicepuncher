@@ -10,13 +10,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// The workspace members, as seen from the app's directory.
-const MEMBERS: [&str; 9] = [
+const MEMBERS: [&str; 10] = [
     "analyzers",
     "app",
     "command-spotting",
     "copy-pool",
     "dev-tools",
     "e2e-test",
+    "entry-folders",
     "log-line",
     "test-steps",
     "voice-commands",

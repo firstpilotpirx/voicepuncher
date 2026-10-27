@@ -1,6 +1,6 @@
 [package]
 name = "voicepuncher"
-version = "0.38.7"
+version = "0.39.0"
 edition = "2021"
 rust-version = "1.88"
 publish = false
@@ -31,6 +31,7 @@ dirs = "=5.0.1"
 clap = { version = "=4.6.1", features = ["derive"] }
 
 env_logger = "=0.11.10"
+voicepuncher-entry-folders = { path = "../entry-folders" }
 voicepuncher-log-line = { path = "../log-line" }
 ureq = { version = "=2.12.1", features = ["tls"] }
 sha2 = "=0.11.1"

@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Every utterance with a command heard is kept in the command history
-With the command history on, the command spotting service SHALL write one command history entry for every utterance in which the keyword spotter spotted a selected phrase or the service reported a command, holding the audio the speech recognition service for commands heard, every phrase spotted in it, the transcript, the commands reported and the outcome: agreed, corrected, rejected or missed. An utterance with neither SHALL leave no entry.
+With the command history on, the command spotting service SHALL write one command history entry for every utterance in which the keyword spotter spotted a selected phrase or the service reported a command, holding the audio the speech recognition service for commands heard, every phrase spotted in it, the transcript, the commands reported, which of them the speech recognition service heard, and the outcome: agreed, corrected, rejected or missed. An utterance with neither SHALL leave no entry.
 
 #### Scenario: A command both models heard is kept as agreed
 - **GIVEN** the command history is on and voice control is listening
@@ -16,7 +16,7 @@ With the command history on, the command spotting service SHALL write one comman
 #### Scenario: A spotted phrase the speech recognition service does not hear is kept as rejected
 - **GIVEN** the command history is on and voice control is listening
 - **WHEN** the keyword spotter spots a phrase in an utterance in which the speech recognition service hears no command
-- **THEN** a new command history entry holds the spotted phrase and the transcript, no reported command, and its outcome is rejected
+- **THEN** a new command history entry holds the spotted phrase and the transcript, no command the speech recognition service heard, and its outcome is rejected
 
 #### Scenario: A spotted phrase heard as another command is kept as corrected
 - **GIVEN** the command history is on and voice control is listening

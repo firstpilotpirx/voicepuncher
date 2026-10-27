@@ -6,14 +6,15 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use sherpa_onnx::{
-    KeywordSpotter, KeywordSpotterConfig, OnlineStream, SileroVadModelConfig, VadModelConfig,
+    KeywordSpotter, KeywordSpotterConfig, SileroVadModelConfig, VadModelConfig,
     VoiceActivityDetector,
 };
 
 use crate::confirm::{Hear, Heard, RecentAudio, UtteranceTranscriber};
+use crate::history::{CommandHistory, HistoryCfg, Recorder};
 use crate::keywords::{self, Keyword, UnknownPhrases};
 use crate::matcher::PhraseMatcher;
-use crate::orderer::{EventOrderer, Segment, Spotted};
+use crate::orderer::{EventOrderer, Segment};
 use crate::protocol::{PhraseSelection, ServerEvent};
 use crate::worker::{ConfirmationWorker, JobKind};
 
@@ -23,14 +24,16 @@ mod heads;
 use heads::HeadCheck;
 mod pause;
 mod queued;
+mod recording;
 mod speech;
 pub mod spotted;
+mod spotting;
 mod stall;
 mod state;
 
 use confirming::{ClosedSegment, JobContext};
 use pause::PauseWatch;
-use spotted::CHECKED_WHEN_SPOTTED;
+use spotting::Spotting;
 use state::{Detector, Hearings, Jobs, Utterances};
 
 mod model_config;
@@ -108,6 +111,8 @@ pub struct EngineCfg {
     /// How long one confirmation by the speech recognition service may take before it is
     /// given up.
     pub confirmation_deadline: Duration,
+    /// Where every utterance with a command heard is kept; none: nothing is kept.
+    pub command_history: Option<HistoryCfg>,
 }
 
 /// Shared by every connection: the loaded keyword spotter and the keyword list.
@@ -120,6 +125,7 @@ pub struct Engine {
     deadline: Duration,
     max_command_samples: usize,
     min_silence_samples: usize,
+    history: Option<CommandHistory>,
 }
 
 impl Engine {
@@ -145,6 +151,11 @@ impl Engine {
             deadline: cfg.confirmation_deadline,
             max_command_samples: samples_in(cfg.max_command_secs),
             min_silence_samples: samples_in(cfg.min_silence_secs),
+            history: cfg
+                .command_history
+                .clone()
+                .map(CommandHistory::start)
+                .transpose()?,
         })
     }
 
@@ -172,11 +183,11 @@ impl Engine {
             hearings: Hearings::default(),
             utterances: Utterances::default(),
             detector: Detector::new(vad, PauseWatch::new(self.min_silence_samples)),
-            stream: None,
-            triggers: None,
+            spotting: Spotting::default(),
             orderer: EventOrderer::default(),
             recent: RecentAudio::new(samples_in(RECENT_AUDIO_SECS)),
             matcher: Arc::new(PhraseMatcher::new(&[])),
+            recorder: self.history.as_ref().map(|_| Recorder::new(conn)),
         })
     }
 }
@@ -191,14 +202,13 @@ pub struct Session<'a> {
     hearings: Hearings,
     utterances: Utterances,
     detector: Detector,
-    stream: Option<OnlineStream>,
-    /// Spots the trigger-only keywords of the selected phrases, apart from `stream`: one firing
-    /// there never resets the spotting of the phrases.
-    triggers: Option<OnlineStream>,
+    spotting: Spotting,
     orderer: EventOrderer,
     recent: RecentAudio,
     /// Shared with every job asked under it, so a late answer knows the phrases of its state.
     matcher: Arc<PhraseMatcher>,
+    /// Gathers the command history's entries; none while the engine keeps no history.
+    recorder: Option<Recorder>,
 }
 
 /// An utterance still being spoken, searched for commands while it runs.
@@ -232,8 +242,8 @@ impl Session<'_> {
     pub fn select(&mut self, selection: &PhraseSelection) -> Result<(), UnknownPhrases> {
         let phrases = &selection.phrases;
         let selected = keywords::select(&self.engine.keywords, phrases)?;
-        self.stream = Some(self.engine.spotter.create_stream_with_keywords(&selected));
-        self.triggers = keywords::select_triggers(&self.engine.keywords, phrases)
+        self.spotting.phrases = Some(self.engine.spotter.create_stream_with_keywords(&selected));
+        self.spotting.triggers = keywords::select_triggers(&self.engine.keywords, phrases)
             .filter(|_| self.engine.hear.is_some())
             .map(|lines| self.engine.spotter.create_stream_with_keywords(&lines));
         self.matcher =
@@ -258,75 +268,8 @@ impl Session<'_> {
             events.extend(self.take_answers());
             self.ask_spotted_check();
         }
-        events
+        self.recorded(events, false)
     }
-
-    fn spot(&mut self, samples: &[f32]) -> Vec<ServerEvent> {
-        let position = seconds(self.detector.samples_seen + samples.len());
-        let spotter = &self.engine.spotter;
-        if let Some(triggers) = self.triggers.as_ref() {
-            // The spotter adds its own keywords, the phrases, to every stream: only a trigger
-            // spotted here asks the check.
-            let found = decoded(spotter, triggers, samples, position);
-            for trigger in found
-                .into_iter()
-                .filter(|t| keywords::is_trigger(&t.phrase))
-            {
-                log::info!(
-                    "trigger \"{}\" at {:.2}–{:.2}s",
-                    trigger.phrase,
-                    trigger.start,
-                    trigger.end
-                );
-                self.jobs.spotted_checks.spotted(samples_in(trigger.end));
-                self.hear_misheard_again(&trigger);
-                self.hear_pending_again(&trigger);
-                self.hearings.heard_triggers.push(trigger);
-            }
-        }
-        self.hearings
-            .heard_triggers
-            .retain(|t| t.end + TRIGGERS_KEPT_SECS > position);
-        let Some(stream) = self.stream.as_ref() else {
-            return Vec::new();
-        };
-        let mut events = Vec::new();
-        for spotted in decoded(spotter, stream, samples, position) {
-            log::info!(
-                "spotted \"{}\" at {:.2}–{:.2}s",
-                spotted.phrase,
-                spotted.start,
-                spotted.end
-            );
-            if self.worker.is_some() && CHECKED_WHEN_SPOTTED.contains(&spotted.phrase.as_str()) {
-                self.jobs.spotted_checks.spotted(samples_in(spotted.end));
-            }
-            events.extend(self.orderer.phrase(spotted));
-        }
-        events
-    }
-}
-
-/// The keywords `stream` spots in `samples`, which bring the audio fed to `position`
-/// seconds; the stream starts afresh after each.
-fn decoded(
-    spotter: &KeywordSpotter,
-    stream: &OnlineStream,
-    samples: &[f32],
-    position: f32,
-) -> Vec<Spotted> {
-    stream.accept_waveform(i32::try_from(SAMPLE_RATE).unwrap_or(i32::MAX), samples);
-    let mut found = Vec::new();
-    while spotter.is_ready(stream) {
-        spotter.decode(stream);
-        let Some(result) = spotter.get_result(stream).filter(|r| !r.keyword.is_empty()) else {
-            continue;
-        };
-        spotter.reset(stream);
-        let (start, end) = phrase_span(position, &result.timestamps);
-        found.push(Spotted { phrase: keywords::phrase_of(&result.keyword), start, end });
-    }
-    found
 }
 
 fn samples_in(secs: f32) -> usize {

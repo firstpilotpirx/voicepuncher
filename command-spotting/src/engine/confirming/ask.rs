@@ -27,7 +27,8 @@ impl Session<'_> {
 
     /// The events of the confirmations answered since the last call, without new audio.
     pub fn poll(&mut self) -> Vec<ServerEvent> {
-        self.take_answers()
+        let events = self.take_answers();
+        self.recorded(events, false)
     }
 
     /// The events still waiting for confirmations, once every one is answered or given up.
@@ -41,14 +42,14 @@ impl Session<'_> {
             events.extend(self.apply(answer));
             self.ask_queued_check();
         }
-        events
+        self.recorded(events, true)
     }
 
     /// Asks for `synced` with `id` once every event for the audio accepted so far is out.
     pub fn sync(&mut self, id: u64) -> Vec<ServerEvent> {
         let mut events = self.take_answers();
         events.extend(self.jobs.outbox.sync(id));
-        events
+        self.recorded(events, false)
     }
 
     /// The confirmations on each thread of the worker not answered yet, and those whose
@@ -125,6 +126,7 @@ impl Session<'_> {
         if let Some(asked) = self.jobs.asked.get_mut(&n) {
             asked.asked = Instant::now();
         }
+        self.record_asked(n, kind, &span);
         if let Some(worker) = self.worker.as_ref() {
             worker.submit(Job { id: JobId { conn: self.conn, n }, kind, audio });
         }

@@ -4,12 +4,12 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use serde::ser::{Serialize, SerializeMap, Serializer};
 
-use super::utc_time::UtcTime;
 use super::ArchiveSetup;
 use crate::core::application::dictation_archive::{
     ArchiveEntry, DictationOutcome, DictationStart, StageTiming,
 };
 use crate::core::domain::AudioBuffer16k;
+use voicepuncher_entry_folders::UtcTime;
 
 /// Version of the `entry.json` layout; bump it when a field changes meaning or goes away.
 const ENTRY_FORMAT: u32 = 2;

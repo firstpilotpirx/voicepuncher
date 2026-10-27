@@ -50,6 +50,10 @@ url = "ws://127.0.0.1:8082"   # must be on this machine: localhost, 127.0.0.0/8 
 enabled = true
 dir = "~/.voicepuncher/history"
 max_size_mb = 2048
+# The command history: every utterance with a voice command heard by either model is kept in
+# ~/.voicepuncher/command-history (audio.wav + entry.json) by the command spotting services the
+# app starts, within the same size limit.
+keep_commands = true
 
 [logging]
 level = "info"

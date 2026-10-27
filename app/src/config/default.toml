@@ -83,6 +83,9 @@ enabled = true
 dir = "~/.voicepuncher/history"
 # The oldest dictations are removed once the folder holds more megabytes than this.
 max_size_mb = 2048
+# Keep every voice command's audio and what both models heard in
+# ~/.voicepuncher/command-history, within the same size limit.
+keep_commands = true
 
 [logging]
 # How much the log in ~/.voicepuncher/logs says: error, warn, info, debug or trace.

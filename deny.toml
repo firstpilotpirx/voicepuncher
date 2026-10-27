@@ -11,6 +11,10 @@ ignore = [
     { id = "RUSTSEC-2026-0367", reason = "zip 2.4 is a build dependency of sherpa-onnx-sys, extracting its own pinned archive at build time; no fix below zip 9" },
     { id = "RUSTSEC-2026-0368", reason = "zip 2.4 is a build dependency of sherpa-onnx-sys, extracting its own pinned archive at build time; no fix below zip 9" },
     { id = "RUSTSEC-2026-0369", reason = "zip 2.4 is a build dependency of sherpa-onnx-sys, extracting its own pinned archive at build time; no fix below zip 9" },
+    { id = "RUSTSEC-2026-0391", reason = "zstd 0.13 comes only with zip 2.4, a build dependency of sherpa-onnx-sys extracting its own pinned archive at build time; no fix within zstd 0.13" },
+    { id = "RUSTSEC-2026-0398", reason = "zstd 0.13 comes only with zip 2.4, a build dependency of sherpa-onnx-sys extracting its own pinned archive at build time; no fix within zstd 0.13" },
+    { id = "RUSTSEC-2026-0403", reason = "zstd 0.13 comes only with zip 2.4, a build dependency of sherpa-onnx-sys extracting its own pinned archive at build time; no fix within zstd 0.13" },
+    { id = "RUSTSEC-2026-0410", reason = "zstd 0.13 comes only with zip 2.4, a build dependency of sherpa-onnx-sys extracting its own pinned archive at build time; no fix within zstd 0.13" },
 ]
 
 [licenses]

@@ -47,6 +47,11 @@ impl CatalogRun {
         })
     }
 
+    /// The scenario's home folder.
+    pub(super) fn home(&self) -> &Path {
+        &self.machine.home
+    }
+
     pub(super) fn of_kind(&self, kind: ServiceKind) -> Vec<&ServiceSpec> {
         self.specs.iter().filter(|spec| spec.kind == kind).collect()
     }

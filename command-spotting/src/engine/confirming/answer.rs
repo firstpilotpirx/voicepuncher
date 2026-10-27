@@ -46,6 +46,7 @@ impl Session<'_> {
     pub(super) fn apply(&mut self, answer: Answer) -> Vec<ServerEvent> {
         let n = answer.id.n;
         self.jobs.checks.answered(n);
+        self.record_answered(n, answer.heard.as_ref());
         let Some(asked) = self.jobs.asked.remove(&n) else {
             return Vec::new();
         };

@@ -7,6 +7,7 @@ use cucumber::{given, then, when};
 use voicepuncher::test_doubles::prelude::*;
 
 use voicepuncher_command_spotting::engine::{Engine, EngineCfg, Session};
+use voicepuncher_command_spotting::history::HistoryCfg;
 use voicepuncher_command_spotting::protocol::ServerEvent;
 use voicepuncher_e2e_test::speech_cache::{synthesized, SayRequest};
 use voicepuncher_test_steps::required_env;
@@ -16,6 +17,7 @@ use crate::steps::off_thread;
 use crate::E2eWorld;
 
 mod hearings;
+mod history;
 mod spotted;
 
 use hearings::stream_clock::{samples, Clocked, StreamClock};
@@ -48,13 +50,14 @@ pub struct SchedulingRun {
     /// The events of each run, in the order the runs were made.
     runs: Vec<Vec<ServerEvent>>,
     spotted: spotted::SpottedRun,
+    history: history::HistoryRun,
 }
 
 fn run(world: &mut E2eWorld) -> &mut SchedulingRun {
     &mut world.services.owned_services.scheduling
 }
 
-fn engine_cfg() -> EngineCfg {
+fn engine_cfg(command_history: Option<HistoryCfg>) -> EngineCfg {
     EngineCfg {
         model_dir: required_env("VOICEPUNCHER_KWS_MODEL_DIR").into(),
         vad_model: required_env("VOICEPUNCHER_KWS_VAD_MODEL").into(),
@@ -65,6 +68,7 @@ fn engine_cfg() -> EngineCfg {
         transcription_url: None,
         max_command_secs: 3.0,
         confirmation_deadline: Duration::from_secs(3),
+        command_history,
     }
 }
 
@@ -105,10 +109,13 @@ impl SchedulingRun {
         let clock = Arc::new(StreamClock::default());
         let scripted =
             ScriptedHearing { stream: stream.clone(), script, completes_cut_words: false };
-        let inner = self.answers.hearing(scripted, &clock, said_end)?;
+        let inner = self
+            .history
+            .hearing(self.answers.hearing(scripted, &clock, said_end)?);
         let clocked =
             Clocked { inner, clock: Arc::clone(&clock), delay: self.delay, deadline: None };
-        let engine = Engine::load(&engine_cfg())?.hearing(Arc::new(clocked));
+        let engine = Engine::load(&engine_cfg(self.history.cfg()))?.hearing(Arc::new(clocked));
+        self.history.engine_kept |= engine.keeps_history();
         let mut session = engine.session()?;
         session.listen_for(&self.listening)?;
         let sync_at = sync.then(|| said_end + samples(self.delay));

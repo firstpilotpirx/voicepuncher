@@ -28,7 +28,7 @@ test_paths = ["analyzers/tests/", "app/tests/", "command-spotting/tests/", "copy
 "clippy::suboptimal_flops" = "mul_add rewrites of the audio and timing math read worse and change no result that matters"
 
 [metrics]
-members = ["analyzers", "app", "command-spotting", "copy-pool", "dev-tools", "e2e-test", "log-line", "test-steps", "voice-commands"]
+members = ["analyzers", "app", "command-spotting", "copy-pool", "dev-tools", "e2e-test", "entry-folders", "log-line", "test-steps", "voice-commands"]
 # A function over this cyclomatic complexity is listed in .config/analyzers/metrics.toml (cognitive complexity is
 # gated by clippy's size budgets)
 cyclomatic_threshold = 10

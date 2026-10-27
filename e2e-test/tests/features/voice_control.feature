@@ -700,3 +700,67 @@ Feature: voice-control
       And the hearing asked before the pause after the speech ends hears "clear" as "near", and the hearing of the whole speech hears it right
       When the user says "okay clear" alone and the app asks for a sync right after the speech
       Then the command spotting service reports "clear all text" before it answers the sync
+
+  Rule: Every utterance with a command heard is kept in the command history
+
+    @smoke
+    Scenario: A command both models heard is kept as agreed
+      Given the command spotting service listens for the commands of standby and keeps a command history
+      When the user says "press enter" to the command spotting service as it is spoken
+      Then the command history holds one entry with playable audio and a transcript
+      And the entry's spotted phrases are "press enter", the commands heard in it "press enter" and its outcome "agreed"
+
+    @smoke
+    Scenario: A command only the speech recognition service heard is kept as missed
+      Given the command spotting service listens for the commands of standby and keeps a command history
+      And the speech recognition service for commands hears every utterance as "press enter"
+      When the user says "good morning" to the command spotting service as it is spoken
+      Then the command history holds one entry with playable audio and a transcript
+      And the entry's spotted phrases are "none", the commands heard in it "press enter" and its outcome "missed"
+
+    @smoke
+    Scenario: A spotted phrase the speech recognition service does not hear is kept as rejected
+      Given the command spotting service listens for the commands of standby and keeps a command history
+      And the speech recognition service for commands hears every utterance as "good morning"
+      When the user says "press enter" to the command spotting service as it is spoken
+      Then the command history holds one entry with playable audio and a transcript
+      And the entry's spotted phrases are "press enter", the commands heard in it "none" and its outcome "rejected"
+
+    @smoke
+    Scenario: A spotted phrase heard as another command is kept as corrected
+      Given the command spotting service listens for the commands of standby and keeps a command history
+      And the speech recognition service for commands hears every utterance as "paste text"
+      When the user says "press enter" to the command spotting service as it is spoken
+      Then the command history holds one entry with playable audio and a transcript
+      And the entry's spotted phrases are "press enter", the commands heard in it "paste text" and its outcome "corrected"
+
+    @smoke
+    Scenario: Ordinary speech leaves no entry
+      Given the command spotting service listens for the commands of standby and keeps a command history
+      When the user says "we meet on friday at ten" to the command spotting service as it is spoken
+      Then the command history holds no entry
+
+  Rule: The command history is on for the app's own services and off elsewhere
+
+    @smoke
+    Scenario: A service given no folder writes no entry
+      Given the command spotting service listens for the commands of standby and is given no command history folder
+      When the user says "press enter" to the command spotting service as it is spoken
+      Then the command spotting service reports "press enter" and the command history holds no entry
+
+  Rule: The command history stays within its size limit
+
+    @smoke
+    Scenario: The oldest command history entries go first
+      Given the command spotting service listens for the commands of standby and keeps a command history
+      And the command history's entries already fill its size limit
+      When the user says "press enter" to the command spotting service as it is spoken
+      Then the oldest entries are removed until the command history fits, and the newest entries, the new one included, stay
+
+  Rule: Keeping the command history never costs a command
+
+    @smoke
+    Scenario: The command history folder cannot be written
+      Given the command spotting service listens for the commands of standby and keeps a command history in a folder it cannot write to
+      When the user says "press enter" to the command spotting service as it is spoken
+      Then the command spotting service reports "press enter" and its log warns that the utterance was not kept

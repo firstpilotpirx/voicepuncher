@@ -13,7 +13,7 @@ struct StoredEntry {
 }
 
 /// Removes the oldest entry folders until the archive fits `max_size_bytes`; never `kept`.
-pub(super) fn prune(dir: &Path, max_size_bytes: u64, kept: &str) -> Result<()> {
+pub fn prune(dir: &Path, max_size_bytes: u64, kept: &str) -> Result<()> {
     let entries = stored_entries(dir)?;
     let mut total: u64 = entries.iter().map(|entry| entry.size_bytes).sum();
     for entry in entries.iter().filter(|entry| entry.name != kept) {
@@ -24,8 +24,9 @@ pub(super) fn prune(dir: &Path, max_size_bytes: u64, kept: &str) -> Result<()> {
             .with_context(|| format!("failed to remove {}", entry.path.display()))?;
         total -= entry.size_bytes;
         log::info!(
-            "archive: pruned {} ({} bytes) to fit {max_size_bytes} bytes",
+            "pruned {} from {} ({} bytes) to fit {max_size_bytes} bytes",
             entry.name,
+            dir.display(),
             entry.size_bytes
         );
     }

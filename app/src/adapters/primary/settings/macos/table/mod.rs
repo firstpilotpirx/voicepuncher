@@ -235,6 +235,13 @@ pub const FIELDS: &[Field] = &[
         number(1, 1_000_000, MEGABYTES),
     ),
     field(
+        "archive",
+        "keep_commands",
+        Tab::Archive,
+        "Keep every voice command",
+        Control::Switch,
+    ),
+    field(
         "logging",
         "level",
         Tab::Logging,

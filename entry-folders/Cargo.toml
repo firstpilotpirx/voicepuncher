@@ -1,0 +1,14 @@
+[package]
+name = "voicepuncher-entry-folders"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+description = "Folders of entries named by time and kept under a size limit, shared by the dictation archive and the command history"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = "=1.0.103"
+log = "=0.4.29"

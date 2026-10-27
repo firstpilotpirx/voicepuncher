@@ -499,3 +499,15 @@ Feature: voice-control
       Given listening is on with a command spotting service that will drop audio
       When the command spotting service reports dropped audio
       Then the service is counted as lost and the app reaches for it again
+
+  Rule: The command history is on for the app's own services and off elsewhere
+
+    Scenario: The app's own services keep the command history by default
+      Given the default configuration with voice control on
+      When the services it needs are looked up
+      Then each copy of the command spotting service is told to keep the command history in a folder under the app's home folder
+
+    Scenario: Command history turned off
+      Given voice control is on and the user turned the command history off
+      When the services it needs are looked up
+      Then no copy of the command spotting service is told to keep a command history

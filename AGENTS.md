@@ -13,13 +13,14 @@ voicepuncher/
   app/          ← Rust menu bar application with a developer command line (hexagonal architecture)
   command-spotting/ ← Rust binary: the command spotting service (voice control)
   copy-pool/    ← Rust library: the copy pool, shared by app/ and command-spotting/
+  entry-folders/ ← Rust library: the entry folders of the dictation archive and the command history, shared by app/ and command-spotting/
   log-line/     ← Rust library: the form of one log line, shared by app/ and command-spotting/
   voice-commands/ ← Rust library: the voice commands declared once (phrases, forms, mishearings), used by command-spotting/ and checked by app/ tests
   dev-tools/    ← Rust binary: the stage runner and the service scripts behind the justfile
   test-steps/   ← Rust library (dev-dependency): `required_env`, the shared Gherkin steps, the test-check rules, the shared test helpers (log lines, loopback ports, the synthesized-speech cache)
   e2e-test/     ← Rust crate: accuracy benchmark + E2E scenarios
   docs/         ← Architecture documentation + ubiquitous language
-  Cargo.toml    ← Cargo workspace (members: app, command-spotting, copy-pool, dev-tools, e2e-test, log-line, test-steps, voice-commands)
+  Cargo.toml    ← Cargo workspace (members: app, command-spotting, copy-pool, dev-tools, e2e-test, entry-folders, log-line, test-steps, voice-commands)
   justfile      ← Task runner: all checks, E2E, benchmarks (`just` lists recipes)
 ```
 
@@ -113,7 +114,7 @@ All checks are `just` recipes (see `justfile`; no other scripts). A change is "v
 
 **Hosted CI** (`.github/workflows/ci.yml`, GitHub Actions on `macos-15`) runs `just fmt`, `just lint` and `just test` on every pull request and every push to `main`: the floor every PR has, also one opened from another machine. It runs no model, service or E2E stage and sets `VOICEPUNCHER_NO_MACHINE_LOCK=1`, which runs the locked recipes' bodies without the agent-kit lock (absent there) and skips only the lock's own self-test in `just test`. The landing queue's `full-check` stays the merge gate for build inputs; a red CI run is a failure like any other (fix it, never rerun it unchanged).
 
-Build inputs are `app/`, `command-spotting/`, `copy-pool/`, `log-line/`, `dev-tools/`, `analyzers/`, `e2e-test/`, `.config/` (`nextest.toml`), `Cargo.toml`, `Cargo.lock` and `justfile`. A branch that changes none of them (docs, `AGENTS.md`, `openspec/`, `.claude/`) needs `just test` only; never `just check` or `just full-check` for it. A branch that changed a build input lands only through the landing queue: its own `just check` passes, then `kit land` queues it and the group's `just full-check` is the merge gate; `kit land` writes the checks that ran into the PR. A branch behind `main` is not refused and does not rerun a check for that: the group check covers what landed meanwhile. When `kit land` sends a branch back after a conflict, merge `main` with `kit sync-base` and run exactly the check its last line names.
+Build inputs are `app/`, `command-spotting/`, `copy-pool/`, `entry-folders/`, `log-line/`, `dev-tools/`, `analyzers/`, `e2e-test/`, `.config/` (`nextest.toml`), `Cargo.toml`, `Cargo.lock` and `justfile`. A branch that changes none of them (docs, `AGENTS.md`, `openspec/`, `.claude/`) needs `just test` only; never `just check` or `just full-check` for it. A branch that changed a build input lands only through the landing queue: its own `just check` passes, then `kit land` queues it and the group's `just full-check` is the merge gate; `kit land` writes the checks that ran into the PR. A branch behind `main` is not refused and does not rerun a check for that: the group check covers what landed meanwhile. When `kit land` sends a branch back after a conflict, merge `main` with `kit sync-base` and run exactly the check its last line names.
 
 **Static analyzers** (design of `adopt-static-analyzers`), all pinned (`just tools` installs them, `_require-tools` names the install command and installs nothing), all unlocked:
 

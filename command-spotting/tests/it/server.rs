@@ -67,6 +67,7 @@ fn engine_cfg(transcription_url: String) -> EngineCfg {
         transcription_url: Some(transcription_url),
         max_command_secs: 3.0,
         confirmation_deadline: CONFIRMATION_DEADLINE,
+        command_history: None,
     }
 }
 

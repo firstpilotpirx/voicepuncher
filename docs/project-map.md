@@ -7,11 +7,12 @@
 | `app/` | Rust menu bar application (with a developer command line and file mode) — hexagonal architecture (Ports & Adapters + DDD) |
 | `command-spotting/` | Rust binary: the command spotting service (voice control) |
 | `copy-pool/` | Rust library: the *copy pool* — routes requests to the copies of a speech recognition service, used by `app/` and `command-spotting/` |
+| `entry-folders/` | Rust library: the entry folders of the *dictation archive* and the *command history* — written whole or not at all, named by their UTC start, the oldest removed to fit a size limit; used by `app/` and `command-spotting/` |
 | `log-line/` | Rust library: the form of one log line (`[time LEVEL thread target] message`), used by `app/` and `command-spotting/` |
 | `e2e-test/` | Rust benchmark and E2E tests against the compiled binary |
 | `docs/` | Documentation (ubiquitous language, architecture, E2E benchmark design) |
 | `dist/` | Gitignored output of `just bundle` and `just dmg`: `voicepuncher.app`, `voicepuncher-vX.Y.Z.dmg` and its `.sha256` |
-| `Cargo.toml` | Cargo workspace (members: `app`, `command-spotting`, `copy-pool`, `e2e-test`) |
+| `Cargo.toml` | Cargo workspace (members: `app`, `command-spotting`, `copy-pool`, `dev-tools`, `e2e-test`, `entry-folders`, `log-line`, `test-steps`, `voice-commands`) |
 | `justfile` | Task runner — the checks (`just check`, `just full-check`, `just test`, the E2E recipes), setup (`just models`, `just corpus`, `just engines`), packaging and release (`just bundle`, `just dmg`, `just release`), benchmarks (`just bench`) |
 
 ## App structure (`app/`)

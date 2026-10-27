@@ -12,7 +12,7 @@ const MARCH_BASED_JANUARY: u64 = 10;
 
 /// A wall-clock instant in UTC, to the millisecond; times before the UNIX epoch read as the epoch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct UtcTime {
+pub struct UtcTime {
     year: u64,
     month: u64,
     day: u64,
@@ -42,12 +42,12 @@ impl From<SystemTime> for UtcTime {
 
 impl UtcTime {
     /// `2026-10-19T10-42-05.123Z`: safe as a file name, sorts by time.
-    pub(super) fn folder_name(&self) -> String {
+    pub fn folder_name(&self) -> String {
         self.format('-')
     }
 
     /// `2026-10-19T10:42:05.123Z`.
-    pub(super) fn iso_8601(&self) -> String {
+    pub fn iso_8601(&self) -> String {
         self.format(':')
     }
 

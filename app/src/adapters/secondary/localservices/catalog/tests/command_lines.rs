@@ -54,7 +54,7 @@ fn script_args(service: &str, text: &str) -> Vec<String> {
 fn catalog_args(service: &str) -> Vec<String> {
     match service {
         WHISPER => whisper_args("model", 0, 0, "vad"),
-        _ => command_spotting_args(0, "model_dir", "vad", "commands_url"),
+        _ => command_spotting_args(0, "model_dir", "vad", "commands_url", None),
     }
 }
 
@@ -87,4 +87,35 @@ fn should_name_the_service_whose_arguments_changed_in_one_place_only() {
     let drifted = drifted(&text);
     // Then
     assert_eq!(drifted, vec![WHISPER]);
+}
+
+#[test]
+fn should_pass_the_archive_size_limit_to_the_command_history() {
+    // Given
+    let mut archive = crate::config::Config::default().archive;
+    archive.max_size_mb = 123;
+    let home = std::path::Path::new("/Users/someone");
+    // When
+    let kept = CommandHistoryArgs::of(&archive, home);
+    let args = command_spotting_args(0, "model_dir", "vad", "commands_url", kept.as_ref());
+    // Then
+    let tail = &args[args.len() - 4..];
+    let expected = [
+        "--command-history-dir",
+        "/Users/someone/.voicepuncher/command-history",
+        "--command-history-max-mb",
+        "123",
+    ];
+    assert_eq!(tail, expected);
+}
+
+#[test]
+fn should_pass_no_command_history_when_it_is_turned_off() {
+    // Given
+    let mut archive = crate::config::Config::default().archive;
+    archive.keep_commands = false;
+    // When
+    let kept = CommandHistoryArgs::of(&archive, std::path::Path::new("/Users/someone"));
+    // Then
+    assert!(kept.is_none());
 }
