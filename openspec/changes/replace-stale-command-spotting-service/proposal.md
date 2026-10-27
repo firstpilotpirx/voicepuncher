@@ -10,6 +10,7 @@ Quitting the app does not stop adopted services, and `just update-app` (rebuild 
 - Such a copy is stopped and replaced by a fresh copy started from the app's own engines, on the same port.
 - The log names the replacement in one line: the port, the old and the new protocol version.
 - If a protocol mismatch still shows up later (a policy close naming the versions), the app treats it as a stale service and replaces it the same way, instead of reconnecting in a loop.
+- When voice control connects and a copy refuses it for its protocol version, it moves on to the next copy, so commands keep working while the refused copy is replaced.
 
 Current stage: PoC. Target stage: PoC.
 Scope: the adoption of command spotting service copies in hotkey mode with `[services] manage` on.
@@ -25,13 +26,13 @@ Out of scope: the speech recognition services (whisper-server copies), the servi
 ## Impact
 
 - The app's service supervision (adoption of running copies) and the command spotting client's handling of the protocol-mismatch close.
-- The command spotting service may need to report its protocol version before a session starts, if it does not already.
+- The command spotting service itself does not change: its existing hello refusal already names both protocol versions.
 
-## Open points
+## Decisions
 
-- Which capability holds the adoption requirement: proposed `local-services`; to confirm at the specs stage.
-- How the app learns a copy's protocol version before adopting it (a version query or the handshake close): proposed — use whatever the service already reports, add a query only if none exists.
-- Whether a mismatched copy the app did not start may be stopped at all: proposed yes, since it occupies the app's own port and blocks voice control.
+- The adoption requirements live in `local-services`.
+- The app learns a copy's protocol version from the hello handshake the service already answers (a refusal names both versions); no version query is added, and `/health` stays as it is.
+- A mismatched copy the app did not start is stopped, but only when the process on that port is the command spotting service; any other program is left alone.
 
 ## Release
 
