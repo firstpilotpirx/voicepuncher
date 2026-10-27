@@ -57,18 +57,14 @@ impl ManagedRun {
     /// Starts what `needed` names on free ports, from the models the `justfile` exports,
     /// and waits until every copy answers.
     pub fn start(needed: Needed) -> Result<Self> {
+        Self::start_with(Self::config_for(needed)?)
+    }
+
+    /// Starts the services `config` names, adopting those that already answer, and waits
+    /// until every copy answers.
+    pub fn start_with(config: Config) -> Result<Self> {
         let home = tempfile::tempdir()?;
-        let config = Self::config_for(needed)?;
-        let mut machine = Machine::current();
-        machine.home = home.path().to_path_buf();
-        machine.env.insert(
-            "VOICEPUNCHER_KWS_BINARY".into(),
-            workspace_root()
-                .join("target/release/voicepuncher-command-spotting")
-                .display()
-                .to_string(),
-        );
-        let mut services = ManagedServices::start_on(machine)?;
+        let mut services = ManagedServices::start_on(machine(home.path()))?;
         services.require(&config);
         let view = services.view();
         let run = Self { services, view, config, home, paused: Vec::new() };
@@ -87,7 +83,7 @@ impl ManagedRun {
     }
 
     /// The configuration of the services `needed` names, each on a free port.
-    fn config_for(needed: Needed) -> Result<Config> {
+    pub fn config_for(needed: Needed) -> Result<Config> {
         let mut config = Config::default();
         config.transcription.base_url = format!(
             "http://127.0.0.1:{}/v1",
@@ -137,6 +133,20 @@ impl ManagedRun {
     pub fn home(&self) -> &std::path::Path {
         self.home.path()
     }
+}
+
+/// This machine with `home` as its home, and the command spotting program this checkout built.
+pub fn machine(home: &std::path::Path) -> Machine {
+    let mut machine = Machine::current();
+    machine.home = home.to_path_buf();
+    machine.env.insert(
+        "VOICEPUNCHER_KWS_BINARY".into(),
+        workspace_root()
+            .join("target/release/voicepuncher-command-spotting")
+            .display()
+            .to_string(),
+    );
+    machine
 }
 
 /// Kills the service copy on `port` at once; returns its process.

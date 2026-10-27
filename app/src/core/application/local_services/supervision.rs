@@ -5,7 +5,9 @@ use std::time::{Duration, Instant};
 
 use crate::core::domain::{ServiceSpec, ServiceState, ServiceStatus};
 
-use super::{ProbeAnswer, ServiceLauncher, ServiceProbe, ServiceProcess};
+use super::{HolderStop, ProbeAnswer, ServiceLauncher, ServiceProbe, ServiceProcess};
+
+mod adopted;
 
 /// How long a started service has to answer, and how long a port that answers as nothing
 /// known is waited for before the decision to adopt gives up.
@@ -81,9 +83,10 @@ impl Supervision {
             ServiceState::Pending => self.decide(senses),
             ServiceState::Starting { .. } => self.watch_start(senses),
             ServiceState::Ready => self.watch_owned(senses),
-            ServiceState::Restarting { .. } if senses.now >= self.next_at => self.spawn(senses),
+            ServiceState::Restarting { .. } if senses.now >= self.next_at => {
+                self.decide_again(senses);
+            }
             ServiceState::Adopted => self.watch_adopted(senses),
-            ServiceState::StoppedOutside => self.wait_for_return(senses),
             _ => {}
         }
     }
@@ -145,8 +148,7 @@ impl Supervision {
                     self.spec.label,
                     self.spec.port
                 );
-                self.next_at = senses.now + CHECK_INTERVAL;
-                self.state = ServiceState::Adopted;
+                self.adopt(senses.now);
             }
             ProbeAnswer::Busy if senses.now.duration_since(self.since) >= READINESS_LIMIT => {
                 self.fail(format!(
@@ -185,6 +187,9 @@ impl Supervision {
 
     fn watch_start(&mut self, senses: &Senses) {
         if let Some(exit) = self.exited() {
+            if senses.probe.answer(self.spec.kind, self.spec.port) == ProbeAnswer::Ready {
+                return self.decide(senses);
+            }
             return self.start_failed(senses.now, &format!("exited ({exit})"));
         }
         let warmed = (senses.probe.answer(self.spec.kind, self.spec.port) == ProbeAnswer::Ready)
@@ -267,32 +272,6 @@ impl Supervision {
         }
         self.next_at = senses.now + CHECK_INTERVAL;
         Some(senses.probe.answer(self.spec.kind, self.spec.port))
-    }
-
-    fn watch_adopted(&mut self, senses: &Senses) {
-        let Some(answer) = self.due_answer(senses) else {
-            return;
-        };
-        if answer != ProbeAnswer::Closed {
-            self.failed_checks = 0;
-            return;
-        }
-        self.failed_checks += 1;
-        if self.failed_checks >= FAILED_CHECKS {
-            log::warn!(
-                "services: {} stopped — it was started outside the app",
-                self.spec.label
-            );
-            self.state = ServiceState::StoppedOutside;
-        }
-    }
-
-    fn wait_for_return(&mut self, senses: &Senses) {
-        if self.due_answer(senses) == Some(ProbeAnswer::Ready) {
-            log::info!("services: {} answers again — adopted", self.spec.label);
-            self.failed_checks = 0;
-            self.state = ServiceState::Adopted;
-        }
     }
 
     /// How the owned process ended, once; it is then forgotten.

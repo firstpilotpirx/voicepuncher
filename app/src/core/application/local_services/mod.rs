@@ -24,9 +24,21 @@ pub const TICK: Duration = Duration::from_millis(100);
 /// How often a stop looks whether the services it asked to end have ended.
 const STOP_POLL: Duration = Duration::from_millis(50);
 
-/// Starts the process of a service.
+/// Starts the process of a service, and stops a hung one the app did not start.
 pub trait ServiceLauncher: Send + Sync {
     fn spawn(&self, spec: &ServiceSpec) -> Result<Box<dyn ServiceProcess>>;
+
+    /// Stops the program listening on the service's port when it is the service's own program.
+    fn stop_holder(&self, spec: &ServiceSpec) -> HolderStop;
+}
+
+/// What became of the program listening on a service's port.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HolderStop {
+    /// The service's own program, stopped: its process id.
+    Stopped(u32),
+    /// Another program, or one the system does not name, left running: as a person names it.
+    Foreign(String),
 }
 
 /// A started process of a service.

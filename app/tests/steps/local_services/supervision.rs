@@ -32,6 +32,12 @@ pub(super) struct Supervised {
     pub(super) stop_took: Option<Duration>,
     /// The home whose catalog named a service's program and log file, if any.
     pub(super) home: Option<super::home::FakeHome>,
+    /// The ports of the copies the app adopted, in the order they were planned.
+    pub(super) adopted_copies: Vec<u16>,
+    /// When, on the clock, an adopted copy's process ended or hung.
+    pub(super) gone_at: Option<Instant>,
+    /// The process that holds a copy's port and takes connections without answering.
+    pub(super) hung: Option<voicepuncher_test_steps::loopback::SilentListener>,
 }
 
 impl std::fmt::Debug for Supervised {
@@ -60,6 +66,9 @@ impl Supervised {
             specs: Vec::new(),
             stop_took: None,
             home: None,
+            adopted_copies: Vec::new(),
+            gone_at: None,
+            hung: None,
         })
     }
 
@@ -193,6 +202,18 @@ impl Supervised {
         let child = Command::new("/bin/sleep").arg("60").spawn()?;
         self.scripts.push((port, child));
         self.probe.set(port, true);
+        Ok(())
+    }
+
+    /// Ends the process the scripts run on `port`; its port no longer answers.
+    pub(super) fn end_outside(&mut self, port: u16) -> Result<()> {
+        for (_, child) in self.scripts.iter_mut().filter(|(p, _)| *p == port) {
+            child.kill()?;
+            child.wait()?;
+        }
+        self.scripts.retain(|(p, _)| *p != port);
+        self.probe.set(port, false);
+        self.gone_at = Some(self.clock.now());
         Ok(())
     }
 

@@ -122,4 +122,5 @@ fn should_refuse_to_start_a_missing_program() {
     assert!(started.is_err());
 }
 
+mod holder;
 mod probe;

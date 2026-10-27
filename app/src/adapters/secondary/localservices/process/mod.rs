@@ -3,6 +3,7 @@
 //! Each service writes its output into its own log file itself, so the log goes on after
 //! the app that started it quits.
 
+mod holder;
 mod probe;
 
 use std::io::Write;
@@ -12,7 +13,7 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use anyhow::{Context, Result};
 
 use crate::adapters::secondary::logging::file::{RotatingFileWriter, KEPT_BACKUPS, MAX_LOG_BYTES};
-use crate::core::application::{ServiceLauncher, ServiceProcess};
+use crate::core::application::{HolderStop, ServiceLauncher, ServiceProcess};
 use crate::core::domain::ServiceSpec;
 
 pub use probe::HttpProbe;
@@ -42,6 +43,10 @@ impl ServiceLauncher for ProcessLauncher {
             .spawn()
             .with_context(|| format!("cannot start {}", spec.program.display()))?;
         Ok(Box::new(ChildProcess { child, end: None }))
+    }
+
+    fn stop_holder(&self, spec: &ServiceSpec) -> HolderStop {
+        holder::stop_holder(spec)
     }
 }
 

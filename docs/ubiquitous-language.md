@@ -270,13 +270,13 @@
 
 ### Adopted service
 - **Type:** Domain concept
-- **Definition:** A local service that already answered on its port when the *service runtime* looked (kept warm by `just start-model-servers`, or another app instance): counted ready and watched, never started or stopped by the app; when it stops answering it is *stopped outside the app* and waited for.
-- **Code:** `ServiceState::Adopted`, `ServiceState::StoppedOutside`
+- **Definition:** A local service that already answered on its port when the *service runtime* looked (kept warm by `just start-model-servers`, or another app instance): counted ready and watched, never started or stopped by the app; when it stops answering, or hangs while its port runs the service's own program, the app replaces it with a copy of its own.
+- **Code:** `ServiceState::Adopted`
 - **Synonyms to AVOID:** "external service", "foreign service"
 
 ### Service state
 - **Type:** Value Object (enum)
-- **Definition:** What a supervised local service is doing: Pending, Starting, Ready, Restarting (with the try), Failed (with the reason and the log file), Adopted, Stopped outside the app, Stopped. Ready and Adopted count ready for dictation.
+- **Definition:** What a supervised local service is doing: Pending, Starting, Ready, Restarting (with the try), Failed (with the reason and the log file), Adopted, Stopped. Ready and Adopted count ready for dictation.
 - **Code:** `app/src/core/domain/local_service.rs` (`ServiceState`, `ServiceStatus`, `ServicesProgress`, `ServiceSpec`, `ServiceKind`)
 - **Synonyms to AVOID:** "health", "status code"
 

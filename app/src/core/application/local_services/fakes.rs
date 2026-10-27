@@ -10,7 +10,7 @@ use anyhow::{bail, Result};
 
 use crate::core::domain::{ServiceKind, ServiceSpec};
 
-use super::{Clock, ProbeAnswer, ServiceLauncher, ServiceProbe, ServiceProcess};
+use super::{Clock, HolderStop, ProbeAnswer, ServiceLauncher, ServiceProbe, ServiceProcess};
 
 #[derive(Clone)]
 pub struct FakeClock(Arc<Mutex<Instant>>);
@@ -46,9 +46,14 @@ pub struct ProcessLife {
     pub stubborn: bool,
 }
 
-/// Every process spawned, in order, shared by the launcher and its processes.
+/// Every process spawned, in order, shared by the launcher and its processes; and the ports
+/// whose holder the launcher was asked to stop.
 #[derive(Clone, Default)]
-pub struct Spawns(Arc<Mutex<Vec<ProcessLife>>>, Arc<Mutex<Vec<u16>>>);
+pub struct Spawns(
+    Arc<Mutex<Vec<ProcessLife>>>,
+    Arc<Mutex<Vec<u16>>>,
+    Arc<Mutex<Vec<u16>>>,
+);
 
 impl Spawns {
     pub fn all(&self) -> Vec<ProcessLife> {
@@ -64,6 +69,11 @@ impl Spawns {
         self.1.lock().unwrap().clone()
     }
 
+    /// The ports whose holder the launcher was asked to stop, in order.
+    pub fn holders_stopped(&self) -> Vec<u16> {
+        self.2.lock().unwrap().clone()
+    }
+
     /// Makes the last process exit with `code`.
     pub fn exit_last(&self, code: &str) {
         if let Some(life) = self.0.lock().unwrap().last_mut() {
@@ -76,11 +86,18 @@ pub struct FakeLauncher {
     pub spawns: Spawns,
     pub refuse: bool,
     pub stubborn: bool,
+    /// What stopping the program on a port does: the service's own program by default.
+    pub holder: HolderStop,
 }
 
 impl FakeLauncher {
     pub fn new(spawns: &Spawns) -> Self {
-        Self { spawns: spawns.clone(), refuse: false, stubborn: false }
+        Self {
+            spawns: spawns.clone(),
+            refuse: false,
+            stubborn: false,
+            holder: HolderStop::Stopped(4242),
+        }
     }
 }
 
@@ -99,6 +116,11 @@ impl ServiceLauncher for FakeLauncher {
             spawns: self.spawns.clone(),
             index: all.len() - 1,
         }))
+    }
+
+    fn stop_holder(&self, spec: &ServiceSpec) -> HolderStop {
+        self.spawns.2.lock().unwrap().push(spec.port);
+        self.holder.clone()
     }
 }
 

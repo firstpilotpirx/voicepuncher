@@ -55,10 +55,28 @@ fn rules(capability: &str) -> BTreeSet<String> {
         .collect()
 }
 
+/// The requirements the `## REMOVED Requirements` sections of `deltas` name.
+fn removed(deltas: &str) -> BTreeSet<String> {
+    let mut removing = false;
+    let mut names = BTreeSet::new();
+    for line in deltas.lines().map(str::trim) {
+        if line.starts_with("## ") {
+            removing = line.starts_with("## REMOVED");
+        } else if let Some(name) = line.strip_prefix("### Requirement:").filter(|_| removing) {
+            names.insert(name.trim().to_owned());
+        }
+    }
+    names
+}
+
 /// The gaps of `capability`: its requirements without a rule, then its rules without a
-/// requirement, where a requirement a change not yet archived adds (in `deltas`) counts.
+/// requirement, where a requirement a change not yet archived adds (in `deltas`) counts and
+/// one it removes needs no rule.
 fn gaps(capability: &str, spec: &str, deltas: &str) -> Vec<String> {
-    let requirements = headings(spec, "### Requirement:");
+    let requirements: BTreeSet<String> = headings(spec, "### Requirement:")
+        .difference(&removed(deltas))
+        .cloned()
+        .collect();
     let mut known = headings(deltas, "### Requirement:");
     known.extend(requirements.iter().cloned());
     let rules = rules(capability);
@@ -84,6 +102,16 @@ fn deltas(capability: &str) -> String {
             fs::read_to_string(change.path().join("specs").join(capability).join("spec.md")).ok()
         })
         .collect()
+}
+
+#[test]
+fn should_ask_no_rule_for_a_requirement_a_change_not_yet_archived_removes() {
+    let spec = "### Requirement: Kept\n\n### Requirement: Gone\n";
+    let deltas = "## REMOVED Requirements\n\n### Requirement: Gone\n**Reason**: replaced\n";
+    assert_eq!(
+        gaps("no-such-capability", spec, deltas),
+        vec!["no-such-capability: no rule for \"Kept\"".to_owned()]
+    );
 }
 
 #[test]

@@ -9,7 +9,7 @@ use voicepuncher::adapters::secondary::localservices::catalog::{
     engine_origin, needed, Machine, Needs,
 };
 use voicepuncher::config::Config;
-use voicepuncher::core::application::{ServiceLauncher, ServiceProcess, Services};
+use voicepuncher::core::application::{HolderStop, ServiceLauncher, ServiceProcess, Services};
 use voicepuncher::core::domain::{ServiceKind, ServiceSpec, ServiceState};
 
 use super::home::{touch, FakeHome, COMMAND_MODEL_VAR, COMMAND_SPOTTING, KWS_MODEL_DIR, WHISPER};
@@ -153,6 +153,10 @@ impl ServiceLauncher for CountingLauncher {
     fn spawn(&self, spec: &ServiceSpec) -> Result<Box<dyn ServiceProcess>> {
         self.0.fetch_add(1, Ordering::SeqCst);
         bail!("{} is not started in this scenario", spec.label)
+    }
+
+    fn stop_holder(&self, spec: &ServiceSpec) -> HolderStop {
+        HolderStop::Foreign(format!("nothing is stopped for {}", spec.label))
     }
 }
 

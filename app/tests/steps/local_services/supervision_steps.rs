@@ -5,7 +5,6 @@ use voicepuncher::test_doubles::prelude::*;
 
 pub(crate) use voicepuncher::adapters::secondary::localservices::catalog::{needed, Needs};
 use voicepuncher::config::Config;
-use voicepuncher::core::application::local_services::{CHECK_INTERVAL, FAILED_CHECKS};
 use voicepuncher::core::domain::{ServiceKind, ServiceState};
 
 use super::home::{FakeHome, COMMAND_SPOTTING as COMMAND_SPOTTING_PROGRAM};
@@ -18,19 +17,14 @@ const FIVE_STARTS: Duration = Duration::from_secs(60);
 /// What a fake service writes to its output when a step tells it to.
 const SERVICE_TEXT: &str = "the service says hello";
 /// A program that runs until it is asked to end.
-const RUNS: &str = "exec sleep 60";
+pub(super) const RUNS: &str = "exec sleep 60";
 
-fn supervised(world: &mut IntegrationWorld) -> Result<&mut Supervised> {
+pub(super) fn supervised(world: &mut IntegrationWorld) -> Result<&mut Supervised> {
     let local = local(world);
     if local.supervised.is_none() {
         local.supervised = Some(Supervised::new()?);
     }
     local.supervised.as_mut().context("a runtime scenario")
-}
-
-/// Enough checks on the clock for an adopted service to be seen gone, or back.
-fn checks() -> Duration {
-    CHECK_INTERVAL * (FAILED_CHECKS + 1)
 }
 
 #[given("the service scripts keep the speech recognition service for dictation running")]
@@ -76,46 +70,6 @@ fn dictation_adopted_given(world: &mut IntegrationWorld) -> Result<()> {
     let run = supervised(world)?;
     run.supervise_planned()?;
     run.drive_until(DICTATION, |state| *state == ServiceState::Adopted)
-}
-
-#[when("the service the scripts run stops answering")]
-fn outside_service_stops(world: &mut IntegrationWorld) -> Result<()> {
-    let run = supervised(world)?;
-    for (_, child) in &mut run.scripts {
-        child.kill()?;
-        child.wait()?;
-    }
-    run.probe.set(DICTATION, false);
-    run.drive_for(checks())
-}
-
-#[then("the service is shown as stopped outside the app and the app starts no service")]
-fn shown_stopped_outside(world: &mut IntegrationWorld) -> Result<()> {
-    let run = supervised(world)?;
-    let state = run.state(DICTATION)?;
-    ensure!(
-        state == ServiceState::StoppedOutside,
-        "the service is {state}"
-    );
-    ensure!(
-        run.starts(DICTATION) == 0,
-        "the app started its own service"
-    );
-    Ok(())
-}
-
-#[then("once the service answers again it is shown as adopted")]
-fn adopted_again(world: &mut IntegrationWorld) -> Result<()> {
-    let run = supervised(world)?;
-    run.run_outside(DICTATION)?;
-    run.drive_for(checks())?;
-    let state = run.state(DICTATION)?;
-    ensure!(state == ServiceState::Adopted, "the service is {state}");
-    ensure!(
-        run.starts(DICTATION) == 0,
-        "the app started its own service"
-    );
-    Ok(())
 }
 
 #[given("the command spotting service exits at every start")]

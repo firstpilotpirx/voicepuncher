@@ -11,4 +11,4 @@ pub use address::{
     SPEECH_RECOGNITION_COPY_OFFSET,
 };
 pub use pool::{CopyPool, CopyState, Finish, Lease, Place, PoolError, Ran};
-pub use probe::{ForeignProgram, Identity, Probe, TcpProbe, WhisperProbe};
+pub use probe::{holder_of, ForeignProgram, Identity, Probe, TcpProbe, WhisperProbe};

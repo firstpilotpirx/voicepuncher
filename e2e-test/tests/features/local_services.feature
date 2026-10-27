@@ -181,6 +181,16 @@ Feature: local-services
       And no process of them is left after the app ended
 
   @serial @resilience
+  Rule: An adopted service that stops is replaced by the app's own
+
+    Scenario: An adopted command spotting copy that stops is replaced
+      Given voice control is on and the app adopted both copies of the command spotting service an app run left running
+      When the process of one adopted command spotting copy ends
+      Then within 30 seconds the app has started its own command spotting copy on that port and it answers
+      And the log names the command spotting copy, its port and that it stopped
+      And a voice command said to that copy is heard
+
+  @serial @resilience
   Rule: An owned service that stops is started again
 
     Scenario: An owned speech recognition copy that stops answering is restarted

@@ -56,10 +56,9 @@ pub enum ServiceState {
     },
     /// Given up after starts that never answered; started again only on a retry.
     Failed(String),
-    /// Answered before the app started it: watched, never started or stopped by the app.
+    /// Answered before the app started it: watched, and replaced by the app's own once it
+    /// stops; never stopped by the app.
     Adopted,
-    /// An adopted service stopped answering: waited for, never replaced.
-    StoppedOutside,
     Stopped,
 }
 
@@ -79,7 +78,6 @@ impl fmt::Display for ServiceState {
             Self::Restarting { attempt, .. } => write!(f, "Restarting (try {attempt})"),
             Self::Failed(_) => f.write_str("Failed — see log"),
             Self::Adopted => f.write_str("Adopted"),
-            Self::StoppedOutside => f.write_str("Stopped outside the app"),
             Self::Stopped => f.write_str("Stopped"),
         }
     }
@@ -194,9 +192,6 @@ mod tests {
     fn should_describe_states_in_words() {
         let restarting = ServiceState::Restarting { attempt: 3, pause: Duration::from_secs(4) };
         assert_eq!(restarting.to_string(), "Restarting (try 3)");
-        assert_eq!(
-            ServiceState::StoppedOutside.to_string(),
-            "Stopped outside the app"
-        );
+        assert_eq!(ServiceState::Adopted.to_string(), "Adopted");
     }
 }

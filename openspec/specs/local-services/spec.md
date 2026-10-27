@@ -373,15 +373,6 @@ When the app quits or is told to end — Quit in its menu, a quit from the syste
 - **THEN** the app's log names the quit from the system
 - **AND** no process of the speech recognition service for dictation is left after the app ended
 
-### Requirement: An adopted service that goes away is reported and waited for
-When an adopted service stops answering three checks in a row, the app SHALL report it as stopped outside the app, SHALL NOT start its own on that port, and SHALL count it adopted again once it answers again.
-
-#### Scenario: The service scripts stop an adopted service
-- **GIVEN** the app adopted the speech recognition service for dictation
-- **WHEN** the service stops answering
-- **THEN** the service is shown as stopped outside the app and the app starts no speech recognition service for dictation
-- **AND** once the service answers again it is shown as adopted
-
 ### Requirement: Each started service logs to its own file
 The app SHALL write the output and errors of every service it starts to a file of its own in the logs folder, named after the service's program and port as the service scripts name it, and SHALL log each start, readiness, exit, restart, adoption and failure of a service in its own log. The service SHALL write into that file itself, not through the app, so its log goes on when the app that started it quits and a later app adopts it. The file SHALL be rotated by size when a service starts, like the app's log.
 
@@ -544,3 +535,47 @@ When another program that is no speech recognition service listens on the own po
 - **GIVEN** another program that is no speech recognition service listens on the own port of the speech recognition service for dictation
 - **WHEN** a client of the service transcribes two dictations
 - **THEN** the log holds one warning naming that port, the program's name and its process id
+
+### Requirement: An adopted service that stops is replaced by the app's own
+When an adopted service, or an adopted copy, stops answering three checks in a row and nothing listens on its port any more, the app SHALL log in one line the service, the copy, the port and the reason, SHALL start its own on that port as it starts a needed service, and SHALL from then on restart and stop it as a service it started.
+
+#### Scenario: An adopted command spotting copy that stops is replaced
+- **GIVEN** voice control is on and the app adopted both copies of the command spotting service
+- **WHEN** the process of one copy ends
+- **THEN** within 30 seconds the app has started its own copy on that port and it answers
+- **AND** the log names the service, the copy, the port and that it stopped
+- **AND** the menu shows the service ready again and voice commands work
+
+#### Scenario: An adopted speech recognition copy that stops is replaced
+- **GIVEN** the app adopted the copies of the speech recognition service for dictation
+- **WHEN** the process of one copy ends
+- **THEN** within 30 seconds the app has started its own copy on that port and it answers
+- **AND** the other copies were never restarted
+
+#### Scenario: A replaced copy is stopped at quit
+- **GIVEN** the app replaced an adopted copy that stopped
+- **WHEN** the user quits the app
+- **THEN** the copy the app started is stopped and the copies still adopted keep answering
+
+### Requirement: An adopted service that hangs is replaced by the app's own
+When an adopted service, or an adopted copy, that answered its checks takes connections but fails three checks in a row, the app SHALL stop the program that listens on its port when that program is the service's own program, log it in one line naming the service, the copy, the port and the process id, and replace it as a stopped adopted service; another program on the port SHALL be left running and named in the log.
+
+#### Scenario: A hung adopted copy is killed and replaced
+- **GIVEN** the app adopted the copies of the speech recognition service for commands
+- **WHEN** one copy stops answering without ending
+- **THEN** within 30 seconds the app has stopped that copy's process and started its own copy on that port, and it answers
+- **AND** the log names the service, the copy, the port and the process id it stopped
+
+#### Scenario: Another program on the port is not killed
+- **GIVEN** the app adopted a copy and then another program that is not that service takes its port and does not answer as the service
+- **WHEN** the copy fails three checks in a row
+- **THEN** the other program keeps running and the log names it with its process id
+
+### Requirement: A service that answers again before its restart is adopted
+Before each start or restart of a service or a copy, the app SHALL check its port; when the service already answers there (the service scripts restarted it meanwhile), the app SHALL adopt it instead of starting a second one, and a start that ends because its port was taken SHALL NOT count toward marking the service Failed.
+
+#### Scenario: The service scripts restart a copy first
+- **GIVEN** the app adopted a copy of the speech recognition service for dictation and the service scripts also watch it
+- **WHEN** the copy ends and the scripts start it again before the app does
+- **THEN** the app adopts the copy the scripts started and no second copy runs on that port
+- **AND** the service is not Failed

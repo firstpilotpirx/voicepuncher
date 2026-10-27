@@ -8,6 +8,7 @@ use std::time::Duration;
 mod holder;
 mod whisper;
 
+pub use holder::holder_of;
 pub use whisper::WhisperProbe;
 
 /// A connection that takes longer than this on loopback counts as refused, so one round

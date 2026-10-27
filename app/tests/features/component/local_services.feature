@@ -12,13 +12,46 @@ Feature: local-services
       Then the app starts no service and counts the speech recognition service for dictation adopted and ready
       And after the app quits the service the scripts run still runs
 
-  Rule: An adopted service that goes away is reported and waited for
+  Rule: An adopted service that stops is replaced by the app's own
 
-    Scenario: The service scripts stop an adopted service
-      Given the app adopted the speech recognition service for dictation
-      When the service the scripts run stops answering
-      Then the service is shown as stopped outside the app and the app starts no service
-      And once the service answers again it is shown as adopted
+    Scenario: An adopted command spotting copy that stops is replaced
+      Given the app adopted both copies of the command spotting service
+      When the process of one adopted copy ends
+      Then within 30 seconds the app has started its own copy on that port and it answers
+      And the log names the service, the copy, the port and that it stopped
+      And the service is shown ready again
+
+    Scenario: An adopted speech recognition copy that stops is replaced
+      Given the app adopted both copies of the speech recognition service for dictation
+      When the process of one adopted copy ends
+      Then within 30 seconds the app has started its own copy on that port and it answers
+      And the other copy was never restarted
+
+    Scenario: A replaced copy is stopped at quit
+      Given the app replaced an adopted copy of the speech recognition service for dictation that stopped
+      When the user quits the app with its services
+      Then no process of the replaced copy is left and the copy still adopted keeps running
+
+  Rule: An adopted service that hangs is replaced by the app's own
+
+    Scenario: A hung adopted copy is killed and replaced
+      Given the app adopted a copy of the speech recognition service for commands
+      When the adopted copy stops answering without ending
+      Then within 30 seconds the app has stopped that copy's process and started its own copy on that port, and it answers
+      And the log names the service, the copy, the port and the process id it stopped
+
+    Scenario: Another program on the port is not killed
+      Given the app adopted a copy of the speech recognition service for commands
+      When another program that is not that service takes its port and does not answer
+      Then after three failed checks the other program keeps running and the log names it with its process id
+
+  Rule: A service that answers again before its restart is adopted
+
+    Scenario: The service scripts restart a copy first
+      Given the app adopted both copies of the speech recognition service for dictation
+      When one adopted copy ends and the scripts start it again while the app's own start fails on the taken port
+      Then the app adopts the copy the scripts started and no second copy runs on that port
+      And the service is not Failed
 
   Rule: An owned service that cannot start is marked Failed
 

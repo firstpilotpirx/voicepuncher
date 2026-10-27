@@ -2,6 +2,7 @@
 //! lookup on a home of the scenario's own, the copies of a service on fake copies and the
 //! command spotting client on a fake service.
 
+mod adopted_steps;
 mod catalog;
 mod catalog_copies;
 mod catalog_history;
@@ -9,6 +10,7 @@ mod copies;
 mod fake_copies;
 mod foreign_program;
 mod home;
+mod hung_steps;
 mod scripts;
 mod stall;
 mod supervision;
@@ -104,9 +106,10 @@ impl Clock for StepClock {
     }
 }
 
-/// Answers Ready on the ports a step says answer, Closed on the others.
+/// Answers Ready on the ports a step says answer; on the ports a step says hang, Busy while
+/// something takes connections there; Closed on the others.
 #[derive(Clone, Default)]
-struct Answering(Arc<Mutex<HashSet<u16>>>);
+struct Answering(Arc<Mutex<HashSet<u16>>>, Arc<Mutex<HashSet<u16>>>);
 
 impl Answering {
     fn set(&self, port: u16, answers: bool) {
@@ -117,12 +120,22 @@ impl Answering {
             ports.remove(&port);
         }
     }
+
+    /// The port no longer answers as the service; whatever listens there only takes connections.
+    fn hang(&self, port: u16) {
+        self.set(port, false);
+        lock(&self.1).insert(port);
+    }
 }
 
 impl ServiceProbe for Answering {
     fn answer(&self, _kind: ServiceKind, port: u16) -> ProbeAnswer {
         if lock(&self.0).contains(&port) {
             ProbeAnswer::Ready
+        } else if lock(&self.1).contains(&port)
+            && std::net::TcpStream::connect(("127.0.0.1", port)).is_ok()
+        {
+            ProbeAnswer::Busy
         } else {
             ProbeAnswer::Closed
         }

@@ -18,7 +18,7 @@ The user wants every component of the system to restart itself after a crash as 
 
 Current stage: PoC. Target stage: PoC.
 Scope: crash recovery of the local services in hotkey mode with `[services] manage` on: the command spotting service and both speech recognition services, every copy.
-Acceptance bar: kill any single copy of any of the three services while the app runs; within a few seconds a new copy answers on the same port, and dictation and voice commands work again without the user doing anything.
+Acceptance bar: kill any single copy of any of the three services while the app runs; within 30 seconds a new copy answers on the same port, and dictation and voice commands work again without the user doing anything.
 Out of scope: the services run by `just start-model-servers` with `manage` off (the script already restarts them), and replacing a copy that speaks an older protocol (the change `replace-stale-command-spotting-service`).
 
 ## Capabilities

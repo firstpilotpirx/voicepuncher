@@ -8,7 +8,7 @@ use super::ForeignProgram;
 const LSOF: &str = "/usr/sbin/lsof";
 
 /// The program listening on `port` of loopback, named as far as `lsof` tells it.
-pub(super) fn holder_of(port: u16) -> ForeignProgram {
+pub fn holder_of(port: u16) -> ForeignProgram {
     let output = Command::new(LSOF)
         .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN", "-Fpc"])
         .output();

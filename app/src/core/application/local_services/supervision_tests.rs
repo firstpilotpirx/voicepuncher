@@ -8,18 +8,18 @@ use crate::core::application::local_services::Clock;
 use crate::core::application::pipeline::tests::doubles::captured_log;
 use crate::core::domain::{ServiceKind, ServiceState};
 
-const PORT: u16 = 8080;
+pub(super) const PORT: u16 = 8080;
 
-struct Harness {
+pub(super) struct Harness {
     clock: FakeClock,
-    spawns: Spawns,
+    pub(super) spawns: Spawns,
     probe: FakeProbe,
-    launcher: FakeLauncher,
-    unit: Supervision,
+    pub(super) launcher: FakeLauncher,
+    pub(super) unit: Supervision,
 }
 
 impl Harness {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self::of(spec(ServiceKind::CommandSpotting, PORT))
     }
 
@@ -31,26 +31,26 @@ impl Harness {
         Self { clock, spawns, probe: FakeProbe::default(), launcher, unit }
     }
 
-    fn tick(&mut self) {
+    pub(super) fn tick(&mut self) {
         let senses = Senses { launcher: &self.launcher, probe: &self.probe, now: self.clock.now() };
         self.unit.tick(&senses);
     }
 
-    fn after(&mut self, secs: f64) {
+    pub(super) fn after(&mut self, secs: f64) {
         self.clock.advance(Duration::from_secs_f64(secs));
         self.tick();
     }
 
-    fn answers(&self, answer: ProbeAnswer) {
+    pub(super) fn answers(&self, answer: ProbeAnswer) {
         self.probe.set(PORT, answer);
     }
 
-    fn state(&self) -> ServiceState {
+    pub(super) fn state(&self) -> ServiceState {
         self.unit.status().state
     }
 
     /// Started and answering.
-    fn ready() -> Self {
+    pub(super) fn ready() -> Self {
         let mut harness = Self::new();
         harness.tick();
         harness.answers(ProbeAnswer::Ready);
@@ -59,14 +59,21 @@ impl Harness {
         harness
     }
 
+    /// The last process exits with `code`; its port no longer answers.
+    fn exits(&self, code: &str) {
+        self.spawns.exit_last(code);
+        self.answers(ProbeAnswer::Closed);
+    }
+
     /// Exits right away, then is started again after its pause; returns that pause.
     fn exit_and_restart(&mut self) -> Duration {
-        self.spawns.exit_last("code 1");
+        self.exits("code 1");
         self.tick();
         let ServiceState::Restarting { pause, .. } = self.state() else {
             panic!("not restarting: {:?}", self.state());
         };
         self.after(pause.as_secs_f64());
+        self.answers(ProbeAnswer::Ready);
         self.tick();
         assert_eq!(self.state(), ServiceState::Ready, "the new start answered");
         pause
@@ -111,12 +118,13 @@ fn should_start_an_owned_service_that_exits_again_after_one_second() {
     // Given
     let mut harness = Harness::ready();
     // When
-    harness.spawns.exit_last("code 1");
+    harness.exits("code 1");
     harness.tick();
     harness.after(0.5);
     let spawns_before_the_pause = harness.spawns.count();
     harness.after(0.5);
     let restarted = harness.state();
+    harness.answers(ProbeAnswer::Ready);
     harness.tick();
     // Then
     assert_eq!(spawns_before_the_pause, 1);
@@ -165,8 +173,9 @@ fn should_kill_and_restart_an_owned_service_after_three_failed_checks() {
     let after_two = harness.state();
     harness.after(5.0);
     let killed = harness.state();
-    harness.answers(ProbeAnswer::Ready);
+    harness.answers(ProbeAnswer::Closed);
     harness.after(FIRST_PAUSE.as_secs_f64());
+    harness.answers(ProbeAnswer::Ready);
     harness.tick();
     // Then
     assert_eq!(after_two, ServiceState::Ready);
@@ -244,24 +253,6 @@ fn should_start_a_failed_service_again_on_retry() {
 }
 
 #[test]
-fn should_report_an_adopted_service_that_stops_answering_and_adopt_it_again() {
-    // Given
-    let mut harness = Harness::new();
-    harness.answers(ProbeAnswer::Ready);
-    harness.tick();
-    harness.answers(ProbeAnswer::Closed);
-    // When
-    (0..3).for_each(|_| harness.after(5.0));
-    let gone = harness.state();
-    harness.answers(ProbeAnswer::Ready);
-    harness.after(5.0);
-    // Then
-    assert_eq!(gone, ServiceState::StoppedOutside);
-    assert_eq!(harness.state(), ServiceState::Adopted);
-    assert_eq!(harness.spawns.count(), 0);
-}
-
-#[test]
 fn should_fail_a_service_with_a_missing_model_without_a_start() {
     // Given
     let mut missing = spec(ServiceKind::CommandSpotting, PORT);
@@ -299,6 +290,7 @@ fn should_start_an_owned_service_again_at_once_when_asked() {
     let mut harness = Harness::ready();
     // When
     harness.unit.restart(harness.clock.now());
+    harness.answers(ProbeAnswer::Closed);
     harness.tick();
     // Then
     assert!(harness.spawns.all()[0].killed);
@@ -365,11 +357,12 @@ fn should_warm_up_a_copy_started_again_after_it_exited() {
     // Given
     let mut harness = answering_speech_recognition_copy();
     harness.tick();
-    harness.spawns.exit_last("code 1");
+    harness.exits("code 1");
     harness.tick();
     harness.probe.refuse_warm_up(PORT, true);
     // When
     harness.after(FIRST_PAUSE.as_secs_f64());
+    harness.answers(ProbeAnswer::Ready);
     harness.tick();
     // Then
     assert_eq!(harness.state(), ServiceState::Starting { attempt: 2 });

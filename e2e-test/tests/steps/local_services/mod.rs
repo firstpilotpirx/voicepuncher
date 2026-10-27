@@ -9,6 +9,7 @@ use voicepuncher_copy_pool::ServiceAddress;
 
 use crate::{steps::off_thread, E2eWorld};
 
+mod adopted;
 mod app;
 mod confirmations;
 mod copies;

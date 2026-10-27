@@ -13,7 +13,7 @@ When an adopted service, or an adopted copy, stops answering three checks in a r
 #### Scenario: An adopted speech recognition copy that stops is replaced
 - **GIVEN** the app adopted the copies of the speech recognition service for dictation
 - **WHEN** the process of one copy ends
-- **THEN** within 30 seconds the app has started its own copy on that port and dictation works
+- **THEN** within 30 seconds the app has started its own copy on that port and it answers
 - **AND** the other copies were never restarted
 
 #### Scenario: A replaced copy is stopped at quit

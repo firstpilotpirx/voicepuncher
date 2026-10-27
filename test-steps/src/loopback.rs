@@ -4,7 +4,9 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 
 mod http2_only;
+mod silent_listener;
 pub use http2_only::Http2Only;
+pub use silent_listener::{free_port, SilentListener};
 
 /// A service on a free loopback port that hands every connection to `answer`, one after
 /// another on a thread of its own; its port.

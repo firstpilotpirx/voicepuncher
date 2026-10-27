@@ -41,6 +41,8 @@ pub struct OwnedServices {
     pub(super) confirmations: Option<super::hangs::confirming::Confirmations>,
     /// The command spotting engine a scenario drives in this process, and what it reported.
     pub scheduling: crate::steps::voice_control::spotting_service::scheduling::SchedulingRun,
+    /// The copies an app run left running that the app adopted, and the one that ended.
+    pub(super) adopted: super::adopted::AdoptedCopies,
 }
 
 impl OwnedServices {
@@ -49,7 +51,7 @@ impl OwnedServices {
     }
 }
 
-fn owned(world: &mut E2eWorld) -> &mut OwnedServices {
+pub(super) fn owned(world: &mut E2eWorld) -> &mut OwnedServices {
     &mut world.services.owned_services
 }
 
