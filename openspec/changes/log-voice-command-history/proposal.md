@@ -10,33 +10,29 @@ The question behind it: is the second model worth its cost (about 0.15–0.2 s p
 
 ## What Changes
 
-- A separate command history, beside the dictation history: for every utterance the keyword spotter reacts to, the system saves the audio of that utterance, what the keyword spotter heard (the command or keyword and its score), what the speech recognition service for commands transcribed, and the verdict (the command carried out, the command it was corrected to, or rejected as no command).
-- Every entry is written whether the command was carried out or not, so false starts the confirmation filtered out are counted too.
-- The history stays local, on the user's machine, like the dictation history.
+- A command history, beside the dictation history: one entry for every utterance in which either model heard a command. Each entry holds the audio the speech recognition service for commands heard, the keywords the keyword spotter reported in it (or none; the spotter gives a keyword from its list, not a transcript), the text Whisper transcribed, and the outcome: agreed (both heard the same command), corrected (Whisper heard another command), rejected (the spotter fired, Whisper heard no command) or missed (only Whisper heard the command).
+- Ordinary speech in which neither model heard a command leaves no entry.
+- The command spotting service writes the entries, into a folder the app names when it starts the service; on by default, a config switch turns it off; the same size limit as the dictation history.
+- The history stays on the user's machine.
 
 Current stage: PoC. Target stage: PoC.
-Scope: recording every keyword spotting reaction with its audio, both models' results and the verdict.
-Acceptance bar: after saying a few commands and some ordinary speech that the keyword spotter reacts to, the command history holds one entry per reaction, each with playable audio, the keyword spotter's result, Whisper's transcript and the verdict, and the counts of agreed, corrected and rejected utterances can be read from it.
-Out of scope: changing how commands are recognized or confirmed; a report or statistics tool over the history (a later change); sending the history anywhere.
+Scope: one entry per utterance with a command heard by either model, with its audio, both models' results and the outcome.
+Acceptance bar: after saying a few commands and some ordinary speech, the command history holds one entry per utterance with a command, each with playable audio, the spotter's keywords, Whisper's text and the outcome, and the counts of agreed, corrected, rejected and missed utterances can be read from it.
+Out of scope: changing how commands are recognized or confirmed; a report or statistics tool over the history (a later change); sending the history anywhere; services started by the service scripts or adopted by the app (they write no history).
 
 ## Capabilities
 
 ### Modified Capabilities
 
-- `voice-control`: every keyword spotting reaction is kept in a command history with its audio, both models' results and the verdict.
+- `voice-control`: every utterance with a command heard by either model is kept in a command history with its audio, both models' results and the outcome.
 
 ## Impact
 
-- The command spotting service (`command-spotting/`) and the app's voice control pipeline (`app/`): where the reaction, transcript and verdict are known and where the entry is written.
-- `docs/ubiquitous-language.md`: the new term for the command history.
+- The command spotting service (`command-spotting/`): collects each utterance's results and writes its entry.
+- The app (`app/`): the config switch and the folder it passes when it starts the service.
+- `docs/ubiquitous-language.md`: command history, command history entry, the four outcomes.
 
-## Open points
-
-- Where the history lives and who writes it: the command spotting service (which holds the audio and both results) or the app (which writes the dictation history today). Proposed: the service sends the audio and both results with its spotting event, and the app writes it next to the dictation history, e.g. `~/.voicepuncher/command-history/<time>/`.
-- Whether utterances the keyword spotter did not react to but Whisper heard as a command are recorded too (missed commands). Proposed: only reactions of the keyword spotter, as the user asked; misses later.
-- How long the history is kept and how much disk it may take. Proposed: the same limit as the dictation history.
-- Whether recording is on by default or a config switch. Proposed: on by default, a switch in `config.toml` to turn it off.
-- Why the service log on port 8082 stopped on 2026-10-20: check while implementing, as the service log is the current fallback.
+The service log on port 8082 stopped on 2026-10-20 because the app now streams to the copies of the service it starts on other ports, which log under their own ports: no fix needed.
 
 ## Release
 
