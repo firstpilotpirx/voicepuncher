@@ -41,7 +41,7 @@ At the deadline it stops with the last blocker. Stop lines go to stderr as `✗ 
 | Another branch stops the app update with one clear line | component `.feature` |
 | Local commits not on the remote stop the app update with one clear line | component `.feature` |
 
-A `justfile_rules` unit test checks that `update-app` calls `update-checkout` and holds no `git pull`. The manual run: the user runs `just update-app` once on the main checkout.
+A `justfile_rules` unit test checks that `update-app` calls `update-checkout` and holds no `git pull`. No manual run: `update-app` is no manual-run area of AGENTS.md.
 
 ## Risks / Trade-offs
 

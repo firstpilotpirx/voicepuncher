@@ -21,6 +21,26 @@ fn should_stay_under_800_lines() {
     assert!(lines < 800, "the justfile has {lines} lines");
 }
 
+#[test]
+fn should_update_the_checkout_for_the_app_without_git_pull() {
+    let recipe: Vec<&str> = JUSTFILE
+        .lines()
+        .skip_while(|line| !line.starts_with("update-app:"))
+        .skip(1)
+        .take_while(|line| line.starts_with(' '))
+        .collect();
+    assert!(
+        recipe
+            .first()
+            .is_some_and(|line| line.contains("{{dev_tools}} update-checkout")),
+        "update-app: {recipe:#?}"
+    );
+    assert!(
+        !recipe.iter().any(|line| line.contains("git pull")),
+        "update-app: {recipe:#?}"
+    );
+}
+
 /// The lines of a justfile that end a command in `|| true` with no comment on them or on the line above.
 fn uncommented_ignores(justfile: &str) -> Vec<String> {
     let lines: Vec<&str> = justfile.lines().collect();

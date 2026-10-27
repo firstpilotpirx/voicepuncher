@@ -553,9 +553,10 @@ bundle: _require-signing-identity engines
     {{just_executable()}} --justfile {{quote(justfile())}} _sign "$app"
     echo "✓ bundle $app"
 
-# Update this checkout to origin/main, quit the running app, rebuild dist/voicepuncher.app and launch it from there
-update-app:
-    git switch main && git pull --ff-only origin main
+# Update this checkout to origin/main (waiting out another program updating it), quit the running app, rebuild
+# dist/voicepuncher.app and launch it from there
+update-app: _dev-tools
+    {{dev_tools}} update-checkout
     if pgrep -f {{quote(app_bundle / "Contents/MacOS/voicepuncher")}} >/dev/null; then osascript -e 'quit app "voicepuncher"'; while pgrep -f {{quote(app_bundle / "Contents/MacOS/voicepuncher")}} >/dev/null; do sleep 0.5; done; fi
     {{just_executable()}} --justfile {{quote(justfile())}} bundle
     open {{quote(app_bundle)}}

@@ -30,6 +30,8 @@ pub struct WorkflowWorld {
     pub counts: Vec<usize>,
     /// Stage journal lines a scenario wrote.
     pub journal: Vec<String>,
+    /// Another program working on a scratch checkout while the scenario's command runs.
+    pub beside: Option<std::thread::JoinHandle<()>>,
 }
 
 /// The cucumber arguments of this process, or `None` when nextest only lists the tests.

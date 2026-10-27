@@ -1,9 +1,10 @@
 //! `dev-tools <command> [args]`: what the `justfile`'s recipes call (AGENTS.md § How to verify a change) —
 //! the stage runner (keys, pass records, lock phases, the stage table and journal), the frozen tests, the named
-//! runs, the filters of the test selections, the engines and the local services.
+//! runs, the filters of the test selections, the engines, the local services and the app update's checkout update.
 
 mod accuracy;
 mod accuracy_baseline;
+mod checkout;
 mod clock;
 mod context;
 mod engines;
@@ -31,7 +32,7 @@ pub type Outcome = Result<u8, String>;
 type Command = fn(&[String]) -> Outcome;
 
 /// Every command, by the name a recipe calls it with.
-const COMMANDS: [(&str, Command); 26] = [
+const COMMANDS: [(&str, Command); 27] = [
     ("stages", stages::command),
     ("model-stages", |stages| Ok(stages::model::command(stages))),
     ("test-stage", stages::test::command),
@@ -57,6 +58,7 @@ const COMMANDS: [(&str, Command); 26] = [
     ("stop-model-servers", services::stop_command),
     ("model-servers-for-e2e", services::e2e_command),
     ("supervise", services::supervise_command),
+    ("update-checkout", checkout::command),
     ("help", |_| {
         usage();
         Ok(0)

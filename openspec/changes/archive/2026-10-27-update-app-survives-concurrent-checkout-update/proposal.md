@@ -36,4 +36,4 @@ Out of scope: the rebuild and the bundle themselves, `cargo watch`, and any chan
 ## Release
 
 SemVer: PATCH — bug fix in a developer recipe.
-Target version: 0.41.3.
+Target version: 0.41.1.

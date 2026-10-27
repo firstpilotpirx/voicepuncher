@@ -504,3 +504,43 @@ Feature: change-workflow
       Given a journal measuring "0.050 aaa1111, 0.048 bbb2222, 0.047 ccc3333" over 100 recordings
       When the user summarizes the stage journal
       Then the summary shows "100 recordings   0.050 (aaa1111)  0.048 (bbb2222)  0.047 (ccc3333)"
+
+  Rule: The app update survives a concurrent update of the main checkout
+
+    Scenario: Another program updates the checkout during the app update
+      Given a main checkout one commit behind the remote main
+      And another program that holds the checkout and then moves it to the remote main
+      When the user updates the checkout for the app
+      Then the update succeeds
+      And the checkout is at the remote main
+
+    Scenario: A checkout behind main is moved forward
+      Given a main checkout one commit behind the remote main
+      When the user updates the checkout for the app
+      Then the update succeeds
+      And the checkout is at the remote main
+
+    Scenario: A checkout already at the newest main is left as it is
+      Given a main checkout at the remote main
+      When the user updates the checkout for the app
+      Then the update succeeds
+      And the checkout is unchanged
+
+    Scenario: Local changes stop the app update with one clear line
+      Given a main checkout one commit behind the remote main
+      And an uncommitted change to a tracked file of the checkout
+      When the user updates the checkout for the app
+      Then the update fails with one line naming "local changes"
+      And the output never suggests discarding work
+
+    Scenario: Another branch stops the app update with one clear line
+      Given a main checkout one commit behind the remote main
+      And the checkout on the branch "feat/other"
+      When the user updates the checkout for the app
+      Then the update fails with one line naming "feat/other"
+
+    Scenario: Local commits not on the remote stop the app update with one clear line
+      Given a main checkout at the remote main
+      And a local commit the remote main does not have
+      When the user updates the checkout for the app
+      Then the update fails with one line naming "local commit"
