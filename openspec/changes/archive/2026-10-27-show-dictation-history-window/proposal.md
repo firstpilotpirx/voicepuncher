@@ -34,4 +34,4 @@ Out of scope: editing or deleting entries, search or filter, voice command histo
 ## Release
 
 SemVer: MINOR — new capability.
-Target version: 0.40.0.
+Target version: 0.41.0.

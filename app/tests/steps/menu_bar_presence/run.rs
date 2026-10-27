@@ -47,6 +47,7 @@ pub(crate) struct Chosen {
     /// What happened when the user chose Quit, in order.
     pub(crate) quit_log: Arc<Mutex<Vec<QuitEvent>>>,
     pub(crate) settings_opens: Arc<Mutex<usize>>,
+    pub(crate) history_opens: Arc<Mutex<usize>>,
 }
 
 /// The services the menu shows.

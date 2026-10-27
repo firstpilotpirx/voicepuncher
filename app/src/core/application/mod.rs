@@ -4,6 +4,7 @@ pub mod audio_recorder;
 pub mod chunking;
 pub mod command_spotter;
 pub mod dictation_archive;
+pub mod dictation_history;
 pub mod focus_probe;
 pub mod hotkey_listener;
 pub mod input_devices;
@@ -32,6 +33,7 @@ pub use command_spotter::CommandSpotter;
 pub use dictation_archive::{
     ArchiveEntry, DictationArchive, DictationOutcome, DictationStart, StageTiming,
 };
+pub use dictation_history::{DictationHistory, HistoryList, HistoryRow, HISTORY_LIMIT};
 pub use focus_probe::FocusProbe;
 pub use hotkey_listener::HotkeyListener;
 pub use input_devices::InputDevices;

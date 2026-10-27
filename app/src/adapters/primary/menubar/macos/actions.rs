@@ -1,5 +1,5 @@
 //! What the menu's items do: quit the app, open the settings window, show the logs folder,
-//! bring the Permissions window to the front.
+//! bring the Permissions and history windows to the front.
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -27,6 +27,9 @@ pub trait MenuActions {
 
     /// Brings the Download window to the front.
     fn open_download_models(&self) {}
+
+    /// Brings the history window to the front.
+    fn open_history(&self) {}
 
     /// The local services and their states; none when the app leaves them to the scripts.
     fn services(&self) -> Option<Vec<ServiceStatus>> {
@@ -60,6 +63,10 @@ impl<T: MenuActions + ?Sized> MenuActions for std::rc::Rc<T> {
 
     fn open_download_models(&self) {
         (**self).open_download_models();
+    }
+
+    fn open_history(&self) {
+        (**self).open_history();
     }
 
     fn services(&self) -> Option<Vec<ServiceStatus>> {
@@ -100,6 +107,7 @@ pub struct MacosMenuActions {
     end_process: Box<dyn Fn(i32)>,
     open_permissions: Box<dyn Fn()>,
     open_download_models: Box<dyn Fn()>,
+    open_history: Box<dyn Fn()>,
     services: Option<std::sync::Arc<dyn ServicesView>>,
     /// Shows a folder in the file browser; false when it could not be shown.
     show_folder: Box<dyn Fn(&Path) -> bool>,
@@ -130,6 +138,7 @@ impl MacosMenuActions {
             end_process,
             open_permissions: Box::new(|| log::warn!("menu: no Permissions window")),
             open_download_models: Box::new(|| log::warn!("menu: no Download window")),
+            open_history: Box::new(|| log::warn!("menu: no history window")),
             services: None,
             show_folder: Box::new(show_in_file_browser),
         }
@@ -144,6 +153,12 @@ impl MacosMenuActions {
     /// Download models… calls `open`.
     pub fn with_download_window(mut self, open: Box<dyn Fn()>) -> Self {
         self.open_download_models = open;
+        self
+    }
+
+    /// Dictation history… calls `open`.
+    pub fn with_history_window(mut self, open: Box<dyn Fn()>) -> Self {
+        self.open_history = open;
         self
     }
 
@@ -180,6 +195,10 @@ impl MenuActions for MacosMenuActions {
 
     fn open_download_models(&self) {
         (self.open_download_models)();
+    }
+
+    fn open_history(&self) {
+        (self.open_history)();
     }
 
     /// Creates the logs folder when it does not exist yet, then shows it.

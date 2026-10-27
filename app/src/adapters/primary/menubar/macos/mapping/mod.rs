@@ -248,19 +248,22 @@ pub enum MenuEntry {
     /// The submenu of the local services; hidden when the app leaves them to the scripts.
     Services,
     Separator,
+    /// Opens the history window.
+    History,
     Settings,
     Logs,
     Quit,
 }
 
 /// The menu, the same in every state.
-pub const MENU: [MenuEntry; 10] = [
+pub const MENU: [MenuEntry; 11] = [
     MenuEntry::TitleLine,
     MenuEntry::StatusLine,
     MenuEntry::Permissions,
     MenuEntry::DownloadModels,
     MenuEntry::Services,
     MenuEntry::Separator,
+    MenuEntry::History,
     MenuEntry::Settings,
     MenuEntry::Logs,
     MenuEntry::Separator,
@@ -283,6 +286,7 @@ impl MenuEntry {
             Self::Permissions => Some("Permissions…"),
             Self::DownloadModels => Some("Download models…"),
             Self::Services => Some("Services"),
+            Self::History => Some("Dictation history…"),
             Self::Settings => Some("Settings…"),
             Self::Logs => Some("Open Logs Folder"),
             Self::Quit => Some("Quit voicepuncher"),

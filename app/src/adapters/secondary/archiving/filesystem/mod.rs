@@ -1,6 +1,7 @@
 //! Keeps each dictation as a folder of its own: `audio.wav` and `entry.json`.
 
 mod entry_file;
+mod history;
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -10,6 +11,8 @@ use anyhow::Result;
 use crate::core::application::dictation_archive::ArchiveEntry;
 use crate::core::application::DictationArchive;
 use voicepuncher_entry_folders::UtcTime;
+
+pub use history::FileSystemDictationHistory;
 
 /// Facts about the running app that every entry records.
 #[derive(Debug, Clone, PartialEq, Eq)]

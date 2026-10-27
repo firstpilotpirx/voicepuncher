@@ -11,6 +11,10 @@ use objc2::MainThreadMarker;
 use objc2_app_kit::NSApplication;
 
 use voicepuncher::adapters::primary::cli::Cli;
+use voicepuncher::adapters::primary::history::macos::{
+    self as history, local_utc_offset, pasteboard_copier, HistoryWindow,
+};
+use voicepuncher::adapters::primary::history::HistoryParts;
 use voicepuncher::adapters::primary::menubar::macos::{
     actions::{MacosMenuActions, MenuActions},
     applier::RuntimeApplier,
@@ -30,6 +34,7 @@ use voicepuncher::adapters::primary::settings::macos::{
     session::{SessionParts, SettingsSession},
     window::SettingsWindow,
 };
+use voicepuncher::adapters::secondary::archiving::filesystem::FileSystemDictationHistory;
 use voicepuncher::adapters::secondary::commandspotting::websocket::client::SpottingClient;
 use voicepuncher::adapters::secondary::logging::file::logs_dir;
 use voicepuncher::adapters::secondary::loginitem::macos::{launch, MacOsLoginItem};
@@ -70,6 +75,7 @@ pub(crate) fn run(cli: Cli, config: Config, config_path: PathBuf) -> anyhow::Res
         // the log observer logged the reason with the state Failed
         return Ok(ExitCode::from(2));
     }
+    let _history = history_window(mtm, &config_path, &cli);
     let settings = settings_window(&runtime, &shell, cli, config_path, &login_item)?;
     let _system_quit = shell.install_menu(mtm, runtime, settings, services_view);
     app.run();
@@ -176,7 +182,8 @@ impl Shell {
         services_view: Option<Arc<dyn ServicesView>>,
     ) -> Retained<SystemQuit> {
         let mut actions = MacosMenuActions::new(runtime, Box::new(settings), logs_folder())
-            .with_permissions_window(Box::new(permissions::bring_to_front));
+            .with_permissions_window(Box::new(permissions::bring_to_front))
+            .with_history_window(Box::new(history::bring_to_front));
         if let Some(view) = services_view {
             actions = actions
                 .with_services(view)
@@ -232,6 +239,24 @@ fn settings_window(
 
 /// The saved configuration with this run's command line over it; the defaults when it
 /// cannot be read.
+/// The history window over the archive of the configuration saved when it opens.
+fn history_window(mtm: MainThreadMarker, config_path: &Path, cli: &Cli) -> HistoryWindow {
+    let (config_path, cli) = (config_path.to_path_buf(), cli.clone());
+    HistoryWindow::install(
+        mtm,
+        Box::new(move || {
+            let archive = saved_config(&config_path, &cli).archive;
+            let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+            let dir = archive.enabled.then(|| archive.resolved_dir(&home));
+            HistoryParts {
+                source: Box::new(move || Box::new(FileSystemDictationHistory::new(dir.clone()))),
+                copier: pasteboard_copier(None),
+                utc_offset: local_utc_offset(),
+            }
+        }),
+    )
+}
+
 fn saved_config(config_path: &Path, cli: &Cli) -> Config {
     let mut config = voicepuncher::config::load(config_path).unwrap_or_else(|e| {
         log::warn!("models: config not read, its defaults taken: {e:#}");

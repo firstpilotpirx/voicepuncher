@@ -136,6 +136,13 @@ Feature: menu-bar-presence
       When the user chooses Settings in the menu
       Then the settings window opens in front
 
+  Rule: Dictation history opens from the menu
+
+    Scenario: Dictation history opens the history window
+      Given the runtime is ready and no dictation runs
+      When the user chooses Dictation history in the menu
+      Then the history window opens in front
+
   Rule: The menu shows the services starting
 
     Scenario: Services still loading at launch

@@ -385,6 +385,18 @@
 - **Code:** `app/src/core/application/dictation_archive.rs`
 - **Synonyms to AVOID:** "record", "history item", "log entry"
 
+### History window
+- **Type:** Primary adapter (`HistoryView` in `adapters/primary/history/`, its `AppKit` window in `macos/`) over the Driven Port `DictationHistory`
+- **Definition:** The window Dictation history… in the menu opens, one at a time: the latest *history rows* of the *dictation archive*, newest first, at most 300, each with a Copy button (also a double-click) that puts its text on the clipboard. While it is open it checks the archive once a second and lists a dictation archived meanwhile; with the archive off or empty it shows one line saying so; an entry it cannot read is skipped with a warning. Read-only: it never changes the archive.
+- **Code:** `app/src/adapters/primary/history/`; `app/src/core/application/dictation_history.rs`; `app/src/adapters/secondary/archiving/filesystem/history.rs`
+- **Synonyms to AVOID:** "history" (alone — the archive's folder), "log window", "recent pastes"
+
+### History row
+- **Type:** Value Object (`HistoryRow`)
+- **Definition:** One *archive entry* as the *history window* lists it: when the dictation started (shown in local time) and its text — the text to paste, else the raw transcript; an entry with neither has no row.
+- **Code:** `app/src/core/application/dictation_history.rs`
+- **Synonyms to AVOID:** "history item", "record"
+
 ### Command history
 - **Type:** Folder written by the command spotting service (`CommandHistory`, `Recorder`)
 - **Definition:** The local folder (`~/.voicepuncher/command-history/`, `[archive] keep_commands`, on by default) where the command spotting services the app starts keep a *command history entry* for every utterance in which the keyword spotter spotted a selected phrase or the speech recognition service for commands heard a command; ordinary speech leaves none. Kept within the *dictation archive*'s size limit by removing the oldest entries; a service given no folder (the service scripts, tests, benchmarks) keeps nothing; never sent anywhere.

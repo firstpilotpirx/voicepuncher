@@ -1,9 +1,10 @@
 //! The macOS tests that run on the main thread, where `AppKit` draws and the main queue
-//! runs: the overlay, the menu bar status item and the settings window. libtest runs each
+//! runs: the overlay, the menu bar status item, the settings and the history window. libtest runs each
 //! test on a thread of its own, where none of them can be built, so this harness
 //! (`harness = false`) answers cargo-nextest's listing and runs each test on the main
 //! thread. Every module lists its tests; a test is listed as `<module>::<name>`.
 
+mod history_macos;
 mod menubar_macos;
 mod settings_macos;
 mod visualfeedback_macos;
@@ -15,6 +16,7 @@ pub type Test = (&'static str, fn());
 
 /// Every module with its tests.
 const MODULES: &[(&str, &[Test])] = &[
+    ("history_macos", history_macos::TESTS),
     ("menubar_macos", menubar_macos::TESTS),
     ("settings_macos", settings_macos::TESTS),
     ("visualfeedback_macos", visualfeedback_macos::TESTS),

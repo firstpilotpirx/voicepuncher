@@ -1,6 +1,7 @@
 //! Every integration test of the app in one binary: one link instead of one per file.
 
 mod architecture;
+mod archive_history;
 mod archiving_filesystem;
 mod capture_allocations;
 mod chunk_cuts;

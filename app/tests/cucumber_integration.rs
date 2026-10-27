@@ -56,6 +56,7 @@ pub struct AppRuns {
     pub settings: Option<steps::settings_window::SettingsRun>,
     pub login: Option<steps::launch_at_login::LoginRun>,
     pub models: Option<steps::model_download::DownloadRun>,
+    pub history: Option<steps::dictation_history_window::HistoryRun>,
 }
 
 /// Runs the scenarios the command line selects (a rerun's names instead, when

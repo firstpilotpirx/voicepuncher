@@ -1,4 +1,5 @@
 pub mod cli;
+pub mod history;
 pub mod menubar;
 pub mod modeldownload;
 pub mod permissions;

@@ -12,23 +12,41 @@ pub(super) fn build_menu(mtm: MainThreadMarker, target: &MenuTarget) -> Retained
     menu.setAutoenablesItems(false);
     menu.setDelegate(Some(ProtocolObject::from_ref(target)));
     for entry in MENU {
-        let item = match entry {
-            MenuEntry::TitleLine | MenuEntry::StatusLine => text_line(mtm, target),
-            MenuEntry::Separator => NSMenuItem::separatorItem(mtm),
-            MenuEntry::Permissions => chosen(mtm, target, entry, sel!(permissions:), NO_KEY),
-            MenuEntry::DownloadModels => {
-                let item = chosen(mtm, target, entry, sel!(downloadModels:), NO_KEY);
-                item.setHidden(true);
-                item
-            }
-            MenuEntry::Services => services_item(mtm, entry),
-            MenuEntry::Settings => chosen(mtm, target, entry, sel!(settings:), SETTINGS_KEY),
-            MenuEntry::Logs => chosen(mtm, target, entry, sel!(openLogs:), NO_KEY),
-            MenuEntry::Quit => chosen(mtm, target, entry, sel!(quit:), QUIT_KEY),
-        };
-        menu.addItem(&item);
+        menu.addItem(&entry_item(mtm, target, entry));
     }
     menu
+}
+
+fn entry_item(
+    mtm: MainThreadMarker,
+    target: &MenuTarget,
+    entry: MenuEntry,
+) -> Retained<NSMenuItem> {
+    match entry {
+        MenuEntry::TitleLine | MenuEntry::StatusLine => text_line(mtm, target),
+        MenuEntry::Separator => NSMenuItem::separatorItem(mtm),
+        MenuEntry::DownloadModels => {
+            let item = chosen(mtm, target, entry, sel!(downloadModels:), NO_KEY);
+            item.setHidden(true);
+            item
+        }
+        MenuEntry::Services => services_item(mtm, entry),
+        _ => {
+            let (action, key) = action_of(entry);
+            chosen(mtm, target, entry, action, key)
+        }
+    }
+}
+
+/// The action and key of an item the user chooses.
+fn action_of(entry: MenuEntry) -> (Sel, &'static str) {
+    match entry {
+        MenuEntry::History => (sel!(history:), NO_KEY),
+        MenuEntry::Settings => (sel!(settings:), SETTINGS_KEY),
+        MenuEntry::Logs => (sel!(openLogs:), NO_KEY),
+        MenuEntry::Quit => (sel!(quit:), QUIT_KEY),
+        _ => (sel!(permissions:), NO_KEY),
+    }
 }
 
 pub(super) fn chosen(
@@ -115,6 +133,11 @@ define_class!(
         #[unsafe(method(downloadModels:))]
         fn download_models(&self, _sender: Option<&AnyObject>) {
             self.act(|actions| actions.open_download_models());
+        }
+
+        #[unsafe(method(history:))]
+        fn history(&self, _sender: Option<&AnyObject>) {
+            self.act(|actions| actions.open_history());
         }
 
         #[unsafe(method(settings:))]

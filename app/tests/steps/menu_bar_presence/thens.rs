@@ -14,6 +14,15 @@ pub(super) fn settings_window_opens(world: &mut IntegrationWorld) -> Result<()> 
     Ok(())
 }
 
+#[then("the history window opens in front")]
+pub(super) fn history_window_opens(world: &mut IntegrationWorld) -> Result<()> {
+    let opens = *run(world).chosen.history_opens.lock().unwrap();
+    if opens != 1 {
+        bail!("the history window was opened {opens} times");
+    }
+    Ok(())
+}
+
 #[then("the runtime stops and the process ends with exit code 0")]
 pub(super) fn process_ends(world: &mut IntegrationWorld) -> Result<()> {
     let log = run(world).chosen.quit_log.lock().unwrap().clone();

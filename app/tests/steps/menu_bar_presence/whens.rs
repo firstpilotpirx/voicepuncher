@@ -131,3 +131,20 @@ pub(super) fn user_chooses_settings(world: &mut IntegrationWorld) -> Result<()> 
     run.actions = Some(actions);
     Ok(())
 }
+
+#[when("the user chooses Dictation history in the menu")]
+pub(super) fn user_chooses_history(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    let runtime = run.runtime.take().context("the runtime was not started")?;
+    let opens = Arc::clone(&run.chosen.history_opens);
+    let actions = MacosMenuActions::ending_with(
+        runtime,
+        Box::new(SettingsOpens(Arc::default())),
+        std::env::temp_dir().join("logs"),
+        Box::new(|_| {}),
+    )
+    .with_history_window(Box::new(move || *opens.lock().unwrap() += 1));
+    actions.open_history();
+    run.actions = Some(actions);
+    Ok(())
+}

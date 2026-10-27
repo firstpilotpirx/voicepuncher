@@ -1,8 +1,9 @@
-## Purpose
+# dictation-history-window Specification
 
+## Purpose
 Let the user find a recent dictation whose text got lost and copy it again, from a window of the menu bar app fed by the dictation archive.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: The history window lists the latest dictations newest first
 The history window SHALL list the dictations kept in the dictation archive, newest first, one row per dictation, each row showing when the dictation started in local time and its text. The text of a row SHALL be the text to paste, or the raw transcript when the dictation has no text to paste. A dictation with neither SHALL have no row. The window SHALL list at most 300 rows, the newest ones.
@@ -62,7 +63,7 @@ When there is no row to show, the history window SHALL say why in one line inste
 - **THEN** the window says no dictation has been kept yet
 
 ### Requirement: An unreadable entry does not stop the history window
-The history window SHALL skip an archive entry it cannot read (damaged, of an unknown format, or still being written) and list the others, and SHALL log a warning naming the skipped entry.
+The history window SHALL skip an archive entry it cannot read (damaged, of an unknown format, or still being written) and list the others; for a damaged entry or one of an unknown format it SHALL log a warning naming the skipped entry, and an entry still being written is skipped without a warning.
 
 #### Scenario: A damaged entry is skipped
 - **GIVEN** the archive holds two dictations with text and one damaged entry between them
