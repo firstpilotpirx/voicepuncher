@@ -10,7 +10,9 @@ The user wants every component of the system to restart itself after a crash as 
 
 - When a copy of a local service stops or stops answering, the app starts a new copy from its own engines on the same port. This covers every copy of the command spotting service, of the speech recognition service for dictation and of the speech recognition service for commands.
 - A copy the app adopted is restarted the same way as one it started itself. A copy that was "started outside the app" no longer stays dead.
-- Restarts back off when a copy keeps crashing. After repeated failures the app says so in the log and in the menu, naming the service and the reason, instead of retrying silently forever.
+- A copy the app adopted that hangs (its port takes connections but it stops answering) is stopped by the app, when the program on the port is that service's program, and replaced the same way.
+- When the service answers on the port again before the app's restart (the service scripts restarted it), the app adopts it instead of starting a second one.
+- Restarts back off when a copy keeps crashing, as for the copies the app starts today; after five starts in a row that never answered the service stays Failed in the menu, naming the reason and its log file, until the user retries it.
 - The warning sign in the menu bar clears by itself once the restarted copy answers again.
 - Every restart is logged in one line: the service, the copy, the port and the reason.
 
@@ -30,12 +32,14 @@ Out of scope: the services run by `just start-model-servers` with `manage` off (
 - The app's service supervision: adoption, watching and restarting copies.
 - The menu bar state of the services: the warning sign and its clearing.
 
-## Open points
+## Decisions
 
-- Which other components should restart themselves (for example the audio capture or the hotkey listener after a failure): proposed — only the three local services in this change; anything else to be named at the design stage.
-- Back-off and give-up limits: proposed — restart at once, then back off up to about 30 s, and show the failure in the menu after 5 failed restarts in a row while still retrying.
-- Whether an adopted copy may be replaced at all: proposed yes, since it holds the app's own port.
-- Possible overlap with `replace-stale-command-spotting-service`, which touches the same adoption code: proposed — run that change first and declare the dependency at the design stage.
+Settled in explore with the user (2026-10-27):
+
+- Only the three local services restart themselves in this change; the audio capture and the hotkey listener are out of scope.
+- Back-off and give-up limits stay those of the copies the app starts: 1 s doubling to 30 s, Failed after five starts in a row that never answered, retried from the menu. Endless retries of a broken service (a missing model, a broken program) would only load the machine.
+- An adopted copy may be replaced: it holds the app's own port. A hung one is killed only when the program on its port is that service's program.
+- The overlap with `replace-stale-command-spotting-service` (same adoption code) is checked at the dependencies stage and declared there when that change reworks the same decision.
 
 ## Release
 
