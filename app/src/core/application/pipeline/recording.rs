@@ -5,13 +5,14 @@ use std::time::Instant;
 
 use crate::core::application::chunking::merge_chunk_texts;
 use crate::core::application::DictationOutcome;
-use crate::core::domain::{FailingPart, FailureNotice, RawTranscript};
+use crate::core::domain::{FailingPart, FailureNotice, RawTranscript, SpokenCommand};
 
 use super::archiving::{dictation_start, no_text_outcome};
 use super::dictation::Dictation;
 use super::live_transcript::LiveTranscript;
 use super::live_worker::run_live_worker;
 use super::processing::StageClock;
+use super::voice_control::log_voice_start;
 use super::{LiveSessionResult, LiveTranscriptionSession, Pipeline, StartCue};
 
 /// What an abandoned dictation's end waits for.
@@ -30,6 +31,7 @@ impl Pipeline {
         &mut self,
         begins_at: Option<Instant>,
         cue: StartCue,
+        voice_start: Option<SpokenCommand>,
     ) -> anyhow::Result<()> {
         // With voice control the dictation phrases are listened for before the recording
         // starts, so a "stop dictation" said right away is heard.
@@ -37,6 +39,16 @@ impl Pipeline {
         match cue {
             StartCue::Start => self.sound_player.play_start(),
             StartCue::Restart => self.sound_player.play_restart(),
+        }
+        let cue_at = Instant::now();
+        // WHY: the overlay goes up with the cue, before opening the microphone can delay it.
+        match voice_start {
+            Some(spoken) => self
+                .visual_indicator
+                .show_recording_then(Box::new(move |drawn_at| {
+                    log_voice_start(&spoken, cue_at, drawn_at);
+                })),
+            None => self.visual_indicator.show_recording(),
         }
         if let Err(e) = self.recorder.start() {
             self.voice.follow_dictation(false);
@@ -52,7 +64,6 @@ impl Pipeline {
         if self.cfg.chunking.chunk_threshold_secs > 0 {
             dictation.live = self.start_live_session()?;
         }
-        self.visual_indicator.show_recording();
         self.dictation = Some(dictation);
         Ok(())
     }

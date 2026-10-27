@@ -6,7 +6,7 @@ use std::time::Duration;
 use super::self_hide::SelfHideTimer;
 use crate::adapters::locking::lock;
 use crate::core::application::live_transcript_view::LiveTranscriptView;
-use crate::core::application::VisualIndicator;
+use crate::core::application::{OnDrawn, VisualIndicator};
 use crate::core::domain::{FailureNotice, VoiceCommand};
 
 /// What the dictation sign shows: the stage of the dictation the overlay shows.
@@ -111,6 +111,11 @@ impl<V: VisualIndicator, S: PointerSignView> VisualIndicator for PointerSignIndi
     fn show_recording(&self) {
         self.show_badge(DictationSignState::Recording);
         self.overlay.show_recording();
+    }
+
+    fn show_recording_then(&self, on_drawn: OnDrawn) {
+        self.show_badge(DictationSignState::Recording);
+        self.overlay.show_recording_then(on_drawn);
     }
 
     fn show_recognizing_speech(&self) {

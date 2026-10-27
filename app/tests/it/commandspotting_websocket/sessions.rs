@@ -32,7 +32,7 @@ pub(super) const NOT_REFUSED: &str =
 /// How long the events of one utterance may keep coming after the speech was sent.
 pub(super) const UTTERANCE_EVENTS_LIMIT: Duration = Duration::from_secs(30);
 
-pub(super) const HELLO: &str = r#"{"type":"hello","version":2}"#;
+pub(super) const HELLO: &str = r#"{"type":"hello","version":3}"#;
 
 /// A raw WebSocket to the service: connecting and the handshake are each given up after the
 /// handshake limit, and every read after the refusal limit.

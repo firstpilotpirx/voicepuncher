@@ -12,10 +12,13 @@ const WORD_JOINER: char = '_';
 /// Separates keywords in a per-stream keyword list of sherpa-onnx.
 const STREAM_SEPARATOR: &str = "/";
 /// Trigger-only keywords, with the phrase each serves: a short "start" or "restart" said in a
-/// running utterance only asks a check of it; the check decides whether a command was said.
+/// running utterance only asks a check of it, and any of them said twice in a row a check of
+/// its doubled form; the check decides whether a command was said.
 const TRIGGERS: &[(&str, &str)] = &[
     ("start trigger", "start dictation"),
     ("restart trigger", "restart dictation"),
+    ("stop trigger", "stop dictation"),
+    ("cancel trigger", "cancel dictation"),
 ];
 
 /// Whether `phrase` names a trigger-only keyword, which is never reported.

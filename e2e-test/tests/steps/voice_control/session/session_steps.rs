@@ -5,6 +5,7 @@ use super::{
     Context, Duration, E2eWorld, Event, Expected, HandsFreeSession, Instant, PathBuf, Result, Step,
     REACTION,
 };
+use voicepuncher::adapters::secondary::commandspotting::websocket::SpottingService;
 
 pub(super) fn start_session(world: &mut E2eWorld) -> Result<()> {
     let url = world
@@ -12,7 +13,8 @@ pub(super) fn start_session(world: &mut E2eWorld) -> Result<()> {
         .command_spotting_url
         .clone()
         .context("the command spotting service is not set up")?;
-    let session = HandsFreeSession::start(url, env("VOICEPUNCHER_TRANSCRIPTION_URL")?)?;
+    let service = SpottingService { url, confirm_commands: !world.voice.unconfirmed_commands };
+    let session = HandsFreeSession::start(service, env("VOICEPUNCHER_TRANSCRIPTION_URL")?)?;
     let deadline = Instant::now() + REACTION;
     while !session.events().contains(&Event::Listening) {
         if Instant::now() >= deadline {

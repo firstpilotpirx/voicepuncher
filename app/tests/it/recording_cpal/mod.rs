@@ -1,3 +1,4 @@
+mod kept_mic;
 mod synthetic;
 
 use std::sync::atomic::AtomicU32;

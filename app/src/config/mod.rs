@@ -128,11 +128,14 @@ impl Default for SoundsCfg {
 pub struct VoiceControlCfg {
     pub enabled: bool,
     pub url: String,
+    /// Whether the speech recognition service for commands confirms a command before it is
+    /// carried out; off, the keyword spotter alone decides and Whisper's verdict is logged.
+    pub confirm_commands: bool,
 }
 
 impl Default for VoiceControlCfg {
     fn default() -> Self {
-        Self { enabled: false, url: "ws://127.0.0.1:8082".into() }
+        Self { enabled: false, url: "ws://127.0.0.1:8082".into(), confirm_commands: true }
     }
 }
 

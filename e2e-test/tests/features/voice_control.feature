@@ -333,6 +333,70 @@ Feature: voice-control
       When the user's recorded "start start" is followed at once by a sentence, and the dictation later ends
       Then the whole sentence, its first words included, is pasted without "start"
 
+  # Timed like the start cues: @cues runs them with the machine otherwise idle.
+  @serial @cues
+  Rule: A doubled command needs no pause
+
+    Scenario: Start start then silence starts at once
+      Given the command spotting service is running
+      And listening is on for a whole session
+      When someone says "start start" and stays silent
+      Then the start cue comes within 0.5 s of the end of "start start"
+
+    Scenario: Stop stop in running speech stops at once
+      Given the command spotting service is running
+      And listening is on for a whole session
+      And a dictation started by voice runs
+      When someone says a sentence, "stop stop" and goes on speaking
+      Then the stop sound plays within 0.5 s of the end of "stop stop", while the speech goes on
+
+    Scenario: Start start inside a sentence starts at once
+      Given the command spotting service is running
+      And listening is on for a whole session
+      When someone says "fine start start" and a sentence without a pause
+      Then the start cue comes within 0.5 s of the end of "start start", while the sentence is still being said
+
+  Rule: Commands can run without the Whisper confirmation
+
+    # Timed like the start cues: @cues runs it with the machine otherwise idle.
+    @serial @cues
+    Scenario: Start start without confirmation starts at once
+      Given the command spotting service is running
+      And the confirmation of commands is off
+      And listening is on for a whole session
+      When someone says "start start" and stays silent
+      Then the start cue comes within 0.3 s of the end of "start start"
+
+    @smoke
+    Scenario: A command inside a sentence still waits for confirmation
+      Given the command spotting service listens for the commands of a dictation
+      And the confirmation of commands is off
+      When the user says "we meet at ten stop dictation" to the command spotting service as it is spoken
+      Then "stop dictation" is reported only once its hearing confirmed it
+
+    @smoke
+    Scenario: Confirmation is on by default
+      Given the command spotting service listens for the commands of standby
+      When the user says "start" to the command spotting service as it is spoken
+      Then "start dictation" is reported only once its hearing confirmed it
+
+  Rule: A command carried out without confirmation records whether Whisper agreed
+
+    @smoke
+    Scenario: A command without confirmation records whether Whisper agreed
+      Given the command spotting service listens for the commands of standby and keeps a command history
+      And the confirmation of commands is off
+      When the user says "press enter" to the command spotting service as it is spoken
+      Then "press enter" is reported once, before its hearing, and Whisper's verdict on it, "agreed", follows in the log and the command history
+
+    @smoke
+    Scenario: A false spotting without confirmation is recorded
+      Given the command spotting service listens for the commands of standby and keeps a command history
+      And the speech recognition service for commands hears every utterance as "good morning"
+      And the confirmation of commands is off
+      When the user says "press enter" to the command spotting service as it is spoken
+      Then "press enter" is reported once, before its hearing, and Whisper's verdict on it, "none", follows in the log and the command history
+
   # Real-time sessions timed from the end of the command's words; @cues runs them in
   # full-check's e2e-cues stage with the machine otherwise idle, @serial keeps the other
   # scenarios' requests from queuing ahead of them.
@@ -343,7 +407,7 @@ Feature: voice-control
       Given the command spotting service is running
       And listening is on for a whole session
       When someone says "start start" and a sentence without a pause
-      Then the start cue comes within 0.7 s of the end of "start start", while the sentence is still being said
+      Then the start cue comes within 0.5 s of the end of "start start", while the sentence is still being said
 
     Scenario: Start followed by the dictation at once gives its cue at once
       Given the command spotting service is running
@@ -374,7 +438,7 @@ Feature: voice-control
       And listening is on for a whole session
       And a dictation runs and someone has said a sentence in it
       When someone says "restart restart" and another sentence without a pause
-      Then the start cue of the new dictation comes within 0.7 s of the end of "restart restart"
+      Then the start cue of the new dictation comes within 0.5 s of the end of "restart restart"
 
     Scenario: Restart said on its own gives its cue at once
       Given the command spotting service is running
@@ -390,7 +454,7 @@ Feature: voice-control
       And the user's own recordings of the commands exist on the machine
       And listening is on for a whole session
       When each of the user's recorded starts is played, on its own and followed at once by a sentence
-      Then at least 9 of 10 of them give the start cue within 0.7 s of the end of the command's words
+      Then at least 9 of 10 of them give the start cue within its bound of the end of the command's words
 
   Rule: A doubled short form counts anywhere
 
@@ -478,6 +542,14 @@ Feature: voice-control
         | enter   | no dictation runs | 0.3   | press enter       |
         | enter   | no dictation runs | 0.45  | press enter       |
         | enter   | no dictation runs | 0.6   | press enter       |
+
+    # Timed like the start cues: @cues runs it with the machine otherwise idle.
+    @serial @cues
+    Scenario: A command in a noisy room ends at its pause
+      Given the command spotting service is running
+      And listening is on for a whole session
+      When someone says "start" in steady room noise and stays silent
+      Then the start cue comes within 0.7 s of the end of "start"
 
   # The sessions run in real time and wait for the speech recognition service's answers;
   # @serial keeps the other scenarios' requests from queuing ahead of them.

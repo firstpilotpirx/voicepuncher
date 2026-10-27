@@ -18,9 +18,10 @@ use super::{timed, AskedJob, EarlyAnswer, JobContext, Rehear, SegmentSpan};
 enum Standing {
     /// The answer applies to the job.
     Applies(AskedJob),
-    /// The job stood for a segment now heard whole through its own clip: these events
-    /// resolve it, and the segment's wait for that hearing.
-    HeardWhole(Vec<ServerEvent>),
+    /// These events resolve the job: its answer gave a verdict on a command reported without
+    /// confirmation, or it stood for a segment now heard whole through its own clip, which the
+    /// segment waits for.
+    Resolved(Vec<ServerEvent>),
 }
 
 /// The hearings an answer may leave wanting.
@@ -50,9 +51,9 @@ impl Session<'_> {
         let Some(asked) = self.jobs.asked.remove(&n) else {
             return Vec::new();
         };
-        let asked = match self.hear_whole_instead(n, &answer, asked) {
+        let asked = match self.standing(n, &answer, asked) {
             Standing::Applies(asked) => asked,
-            Standing::HeardWhole(events) => return events,
+            Standing::Resolved(events) => return events,
         };
         // An answer that comes back after the phrases changed reads with both sets: the
         // words were said under the job's phrases, or are said now under the current ones.
@@ -93,6 +94,14 @@ impl Session<'_> {
         self.matcher.phrase_in(&heard.text).is_some()
     }
 
+    /// What becomes of job `n`, answered with `answer`.
+    fn standing(&mut self, n: u64, answer: &Answer, asked: AskedJob) -> Standing {
+        match self.verdict_of(answer, &asked) {
+            Some(events) => Standing::Resolved(events),
+            None => self.hear_whole_instead(n, answer, asked),
+        }
+    }
+
     /// Has the segment of job `n`, which a hearing at half the pause stood for, heard whole
     /// through its own clip when `answer` holds no phrase alone; the job is then resolved, and
     /// its events wait for that hearing. Else `asked` applies.
@@ -118,7 +127,7 @@ impl Session<'_> {
         self.jobs.outbox.transfer(n, whole);
         self.hearings.early.retarget(n, whole);
         self.mark(utterance, |r| r.jobs -= 1);
-        Standing::HeardWhole(self.jobs.outbox.resolve(n, false, Vec::new()))
+        Standing::Resolved(self.jobs.outbox.resolve(n, false, Vec::new()))
     }
 
     /// Applies `answer` to the job it answers, reading it with `reading`.
@@ -272,7 +281,7 @@ impl Session<'_> {
     }
 
     /// Resolves job `id` of `utterance` with `events`, a check's as checks resolve.
-    fn resolve_answer(
+    pub(super) fn resolve_answer(
         &mut self,
         id: JobId,
         (utterance, is_check): (Option<u64>, bool),

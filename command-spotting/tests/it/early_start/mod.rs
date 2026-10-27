@@ -38,7 +38,7 @@ fn clips_heard(early_start: Option<bool>) -> u32 {
     let mut session = engine.session().unwrap();
     let phrases = STANDBY_PHRASES.iter().map(|p| (*p).to_owned()).collect();
     session
-        .select(&PhraseSelection { phrases, early_start })
+        .select(&PhraseSelection { phrases, early_start, ..PhraseSelection::default() })
         .unwrap();
     for frame in common::spoken_by(None, SENTENCE).chunks(FRAME_SAMPLES) {
         session.accept(frame);

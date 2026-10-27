@@ -32,11 +32,17 @@ pub struct VoiceStartTiming {
     pub confirm: Option<Duration>,
     pub deliver: Option<Duration>,
     pub cue: Option<Duration>,
+    /// From the start cue to the overlay's recording sign on screen.
+    pub overlay: Option<Duration>,
+    /// The command was reported without confirmation: hearing runs to its arrival.
+    pub unconfirmed: bool,
 }
 
 impl VoiceStartTiming {
-    /// The stages of the start `spoken` gave its start cue for at `cue_at`.
-    pub fn measure(spoken: &SpokenCommand, cue_at: Instant) -> Self {
+    /// The stages of the start `spoken` gave its start cue for at `cue_at`, its overlay drawn
+    /// at `drawn_at`.
+    pub fn measure(spoken: &SpokenCommand, cue_at: Instant, drawn_at: Option<Instant>) -> Self {
+        let overlay = drawn_at.map(|drawn| drawn.saturating_duration_since(cue_at));
         let Some(report) = spoken.timing else {
             return Self {
                 total: cue_at.saturating_duration_since(spoken.ends_at),
@@ -44,12 +50,15 @@ impl VoiceStartTiming {
                 confirm: None,
                 deliver: None,
                 cue: None,
+                overlay,
+                unconfirmed: false,
             };
         };
         let confirmation = report.confirmation;
+        let heard_at = confirmation.map_or(report.arrived_at, |c| c.asked_at);
         Self {
             total: cue_at.saturating_duration_since(report.words_ended),
-            hear: confirmation.map(|c| c.asked_at.saturating_duration_since(report.words_ended)),
+            hear: Some(heard_at.saturating_duration_since(report.words_ended)),
             confirm: confirmation.map(|c| c.took),
             deliver: confirmation.map(|c| {
                 report
@@ -57,22 +66,31 @@ impl VoiceStartTiming {
                     .saturating_duration_since(c.asked_at + c.took)
             }),
             cue: Some(cue_at.saturating_duration_since(report.arrived_at)),
+            overlay,
+            unconfirmed: confirmation.is_none(),
         }
     }
 }
 
-/// `total=640ms hear=300ms confirm=210ms deliver=20ms cue=110ms`, `-` for an unknown stage.
+/// `total=640ms hear=300ms confirm=210ms deliver=20ms cue=110ms overlay=8ms`, `-` for an
+/// unknown stage, `confirm=unconfirmed` for a command reported without confirmation.
 impl fmt::Display for VoiceStartTiming {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let stage = |d: Option<Duration>| d.map_or_else(|| "-".to_owned(), ms);
+        let confirm = if self.unconfirmed {
+            "unconfirmed".to_owned()
+        } else {
+            stage(self.confirm)
+        };
         write!(
             f,
-            "total={} hear={} confirm={} deliver={} cue={}",
+            "total={} hear={} confirm={} deliver={} cue={} overlay={}",
             ms(self.total),
             stage(self.hear),
-            stage(self.confirm),
+            confirm,
             stage(self.deliver),
-            stage(self.cue)
+            stage(self.cue),
+            stage(self.overlay)
         )
     }
 }
@@ -110,16 +128,20 @@ mod tests {
             arrived_at: after(550),
         };
         // When the start cue comes at 600 ms
-        let timing = VoiceStartTiming::measure(&start_ending_at(end, Some(report)), after(600));
+        let timing = VoiceStartTiming::measure(
+            &start_ending_at(end, Some(report)),
+            after(600),
+            Some(after(610)),
+        );
         // Then
         assert_eq!(
             timing.to_string(),
-            "total=600ms hear=300ms confirm=200ms deliver=50ms cue=50ms"
+            "total=600ms hear=300ms confirm=200ms deliver=50ms cue=50ms overlay=10ms"
         );
     }
 
     #[test]
-    fn should_leave_the_stages_of_an_unconfirmed_report_unknown() {
+    fn should_mark_an_unconfirmed_report_and_time_its_hearing_to_its_arrival() {
         // Given
         let end = Instant::now();
         let report = ReportTiming {
@@ -131,11 +153,12 @@ mod tests {
         let timing = VoiceStartTiming::measure(
             &start_ending_at(end, Some(report)),
             end + Duration::from_millis(300),
+            None,
         );
         // Then
         assert_eq!(
             timing.to_string(),
-            "total=300ms hear=- confirm=- deliver=- cue=50ms"
+            "total=300ms hear=250ms confirm=unconfirmed deliver=- cue=50ms overlay=-"
         );
     }
 
@@ -147,11 +170,12 @@ mod tests {
         let timing = VoiceStartTiming::measure(
             &start_ending_at(end, None),
             end + Duration::from_millis(400),
+            None,
         );
         // Then
         assert_eq!(
             timing.to_string(),
-            "total=400ms hear=- confirm=- deliver=- cue=-"
+            "total=400ms hear=- confirm=- deliver=- cue=- overlay=-"
         );
     }
 }

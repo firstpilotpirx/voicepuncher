@@ -107,6 +107,8 @@ A dictation started by voice begins where the command's words end, not when the 
 
 A command said in the other state is ignored. `press enter` said right after `stop dictation` waits until the text is pasted. The hotkey and the voice commands drive the same dictation: "stop dictation" ends one the hotkey started, and the hotkey ends one "start dictation" started. `press enter`, `clear all text`, `paste text` and `restart dictation` each play a sound of their own (`Morse`, `Purr`, `Frog`, `Hero`) and show their sign on the overlay for about a second (`⏎ ENTER`, `⌫ CLEAR`, `⎘ PASTE`, `↻ RESTART`); a restart plays only its own sound, not the cancel and start sounds. The sounds are `[sounds]` settings (`enter_sound`, `clear_sound`, `paste_sound`, `restart_sound`; `command_sound` still sets the enter sound).
 
+**Confirm commands with Whisper** (Settings → General, `[voice_control] confirm_commands`, on by default): every command waits until the speech recognition service for commands heard it too. Off, a command said on its own or doubled is carried out as soon as the keyword spotter hears it, faster but with the spotter alone deciding; a command inside a sentence still waits. The speech recognition service still hears each such command afterwards: the log (`whisper on unconfirmed ["…"]: agreed`, `other` or `none`) and the command history record whether it agreed, and the start line shows `confirm=unconfirmed`.
+
 **Careful with `clear all text`:** it selects everything in the focused app before deleting — meant for a chat input, it erases a whole document in an editor.
 
 ### Languages
@@ -167,6 +169,7 @@ max_size_mb = 2048                 # beyond this, the oldest entries are removed
 | General | Microphone | pop-up: System default and the Mac's input devices | `audio.input_device` |
 | General | Longest recording | number, s | `audio.max_recording_seconds` |
 | General | Voice control | switch | `voice_control.enabled` |
+| General | Confirm commands with Whisper | switch | `voice_control.confirm_commands` |
 | General | Start at login | switch, acts at once | none: the system's login items |
 | General (advanced) | Voice control service | text | `voice_control.url` |
 | Dictation | Language | pop-up: Detect automatically and the speech recognition service's languages | `transcription.language` |

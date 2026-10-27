@@ -64,7 +64,7 @@ impl Default for KeeperTimings {
         Self {
             stall: Duration::from_secs(2),
             retry: Duration::from_secs(1),
-            tick: Duration::from_millis(20),
+            tick: Duration::from_millis(10),
         }
     }
 }

@@ -80,7 +80,7 @@ pub(super) fn show_recording_survives_manual_rebuild() {
     );
 }
 
-pub(super) fn show_recording_rebuilds_unconditionally() {
+pub(super) fn show_recording_takes_a_new_turn() {
     let mtm = main_thread();
     let indicator = MacosVisualIndicator::initialize(mtm, Arc::new(AtomicU32::new(0)));
 
@@ -98,11 +98,11 @@ pub(super) fn show_recording_rebuilds_unconditionally() {
     );
     assert_eq!(
         after_second, 2,
-        "second show_recording should bump generation to 2 (unconditional rebuild)"
+        "second show_recording should bump generation to 2"
     );
 }
 
-pub(super) fn show_recognizing_speech_rebuilds_unconditionally() {
+pub(super) fn show_recognizing_speech_takes_a_new_turn() {
     let mtm = main_thread();
     let indicator = MacosVisualIndicator::initialize(mtm, Arc::new(AtomicU32::new(0)));
 
@@ -120,6 +120,6 @@ pub(super) fn show_recognizing_speech_rebuilds_unconditionally() {
     );
     assert_eq!(
         after_processing, 2,
-        "show_recognizing_speech should bump generation to 2 (unconditional rebuild)"
+        "show_recognizing_speech should bump generation to 2"
     );
 }

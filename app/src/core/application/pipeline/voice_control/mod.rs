@@ -190,11 +190,7 @@ impl Pipeline {
 
     fn carry_out_accepted(&mut self, spoken: SpokenCommand) -> anyhow::Result<()> {
         match spoken.command {
-            VoiceCommand::StartDictation => {
-                self.start_dictation_after(spoken, StartCue::Start)?;
-                log_voice_start(&spoken);
-                Ok(())
-            }
+            VoiceCommand::StartDictation => self.start_dictation_after(spoken, StartCue::Start),
             VoiceCommand::RestartDictation => self.restart_dictation(spoken),
             VoiceCommand::StopDictation => self.close_dictation(spoken),
             VoiceCommand::PressEnter if self.is_recording() => {
@@ -228,7 +224,6 @@ impl Pipeline {
         self.start_dictation_after(spoken, StartCue::Restart)?;
         self.visual_indicator
             .show_command_sign(VoiceCommand::RestartDictation);
-        log_voice_start(&spoken);
         Ok(())
     }
 
@@ -239,7 +234,7 @@ impl Pipeline {
         spoken: SpokenCommand,
         cue: StartCue,
     ) -> anyhow::Result<()> {
-        self.start_recording_from(Some(spoken.ends_at), cue)?;
+        self.start_recording_from(Some(spoken.ends_at), cue, Some(spoken))?;
         // Only an end the voice activity detector placed lies safely past the last word.
         if let Some(dictation) = self.dictation.as_mut() {
             dictation.command_words.opening =
@@ -351,11 +346,12 @@ impl Pipeline {
     }
 }
 
-/// How long the start cue `spoken` just gave took, stage by stage.
-fn log_voice_start(spoken: &SpokenCommand) {
+/// How long the start cue `spoken` gave at `cue_at` took, stage by stage, its overlay drawn
+/// at `drawn_at`.
+pub(super) fn log_voice_start(spoken: &SpokenCommand, cue_at: Instant, drawn_at: Instant) {
     log::info!(
         "voice start: {}",
-        VoiceStartTiming::measure(spoken, Instant::now())
+        VoiceStartTiming::measure(spoken, cue_at, Some(drawn_at))
     );
 }
 

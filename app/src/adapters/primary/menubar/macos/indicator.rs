@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use crate::core::application::live_transcript_view::LiveTranscriptView;
-use crate::core::application::VisualIndicator;
+use crate::core::application::{OnDrawn, VisualIndicator};
 use crate::core::domain::{FailureNotice, VoiceCommand};
 use crate::runtime::{RuntimeObserver, RuntimeState};
 
@@ -128,6 +128,11 @@ pub struct StatusItemIndicator<I> {
 impl<I: VisualIndicator> VisualIndicator for StatusItemIndicator<I> {
     fn show_recording(&self) {
         self.overlay.show_recording();
+        self.cell.apply(OverlaySignal::Recording);
+    }
+
+    fn show_recording_then(&self, on_drawn: OnDrawn) {
+        self.overlay.show_recording_then(on_drawn);
         self.cell.apply(OverlaySignal::Recording);
     }
 

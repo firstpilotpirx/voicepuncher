@@ -277,3 +277,25 @@ fn worker_with_hanging_check() -> (ConfirmationWorker, mpsc::Sender<()>) {
         release,
     )
 }
+
+#[test]
+fn should_wake_the_session_as_soon_as_an_answer_arrives() {
+    // Given a worker that wakes its session on every answer
+    let (woken_tx, woken) = mpsc::channel();
+    let hear = Arc::new(Scripted { failures: 0, calls: AtomicU32::new(0), text: " enter" });
+    let wake: Wake = Arc::new(move || {
+        let _ = woken_tx.send(Instant::now());
+    });
+    let worker = ConfirmationWorker::start_waking(1, hear, DEADLINE, Some(wake)).unwrap();
+    // When
+    worker.submit(job(1, JobKind::Segment));
+    // Then the wake comes with the answer, not at the next poll
+    let woken_at = woken.recv_timeout(WAIT).expect("no wake");
+    let answer = worker.answers();
+    assert_eq!(
+        answer.len(),
+        1,
+        "the answer was not there when the wake came"
+    );
+    assert!(woken_at.elapsed() < WAIT);
+}

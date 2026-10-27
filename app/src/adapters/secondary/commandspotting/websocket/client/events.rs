@@ -33,6 +33,11 @@ pub(super) enum ServiceEvent {
     Synced {
         id: u64,
     },
+    /// What the speech recognition service heard of commands reported without confirmation.
+    Heard {
+        commands: Vec<String>,
+        verdict: Verdict,
+    },
     /// The speech `start..end` could not be confirmed: a command said in it is lost.
     ConfirmationFailed {
         start: f32,
@@ -54,6 +59,37 @@ pub(super) enum ServiceEvent {
 pub(super) struct Confirmation {
     asked_at: f32,
     took_ms: u64,
+}
+
+/// What the speech recognition service made of a command reported without confirmation.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum Verdict {
+    Agreed,
+    Other,
+    None,
+}
+
+impl Verdict {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Agreed => "agreed",
+            Self::Other => "other",
+            Self::None => "none",
+        }
+    }
+}
+
+/// The log line of a verdict on commands reported without confirmation; none for any other
+/// event.
+pub(super) fn verdict_line(event: &ServiceEvent) -> Option<String> {
+    match event {
+        ServiceEvent::Heard { commands, verdict } => Some(format!(
+            "whisper on unconfirmed {commands:?}: {}",
+            verdict.as_str()
+        )),
+        _ => None,
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -98,6 +134,7 @@ pub(super) fn to_spotting_event(
             SpottingEvent::ConfirmationFailed { start: times.at(start), end: times.at(end) }
         }
         ServiceEvent::Synced { .. }
+        | ServiceEvent::Heard { .. }
         | ServiceEvent::Stalled { .. }
         | ServiceEvent::Dropped { .. } => return None,
     })

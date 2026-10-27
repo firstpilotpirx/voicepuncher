@@ -11,6 +11,7 @@ use crate::adapters::secondary::archiving::filesystem::{ArchiveSetup, FileSystem
 use crate::adapters::secondary::commandspotting::websocket::WebSocketCommandSpotter;
 use crate::adapters::secondary::focus::macos::MacOsFocusProbe;
 use crate::adapters::secondary::keypressing::macos::MacOsKeyPresser;
+use crate::adapters::secondary::recording::cpal::tap::MicTap;
 use crate::adapters::secondary::recording::cpal::CpalAudioRecorder;
 use crate::adapters::secondary::soundplaying::macos::MacosSoundPlayer;
 use crate::adapters::secondary::textpasting::macos::MacOsTextPaster;
@@ -48,11 +49,13 @@ impl WiringAssembler {
 
 impl PipelineAssembler for WiringAssembler {
     fn assemble(&mut self, config: &Config, inputs: Sender<PipelineInput>) -> Result<Pipeline> {
-        let recorder = self.recorder(config, inputs.clone());
+        // WHY: one microphone: a dictation records what voice control already captures.
+        let tap = MicTap::default();
+        let recorder = self.recorder(config, inputs.clone()).with_tap(tap.clone());
         let spotter = config
             .voice_control
             .enabled
-            .then(|| connect_command_spotter(config, inputs))
+            .then(|| connect_command_spotter(config, inputs, tap))
             .transpose()?;
         let transcriber = connect_transcriber(config)?;
         let paster = MacOsTextPaster::new(config.paste.clipboard_restore_delay_ms);
@@ -138,9 +141,12 @@ pub fn connect_archive(config: &Config) -> FileSystemDictationArchive {
 fn connect_command_spotter(
     config: &Config,
     inputs: Sender<PipelineInput>,
+    tap: MicTap,
 ) -> Result<WebSocketCommandSpotter> {
     let spotter = WebSocketCommandSpotter::new(config.voice_control.url.clone(), inputs)
-        .with_input_device(&config.audio.input_device);
+        .with_input_device(&config.audio.input_device)
+        .with_tap(tap)
+        .confirming(config.voice_control.confirm_commands);
     spotter.probe()?;
     Ok(spotter)
 }

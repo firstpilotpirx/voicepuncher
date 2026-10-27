@@ -8,7 +8,8 @@
 # all text and paste text are spotted less reliably than the dictation phrases, so they need the looser
 # values; the app's pause rule (the phrase must be the whole utterance) guards them.
 # The *_trigger lines are no phrases: spotted in a stream of their own, a short "start" or
-# "restart" only asks the speech recognition service to check the running utterance at once.
+# "restart" only asks the speech recognition service to check the running utterance at once,
+# and a short "stop" or "cancel" said twice in a row asks it about the doubled form at once.
 ▁START ▁DI C T ATION :1.0 #0.25 @start_dictation
 ▁ST AR ▁DI C T ATION :1.0 #0.25 @start_dictation
 ▁START ▁DI C T ATION ▁P LE AS E :1.0 #0.25 @start_dictation
@@ -32,3 +33,5 @@
 ▁START :1.5 #0.15 @start_trigger
 ▁ST AR :1.5 #0.15 @start_trigger
 ▁RE S T AR T :1.0 #0.25 @restart_trigger
+▁ST O P :1.5 #0.15 @stop_trigger
+▁CAN CE L :1.5 #0.15 @cancel_trigger

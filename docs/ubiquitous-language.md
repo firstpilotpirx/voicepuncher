@@ -403,6 +403,18 @@
 - **Code:** `command-spotting/src/history/outcome.rs`
 - **Synonyms to AVOID:** "result", "status", "verdict"
 
+### Unconfirmed command
+- **Type:** Behavior of voice control (`[voice_control] confirm_commands = false`, the Settings switch "Confirm commands with Whisper"; `confirm: false` in the `select` message)
+- **Definition:** A command the keyword spotter heard said on its own or doubled, reported to the app at once, without waiting for the speech recognition service for commands; that service still hears it afterwards and gives a *Whisper verdict*. A command inside a sentence, opening or ending one, still waits for its confirmation. The start line logs it as `confirm=unconfirmed`.
+- **Code:** `Unconfirmed` in `command-spotting/src/engine/confirming/unconfirmed.rs`; `PhraseSelection::confirm` in `command-spotting/src/protocol/mod.rs`; `VoiceControlCfg::confirm_commands` in `app/src/config/mod.rs`
+- **Synonyms to AVOID:** "unchecked", "fast mode", "KWS only"
+
+### Whisper verdict
+- **Type:** Value Object (`Verdict`: `agreed`, `other`, `none`; service event `heard`)
+- **Definition:** What the speech recognition service for commands heard in an *unconfirmed command*'s speech: **agreed** — the same command; **other** — another command; **none** — no command. It never changes what was carried out: the app logs it (`whisper on unconfirmed [...]: <verdict>`) and the *command history entry* keeps it with the reported command (`whisper`), for statistics; such a command counts as heard in the *command history outcome* only when the verdict is `agreed`.
+- **Code:** `ServerEvent::Heard`, `Verdict` in `command-spotting/src/protocol/mod.rs`; `verdict_line` in `app/src/adapters/secondary/commandspotting/websocket/client/events.rs`
+- **Synonyms to AVOID:** "outcome" (the *command history outcome*), "confirmation" (it comes after the command)
+
 ### Log file
 - **Type:** Adapter output (no port: logging goes through the `log` facade)
 - **Definition:** `~/.voicepuncher/logs/voicepuncher.log`, where the app in hotkey mode writes every log line of a session, starting with a launch header (version, process id, config path, macOS version, architecture); a terminal, when there is one, gets the same lines. File mode never writes it.
@@ -518,7 +530,7 @@
 
 ### Protocol version (command spotting)
 - **Type:** Concept
-- **Definition:** The version of the messages between the app and the *command spotting service*, now 2: every connection opens with the app's `hello` naming it, and each message names its `type` (`hello`, `select`, `sync`). The service closes a connection of another version, or one without a `hello` first, naming both versions; a message it cannot read and an audio frame of partial samples close the connection with the reason.
+- **Definition:** The version of the messages between the app and the *command spotting service*, now 3: every connection opens with the app's `hello` naming it, and each message names its `type` (`hello`, `select`, `sync`); version 3 added the `select` field `confirm` and the `heard` event. The service closes a connection of another version, or one without a `hello` first, naming both versions; a message it cannot read and an audio frame of partial samples close the connection with the reason.
 - **Code:** `PROTOCOL_VERSION`, `AppMessage` in `command-spotting/src/protocol/mod.rs`; `command-spotting/src/server/refusal.rs`; `SpottingClient::connect`
 - **Synonyms to AVOID:** "API version"
 

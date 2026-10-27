@@ -11,4 +11,5 @@ The voice control settings SHALL hold a switch "Confirm commands with Whisper", 
 #### Scenario: Switching it off applies to the next command
 - **GIVEN** voice control is on
 - **WHEN** the user switches "Confirm commands with Whisper" off and saves
-- **THEN** the next "start start" starts a dictation without waiting for Whisper
+- **THEN** the configuration file has commands carried out without the Whisper confirmation
+- **AND** the settings are applied, so the next listening session asks for no confirmation

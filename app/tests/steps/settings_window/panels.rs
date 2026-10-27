@@ -237,7 +237,11 @@ fn waiting_line_shown(world: &mut IntegrationWorld) -> Result<()> {
     if switch.map(|f| f.tab) != Some(Tab::General) {
         bail!("the voice control switch is not on the General tab");
     }
-    if notes != [wanted.clone()] || !wanted.contains("once it is granted") {
+    let waiting: Vec<&String> = notes
+        .iter()
+        .filter(|n| n.starts_with("Waiting for"))
+        .collect();
+    if waiting != [&wanted] || !wanted.contains("once it is granted") {
         bail!("the General tab notes {notes:?}");
     }
     Ok(())

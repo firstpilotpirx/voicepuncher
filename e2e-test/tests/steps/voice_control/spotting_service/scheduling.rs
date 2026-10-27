@@ -8,7 +8,7 @@ use voicepuncher::test_doubles::prelude::*;
 
 use voicepuncher_command_spotting::engine::{Engine, EngineCfg, Session};
 use voicepuncher_command_spotting::history::HistoryCfg;
-use voicepuncher_command_spotting::protocol::ServerEvent;
+use voicepuncher_command_spotting::protocol::{PhraseSelection, ServerEvent};
 use voicepuncher_e2e_test::speech_cache::{synthesized, SayRequest};
 use voicepuncher_test_steps::required_env;
 
@@ -19,6 +19,7 @@ use crate::E2eWorld;
 mod hearings;
 mod history;
 mod spotted;
+mod unconfirmed;
 
 use hearings::stream_clock::{samples, Clocked, StreamClock};
 use hearings::Answers;
@@ -51,6 +52,8 @@ pub struct SchedulingRun {
     runs: Vec<Vec<ServerEvent>>,
     spotted: spotted::SpottedRun,
     history: history::HistoryRun,
+    /// The confirmation of commands is off.
+    unconfirmed: bool,
 }
 
 fn run(world: &mut E2eWorld) -> &mut SchedulingRun {
@@ -117,7 +120,11 @@ impl SchedulingRun {
         let engine = Engine::load(&engine_cfg(self.history.cfg()))?.hearing(Arc::new(clocked));
         self.history.engine_kept |= engine.keeps_history();
         let mut session = engine.session()?;
-        session.listen_for(&self.listening)?;
+        session.select(&PhraseSelection {
+            phrases: self.listening.clone(),
+            confirm: self.unconfirmed.then_some(false),
+            ..PhraseSelection::default()
+        })?;
         let sync_at = sync.then(|| said_end + samples(self.delay));
         let events = fed(&mut session, &clock, &stream, sync_at);
         self.runs.push(events);

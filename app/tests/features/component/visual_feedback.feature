@@ -129,3 +129,16 @@ Feature: visual-feedback
       When the overlay shows the wait for focus
       Then the pill shows the icon "keyboard" and the label "Click a text field"
       And no text window shows
+
+  Rule: The overlay appears without rebuilding its windows
+
+    Scenario: The recording sign is drawn at once
+      Given the overlay has shown once and is hidden
+      When a recording starts on the hidden overlay
+      Then the recording sign is drawn within 0.05 s, in the windows built before
+
+    Scenario: A screen added later gets the overlay
+      Given the overlay has shown once and is hidden
+      And the screens changed since, unnoticed
+      When a recording starts on the hidden overlay
+      Then the windows are built again for the screens of the moment and show the recording sign

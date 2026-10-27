@@ -48,7 +48,12 @@ impl Session<'_> {
             let detected_end = start + usize::try_from(segment.n()).unwrap_or(0);
             let end = quiet_from.map_or(detected_end, |q| q.clamp(start, detected_end));
             let bounds = Segment { start: seconds(start), end: seconds(end) };
-            log::info!("speech {:.2}–{:.2}s", bounds.start, bounds.end);
+            log::info!(
+                "speech {:.2}–{:.2}s closed by {}",
+                bounds.start,
+                bounds.end,
+                closed_by(quiet_from)
+            );
             if let Some(dir) = self.engine.save_speech_dir.as_deref() {
                 save_speech(dir, bounds.start, &as_given(segment.samples()));
             }
@@ -138,5 +143,30 @@ impl Session<'_> {
         start
             .saturating_sub(samples_in(PRE_ROLL_SECS))
             .max(self.utterances.last_segment_end.min(start))
+    }
+}
+
+/// What closed a segment: the pause watch when it ended at a quiet pause, else the voice
+/// detector.
+fn closed_by(quiet_from: Option<usize>) -> &'static str {
+    if quiet_from.is_some() {
+        "pause watch"
+    } else {
+        "voice detector"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::closed_by;
+
+    #[test]
+    fn should_name_the_pause_watch_for_a_segment_closed_at_a_quiet_pause() {
+        assert_eq!(closed_by(Some(4_800)), "pause watch");
+    }
+
+    #[test]
+    fn should_name_the_voice_detector_for_a_segment_it_closed() {
+        assert_eq!(closed_by(None), "voice detector");
     }
 }

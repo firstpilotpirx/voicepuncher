@@ -54,13 +54,16 @@ impl AudioRecorder for MicrophoneRecorder {
     }
 }
 
-pub(super) struct RecordingSounds(pub(super) Events, pub(super) Cues);
+/// The events, the start cues and the stop sounds.
+pub(super) struct RecordingSounds(pub(super) Events, pub(super) Cues, pub(super) Cues);
 
 impl SoundPlayer for RecordingSounds {
     fn play_start(&self) {
         self.1.lock().unwrap().push(Instant::now());
     }
-    fn play_stop(&self) {}
+    fn play_stop(&self) {
+        self.2.lock().unwrap().push(Instant::now());
+    }
     fn play_cancel(&self) {
         self.0.lock().unwrap().push(Event::Cancelled);
     }

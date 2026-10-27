@@ -138,12 +138,39 @@ fn should_read_a_stall_and_dropped_audio_as_no_spotting_event() {
 fn should_ask_for_an_early_start_only_while_start_dictation_is_listened_for() {
     // When
     let early = |commands| -> serde_json::Value {
-        serde_json::from_str::<serde_json::Value>(&selection_of(commands)).unwrap()["early_start"]
+        serde_json::from_str::<serde_json::Value>(&selection_of(commands, true)).unwrap()
+            ["early_start"]
             .clone()
     };
     // Then
     assert_eq!(early(&VoiceCommand::STANDBY), serde_json::json!(true));
     assert_eq!(early(&VoiceCommand::DICTATING), serde_json::json!(false));
+}
+
+#[test]
+fn should_tell_the_service_whether_commands_are_confirmed() {
+    // When
+    let confirm = |confirm| -> serde_json::Value {
+        serde_json::from_str::<serde_json::Value>(&selection_of(&VoiceCommand::STANDBY, confirm))
+            .unwrap()["confirm"]
+            .clone()
+    };
+    // Then
+    assert_eq!(confirm(true), serde_json::json!(true));
+    assert_eq!(confirm(false), serde_json::json!(false));
+}
+
+#[test]
+fn should_read_what_whisper_heard_of_an_unconfirmed_command_as_a_log_line() {
+    // Given
+    let json = r#"{"event":"heard","commands":["start dictation"],"start":1.5,"end":2.25,"verdict":"agreed"}"#;
+    // When
+    let event: ServiceEvent = serde_json::from_str(json).unwrap();
+    // Then
+    assert_eq!(
+        verdict_line(&event).as_deref(),
+        Some("whisper on unconfirmed [\"start dictation\"]: agreed")
+    );
 }
 
 /// The event the service line `json` becomes when it arrives at the audio start.

@@ -122,10 +122,11 @@ fn begin_sentence(run: &mut VoiceRun) -> (Instant, Instant) {
     (start, start + COMMAND_AFTER)
 }
 
-/// The one command `said` is.
+/// The one command `said` is, said once or doubled.
 pub(super) fn one_command(said: &str) -> Result<VoiceCommand> {
     match chain(said).context("no command")?.as_slice() {
         [command] => Ok(*command),
+        [first, second] if first == second => Ok(*first),
         _ => bail!("{said:?} is not one command"),
     }
 }

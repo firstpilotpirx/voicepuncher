@@ -3,12 +3,13 @@
 use super::{
     heard, link, Arc, AudioBuffer16k, CapturedAudio, Control, Duration, HeardAudio, Instant, Link,
     LinkTimings, Mutex, Ordering, Outage, PipelineInput, Receiver, Result, Sender, SpottingClient,
-    SpottingEvent, StreamResampler, TryRecvError, VoiceCommand, AWAY_WAIT, NEXT_SESSION,
+    SpottingEvent, SpottingService, StreamResampler, TryRecvError, VoiceCommand, AWAY_WAIT,
+    NEXT_SESSION,
 };
 
 /// What the streaming worker owns.
 pub(super) struct Stream {
-    pub(crate) url: String,
+    pub(crate) service: SpottingService,
     pub(crate) session: u64,
     pub(crate) link: Link,
     /// How the attempts after a loss are paced and how far back the replay reaches.
@@ -179,7 +180,7 @@ impl Stream {
                 "command spotting: session={} attempt {} to reach {} failed, next in {}ms: {e:#}",
                 self.session,
                 outage.failed_attempts,
-                self.url,
+                self.service.url,
                 pause.as_millis()
             );
         }
@@ -191,7 +192,8 @@ impl Stream {
             |_| (Instant::now(), Vec::new()),
             |heard| heard.replay_from(replay_from),
         );
-        let mut client = SpottingClient::connect(&self.url, audio_start)?;
+        let mut client = SpottingClient::connect(&self.service.url, audio_start)?
+            .confirming(self.service.confirm_commands);
         client.listen_for(&self.commands)?;
         if !samples.is_empty() {
             client.send_audio(&samples)?;

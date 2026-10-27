@@ -68,6 +68,12 @@ impl CaptureHealth {
         self.failed.store(true, Ordering::Relaxed);
     }
 
+    /// Mono samples delivered by another capture than the device's own callback.
+    pub fn note_samples(&self, samples: &[f32]) {
+        let sum_sq = samples.iter().map(|s| s * s).sum();
+        self.note_frames(sum_sq, samples.len(), 0);
+    }
+
     fn note_frames(&self, sum_sq: f32, kept: usize, dropped: usize) {
         let rms = (sum_sq / kept.max(1) as f32).sqrt();
         self.level
@@ -161,6 +167,13 @@ impl CapturedAudio for Consumer<f32> {
         let taken: Vec<f32> = first.iter().chain(second).copied().collect();
         chunk.commit_all();
         taken
+    }
+}
+
+/// A capture chosen at run time.
+impl CapturedAudio for Box<dyn CapturedAudio> {
+    fn take(&mut self) -> Vec<f32> {
+        (**self).take()
     }
 }
 

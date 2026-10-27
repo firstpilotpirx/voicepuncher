@@ -450,13 +450,27 @@ Feature: voice-control
       Then the sentence is pasted into the focused app
       And the pasted text does not contain the stop phrase
 
+  Rule: A voice start gives its start cue within 0.7 s
+
+    Scenario: The overlay shows with the start cue
+      Given listening is on
+      And no dictation runs
+      When the user says "start start" and stays silent
+      Then the overlay's recording sign shows within 0.05 s of the start cue
+
   Rule: Every voice start logs how long its start cue took
 
     Scenario: A voice start logs its timing
       Given listening is on
       And no dictation runs
       When the user says "start start" and a sentence without a pause
-      Then the log shows one timing line for that start, with its total and the time of each stage
+      Then the log shows one timing line for that start, with its total and the time of each stage, the cue sound and the overlay included
+
+    Scenario: A start without confirmation logs that it was not confirmed
+      Given listening is on
+      And no dictation runs
+      When the user says "start start", reported without the Whisper confirmation, and stays silent
+      Then the timing line of that start shows that it was not confirmed
 
     Scenario: The timing stays right after microphone audio was lost
       Given listening is on

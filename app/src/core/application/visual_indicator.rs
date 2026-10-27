@@ -1,10 +1,21 @@
+use std::time::Instant;
+
 use crate::core::application::live_transcript_view::LiveTranscriptView;
 use crate::core::domain::{FailureNotice, VoiceCommand};
+
+/// Called with the moment the overlay drew what it was asked to show.
+pub type OnDrawn = Box<dyn FnOnce(Instant) + Send>;
 
 /// The overlay: what the app is doing with a dictation, from the recording to the paste.
 #[cfg_attr(test, mockall::automock)]
 pub trait VisualIndicator: Send {
     fn show_recording(&self);
+    /// Shows the recording as [`show_recording`](Self::show_recording) does and calls
+    /// `on_drawn` with the moment the recording sign was drawn on screen.
+    fn show_recording_then(&self, on_drawn: OnDrawn) {
+        self.show_recording();
+        on_drawn(Instant::now());
+    }
     /// Processing stage: speech recognition runs on the recording after it stopped.
     fn show_recognizing_speech(&self);
     fn show_waiting_for_focus(&self);

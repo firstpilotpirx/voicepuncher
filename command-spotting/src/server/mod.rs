@@ -16,10 +16,12 @@ use tungstenite::{Message, WebSocket};
 use crate::engine::{Engine, Session};
 use crate::health::{Beat, Health};
 use crate::protocol::{samples_from_bytes, AppMessage, PhraseSelection, ServerEvent};
+use crate::worker::Wake;
 
 /// How long a read on the socket waits before the I/O thread sends what is ready.
-const READ_WAIT: Duration = Duration::from_millis(10);
-/// How long the processing thread waits for input before it applies the answers that came.
+const READ_WAIT: Duration = Duration::from_millis(2);
+/// How long the processing thread waits for input before it applies the answers that came;
+/// an answer wakes it at once (`Input::Answered`), so this only backs that up.
 const POLL_WAIT: Duration = Duration::from_millis(20);
 
 mod probe;
@@ -37,6 +39,10 @@ enum Input {
     Audio(Vec<f32>, Instant),
     Select(PhraseSelection),
     Sync(u64),
+    /// A confirmation was answered.
+    Answered,
+    /// The I/O thread ended.
+    End,
 }
 
 enum Output {
@@ -74,10 +80,14 @@ fn serve_connection(stream: TcpStream, engine: &Engine, conn: u64, health: &Heal
         }
     };
     socket.get_ref().set_read_timeout(Some(READ_WAIT))?;
-    let session = engine.session_for(conn)?;
+    let (inputs, input_rx) = mpsc::channel();
+    let answered = inputs.clone();
+    let wake: Wake = Arc::new(move || {
+        let _ = answered.send(Input::Answered);
+    });
+    let session = engine.session_waking(conn, Some(wake))?;
     let beat = health.register(conn);
     log::info!("conn={conn} app connected");
-    let (inputs, input_rx) = mpsc::channel();
     let (output_tx, outputs) = mpsc::channel();
     let ended = std::thread::scope(|scope| {
         let processing_beat = &beat;
@@ -86,7 +96,10 @@ fn serve_connection(stream: TcpStream, engine: &Engine, conn: u64, health: &Heal
             .spawn_scoped(scope, move || {
                 process(session, &input_rx, &output_tx, conn, processing_beat);
             })?;
-        exchange(&mut socket, &inputs, &outputs, conn, &beat)
+        let ended = exchange(&mut socket, &inputs, &outputs, conn, &beat);
+        // WHY: the session's wake holds a sender too, so the channel never disconnects.
+        let _ = inputs.send(Input::End);
+        ended
     });
     health.unregister(conn);
     ended
@@ -209,6 +222,7 @@ fn process(
     let mut reported = false;
     loop {
         let mut events = match inputs.recv_timeout(POLL_WAIT) {
+            Ok(Input::End) | Err(RecvTimeoutError::Disconnected) => return,
             Ok(input) => match handle(&mut session, input, &mut stats, conn, beat) {
                 Ok(events) => events,
                 Err(unknown) => {
@@ -217,7 +231,6 @@ fn process(
                 }
             },
             Err(RecvTimeoutError::Timeout) => session.poll(),
-            Err(RecvTimeoutError::Disconnected) => return,
         };
         beat.alive();
         events.extend(watch_stall(session.stalled(), beat, conn, &mut reported));
@@ -243,7 +256,8 @@ fn handle(
             beat.processed();
             Ok(events)
         }
-        Input::Hello(_) => Ok(Vec::new()),
+        Input::Answered => Ok(session.poll()),
+        Input::Hello(_) | Input::End => Ok(Vec::new()),
         Input::Select(selection) => {
             session
                 .select(&selection)

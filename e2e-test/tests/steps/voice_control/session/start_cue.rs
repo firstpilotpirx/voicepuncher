@@ -14,7 +14,7 @@ use voicepuncher_e2e_test::voice_commands::{
 };
 
 use super::speech_after_start::{BEFORE_RESTART, SENTENCE};
-use super::{env, session_of, Expected, HandsFreeSession, ENGLISH_VOICE, SAMPLE_RATE_HZ};
+use super::{env, session_of, Cues, Expected, HandsFreeSession, ENGLISH_VOICE, SAMPLE_RATE_HZ};
 use crate::E2eWorld;
 
 /// 20 ms per message: a real microphone delivers audio about this often.
@@ -32,6 +32,11 @@ const DICTATED: [&str; 3] = [
     "Please bring the slides to the review on Monday",
     "The train leaves at seven and arrives before noon",
 ];
+
+/// The bound of a voice start's cue, and of a doubled form, heard as a command without
+/// waiting for the pause after it or the next word.
+const CUE_BOUND: Duration = Duration::from_millis(700);
+const DOUBLED_CUE_BOUND: Duration = Duration::from_millis(500);
 
 /// One voice start the scenario timed.
 #[derive(Debug, Clone)]
@@ -58,6 +63,18 @@ impl MeasuredStart {
 
     fn within(&self, bound: Duration) -> bool {
         self.took().is_some_and(|took| took <= bound)
+    }
+
+    /// The bound of this start's cue: shorter for a doubled form, read from the words its
+    /// label quotes.
+    fn bound(&self) -> Duration {
+        let said = self.label.split('"').nth(1).unwrap_or_default();
+        let words: Vec<&str> = said.split_whitespace().collect();
+        if matches!(words.as_slice(), [first, second] if first == second) {
+            DOUBLED_CUE_BOUND
+        } else {
+            CUE_BOUND
+        }
     }
 
     fn report(&self) -> String {
@@ -106,12 +123,24 @@ impl HandsFreeSession {
         words_end: usize,
         room: &[f32],
     ) -> Result<MeasuredStart> {
-        let cues_before = self.cues.lock().unwrap().len();
+        self.time_cue(label, (audio, words_end), room, &self.cues)
+    }
+
+    /// Says `said`, audio whose command's words end at the sample it names, and times the
+    /// first of `cues` given after it.
+    pub(super) fn time_cue(
+        &self,
+        label: String,
+        (audio, words_end): (&[f32], usize),
+        room: &[f32],
+        cues: &Cues,
+    ) -> Result<MeasuredStart> {
+        let cues_before = cues.lock().unwrap().len();
         let heard_before = self.microphone.captured.lock().unwrap().len();
         let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
         let watch = env("VOICEPUNCHER_COMMAND_SPOTTING_URL").map(|url| Watch::start(&url, &home));
         let (words_ended, fed) = self.hear_timed(audio, words_end)?;
-        let cue = self.next_cue(cues_before, room, fed)?;
+        let cue = self.next_cue(cues, cues_before, room, fed)?;
         let measured = MeasuredStart {
             label,
             words_ended,
@@ -129,11 +158,17 @@ impl HandsFreeSession {
     /// The first start cue after the first `seen` cues, while the microphone keeps capturing
     /// the room in real time after the frame fed at `last_fed`; none when it does not come
     /// within `CUE_WAIT`.
-    fn next_cue(&self, seen: usize, room: &[f32], last_fed: Instant) -> Result<Option<Instant>> {
+    fn next_cue(
+        &self,
+        cues: &Cues,
+        seen: usize,
+        room: &[f32],
+        last_fed: Instant,
+    ) -> Result<Option<Instant>> {
         let deadline = Instant::now() + CUE_WAIT;
         let frame_time = Duration::from_secs_f32(REAL_TIME_FRAME_SAMPLES as f32 / SAMPLE_RATE_HZ);
         for (n, frame) in room.chunks(REAL_TIME_FRAME_SAMPLES).cycle().enumerate() {
-            let cue = self.cues.lock().unwrap().get(seen).copied();
+            let cue = cues.lock().unwrap().get(seen).copied();
             if let Some(cue) = cue {
                 return Ok(Some(cue));
             }
@@ -177,7 +212,7 @@ impl HandsFreeSession {
     }
 
     /// The last voice start, which must be the one `said` began.
-    fn last_start_of(&self, said: &str) -> Result<MeasuredStart> {
+    pub(super) fn last_start_of(&self, said: &str) -> Result<MeasuredStart> {
         let start = self.last_start()?;
         if !start.label.contains(said) {
             bail!("the last voice start was {}, not \"{said}\"", start.label);
@@ -187,7 +222,7 @@ impl HandsFreeSession {
 }
 
 /// `said` in a synthesized voice, cut after its last sound.
-fn synthesized_command(said: &str) -> Result<Vec<f32>> {
+pub(super) fn synthesized_command(said: &str) -> Result<Vec<f32>> {
     Ok(without_trailing_silence(spoken_by(ENGLISH_VOICE, said)?))
 }
 
@@ -246,11 +281,16 @@ fn says_command_alone(world: &mut E2eWorld, said: String) -> Result<()> {
 )]
 fn cue_while_speaking(world: &mut E2eWorld, bound_secs: f32, said: String) -> Result<()> {
     let start = session_of(world)?.last_start_of(&said)?;
-    check_within(&start, bound_secs)?;
+    within_while_speaking(&start, bound_secs)
+}
+
+/// `start`'s cue came within `bound_secs` of its words, before the speech after them ended.
+pub(super) fn within_while_speaking(start: &MeasuredStart, bound_secs: f32) -> Result<()> {
+    check_within(start, bound_secs)?;
     match (start.cue, start.speech_ended) {
         (Some(cue), Some(speech_ended)) if cue < speech_ended => Ok(()),
         _ => bail!(
-            "the start cue came after the sentence was said; {}",
+            "the cue came after the sentence was said; {}",
             start.report()
         ),
     }
@@ -267,21 +307,18 @@ fn restart_cue_within(world: &mut E2eWorld, bound_secs: f32, said: String) -> Re
 }
 
 #[then(
-    expr = "at least {int} of {int} of them give the start cue within {float} s of the end of the command's words"
+    expr = "at least {int} of {int} of them give the start cue within its bound of the end of the command's words"
 )]
-fn most_recorded_within(
-    world: &mut E2eWorld,
-    wanted: usize,
-    of: usize,
-    bound_secs: f32,
-) -> Result<()> {
+fn most_recorded_within(world: &mut E2eWorld, wanted: usize, of: usize) -> Result<()> {
     let starts = session_of(world)?.starts.lock().unwrap().clone();
-    let bound = Duration::from_secs_f32(bound_secs);
-    let in_time = starts.iter().filter(|start| start.within(bound)).count();
+    let in_time = starts
+        .iter()
+        .filter(|start| start.within(start.bound()))
+        .count();
     if in_time * of < wanted * starts.len() {
         let reports: Vec<String> = starts.iter().map(MeasuredStart::report).collect();
         bail!(
-            "{in_time} of {} recorded starts gave the cue within {bound_secs} s:\n{}\n{}",
+            "{in_time} of {} recorded starts gave the cue within their bound:\n{}\n{}",
             starts.len(),
             reports.join("\n"),
             machine_load::report()

@@ -4,6 +4,7 @@ use voicepuncher_command_spotting::conversions::saturating_usize;
 mod confirming;
 mod running;
 mod spotting;
+mod unconfirmed;
 
 mod needs_voice_samples {
     use super::*;

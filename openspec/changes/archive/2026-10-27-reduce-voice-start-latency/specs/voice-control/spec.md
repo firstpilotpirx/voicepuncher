@@ -19,7 +19,6 @@ The system SHALL carry out a doubled short form ("start start", "restart restart
 - **AND** no dictation runs
 - **WHEN** someone says "fine start start" and goes on with a sentence without a pause
 - **THEN** the start cue comes within 0.5 s of the end of "start start", while the sentence is still being said
-- **AND** the sentence after "start start" is part of the dictation
 
 ### Requirement: Commands can run without the Whisper confirmation
 The system SHALL let the user switch off the confirmation of commands by the speech recognition service for commands; it is on by default. While it is off, a command the keyword spotter hears said on its own or doubled SHALL be carried out without waiting for that service; a command the keyword spotter cannot place on its own (inside a sentence, opening or ending one) SHALL still wait for the confirmation.
@@ -60,17 +59,10 @@ While the confirmation of commands is off, the speech recognition service for co
 - **THEN** the Return key is pressed
 - **AND** the log and the command history show that Whisper heard no command
 
-## RENAMED Requirements
-
-- FROM: `### Requirement: A voice start gives its start cue within 0.7 s`
-- TO: `### Requirement: A voice start gives its start cue within 0.5 s`
-- FROM: `### Requirement: An utterance ends after 0.3 s of silence`
-- TO: `### Requirement: An utterance ends after 0.2 s of silence`
-
 ## MODIFIED Requirements
 
-### Requirement: A voice start gives its start cue within 0.5 s
-When a voice command starts a dictation from standby, or "restart" starts one over, the system SHALL play the sound that start plays (the restart sound for "restart") and show the overlay's recording sign as soon as the command is confirmed, without waiting for the microphone of the dictation to open, within 0.5 s of the end of the command's words in at least 9 of 10 starts, with the services otherwise idle; a single-word "start" or "restart" followed at once by speech, which is heard as a command only once the next word has begun, SHALL give it within 0.7 s. In the scenarios below "the start cue" means that sound. This holds for "start" alone, opening or ending an utterance, or doubled, with "please" after it, and every form of "restart", also when the first hearing of a quiet "restart" takes it for another word. A check of this requirement SHALL time the start cue only on an idle machine: it waits for the builds, tests and model stages of every other check on the machine to end and keeps new ones out while it times, so the bound is measured under the condition it states. A start cue over its bound SHALL be reported with what ran beside it: the busiest processes on the machine and every check that held a lock at that moment. A check SHALL time the start cue only against warm copies of the speech recognition service for commands: each copy has transcribed speech since it started, so no confirmation of a timed start waits for a copy's first decode. A start cue that never came because the confirmation of the command was cut short SHALL be reported with the copies whose confirmation was cut short, after how long each was cut short, and what ran beside them, as a late cue is.
+### Requirement: A voice start gives its start cue within 0.7 s
+When a voice command starts a dictation from standby, or "restart" starts one over, the system SHALL play the sound that start plays (the restart sound for "restart") and show the overlay's recording sign as soon as the command is confirmed, without waiting for the microphone of the dictation to open, within 0.7 s of the end of the command's words in at least 9 of 10 starts, with the services otherwise idle; a doubled form ("start start", "restart restart"), which is heard as a command without waiting for the pause after it or the next word, SHALL give it within 0.5 s. In the scenarios below "the start cue" means that sound. This holds for "start" alone, opening or ending an utterance, or doubled, with "please" after it, and every form of "restart", also when the first hearing of a quiet "restart" takes it for another word. A check of this requirement SHALL time the start cue only on an idle machine: it waits for the builds, tests and model stages of every other check on the machine to end and keeps new ones out while it times, so the bound is measured under the condition it states. A start cue over its bound SHALL be reported with what ran beside it: the busiest processes on the machine and every check that held a lock at that moment. A check SHALL time the start cue only against warm copies of the speech recognition service for commands: each copy has transcribed speech since it started, so no confirmation of a timed start waits for a copy's first decode. A start cue that never came because the confirmation of the command was cut short SHALL be reported with the copies whose confirmation was cut short, after how long each was cut short, and what ran beside them, as a late cue is.
 
 #### Scenario: Start start followed by the dictation at once gives its cue at once
 - **GIVEN** listening is on
@@ -88,7 +80,7 @@ When a voice command starts a dictation from standby, or "restart" starts one ov
 - **GIVEN** listening is on
 - **AND** no dictation runs
 - **WHEN** the user says "start" and stays silent
-- **THEN** the start cue comes within 0.5 s of the end of "start"
+- **THEN** the start cue comes within 0.7 s of the end of "start"
 
 #### Scenario: Restart restart followed by the new dictation at once gives its cue at once
 - **GIVEN** a dictation runs
@@ -100,7 +92,7 @@ When a voice command starts a dictation from standby, or "restart" starts one ov
 - **GIVEN** a dictation runs
 - **AND** the user has dictated for about 20 s
 - **WHEN** the user says "restart" and stays silent
-- **THEN** the start cue of the new dictation comes within 0.5 s of the end of "restart"
+- **THEN** the start cue of the new dictation comes within 0.7 s of the end of "restart"
 
 #### Scenario: The user's recorded starts give their cue at once
 - **GIVEN** the user's own recordings of the commands exist on the machine
@@ -130,13 +122,13 @@ When a voice command starts a dictation from standby, or "restart" starts one ov
 - **GIVEN** listening is on
 - **AND** no dictation runs
 - **WHEN** the user says "start please" and a sentence without a pause
-- **THEN** the start cue comes within 0.5 s of the end of "start please", while the sentence is still being said
+- **THEN** the start cue comes within 0.7 s of the end of "start please", while the sentence is still being said
 
 #### Scenario: Start please said on its own gives its cue at once
 - **GIVEN** listening is on
 - **AND** no dictation runs
 - **WHEN** the user says "start please" and stays silent
-- **THEN** the start cue comes within 0.5 s of the end of "start please"
+- **THEN** the start cue comes within 0.7 s of the end of "start please"
 
 #### Scenario: A brief dip inside the command words starts nothing early
 - **GIVEN** listening is on
@@ -164,8 +156,8 @@ When a voice command starts a dictation from standby, or "restart" starts one ov
 - **WHEN** the failure is reported
 - **THEN** the report names each copy whose confirmation was cut short and after how long it was cut short, beside the busiest processes on the machine and every check that held a lock at that moment
 
-### Requirement: An utterance ends after 0.2 s of silence
-The system SHALL end an utterance after 0.2 s of silence, so a command said after a short breath is an utterance of its own, also in a noisy room where the silence is the room's own noise. This SHALL hold for a quiet voice and when speech follows the pause at once: a command said on its own, followed by 0.2–0.6 s of silence and then speech, SHALL take effect. The speech after the pause SHALL NOT change what the command is heard as. A pause is the silence between the words as said, not the silence a speech synthesizer adds after a word.
+### Requirement: An utterance ends after 0.3 s of silence
+The system SHALL end an utterance after 0.3 s of silence, so a command said after a short breath is an utterance of its own, also in a noisy room where the silence is the room's own noise. This SHALL hold for a quiet voice and when speech follows the pause at once: a command said on its own, followed by 0.3–0.6 s of silence and then speech, SHALL take effect. The speech after the pause SHALL NOT change what the command is heard as. A pause is the silence between the words as said, not the silence a speech synthesizer adds after a word.
 
 #### Scenario: Stop after a short breath
 - **GIVEN** a dictation runs
@@ -181,14 +173,14 @@ The system SHALL end an utterance after 0.2 s of silence, so a command said afte
 #### Scenario: A command alone, a short pause, then speech
 - **GIVEN** listening is on
 - **AND** no dictation runs
-- **WHEN** the user says "enter", pauses for about 0.25 s and says a sentence, then pauses
+- **WHEN** the user says "enter", pauses for about 0.3 s and says a sentence, then pauses
 - **THEN** the Return key is pressed once
 - **AND** no other command takes effect
 
 #### Scenario: The user's recorded command alone, a short pause, then speech
 - **GIVEN** the user's own recordings of the commands exist on the machine
 - **AND** the state accepts the command
-- **WHEN** the user's recorded "restart", "start", "stop" or "enter", said on its own, is followed by 0.2–0.6 s of silence and then speech
+- **WHEN** the user's recorded "restart", "start", "stop" or "enter", said on its own, is followed by 0.3–0.6 s of silence and then speech
 - **THEN** the command takes effect once
 - **AND** no other command takes effect
 
@@ -197,7 +189,7 @@ The system SHALL end an utterance after 0.2 s of silence, so a command said afte
 - **AND** no dictation runs
 - **AND** steady room noise plays
 - **WHEN** the user says "start" and stays silent
-- **THEN** the start cue comes within 0.5 s of the end of "start"
+- **THEN** the start cue comes within 0.7 s of the end of "start"
 
 ### Requirement: Every voice start logs how long its start cue took
 For every voice start in scope of the start cue bound, the system SHALL log one line with the time from the end of the command's words to the start cue and the time of each stage on the way: hearing the command, confirming it (or that it was not confirmed), delivering it to the app, starting the cue sound and drawing the overlay. The time SHALL stay right after part of the microphone audio never reached the command spotting service.

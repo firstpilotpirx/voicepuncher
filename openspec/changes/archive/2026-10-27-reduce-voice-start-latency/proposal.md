@@ -11,8 +11,6 @@ After "start start" the overlay and start cue come late: median 837 ms, one in t
 - The command spotting service wakes on answers instead of polling.
 - A pause is recognized in a noisy room without the slow fallback detector.
 - A doubled command ("start start", "stop stop") is carried out as soon as its second word is heard, with no pause.
-- A shorter pause ends a single-word command.
-- Whisper encodes only as much audio as a command clip needs.
 - A setting "Confirm commands with Whisper" (on by default): off, commands run on the keyword spotter alone, while Whisper still hears each one afterwards and the log and command history record whether it agreed.
 - A step that adds false starts or loses accuracy on the user's recordings is dropped, with its measurement reported.
 
@@ -25,13 +23,13 @@ Out of scope: hotkey start latency; transcription speed.
 
 ### Modified Capabilities
 
-- `voice-control`: faster starts, doubled commands without a pause, a shorter pause, commands without confirmation, a finer start log line.
+- `voice-control`: faster starts, doubled commands without a pause, a pause recognized in noise, commands without confirmation, a finer start log line.
 - `visual-feedback`: the overlay appears without rebuilding its windows.
 - `settings-window`: the confirmation switch.
 
 ## Impact
 
-`command-spotting/`, the commands Whisper arguments, the app's recorder, sounds, overlay, pipeline and settings, the `e2e-cues` bounds; builds on `log-voice-command-history`.
+`command-spotting/`, the app's recorder, sounds, overlay, pipeline and settings, the `e2e-cues` bounds; builds on `log-voice-command-history`.
 
 ## Release
 

@@ -65,7 +65,7 @@ impl HistoryRun {
         Ok(entries)
     }
 
-    fn only_entry(&self) -> Result<serde_json::Value> {
+    pub(super) fn only_entry(&self) -> Result<serde_json::Value> {
         let entries = self.entries()?;
         let [entry] = entries.as_slice() else {
             bail!("expected one command history entry: {entries:?}");

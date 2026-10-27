@@ -64,3 +64,42 @@ fn should_keep_a_waiting_check_when_a_second_round_is_asked() {
     assert_eq!((first, second), (Some(Round::Second), Some(Round::First)));
     assert_eq!(checks.take_due(usize::MAX), None);
 }
+
+#[test]
+fn should_ask_a_doubled_check_at_once_when_one_phrase_is_spotted_twice_within_0_8_s() {
+    // Given
+    let mut checks = SpottedChecks::default();
+    checks.hit("stop dictation", SAID_END);
+    let second = SAID_END + samples_in(0.5);
+    // When
+    checks.hit("stop dictation", second);
+    // Then
+    assert_eq!(
+        checks.take_due(second),
+        Some(DueCheck { said_end: second, due: second, round: Round::Doubled, utterance: None })
+    );
+}
+
+#[test]
+fn should_not_take_two_hits_further_apart_than_0_8_s_as_doubled() {
+    // Given
+    let mut checks = SpottedChecks::default();
+    checks.hit("stop dictation", SAID_END);
+    let second = SAID_END + samples_in(0.9);
+    // When
+    checks.hit("stop dictation", second);
+    // Then
+    assert_eq!(checks.take_due(second), None);
+}
+
+#[test]
+fn should_not_take_two_different_phrases_as_doubled() {
+    // Given
+    let mut checks = SpottedChecks::default();
+    checks.hit("stop dictation", SAID_END);
+    let second = SAID_END + samples_in(0.4);
+    // When
+    checks.hit("press enter", second);
+    // Then
+    assert_eq!(checks.take_due(second), None);
+}

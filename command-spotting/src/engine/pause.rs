@@ -233,6 +233,23 @@ mod tests {
     }
 
     #[test]
+    fn should_end_an_utterance_at_its_pause_in_a_noisy_room() {
+        // Given room noise a fifth as loud as the voice, wavering by half
+        let noise = |frames: usize| -> Vec<f32> {
+            (0..frames)
+                .flat_map(|n| tone(1, if n % 2 == 0 { 0.02 } else { 0.03 }))
+                .collect()
+        };
+        let mut watch = PauseWatch::new(MIN_SILENCE_SAMPLES);
+        watch.hear(&noise(100), false);
+        watch.hear(&tone(20, 0.12), true);
+        // When the voice stops and the noise goes on
+        let pause = watch.hear(&noise(30), true);
+        // Then
+        assert_eq!(pause, Some(120 * FRAME_SAMPLES));
+    }
+
+    #[test]
     fn should_restart_the_quiet_run_after_a_louder_frame() {
         // Given
         let mut watch = PauseWatch::new(MIN_SILENCE_SAMPLES);

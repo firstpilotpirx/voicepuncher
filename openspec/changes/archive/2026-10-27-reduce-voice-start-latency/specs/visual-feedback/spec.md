@@ -12,4 +12,5 @@ The system SHALL keep the overlay's windows from one showing to the next and bui
 - **GIVEN** the overlay has been shown on one screen
 - **AND** a second screen was connected since
 - **WHEN** a recording starts
-- **THEN** the overlay is drawn on the screen it belongs to among the two
+- **THEN** the overlay's windows are built again for the screens now connected
+- **AND** its recording sign is drawn

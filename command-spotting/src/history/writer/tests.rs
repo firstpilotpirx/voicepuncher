@@ -26,6 +26,7 @@ fn entry(second: u64) -> Entry {
             start: 0.3,
             end: 0.8,
             heard: true,
+            whisper: None,
         }],
         outcome: Outcome::Agreed,
     }

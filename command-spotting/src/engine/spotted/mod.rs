@@ -13,12 +13,25 @@ const CHECK_AFTER_SECS: f32 = 0.35;
 /// "start" alone: the speech after it has begun by then, or it was said on its own.
 const SECOND_CHECK_AFTER_SECS: f32 = 0.3;
 
+/// Two hits of one phrase at most this far apart are its doubled form: said on purpose, it
+/// is asked about at once, without waiting for the pause after it or the next word.
+const DOUBLED_WITHIN_SECS: f32 = 0.8;
+
+/// Audio that follows a short "stop" or "cancel" before the check of its doubled form is
+/// asked: the keyword spotter often hears the doubled form once, before its last sound.
+const DOUBLED_CHECK_AFTER_SECS: f32 = 0.15;
+
 /// Which check of a spotted phrase it is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Round {
     First,
     /// Asked when the first heard "start" alone.
     Second,
+    /// Asked at once because one phrase was spotted twice in a row: any doubled command counts.
+    Doubled,
+    /// Asked soon after a short "stop" or "cancel": only a doubled command counts, a chain is
+    /// left to the checks of the utterance.
+    Short,
 }
 
 /// A check to ask once the stream reaches `due`, for a phrase spotted ending at `said_end`
@@ -35,6 +48,8 @@ pub struct DueCheck {
 #[derive(Debug, Default)]
 pub struct SpottedChecks {
     waiting: Vec<DueCheck>,
+    /// The last phrase spotted and where it ended.
+    last_hit: Option<(String, usize)>,
 }
 
 impl SpottedChecks {
@@ -49,6 +64,40 @@ impl SpottedChecks {
                 utterance: None,
             });
         }
+    }
+
+    /// A short "stop" or "cancel" spotted ending at sample `said_end`: whether it was said
+    /// doubled is asked soon.
+    pub fn spotted_short(&mut self, said_end: usize) {
+        if self.waiting.iter().any(|check| check.round == Round::Short) {
+            return;
+        }
+        self.waiting.push(DueCheck {
+            said_end,
+            due: said_end + samples_in(DOUBLED_CHECK_AFTER_SECS),
+            round: Round::Short,
+            utterance: None,
+        });
+    }
+
+    /// Any phrase spotted ending at sample `said_end`; the second hit of one phrase within
+    /// `DOUBLED_WITHIN_SECS` asks a doubled check at once, and is told as doubled.
+    pub fn hit(&mut self, phrase: &str, said_end: usize) -> bool {
+        let doubled = self.last_hit.as_ref().is_some_and(|(last, end)| {
+            last == phrase && said_end.saturating_sub(*end) <= samples_in(DOUBLED_WITHIN_SECS)
+        });
+        if doubled {
+            self.last_hit = None;
+            self.waiting.push(DueCheck {
+                said_end,
+                due: said_end,
+                round: Round::Doubled,
+                utterance: None,
+            });
+        } else {
+            self.last_hit = Some((phrase.to_owned(), said_end));
+        }
+        doubled
     }
 
     /// The first check of the phrase spotted ending at `said_end` in `utterance` found no

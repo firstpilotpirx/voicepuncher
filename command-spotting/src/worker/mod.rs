@@ -82,6 +82,10 @@ pub struct Job {
     pub audio: Vec<f32>,
 }
 
+/// Called on a confirmation thread right after it sent an answer, so the session applies it
+/// at once instead of at its next poll.
+pub type Wake = Arc<dyn Fn() + Send + Sync>;
+
 /// What the speech recognition service heard for a job; none when every attempt failed.
 pub struct Answer {
     pub id: JobId,
@@ -138,25 +142,31 @@ impl ConfirmationWorker {
     /// Starts the threads of connection `conn`; they end when the worker is dropped, once the
     /// request each runs is answered or given up.
     pub fn start(conn: u64, hear: Arc<dyn Hear>, deadline: Duration) -> std::io::Result<Self> {
+        Self::start_waking(conn, hear, deadline, None)
+    }
+
+    /// Starts the threads as [`Self::start`] does; each answer then calls `wake`.
+    pub fn start_waking(
+        conn: u64,
+        hear: Arc<dyn Hear>,
+        deadline: Duration,
+        wake: Option<Wake>,
+    ) -> std::io::Result<Self> {
         let (answer_tx, answers) = mpsc::channel();
+        let answering = Answering { answers: answer_tx.clone(), wake };
         let jobs = spawn(
             format!("conn-{conn}-confirm"),
             hear.clone(),
             deadline,
-            answer_tx.clone(),
+            answering.clone(),
         )?;
         let checks = spawn(
             format!("conn-{conn}-check"),
             hear.clone(),
             deadline,
-            answer_tx.clone(),
+            answering.clone(),
         )?;
-        let rehears = spawn(
-            format!("conn-{conn}-rehear"),
-            hear,
-            deadline,
-            answer_tx.clone(),
-        )?;
+        let rehears = spawn(format!("conn-{conn}-rehear"), hear, deadline, answering)?;
         Ok(Self {
             jobs,
             checks,
@@ -240,12 +250,19 @@ impl ConfirmationWorker {
     }
 }
 
+/// Where a confirmation thread sends its answers, and whom it wakes then.
+#[derive(Clone)]
+struct Answering {
+    answers: Sender<Answer>,
+    wake: Option<Wake>,
+}
+
 /// Starts thread `name`, answering the jobs sent to the returned queue one after another.
 fn spawn(
     name: String,
     hear: Arc<dyn Hear>,
     deadline: Duration,
-    answers: Sender<Answer>,
+    answering: Answering,
 ) -> std::io::Result<Queue> {
     let (jobs, job_rx) = mpsc::channel::<Job>();
     let unanswered = Arc::new(AtomicUsize::new(0));
@@ -262,8 +279,11 @@ fn spawn(
                 set(&started, None);
                 // WHY: before the send, so a taken answer is never still counted unanswered
                 counted.fetch_sub(1, Ordering::SeqCst);
-                if answers.send(answer).is_err() {
+                if answering.answers.send(answer).is_err() {
                     return;
+                }
+                if let Some(wake) = &answering.wake {
+                    wake();
                 }
             }
         })?;

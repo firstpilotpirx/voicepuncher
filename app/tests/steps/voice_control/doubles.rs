@@ -15,6 +15,8 @@ pub const TRANSCRIPTION_TIME: Duration = Duration::from_millis(150);
 /// It stays so a step that reads the log right after an earlier event of the reaction fails on
 /// every run instead of now and then.
 const PIPELINE_LAG: Duration = Duration::from_millis(50);
+/// How long the recorder takes to open the microphone, as a second `CoreAudio` input does.
+const MICROPHONE_OPENING: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
@@ -55,6 +57,7 @@ pub struct NotingRecorder {
 
 impl AudioRecorder for NotingRecorder {
     fn start(&mut self) -> Result<()> {
+        std::thread::sleep(MICROPHONE_OPENING);
         self.said_before = std::mem::take(&mut *self.speech.lock().unwrap());
         *self.cut.lock().unwrap() = None;
         record(&self.events, Event::RecordingStarted);

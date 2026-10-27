@@ -24,6 +24,7 @@ pub mod capture;
 pub mod devices;
 pub mod drain;
 pub mod resampler;
+pub mod tap;
 pub mod watchdog;
 pub mod watcher;
 
@@ -137,11 +138,25 @@ impl CpalAudioRecorder {
         self
     }
 
+    /// Records from the kept microphone while `tap` has a tee, else from the source as before.
+    pub fn with_tap(mut self, tap: tap::MicTap) -> Self {
+        let mut open = std::mem::replace(&mut self.open, Box::new(|_, _| unreachable_source()));
+        self.open = Box::new(move |device, level| match tap.source(Arc::clone(&level)) {
+            Some(source) => Ok(source),
+            None => open(device, level),
+        });
+        self
+    }
+
     fn active(&mut self) -> Result<&mut ActiveRecording> {
         self.active
             .as_mut()
             .ok_or_else(|| anyhow!("recorder was not started"))
     }
+}
+
+fn unreachable_source() -> Result<Source> {
+    Err(anyhow!("no recording source"))
 }
 
 impl AudioRecorder for CpalAudioRecorder {

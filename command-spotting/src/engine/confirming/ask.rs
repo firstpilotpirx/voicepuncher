@@ -117,7 +117,7 @@ impl Session<'_> {
     /// Sends job `n` to the worker: what was said in `audio`, the samples `span` of the
     /// stream.
     pub(super) fn submit(&mut self, n: u64, kind: JobKind, audio: Vec<f32>, span: Range<usize>) {
-        log::debug!(
+        log::info!(
             "job={} {kind:?} asks for {:.2}–{:.2}s",
             JobId { conn: self.conn, n },
             seconds(span.start),

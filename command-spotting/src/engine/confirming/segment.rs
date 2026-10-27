@@ -29,7 +29,8 @@ pub(in crate::engine) struct ClosedSegment {
 
 impl Session<'_> {
     /// The events of a closed segment: held until its confirmation is answered, or out at
-    /// once without a speech recognition service. Its confirmation clip runs past its end
+    /// once without a speech recognition service or, for a short one with a spotted phrase,
+    /// without confirmation. Its confirmation clip runs past its end
     /// until the post-roll is over or a sound louder than its quiet level starts.
     pub(in crate::engine) fn close_segment(
         &mut self,
@@ -56,17 +57,23 @@ impl Session<'_> {
         let Some(job) = job else {
             return self.jobs.outbox.send(events);
         };
-        self.jobs.outbox.hold(job, events);
-        if let Some(again) = again {
-            self.hear_early_when_triggered(job, again);
-        }
-        match heard {
-            // Heard at half the pause: the answer is in already.
-            Some(heard) => {
-                self.apply(Answer { id: JobId { conn: self.conn, n: job }, heard: Some(heard) })
+        let mut events = events;
+        let mut out = if short && self.reported_unconfirmed(job, utterance, closed, &mut events) {
+            self.jobs.outbox.send(events)
+        } else {
+            self.jobs.outbox.hold(job, events);
+            if let Some(again) = again {
+                self.hear_early_when_triggered(job, again);
             }
-            None => Vec::new(),
+            Vec::new()
+        };
+        // Heard at half the pause: the answer is in already.
+        if let Some(heard) = heard {
+            out.extend(
+                self.apply(Answer { id: JobId { conn: self.conn, n: job }, heard: Some(heard) }),
+            );
         }
+        out
     }
 
     /// The utterance a closed segment ends, marked closed.

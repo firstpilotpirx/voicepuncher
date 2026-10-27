@@ -17,13 +17,13 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use objc2::MainThreadMarker;
 use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSScreen};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 
-use crate::core::application::{AudioLevelSource, LiveTranscriptView, VisualIndicator};
+use crate::core::application::{AudioLevelSource, LiveTranscriptView, OnDrawn, VisualIndicator};
 use crate::core::domain::{AudioLevel, FailureNotice, VoiceCommand};
 
 use crate::adapters::locking::lock;
@@ -46,7 +46,9 @@ pub use pointer_sign::MacosPointerSign;
 use super::pointer_sign::{FAILURE_NOTICE_LIFETIME, PASTED_SIGN_MS};
 
 mod redraw;
-use redraw::{build_windows, collect_topology, do_rebuild, screen_change_handler, Redraw};
+use redraw::{
+    build_windows, collect_topology, rebuild_if_screens_changed, screen_change_handler, Redraw,
+};
 mod indicator;
 mod live_view;
 use live_view::{apply_live_transcript, MacosLiveTranscriptView};
@@ -183,6 +185,18 @@ impl MacosVisualIndicator {
             .is_some_and(|ws| ws.pill.record_dot_pulses() || ws.pill.icon_breathes())
     }
 
+    /// How many times the overlay's windows were built in this process.
+    pub fn window_builds(&self) -> u64 {
+        redraw::WINDOW_BUILDS.load(Ordering::SeqCst)
+    }
+
+    /// Forgets the screens the windows were built for, as when they changed unnoticed.
+    pub fn forget_the_screens(&self, mtm: MainThreadMarker) {
+        if let Some(main) = self.main.get(mtm) {
+            main.topology.replace(ScreenTopology { frames: Vec::new() });
+        }
+    }
+
     /// The text the window under the pill of the first screen shows; `None` while it is hidden.
     pub fn first_text_window_value(&self) -> Option<String> {
         let ws = self.first_window()?;
@@ -262,15 +276,22 @@ impl MacosVisualIndicator {
         }
     }
 
-    /// Sets `state` and draws it on freshly built windows, on the main queue.
+    /// Sets `state` and draws it on the main queue, on windows built again only for changed
+    /// screens.
     fn show_state(&self, state: OverlayState) {
+        self.show_state_then(state, Box::new(|_| {}));
+    }
+
+    /// Sets `state`, draws it on the main queue and tells `on_drawn` when it was drawn.
+    fn show_state_then(&self, state: OverlayState, on_drawn: OnDrawn) {
         *lock(&self.state) = state.clone();
         log::debug!("overlay: {state:?} requested");
         let turn = Turn::next(&self.pulse_generation);
         let redraw = self.redraw();
         on_main(move |mtm| {
-            do_rebuild(mtm, &redraw.main);
+            rebuild_if_screens_changed(mtm, &redraw.main);
             redraw.draw(mtm, &state, turn);
+            on_drawn(Instant::now());
         });
     }
 

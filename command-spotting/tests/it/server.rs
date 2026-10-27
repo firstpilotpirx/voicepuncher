@@ -38,7 +38,7 @@ const SILENCE_SECS: f32 = 0.5;
 /// A long utterance: the service checks it with speech recognition while it runs.
 const LONG_UTTERANCE: &str =
     "so I was saying that the weather today is really nice and we could go for a walk later";
-const HELLO: &str = r#"{"type":"hello","version":2}"#;
+const HELLO: &str = r#"{"type":"hello","version":3}"#;
 const PHRASES: &str = r#"{"type":"select","phrases":["stop dictation","cancel dictation","restart dictation","press enter"]}"#;
 /// How long the service may take to close a connection it refuses.
 const CLOSE_LIMIT: Duration = Duration::from_secs(5);
@@ -220,7 +220,7 @@ mod needs_kws_models {
         // Then
         assert_eq!(code, CloseCode::Policy);
         assert!(
-            reason.contains("version 1") && reason.contains("version 2"),
+            reason.contains("version 1") && reason.contains("version 3"),
             "{reason}"
         );
     }
@@ -232,7 +232,7 @@ mod needs_kws_models {
         // Then
         assert_eq!(code, CloseCode::Policy);
         assert!(
-            reason.contains("version 1") && reason.contains("version 2"),
+            reason.contains("version 1") && reason.contains("version 3"),
             "{reason}"
         );
     }

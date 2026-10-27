@@ -15,6 +15,7 @@ use voicepuncher::adapters::secondary::visualfeedback::macos::MacosVisualIndicat
 use crate::IntegrationWorld;
 
 mod width;
+mod windows;
 use width::pill_size;
 
 /// A notice that lasts long enough to look at, and short enough not to wait.
@@ -39,6 +40,8 @@ pub struct OverlayRun {
     overlay: Option<MacosVisualIndicator>,
     level: Arc<AtomicU32>,
     sizes: Vec<(f64, f64)>,
+    /// How the last showing of the hidden overlay went (`windows`).
+    showing: windows::Showing,
 }
 
 impl std::fmt::Debug for OverlayRun {

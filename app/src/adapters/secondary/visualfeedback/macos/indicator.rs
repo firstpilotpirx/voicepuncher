@@ -1,18 +1,22 @@
 //! The overlay as the pipeline's visual indicator.
 
+use super::rebuild_if_screens_changed;
 use super::{
-    apply_command_sign, apply_pasted_sign, command_sign, do_rebuild, fade_out_then_hide, lock,
-    on_main, on_main_after, state_after_sign, Arc, AtomicBool, FailureNotice, LevelWave,
-    LiveTranscriptView, MacosLiveTranscriptView, MacosVisualIndicator, MainThreadMarker,
-    OverlayState, Redraw, SharedWindows, Turn, VisualIndicator, VoiceCommand, COMMAND_SIGN_MS,
-    PASTED_SIGN_MS,
+    apply_command_sign, apply_pasted_sign, command_sign, fade_out_then_hide, lock, on_main,
+    on_main_after, state_after_sign, Arc, AtomicBool, FailureNotice, LevelWave, LiveTranscriptView,
+    MacosLiveTranscriptView, MacosVisualIndicator, MainThreadMarker, OnDrawn, OverlayState, Redraw,
+    SharedWindows, Turn, VisualIndicator, VoiceCommand, COMMAND_SIGN_MS, PASTED_SIGN_MS,
 };
 
 impl VisualIndicator for MacosVisualIndicator {
     fn show_recording(&self) {
+        self.show_recording_then(Box::new(|_| {}));
+    }
+
+    fn show_recording_then(&self, on_drawn: OnDrawn) {
         self.live_transcript.clear();
         *lock(&self.feed.wave) = LevelWave::starting_now();
-        self.show_state(OverlayState::Recording);
+        self.show_state_then(OverlayState::Recording, on_drawn);
     }
 
     fn show_recognizing_speech(&self) {
@@ -61,7 +65,7 @@ impl VisualIndicator for MacosVisualIndicator {
         log::debug!("overlay: command sign {} requested", sign.label);
 
         on_main(move |mtm| {
-            do_rebuild(mtm, &redraw.main);
+            rebuild_if_screens_changed(mtm, &redraw.main);
             apply_command_sign(&redraw.main.windows(mtm), sign);
             on_main_after(COMMAND_SIGN_MS, move |mtm| {
                 redraw_if_current(&redraw, mtm, &after, turn);

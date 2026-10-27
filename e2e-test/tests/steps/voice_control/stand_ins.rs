@@ -2,7 +2,9 @@
 //! to do, noted in one ordered log, and the command spotting adapter's streaming path fed by
 //! the scenario's sound.
 
-use voicepuncher::adapters::secondary::commandspotting::websocket::{AudioStream, MicrophoneAudio};
+use voicepuncher::adapters::secondary::commandspotting::websocket::{
+    AudioStream, MicrophoneAudio, SpottingService,
+};
 use voicepuncher::test_doubles::prelude::*;
 
 /// What the pipeline was asked to do, as a scenario sees it.
@@ -43,6 +45,8 @@ pub(crate) struct StreamingSpotter {
     pub(crate) source: SoundSource,
     /// Whether the pipeline gets what the stream heard, as a lead-in; else an empty buffer.
     pub(crate) keeps_heard: bool,
+    /// Whether the service confirms commands before it reports them.
+    pub(crate) confirm_commands: bool,
 }
 
 impl StreamingSpotter {
@@ -55,6 +59,7 @@ impl StreamingSpotter {
             events: Arc::clone(events),
             source: Box::new(|| (AudioBuffer16k::SAMPLE_RATE_HZ, Instant::now())),
             keeps_heard: false,
+            confirm_commands: true,
         }
     }
 }
@@ -68,7 +73,9 @@ impl CommandSpotter for StreamingSpotter {
         let heard = self.heard.take().context("the sound is already in use")?;
         let (native_rate, captured_from) = (self.source)();
         let audio = MicrophoneAudio { audio: heard, native_rate, captured_from };
-        let stream = AudioStream::start(&self.url, commands, audio, self.inputs.clone())?;
+        let service =
+            SpottingService { url: self.url.clone(), confirm_commands: self.confirm_commands };
+        let stream = AudioStream::start(service, commands, audio, self.inputs.clone())?;
         self.stream = Some(stream);
         self.events.lock().unwrap().push(Event::Listening);
         Ok(())

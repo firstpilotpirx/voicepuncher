@@ -11,6 +11,7 @@ use voicepuncher_entry_folders::UtcTime;
 use super::Outcome;
 use crate::audio::SAMPLE_RATE;
 use crate::conversions::saturating_i16;
+use crate::protocol::Verdict;
 
 /// Version of the `entry.json` layout; bump it when a field changes meaning or goes away.
 const ENTRY_FORMAT: u32 = 1;
@@ -45,6 +46,10 @@ pub struct Reported {
     pub end: f32,
     /// The speech recognition service heard them; else they are the keyword spotter's alone.
     pub heard: bool,
+    /// What the speech recognition service made of them, heard after they went out without
+    /// confirmation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub whisper: Option<Verdict>,
 }
 
 /// One utterance in which either model heard a command.

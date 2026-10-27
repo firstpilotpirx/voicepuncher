@@ -16,7 +16,7 @@ use crate::keywords::{self, Keyword, UnknownPhrases};
 use crate::matcher::PhraseMatcher;
 use crate::orderer::{EventOrderer, Segment};
 use crate::protocol::{PhraseSelection, ServerEvent};
-use crate::worker::{ConfirmationWorker, JobKind};
+use crate::worker::{ConfirmationWorker, JobKind, Wake};
 
 mod clip;
 mod confirming;
@@ -171,9 +171,15 @@ impl Engine {
 
     /// The session of connection `conn`, which names its threads and log lines.
     pub fn session_for(&self, conn: u64) -> Result<Session<'_>> {
+        self.session_waking(conn, None)
+    }
+
+    /// The session of connection `conn`; each confirmation's answer calls `wake`.
+    pub fn session_waking(&self, conn: u64, wake: Option<Wake>) -> Result<Session<'_>> {
         let vad = VoiceActivityDetector::create(&self.vad, VAD_BUFFER_SECS)
             .ok_or_else(|| anyhow!("cannot load the voice activity detector"))?;
-        let start = |hear: Arc<dyn Hear>| ConfirmationWorker::start(conn, hear, self.deadline);
+        let start =
+            |hear: Arc<dyn Hear>| ConfirmationWorker::start_waking(conn, hear, self.deadline, wake);
         let worker = self.hear.clone().map(start).transpose()?;
         Ok(Session {
             engine: self,
@@ -234,11 +240,11 @@ struct Running {
 impl Session<'_> {
     /// Spots `phrases` from now on.
     pub fn listen_for(&mut self, phrases: &[String]) -> Result<(), UnknownPhrases> {
-        self.select(&PhraseSelection { phrases: phrases.to_vec(), early_start: None })
+        self.select(&PhraseSelection { phrases: phrases.to_vec(), ..PhraseSelection::default() })
     }
 
     /// Spots the phrases of `selection` from now on, searching the start of an utterance early
-    /// as it says.
+    /// and confirming commands as it says.
     pub fn select(&mut self, selection: &PhraseSelection) -> Result<(), UnknownPhrases> {
         let phrases = &selection.phrases;
         let selected = keywords::select(&self.engine.keywords, phrases)?;
@@ -248,6 +254,7 @@ impl Session<'_> {
             .map(|lines| self.engine.spotter.create_stream_with_keywords(&lines));
         self.matcher =
             Arc::new(PhraseMatcher::new(phrases).with_early_start(selection.early_start));
+        self.jobs.unconfirmed.on = !selection.confirms();
         Ok(())
     }
 
@@ -257,7 +264,8 @@ impl Session<'_> {
         let mut events = Vec::new();
         for frame in samples.chunks(DECODE_FRAME_SAMPLES) {
             self.recent.push(frame);
-            let spotted = self.spot(frame);
+            let (spotted, at_once) = self.spot(frame);
+            events.extend(at_once);
             // A phrase goes out from the orderer at once only when it belongs to the segment
             // that ended last: the spotter may report it after a quiet pause closed that one.
             events.extend(self.jobs.outbox.send_in_last_segment(spotted));

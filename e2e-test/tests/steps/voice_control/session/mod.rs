@@ -8,12 +8,16 @@ use voicepuncher_e2e_test::speech::split_words;
 
 use cucumber::{given, then, when};
 
-use voicepuncher::adapters::secondary::commandspotting::websocket::{AudioStream, MicrophoneAudio};
+use voicepuncher::adapters::secondary::commandspotting::websocket::{
+    AudioStream, MicrophoneAudio, SpottingService,
+};
 use voicepuncher::adapters::secondary::transcription::openai::OpenAiTranscriber;
 use voicepuncher::config::TranscriptionCfg;
 use voicepuncher_e2e_test::speech::read_wav;
 use voicepuncher_e2e_test::voice_commands::spoken_by;
 
+mod doubled;
+mod noisy_room;
 mod recorded_starts;
 pub(crate) mod speech_after_start;
 mod start_cue;
@@ -114,6 +118,8 @@ type Cues = Arc<Mutex<Vec<Instant>>>;
 pub struct HandsFreeSession {
     events: Events,
     cues: Cues,
+    /// When each stop sound played.
+    stops: Cues,
     microphone: Arc<Microphone>,
     to_spotter: Sender<Vec<f32>>,
     /// The voice starts the scenario measured, in order.
@@ -129,9 +135,10 @@ impl std::fmt::Debug for HandsFreeSession {
 }
 
 impl HandsFreeSession {
-    fn start(spotting_url: String, transcription_url: String) -> Result<Self> {
+    fn start(service: SpottingService, transcription_url: String) -> Result<Self> {
         let events = Events::default();
         let cues = Cues::default();
+        let stops = Cues::default();
         let microphone = Arc::new(Microphone::default());
         let (to_spotter, heard) = mpsc::channel();
         let (inputs_tx, inputs_rx) = mpsc::channel();
@@ -139,7 +146,8 @@ impl HandsFreeSession {
             base_url: transcription_url,
             ..TranscriptionCfg::default()
         })?;
-        let mut spotter = StreamingSpotter::new(spotting_url, inputs_tx, &events);
+        let mut spotter = StreamingSpotter::new(service.url, inputs_tx, &events);
+        spotter.confirm_commands = service.confirm_commands;
         spotter.heard = Some(heard);
         spotter.keeps_heard = true;
         let heard_by = Arc::clone(&microphone);
@@ -159,11 +167,15 @@ impl HandsFreeSession {
             recorder: Box::new(recorder),
             transcriber: Box::new(transcriber),
             paster: Box::new(RecordingPaster::new(&events, Event::Pasted)),
-            sound_player: Box::new(RecordingSounds(Arc::clone(&events), Arc::clone(&cues))),
+            sound_player: Box::new(RecordingSounds(
+                Arc::clone(&events),
+                Arc::clone(&cues),
+                Arc::clone(&stops),
+            )),
             visual_indicator: Box::new(NoOverlay),
         };
         run_with_voice_control(parts, spotter, &events, inputs_rx);
-        Ok(Self { events, cues, microphone, to_spotter, starts: Mutex::default() })
+        Ok(Self { events, cues, stops, microphone, to_spotter, starts: Mutex::default() })
     }
 
     fn events(&self) -> Vec<Event> {

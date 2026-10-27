@@ -8,6 +8,10 @@ use crate::core::domain::Permission;
 
 /// The field that notes the wait for permissions.
 const WAIT_FIELD: &str = "voice_control.enabled";
+/// The switch of the Whisper confirmation, and the line under it.
+const CONFIRM_FIELD: &str = "voice_control.confirm_commands";
+const CONFIRM_NOTE: &str = "Off is faster: the keyword spotter alone decides, and the log and \
+                            command history record whether Whisper agreed";
 
 /// The alpha value of the login switch: dimmed when it does not respond.
 pub fn switch_alpha(enabled: bool) -> f64 {
@@ -42,14 +46,17 @@ pub fn waiting_note(missing: &[Permission]) -> Option<String> {
     })
 }
 
-/// The notes under the fields, by each field's place in the table: the command line's
-/// overrides, then the wait for `missing` under the voice control switch.
+/// The notes under the fields, by each field's place in the table.
+///
+/// The command line's overrides, the wait for `missing` under the voice control switch, then
+/// what switching the Whisper confirmation off does.
 pub fn placed_notes(overrides: Vec<OverrideNote>, missing: &[Permission]) -> Vec<(usize, String)> {
     let wait = waiting_note(missing).map(|note| (WAIT_FIELD.to_owned(), note));
     overrides
         .into_iter()
         .map(|note| (note.field.path(), note.note))
         .chain(wait)
+        .chain([(CONFIRM_FIELD.to_owned(), CONFIRM_NOTE.to_owned())])
         .filter_map(|(path, note)| Some((FIELDS.iter().position(|f| f.path() == path)?, note)))
         .collect()
 }
@@ -81,8 +88,22 @@ mod tests {
     fn should_place_the_waiting_note_under_the_voice_control_switch() {
         let notes = placed_notes(vec![], &[Permission::Accessibility]);
         let place = FIELDS.iter().position(|f| f.path() == WAIT_FIELD);
-        assert_eq!(notes.len(), 1);
+        assert_eq!(notes.len(), 2);
         assert_eq!(Some(notes[0].0), place);
+    }
+
+    #[test]
+    fn should_say_under_the_confirmation_switch_what_switching_it_off_does() {
+        let notes = placed_notes(vec![], &[]);
+        let place = FIELDS.iter().position(|f| f.path() == CONFIRM_FIELD);
+        let [(at, note)] = notes.as_slice() else {
+            panic!("expected one note: {notes:?}");
+        };
+        assert_eq!(Some(*at), place);
+        assert!(
+            note.contains("faster") && note.contains("Whisper agreed"),
+            "{note}"
+        );
     }
 
     #[test]

@@ -106,12 +106,14 @@ mod heard;
 mod place;
 mod rehear;
 mod segment;
+mod unconfirmed;
 mod unheld;
 
 pub(super) use half_pause::HalfPauseHearing;
 use rehear::EarlyAnswer;
 pub(super) use rehear::{EarlyRehears, Rehear};
 pub(super) use segment::ClosedSegment;
+pub(super) use unconfirmed::Unconfirmed;
 
 impl JobContext {
     fn utterance(&self) -> Option<u64> {
@@ -210,6 +212,11 @@ fn spotted_command(
     at_head: bool,
     round: Round,
 ) -> Option<Found> {
+    match round {
+        Round::Doubled => return matcher.anywhere(words),
+        Round::Short => return matcher.anywhere(words).filter(|f| f.commands.len() == 1),
+        Round::First | Round::Second => {}
+    }
     let found = starting_anywhere(matcher, words);
     if !at_head {
         return found;
@@ -244,3 +251,6 @@ fn timed(event: ServerEvent, confirmation: Timing) -> ServerEvent {
         other => other,
     }
 }
+
+#[cfg(test)]
+mod tests;

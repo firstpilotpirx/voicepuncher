@@ -10,7 +10,7 @@ use std::time::{Duration, SystemTime};
 use crate::audio::SAMPLE_RATE;
 use crate::confirm::RecentAudio;
 use crate::conversions::saturating_usize;
-use crate::protocol::ServerEvent;
+use crate::protocol::{ServerEvent, Verdict};
 
 use super::{outcome, Entry, Hearing, Outcome, Reported, SpottedPhrase};
 
@@ -99,13 +99,28 @@ impl Recorder {
                 ServerEvent::Command { commands, start, end, timing, .. } => {
                     self.report(commands.clone(), *start, *end, timing.is_some());
                 }
+                ServerEvent::Heard { commands, verdict, .. } => self.verdict(commands, *verdict),
                 _ => {}
             }
         }
     }
 
     fn report(&mut self, commands: Vec<String>, start: f32, end: f32, heard: bool) {
-        self.reported.push(Reported { commands, start, end, heard });
+        self.reported
+            .push(Reported { commands, start, end, heard, whisper: None });
+    }
+
+    /// The speech recognition service made `verdict` of `commands`, the last reported
+    /// without confirmation.
+    fn verdict(&mut self, commands: &[String], verdict: Verdict) {
+        let unheard = self
+            .reported
+            .iter_mut()
+            .rev()
+            .find(|r| !r.heard && r.whisper.is_none() && r.commands == commands);
+        if let Some(reported) = unheard {
+            reported.whisper = Some(verdict);
+        }
     }
 
     /// The entries of the segments due by `now`, or of every segment gone out with `all`.
@@ -152,12 +167,12 @@ impl Recorder {
 }
 
 /// The outcome of the phrases the keyword spotter spotted against the commands the speech
-/// recognition service heard; none when neither has any.
+/// recognition service heard, before or after they went out; none when neither has any.
 fn outcome_of(spotted: &[SpottedPhrase], reported: &[Reported]) -> Option<Outcome> {
     let spotted: Vec<&str> = spotted.iter().map(|s| s.phrase.as_str()).collect();
     let heard: Vec<&str> = reported
         .iter()
-        .filter(|r| r.heard)
+        .filter(|r| r.heard || r.whisper == Some(Verdict::Agreed))
         .flat_map(|r| r.commands.iter().map(String::as_str))
         .collect();
     outcome(&spotted, &heard)

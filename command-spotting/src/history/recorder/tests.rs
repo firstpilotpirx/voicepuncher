@@ -1,6 +1,6 @@
 use super::*;
 use crate::history::Outcome;
-use crate::protocol::Timing;
+use crate::protocol::{Timing, Verdict};
 
 fn segment(start: f32, end: f32) -> Vec<ServerEvent> {
     vec![
@@ -81,4 +81,31 @@ fn should_keep_a_spotted_phrase_reported_without_a_hearing_of_it_as_rejected() {
 
     assert_eq!(entries[0].outcome, Outcome::Rejected);
     assert!(!entries[0].reported[0].heard);
+}
+
+#[test]
+fn should_keep_what_whisper_heard_of_a_command_reported_without_confirmation() {
+    let mut recorder = Recorder::new(1);
+    recorder.spotted("press enter", "▁PRESS ▁EN TER", 1.2, 1.9);
+    let unconfirmed = ServerEvent::Phrase {
+        phrase: "press enter".to_owned(),
+        start: 1.2,
+        end: 1.9,
+        timing: None,
+    };
+    let verdict = ServerEvent::Heard {
+        commands: vec!["press enter".to_owned()],
+        start: 1.2,
+        end: 1.9,
+        verdict: Verdict::Agreed,
+    };
+    recorder.went_out(&[segment(1.0, 2.0), vec![unconfirmed, verdict]].concat());
+
+    let entries = recorder.due(3.0, false, &audio());
+
+    let [entry] = entries.as_slice() else {
+        panic!("one entry: {entries:?}")
+    };
+    assert_eq!(entry.reported[0].whisper, Some(Verdict::Agreed));
+    assert_eq!(entry.outcome, Outcome::Agreed);
 }

@@ -21,9 +21,11 @@ use crate::{main_thread, Test};
 
 mod recording;
 use recording::{
+    should_build_the_windows_again_for_screens_changed_since,
     should_draw_clear_glass_without_a_top_line, should_hang_the_live_transcript_below_the_pill,
     should_keep_the_pill_size_from_the_recording_to_pasted,
     should_keep_the_recording_pill_when_the_screens_are_unchanged,
+    should_keep_the_windows_when_the_recording_sign_shows_again,
     should_pulse_the_record_dot_in_silence, should_raise_waveform_columns_for_a_loud_level,
     should_show_each_processing_stage_with_its_icon_and_label,
     should_show_the_record_sign_and_waveform_without_a_label,
@@ -34,8 +36,8 @@ use pasted::{
     should_replace_the_pasted_sign_with_a_later_signal,
     should_show_the_pasted_sign_and_hide_after_half_a_second,
     should_take_the_text_window_away_when_the_recording_ends,
-    show_recognizing_speech_rebuilds_unconditionally, show_recording_rebuilds_unconditionally,
-    show_recording_survives_manual_rebuild, PASTED_GONE_SECS,
+    show_recognizing_speech_takes_a_new_turn, show_recording_survives_manual_rebuild,
+    show_recording_takes_a_new_turn, PASTED_GONE_SECS,
 };
 mod notices;
 use notices::{
@@ -59,6 +61,14 @@ pub const TESTS: &[Test] = &[
     (
         "should_keep_the_recording_pill_when_the_screens_are_unchanged",
         should_keep_the_recording_pill_when_the_screens_are_unchanged,
+    ),
+    (
+        "should_keep_the_windows_when_the_recording_sign_shows_again",
+        should_keep_the_windows_when_the_recording_sign_shows_again,
+    ),
+    (
+        "should_build_the_windows_again_for_screens_changed_since",
+        should_build_the_windows_again_for_screens_changed_since,
     ),
     (
         "waveform_tick_cancels_on_hide",
@@ -113,12 +123,12 @@ pub const TESTS: &[Test] = &[
         show_recording_survives_manual_rebuild,
     ),
     (
-        "show_recording_rebuilds_unconditionally",
-        show_recording_rebuilds_unconditionally,
+        "show_recording_takes_a_new_turn",
+        show_recording_takes_a_new_turn,
     ),
     (
-        "show_recognizing_speech_rebuilds_unconditionally",
-        show_recognizing_speech_rebuilds_unconditionally,
+        "show_recognizing_speech_takes_a_new_turn",
+        show_recognizing_speech_takes_a_new_turn,
     ),
     (
         "should_show_the_notice_sign_without_a_text_window_or_activating",

@@ -56,7 +56,7 @@ pub use text_insertion::{
 };
 pub use text_paster::TextPaster;
 pub use transcriber::Transcriber;
-pub use visual_indicator::VisualIndicator;
+pub use visual_indicator::{OnDrawn, VisualIndicator};
 
 /// The mocks of the ports, for one glob import in the unit tests.
 #[cfg(test)]
@@ -74,6 +74,9 @@ pub(crate) mod prelude {
     pub(crate) fn accepting_overlay() -> MockVisualIndicator {
         let mut overlay = MockVisualIndicator::new();
         overlay.expect_show_recording().return_const(());
+        overlay
+            .expect_show_recording_then()
+            .returning(|on_drawn| on_drawn(std::time::Instant::now()));
         overlay.expect_show_recognizing_speech().return_const(());
         overlay.expect_show_waiting_for_focus().return_const(());
         overlay.expect_show_pasted().return_const(());

@@ -75,6 +75,9 @@ restart_sound = "Hero"
 enabled = false
 # Address of the command spotting service; it must be on this Mac.
 url = "ws://127.0.0.1:8082"
+# Confirm each command with Whisper before it is carried out. Off is faster: the keyword
+# spotter alone decides, and the log and command history record whether Whisper agreed.
+confirm_commands = true
 
 [archive]
 # Keep every dictation's audio and texts.

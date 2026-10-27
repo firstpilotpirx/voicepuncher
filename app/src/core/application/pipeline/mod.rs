@@ -242,7 +242,7 @@ impl Pipeline {
     }
 
     fn start_recording(&mut self) -> anyhow::Result<()> {
-        self.start_recording_from(None, StartCue::Start)
+        self.start_recording_from(None, StartCue::Start, None)
     }
 
     /// A dictation that starts now, traced when there is an archive to keep it.

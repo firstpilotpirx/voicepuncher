@@ -55,6 +55,20 @@ pub(super) fn file_holds_second(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
+#[then("the switch \"Confirm commands with Whisper\" is on")]
+pub(super) fn confirmation_switch_on(world: &mut IntegrationWorld) -> Result<()> {
+    let shown = settings(world).shown("voice_control", "confirm_commands")?;
+    ensure!(shown == "On", "shows {shown}");
+    Ok(())
+}
+
+#[then("the configuration file has commands carried out without the Whisper confirmation")]
+pub(super) fn file_holds_unconfirmed(world: &mut IntegrationWorld) -> Result<()> {
+    let saved = voicepuncher::config::load(&settings(world).path())?;
+    ensure!(!saved.voice_control.confirm_commands);
+    Ok(())
+}
+
 #[then("the settings say the settings are applied")]
 pub(super) fn says_applied(world: &mut IntegrationWorld) -> Result<()> {
     let run = settings(world);

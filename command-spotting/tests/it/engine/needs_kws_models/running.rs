@@ -46,6 +46,40 @@ fn should_report_start_start_followed_at_once_by_speech_soon_after_its_end() {
     );
 }
 
+/// How long after the end of its words a doubled command inside speech may be reported,
+/// every confirmation answered at once: well before the checks of the running utterance.
+const DOUBLED_REPORTED_WITHIN_SECS: f32 = 0.3;
+
+#[test]
+fn should_report_stop_stop_inside_speech_soon_after_its_end() {
+    let _shared = engine();
+    // Given "stop stop" between two sentences of a dictation, in one utterance
+    let hear = HearsTheWordsInTheClip::said(
+        &[
+            "we meet on Friday at ten",
+            "stop",
+            "stop",
+            "the coffee machine is broken",
+        ],
+        0.12,
+    );
+    let engine = own_engine(None).hearing(hear.clone());
+    let mut session = listening(&engine, &DICTATING_PHRASES);
+    // When
+    let reported = reported_at(&mut session, &hear.stream);
+    // Then
+    let command_end = hear.words[2].1.end;
+    let Some((commands, at)) = reported.first() else {
+        panic!("stop stop was never reported");
+    };
+    assert_eq!(commands, &["stop dictation"]);
+    let late = (*at as f32 - command_end as f32) / SAMPLE_RATE as f32;
+    assert!(
+        late <= DOUBLED_REPORTED_WITHIN_SECS,
+        "stop stop reported {late:.2} s after its end"
+    );
+}
+
 #[test]
 fn should_check_a_running_utterance_soon_after_a_short_start_and_never_report_its_trigger() {
     let _shared = engine();

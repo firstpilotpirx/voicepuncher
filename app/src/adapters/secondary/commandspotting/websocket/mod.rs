@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 
 use crate::adapters::secondary::recording::cpal::capture::CapturedAudio;
+use crate::adapters::secondary::recording::cpal::tap::MicTap;
 use crate::adapters::secondary::recording::cpal::{devices, resampler::StreamResampler};
 use crate::core::application::{CommandSpotter, PipelineInput};
 use crate::core::domain::{AudioBuffer16k, SpottingEvent, VoiceCommand};
@@ -49,6 +50,26 @@ pub struct MicrophoneAudio<A> {
     pub captured_from: Instant,
 }
 
+/// The command spotting service to stream to: its address, and whether it confirms commands
+/// before it reports them.
+#[derive(Debug, Clone)]
+pub struct SpottingService {
+    pub url: String,
+    pub confirm_commands: bool,
+}
+
+impl From<&str> for SpottingService {
+    fn from(url: &str) -> Self {
+        Self { url: url.to_owned(), confirm_commands: true }
+    }
+}
+
+impl From<&String> for SpottingService {
+    fn from(url: &String) -> Self {
+        Self::from(url.as_str())
+    }
+}
+
 /// Audio streaming to the service on a worker thread, whatever captures it.
 pub struct AudioStream {
     control: Sender<Control>,
@@ -63,32 +84,43 @@ impl AudioStream {
     /// away the worker reaches for it again until stopped, and tells `inputs` of the loss
     /// and of the return.
     pub fn start(
-        url: &str,
+        service: impl Into<SpottingService>,
         commands: &[VoiceCommand],
         microphone: MicrophoneAudio<impl CapturedAudio>,
         inputs: Sender<PipelineInput>,
     ) -> Result<Self> {
-        Self::start_with_timings(url, commands, microphone, inputs, LinkTimings::default())
+        Self::start_with_timings(
+            service,
+            commands,
+            microphone,
+            inputs,
+            LinkTimings::default(),
+        )
     }
 
     /// As `start`, pacing the attempts after a loss and the replay by `timings`.
     pub fn start_with_timings(
-        url: &str,
+        service: impl Into<SpottingService>,
         commands: &[VoiceCommand],
         microphone: MicrophoneAudio<impl CapturedAudio>,
         inputs: Sender<PipelineInput>,
         timings: LinkTimings,
     ) -> Result<Self> {
         let MicrophoneAudio { audio, native_rate, captured_from: audio_start } = microphone;
-        let mut client = SpottingClient::connect(url, audio_start)?;
+        let service = service.into();
+        let mut client = SpottingClient::connect(&service.url, audio_start)?
+            .confirming(service.confirm_commands);
         client.listen_for(commands)?;
         let session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
-        log::info!("command spotting: session={session} connected to {url}");
+        log::info!(
+            "command spotting: session={session} connected to {}",
+            service.url
+        );
         let resampler = StreamResampler::new(native_rate)?;
         let (control, control_rx) = mpsc::channel();
         let heard = Arc::new(Mutex::new(HeardAudio::new(audio_start)));
         let streamed = Stream {
-            url: url.to_owned(),
+            service,
             session,
             link: Link::Up(Box::new(client)),
             timings,
@@ -132,15 +164,39 @@ struct Listening {
 
 pub struct WebSocketCommandSpotter {
     url: String,
+    /// Whether the service confirms commands before it reports them.
+    confirm_commands: bool,
     inputs: Sender<PipelineInput>,
     listening: Option<Listening>,
     /// The configuration's `input_device`: a device name or `default`.
     input_device: String,
+    /// Where the kept microphone's audio is shared with the dictation recorder.
+    tap: MicTap,
 }
 
 impl WebSocketCommandSpotter {
     pub fn new(url: String, inputs: Sender<PipelineInput>) -> Self {
-        Self { url, inputs, listening: None, input_device: devices::DEFAULT_DEVICE.to_owned() }
+        Self {
+            url,
+            confirm_commands: true,
+            inputs,
+            listening: None,
+            input_device: devices::DEFAULT_DEVICE.to_owned(),
+            tap: MicTap::default(),
+        }
+    }
+
+    /// Shares the kept microphone's audio through `tap` while listening.
+    pub fn with_tap(mut self, tap: MicTap) -> Self {
+        self.tap = tap;
+        self
+    }
+
+    /// Has the service confirm commands before it reports them, or not.
+    #[must_use]
+    pub const fn confirming(mut self, confirm_commands: bool) -> Self {
+        self.confirm_commands = confirm_commands;
+        self
     }
 
     /// Listens on the input device `name` names (see [`devices::open`]).
@@ -161,11 +217,13 @@ impl CommandSpotter for WebSocketCommandSpotter {
         let open: MicOpener = Box::new(move || kept_mic::open_device(&device));
         let (mic, audio, started_at) = KeptMic::start(open, KeeperTimings::default())?;
         log::info!("command spotting: connecting to {}", self.url);
+        let service =
+            SpottingService { url: self.url.clone(), confirm_commands: self.confirm_commands };
         let stream = AudioStream::start(
-            &self.url,
+            service,
             commands,
             MicrophoneAudio {
-                audio,
+                audio: self.tap.tee(Box::new(audio)),
                 native_rate: AudioBuffer16k::SAMPLE_RATE_HZ,
                 captured_from: started_at,
             },

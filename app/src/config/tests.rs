@@ -52,6 +52,17 @@ fn should_keep_voice_control_off_with_the_local_service_url_when_the_section_is_
     // Then
     assert!(!cfg.voice_control.enabled);
     assert_eq!(cfg.voice_control.url, "ws://127.0.0.1:8082");
+    assert!(cfg.voice_control.confirm_commands);
+}
+
+#[test]
+fn should_keep_commands_unconfirmed_when_the_file_says_so() {
+    // Given
+    let file = "[voice_control]\nconfirm_commands = false";
+    // When
+    let cfg = loaded(file);
+    // Then
+    assert!(!cfg.voice_control.confirm_commands);
 }
 
 #[test]

@@ -21,8 +21,10 @@ const LOST_AUDIO: Duration = Duration::from_secs(3);
 const REPORTED_AFTER_SEGMENT: Duration = Duration::from_millis(300);
 /// How far the logged total may be from the time the scenario measured.
 const TOTAL_TOLERANCE: Duration = Duration::from_millis(100);
+/// How soon after the start cue the overlay's recording sign must show.
+const OVERLAY_AFTER_CUE: Duration = Duration::from_millis(50);
 /// The stages of the timing line, after its total.
-const STAGES: [&str; 4] = ["hear", "confirm", "deliver", "cue"];
+const STAGES: [&str; 5] = ["hear", "confirm", "deliver", "cue", "overlay"];
 
 impl VoiceRun {
     /// The timing lines the scenario's pipeline logged.
@@ -57,9 +59,21 @@ impl VoiceRun {
         }
     }
 
-    /// Says `said` on its own and stays silent; the service reports it, confirmed, once its
-    /// segment ended, dated by a stream that lags the clock by the audio lost.
-    fn say_alone_and_stay_silent(&mut self, said: &str) -> Result<()> {
+    /// When the first event since the mark that `wanted` matches was seen.
+    fn seen_since_mark(&self, wanted: impl Fn(&Event) -> bool) -> Result<Instant> {
+        let deadline = Instant::now() + REACTION;
+        while !self.since_mark().iter().any(&wanted) {
+            if Instant::now() >= deadline {
+                bail!("not seen within {REACTION:?}; events: {:?}", self.events());
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        Ok(Instant::now())
+    }
+
+    /// Says `said` on its own and stays silent; the service reports it once its segment
+    /// ended, `confirmed` or not, dated by a stream that lags the clock by the audio lost.
+    fn say_alone_and_stay_silent(&mut self, said: &str, confirmed: bool) -> Result<()> {
         let command = one_command(said)?;
         let segment_start = Instant::now();
         let start = segment_start + PHRASE_LEAD;
@@ -70,10 +84,8 @@ impl VoiceRun {
         let in_stream = |moment: Instant| moment.checked_sub(self.audio_lost).unwrap();
         let report = ReportTiming {
             words_ended: end,
-            confirmation: Some(ConfirmationTiming {
-                asked_at: segment_end,
-                took: CONFIRMATION_TIME,
-            }),
+            confirmation: confirmed
+                .then_some(ConfirmationTiming { asked_at: segment_end, took: CONFIRMATION_TIME }),
             arrived_at: Instant::now(),
         };
         let events = [
@@ -148,10 +160,33 @@ fn audio_lost(world: &mut IntegrationWorld) {
 fn says_alone_and_stays_silent(world: &mut IntegrationWorld, said: String) -> Result<()> {
     let run = run(world);
     run.start_when();
-    run.say_alone_and_stay_silent(&said)
+    run.say_alone_and_stay_silent(&said, true)
 }
 
-#[then("the log shows one timing line for that start, with its total and the time of each stage")]
+#[when(
+    expr = "the user says {string}, reported without the Whisper confirmation, and stays silent"
+)]
+fn says_alone_unconfirmed(world: &mut IntegrationWorld, said: String) -> Result<()> {
+    let run = run(world);
+    run.start_when();
+    run.say_alone_and_stay_silent(&said, false)
+}
+
+#[then("the timing line of that start shows that it was not confirmed")]
+fn timing_line_unconfirmed(world: &mut IntegrationWorld) -> Result<()> {
+    let (line, _) = run(world).first_voice_start_line()?;
+    if !line
+        .split_whitespace()
+        .any(|field| field == "confirm=unconfirmed")
+    {
+        bail!("the timing line does not say the start was not confirmed: {line:?}");
+    }
+    Ok(())
+}
+
+#[then(
+    "the log shows one timing line for that start, with its total and the time of each stage, the cue sound and the overlay included"
+)]
 fn one_timing_line(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     let (line, _) = run.first_voice_start_line()?;
@@ -193,6 +228,24 @@ fn no_timing_line(world: &mut IntegrationWorld) -> Result<()> {
     let lines = run.voice_start_lines();
     if !lines.is_empty() {
         bail!("a hotkey start logged a voice start timing: {lines:?}");
+    }
+    Ok(())
+}
+
+#[then("the overlay's recording sign shows within 0.05 s of the start cue")]
+fn overlay_with_cue(world: &mut IntegrationWorld) -> Result<()> {
+    let run = run(world);
+    let cue = run.seen_since_mark(|e| *e == Event::Sound("start"))?;
+    let shown = run.seen_since_mark(|e| *e == Event::Overlay("recording"))?;
+    let after = shown.saturating_duration_since(cue);
+    let events = run.since_mark();
+    let at = |wanted: &Event| events.iter().position(|e| e == wanted);
+    let waited_for_microphone = matches!(
+        (at(&Event::RecordingStarted), at(&Event::Overlay("recording"))),
+        (Some(started), Some(shown)) if started < shown
+    );
+    if after > OVERLAY_AFTER_CUE || waited_for_microphone {
+        bail!("the recording sign showed {after:?} after the start cue; events: {events:?}");
     }
     Ok(())
 }

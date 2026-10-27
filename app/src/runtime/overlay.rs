@@ -4,7 +4,7 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::core::application::live_transcript_view::LiveTranscriptView;
-use crate::core::application::VisualIndicator;
+use crate::core::application::{OnDrawn, VisualIndicator};
 use crate::core::domain::{FailureNotice, VoiceCommand};
 
 #[derive(Clone)]
@@ -27,6 +27,10 @@ impl SharedVisualIndicator {
 impl VisualIndicator for SharedVisualIndicator {
     fn show_recording(&self) {
         self.overlay().show_recording();
+    }
+
+    fn show_recording_then(&self, on_drawn: OnDrawn) {
+        self.overlay().show_recording_then(on_drawn);
     }
 
     fn show_recognizing_speech(&self) {

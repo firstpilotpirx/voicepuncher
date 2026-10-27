@@ -10,6 +10,8 @@ pub const RIGHT_COMMAND: &str = "[hotkey]\nkey = \"RightCommand\"\n";
 
 pub const WITHOUT_MIN_PRESS: &str = "[hotkey]\nkey = \"RightOption\"\n";
 
+pub const WITHOUT_CONFIRMATION_OF_COMMANDS: &str = "[voice_control]\nenabled = true\n";
+
 pub const VALID_MIN_PRESS: &str = "[hotkey]\nmin_press_ms = 300\n";
 
 /// The app's settings in the app-runtime scenarios: the first hotkey, a press of any length,

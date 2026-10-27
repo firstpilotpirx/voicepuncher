@@ -227,3 +227,39 @@ pub(super) fn should_show_the_wait_for_focus_without_a_text_window() {
     overlay.hide();
     pump_run_loop(DRAWN_SECS);
 }
+
+/// An overlay that shows the recording sign, and how many times its windows were built.
+fn drawn_recording() -> (MacosVisualIndicator, u64) {
+    let indicator = MacosVisualIndicator::initialize(main_thread(), Arc::new(AtomicU32::new(0)));
+    indicator.show_recording();
+    pump_until(DRAWN_LIMIT, || indicator.first_shows_recording());
+    pump_run_loop(DRAWN_SECS);
+    let builds = indicator.window_builds();
+    (indicator, builds)
+}
+
+pub(super) fn should_keep_the_windows_when_the_recording_sign_shows_again() {
+    let (indicator, before) = drawn_recording();
+    // When the recording sign shows again over the same screens
+    indicator.show_recording();
+    pump_run_loop(DRAWN_SECS);
+    // Then
+    assert_eq!(
+        indicator.window_builds(),
+        before,
+        "the windows were built again"
+    );
+    assert!(indicator.first_shows_recording());
+}
+
+pub(super) fn should_build_the_windows_again_for_screens_changed_since() {
+    let (indicator, before) = drawn_recording();
+    // When the screens changed unnoticed before the recording sign shows again
+    indicator.forget_the_screens(main_thread());
+    indicator.show_recording();
+    pump_until(DRAWN_LIMIT, || indicator.window_builds() > before);
+    // Then
+    assert!(indicator.window_builds() > before, "the windows were kept");
+    pump_until(DRAWN_LIMIT, || indicator.first_shows_recording());
+    assert!(indicator.first_shows_recording());
+}

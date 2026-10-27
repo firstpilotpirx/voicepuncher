@@ -214,3 +214,17 @@ While the runtime waits for permissions, the General tab SHALL show under the vo
 - **GIVEN** the runtime is Ready
 - **WHEN** the user opens the General tab
 - **THEN** no waiting line is shown under the voice control switch
+
+### Requirement: Voice control has a switch for the Whisper confirmation
+The voice control settings SHALL hold a switch "Confirm commands with Whisper", on by default, with a line saying that off makes commands faster but lets the keyword spotter alone decide, and that the log and command history record whether Whisper agreed; saving it SHALL apply to the next command.
+
+#### Scenario: The switch is on by default
+- **GIVEN** the configuration file does not set the confirmation of commands
+- **WHEN** the user opens the voice control settings
+- **THEN** the switch "Confirm commands with Whisper" is on
+
+#### Scenario: Switching it off applies to the next command
+- **GIVEN** voice control is on
+- **WHEN** the user switches "Confirm commands with Whisper" off and saves
+- **THEN** the configuration file has commands carried out without the Whisper confirmation
+- **AND** the settings are applied, so the next listening session asks for no confirmation

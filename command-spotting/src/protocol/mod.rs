@@ -5,17 +5,29 @@ use serde::{Deserialize, Serialize};
 pub use crate::matcher::Placement;
 
 /// Text frame from the app: the phrases to spot from now on.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct PhraseSelection {
     pub phrases: Vec<String>,
     /// Whether the start of an utterance is searched early for a command opening speech;
     /// an app that does not say it gets it when "start dictation" is among its phrases.
     #[serde(default)]
     pub early_start: Option<bool>,
+    /// Whether the speech recognition service confirms a command before it is reported; off,
+    /// a command the keyword spotter heard alone goes out at once and the service's hearing
+    /// follows as `heard`. An app that does not say it gets confirmation.
+    #[serde(default)]
+    pub confirm: Option<bool>,
+}
+
+impl PhraseSelection {
+    /// Whether commands are confirmed before they are reported.
+    pub fn confirms(&self) -> bool {
+        self.confirm.unwrap_or(true)
+    }
 }
 
 /// The version of this protocol: the app says it in its first message, `hello`.
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 
 /// A text frame from the app.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -60,6 +72,14 @@ pub enum ServerEvent {
         #[serde(skip_serializing_if = "Option::is_none")]
         timing: Option<Timing>,
     },
+    /// What the speech recognition service heard of `commands`, reported at `start..end`
+    /// without confirmation: the verdict is logged and kept, the command is not undone.
+    Heard {
+        commands: Vec<String>,
+        start: f32,
+        end: f32,
+        verdict: Verdict,
+    },
     /// The speech segment `start..end` got no answer from the speech recognition service:
     /// a command said in it is lost.
     ConfirmationFailed {
@@ -88,6 +108,18 @@ pub enum ServerEvent {
 pub struct Timing {
     pub asked_at: f32,
     pub took_ms: u64,
+}
+
+/// What the speech recognition service made of a command reported without confirmation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Verdict {
+    /// It heard the same command.
+    Agreed,
+    /// It heard another command.
+    Other,
+    /// It heard no command, or gave no answer.
+    None,
 }
 
 const SAMPLE_BYTES: usize = 4;

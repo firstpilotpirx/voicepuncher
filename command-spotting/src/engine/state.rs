@@ -8,7 +8,7 @@ use sherpa_onnx::VoiceActivityDetector;
 use crate::orderer::Spotted;
 use crate::outbox::Outbox;
 
-use super::confirming::{AskedJob, EarlyRehears, HalfPauseHearing, Rehear};
+use super::confirming::{AskedJob, EarlyRehears, HalfPauseHearing, Rehear, Unconfirmed};
 use super::pause::PauseWatch;
 use super::queued::CheckQueue;
 use super::spotted::SpottedChecks;
@@ -25,6 +25,8 @@ pub(in crate::engine) struct Jobs {
     pub(in crate::engine) checks: CheckQueue,
     /// The check a spotted "start" or "restart" asks of the running utterance.
     pub(in crate::engine) spotted_checks: SpottedChecks,
+    /// Commands reported without confirmation, waiting for their verdicts.
+    pub(in crate::engine) unconfirmed: Unconfirmed,
 }
 
 impl Jobs {

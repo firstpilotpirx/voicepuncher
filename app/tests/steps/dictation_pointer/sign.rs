@@ -1,8 +1,8 @@
 //! Then steps: what the dictation sign shows.
 
 use super::{
-    bail, run, sign, then, Context, DictationSignState, Event, Instant, IntegrationWorld, Overlay,
-    Result, Sign, FAILURE_NOTICE_TIME, SETTLE,
+    bail, run, sign, then, DictationSignState, Event, Instant, IntegrationWorld, Overlay, Result,
+    Sign, FAILURE_NOTICE_TIME, SETTLE,
 };
 
 #[then("the dictation sign shows a red microphone")]
@@ -105,11 +105,8 @@ pub(super) fn shows_for_new_recording(world: &mut IntegrationWorld) -> Result<()
     let run = run(world);
     run.wait_for(|events| events.contains(&Event::RecordingStarted))?;
     let events = run.after_action();
-    let started = events
-        .iter()
-        .position(|e| *e == Event::RecordingStarted)
-        .context("no new recording")?;
-    if sign(&events[started..]).last() != Some(&Sign::Shown(DictationSignState::Recording)) {
+    // The sign goes up with the start cue, before the new recording's microphone opens.
+    if sign(&events).last() != Some(&Sign::Shown(DictationSignState::Recording)) {
         bail!("the dictation sign does not show for the new recording: {events:?}");
     }
     Ok(())

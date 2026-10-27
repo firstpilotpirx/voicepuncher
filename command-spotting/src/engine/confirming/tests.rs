@@ -96,3 +96,41 @@ fn should_take_start_opening_speech_by_the_first_spotted_check() {
     // Then
     assert_eq!(found.map(|f| f.placement), Some(Placement::Head));
 }
+
+#[test]
+fn should_take_any_doubled_command_heard_by_a_doubled_check() {
+    // Given a doubled "enter" heard inside speech
+    let said = words("Fine, enter enter, and then");
+    // When
+    let found = spotted_command(&standby(), &said, false, Round::Doubled);
+    // Then
+    assert_eq!(
+        found.map(|f| f.commands),
+        Some(vec!["press enter".to_owned()])
+    );
+}
+
+#[test]
+fn should_leave_a_chain_to_the_utterance_checks_in_a_check_after_a_short_cancel() {
+    // Given "cancel clear" heard by the check a short "cancel" asked
+    let matcher = PhraseMatcher::new(&["cancel dictation".into(), "clear all text".into()]);
+    let said = words("cancel clear");
+    // When
+    let found = spotted_command(&matcher, &said, false, Round::Short);
+    // Then
+    assert_eq!(found.map(|f| f.commands), None);
+}
+
+#[test]
+fn should_take_a_doubled_cancel_in_a_check_after_a_short_cancel() {
+    // Given "cancel cancel" heard by the check a short "cancel" asked
+    let matcher = PhraseMatcher::new(&["cancel dictation".into(), "clear all text".into()]);
+    let said = words("we meet at ten, cancel cancel");
+    // When
+    let found = spotted_command(&matcher, &said, false, Round::Short);
+    // Then
+    assert_eq!(
+        found.map(|f| f.commands),
+        Some(vec!["cancel dictation".to_owned()])
+    );
+}

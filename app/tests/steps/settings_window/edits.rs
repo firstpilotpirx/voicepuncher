@@ -13,6 +13,13 @@ pub(super) fn pick_hotkey_and_sound(world: &mut IntegrationWorld) -> Result<()> 
     run.save()
 }
 
+#[when("the user switches \"Confirm commands with Whisper\" off and saves")]
+pub(super) fn confirmation_off(world: &mut IntegrationWorld) -> Result<()> {
+    let run = settings(world);
+    run.edit("voice_control", "confirm_commands", Value::Boolean(false))?;
+    run.save()
+}
+
 #[when("the user picks the second hotkey and saves")]
 pub(super) fn pick_hotkey(world: &mut IntegrationWorld) -> Result<()> {
     let run = settings(world);

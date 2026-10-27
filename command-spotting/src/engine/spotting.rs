@@ -19,11 +19,13 @@ pub(super) struct Spotting {
 }
 
 impl Session<'_> {
-    pub(super) fn spot(&mut self, samples: &[f32]) -> Vec<ServerEvent> {
+    /// The phrases spotted in `samples`, and the doubled commands they complete that go out
+    /// at once, without confirmation.
+    pub(super) fn spot(&mut self, samples: &[f32]) -> (Vec<ServerEvent>, Vec<ServerEvent>) {
         let position = seconds(self.detector.samples_seen + samples.len());
-        self.spot_triggers(samples, position);
+        let mut at_once = self.spot_triggers(samples, position);
         let Some(stream) = self.spotting.phrases.as_ref() else {
-            return Vec::new();
+            return (Vec::new(), at_once);
         };
         let mut events = Vec::new();
         for (spotted, tokens) in decoded(&self.engine.spotter, stream, samples, position) {
@@ -34,17 +36,35 @@ impl Session<'_> {
                 spotted.start,
                 spotted.end
             );
-            if self.worker.is_some() && CHECKED_WHEN_SPOTTED.contains(&spotted.phrase.as_str()) {
-                self.jobs.spotted_checks.spotted(samples_in(spotted.end));
+            if self.worker.is_some() {
+                at_once.extend(self.ask_checks_of(&spotted));
             }
-            events.extend(self.orderer.phrase(spotted));
+            let late = self.orderer.phrase(spotted);
+            let verdict = self.report_late(&late);
+            events.extend(late);
+            events.extend(verdict);
         }
-        events
+        (events, at_once)
+    }
+
+    /// Notes `spotted` for the checks it asks: of a "start" or "restart", and of a doubled
+    /// form, which goes out at once without confirmation.
+    fn ask_checks_of(&mut self, spotted: &Spotted) -> Option<ServerEvent> {
+        let said_end = samples_in(spotted.end);
+        if CHECKED_WHEN_SPOTTED.contains(&spotted.phrase.as_str()) {
+            self.jobs.spotted_checks.spotted(said_end);
+        }
+        if self.jobs.spotted_checks.hit(&spotted.phrase, said_end) {
+            return self.report_doubled(spotted);
+        }
+        None
     }
 
     /// Spots the triggers of the selected phrases in `samples`, which bring the audio fed to
-    /// `position` seconds, and asks the checks they call for.
-    fn spot_triggers(&mut self, samples: &[f32], position: f32) {
+    /// `position` seconds, and asks the checks they call for; a doubled trigger goes out at
+    /// once without confirmation.
+    fn spot_triggers(&mut self, samples: &[f32], position: f32) -> Vec<ServerEvent> {
+        let mut at_once = Vec::new();
         let spotter = &self.engine.spotter;
         if let Some(triggers) = self.spotting.triggers.as_ref() {
             // The spotter adds its own keywords, the phrases, to every stream: only a trigger
@@ -54,22 +74,48 @@ impl Session<'_> {
                 .into_iter()
                 .filter(|(t, _)| keywords::is_trigger(&t.phrase))
             {
-                self.record_spotted(&trigger, &tokens);
-                log::info!(
-                    "trigger \"{}\" at {:.2}–{:.2}s",
-                    trigger.phrase,
-                    trigger.start,
-                    trigger.end
-                );
-                self.jobs.spotted_checks.spotted(samples_in(trigger.end));
-                self.hear_misheard_again(&trigger);
-                self.hear_pending_again(&trigger);
-                self.hearings.heard_triggers.push(trigger);
+                at_once.extend(self.heard_trigger(trigger, &tokens));
             }
         }
         self.hearings
             .heard_triggers
             .retain(|t| t.end + TRIGGERS_KEPT_SECS > position);
+        at_once
+    }
+
+    /// Asks the checks `trigger`, decoded as `tokens`, calls for: a short "stop" or "cancel"
+    /// asks only whether it was said doubled, as its own phrase is spotted beside it; another
+    /// trigger asks the doubled command it completes, reported at once when commands go out
+    /// without confirmation.
+    fn heard_trigger(&mut self, trigger: Spotted, tokens: &str) -> Option<ServerEvent> {
+        self.record_spotted(&trigger, tokens);
+        log::info!(
+            "trigger \"{}\" at {:.2}–{:.2}s",
+            trigger.phrase,
+            trigger.start,
+            trigger.end
+        );
+        let said_end = samples_in(trigger.end);
+        if !keywords::served_by(&trigger.phrase)
+            .is_some_and(|phrase| CHECKED_WHEN_SPOTTED.contains(&phrase))
+        {
+            self.jobs.spotted_checks.spotted_short(said_end);
+            return None;
+        }
+        let at_once = self.doubled_trigger(&trigger);
+        self.jobs.spotted_checks.spotted(said_end);
+        self.hear_misheard_again(&trigger);
+        self.hear_pending_again(&trigger);
+        self.hearings.heard_triggers.push(trigger);
+        at_once
+    }
+
+    /// Asks the check of the doubled command `trigger` completes at once; reported at once too
+    /// when commands go out without confirmation.
+    fn doubled_trigger(&mut self, trigger: &Spotted) -> Option<ServerEvent> {
+        let phrase = keywords::served_by(&trigger.phrase)?;
+        let served = Spotted { phrase: phrase.to_owned(), ..trigger.clone() };
+        self.ask_checks_of(&served)
     }
 }
 

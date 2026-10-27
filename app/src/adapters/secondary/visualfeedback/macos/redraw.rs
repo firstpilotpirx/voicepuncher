@@ -6,6 +6,8 @@ use super::{
     MainThreadMarker, NSRect, NSScreen, NoticeTimer, Ordering, OverlayState, ScreenTopology,
     SharedWindows, Turn, WindowSet, Windows, FALLBACK_SCREEN,
 };
+use super::{diff_screens, ScreenChange};
+use std::sync::atomic::AtomicU64;
 
 /// Rebuilds the windows for the screens of the moment and redraws the current state.
 pub(super) fn screen_change_handler(redraw: Redraw) -> Arc<dyn Fn() + Send + Sync + 'static> {
@@ -15,7 +17,11 @@ pub(super) fn screen_change_handler(redraw: Redraw) -> Arc<dyn Fn() + Send + Syn
     })
 }
 
+/// How many times the windows were built, in this process.
+pub(super) static WINDOW_BUILDS: AtomicU64 = AtomicU64::new(0);
+
 pub(super) fn build_windows(mtm: MainThreadMarker) -> Windows {
+    WINDOW_BUILDS.fetch_add(1, Ordering::SeqCst);
     let screens = NSScreen::screens(mtm);
     if screens.is_empty() {
         return vec![WindowSet::build(mtm, FALLBACK_SCREEN)];
@@ -29,6 +35,16 @@ pub(super) fn do_rebuild(mtm: MainThreadMarker, main: &SharedWindows) {
     if let Some(main) = main.get(mtm) {
         main.windows.replace(build_windows(mtm));
         main.topology.replace(collect_topology(mtm));
+    }
+}
+
+/// Rebuilds the windows only when the screens changed since they were built.
+pub(super) fn rebuild_if_screens_changed(mtm: MainThreadMarker, main: &SharedWindows) {
+    let changed = main.get(mtm).is_some_and(|main| {
+        diff_screens(&main.topology.borrow(), &collect_topology(mtm)) != ScreenChange::Identical
+    });
+    if changed {
+        do_rebuild(mtm, main);
     }
 }
 

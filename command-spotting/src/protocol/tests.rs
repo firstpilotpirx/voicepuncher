@@ -30,7 +30,7 @@ fn should_parse_a_sync_request() {
 #[test]
 fn should_parse_a_hello_with_its_version() {
     // When
-    let message: AppMessage = serde_json::from_str(r#"{"type":"hello","version":2}"#).unwrap();
+    let message: AppMessage = serde_json::from_str(r#"{"type":"hello","version":3}"#).unwrap();
     // Then
     assert_eq!(message, AppMessage::Hello { version: PROTOCOL_VERSION });
 }
@@ -45,7 +45,7 @@ fn should_parse_a_tagged_phrase_selection() {
         message,
         AppMessage::Select(PhraseSelection {
             phrases: vec!["press enter".into()],
-            early_start: None
+            ..PhraseSelection::default()
         })
     );
 }
@@ -168,4 +168,32 @@ fn should_read_little_endian_float_samples() {
     let samples = samples_from_bytes(&bytes).unwrap();
     // Then
     assert_eq!(samples, [0.5, -1.0]);
+}
+
+#[test]
+fn should_read_a_selection_that_turns_confirmation_off() {
+    // When
+    let off: PhraseSelection =
+        serde_json::from_str(r#"{"phrases": ["press enter"], "confirm": false}"#).unwrap();
+    let untold: PhraseSelection = serde_json::from_str(r#"{"phrases": ["press enter"]}"#).unwrap();
+    // Then
+    assert_eq!((off.confirms(), untold.confirms()), (false, true));
+}
+
+#[test]
+fn should_write_what_whisper_heard_of_an_unconfirmed_command() {
+    // Given
+    let heard = ServerEvent::Heard {
+        commands: vec!["start dictation".into()],
+        start: 1.5,
+        end: 2.25,
+        verdict: Verdict::Agreed,
+    };
+    // When
+    let json = serde_json::to_string(&heard).unwrap();
+    // Then
+    assert_eq!(
+        json,
+        r#"{"event":"heard","commands":["start dictation"],"start":1.5,"end":2.25,"verdict":"agreed"}"#
+    );
 }

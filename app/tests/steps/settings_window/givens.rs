@@ -16,6 +16,11 @@ pub(super) fn file_without_min_press(world: &mut IntegrationWorld) {
     settings(world).write(files::WITHOUT_MIN_PRESS);
 }
 
+#[given("the configuration file does not set the confirmation of commands")]
+pub(super) fn file_without_confirmation(world: &mut IntegrationWorld) {
+    settings(world).write(files::WITHOUT_CONFIRMATION_OF_COMMANDS);
+}
+
 #[given("the configuration file holds a valid minimum press length")]
 pub(super) fn file_with_min_press(world: &mut IntegrationWorld) {
     settings(world).write(files::VALID_MIN_PRESS);

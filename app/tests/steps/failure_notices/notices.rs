@@ -101,7 +101,11 @@ pub(super) fn not_pasted(world: &mut IntegrationWorld) -> Result<()> {
 #[then("the recording does not start")]
 pub(super) fn recording_not_started(world: &mut IntegrationWorld) -> Result<()> {
     let events = run(world).settled();
-    if events.contains(&Event::RecordingStarted) || overlay(&events).contains(&Shown::Recording) {
+    // The recording sign goes up with the start cue, before the microphone opens; the notice
+    // then takes its place.
+    if events.contains(&Event::RecordingStarted)
+        || overlay(&events).last() == Some(&Shown::Recording)
+    {
         bail!("a recording started: {events:?}");
     }
     Ok(())
