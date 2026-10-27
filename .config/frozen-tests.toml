@@ -19,3 +19,12 @@ stage = "test"
 beside = "the whole test stage under load (1539 tests); 16 s alone, 120 s limit"
 branch = "feat/reduce-voice-start-latency"
 
+
+[[frozen]]
+test = "scenario: The recording sign is drawn at once"
+frozen = "2026-10-27"
+recipe = "full-check"
+stage = "test"
+beside = "the whole test stage of full-check, other worktrees building beside it; drawn after 74.6 ms against 50 ms"
+branch = "feat/show-dictation-history-window"
+
