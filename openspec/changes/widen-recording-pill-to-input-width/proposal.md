@@ -8,7 +8,7 @@ The recording pill (record sign + waveform) is narrower than the Claude desktop 
 
 ## What Changes
 
-- The recording pill becomes about 922 pt wide, the width of the chat input box in the screenshots, by lengthening the waveform: about 209 columns instead of 160, and about 197 instead of 148 beside the commands-unavailable sign.
+- The recording pill becomes about 922 pt wide, the width of the chat input box in the screenshots, by lengthening the waveform: 210 columns instead of 160, and 196 instead of 148 beside the commands-unavailable sign, so the waveform shows the last 23.1 s of the recording instead of 17.6 s.
 - Every pill state that shares the one pill width (recording, transcribing, command, …) gets the new width; the lone commands-unavailable sign keeps its own small width.
 - The width stays fixed: it does not follow the size of the Claude window or any other window.
 
@@ -28,12 +28,14 @@ Out of scope: pill height, colors, waveform pitch and column shape, the transcri
 - `app/src/core/domain/level_history.rs` (`FULL_CAPACITY`, `CAPACITY_BESIDE_SIGN`)
 - `app/src/adapters/secondary/visualfeedback/macos/pill_content/mod.rs` (`one_pill_width`) and its tests
 - `app/src/adapters/secondary/visualfeedback/macos/waveform.rs` width tests
+- `app/src/core/domain/level_history.rs` tests of how long speech stays visible
+- `app/tests/features/component/visual_feedback.feature` (the pill width scenario)
 
-## Open points
+## Decisions
 
-- Exact column counts: proposed 209 and 197 at the current 4 pt pitch, so the pill lands at about 922 pt; the design confirms the arithmetic.
-- The capability name `visual-feedback` is assumed; the specs stage uses the capability that holds the pill requirements.
-- Whether the pill must still fit on a small screen (e.g. a 1280 pt wide display): proposed yes, it fits as is.
+- Column counts: 210 and 196 (chosen with the user at explore). 209 and 197 would let the row beside the commands-unavailable sign grow to 923 pt; 210 and 196 give exactly 922 pt.
+- The capability is `visual-feedback`, which holds the pill requirements.
+- The pill still fits a small screen (a 1280 pt wide display) as is.
 
 ## Release
 
