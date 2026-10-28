@@ -19,7 +19,7 @@ voicepuncher/
   dev-tools/    ← Rust binary: the stage runner and the service scripts behind the justfile
   test-steps/   ← Rust library (dev-dependency): `required_env`, the shared Gherkin steps, the test-check rules, the shared test helpers (log lines, loopback ports, the synthesized-speech cache)
   e2e-test/     ← Rust crate: accuracy benchmark + E2E scenarios
-  docs/         ← Architecture documentation + ubiquitous language
+  docs/         ← Architecture documentation (start with docs/architecture/project-architecture.html: crates, layers, services) + ubiquitous language
   Cargo.toml    ← Cargo workspace (members: app, command-spotting, copy-pool, dev-tools, e2e-test, entry-folders, log-line, test-steps, voice-commands)
   justfile      ← Task runner: all checks, E2E, benchmarks (`just` lists recipes)
 ```

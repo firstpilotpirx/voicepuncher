@@ -235,6 +235,20 @@ Feature: change-workflow
       And a document line "Run `just no-such-recipe` before you merge."
       Then the recipes it names that do not exist are "no-such-recipe"
 
+  Rule: The architecture page shows every workspace crate
+
+    Scenario: A workspace crate is missing from the page
+      Given a crate picture naming every member but "log-line"
+      Then the crates missing from it are "log-line"
+
+    Scenario: The page names a crate that is not in the workspace
+      Given a crate picture naming every member and "old-crate"
+      Then the crates on it that are no members are "old-crate"
+
+    Scenario: The page matches the workspace
+      Given the architecture page
+      Then its crate picture names exactly the workspace's members
+
   Rule: Integration tests build into one binary per member
 
     Scenario: A test file the binary leaves out fails the checks

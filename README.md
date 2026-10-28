@@ -236,6 +236,10 @@ The bundle carries the license of every engine and library it bundles in `Conten
 
 Everything below is for working on voicepuncher from a checkout. The terminal is for development and [file mode](#file-mode-single-wav--stdout); the app itself needs none.
 
+### Architecture
+
+[docs/architecture/project-architecture.html](docs/architecture/project-architecture.html) shows the crates, the layers of the app, its adapters and the running services on one page; open it in a browser, offline.
+
 ### From source
 
 Prerequisites: Rust ≥ 1.88, [`just`](https://github.com/casey/just), Homebrew `whisper.cpp` (`just start-model-servers` offers to install it). Outside a bundle the app finds the engine on `$PATH` and logs its Homebrew version, e.g. `whisper-server 1.9.5 from $PATH`.

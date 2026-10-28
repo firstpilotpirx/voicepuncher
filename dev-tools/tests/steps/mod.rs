@@ -3,6 +3,7 @@
 //! stand-ins for the task runner, the machine lock and the test runner, as its unit tests drive it.
 
 pub mod analyzers;
+pub mod architecture_page;
 pub mod checkout;
 pub mod frozen;
 pub mod hosted;

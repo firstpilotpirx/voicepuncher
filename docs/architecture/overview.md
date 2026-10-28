@@ -2,14 +2,20 @@
 
 voicepuncher is an offline push-to-talk voice-to-text menu bar application for macOS Apple Silicon; its command line remains for developers and file mode. The user holds a configurable hotkey (or says a voice command), speaks, releases — the speech is transcribed by a local speech recognition service and pasted at the cursor. Nothing leaves the machine: the app opens loopback connections only, and every service runs on the Apple Silicon GPU through Metal.
 
-The repository is a Cargo workspace of four crates (`docs/project-map.md` lists their modules):
+The repository is a Cargo workspace of ten crates; [project-architecture.html](project-architecture.html) draws them with their dependencies, and `docs/project-map.md` lists their modules:
 
 | Crate | Role |
 |---|---|
 | `app/` | The application: hexagonal architecture, one process, the menu bar item and its windows |
 | `command-spotting/` | The command spotting service: sherpa-onnx keyword spotting on the microphone stream, each hit confirmed by the speech recognition service for commands, events to the app over a loopback WebSocket |
 | `copy-pool/` | The copy pool library: finds the copies of a speech recognition service from its address (10000 above its port) and leases one per request; used by `app/` and `command-spotting/` |
+| `entry-folders/` | The entry folders of the dictation archive and the command history; used by `app/` and `command-spotting/` |
+| `log-line/` | The form of one log line; used by `app/` and `command-spotting/` |
+| `voice-commands/` | The voice commands declared once (phrases, forms, mishearings); used by `command-spotting/`, checked by the `app/` tests |
 | `e2e-test/` | The accuracy benchmark and the E2E Gherkin scenarios against the built binary and the real services |
+| `test-steps/` | The shared Gherkin steps, test-check rules and test helpers (dev-dependency) |
+| `dev-tools/` | The stage runner and the service scripts behind the `justfile` |
+| `analyzers/` | The size analyzer and the code metrics of `just static` and `just metrics` |
 
 ## Hexagonal Architecture (`app/`)
 

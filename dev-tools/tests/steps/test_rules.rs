@@ -32,7 +32,7 @@ fn rust_sources(folder: &Path) -> Vec<std::path::PathBuf> {
 }
 
 /// The members of the workspace, as its `Cargo.toml` lists them.
-fn members() -> Vec<String> {
+pub fn members() -> Vec<String> {
     let manifest = repo_file("Cargo.toml");
     let list = manifest
         .lines()

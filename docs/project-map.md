@@ -1,5 +1,7 @@
 # Project Map
 
+The pictures of this structure — crates, layers, adapters, running services — are in [project-architecture.html](architecture/project-architecture.html).
+
 ## Root folders
 
 | Folder | Purpose |

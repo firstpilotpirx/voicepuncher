@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>voicepuncher architecture</title>
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#6b6a66;--card:#fff;--line:#e4e1da;
+--new:#1f8a55;--newbg:#e3f3ea;--newt:#1f7a4d;--chg:#c08000;--chgbg:#fbf0d9;--chgt:#8a5a00;
+--rem:#c0392b;--rembg:#fbe4e1;--remt:#a3261f;--err:#c0392b;--errbg:#fbe4e1;--errt:#a3261f;
+--old:#8f8d86;--oldbg:#f3f2ee;--oldt:#6b6a66;--focus:#2f5fb3;--focusbg:#e3ebfa;--focust:#2f5fb3;
+--client:#2563eb;--clientbg:#dbeafe;--clientt:#1d4ed8;--svc:#059669;--svcbg:#d1fae5;--svct:#047857;
+--store:#d97706;--storebg:#fef3c7;--storet:#b45309;--ext:#7c3aed;--extbg:#ede9fe;--extt:#6d28d9}
+@media (prefers-color-scheme:dark){:root{--bg:#161615;--fg:#ecebe7;--mut:#a09e98;--card:#1f1f1d;--line:#34332f;
+--new:#4fbf85;--newbg:#17332a;--newt:#6fd19c;--chg:#e0a93a;--chgbg:#3a2e14;--chgt:#f0c46a;
+--rem:#e8645a;--rembg:#3d1d1a;--remt:#ff8a80;--err:#e8645a;--errbg:#3d1d1a;--errt:#ff8a80;
+--old:#6c6b66;--oldbg:#24241f;--oldt:#a09e98;--focus:#8fb3ff;--focusbg:#1c2740;--focust:#8fb3ff;
+--client:#6ea2ff;--clientbg:#172a4a;--clientt:#9cc0ff;--svc:#4fbf85;--svcbg:#17332a;--svct:#6fd19c;
+--store:#e0a93a;--storebg:#3a2e14;--storet:#f0c46a;--ext:#a78bfa;--extbg:#2a1f4a;--extt:#c4b5fd}}
+body{background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,sans-serif;margin:0;padding:24px 16px}
+main{max-width:1200px;margin:0 auto}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:30px 0 8px}h3{font-size:16px;margin:20px 0 6px}
+.sub{color:var(--mut);font-size:14px;font-weight:400}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:10px 0}
+.verdict{font-size:22px;font-weight:700;border-width:2px}
+.v-new{border-color:var(--new);background:var(--newbg)}.v-rem,.v-err{border-color:var(--rem);background:var(--rembg)}
+.v-chg{border-color:var(--chg);background:var(--chgbg)}.v-focus{border-color:var(--focus);background:var(--focusbg)}
+.v-old{border-color:var(--old);background:var(--oldbg)}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:900px){.pair{grid-template-columns:1fr}}
+figure{margin:10px 0;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;overflow-x:auto}
+figcaption{font-size:13px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.pair figure:last-child figcaption{color:var(--newt)}
+.note{margin:6px 2px 0;color:var(--mut);font-size:14px}
+.legend{display:flex;gap:18px;flex-wrap:wrap;font-size:14px}
+.legend span::before{content:"";display:inline-block;width:14px;height:14px;border-radius:4px;margin-right:6px;vertical-align:-2px;border:1.5px solid var(--k);background:var(--kb)}
+.l-new{--k:var(--new);--kb:var(--newbg)}.l-chg{--k:var(--chg);--kb:var(--chgbg)}.l-rem{--k:var(--rem);--kb:var(--rembg)}
+.l-old{--k:var(--old);--kb:var(--oldbg)}.l-focus{--k:var(--focus);--kb:var(--focusbg)}.l-err{--k:var(--err);--kb:var(--errbg)}
+.l-client{--k:var(--client);--kb:var(--clientbg)}.l-svc{--k:var(--svc);--kb:var(--svcbg)}
+.l-store{--k:var(--store);--kb:var(--storebg)}.l-ext{--k:var(--ext);--kb:var(--extbg)}
+table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid var(--line);padding:7px 8px;text-align:left;vertical-align:top}
+th{color:var(--mut);font-weight:600;font-size:14px}
+code{font:14px ui-monospace,Menlo,monospace;background:color-mix(in srgb,var(--line) 50%,transparent);padding:1px 5px;border-radius:4px}
+.chip{display:inline-block;font-size:13px;font-weight:600;padding:2px 9px;border-radius:99px;white-space:nowrap}
+.ok{color:var(--newt);background:var(--newbg)}.warn{color:var(--chgt);background:var(--chgbg)}.fail{color:var(--remt);background:var(--rembg)}
+pre{font:13px/1.4 ui-monospace,Menlo,monospace;background:color-mix(in srgb,var(--line) 40%,transparent);padding:10px 12px;border-radius:8px;overflow:auto}
+.kit-render svg{max-width:100%;height:auto}
+nav.toc{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:14px}
+a{color:var(--focust)}
+</style></head>
+<body><svg id="kit-defs" width="0" height="0" style="position:absolute" aria-hidden="true"><defs><marker id="m-fg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--fg)"/></marker><marker id="open-fg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="var(--fg)" stroke-width="1.5"/></marker><marker id="tri-fg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--card)" stroke="var(--fg)" stroke-width="1.2"/></marker><marker id="dia-fg" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--card)" stroke="var(--fg)" stroke-width="1.2"/></marker><marker id="diaf-fg" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--fg)"/></marker><marker id="m-old" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--old)"/></marker><marker id="open-old" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="var(--old)" stroke-width="1.5"/></marker><marker id="tri-old" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--card)" stroke="var(--old)" stroke-width="1.2"/></marker><marker id="dia-old" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--card)" stroke="var(--old)" stroke-width="1.2"/></marker><marker id="diaf-old" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--old)"/></marker><marker id="m-new" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--new)"/></marker><marker id="open-new" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="var(--new)" stroke-width="1.5"/></marker><marker id="tri-new" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--card)" stroke="var(--new)" stroke-width="1.2"/></marker><marker id="dia-new" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--card)" stroke="var(--new)" stroke-width="1.2"/></marker><marker id="diaf-new" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--new)"/></marker><marker id="m-chg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--chg)"/></marker><marker id="open-chg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="var(--chg)" stroke-width="1.5"/></marker><marker id="tri-chg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--card)" stroke="var(--chg)" stroke-width="1.2"/></marker><marker id="dia-chg" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--card)" stroke="var(--chg)" stroke-width="1.2"/></marker><marker id="diaf-chg" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--chg)"/></marker><marker id="m-rem" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--rem)"/></marker><marker id="open-rem" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="var(--rem)" stroke-width="1.5"/></marker><marker id="tri-rem" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--card)" stroke="var(--rem)" stroke-width="1.2"/></marker><marker id="dia-rem" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--card)" stroke="var(--rem)" stroke-width="1.2"/></marker><marker id="diaf-rem" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--rem)"/></marker><marker id="m-err" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--err)"/></marker><marker id="open-err" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="var(--err)" stroke-width="1.5"/></marker><marker id="tri-err" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--card)" stroke="var(--err)" stroke-width="1.2"/></marker><marker id="dia-err" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--card)" stroke="var(--err)" stroke-width="1.2"/></marker><marker id="diaf-err" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--err)"/></marker><marker id="m-focus" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--focus)"/></marker><marker id="open-focus" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="var(--focus)" stroke-width="1.5"/></marker><marker id="tri-focus" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--card)" stroke="var(--focus)" stroke-width="1.2"/></marker><marker id="dia-focus" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--card)" stroke="var(--focus)" stroke-width="1.2"/></marker><marker id="diaf-focus" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--focus)"/></marker><marker id="m-client" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--client)"/></marker><marker id="open-client" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="var(--client)" stroke-width="1.5"/></marker><marker id="tri-client" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--card)" stroke="var(--client)" stroke-width="1.2"/></marker><marker id="dia-client" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--card)" stroke="var(--client)" stroke-width="1.2"/></marker><marker id="diaf-client" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--client)"/></marker><marker id="m-svc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--svc)"/></marker><marker id="open-svc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="var(--svc)" stroke-width="1.5"/></marker><marker id="tri-svc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--card)" stroke="var(--svc)" stroke-width="1.2"/></marker><marker id="dia-svc" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--card)" stroke="var(--svc)" stroke-width="1.2"/></marker><marker id="diaf-svc" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--svc)"/></marker><marker id="m-store" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--store)"/></marker><marker id="open-store" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="var(--store)" stroke-width="1.5"/></marker><marker id="tri-store" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--card)" stroke="var(--store)" stroke-width="1.2"/></marker><marker id="dia-store" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--card)" stroke="var(--store)" stroke-width="1.2"/></marker><marker id="diaf-store" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--store)"/></marker><marker id="m-ext" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--ext)"/></marker><marker id="open-ext" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="var(--ext)" stroke-width="1.5"/></marker><marker id="tri-ext" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--card)" stroke="var(--ext)" stroke-width="1.2"/></marker><marker id="dia-ext" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--card)" stroke="var(--ext)" stroke-width="1.2"/></marker><marker id="diaf-ext" viewBox="0 0 20 10" refX="19" refY="5" markerWidth="16" markerHeight="8" orient="auto-start-reverse"><path d="M0 5L10 0L20 5L10 10z" fill="var(--ext)"/></marker><marker id="er-one" viewBox="0 0 20 20" refX="20" refY="10" markerWidth="20" markerHeight="20" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M14 2V18M10 2V18" fill="none" stroke="var(--fg)" stroke-width="1.3"/></marker><marker id="er-zero-one" viewBox="0 0 20 20" refX="20" refY="10" markerWidth="20" markerHeight="20" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M14 2V18" fill="none" stroke="var(--fg)" stroke-width="1.3"/><circle cx="7" cy="10" r="3.5" fill="none" stroke="var(--fg)" stroke-width="1.3" style="fill:var(--card)"/></marker><marker id="er-one-many" viewBox="0 0 20 20" refX="20" refY="10" markerWidth="20" markerHeight="20" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M20 10L10 2M20 10L10 18M20 10H0M8 2V18" fill="none" stroke="var(--fg)" stroke-width="1.3"/></marker><marker id="er-zero-many" viewBox="0 0 20 20" refX="20" refY="10" markerWidth="20" markerHeight="20" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M20 10L12 2M20 10L12 18M20 10H0" fill="none" stroke="var(--fg)" stroke-width="1.3"/><circle cx="6" cy="10" r="3.5" fill="none" stroke="var(--fg)" stroke-width="1.3" style="fill:var(--card)"/></marker></defs></svg>
+<main>
+<h1>voicepuncher architecture</h1>
+<p class="sub">The crates, the layers of the app and the processes that run, on one page. The crate picture is checked against <code>Cargo.toml</code> by <code>just test</code>; the other pictures are drawn by hand — <a href="../project-map.md">project-map.md</a> lists every module.</p>
+
+<pre class="kit" data-kind="verdict" data-kit-hash="5c4048996cc7" hidden>
+text: A menu bar app and three local services, all offline
+kind: focus
+sub: &#34;Ten crates; the app is hexagonal: adapters → application → domain; services reached over loopback HTTP and WebSocket&#34;
+</pre>
+<div class="kit-render" id="kit-b1"><div class="card verdict v-focus">A menu bar app and three local services, all offline<div class="sub">Ten crates; the app is hexagonal: adapters → application → domain; services reached over loopback HTTP and WebSocket</div></div></div><!--/kit-render-->
+
+<pre class="kit" data-kind="legend" data-kit-hash="ad9db2eddd6a" hidden>
+items:
+  - {kind: client, label: &#34;binary the user runs&#34;}
+  - {kind: svc, label: &#34;library or service&#34;}
+  - {kind: ext, label: &#34;test and tooling only&#34;}
+  - {kind: store, label: &#34;files on disk&#34;}
+</pre>
+<div class="kit-render" id="kit-b2"><div class="legend card"><span class="l-client">binary the user runs</span><span class="l-svc">library or service</span><span class="l-ext">test and tooling only</span><span class="l-store">files on disk</span></div></div><!--/kit-render-->
+
+<h2>1. Crates</h2>
+<p>Arrows: normal dependencies. Test-only dependencies are left out.</p>
+
+<pre class="kit" data-kind="c4" data-kit-hash="1789bbe8e0b7" hidden>
+title: Workspace crates
+caption: The ten members of the Cargo workspace and the dependencies between them
+nodes:
+  - {id: app, at: [1, 0], type: container, name: app, tech: binary + library, text: &#34;menu bar app, CLI&#34;, kind: client}
+  - {id: kws, at: [1, 2], type: container, name: command-spotting, tech: binary + library, text: command spotting service, kind: client}
+  - {id: e2e, at: [2, 0], type: container, name: e2e-test, tech: tests, text: &#34;E2E, accuracy benchmark&#34;, kind: ext}
+  - {id: pool, at: [0, 1], type: component, name: copy-pool, tech: library, text: leases service copies, kind: svc}
+  - {id: entries, at: [1, 1], type: component, name: entry-folders, tech: library, text: archive entry folders, kind: svc}
+  - {id: log, at: [2, 1], type: component, name: log-line, tech: library, text: one log line form, kind: svc}
+  - {id: vc, at: [1, 3], type: component, name: voice-commands, tech: library, text: voice commands declared once, kind: svc}
+  - {id: steps, at: [3, 0], type: component, name: test-steps, tech: test library, text: shared Gherkin steps, kind: ext}
+  - {id: dev, at: [3, 1], type: container, name: dev-tools, tech: binary, text: stage runner behind just, kind: ext}
+  - {id: an, at: [3, 2], type: container, name: analyzers, tech: binary, text: size and metrics checks, kind: ext}
+links:
+  - {from: app, to: pool}
+  - {from: app, to: entries}
+  - {from: app, to: log}
+  - {from: kws, to: pool}
+  - {from: kws, to: entries}
+  - {from: kws, to: log}
+  - {from: kws, to: vc}
+  - {from: e2e, to: app}
+  - {from: e2e, to: steps}
+</pre>
+<div class="kit-render" id="kit-b3"><div class="kit-anim" style="--cycle:9s"><style>.kit-anim{position:relative;display:flex;flex-flow:row wrap;align-items:center;column-gap:14px}
+.kit-anim>*{order:2;flex:0 0 100%}
+.kit-anim>h3{order:0}
+.kit-play,.kit-speed-in{position:absolute;opacity:0;width:1px;height:1px}
+.kit-play-btn{order:1;flex:0 0 auto;display:inline-block;cursor:pointer;border:1px solid var(--line);border-radius:14px;padding:2px 12px;margin:4px 0;font-size:13px;color:var(--fg);background:var(--card);user-select:none}
+.kit-play-btn::before{content:"\25B6  Play"}
+.kit-play:checked+.kit-play-btn::before{content:"\25A0  Stop"}
+.kit-play:focus-visible+.kit-play-btn{outline:2px solid var(--focus)}
+.kit-speed{order:1;flex:0 0 auto;display:inline-flex;margin:4px 0;font-size:11px;color:var(--mut);user-select:none;background:linear-gradient(var(--line),var(--line)) no-repeat 50% 6px/calc(100% - 36px) 2px}
+.kit-speed label{display:inline-flex;flex-direction:column;align-items:center;gap:2px;min-width:36px;cursor:pointer}
+.kit-speed label::before{content:"";width:10px;height:10px;border-radius:50%;border:2px solid var(--line);background:var(--card)}
+.kit-speed-in:focus-visible~.kit-speed{outline:2px solid var(--focus);outline-offset:2px}
+.kit-dot,.kit-later{opacity:0}
+.kit-anim [data-stream] path{animation:kit-stream .8s linear infinite}
+@keyframes kit-stream{to{stroke-dashoffset:16}}
+.kit-grow{transform-box:fill-box;transform-origin:left center}
+@keyframes kit-blink{to{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.kit-anim *{animation-name:none!important}}
+@keyframes kit-b3-e1-dot{0%{offset-distance:0%;opacity:1}10%{offset-distance:100%;opacity:1}10.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b3-e1-dash{0%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}10%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}10.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b3-play:checked ~ * #kit-b3-e1-dot{animation:kit-b3-e1-dot var(--cycle) linear infinite}
+#kit-b3-play:checked ~ * #kit-b3-e1 path{animation:kit-b3-e1-dash var(--cycle) linear infinite}
+@keyframes kit-b3-e2-dot{0%,10%{offset-distance:0%;opacity:0}10.01%{offset-distance:0%;opacity:1}20%{offset-distance:100%;opacity:1}20.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b3-e2-dash{0%,10%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}10.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}20%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}20.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b3-play:checked ~ * #kit-b3-e2-dot{animation:kit-b3-e2-dot var(--cycle) linear infinite}
+#kit-b3-play:checked ~ * #kit-b3-e2 path{animation:kit-b3-e2-dash var(--cycle) linear infinite}
+@keyframes kit-b3-e3-dot{0%,20%{offset-distance:0%;opacity:0}20.01%{offset-distance:0%;opacity:1}30%{offset-distance:100%;opacity:1}30.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b3-e3-dash{0%,20%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}20.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}30%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}30.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b3-play:checked ~ * #kit-b3-e3-dot{animation:kit-b3-e3-dot var(--cycle) linear infinite}
+#kit-b3-play:checked ~ * #kit-b3-e3 path{animation:kit-b3-e3-dash var(--cycle) linear infinite}
+@keyframes kit-b3-e4-dot{0%,30%{offset-distance:0%;opacity:0}30.01%{offset-distance:0%;opacity:1}40%{offset-distance:100%;opacity:1}40.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b3-e4-dash{0%,30%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}30.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}40%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}40.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b3-play:checked ~ * #kit-b3-e4-dot{animation:kit-b3-e4-dot var(--cycle) linear infinite}
+#kit-b3-play:checked ~ * #kit-b3-e4 path{animation:kit-b3-e4-dash var(--cycle) linear infinite}
+@keyframes kit-b3-e5-dot{0%,40%{offset-distance:0%;opacity:0}40.01%{offset-distance:0%;opacity:1}50%{offset-distance:100%;opacity:1}50.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b3-e5-dash{0%,40%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}40.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}50%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}50.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b3-play:checked ~ * #kit-b3-e5-dot{animation:kit-b3-e5-dot var(--cycle) linear infinite}
+#kit-b3-play:checked ~ * #kit-b3-e5 path{animation:kit-b3-e5-dash var(--cycle) linear infinite}
+@keyframes kit-b3-e6-dot{0%,50%{offset-distance:0%;opacity:0}50.01%{offset-distance:0%;opacity:1}60%{offset-distance:100%;opacity:1}60.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b3-e6-dash{0%,50%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}50.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}60%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}60.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b3-play:checked ~ * #kit-b3-e6-dot{animation:kit-b3-e6-dot var(--cycle) linear infinite}
+#kit-b3-play:checked ~ * #kit-b3-e6 path{animation:kit-b3-e6-dash var(--cycle) linear infinite}
+@keyframes kit-b3-e7-dot{0%,60%{offset-distance:0%;opacity:0}60.01%{offset-distance:0%;opacity:1}70%{offset-distance:100%;opacity:1}70.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b3-e7-dash{0%,60%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}60.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}70%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}70.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b3-play:checked ~ * #kit-b3-e7-dot{animation:kit-b3-e7-dot var(--cycle) linear infinite}
+#kit-b3-play:checked ~ * #kit-b3-e7 path{animation:kit-b3-e7-dash var(--cycle) linear infinite}
+@keyframes kit-b3-e8-dot{0%,70%{offset-distance:0%;opacity:0}70.01%{offset-distance:0%;opacity:1}80%{offset-distance:100%;opacity:1}80.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b3-e8-dash{0%,70%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}70.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}80%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}80.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b3-play:checked ~ * #kit-b3-e8-dot{animation:kit-b3-e8-dot var(--cycle) linear infinite}
+#kit-b3-play:checked ~ * #kit-b3-e8 path{animation:kit-b3-e8-dash var(--cycle) linear infinite}
+@keyframes kit-b3-e9-dot{0%,80%{offset-distance:0%;opacity:0}80.01%{offset-distance:0%;opacity:1}90%{offset-distance:100%;opacity:1}90.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b3-e9-dash{0%,80%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}80.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}90%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}90.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b3-play:checked ~ * #kit-b3-e9-dot{animation:kit-b3-e9-dot var(--cycle) linear infinite}
+#kit-b3-play:checked ~ * #kit-b3-e9 path{animation:kit-b3-e9-dash var(--cycle) linear infinite}
+@keyframes kit-b3-n-app{0%{filter:none}75%{filter:none}80%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}85%{filter:none}100%{filter:none}}
+#kit-b3-play:checked ~ * [data-node="app"]{animation:kit-b3-n-app var(--cycle) linear infinite}
+@keyframes kit-b3-n-entries{0%{filter:none}15%{filter:none}20%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}25%{filter:none}45%{filter:none}50%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}55%{filter:none}100%{filter:none}}
+#kit-b3-play:checked ~ * [data-node="entries"]{animation:kit-b3-n-entries var(--cycle) linear infinite}
+@keyframes kit-b3-n-log{0%{filter:none}25%{filter:none}30%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}35%{filter:none}55%{filter:none}60%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}65%{filter:none}100%{filter:none}}
+#kit-b3-play:checked ~ * [data-node="log"]{animation:kit-b3-n-log var(--cycle) linear infinite}
+@keyframes kit-b3-n-pool{0%{filter:none}5%{filter:none}10%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}15%{filter:none}35%{filter:none}40%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}45%{filter:none}100%{filter:none}}
+#kit-b3-play:checked ~ * [data-node="pool"]{animation:kit-b3-n-pool var(--cycle) linear infinite}
+@keyframes kit-b3-n-steps{0%{filter:none}85%{filter:none}90%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}95%{filter:none}100%{filter:none}}
+#kit-b3-play:checked ~ * [data-node="steps"]{animation:kit-b3-n-steps var(--cycle) linear infinite}
+@keyframes kit-b3-n-vc{0%{filter:none}65%{filter:none}70%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}75%{filter:none}100%{filter:none}}
+#kit-b3-play:checked ~ * [data-node="vc"]{animation:kit-b3-n-vc var(--cycle) linear infinite}
+#kit-b3-play:checked ~ * .kit-blink{animation:kit-blink .45s ease-in-out infinite alternate}
+#kit-b3-x05:checked ~ *{--cycle:18s}
+#kit-b3-x05:checked ~ .kit-speed label[for="kit-b3-x05"]{color:var(--fg);font-weight:600}
+#kit-b3-x05:checked ~ .kit-speed label[for="kit-b3-x05"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b3-x1:checked ~ *{--cycle:9s}
+#kit-b3-x1:checked ~ .kit-speed label[for="kit-b3-x1"]{color:var(--fg);font-weight:600}
+#kit-b3-x1:checked ~ .kit-speed label[for="kit-b3-x1"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b3-x15:checked ~ *{--cycle:6s}
+#kit-b3-x15:checked ~ .kit-speed label[for="kit-b3-x15"]{color:var(--fg);font-weight:600}
+#kit-b3-x15:checked ~ .kit-speed label[for="kit-b3-x15"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b3-x2:checked ~ *{--cycle:4.5s}
+#kit-b3-x2:checked ~ .kit-speed label[for="kit-b3-x2"]{color:var(--fg);font-weight:600}
+#kit-b3-x2:checked ~ .kit-speed label[for="kit-b3-x2"]::before{background:var(--focus);border-color:var(--focus)}
+</style><input type="checkbox" class="kit-play" id="kit-b3-play" aria-label="play the animation"><label for="kit-b3-play" class="kit-play-btn"></label><input type="radio" class="kit-speed-in" name="kit-b3-speed" id="kit-b3-x05" aria-label="speed 0.5×"><input type="radio" class="kit-speed-in" name="kit-b3-speed" id="kit-b3-x1" checked aria-label="speed 1×"><input type="radio" class="kit-speed-in" name="kit-b3-speed" id="kit-b3-x15" aria-label="speed 1.5×"><input type="radio" class="kit-speed-in" name="kit-b3-speed" id="kit-b3-x2" aria-label="speed 2×"><span class="kit-speed" role="group" aria-label="playback speed"><label for="kit-b3-x05">0.5×</label><label for="kit-b3-x1">1×</label><label for="kit-b3-x15">1.5×</label><label for="kit-b3-x2">2×</label></span><h3>Workspace crates</h3><figure><svg viewBox="0 0 1183.6399999999999 680" width="1183.6399999999999" role="img" aria-label="Workspace crates" font-family="system-ui,-apple-system,sans-serif"><g data-node="app"><rect x="80" y="230" width="217.01999999999998" height="70" rx="8" fill="var(--clientbg)" stroke="var(--client)" stroke-width="1.5"/><text x="188.51" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">app</text><text x="188.51" y="278" font-size="11" fill="var(--clientt)" text-anchor="middle">[Container: binary + library]</text><text x="188.51" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">menu bar app, CLI</text></g><g data-node="kws"><rect x="620.22" y="230" width="217.01999999999998" height="70" rx="8" fill="var(--clientbg)" stroke="var(--client)" stroke-width="1.5"/><text x="728.73" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">command-spotting</text><text x="728.73" y="278" font-size="11" fill="var(--clientt)" text-anchor="middle">[Container: binary + library]</text><text x="728.73" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">command spotting service</text></g><g data-node="e2e"><rect x="80" y="380" width="217.01999999999998" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="188.51" y="412" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">e2e-test</text><text x="188.51" y="428" font-size="11" fill="var(--extt)" text-anchor="middle">[Container: tests]</text><text x="188.51" y="440" font-size="10" fill="var(--mut)" text-anchor="middle">E2E, accuracy benchmark</text></g><g data-node="pool"><rect x="377.02" y="80" width="163.2" height="70" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="458.62" y="112" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">copy-pool</text><text x="458.62" y="128" font-size="11" fill="var(--svct)" text-anchor="middle">[Component: library]</text><text x="458.62" y="140" font-size="10" fill="var(--mut)" text-anchor="middle">leases service copies</text></g><g data-node="entries"><rect x="377.02" y="230" width="163.2" height="70" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="458.62" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">entry-folders</text><text x="458.62" y="278" font-size="11" fill="var(--svct)" text-anchor="middle">[Component: library]</text><text x="458.62" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">archive entry folders</text></g><g data-node="log"><rect x="377.02" y="380" width="163.2" height="70" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="458.62" y="412" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">log-line</text><text x="458.62" y="428" font-size="11" fill="var(--svct)" text-anchor="middle">[Component: library]</text><text x="458.62" y="440" font-size="10" fill="var(--mut)" text-anchor="middle">one log line form</text></g><g data-node="vc"><rect x="917.24" y="230" width="186.39999999999998" height="70" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="1010.44" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">voice-commands</text><text x="1010.44" y="278" font-size="11" fill="var(--svct)" text-anchor="middle">[Component: library]</text><text x="1010.44" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">voice commands declared once</text></g><g data-node="steps"><rect x="80" y="530" width="217.01999999999998" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="188.51" y="562" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">test-steps</text><text x="188.51" y="578" font-size="11" fill="var(--extt)" text-anchor="middle">[Component: test library]</text><text x="188.51" y="590" font-size="10" fill="var(--mut)" text-anchor="middle">shared Gherkin steps</text></g><g data-node="dev"><rect x="377.02" y="530" width="163.2" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="458.62" y="562" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">dev-tools</text><text x="458.62" y="578" font-size="11" fill="var(--extt)" text-anchor="middle">[Container: binary]</text><text x="458.62" y="590" font-size="10" fill="var(--mut)" text-anchor="middle">stage runner behind just</text></g><g data-node="an"><rect x="620.22" y="530" width="217.01999999999998" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="728.73" y="562" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">analyzers</text><text x="728.73" y="578" font-size="11" fill="var(--extt)" text-anchor="middle">[Container: binary]</text><text x="728.73" y="590" font-size="10" fill="var(--mut)" text-anchor="middle">size and metrics checks</text></g><g id="kit-b3-e1" data-step="1" data-from="app" data-to="pool"><path class="link" d="M188.51 230V115H377.02" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b3-e1-dot" r="4" fill="var(--fg)" style="offset-path:path('M188.51 230V115H377.02')"/><g id="kit-b3-e2" data-step="2" data-from="app" data-to="entries"><path class="link" d="M297.02 265H377.02" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b3-e2-dot" r="4" fill="var(--fg)" style="offset-path:path('M297.02 265H377.02')"/><g id="kit-b3-e3" data-step="3" data-from="app" data-to="log"><path class="link" d="M297.02 265H337.02V415H377.02" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b3-e3-dot" r="4" fill="var(--fg)" style="offset-path:path('M297.02 265H337.02V415H377.02')"/><g id="kit-b3-e4" data-step="4" data-from="kws" data-to="pool"><path class="link" d="M728.73 230V115H540.22" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b3-e4-dot" r="4" fill="var(--fg)" style="offset-path:path('M728.73 230V115H540.22')"/><g id="kit-b3-e5" data-step="5" data-from="kws" data-to="entries"><path class="link" d="M620.22 265H540.22" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b3-e5-dot" r="4" fill="var(--fg)" style="offset-path:path('M620.22 265H540.22')"/><g id="kit-b3-e6" data-step="6" data-from="kws" data-to="log"><path class="link" d="M728.73 300V415H540.22" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b3-e6-dot" r="4" fill="var(--fg)" style="offset-path:path('M728.73 300V415H540.22')"/><g id="kit-b3-e7" data-step="7" data-from="kws" data-to="vc"><path class="link" d="M837.24 265H917.24" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b3-e7-dot" r="4" fill="var(--fg)" style="offset-path:path('M837.24 265H917.24')"/><g id="kit-b3-e8" data-step="8" data-from="e2e" data-to="app"><path class="link" d="M188.51 380V300" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b3-e8-dot" r="4" fill="var(--fg)" style="offset-path:path('M188.51 380V300')"/><g id="kit-b3-e9" data-step="9" data-from="e2e" data-to="steps"><path class="link" d="M188.51 450V530" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b3-e9-dot" r="4" fill="var(--fg)" style="offset-path:path('M188.51 450V530')"/></svg></figure><p class="note">The ten members of the Cargo workspace and the dependencies between them</p></div></div><!--/kit-render-->
+
+<h2>2. Layers of the app</h2>
+<p>Hexagonal: dependencies point inward, never outward. The <code>runtime</code> wires adapters to use cases.</p>
+
+<pre class="kit" data-kind="c4" data-kit-hash="936aedcd6e41" hidden>
+title: App layers
+caption: &#34;Allowed dependency direction inside app/: adapters → core/application → core/domain&#34;
+nodes:
+  - {id: rt, at: [0, 1], type: component, name: runtime, tech: composition, text: &#34;starts, reloads, stops the pipeline&#34;, kind: focus}
+  - {id: pri, at: [1, 0], type: component, name: Primary adapters, tech: adapters/primary, text: &#34;drive the app: hotkey, menu, windows&#34;, kind: client}
+  - {id: appl, at: [1, 1], type: component, name: Application, tech: core/application, text: &#34;use cases and ports (traits)&#34;, kind: svc}
+  - {id: sec, at: [1, 2], type: component, name: Secondary adapters, tech: adapters/secondary, text: &#34;implement ports: audio, services, macOS&#34;, kind: ext}
+  - {id: dom, at: [2, 1], type: component, name: Domain, tech: core/domain, text: value objects and rules, kind: svc}
+links:
+  - {from: rt, to: pri, text: builds}
+  - {from: rt, to: sec, text: builds}
+  - {from: pri, to: appl, text: calls}
+  - {from: sec, to: appl, text: implements ports}
+  - {from: appl, to: dom, text: uses}
+</pre>
+<div class="kit-render" id="kit-b4"><div class="kit-anim" style="--cycle:5.4s"><style>.kit-anim{position:relative;display:flex;flex-flow:row wrap;align-items:center;column-gap:14px}
+.kit-anim>*{order:2;flex:0 0 100%}
+.kit-anim>h3{order:0}
+.kit-play,.kit-speed-in{position:absolute;opacity:0;width:1px;height:1px}
+.kit-play-btn{order:1;flex:0 0 auto;display:inline-block;cursor:pointer;border:1px solid var(--line);border-radius:14px;padding:2px 12px;margin:4px 0;font-size:13px;color:var(--fg);background:var(--card);user-select:none}
+.kit-play-btn::before{content:"\25B6  Play"}
+.kit-play:checked+.kit-play-btn::before{content:"\25A0  Stop"}
+.kit-play:focus-visible+.kit-play-btn{outline:2px solid var(--focus)}
+.kit-speed{order:1;flex:0 0 auto;display:inline-flex;margin:4px 0;font-size:11px;color:var(--mut);user-select:none;background:linear-gradient(var(--line),var(--line)) no-repeat 50% 6px/calc(100% - 36px) 2px}
+.kit-speed label{display:inline-flex;flex-direction:column;align-items:center;gap:2px;min-width:36px;cursor:pointer}
+.kit-speed label::before{content:"";width:10px;height:10px;border-radius:50%;border:2px solid var(--line);background:var(--card)}
+.kit-speed-in:focus-visible~.kit-speed{outline:2px solid var(--focus);outline-offset:2px}
+.kit-dot,.kit-later{opacity:0}
+.kit-anim [data-stream] path{animation:kit-stream .8s linear infinite}
+@keyframes kit-stream{to{stroke-dashoffset:16}}
+.kit-grow{transform-box:fill-box;transform-origin:left center}
+@keyframes kit-blink{to{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.kit-anim *{animation-name:none!important}}
+@keyframes kit-b4-e1-dot{0%{offset-distance:0%;opacity:1}16.67%{offset-distance:100%;opacity:1}16.68%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b4-e1-dash{0%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}16.67%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}16.68%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b4-play:checked ~ * #kit-b4-e1-dot{animation:kit-b4-e1-dot var(--cycle) linear infinite}
+#kit-b4-play:checked ~ * #kit-b4-e1 path{animation:kit-b4-e1-dash var(--cycle) linear infinite}
+@keyframes kit-b4-e2-dot{0%,16.67%{offset-distance:0%;opacity:0}16.68%{offset-distance:0%;opacity:1}33.33%{offset-distance:100%;opacity:1}33.34%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b4-e2-dash{0%,16.67%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}16.68%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}33.33%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}33.34%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b4-play:checked ~ * #kit-b4-e2-dot{animation:kit-b4-e2-dot var(--cycle) linear infinite}
+#kit-b4-play:checked ~ * #kit-b4-e2 path{animation:kit-b4-e2-dash var(--cycle) linear infinite}
+@keyframes kit-b4-e3-dot{0%,33.33%{offset-distance:0%;opacity:0}33.34%{offset-distance:0%;opacity:1}50%{offset-distance:100%;opacity:1}50.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b4-e3-dash{0%,33.33%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}33.34%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}50%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}50.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b4-play:checked ~ * #kit-b4-e3-dot{animation:kit-b4-e3-dot var(--cycle) linear infinite}
+#kit-b4-play:checked ~ * #kit-b4-e3 path{animation:kit-b4-e3-dash var(--cycle) linear infinite}
+@keyframes kit-b4-e4-dot{0%,50%{offset-distance:0%;opacity:0}50.01%{offset-distance:0%;opacity:1}66.67%{offset-distance:100%;opacity:1}66.68%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b4-e4-dash{0%,50%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}50.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}66.67%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}66.68%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b4-play:checked ~ * #kit-b4-e4-dot{animation:kit-b4-e4-dot var(--cycle) linear infinite}
+#kit-b4-play:checked ~ * #kit-b4-e4 path{animation:kit-b4-e4-dash var(--cycle) linear infinite}
+@keyframes kit-b4-e5-dot{0%,66.67%{offset-distance:0%;opacity:0}66.68%{offset-distance:0%;opacity:1}83.33%{offset-distance:100%;opacity:1}83.34%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b4-e5-dash{0%,66.67%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}66.68%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}83.33%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}83.34%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b4-play:checked ~ * #kit-b4-e5-dot{animation:kit-b4-e5-dot var(--cycle) linear infinite}
+#kit-b4-play:checked ~ * #kit-b4-e5 path{animation:kit-b4-e5-dash var(--cycle) linear infinite}
+@keyframes kit-b4-n-appl{0%{filter:none}41.67%{filter:none}50%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}58.33%{filter:none}58.34%{filter:none}66.67%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}75%{filter:none}100%{filter:none}}
+#kit-b4-play:checked ~ * [data-node="appl"]{animation:kit-b4-n-appl var(--cycle) linear infinite}
+@keyframes kit-b4-n-dom{0%{filter:none}75%{filter:none}83.33%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}91.66%{filter:none}100%{filter:none}}
+#kit-b4-play:checked ~ * [data-node="dom"]{animation:kit-b4-n-dom var(--cycle) linear infinite}
+@keyframes kit-b4-n-pri{0%{filter:none}8.34%{filter:none}16.67%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}25%{filter:none}100%{filter:none}}
+#kit-b4-play:checked ~ * [data-node="pri"]{animation:kit-b4-n-pri var(--cycle) linear infinite}
+@keyframes kit-b4-n-sec{0%{filter:none}25%{filter:none}33.33%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}41.66%{filter:none}100%{filter:none}}
+#kit-b4-play:checked ~ * [data-node="sec"]{animation:kit-b4-n-sec var(--cycle) linear infinite}
+#kit-b4-play:checked ~ * .kit-blink{animation:kit-blink .45s ease-in-out infinite alternate}
+#kit-b4-x05:checked ~ *{--cycle:10.8s}
+#kit-b4-x05:checked ~ .kit-speed label[for="kit-b4-x05"]{color:var(--fg);font-weight:600}
+#kit-b4-x05:checked ~ .kit-speed label[for="kit-b4-x05"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b4-x1:checked ~ *{--cycle:5.4s}
+#kit-b4-x1:checked ~ .kit-speed label[for="kit-b4-x1"]{color:var(--fg);font-weight:600}
+#kit-b4-x1:checked ~ .kit-speed label[for="kit-b4-x1"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b4-x15:checked ~ *{--cycle:3.6s}
+#kit-b4-x15:checked ~ .kit-speed label[for="kit-b4-x15"]{color:var(--fg);font-weight:600}
+#kit-b4-x15:checked ~ .kit-speed label[for="kit-b4-x15"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b4-x2:checked ~ *{--cycle:2.7s}
+#kit-b4-x2:checked ~ .kit-speed label[for="kit-b4-x2"]{color:var(--fg);font-weight:600}
+#kit-b4-x2:checked ~ .kit-speed label[for="kit-b4-x2"]::before{background:var(--focus);border-color:var(--focus)}
+</style><input type="checkbox" class="kit-play" id="kit-b4-play" aria-label="play the animation"><label for="kit-b4-play" class="kit-play-btn"></label><input type="radio" class="kit-speed-in" name="kit-b4-speed" id="kit-b4-x05" aria-label="speed 0.5×"><input type="radio" class="kit-speed-in" name="kit-b4-speed" id="kit-b4-x1" checked aria-label="speed 1×"><input type="radio" class="kit-speed-in" name="kit-b4-speed" id="kit-b4-x15" aria-label="speed 1.5×"><input type="radio" class="kit-speed-in" name="kit-b4-speed" id="kit-b4-x2" aria-label="speed 2×"><span class="kit-speed" role="group" aria-label="playback speed"><label for="kit-b4-x05">0.5×</label><label for="kit-b4-x1">1×</label><label for="kit-b4-x15">1.5×</label><label for="kit-b4-x2">2×</label></span><h3>App layers</h3><figure><svg viewBox="0 0 1030 530" width="1030" role="img" aria-label="App layers" font-family="system-ui,-apple-system,sans-serif"><g data-node="rt"><rect x="392.79999999999995" y="80" width="227" height="70" rx="8" fill="var(--focusbg)" stroke="var(--focus)" stroke-width="1.5"/><text x="506.29999999999995" y="112" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">runtime</text><text x="506.29999999999995" y="128" font-size="11" fill="var(--focust)" text-anchor="middle">[Component: composition]</text><text x="506.29999999999995" y="140" font-size="10" fill="var(--mut)" text-anchor="middle">starts, reloads, stops the pipeline</text></g><g data-node="pri"><rect x="80" y="230" width="232.79999999999998" height="70" rx="8" fill="var(--clientbg)" stroke="var(--client)" stroke-width="1.5"/><text x="196.39999999999998" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">Primary adapters</text><text x="196.39999999999998" y="278" font-size="11" fill="var(--clientt)" text-anchor="middle">[Component: adapters/primary]</text><text x="196.39999999999998" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">drive the app: hotkey, menu, windows</text></g><g data-node="appl"><rect x="392.79999999999995" y="230" width="227" height="70" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="506.29999999999995" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">Application</text><text x="506.29999999999995" y="278" font-size="11" fill="var(--svct)" text-anchor="middle">[Component: core/application]</text><text x="506.29999999999995" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">use cases and ports (traits)</text></g><g data-node="sec"><rect x="699.8" y="230" width="250.2" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="824.9" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">Secondary adapters</text><text x="824.9" y="278" font-size="11" fill="var(--extt)" text-anchor="middle">[Component: adapters/secondary]</text><text x="824.9" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">implement ports: audio, services, macOS</text></g><g data-node="dom"><rect x="392.79999999999995" y="380" width="227" height="70" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="506.29999999999995" y="412" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">Domain</text><text x="506.29999999999995" y="428" font-size="11" fill="var(--svct)" text-anchor="middle">[Component: core/domain]</text><text x="506.29999999999995" y="440" font-size="10" fill="var(--mut)" text-anchor="middle">value objects and rules</text></g><g id="kit-b4-e1" data-step="1" data-from="rt" data-to="pri"><path class="link" d="M392.79999999999995 115H196.39999999999998V230" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b4-e1-dot" r="4" fill="var(--fg)" style="offset-path:path('M392.79999999999995 115H196.39999999999998V230')"/><text data-step="1" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="294.59999999999997" y="111" font-size="11" fill="var(--fg)" text-anchor="middle">builds</text><g id="kit-b4-e2" data-step="2" data-from="rt" data-to="sec"><path class="link" d="M619.8 115H824.9V230" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b4-e2-dot" r="4" fill="var(--fg)" style="offset-path:path('M619.8 115H824.9V230')"/><text data-step="2" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="722.3499999999999" y="111" font-size="11" fill="var(--fg)" text-anchor="middle">builds</text><g id="kit-b4-e3" data-step="3" data-from="pri" data-to="appl"><path class="link" d="M312.79999999999995 265H392.79999999999995" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b4-e3-dot" r="4" fill="var(--fg)" style="offset-path:path('M312.79999999999995 265H392.79999999999995')"/><text data-step="3" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="352.79999999999995" y="261" font-size="11" fill="var(--fg)" text-anchor="middle">calls</text><g id="kit-b4-e4" data-step="4" data-from="sec" data-to="appl"><path class="link" d="M699.8 265H619.8" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b4-e4-dot" r="4" fill="var(--fg)" style="offset-path:path('M699.8 265H619.8')"/><text data-step="4" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="659.8" y="261" font-size="11" fill="var(--fg)" text-anchor="middle">implements ports</text><g id="kit-b4-e5" data-step="5" data-from="appl" data-to="dom"><path class="link" d="M506.29999999999995 300V380" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b4-e5-dot" r="4" fill="var(--fg)" style="offset-path:path('M506.29999999999995 300V380')"/><text data-step="5" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="506.29999999999995" y="336" font-size="11" fill="var(--fg)" text-anchor="middle">uses</text></svg></figure><p class="note">Allowed dependency direction inside app/: adapters → core/application → core/domain</p></div></div><!--/kit-render-->
+
+<h3>Ports of core/application</h3>
+<table>
+<tr><th>Port</th><th>What it does</th><th>Adapter</th></tr>
+<tr><td><code>HotkeyListener</code></td><td>signals hotkey presses and releases</td><td><code>ptt/eventtap</code></td></tr>
+<tr><td><code>AudioRecorder</code>, <code>AudioLevelSource</code>, <code>InputDevices</code></td><td>records the microphone, its level, the input devices</td><td><code>recording</code></td></tr>
+<tr><td><code>Transcriber</code></td><td>turns audio into a raw transcript</td><td><code>transcription/openai</code></td></tr>
+<tr><td><code>CommandSpotter</code></td><td>streams the microphone to the command spotting service</td><td><code>commandspotting/websocket</code></td></tr>
+<tr><td><code>TextPaster</code>, <code>KeyPresser</code>, <code>FocusProbe</code></td><td>pastes text, presses keys, finds the focused input</td><td><code>textpasting</code>, <code>keypressing</code>, <code>focus</code></td></tr>
+<tr><td><code>VisualIndicator</code>, <code>LiveTranscriptView</code>, <code>AudioLevelSink</code></td><td>the overlay, the live transcript, the waveform</td><td><code>visualfeedback</code></td></tr>
+<tr><td><code>SoundPlayer</code></td><td>plays the start and stop sounds</td><td><code>soundplaying</code></td></tr>
+<tr><td><code>DictationArchive</code>, <code>DictationHistory</code></td><td>keeps dictations, reads the latest back</td><td><code>archiving</code></td></tr>
+<tr><td><code>PipelineActivitySink</code></td><td>publishes Idle, Recording, Processing</td><td><code>runtime</code>, <code>menubar</code></td></tr>
+<tr><td><code>PermissionProbe</code></td><td>asks macOS about the three permissions</td><td><code>permissions</code></td></tr>
+<tr><td><code>LoginItem</code></td><td>registers the app to start at login</td><td><code>loginitem</code></td></tr>
+<tr><td><code>ServiceLauncher</code>, <code>ServiceProcess</code>, <code>ServiceProbe</code>, <code>Clock</code></td><td>start, watch and stop the local services</td><td><code>localservices</code></td></tr>
+<tr><td><code>ModelStore</code>, <code>ModelFetcher</code>, <code>DiskSpace</code>, <code>DownloadObserver</code></td><td>download the missing model files</td><td><code>modelfetch</code>, <code>modeldownload</code></td></tr>
+</table>
+
+<h2>3. Adapters</h2>
+<p>One box per adapter folder; arrows point at the use case or port it touches.</p>
+
+<pre class="kit" data-kind="c4" data-kit-hash="42f5d032f527" hidden>
+title: Primary adapters
+caption: What drives the app, one box per folder of adapters/primary
+nodes:
+  - {id: ptt, at: [0, 0], type: component, name: ptt, tech: CGEventTap, text: global hotkey, kind: client}
+  - {id: cli, at: [1, 0], type: component, name: cli, tech: clap, text: &#34;developer flags, file mode&#34;, kind: client}
+  - {id: menu, at: [2, 0], type: component, name: menubar, tech: AppKit, text: status item and menu, kind: client}
+  - {id: set, at: [2, 1], type: component, name: settings, tech: AppKit, text: settings window, kind: client}
+  - {id: perm, at: [3, 0], type: component, name: permissions, tech: AppKit, text: permissions window, kind: client}
+  - {id: md, at: [4, 0], type: component, name: modeldownload, tech: AppKit, text: download window, kind: client}
+  - {id: hist, at: [1, 2], type: component, name: history, tech: AppKit, text: dictation history window, kind: client}
+  - {id: pipe, at: [0, 1], type: component, name: Pipeline, tech: use case, text: one push-to-talk cycle, kind: svc}
+  - {id: rt, at: [1, 1], type: component, name: runtime, tech: composition, text: &#34;reload, services, quit&#34;, kind: focus}
+  - {id: gate, at: [3, 1], type: component, name: PermissionsGate, tech: use case, text: three permissions, kind: svc}
+  - {id: dl, at: [4, 1], type: component, name: ModelDownload, tech: use case, text: missing models, kind: svc}
+links:
+  - {from: ptt, to: pipe, text: press / release}
+  - {from: cli, to: rt, text: overrides}
+  - {from: menu, to: rt}
+  - {from: set, to: rt, text: applies}
+  - {from: perm, to: gate}
+  - {from: md, to: dl}
+  - {from: hist, to: rt}
+</pre>
+<div class="kit-render" id="kit-b5"><div class="kit-anim" style="--cycle:7.2s"><style>.kit-anim{position:relative;display:flex;flex-flow:row wrap;align-items:center;column-gap:14px}
+.kit-anim>*{order:2;flex:0 0 100%}
+.kit-anim>h3{order:0}
+.kit-play,.kit-speed-in{position:absolute;opacity:0;width:1px;height:1px}
+.kit-play-btn{order:1;flex:0 0 auto;display:inline-block;cursor:pointer;border:1px solid var(--line);border-radius:14px;padding:2px 12px;margin:4px 0;font-size:13px;color:var(--fg);background:var(--card);user-select:none}
+.kit-play-btn::before{content:"\25B6  Play"}
+.kit-play:checked+.kit-play-btn::before{content:"\25A0  Stop"}
+.kit-play:focus-visible+.kit-play-btn{outline:2px solid var(--focus)}
+.kit-speed{order:1;flex:0 0 auto;display:inline-flex;margin:4px 0;font-size:11px;color:var(--mut);user-select:none;background:linear-gradient(var(--line),var(--line)) no-repeat 50% 6px/calc(100% - 36px) 2px}
+.kit-speed label{display:inline-flex;flex-direction:column;align-items:center;gap:2px;min-width:36px;cursor:pointer}
+.kit-speed label::before{content:"";width:10px;height:10px;border-radius:50%;border:2px solid var(--line);background:var(--card)}
+.kit-speed-in:focus-visible~.kit-speed{outline:2px solid var(--focus);outline-offset:2px}
+.kit-dot,.kit-later{opacity:0}
+.kit-anim [data-stream] path{animation:kit-stream .8s linear infinite}
+@keyframes kit-stream{to{stroke-dashoffset:16}}
+.kit-grow{transform-box:fill-box;transform-origin:left center}
+@keyframes kit-blink{to{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.kit-anim *{animation-name:none!important}}
+@keyframes kit-b5-e1-dot{0%{offset-distance:0%;opacity:1}12.5%{offset-distance:100%;opacity:1}12.51%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b5-e1-dash{0%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}12.5%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}12.51%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b5-play:checked ~ * #kit-b5-e1-dot{animation:kit-b5-e1-dot var(--cycle) linear infinite}
+#kit-b5-play:checked ~ * #kit-b5-e1 path{animation:kit-b5-e1-dash var(--cycle) linear infinite}
+@keyframes kit-b5-e2-dot{0%,12.5%{offset-distance:0%;opacity:0}12.51%{offset-distance:0%;opacity:1}25%{offset-distance:100%;opacity:1}25.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b5-e2-dash{0%,12.5%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}12.51%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}25%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}25.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b5-play:checked ~ * #kit-b5-e2-dot{animation:kit-b5-e2-dot var(--cycle) linear infinite}
+#kit-b5-play:checked ~ * #kit-b5-e2 path{animation:kit-b5-e2-dash var(--cycle) linear infinite}
+@keyframes kit-b5-e3-dot{0%,25%{offset-distance:0%;opacity:0}25.01%{offset-distance:0%;opacity:1}37.5%{offset-distance:100%;opacity:1}37.51%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b5-e3-dash{0%,25%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}25.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}37.5%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}37.51%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b5-play:checked ~ * #kit-b5-e3-dot{animation:kit-b5-e3-dot var(--cycle) linear infinite}
+#kit-b5-play:checked ~ * #kit-b5-e3 path{animation:kit-b5-e3-dash var(--cycle) linear infinite}
+@keyframes kit-b5-e4-dot{0%,37.5%{offset-distance:0%;opacity:0}37.51%{offset-distance:0%;opacity:1}50%{offset-distance:100%;opacity:1}50.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b5-e4-dash{0%,37.5%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}37.51%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}50%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}50.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b5-play:checked ~ * #kit-b5-e4-dot{animation:kit-b5-e4-dot var(--cycle) linear infinite}
+#kit-b5-play:checked ~ * #kit-b5-e4 path{animation:kit-b5-e4-dash var(--cycle) linear infinite}
+@keyframes kit-b5-e5-dot{0%,50%{offset-distance:0%;opacity:0}50.01%{offset-distance:0%;opacity:1}62.5%{offset-distance:100%;opacity:1}62.51%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b5-e5-dash{0%,50%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}50.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}62.5%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}62.51%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b5-play:checked ~ * #kit-b5-e5-dot{animation:kit-b5-e5-dot var(--cycle) linear infinite}
+#kit-b5-play:checked ~ * #kit-b5-e5 path{animation:kit-b5-e5-dash var(--cycle) linear infinite}
+@keyframes kit-b5-e6-dot{0%,62.5%{offset-distance:0%;opacity:0}62.51%{offset-distance:0%;opacity:1}75%{offset-distance:100%;opacity:1}75.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b5-e6-dash{0%,62.5%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}62.51%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}75%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}75.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b5-play:checked ~ * #kit-b5-e6-dot{animation:kit-b5-e6-dot var(--cycle) linear infinite}
+#kit-b5-play:checked ~ * #kit-b5-e6 path{animation:kit-b5-e6-dash var(--cycle) linear infinite}
+@keyframes kit-b5-e7-dot{0%,75%{offset-distance:0%;opacity:0}75.01%{offset-distance:0%;opacity:1}87.5%{offset-distance:100%;opacity:1}87.51%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b5-e7-dash{0%,75%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}75.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}87.5%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}87.51%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b5-play:checked ~ * #kit-b5-e7-dot{animation:kit-b5-e7-dot var(--cycle) linear infinite}
+#kit-b5-play:checked ~ * #kit-b5-e7 path{animation:kit-b5-e7-dash var(--cycle) linear infinite}
+@keyframes kit-b5-n-dl{0%{filter:none}68.75%{filter:none}75%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}81.25%{filter:none}100%{filter:none}}
+#kit-b5-play:checked ~ * [data-node="dl"]{animation:kit-b5-n-dl var(--cycle) linear infinite}
+@keyframes kit-b5-n-gate{0%{filter:none}56.25%{filter:none}62.5%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}68.75%{filter:none}100%{filter:none}}
+#kit-b5-play:checked ~ * [data-node="gate"]{animation:kit-b5-n-gate var(--cycle) linear infinite}
+@keyframes kit-b5-n-pipe{0%{filter:none}6.25%{filter:none}12.5%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}18.75%{filter:none}100%{filter:none}}
+#kit-b5-play:checked ~ * [data-node="pipe"]{animation:kit-b5-n-pipe var(--cycle) linear infinite}
+@keyframes kit-b5-n-rt{0%{filter:none}18.75%{filter:none}25%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}31.25%{filter:none}31.25%{filter:none}37.5%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}43.75%{filter:none}43.75%{filter:none}50%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}56.25%{filter:none}81.25%{filter:none}87.5%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}93.75%{filter:none}100%{filter:none}}
+#kit-b5-play:checked ~ * [data-node="rt"]{animation:kit-b5-n-rt var(--cycle) linear infinite}
+#kit-b5-play:checked ~ * .kit-blink{animation:kit-blink .45s ease-in-out infinite alternate}
+#kit-b5-x05:checked ~ *{--cycle:14.4s}
+#kit-b5-x05:checked ~ .kit-speed label[for="kit-b5-x05"]{color:var(--fg);font-weight:600}
+#kit-b5-x05:checked ~ .kit-speed label[for="kit-b5-x05"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b5-x1:checked ~ *{--cycle:7.2s}
+#kit-b5-x1:checked ~ .kit-speed label[for="kit-b5-x1"]{color:var(--fg);font-weight:600}
+#kit-b5-x1:checked ~ .kit-speed label[for="kit-b5-x1"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b5-x15:checked ~ *{--cycle:4.8s}
+#kit-b5-x15:checked ~ .kit-speed label[for="kit-b5-x15"]{color:var(--fg);font-weight:600}
+#kit-b5-x15:checked ~ .kit-speed label[for="kit-b5-x15"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b5-x2:checked ~ *{--cycle:3.6s}
+#kit-b5-x2:checked ~ .kit-speed label[for="kit-b5-x2"]{color:var(--fg);font-weight:600}
+#kit-b5-x2:checked ~ .kit-speed label[for="kit-b5-x2"]::before{background:var(--focus);border-color:var(--focus)}
+</style><input type="checkbox" class="kit-play" id="kit-b5-play" aria-label="play the animation"><label for="kit-b5-play" class="kit-play-btn"></label><input type="radio" class="kit-speed-in" name="kit-b5-speed" id="kit-b5-x05" aria-label="speed 0.5×"><input type="radio" class="kit-speed-in" name="kit-b5-speed" id="kit-b5-x1" checked aria-label="speed 1×"><input type="radio" class="kit-speed-in" name="kit-b5-speed" id="kit-b5-x15" aria-label="speed 1.5×"><input type="radio" class="kit-speed-in" name="kit-b5-speed" id="kit-b5-x2" aria-label="speed 2×"><span class="kit-speed" role="group" aria-label="playback speed"><label for="kit-b5-x05">0.5×</label><label for="kit-b5-x1">1×</label><label for="kit-b5-x15">1.5×</label><label for="kit-b5-x2">2×</label></span><h3>Primary adapters</h3><figure><svg viewBox="0 0 847.06 830" width="847.06" role="img" aria-label="Primary adapters" font-family="system-ui,-apple-system,sans-serif"><g data-node="ptt"><rect x="80" y="80" width="178.73999999999998" height="70" rx="8" fill="var(--clientbg)" stroke="var(--client)" stroke-width="1.5"/><text x="169.37" y="112" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">ptt</text><text x="169.37" y="128" font-size="11" fill="var(--clientt)" text-anchor="middle">[Component: CGEventTap]</text><text x="169.37" y="140" font-size="10" fill="var(--mut)" text-anchor="middle">global hotkey</text></g><g data-node="cli"><rect x="80" y="230" width="178.73999999999998" height="70" rx="8" fill="var(--clientbg)" stroke="var(--client)" stroke-width="1.5"/><text x="169.37" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">cli</text><text x="169.37" y="278" font-size="11" fill="var(--clientt)" text-anchor="middle">[Component: clap]</text><text x="169.37" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">developer flags, file mode</text></g><g data-node="menu"><rect x="80" y="380" width="178.73999999999998" height="70" rx="8" fill="var(--clientbg)" stroke="var(--client)" stroke-width="1.5"/><text x="169.37" y="412" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">menubar</text><text x="169.37" y="428" font-size="11" fill="var(--clientt)" text-anchor="middle">[Component: AppKit]</text><text x="169.37" y="440" font-size="10" fill="var(--mut)" text-anchor="middle">status item and menu</text></g><g data-node="set"><rect x="338.74" y="380" width="185.11999999999998" height="70" rx="8" fill="var(--clientbg)" stroke="var(--client)" stroke-width="1.5"/><text x="431.3" y="412" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">settings</text><text x="431.3" y="428" font-size="11" fill="var(--clientt)" text-anchor="middle">[Component: AppKit]</text><text x="431.3" y="440" font-size="10" fill="var(--mut)" text-anchor="middle">settings window</text></g><g data-node="perm"><rect x="80" y="530" width="178.73999999999998" height="70" rx="8" fill="var(--clientbg)" stroke="var(--client)" stroke-width="1.5"/><text x="169.37" y="562" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">permissions</text><text x="169.37" y="578" font-size="11" fill="var(--clientt)" text-anchor="middle">[Component: AppKit]</text><text x="169.37" y="590" font-size="10" fill="var(--mut)" text-anchor="middle">permissions window</text></g><g data-node="md"><rect x="80" y="680" width="178.73999999999998" height="70" rx="8" fill="var(--clientbg)" stroke="var(--client)" stroke-width="1.5"/><text x="169.37" y="712" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">modeldownload</text><text x="169.37" y="728" font-size="11" fill="var(--clientt)" text-anchor="middle">[Component: AppKit]</text><text x="169.37" y="740" font-size="10" fill="var(--mut)" text-anchor="middle">download window</text></g><g data-node="hist"><rect x="603.86" y="230" width="163.2" height="70" rx="8" fill="var(--clientbg)" stroke="var(--client)" stroke-width="1.5"/><text x="685.46" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">history</text><text x="685.46" y="278" font-size="11" fill="var(--clientt)" text-anchor="middle">[Component: AppKit]</text><text x="685.46" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">dictation history window</text></g><g data-node="pipe"><rect x="338.74" y="80" width="185.11999999999998" height="70" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="431.3" y="112" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">Pipeline</text><text x="431.3" y="128" font-size="11" fill="var(--svct)" text-anchor="middle">[Component: use case]</text><text x="431.3" y="140" font-size="10" fill="var(--mut)" text-anchor="middle">one push-to-talk cycle</text></g><g data-node="rt"><rect x="338.74" y="230" width="185.11999999999998" height="70" rx="8" fill="var(--focusbg)" stroke="var(--focus)" stroke-width="1.5"/><text x="431.3" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">runtime</text><text x="431.3" y="278" font-size="11" fill="var(--focust)" text-anchor="middle">[Component: composition]</text><text x="431.3" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">reload, services, quit</text></g><g data-node="gate"><rect x="338.74" y="530" width="185.11999999999998" height="70" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="431.3" y="562" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">PermissionsGate</text><text x="431.3" y="578" font-size="11" fill="var(--svct)" text-anchor="middle">[Component: use case]</text><text x="431.3" y="590" font-size="10" fill="var(--mut)" text-anchor="middle">three permissions</text></g><g data-node="dl"><rect x="338.74" y="680" width="185.11999999999998" height="70" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="431.3" y="712" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">ModelDownload</text><text x="431.3" y="728" font-size="11" fill="var(--svct)" text-anchor="middle">[Component: use case]</text><text x="431.3" y="740" font-size="10" fill="var(--mut)" text-anchor="middle">missing models</text></g><g id="kit-b5-e1" data-step="1" data-from="ptt" data-to="pipe"><path class="link" d="M258.74 115H338.74" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b5-e1-dot" r="4" fill="var(--fg)" style="offset-path:path('M258.74 115H338.74')"/><text data-step="1" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="298.74" y="111" font-size="11" fill="var(--fg)" text-anchor="middle">press / release</text><g id="kit-b5-e2" data-step="2" data-from="cli" data-to="rt"><path class="link" d="M258.74 265H338.74" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b5-e2-dot" r="4" fill="var(--fg)" style="offset-path:path('M258.74 265H338.74')"/><text data-step="2" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="278.74" y="261" font-size="11" fill="var(--fg)" text-anchor="middle">overrides</text><g id="kit-b5-e3" data-step="3" data-from="menu" data-to="rt"><path class="link" d="M258.74 415H298.74V265H338.74" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b5-e3-dot" r="4" fill="var(--fg)" style="offset-path:path('M258.74 415H298.74V265H338.74')"/><g id="kit-b5-e4" data-step="4" data-from="set" data-to="rt"><path class="link" d="M431.3 380V300" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b5-e4-dot" r="4" fill="var(--fg)" style="offset-path:path('M431.3 380V300')"/><text data-step="4" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="431.3" y="336" font-size="11" fill="var(--fg)" text-anchor="middle">applies</text><g id="kit-b5-e5" data-step="5" data-from="perm" data-to="gate"><path class="link" d="M258.74 565H338.74" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b5-e5-dot" r="4" fill="var(--fg)" style="offset-path:path('M258.74 565H338.74')"/><g id="kit-b5-e6" data-step="6" data-from="md" data-to="dl"><path class="link" d="M258.74 715H338.74" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b5-e6-dot" r="4" fill="var(--fg)" style="offset-path:path('M258.74 715H338.74')"/><g id="kit-b5-e7" data-step="7" data-from="hist" data-to="rt"><path class="link" d="M603.86 265H523.86" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b5-e7-dot" r="4" fill="var(--fg)" style="offset-path:path('M603.86 265H523.86')"/></svg></figure><p class="note">What drives the app, one box per folder of adapters/primary</p></div></div><!--/kit-render-->
+
+<pre class="kit" data-kind="c4" data-kit-hash="4b160dca579c" hidden>
+title: Secondary adapters for speech and services
+caption: How the app hears, transcribes and keeps its services running
+nodes:
+  - {id: pipe, at: [0, 1], type: component, name: Pipeline, tech: use case, text: one push-to-talk cycle, kind: svc}
+  - {id: rec, at: [1, 0], type: component, name: recording, tech: &#34;cpal, WAV file&#34;, text: microphone or file, kind: ext}
+  - {id: tr, at: [1, 1], type: component, name: transcription, tech: OpenAI API, text: speech to raw transcript, kind: ext}
+  - {id: cs, at: [1, 2], type: component, name: commandspotting, tech: WebSocket, text: voice command events, kind: ext}
+  - {id: http, at: [2, 1], type: component, name: http, tech: copy pool client, text: &#34;failure classes, copies&#34;, kind: ext}
+  - {id: sv, at: [0, 3], type: component, name: Services, tech: use case, text: &#34;start, adopt, restart&#34;, kind: svc}
+  - {id: ls, at: [1, 3], type: component, name: localservices, tech: child process, text: &#34;launch, probe /health&#34;, kind: ext}
+  - {id: dl, at: [0, 4], type: component, name: ModelDownload, tech: use case, text: missing models, kind: svc}
+  - {id: mf, at: [1, 4], type: component, name: modelfetch, tech: HTTPS, text: resumable download, kind: ext}
+links:
+  - {from: rec, to: pipe, text: AudioRecorder}
+  - {from: tr, to: pipe, text: Transcriber}
+  - {from: cs, to: pipe, text: CommandSpotter}
+  - {from: tr, to: http}
+  - {from: ls, to: sv, text: ServiceLauncher}
+  - {from: mf, to: dl, text: ModelFetcher}
+</pre>
+<div class="kit-render" id="kit-b6"><div class="kit-anim" style="--cycle:6.3s"><style>.kit-anim{position:relative;display:flex;flex-flow:row wrap;align-items:center;column-gap:14px}
+.kit-anim>*{order:2;flex:0 0 100%}
+.kit-anim>h3{order:0}
+.kit-play,.kit-speed-in{position:absolute;opacity:0;width:1px;height:1px}
+.kit-play-btn{order:1;flex:0 0 auto;display:inline-block;cursor:pointer;border:1px solid var(--line);border-radius:14px;padding:2px 12px;margin:4px 0;font-size:13px;color:var(--fg);background:var(--card);user-select:none}
+.kit-play-btn::before{content:"\25B6  Play"}
+.kit-play:checked+.kit-play-btn::before{content:"\25A0  Stop"}
+.kit-play:focus-visible+.kit-play-btn{outline:2px solid var(--focus)}
+.kit-speed{order:1;flex:0 0 auto;display:inline-flex;margin:4px 0;font-size:11px;color:var(--mut);user-select:none;background:linear-gradient(var(--line),var(--line)) no-repeat 50% 6px/calc(100% - 36px) 2px}
+.kit-speed label{display:inline-flex;flex-direction:column;align-items:center;gap:2px;min-width:36px;cursor:pointer}
+.kit-speed label::before{content:"";width:10px;height:10px;border-radius:50%;border:2px solid var(--line);background:var(--card)}
+.kit-speed-in:focus-visible~.kit-speed{outline:2px solid var(--focus);outline-offset:2px}
+.kit-dot,.kit-later{opacity:0}
+.kit-anim [data-stream] path{animation:kit-stream .8s linear infinite}
+@keyframes kit-stream{to{stroke-dashoffset:16}}
+.kit-grow{transform-box:fill-box;transform-origin:left center}
+@keyframes kit-blink{to{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.kit-anim *{animation-name:none!important}}
+@keyframes kit-b6-e1-dot{0%{offset-distance:0%;opacity:1}14.29%{offset-distance:100%;opacity:1}14.3%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b6-e1-dash{0%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}14.29%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}14.3%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b6-play:checked ~ * #kit-b6-e1-dot{animation:kit-b6-e1-dot var(--cycle) linear infinite}
+#kit-b6-play:checked ~ * #kit-b6-e1 path{animation:kit-b6-e1-dash var(--cycle) linear infinite}
+@keyframes kit-b6-e2-dot{0%,14.29%{offset-distance:0%;opacity:0}14.3%{offset-distance:0%;opacity:1}28.57%{offset-distance:100%;opacity:1}28.58%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b6-e2-dash{0%,14.29%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}14.3%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}28.57%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}28.58%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b6-play:checked ~ * #kit-b6-e2-dot{animation:kit-b6-e2-dot var(--cycle) linear infinite}
+#kit-b6-play:checked ~ * #kit-b6-e2 path{animation:kit-b6-e2-dash var(--cycle) linear infinite}
+@keyframes kit-b6-e3-dot{0%,28.57%{offset-distance:0%;opacity:0}28.58%{offset-distance:0%;opacity:1}42.86%{offset-distance:100%;opacity:1}42.87%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b6-e3-dash{0%,28.57%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}28.58%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}42.86%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}42.87%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b6-play:checked ~ * #kit-b6-e3-dot{animation:kit-b6-e3-dot var(--cycle) linear infinite}
+#kit-b6-play:checked ~ * #kit-b6-e3 path{animation:kit-b6-e3-dash var(--cycle) linear infinite}
+@keyframes kit-b6-e4-dot{0%,42.86%{offset-distance:0%;opacity:0}42.87%{offset-distance:0%;opacity:1}57.14%{offset-distance:100%;opacity:1}57.15%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b6-e4-dash{0%,42.86%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}42.87%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}57.14%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}57.15%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b6-play:checked ~ * #kit-b6-e4-dot{animation:kit-b6-e4-dot var(--cycle) linear infinite}
+#kit-b6-play:checked ~ * #kit-b6-e4 path{animation:kit-b6-e4-dash var(--cycle) linear infinite}
+@keyframes kit-b6-e5-dot{0%,57.14%{offset-distance:0%;opacity:0}57.15%{offset-distance:0%;opacity:1}71.43%{offset-distance:100%;opacity:1}71.44%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b6-e5-dash{0%,57.14%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}57.15%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}71.43%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}71.44%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b6-play:checked ~ * #kit-b6-e5-dot{animation:kit-b6-e5-dot var(--cycle) linear infinite}
+#kit-b6-play:checked ~ * #kit-b6-e5 path{animation:kit-b6-e5-dash var(--cycle) linear infinite}
+@keyframes kit-b6-e6-dot{0%,71.43%{offset-distance:0%;opacity:0}71.44%{offset-distance:0%;opacity:1}85.71%{offset-distance:100%;opacity:1}85.72%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b6-e6-dash{0%,71.43%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}71.44%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}85.71%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}85.72%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b6-play:checked ~ * #kit-b6-e6-dot{animation:kit-b6-e6-dot var(--cycle) linear infinite}
+#kit-b6-play:checked ~ * #kit-b6-e6 path{animation:kit-b6-e6-dash var(--cycle) linear infinite}
+@keyframes kit-b6-n-dl{0%{filter:none}78.57%{filter:none}85.71%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}92.85%{filter:none}100%{filter:none}}
+#kit-b6-play:checked ~ * [data-node="dl"]{animation:kit-b6-n-dl var(--cycle) linear infinite}
+@keyframes kit-b6-n-http{0%{filter:none}50%{filter:none}57.14%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}64.28%{filter:none}100%{filter:none}}
+#kit-b6-play:checked ~ * [data-node="http"]{animation:kit-b6-n-http var(--cycle) linear infinite}
+@keyframes kit-b6-n-pipe{0%{filter:none}7.15%{filter:none}14.29%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}21.43%{filter:none}21.43%{filter:none}28.57%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}35.71%{filter:none}35.72%{filter:none}42.86%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}50%{filter:none}100%{filter:none}}
+#kit-b6-play:checked ~ * [data-node="pipe"]{animation:kit-b6-n-pipe var(--cycle) linear infinite}
+@keyframes kit-b6-n-sv{0%{filter:none}64.29%{filter:none}71.43%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}78.57%{filter:none}100%{filter:none}}
+#kit-b6-play:checked ~ * [data-node="sv"]{animation:kit-b6-n-sv var(--cycle) linear infinite}
+#kit-b6-play:checked ~ * .kit-blink{animation:kit-blink .45s ease-in-out infinite alternate}
+#kit-b6-x05:checked ~ *{--cycle:12.6s}
+#kit-b6-x05:checked ~ .kit-speed label[for="kit-b6-x05"]{color:var(--fg);font-weight:600}
+#kit-b6-x05:checked ~ .kit-speed label[for="kit-b6-x05"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b6-x1:checked ~ *{--cycle:6.3s}
+#kit-b6-x1:checked ~ .kit-speed label[for="kit-b6-x1"]{color:var(--fg);font-weight:600}
+#kit-b6-x1:checked ~ .kit-speed label[for="kit-b6-x1"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b6-x15:checked ~ *{--cycle:4.2s}
+#kit-b6-x15:checked ~ .kit-speed label[for="kit-b6-x15"]{color:var(--fg);font-weight:600}
+#kit-b6-x15:checked ~ .kit-speed label[for="kit-b6-x15"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b6-x2:checked ~ *{--cycle:3.15s}
+#kit-b6-x2:checked ~ .kit-speed label[for="kit-b6-x2"]{color:var(--fg);font-weight:600}
+#kit-b6-x2:checked ~ .kit-speed label[for="kit-b6-x2"]::before{background:var(--focus);border-color:var(--focus)}
+</style><input type="checkbox" class="kit-play" id="kit-b6-play" aria-label="play the animation"><label for="kit-b6-play" class="kit-play-btn"></label><input type="radio" class="kit-speed-in" name="kit-b6-speed" id="kit-b6-x05" aria-label="speed 0.5×"><input type="radio" class="kit-speed-in" name="kit-b6-speed" id="kit-b6-x1" checked aria-label="speed 1×"><input type="radio" class="kit-speed-in" name="kit-b6-speed" id="kit-b6-x15" aria-label="speed 1.5×"><input type="radio" class="kit-speed-in" name="kit-b6-speed" id="kit-b6-x2" aria-label="speed 2×"><span class="kit-speed" role="group" aria-label="playback speed"><label for="kit-b6-x05">0.5×</label><label for="kit-b6-x1">1×</label><label for="kit-b6-x15">1.5×</label><label for="kit-b6-x2">2×</label></span><h3>Secondary adapters for speech and services</h3><figure><svg viewBox="0 0 1437.5 530" width="1437.5" role="img" aria-label="Secondary adapters for speech and services" font-family="system-ui,-apple-system,sans-serif"><g data-node="pipe"><rect x="364.26" y="80" width="217.01999999999998" height="70" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="472.77" y="112" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">Pipeline</text><text x="472.77" y="128" font-size="11" fill="var(--svct)" text-anchor="middle">[Component: use case]</text><text x="472.77" y="140" font-size="10" fill="var(--mut)" text-anchor="middle">one push-to-talk cycle</text></g><g data-node="rec"><rect x="80" y="230" width="204.26" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="182.13" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">recording</text><text x="182.13" y="278" font-size="11" fill="var(--extt)" text-anchor="middle">[Component: cpal, WAV file]</text><text x="182.13" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">microphone or file</text></g><g data-node="tr"><rect x="364.26" y="230" width="217.01999999999998" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="472.77" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">transcription</text><text x="472.77" y="278" font-size="11" fill="var(--extt)" text-anchor="middle">[Component: OpenAI API]</text><text x="472.77" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">speech to raw transcript</text></g><g data-node="cs"><rect x="661.28" y="230" width="172.35999999999999" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="747.4599999999999" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">commandspotting</text><text x="747.4599999999999" y="278" font-size="11" fill="var(--extt)" text-anchor="middle">[Component: WebSocket]</text><text x="747.4599999999999" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">voice command events</text></g><g data-node="http"><rect x="364.26" y="380" width="217.01999999999998" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="472.77" y="412" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">http</text><text x="472.77" y="428" font-size="11" fill="var(--extt)" text-anchor="middle">[Component: copy pool client]</text><text x="472.77" y="440" font-size="10" fill="var(--mut)" text-anchor="middle">failure classes, copies</text></g><g data-node="sv"><rect x="913.64" y="80" width="197.88" height="70" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="1012.5799999999999" y="112" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">Services</text><text x="1012.5799999999999" y="128" font-size="11" fill="var(--svct)" text-anchor="middle">[Component: use case]</text><text x="1012.5799999999999" y="140" font-size="10" fill="var(--mut)" text-anchor="middle">start, adopt, restart</text></g><g data-node="ls"><rect x="913.64" y="230" width="197.88" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="1012.5799999999999" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">localservices</text><text x="1012.5799999999999" y="278" font-size="11" fill="var(--extt)" text-anchor="middle">[Component: child process]</text><text x="1012.5799999999999" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">launch, probe /health</text></g><g data-node="dl"><rect x="1191.52" y="80" width="165.98" height="70" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="1274.51" y="112" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">ModelDownload</text><text x="1274.51" y="128" font-size="11" fill="var(--svct)" text-anchor="middle">[Component: use case]</text><text x="1274.51" y="140" font-size="10" fill="var(--mut)" text-anchor="middle">missing models</text></g><g data-node="mf"><rect x="1191.52" y="230" width="165.98" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="1274.51" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">modelfetch</text><text x="1274.51" y="278" font-size="11" fill="var(--extt)" text-anchor="middle">[Component: HTTPS]</text><text x="1274.51" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">resumable download</text></g><g id="kit-b6-e1" data-step="1" data-from="rec" data-to="pipe"><path class="link" d="M182.13 230V115H364.26" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b6-e1-dot" r="4" fill="var(--fg)" style="offset-path:path('M182.13 230V115H364.26')"/><text data-step="1" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="273.195" y="111" font-size="11" fill="var(--fg)" text-anchor="middle">AudioRecorder</text><g id="kit-b6-e2" data-step="2" data-from="tr" data-to="pipe"><path class="link" d="M472.77 230V150" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b6-e2-dot" r="4" fill="var(--fg)" style="offset-path:path('M472.77 230V150')"/><text data-step="2" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="472.77" y="186" font-size="11" fill="var(--fg)" text-anchor="middle">Transcriber</text><g id="kit-b6-e3" data-step="3" data-from="cs" data-to="pipe"><path class="link" d="M747.4599999999999 230V115H581.28" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b6-e3-dot" r="4" fill="var(--fg)" style="offset-path:path('M747.4599999999999 230V115H581.28')"/><text data-step="3" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="664.3699999999999" y="111" font-size="11" fill="var(--fg)" text-anchor="middle">CommandSpotter</text><g id="kit-b6-e4" data-step="4" data-from="tr" data-to="http"><path class="link" d="M472.77 300V380" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b6-e4-dot" r="4" fill="var(--fg)" style="offset-path:path('M472.77 300V380')"/><g id="kit-b6-e5" data-step="5" data-from="ls" data-to="sv"><path class="link" d="M1012.5799999999999 230V150" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b6-e5-dot" r="4" fill="var(--fg)" style="offset-path:path('M1012.5799999999999 230V150')"/><text data-step="5" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="1012.5799999999999" y="186" font-size="11" fill="var(--fg)" text-anchor="middle">ServiceLauncher</text><g id="kit-b6-e6" data-step="6" data-from="mf" data-to="dl"><path class="link" d="M1274.51 230V150" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b6-e6-dot" r="4" fill="var(--fg)" style="offset-path:path('M1274.51 230V150')"/><text data-step="6" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="1274.51" y="186" font-size="11" fill="var(--fg)" text-anchor="middle">ModelFetcher</text></svg></figure><p class="note">How the app hears, transcribes and keeps its services running</p></div></div><!--/kit-render-->
+
+<pre class="kit" data-kind="c4" data-kit-hash="3cefdac6cf0f" hidden>
+title: Secondary adapters for the desktop and files
+caption: How the app pastes, shows, sounds and keeps its files
+nodes:
+  - {id: pipe, at: [0, 1], type: component, name: Pipeline, tech: use case, text: one push-to-talk cycle, kind: svc}
+  - {id: tp, at: [1, 0], type: component, name: textpasting, tech: &#34;arboard, CGEventPost&#34;, text: paste at the cursor, kind: ext}
+  - {id: kp, at: [1, 1], type: component, name: keypressing, tech: CGEventPost, text: &#34;Enter, Cmd+A, Cmd+V&#34;, kind: ext}
+  - {id: fcs, at: [1, 2], type: component, name: focus, tech: Accessibility, text: is a text input focused, kind: ext}
+  - {id: vf, at: [2, 0], type: component, name: visualfeedback, tech: AppKit, text: VisualIndicator port, kind: ext}
+  - {id: sp, at: [2, 1], type: component, name: soundplaying, tech: afplay, text: SoundPlayer port, kind: ext}
+  - {id: ar, at: [2, 2], type: component, name: archiving, tech: files, text: DictationArchive port, kind: ext}
+  - {id: rt, at: [0, 3], type: component, name: runtime, tech: composition, text: &#34;permissions, login, log&#34;, kind: focus}
+  - {id: pe, at: [1, 3], type: component, name: permissions, tech: TCC, text: permission status, kind: ext}
+  - {id: li, at: [0, 4], type: component, name: loginitem, tech: SMAppService, text: start at login, kind: ext}
+  - {id: lg, at: [1, 4], type: component, name: logging, tech: files, text: rotating log file, kind: ext}
+links:
+  - {from: tp, to: pipe, text: TextPaster}
+  - {from: kp, to: pipe, text: KeyPresser}
+  - {from: fcs, to: pipe, text: FocusProbe}
+  - {from: pe, to: rt, text: PermissionProbe}
+  - {from: li, to: rt, text: LoginItem}
+</pre>
+<div class="kit-render" id="kit-b7"><div class="kit-anim" style="--cycle:5.4s"><style>.kit-anim{position:relative;display:flex;flex-flow:row wrap;align-items:center;column-gap:14px}
+.kit-anim>*{order:2;flex:0 0 100%}
+.kit-anim>h3{order:0}
+.kit-play,.kit-speed-in{position:absolute;opacity:0;width:1px;height:1px}
+.kit-play-btn{order:1;flex:0 0 auto;display:inline-block;cursor:pointer;border:1px solid var(--line);border-radius:14px;padding:2px 12px;margin:4px 0;font-size:13px;color:var(--fg);background:var(--card);user-select:none}
+.kit-play-btn::before{content:"\25B6  Play"}
+.kit-play:checked+.kit-play-btn::before{content:"\25A0  Stop"}
+.kit-play:focus-visible+.kit-play-btn{outline:2px solid var(--focus)}
+.kit-speed{order:1;flex:0 0 auto;display:inline-flex;margin:4px 0;font-size:11px;color:var(--mut);user-select:none;background:linear-gradient(var(--line),var(--line)) no-repeat 50% 6px/calc(100% - 36px) 2px}
+.kit-speed label{display:inline-flex;flex-direction:column;align-items:center;gap:2px;min-width:36px;cursor:pointer}
+.kit-speed label::before{content:"";width:10px;height:10px;border-radius:50%;border:2px solid var(--line);background:var(--card)}
+.kit-speed-in:focus-visible~.kit-speed{outline:2px solid var(--focus);outline-offset:2px}
+.kit-dot,.kit-later{opacity:0}
+.kit-anim [data-stream] path{animation:kit-stream .8s linear infinite}
+@keyframes kit-stream{to{stroke-dashoffset:16}}
+.kit-grow{transform-box:fill-box;transform-origin:left center}
+@keyframes kit-blink{to{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.kit-anim *{animation-name:none!important}}
+@keyframes kit-b7-e1-dot{0%{offset-distance:0%;opacity:1}16.67%{offset-distance:100%;opacity:1}16.68%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b7-e1-dash{0%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}16.67%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}16.68%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b7-play:checked ~ * #kit-b7-e1-dot{animation:kit-b7-e1-dot var(--cycle) linear infinite}
+#kit-b7-play:checked ~ * #kit-b7-e1 path{animation:kit-b7-e1-dash var(--cycle) linear infinite}
+@keyframes kit-b7-e2-dot{0%,16.67%{offset-distance:0%;opacity:0}16.68%{offset-distance:0%;opacity:1}33.33%{offset-distance:100%;opacity:1}33.34%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b7-e2-dash{0%,16.67%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}16.68%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}33.33%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}33.34%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b7-play:checked ~ * #kit-b7-e2-dot{animation:kit-b7-e2-dot var(--cycle) linear infinite}
+#kit-b7-play:checked ~ * #kit-b7-e2 path{animation:kit-b7-e2-dash var(--cycle) linear infinite}
+@keyframes kit-b7-e3-dot{0%,33.33%{offset-distance:0%;opacity:0}33.34%{offset-distance:0%;opacity:1}50%{offset-distance:100%;opacity:1}50.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b7-e3-dash{0%,33.33%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}33.34%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}50%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}50.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b7-play:checked ~ * #kit-b7-e3-dot{animation:kit-b7-e3-dot var(--cycle) linear infinite}
+#kit-b7-play:checked ~ * #kit-b7-e3 path{animation:kit-b7-e3-dash var(--cycle) linear infinite}
+@keyframes kit-b7-e4-dot{0%,50%{offset-distance:0%;opacity:0}50.01%{offset-distance:0%;opacity:1}66.67%{offset-distance:100%;opacity:1}66.68%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b7-e4-dash{0%,50%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}50.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}66.67%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}66.68%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b7-play:checked ~ * #kit-b7-e4-dot{animation:kit-b7-e4-dot var(--cycle) linear infinite}
+#kit-b7-play:checked ~ * #kit-b7-e4 path{animation:kit-b7-e4-dash var(--cycle) linear infinite}
+@keyframes kit-b7-e5-dot{0%,66.67%{offset-distance:0%;opacity:0}66.68%{offset-distance:0%;opacity:1}83.33%{offset-distance:100%;opacity:1}83.34%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b7-e5-dash{0%,66.67%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}66.68%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}83.33%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}83.34%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b7-play:checked ~ * #kit-b7-e5-dot{animation:kit-b7-e5-dot var(--cycle) linear infinite}
+#kit-b7-play:checked ~ * #kit-b7-e5 path{animation:kit-b7-e5-dash var(--cycle) linear infinite}
+@keyframes kit-b7-n-pipe{0%{filter:none}8.34%{filter:none}16.67%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}25%{filter:none}25%{filter:none}33.33%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}41.66%{filter:none}41.67%{filter:none}50%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}58.33%{filter:none}100%{filter:none}}
+#kit-b7-play:checked ~ * [data-node="pipe"]{animation:kit-b7-n-pipe var(--cycle) linear infinite}
+@keyframes kit-b7-n-rt{0%{filter:none}58.34%{filter:none}66.67%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}75%{filter:none}75%{filter:none}83.33%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}91.66%{filter:none}100%{filter:none}}
+#kit-b7-play:checked ~ * [data-node="rt"]{animation:kit-b7-n-rt var(--cycle) linear infinite}
+#kit-b7-play:checked ~ * .kit-blink{animation:kit-blink .45s ease-in-out infinite alternate}
+#kit-b7-x05:checked ~ *{--cycle:10.8s}
+#kit-b7-x05:checked ~ .kit-speed label[for="kit-b7-x05"]{color:var(--fg);font-weight:600}
+#kit-b7-x05:checked ~ .kit-speed label[for="kit-b7-x05"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b7-x1:checked ~ *{--cycle:5.4s}
+#kit-b7-x1:checked ~ .kit-speed label[for="kit-b7-x1"]{color:var(--fg);font-weight:600}
+#kit-b7-x1:checked ~ .kit-speed label[for="kit-b7-x1"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b7-x15:checked ~ *{--cycle:3.6s}
+#kit-b7-x15:checked ~ .kit-speed label[for="kit-b7-x15"]{color:var(--fg);font-weight:600}
+#kit-b7-x15:checked ~ .kit-speed label[for="kit-b7-x15"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b7-x2:checked ~ *{--cycle:2.7s}
+#kit-b7-x2:checked ~ .kit-speed label[for="kit-b7-x2"]{color:var(--fg);font-weight:600}
+#kit-b7-x2:checked ~ .kit-speed label[for="kit-b7-x2"]::before{background:var(--focus);border-color:var(--focus)}
+</style><input type="checkbox" class="kit-play" id="kit-b7-play" aria-label="play the animation"><label for="kit-b7-play" class="kit-play-btn"></label><input type="radio" class="kit-speed-in" name="kit-b7-speed" id="kit-b7-x05" aria-label="speed 0.5×"><input type="radio" class="kit-speed-in" name="kit-b7-speed" id="kit-b7-x1" checked aria-label="speed 1×"><input type="radio" class="kit-speed-in" name="kit-b7-speed" id="kit-b7-x15" aria-label="speed 1.5×"><input type="radio" class="kit-speed-in" name="kit-b7-speed" id="kit-b7-x2" aria-label="speed 2×"><span class="kit-speed" role="group" aria-label="playback speed"><label for="kit-b7-x05">0.5×</label><label for="kit-b7-x1">1×</label><label for="kit-b7-x15">1.5×</label><label for="kit-b7-x2">2×</label></span><h3>Secondary adapters for the desktop and files</h3><figure><svg viewBox="0 0 1482.1599999999999 530" width="1482.1599999999999" role="img" aria-label="Secondary adapters for the desktop and files" font-family="system-ui,-apple-system,sans-serif"><g data-node="pipe"><rect x="402.53999999999996" y="80" width="185.11999999999998" height="70" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="495.09999999999997" y="112" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">Pipeline</text><text x="495.09999999999997" y="128" font-size="11" fill="var(--svct)" text-anchor="middle">[Component: use case]</text><text x="495.09999999999997" y="140" font-size="10" fill="var(--mut)" text-anchor="middle">one push-to-talk cycle</text></g><g data-node="tp"><rect x="80" y="230" width="242.54" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="201.26999999999998" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">textpasting</text><text x="201.26999999999998" y="278" font-size="11" fill="var(--extt)" text-anchor="middle">[Component: arboard, CGEventPost]</text><text x="201.26999999999998" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">paste at the cursor</text></g><g data-node="kp"><rect x="402.53999999999996" y="230" width="185.11999999999998" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="495.09999999999997" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">keypressing</text><text x="495.09999999999997" y="278" font-size="11" fill="var(--extt)" text-anchor="middle">[Component: CGEventPost]</text><text x="495.09999999999997" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">Enter, Cmd+A, Cmd+V</text></g><g data-node="fcs"><rect x="667.66" y="230" width="197.88" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="766.5999999999999" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">focus</text><text x="766.5999999999999" y="278" font-size="11" fill="var(--extt)" text-anchor="middle">[Component: Accessibility]</text><text x="766.5999999999999" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">is a text input focused</text></g><g data-node="vf"><rect x="80" y="380" width="242.54" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="201.26999999999998" y="412" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">visualfeedback</text><text x="201.26999999999998" y="428" font-size="11" fill="var(--extt)" text-anchor="middle">[Component: AppKit]</text><text x="201.26999999999998" y="440" font-size="10" fill="var(--mut)" text-anchor="middle">VisualIndicator port</text></g><g data-node="sp"><rect x="402.53999999999996" y="380" width="185.11999999999998" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="495.09999999999997" y="412" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">soundplaying</text><text x="495.09999999999997" y="428" font-size="11" fill="var(--extt)" text-anchor="middle">[Component: afplay]</text><text x="495.09999999999997" y="440" font-size="10" fill="var(--mut)" text-anchor="middle">SoundPlayer port</text></g><g data-node="ar"><rect x="667.66" y="380" width="197.88" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="766.5999999999999" y="412" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">archiving</text><text x="766.5999999999999" y="428" font-size="11" fill="var(--extt)" text-anchor="middle">[Component: files]</text><text x="766.5999999999999" y="440" font-size="10" fill="var(--mut)" text-anchor="middle">DictationArchive port</text></g><g data-node="rt"><rect x="945.54" y="80" width="185.11999999999998" height="70" rx="8" fill="var(--focusbg)" stroke="var(--focus)" stroke-width="1.5"/><text x="1038.1" y="112" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">runtime</text><text x="1038.1" y="128" font-size="11" fill="var(--focust)" text-anchor="middle">[Component: composition]</text><text x="1038.1" y="140" font-size="10" fill="var(--mut)" text-anchor="middle">permissions, login, log</text></g><g data-node="pe"><rect x="945.54" y="230" width="185.11999999999998" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="1038.1" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">permissions</text><text x="1038.1" y="278" font-size="11" fill="var(--extt)" text-anchor="middle">[Component: TCC]</text><text x="1038.1" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">permission status</text></g><g data-node="li"><rect x="1210.6599999999999" y="80" width="191.5" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="1306.4099999999999" y="112" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">loginitem</text><text x="1306.4099999999999" y="128" font-size="11" fill="var(--extt)" text-anchor="middle">[Component: SMAppService]</text><text x="1306.4099999999999" y="140" font-size="10" fill="var(--mut)" text-anchor="middle">start at login</text></g><g data-node="lg"><rect x="1210.6599999999999" y="230" width="191.5" height="70" rx="8" fill="var(--extbg)" stroke="var(--ext)" stroke-width="1.5"/><text x="1306.4099999999999" y="262" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">logging</text><text x="1306.4099999999999" y="278" font-size="11" fill="var(--extt)" text-anchor="middle">[Component: files]</text><text x="1306.4099999999999" y="290" font-size="10" fill="var(--mut)" text-anchor="middle">rotating log file</text></g><g id="kit-b7-e1" data-step="1" data-from="tp" data-to="pipe"><path class="link" d="M201.26999999999998 230V115H402.53999999999996" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b7-e1-dot" r="4" fill="var(--fg)" style="offset-path:path('M201.26999999999998 230V115H402.53999999999996')"/><text data-step="1" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="301.905" y="111" font-size="11" fill="var(--fg)" text-anchor="middle">TextPaster</text><g id="kit-b7-e2" data-step="2" data-from="kp" data-to="pipe"><path class="link" d="M495.09999999999997 230V150" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b7-e2-dot" r="4" fill="var(--fg)" style="offset-path:path('M495.09999999999997 230V150')"/><text data-step="2" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="495.09999999999997" y="186" font-size="11" fill="var(--fg)" text-anchor="middle">KeyPresser</text><g id="kit-b7-e3" data-step="3" data-from="fcs" data-to="pipe"><path class="link" d="M766.5999999999999 230V115H587.66" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b7-e3-dot" r="4" fill="var(--fg)" style="offset-path:path('M766.5999999999999 230V115H587.66')"/><text data-step="3" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="677.1299999999999" y="111" font-size="11" fill="var(--fg)" text-anchor="middle">FocusProbe</text><g id="kit-b7-e4" data-step="4" data-from="pe" data-to="rt"><path class="link" d="M1038.1 230V150" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b7-e4-dot" r="4" fill="var(--fg)" style="offset-path:path('M1038.1 230V150')"/><text data-step="4" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="1038.1" y="186" font-size="11" fill="var(--fg)" text-anchor="middle">PermissionProbe</text><g id="kit-b7-e5" data-step="5" data-from="li" data-to="rt"><path class="link" d="M1210.6599999999999 115H1130.6599999999999" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b7-e5-dot" r="4" fill="var(--fg)" style="offset-path:path('M1210.6599999999999 115H1130.6599999999999')"/><text data-step="5" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="1170.6599999999999" y="111" font-size="11" fill="var(--fg)" text-anchor="middle">LoginItem</text></svg></figure><p class="note">How the app pastes, shows, sounds and keeps its files</p></div></div><!--/kit-render-->
+
+<h2>4. Processes at runtime</h2>
+<p>All connections are loopback. The app starts the services it needs and stops them at quit.</p>
+
+<pre class="kit" data-kind="c4" data-kit-hash="d6919f06631e" hidden>
+title: Running processes
+caption: The app and the three local services; each speech service runs three copies, one request per copy
+nodes:
+  - {id: user, at: [0, 0], type: person, name: User, text: &#34;hotkey, voice, menu&#34;}
+  - {id: app, at: [0, 1], type: container, name: voicepuncher, tech: menu bar app, text: &#34;records, pastes, shows&#34;, kind: client}
+  - {id: kws, at: [0, 3], type: container, name: command spotting, tech: &#34;:8082 sherpa-onnx&#34;, text: spots voice commands, kind: svc}
+  - {id: dict, at: [1, 1], type: container, name: &#34;whisper-server ×3&#34;, tech: &#34;large-v3-turbo, Metal&#34;, text: &#34;address :8081, copies :18082–18084&#34;, kind: svc}
+  - {id: cmd, at: [1, 3], type: container, name: &#34;whisper-server-commands ×3&#34;, tech: &#34;small, Metal&#34;, text: &#34;address :8085, copies :18086–18088&#34;, kind: svc}
+  - {id: files, at: [1, 0], type: database, name: ~/.voicepuncher, tech: files, text: models and logs, kind: store}
+links:
+  - {from: user, to: app, text: speaks, tech: hotkey}
+  - {from: app, to: kws, text: microphone stream, tech: WebSocket, stream: true}
+  - {from: app, to: dict, text: transcribe, tech: &#34;HTTP, copy pool&#34;}
+  - {from: kws, to: cmd, text: confirm, tech: &#34;HTTP, copy pool&#34;}
+  - {from: app, to: files, text: reads / writes}
+</pre>
+<div class="kit-render" id="kit-b8"><div class="kit-anim" style="--cycle:5.4s"><style>.kit-anim{position:relative;display:flex;flex-flow:row wrap;align-items:center;column-gap:14px}
+.kit-anim>*{order:2;flex:0 0 100%}
+.kit-anim>h3{order:0}
+.kit-play,.kit-speed-in{position:absolute;opacity:0;width:1px;height:1px}
+.kit-play-btn{order:1;flex:0 0 auto;display:inline-block;cursor:pointer;border:1px solid var(--line);border-radius:14px;padding:2px 12px;margin:4px 0;font-size:13px;color:var(--fg);background:var(--card);user-select:none}
+.kit-play-btn::before{content:"\25B6  Play"}
+.kit-play:checked+.kit-play-btn::before{content:"\25A0  Stop"}
+.kit-play:focus-visible+.kit-play-btn{outline:2px solid var(--focus)}
+.kit-speed{order:1;flex:0 0 auto;display:inline-flex;margin:4px 0;font-size:11px;color:var(--mut);user-select:none;background:linear-gradient(var(--line),var(--line)) no-repeat 50% 6px/calc(100% - 36px) 2px}
+.kit-speed label{display:inline-flex;flex-direction:column;align-items:center;gap:2px;min-width:36px;cursor:pointer}
+.kit-speed label::before{content:"";width:10px;height:10px;border-radius:50%;border:2px solid var(--line);background:var(--card)}
+.kit-speed-in:focus-visible~.kit-speed{outline:2px solid var(--focus);outline-offset:2px}
+.kit-dot,.kit-later{opacity:0}
+.kit-anim [data-stream] path{animation:kit-stream .8s linear infinite}
+@keyframes kit-stream{to{stroke-dashoffset:16}}
+.kit-grow{transform-box:fill-box;transform-origin:left center}
+@keyframes kit-blink{to{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.kit-anim *{animation-name:none!important}}
+@keyframes kit-b8-e1-dot{0%{offset-distance:0%;opacity:1}16.67%{offset-distance:100%;opacity:1}16.68%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b8-e1-dash{0%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}16.67%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}16.68%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b8-play:checked ~ * #kit-b8-e1-dot{animation:kit-b8-e1-dot var(--cycle) linear infinite}
+#kit-b8-play:checked ~ * #kit-b8-e1 path{animation:kit-b8-e1-dash var(--cycle) linear infinite}
+@keyframes kit-b8-e2-dot{0%,16.66%{offset-distance:100%;opacity:0}16.67%{offset-distance:100%;opacity:1}25%{offset-distance:0%;opacity:1}25.01%,100%{offset-distance:0%;opacity:0}}
+#kit-b8-play:checked ~ * #kit-b8-e2-dot{animation:kit-b8-e2-dot var(--cycle) linear infinite}
+@keyframes kit-b8-e2-dot2{0%,20.83%{offset-distance:100%;opacity:0}20.84%{offset-distance:100%;opacity:1}29.17%{offset-distance:0%;opacity:1}29.18%,100%{offset-distance:0%;opacity:0}}
+#kit-b8-play:checked ~ * #kit-b8-e2-dot2{animation:kit-b8-e2-dot2 var(--cycle) linear infinite}
+@keyframes kit-b8-e2-dot3{0%,24.99%{offset-distance:100%;opacity:0}25%{offset-distance:100%;opacity:1}33.33%{offset-distance:0%;opacity:1}33.34%,100%{offset-distance:0%;opacity:0}}
+#kit-b8-play:checked ~ * #kit-b8-e2-dot3{animation:kit-b8-e2-dot3 var(--cycle) linear infinite}
+@keyframes kit-b8-e3-dot{0%,33.33%{offset-distance:0%;opacity:0}33.34%{offset-distance:0%;opacity:1}50%{offset-distance:100%;opacity:1}50.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b8-e3-dash{0%,33.33%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}33.34%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}50%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}50.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b8-play:checked ~ * #kit-b8-e3-dot{animation:kit-b8-e3-dot var(--cycle) linear infinite}
+#kit-b8-play:checked ~ * #kit-b8-e3 path{animation:kit-b8-e3-dash var(--cycle) linear infinite}
+@keyframes kit-b8-e4-dot{0%,50%{offset-distance:0%;opacity:0}50.01%{offset-distance:0%;opacity:1}66.67%{offset-distance:100%;opacity:1}66.68%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b8-e4-dash{0%,50%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}50.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}66.67%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}66.68%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b8-play:checked ~ * #kit-b8-e4-dot{animation:kit-b8-e4-dot var(--cycle) linear infinite}
+#kit-b8-play:checked ~ * #kit-b8-e4 path{animation:kit-b8-e4-dash var(--cycle) linear infinite}
+@keyframes kit-b8-e5-dot{0%,66.67%{offset-distance:0%;opacity:0}66.68%{offset-distance:0%;opacity:1}83.33%{offset-distance:100%;opacity:1}83.34%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b8-e5-dash{0%,66.67%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}66.68%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}83.33%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}83.34%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b8-play:checked ~ * #kit-b8-e5-dot{animation:kit-b8-e5-dot var(--cycle) linear infinite}
+#kit-b8-play:checked ~ * #kit-b8-e5 path{animation:kit-b8-e5-dash var(--cycle) linear infinite}
+@keyframes kit-b8-n-app{0%{filter:none}8.34%{filter:none}16.67%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}25%{filter:none}25%{filter:none}33.33%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}41.66%{filter:none}100%{filter:none}}
+#kit-b8-play:checked ~ * [data-node="app"]{animation:kit-b8-n-app var(--cycle) linear infinite}
+@keyframes kit-b8-n-cmd{0%{filter:none}58.34%{filter:none}66.67%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}75%{filter:none}100%{filter:none}}
+#kit-b8-play:checked ~ * [data-node="cmd"]{animation:kit-b8-n-cmd var(--cycle) linear infinite}
+@keyframes kit-b8-n-dict{0%{filter:none}41.67%{filter:none}50%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}58.33%{filter:none}100%{filter:none}}
+#kit-b8-play:checked ~ * [data-node="dict"]{animation:kit-b8-n-dict var(--cycle) linear infinite}
+@keyframes kit-b8-n-files{0%{filter:none}75%{filter:none}83.33%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}91.66%{filter:none}100%{filter:none}}
+#kit-b8-play:checked ~ * [data-node="files"]{animation:kit-b8-n-files var(--cycle) linear infinite}
+#kit-b8-play:checked ~ * .kit-blink{animation:kit-blink .45s ease-in-out infinite alternate}
+#kit-b8-x05:checked ~ *{--cycle:10.8s}
+#kit-b8-x05:checked ~ .kit-speed label[for="kit-b8-x05"]{color:var(--fg);font-weight:600}
+#kit-b8-x05:checked ~ .kit-speed label[for="kit-b8-x05"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b8-x1:checked ~ *{--cycle:5.4s}
+#kit-b8-x1:checked ~ .kit-speed label[for="kit-b8-x1"]{color:var(--fg);font-weight:600}
+#kit-b8-x1:checked ~ .kit-speed label[for="kit-b8-x1"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b8-x15:checked ~ *{--cycle:3.6s}
+#kit-b8-x15:checked ~ .kit-speed label[for="kit-b8-x15"]{color:var(--fg);font-weight:600}
+#kit-b8-x15:checked ~ .kit-speed label[for="kit-b8-x15"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b8-x2:checked ~ *{--cycle:2.7s}
+#kit-b8-x2:checked ~ .kit-speed label[for="kit-b8-x2"]{color:var(--fg);font-weight:600}
+#kit-b8-x2:checked ~ .kit-speed label[for="kit-b8-x2"]::before{background:var(--focus);border-color:var(--focus)}
+</style><input type="checkbox" class="kit-play" id="kit-b8-play" aria-label="play the animation"><label for="kit-b8-play" class="kit-play-btn"></label><input type="radio" class="kit-speed-in" name="kit-b8-speed" id="kit-b8-x05" aria-label="speed 0.5×"><input type="radio" class="kit-speed-in" name="kit-b8-speed" id="kit-b8-x1" checked aria-label="speed 1×"><input type="radio" class="kit-speed-in" name="kit-b8-speed" id="kit-b8-x15" aria-label="speed 1.5×"><input type="radio" class="kit-speed-in" name="kit-b8-speed" id="kit-b8-x2" aria-label="speed 2×"><span class="kit-speed" role="group" aria-label="playback speed"><label for="kit-b8-x05">0.5×</label><label for="kit-b8-x1">1×</label><label for="kit-b8-x15">1.5×</label><label for="kit-b8-x2">2×</label></span><h3>Running processes</h3><figure><svg viewBox="0 0 1046.06 416" width="1046.06" role="img" aria-label="Running processes" font-family="system-ui,-apple-system,sans-serif"><g data-node="user"><circle cx="152.55" cy="88" r="6" fill="var(--clientbg)" stroke="var(--client)" stroke-width="1.5"/><path d="M152.55 94V106M142.55 98H162.55M144.55 116L152.55 106L160.55 116" fill="none" stroke="var(--client)" stroke-width="1.5" stroke-linecap="round"/><text x="152.55" y="148" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">User</text><text x="152.55" y="164" font-size="11" fill="var(--clientt)" text-anchor="middle">[Person]</text><text x="152.55" y="176" font-size="10" fill="var(--mut)" text-anchor="middle">hotkey, voice, menu</text></g><g data-node="app"><rect x="305.1" y="80" width="248.92" height="106" rx="8" fill="var(--clientbg)" stroke="var(--client)" stroke-width="1.5"/><text x="429.56" y="130" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">voicepuncher</text><text x="429.56" y="146" font-size="11" fill="var(--clientt)" text-anchor="middle">[Container: menu bar app]</text><text x="429.56" y="176" font-size="10" fill="var(--mut)" text-anchor="middle">records, pastes, shows</text></g><g data-node="kws"><rect x="738.02" y="80" width="228.04" height="106" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="852.04" y="130" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">command spotting</text><text x="852.04" y="146" font-size="11" fill="var(--svct)" text-anchor="middle">[Container: :8082 sherpa-onnx]</text><text x="852.04" y="176" font-size="10" fill="var(--mut)" text-anchor="middle">spots voice commands</text></g><g data-node="dict"><rect x="305.1" y="266" width="248.92" height="70" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="429.56" y="298" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">whisper-server ×3</text><text x="429.56" y="314" font-size="11" fill="var(--svct)" text-anchor="middle">[Container: large-v3-turbo, Metal]</text><text x="429.56" y="326" font-size="10" fill="var(--mut)" text-anchor="middle">address :8081, copies :18082–18084</text></g><g data-node="cmd"><rect x="738.02" y="266" width="228.04" height="70" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="852.04" y="298" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">whisper-server-commands ×3</text><text x="852.04" y="314" font-size="11" fill="var(--svct)" text-anchor="middle">[Container: small, Metal]</text><text x="852.04" y="326" font-size="10" fill="var(--mut)" text-anchor="middle">address :8085, copies :18086–18088</text></g><g data-node="files"><path d="M80 274a72.55 8 0 0 0 145.1 0v54a72.55 8 0 0 1 -145.1 0z" fill="var(--storebg)" stroke="var(--store)" stroke-width="1.5"/><ellipse cx="152.55" cy="274" rx="72.55" ry="8" fill="var(--storebg)" stroke="var(--store)" stroke-width="1.5"/><text x="152.55" y="302" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">~/.voicepuncher</text><text x="152.55" y="318" font-size="11" fill="var(--storet)" text-anchor="middle">[Database: files]</text><text x="152.55" y="326" font-size="10" fill="var(--mut)" text-anchor="middle">models and logs</text></g><g id="kit-b8-e1" data-step="1" data-from="user" data-to="app"><path class="link" d="M219.65 133H305.1" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b8-e1-dot" r="4" fill="var(--fg)" style="offset-path:path('M219.65 133H305.1')"/><text data-step="1" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="242.375" y="129" font-size="11" fill="var(--fg)" text-anchor="middle">speaks [hotkey]</text><g id="kit-b8-e2" data-step="2" data-from="app" data-to="kws" data-stream="1"><path class="link" d="M554.02 133H738.02" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)" stroke-dasharray="5 3"/></g><circle class="kit-dot" id="kit-b8-e2-dot" r="4" fill="var(--fg)" style="offset-path:path('M554.02 133H738.02')"/><circle class="kit-dot" id="kit-b8-e2-dot2" r="4" fill="var(--fg)" style="offset-path:path('M554.02 133H738.02')"/><circle class="kit-dot" id="kit-b8-e2-dot3" r="4" fill="var(--fg)" style="offset-path:path('M554.02 133H738.02')"/><text data-step="2" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="646.02" y="129" font-size="11" fill="var(--fg)" text-anchor="middle">microphone stream [WebSocket]</text><g id="kit-b8-e3" data-step="3" data-from="app" data-to="dict"><path class="link" d="M429.56 186V266" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b8-e3-dot" r="4" fill="var(--fg)" style="offset-path:path('M429.56 186V266')"/><text data-step="3" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="429.56" y="222" font-size="11" fill="var(--fg)" text-anchor="middle">transcribe [HTTP, copy pool]</text><g id="kit-b8-e4" data-step="4" data-from="kws" data-to="cmd"><path class="link" d="M852.04 186V266" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b8-e4-dot" r="4" fill="var(--fg)" style="offset-path:path('M852.04 186V266')"/><text data-step="4" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="852.04" y="222" font-size="11" fill="var(--fg)" text-anchor="middle">confirm [HTTP, copy pool]</text><g id="kit-b8-e5" data-step="5" data-from="app" data-to="files"><path class="link" d="M305.1 133H265.1V226H152.55V266" fill="none" stroke="var(--fg)" stroke-width="1.6" marker-end="url(#m-fg)"/></g><circle class="kit-dot" id="kit-b8-e5-dot" r="4" fill="var(--fg)" style="offset-path:path('M305.1 133H265.1V226H152.55V266')"/><text data-step="5" stroke="var(--card)" stroke-width="4" paint-order="stroke" x="208.82500000000002" y="222" font-size="11" fill="var(--fg)" text-anchor="middle">reads / writes</text></svg></figure><p class="note">The app and the three local services; each speech service runs three copies, one request per copy</p></div></div><!--/kit-render-->
+
+<pre class="kit" data-kind="sequence" data-kit-hash="66a5b95b1433" hidden>
+title: One dictation
+caption: From the hotkey press to the text at the cursor
+participants:
+  - {id: user, text: User, type: actor}
+  - {id: ptt, text: ptt adapter}
+  - {id: pipe, text: Pipeline}
+  - {id: rec, text: recording}
+  - {id: stt, text: whisper-server}
+  - {id: paste, text: textpasting}
+steps:
+  - {from: user, to: ptt, text: holds the hotkey}
+  - {from: ptt, to: pipe, text: Pressed}
+  - {from: pipe, to: rec, text: start recording}
+  - {from: user, to: ptt, text: releases}
+  - {from: ptt, to: pipe, text: Released}
+  - {from: pipe, to: stt, text: &#34;chunks, HTTP&#34;}
+  - {from: stt, to: pipe, text: raw transcript, type: return}
+  - {from: pipe, to: paste, text: cleaned text}
+  - {from: paste, to: user, text: text at the cursor, type: return}
+</pre>
+<div class="kit-render" id="kit-b9"><div class="kit-anim" style="--cycle:9s"><style>.kit-anim{position:relative;display:flex;flex-flow:row wrap;align-items:center;column-gap:14px}
+.kit-anim>*{order:2;flex:0 0 100%}
+.kit-anim>h3{order:0}
+.kit-play,.kit-speed-in{position:absolute;opacity:0;width:1px;height:1px}
+.kit-play-btn{order:1;flex:0 0 auto;display:inline-block;cursor:pointer;border:1px solid var(--line);border-radius:14px;padding:2px 12px;margin:4px 0;font-size:13px;color:var(--fg);background:var(--card);user-select:none}
+.kit-play-btn::before{content:"\25B6  Play"}
+.kit-play:checked+.kit-play-btn::before{content:"\25A0  Stop"}
+.kit-play:focus-visible+.kit-play-btn{outline:2px solid var(--focus)}
+.kit-speed{order:1;flex:0 0 auto;display:inline-flex;margin:4px 0;font-size:11px;color:var(--mut);user-select:none;background:linear-gradient(var(--line),var(--line)) no-repeat 50% 6px/calc(100% - 36px) 2px}
+.kit-speed label{display:inline-flex;flex-direction:column;align-items:center;gap:2px;min-width:36px;cursor:pointer}
+.kit-speed label::before{content:"";width:10px;height:10px;border-radius:50%;border:2px solid var(--line);background:var(--card)}
+.kit-speed-in:focus-visible~.kit-speed{outline:2px solid var(--focus);outline-offset:2px}
+.kit-dot,.kit-later{opacity:0}
+.kit-anim [data-stream] path{animation:kit-stream .8s linear infinite}
+@keyframes kit-stream{to{stroke-dashoffset:16}}
+.kit-grow{transform-box:fill-box;transform-origin:left center}
+@keyframes kit-blink{to{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.kit-anim *{animation-name:none!important}}
+@keyframes kit-b9-e1-dot{0%{offset-distance:0%;opacity:1}10%{offset-distance:100%;opacity:1}10.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b9-e1-dash{0%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}10%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}10.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b9-play:checked ~ * #kit-b9-e1-dot{animation:kit-b9-e1-dot var(--cycle) linear infinite}
+#kit-b9-play:checked ~ * #kit-b9-e1 path{animation:kit-b9-e1-dash var(--cycle) linear infinite}
+@keyframes kit-b9-e2-dot{0%,10%{offset-distance:0%;opacity:0}10.01%{offset-distance:0%;opacity:1}20%{offset-distance:100%;opacity:1}20.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b9-e2-dash{0%,10%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}10.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}20%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}20.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b9-play:checked ~ * #kit-b9-e2-dot{animation:kit-b9-e2-dot var(--cycle) linear infinite}
+#kit-b9-play:checked ~ * #kit-b9-e2 path{animation:kit-b9-e2-dash var(--cycle) linear infinite}
+@keyframes kit-b9-e3-dot{0%,20%{offset-distance:0%;opacity:0}20.01%{offset-distance:0%;opacity:1}30%{offset-distance:100%;opacity:1}30.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b9-e3-dash{0%,20%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}20.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}30%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}30.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b9-play:checked ~ * #kit-b9-e3-dot{animation:kit-b9-e3-dot var(--cycle) linear infinite}
+#kit-b9-play:checked ~ * #kit-b9-e3 path{animation:kit-b9-e3-dash var(--cycle) linear infinite}
+@keyframes kit-b9-e4-dot{0%,30%{offset-distance:0%;opacity:0}30.01%{offset-distance:0%;opacity:1}40%{offset-distance:100%;opacity:1}40.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b9-e4-dash{0%,30%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}30.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}40%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}40.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b9-play:checked ~ * #kit-b9-e4-dot{animation:kit-b9-e4-dot var(--cycle) linear infinite}
+#kit-b9-play:checked ~ * #kit-b9-e4 path{animation:kit-b9-e4-dash var(--cycle) linear infinite}
+@keyframes kit-b9-e5-dot{0%,40%{offset-distance:0%;opacity:0}40.01%{offset-distance:0%;opacity:1}50%{offset-distance:100%;opacity:1}50.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b9-e5-dash{0%,40%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}40.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}50%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}50.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b9-play:checked ~ * #kit-b9-e5-dot{animation:kit-b9-e5-dot var(--cycle) linear infinite}
+#kit-b9-play:checked ~ * #kit-b9-e5 path{animation:kit-b9-e5-dash var(--cycle) linear infinite}
+@keyframes kit-b9-e6-dot{0%,50%{offset-distance:0%;opacity:0}50.01%{offset-distance:0%;opacity:1}60%{offset-distance:100%;opacity:1}60.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b9-e6-dash{0%,50%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}50.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}60%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}60.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b9-play:checked ~ * #kit-b9-e6-dot{animation:kit-b9-e6-dot var(--cycle) linear infinite}
+#kit-b9-play:checked ~ * #kit-b9-e6 path{animation:kit-b9-e6-dash var(--cycle) linear infinite}
+@keyframes kit-b9-e7-dot{0%,60%{offset-distance:0%;opacity:0}60.01%{offset-distance:0%;opacity:1}70%{offset-distance:100%;opacity:1}70.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b9-e7-dash{0%,60%{stroke-dasharray:5 4;stroke-dashoffset:0;stroke-width:1.6}60.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}70%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}70.01%,100%{stroke-dasharray:5 4;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b9-play:checked ~ * #kit-b9-e7-dot{animation:kit-b9-e7-dot var(--cycle) linear infinite}
+#kit-b9-play:checked ~ * #kit-b9-e7 path{animation:kit-b9-e7-dash var(--cycle) linear infinite}
+@keyframes kit-b9-e8-dot{0%,70%{offset-distance:0%;opacity:0}70.01%{offset-distance:0%;opacity:1}80%{offset-distance:100%;opacity:1}80.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b9-e8-dash{0%,70%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}70.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}80%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}80.01%,100%{stroke-dasharray:none;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b9-play:checked ~ * #kit-b9-e8-dot{animation:kit-b9-e8-dot var(--cycle) linear infinite}
+#kit-b9-play:checked ~ * #kit-b9-e8 path{animation:kit-b9-e8-dash var(--cycle) linear infinite}
+@keyframes kit-b9-e9-dot{0%,80%{offset-distance:0%;opacity:0}80.01%{offset-distance:0%;opacity:1}90%{offset-distance:100%;opacity:1}90.01%,100%{offset-distance:100%;opacity:0}}
+@keyframes kit-b9-e9-dash{0%,80%{stroke-dasharray:5 4;stroke-dashoffset:0;stroke-width:1.6}80.01%{stroke-dasharray:8 5;stroke-dashoffset:0;stroke-width:2}90%{stroke-dasharray:8 5;stroke-dashoffset:-26;stroke-width:2}90.01%,100%{stroke-dasharray:5 4;stroke-dashoffset:0;stroke-width:1.6}}
+#kit-b9-play:checked ~ * #kit-b9-e9-dot{animation:kit-b9-e9-dot var(--cycle) linear infinite}
+#kit-b9-play:checked ~ * #kit-b9-e9 path{animation:kit-b9-e9-dash var(--cycle) linear infinite}
+@keyframes kit-b9-n-paste{0%{filter:none}75%{filter:none}80%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}85%{filter:none}100%{filter:none}}
+#kit-b9-play:checked ~ * [data-node="paste"]{animation:kit-b9-n-paste var(--cycle) linear infinite}
+@keyframes kit-b9-n-pipe{0%{filter:none}15%{filter:none}20%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}25%{filter:none}45%{filter:none}50%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}55%{filter:none}65%{filter:none}70%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}75%{filter:none}100%{filter:none}}
+#kit-b9-play:checked ~ * [data-node="pipe"]{animation:kit-b9-n-pipe var(--cycle) linear infinite}
+@keyframes kit-b9-n-ptt{0%{filter:none}5%{filter:none}10%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}15%{filter:none}35%{filter:none}40%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}45%{filter:none}100%{filter:none}}
+#kit-b9-play:checked ~ * [data-node="ptt"]{animation:kit-b9-n-ptt var(--cycle) linear infinite}
+@keyframes kit-b9-n-rec{0%{filter:none}25%{filter:none}30%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}35%{filter:none}100%{filter:none}}
+#kit-b9-play:checked ~ * [data-node="rec"]{animation:kit-b9-n-rec var(--cycle) linear infinite}
+@keyframes kit-b9-n-stt{0%{filter:none}55%{filter:none}60%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}65%{filter:none}100%{filter:none}}
+#kit-b9-play:checked ~ * [data-node="stt"]{animation:kit-b9-n-stt var(--cycle) linear infinite}
+@keyframes kit-b9-n-user{0%{filter:none}85%{filter:none}90%{filter:drop-shadow(0 0 8px var(--focus)) brightness(1.35)}95%{filter:none}100%{filter:none}}
+#kit-b9-play:checked ~ * [data-node="user"]{animation:kit-b9-n-user var(--cycle) linear infinite}
+#kit-b9-play:checked ~ * .kit-blink{animation:kit-blink .45s ease-in-out infinite alternate}
+#kit-b9-x05:checked ~ *{--cycle:18s}
+#kit-b9-x05:checked ~ .kit-speed label[for="kit-b9-x05"]{color:var(--fg);font-weight:600}
+#kit-b9-x05:checked ~ .kit-speed label[for="kit-b9-x05"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b9-x1:checked ~ *{--cycle:9s}
+#kit-b9-x1:checked ~ .kit-speed label[for="kit-b9-x1"]{color:var(--fg);font-weight:600}
+#kit-b9-x1:checked ~ .kit-speed label[for="kit-b9-x1"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b9-x15:checked ~ *{--cycle:6s}
+#kit-b9-x15:checked ~ .kit-speed label[for="kit-b9-x15"]{color:var(--fg);font-weight:600}
+#kit-b9-x15:checked ~ .kit-speed label[for="kit-b9-x15"]::before{background:var(--focus);border-color:var(--focus)}
+#kit-b9-x2:checked ~ *{--cycle:4.5s}
+#kit-b9-x2:checked ~ .kit-speed label[for="kit-b9-x2"]{color:var(--fg);font-weight:600}
+#kit-b9-x2:checked ~ .kit-speed label[for="kit-b9-x2"]::before{background:var(--focus);border-color:var(--focus)}
+</style><input type="checkbox" class="kit-play" id="kit-b9-play" aria-label="play the animation"><label for="kit-b9-play" class="kit-play-btn"></label><input type="radio" class="kit-speed-in" name="kit-b9-speed" id="kit-b9-x05" aria-label="speed 0.5×"><input type="radio" class="kit-speed-in" name="kit-b9-speed" id="kit-b9-x1" checked aria-label="speed 1×"><input type="radio" class="kit-speed-in" name="kit-b9-speed" id="kit-b9-x15" aria-label="speed 1.5×"><input type="radio" class="kit-speed-in" name="kit-b9-speed" id="kit-b9-x2" aria-label="speed 2×"><span class="kit-speed" role="group" aria-label="playback speed"><label for="kit-b9-x05">0.5×</label><label for="kit-b9-x1">1×</label><label for="kit-b9-x15">1.5×</label><label for="kit-b9-x2">2×</label></span><h3>One dictation</h3><figure><svg viewBox="0 0 1097.3600000000001 498" width="1097.3600000000001" role="img" aria-label="One dictation" font-family="system-ui,-apple-system,sans-serif"><g data-node="user"><path class="lifeline" d="M104.78 86V482" stroke="var(--line)" stroke-dasharray="4 4"/><circle cx="104.78" cy="23" r="7" fill="none" stroke="var(--fg)" stroke-width="1.5"/><path d="M104.78 30v8m-9-4h18" stroke="var(--fg)" stroke-width="1.5"/><rect x="24" y="42" width="161.56" height="44" rx="8" fill="var(--clientbg)" stroke="var(--client)" stroke-width="1.5"/><text x="104.78" y="69" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">User</text></g><g data-node="ptt"><path class="lifeline" d="M282.34000000000003 86V482" stroke="var(--line)" stroke-dasharray="4 4"/><rect x="201.56000000000003" y="42" width="161.56" height="44" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="282.34000000000003" y="69" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">ptt adapter</text></g><g data-node="pipe"><path class="lifeline" d="M459.9 86V482" stroke="var(--line)" stroke-dasharray="4 4"/><rect x="379.12" y="42" width="161.56" height="44" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="459.9" y="69" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">Pipeline</text></g><g data-node="rec"><path class="lifeline" d="M637.46 86V482" stroke="var(--line)" stroke-dasharray="4 4"/><rect x="556.6800000000001" y="42" width="161.56" height="44" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="637.46" y="69" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">recording</text></g><g data-node="stt"><path class="lifeline" d="M815.02 86V482" stroke="var(--line)" stroke-dasharray="4 4"/><rect x="734.24" y="42" width="161.56" height="44" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="815.02" y="69" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">whisper-server</text></g><g data-node="paste"><path class="lifeline" d="M992.58 86V482" stroke="var(--line)" stroke-dasharray="4 4"/><rect x="911.8000000000001" y="42" width="161.56" height="44" rx="8" fill="var(--svcbg)" stroke="var(--svc)" stroke-width="1.5"/><text x="992.58" y="69" font-size="13" fill="var(--fg)" text-anchor="middle" font-weight="600">textpasting</text></g><g id="kit-b9-e1" data-step="1" data-from="user" data-to="ptt"><path class="link" d="M104.78 126H282.34000000000003" fill="none" stroke="var(--old)" stroke-width="1.6" marker-end="url(#m-old)"/></g><circle class="kit-dot" id="kit-b9-e1-dot" r="4" fill="var(--old)" style="offset-path:path('M104.78 126H282.34000000000003')"/><text data-step="1" x="193.56" y="120" font-size="11" fill="var(--fg)" text-anchor="middle">1. holds the hotkey</text><g id="kit-b9-e2" data-step="2" data-from="ptt" data-to="pipe"><path class="link" d="M282.34000000000003 166H459.9" fill="none" stroke="var(--old)" stroke-width="1.6" marker-end="url(#m-old)"/></g><circle class="kit-dot" id="kit-b9-e2-dot" r="4" fill="var(--old)" style="offset-path:path('M282.34000000000003 166H459.9')"/><text data-step="2" x="371.12" y="160" font-size="11" fill="var(--fg)" text-anchor="middle">2. Pressed</text><g id="kit-b9-e3" data-step="3" data-from="pipe" data-to="rec"><path class="link" d="M459.9 206H637.46" fill="none" stroke="var(--old)" stroke-width="1.6" marker-end="url(#m-old)"/></g><circle class="kit-dot" id="kit-b9-e3-dot" r="4" fill="var(--old)" style="offset-path:path('M459.9 206H637.46')"/><text data-step="3" x="548.6800000000001" y="200" font-size="11" fill="var(--fg)" text-anchor="middle">3. start recording</text><g id="kit-b9-e4" data-step="4" data-from="user" data-to="ptt"><path class="link" d="M104.78 246H282.34000000000003" fill="none" stroke="var(--old)" stroke-width="1.6" marker-end="url(#m-old)"/></g><circle class="kit-dot" id="kit-b9-e4-dot" r="4" fill="var(--old)" style="offset-path:path('M104.78 246H282.34000000000003')"/><text data-step="4" x="193.56" y="240" font-size="11" fill="var(--fg)" text-anchor="middle">4. releases</text><g id="kit-b9-e5" data-step="5" data-from="ptt" data-to="pipe"><path class="link" d="M282.34000000000003 286H459.9" fill="none" stroke="var(--old)" stroke-width="1.6" marker-end="url(#m-old)"/></g><circle class="kit-dot" id="kit-b9-e5-dot" r="4" fill="var(--old)" style="offset-path:path('M282.34000000000003 286H459.9')"/><text data-step="5" x="371.12" y="280" font-size="11" fill="var(--fg)" text-anchor="middle">5. Released</text><g id="kit-b9-e6" data-step="6" data-from="pipe" data-to="stt"><path class="link" d="M459.9 326H815.02" fill="none" stroke="var(--old)" stroke-width="1.6" marker-end="url(#m-old)"/></g><circle class="kit-dot" id="kit-b9-e6-dot" r="4" fill="var(--old)" style="offset-path:path('M459.9 326H815.02')"/><text data-step="6" x="637.46" y="320" font-size="11" fill="var(--fg)" text-anchor="middle">6. chunks, HTTP</text><g id="kit-b9-e7" data-step="7" data-from="stt" data-to="pipe"><path class="link" d="M815.02 366H459.9" fill="none" stroke="var(--old)" stroke-width="1.6" marker-end="url(#open-old)" stroke-dasharray="5 4"/></g><circle class="kit-dot" id="kit-b9-e7-dot" r="4" fill="var(--old)" style="offset-path:path('M815.02 366H459.9')"/><text data-step="7" x="637.46" y="360" font-size="11" fill="var(--fg)" text-anchor="middle">7. raw transcript</text><g id="kit-b9-e8" data-step="8" data-from="pipe" data-to="paste"><path class="link" d="M459.9 406H992.58" fill="none" stroke="var(--old)" stroke-width="1.6" marker-end="url(#m-old)"/></g><circle class="kit-dot" id="kit-b9-e8-dot" r="4" fill="var(--old)" style="offset-path:path('M459.9 406H992.58')"/><text data-step="8" x="726.24" y="400" font-size="11" fill="var(--fg)" text-anchor="middle">8. cleaned text</text><g id="kit-b9-e9" data-step="9" data-from="paste" data-to="user"><path class="link" d="M992.58 446H104.78" fill="none" stroke="var(--old)" stroke-width="1.6" marker-end="url(#open-old)" stroke-dasharray="5 4"/></g><circle class="kit-dot" id="kit-b9-e9-dot" r="4" fill="var(--old)" style="offset-path:path('M992.58 446H104.78')"/><text data-step="9" x="548.6800000000001" y="440" font-size="11" fill="var(--fg)" text-anchor="middle">9. text at the cursor</text></svg></figure><p class="note">From the hotkey press to the text at the cursor</p></div></div><!--/kit-render-->
+
+<h2>Where to read more</h2>
+<ul>
+<li><a href="overview.md">overview.md</a> — the decisions behind the architecture.</li>
+<li><a href="../project-map.md">project-map.md</a> — every folder and module.</li>
+<li><a href="../ubiquitous-language.md">ubiquitous-language.md</a> — the terms used on this page.</li>
+</ul>
+</main>
+</body></html>
