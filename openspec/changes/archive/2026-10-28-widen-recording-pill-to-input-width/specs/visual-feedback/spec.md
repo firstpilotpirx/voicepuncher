@@ -29,9 +29,9 @@ While a recording runs, the overlay SHALL show a red record dot inside a ring, p
 - **WHEN** the user starts a recording
 - **THEN** the record sign and the dotted waveform appear in the same frame, with no empty waveform before them
 
-#### Scenario: The waveform still shows speech from 22 seconds ago
+#### Scenario: The waveform still shows speech from 22.5 seconds ago
 - **GIVEN** a recording runs with a second of speech
-- **WHEN** the user stays silent for 22 s
+- **WHEN** the user stays silent for 22.5 s
 - **THEN** the waveform's oldest column is still that speech
 
 #### Scenario: The waveform keeps the last six seconds

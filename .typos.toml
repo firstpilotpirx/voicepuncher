@@ -11,3 +11,7 @@ PN = "PN"
 Speaches = "Speaches"
 # "look-alikes" in archived proposals
 alikes = "alikes"
+
+[files]
+# Chat images saved under hex names (`kit chat-images`); a name such as a33c58ba3949 is no word
+extend-exclude = ["openspec/**/assets/"]

@@ -10,10 +10,10 @@ pub const COLUMN_PITCH_PT: f32 = 4.0;
 pub const MIN_HEIGHT_PT: f32 = 2.0;
 /// Height of a column at full loudness, in points.
 pub const MAX_HEIGHT_PT: f32 = 28.0;
-/// Columns of a waveform that has the pill to itself: the last 17.6 s.
-pub const FULL_CAPACITY: usize = 160;
+/// Columns of a waveform that has the pill to itself: the last 23.1 s.
+pub const FULL_CAPACITY: usize = 210;
 /// Columns of a waveform that shares the pill with the commands-unavailable sign.
-pub const CAPACITY_BESIDE_SIGN: usize = 148;
+pub const CAPACITY_BESIDE_SIGN: usize = 196;
 
 const RISE_RATE: f32 = 0.6;
 const FALL_RATE: f32 = 0.3;
@@ -214,24 +214,24 @@ mod tests {
     }
 
     #[test]
-    fn should_still_show_speech_from_less_than_eighteen_seconds_ago() {
+    fn should_still_show_speech_from_less_than_twenty_three_seconds_ago() {
         // Given
         let mut history = LevelHistory::new(FULL_CAPACITY, Duration::ZERO);
         feed(&mut history, SPEECH_RMS, Duration::ZERO, secs(1.0));
         // When
-        feed(&mut history, SILENCE_RMS, secs(1.0), secs(18.0));
+        feed(&mut history, SILENCE_RMS, secs(1.0), secs(23.5));
         // Then
         let oldest = heights(&history)[0];
         assert!(oldest > 0.9 * MAX_HEIGHT_PT, "oldest column {oldest}");
     }
 
     #[test]
-    fn should_forget_speech_older_than_eighteen_seconds() {
+    fn should_forget_speech_older_than_twenty_three_seconds() {
         // Given
         let mut history = LevelHistory::new(FULL_CAPACITY, Duration::ZERO);
         feed(&mut history, SPEECH_RMS, Duration::ZERO, secs(20.0));
         // When
-        feed(&mut history, SILENCE_RMS, secs(20.0), secs(39.0));
+        feed(&mut history, SILENCE_RMS, secs(20.0), secs(44.0));
         // Then
         assert_eq!(heights(&history), vec![MIN_HEIGHT_PT; FULL_CAPACITY]);
     }

@@ -40,4 +40,4 @@ Out of scope: pill height, colors, waveform pitch and column shape, the transcri
 ## Release
 
 SemVer: PATCH — a visual adjustment of an existing capability.
-Target version: 0.41.4.
+Target version: 0.41.5.

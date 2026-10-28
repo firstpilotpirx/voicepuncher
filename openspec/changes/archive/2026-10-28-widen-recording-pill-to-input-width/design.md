@@ -15,7 +15,7 @@ The scenario names "The waveform keeps the last six seconds" and "The recording 
 | Quiet and loud speech leave columns of different heights | unit, unchanged |
 | A new recording starts with a dotted waveform | unit, unchanged |
 | The waveform shows together with the record sign | component `.feature`, unchanged |
-| The waveform still shows speech from 22 seconds ago | unit (`level_history`): one second of speech, then 22 s of silence |
+| The waveform still shows speech from 22.5 seconds ago | unit (`level_history`): one second of speech, then 22.5 s of silence |
 | The waveform keeps the last six seconds | unit (`level_history`): 20 s of speech, then 24 s of silence |
 | The waveform moves at half its former pace | unit, unchanged |
 | The record dot pulses in silence too | unit, unchanged |

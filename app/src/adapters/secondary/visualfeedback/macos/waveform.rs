@@ -156,16 +156,16 @@ mod tests {
     #[test]
     fn should_be_as_wide_as_its_columns_four_points_apart() {
         assert!(
-            (waveform_width(160) - 638.0).abs() < 1e-6,
+            (waveform_width(210) - 838.0).abs() < 1e-6,
             "{} is not {}",
-            waveform_width(160),
-            638.0
+            waveform_width(210),
+            838.0
         );
         assert!(
-            (waveform_width(148) - 590.0).abs() < 1e-6,
+            (waveform_width(196) - 782.0).abs() < 1e-6,
             "{} is not {}",
-            waveform_width(148),
-            590.0
+            waveform_width(196),
+            782.0
         );
     }
 

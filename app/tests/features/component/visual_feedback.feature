@@ -107,7 +107,7 @@ Feature: visual-feedback
     Scenario: The recording pill is as long as ChatGPT's dictation bar
       Given the overlay is ready
       When a recording starts on the overlay
-      Then the pill is 727 points wide
+      Then the pill is 922 points wide
 
   Rule: The text window shows only during a recording
 
