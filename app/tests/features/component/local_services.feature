@@ -205,3 +205,35 @@ Feature: local-services
       Given another program that is no speech recognition service listens on the own port of the speech recognition service, which runs as one copy
       When a client of the service transcribes two dictations
       Then the log holds one warning naming that port, the program's name and its process id
+
+  Rule: Voice control passes over a copy of another protocol version
+
+    Scenario: One of two copies speaks an older protocol version
+      Given two copies of the command spotting service answer and the first speaks an older protocol version
+      When voice control connects
+      Then it is served by the second copy and a spoken command is carried out
+
+  Rule: A command spotting copy of another protocol version is replaced
+
+    Scenario: A copy left by an older app is replaced at launch
+      Given a copy of the command spotting service left by an older app runs on its port
+      When the app supervises the services it needs
+      Then the app has stopped that copy and started its own copy on that port, which answers
+      And the log names the port, the old and the new protocol version in one line
+
+    Scenario: A copy of the same protocol version is adopted as before
+      Given a copy of the command spotting service of the app's protocol version runs on its port
+      When the app supervises the services it needs
+      Then the app adopts that copy and starts none of its own
+
+    Scenario: Another program refusing the app's protocol is not stopped
+      Given another program that refuses the app's protocol version holds the command spotting port
+      When the app supervises the services it needs
+      Then the other program keeps running and the service failed with a reason naming the port
+
+  Rule: A protocol refusal while voice control runs replaces the copy
+
+    Scenario: A stale copy appears after the app started
+      Given the app adopted a copy of the command spotting service, then one of an older protocol version took its place
+      When voice control connects to that copy and is refused for its protocol version
+      Then the app has stopped that copy and started its own copy on that port, which answers

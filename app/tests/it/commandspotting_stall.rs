@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use voicepuncher::adapters::secondary::commandspotting::websocket::test_stream::{
-    open_stream, OpenStream,
+    open_stream, take_greeting, OpenStream,
 };
 
 use tungstenite::Message;
@@ -79,10 +79,11 @@ fn service_sending_once(event: &'static str) -> (String, Arc<AtomicUsize>) {
     (url, accepted)
 }
 
-/// Sends `event` when there is one, then reads until the app leaves.
+/// Takes the greeting, sends `event` when there is one, then reads until the app leaves.
 fn serve(stream: std::net::TcpStream, event: Option<&str>) {
     let mut socket = tungstenite::accept(stream).unwrap();
     socket.get_ref().set_read_timeout(Some(READ_WAIT)).unwrap();
+    take_greeting(&mut socket);
     if let Some(event) = event {
         socket.send(Message::text(event)).unwrap();
     }

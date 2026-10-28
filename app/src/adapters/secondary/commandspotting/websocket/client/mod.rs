@@ -17,9 +17,12 @@ mod events;
 
 use events::{to_spotting_event, verdict_line, ServiceEvent};
 
+mod greeting;
+
+pub use greeting::{protocol_at, Greeting};
 mod handshake;
 
-use handshake::handshake_any;
+use handshake::greeted_any;
 
 /// How long a read waits for an event before the caller gets control back.
 const READ_WAIT: Duration = Duration::from_millis(10);
@@ -35,7 +38,7 @@ const PING_EVERY: Duration = Duration::from_secs(1);
 const SILENCE_LIMIT: Duration = Duration::from_secs(5);
 const SAMPLE_BYTES: usize = 4;
 /// The version of the command spotting protocol the client speaks, said in its `hello`.
-const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 3;
 
 pub struct SpottingClient {
     socket: WebSocket<MaybeTlsStream<TcpStream>>,
@@ -54,7 +57,17 @@ impl SpottingClient {
     /// Connects to the service at its own port, else to the first of its copies that
     /// answers; `audio_start` is when the first sample to be sent was captured.
     pub fn connect(url: &str, audio_start: Instant) -> Result<Self> {
-        let mut socket = handshake_any(url).with_context(|| {
+        Self::connect_reporting(url, audio_start, &|_| {})
+    }
+
+    /// Connects as [`SpottingClient::connect`] does, handing `refused` the port of every copy
+    /// passed over for its protocol version.
+    pub fn connect_reporting(
+        url: &str,
+        audio_start: Instant,
+        refused: &dyn Fn(u16),
+    ) -> Result<Self> {
+        let socket = greeted_any(url, refused).with_context(|| {
             format!(
                 "command spotting service not reachable at {url} — run 'just start-model-servers'"
             )
@@ -63,8 +76,6 @@ impl SpottingClient {
             stream.set_read_timeout(Some(READ_WAIT))?;
             stream.set_write_timeout(Some(WRITE_WAIT))?;
         }
-        let hello = serde_json::json!({ "type": "hello", "version": PROTOCOL_VERSION });
-        socket.send(Message::text(hello.to_string()))?;
         Ok(Self {
             socket,
             audio_start,
@@ -73,6 +84,15 @@ impl SpottingClient {
             answer_waits: 0,
             confirm: true,
         })
+    }
+
+    /// The port of the copy that serves this connection.
+    #[must_use]
+    pub fn peer_port(&self) -> Option<u16> {
+        match self.socket.get_ref() {
+            MaybeTlsStream::Plain(stream) => stream.peer_addr().ok().map(|addr| addr.port()),
+            _ => None,
+        }
     }
 
     /// Has the service confirm commands before it reports them, or not, from the next

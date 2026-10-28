@@ -73,8 +73,10 @@ impl CommandSpotter for StreamingSpotter {
         let heard = self.heard.take().context("the sound is already in use")?;
         let (native_rate, captured_from) = (self.source)();
         let audio = MicrophoneAudio { audio: heard, native_rate, captured_from };
-        let service =
-            SpottingService { url: self.url.clone(), confirm_commands: self.confirm_commands };
+        let service = SpottingService {
+            confirm_commands: self.confirm_commands,
+            ..SpottingService::from(&self.url)
+        };
         let stream = AudioStream::start(service, commands, audio, self.inputs.clone())?;
         self.stream = Some(stream);
         self.events.lock().unwrap().push(Event::Listening);

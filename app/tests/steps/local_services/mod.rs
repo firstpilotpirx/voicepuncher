@@ -12,6 +12,7 @@ mod foreign_program;
 mod home;
 mod hung_steps;
 mod scripts;
+mod stale;
 mod stall;
 mod supervision;
 mod supervision_steps;
@@ -20,7 +21,7 @@ use std::collections::HashSet;
 use std::os::unix::fs::PermissionsExt;
 use voicepuncher::test_doubles::prelude::*;
 
-use voicepuncher::core::application::{Clock, ProbeAnswer, ServiceProbe};
+use voicepuncher::core::application::{Clock, OtherProtocol, ProbeAnswer, ServiceProbe};
 use voicepuncher::core::domain::ServiceKind;
 
 use crate::IntegrationWorld;
@@ -33,6 +34,7 @@ pub struct LocalRun {
     copies: Option<copies::CopiesRun>,
     foreign: Option<foreign_program::ForeignRun>,
     stall: Option<stall::StallRun>,
+    stale: Option<stale::StaleRun>,
     scripts_config: Option<voicepuncher::config::Config>,
 }
 
@@ -107,18 +109,18 @@ impl Clock for StepClock {
 }
 
 /// Answers Ready on the ports a step says answer; on the ports a step says hang, Busy while
-/// something takes connections there; Closed on the others.
+/// something takes connections there; Closed on the others. The ports a step says speak an
+/// older protocol refuse the app's.
 #[derive(Clone, Default)]
-struct Answering(Arc<Mutex<HashSet<u16>>>, Arc<Mutex<HashSet<u16>>>);
+struct Answering(
+    Arc<Mutex<HashSet<u16>>>,
+    Arc<Mutex<HashSet<u16>>>,
+    Arc<Mutex<HashSet<u16>>>,
+);
 
 impl Answering {
     fn set(&self, port: u16, answers: bool) {
-        let mut ports = lock(&self.0);
-        if answers {
-            ports.insert(port);
-        } else {
-            ports.remove(&port);
-        }
+        mark(&self.0, port, answers);
     }
 
     /// The port no longer answers as the service; whatever listens there only takes connections.
@@ -126,7 +128,25 @@ impl Answering {
         self.set(port, false);
         lock(&self.1).insert(port);
     }
+
+    /// Whether what answers on `port` speaks an older protocol version than the app.
+    fn speak_older(&self, port: u16, older: bool) {
+        mark(&self.2, port, older);
+    }
 }
+
+/// Puts `port` into `ports` when `on`, else takes it out.
+fn mark(ports: &Mutex<HashSet<u16>>, port: u16, on: bool) {
+    let mut ports = lock(ports);
+    if on {
+        ports.insert(port);
+    } else {
+        ports.remove(&port);
+    }
+}
+
+/// The protocol version a copy left by an older app speaks, and the app's.
+const OLDER_PROTOCOL: OtherProtocol = OtherProtocol { service: 2, app: 3 };
 
 impl ServiceProbe for Answering {
     fn answer(&self, _kind: ServiceKind, port: u16) -> ProbeAnswer {
@@ -139,6 +159,10 @@ impl ServiceProbe for Answering {
         } else {
             ProbeAnswer::Closed
         }
+    }
+
+    fn other_protocol(&self, _kind: ServiceKind, port: u16) -> Option<OtherProtocol> {
+        lock(&self.2).contains(&port).then_some(OLDER_PROTOCOL)
     }
 }
 

@@ -28,8 +28,8 @@ Waits for `restart-crashed-services`: it adds `ServiceLauncher::stop_holder` and
 
 | Scenario | Level |
 |---|---|
-| A copy left by an older app is replaced at launch | component `.feature` (supervision with a fake launcher; the probe against an in-test service refusing version 3) |
+| A copy left by an older app is replaced at launch | component `.feature` (supervision with the real launcher on fake programs and a probe that names the copy's version; `HttpProbe` against an in-test service refusing version 3 is proven in `app/tests/it/localservices_process/protocol.rs`) |
 | A copy of the same protocol version is adopted as before | component `.feature` |
 | Another program refusing the app's protocol is not stopped | component `.feature` |
-| A stale copy appears after the app started | component `.feature` (refusal reaches the hook, the unit is replaced) |
+| A stale copy appears after the app started | component `.feature` (a real refusing copy; the client's refused port goes through `RefusedCopies` to `recheck` and the unit is replaced); the runtime's hook from `RefusedCopies` to `ServicesView::recheck` (`rechecking`) is a unit test in `app/src/runtime/services_tests.rs` |
 | One of two copies speaks an older protocol version | component `.feature` (client against two in-test services) |

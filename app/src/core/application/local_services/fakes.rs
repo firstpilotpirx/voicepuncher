@@ -10,7 +10,9 @@ use anyhow::{bail, Result};
 
 use crate::core::domain::{ServiceKind, ServiceSpec};
 
-use super::{Clock, HolderStop, ProbeAnswer, ServiceLauncher, ServiceProbe, ServiceProcess};
+use super::{
+    Clock, HolderStop, OtherProtocol, ProbeAnswer, ServiceLauncher, ServiceProbe, ServiceProcess,
+};
 
 #[derive(Clone)]
 pub struct FakeClock(Arc<Mutex<Instant>>);
@@ -170,11 +172,21 @@ pub struct FakeProbe {
     answers: Arc<Mutex<HashMap<u16, ProbeAnswer>>>,
     refusing: Arc<Mutex<Vec<u16>>>,
     warm_ups: Arc<Mutex<HashMap<u16, usize>>>,
+    protocols: Arc<Mutex<HashMap<u16, OtherProtocol>>>,
 }
 
 impl FakeProbe {
     pub fn set(&self, port: u16, answer: ProbeAnswer) {
         self.answers.lock().unwrap().insert(port, answer);
+    }
+
+    /// The protocol the copy on `port` speaks: `None` for the app's own.
+    pub fn speak(&self, port: u16, other: Option<OtherProtocol>) {
+        let mut protocols = self.protocols.lock().unwrap();
+        match other {
+            Some(other) => protocols.insert(port, other),
+            None => protocols.remove(&port),
+        };
     }
 
     /// Whether the copy on `port` fails to transcribe its warm-up.
@@ -200,6 +212,10 @@ impl ServiceProbe for FakeProbe {
             .unwrap()
             .get(&port)
             .unwrap_or(&ProbeAnswer::Closed)
+    }
+
+    fn other_protocol(&self, _kind: ServiceKind, port: u16) -> Option<OtherProtocol> {
+        self.protocols.lock().unwrap().get(&port).copied()
     }
 
     fn warm_up(&self, _kind: ServiceKind, port: u16) -> Option<Duration> {

@@ -8,7 +8,9 @@ use std::time::Duration;
 use anyhow::Result;
 
 use crate::adapters::secondary::archiving::filesystem::{ArchiveSetup, FileSystemDictationArchive};
-use crate::adapters::secondary::commandspotting::websocket::WebSocketCommandSpotter;
+use crate::adapters::secondary::commandspotting::websocket::{
+    RefusedCopies, WebSocketCommandSpotter,
+};
 use crate::adapters::secondary::focus::macos::MacOsFocusProbe;
 use crate::adapters::secondary::keypressing::macos::MacOsKeyPresser;
 use crate::adapters::secondary::recording::cpal::tap::MicTap;
@@ -31,6 +33,8 @@ const STOP_DRAIN: Duration = Duration::from_secs(2);
 pub struct WiringAssembler {
     overlay: SharedVisualIndicator,
     level_register: Arc<AtomicU32>,
+    /// Told of a command spotting copy that refused the app's protocol version.
+    refused: RefusedCopies,
 }
 
 impl WiringAssembler {
@@ -43,7 +47,13 @@ impl WiringAssembler {
     }
 
     pub fn new(overlay: SharedVisualIndicator, level_register: Arc<AtomicU32>) -> Self {
-        Self { overlay, level_register }
+        Self { overlay, level_register, refused: RefusedCopies::default() }
+    }
+
+    /// Tells `refused` of every command spotting copy that refuses voice control.
+    pub fn reporting_refused(mut self, refused: RefusedCopies) -> Self {
+        self.refused = refused;
+        self
     }
 }
 
@@ -55,7 +65,7 @@ impl PipelineAssembler for WiringAssembler {
         let spotter = config
             .voice_control
             .enabled
-            .then(|| connect_command_spotter(config, inputs, tap))
+            .then(|| connect_command_spotter(config, inputs, tap, self.refused.clone()))
             .transpose()?;
         let transcriber = connect_transcriber(config)?;
         let paster = MacOsTextPaster::new(config.paste.clipboard_restore_delay_ms);
@@ -142,10 +152,12 @@ fn connect_command_spotter(
     config: &Config,
     inputs: Sender<PipelineInput>,
     tap: MicTap,
+    refused: RefusedCopies,
 ) -> Result<WebSocketCommandSpotter> {
     let spotter = WebSocketCommandSpotter::new(config.voice_control.url.clone(), inputs)
         .with_input_device(&config.audio.input_device)
         .with_tap(tap)
+        .reporting_refused(refused)
         .confirming(config.voice_control.confirm_commands);
     spotter.probe()?;
     Ok(spotter)

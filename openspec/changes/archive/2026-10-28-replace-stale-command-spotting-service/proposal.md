@@ -37,4 +37,4 @@ Out of scope: the speech recognition services (whisper-server copies), the servi
 ## Release
 
 SemVer: PATCH — bug fix, voice control broken after a protocol bump.
-Target version: 0.41.1.
+Target version: 0.41.3.

@@ -50,7 +50,7 @@ use voicepuncher::config::Config;
 use voicepuncher::core::application::{LoginItem, ModelStore, PermissionsGate};
 use voicepuncher::core::domain::model_catalog;
 use voicepuncher::runtime::models::needs_of;
-use voicepuncher::runtime::services::SystemClock;
+use voicepuncher::runtime::services::{rechecking, SystemClock};
 use voicepuncher::runtime::wiring::WiringAssembler;
 use voicepuncher::runtime::{
     signals, CatalogModels, LogObserver, ManagedServices, ModelsGate, PermissionsWait,
@@ -142,14 +142,18 @@ impl Shell {
                 MacosPointerSign::initialize(mtm),
             ),
         )));
-        let assembler = WiringAssembler::new(overlay, level_register);
+        let mut assembler = WiringAssembler::new(overlay, level_register);
+        let view = services.as_ref().map(ManagedServices::view);
+        if let Some(view) = view.clone() {
+            // a copy that refuses voice control is checked again and replaced when stale
+            assembler = assembler.reporting_refused(rechecking(view));
+        }
         // a missing permission makes the runtime wait for it, not the process exit
         let runtime = Runtime::new(Box::new(assembler), Box::new(EventTapHotkeyListener::new()))
             .with_permissions(PermissionsWatch::new(Arc::clone(&self.gate)));
-        let Some(services) = services else {
+        let (Some(services), Some(view)) = (services, view) else {
             return Ok((runtime, None));
         };
-        let view = services.view();
         signals::stop_on_termination(services.stopper())?;
         // the services start only once the models they load are on disk
         let runtime = runtime

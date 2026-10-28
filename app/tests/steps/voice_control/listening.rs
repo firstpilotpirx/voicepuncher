@@ -14,6 +14,7 @@ use tungstenite::Message;
 use voicepuncher::adapters::secondary::commandspotting::websocket::kept_mic::{
     KeeperTimings, KeptMic, MicOpener, OpenMic,
 };
+use voicepuncher::adapters::secondary::commandspotting::websocket::test_stream::take_greeting;
 use voicepuncher::adapters::secondary::commandspotting::websocket::{AudioStream, MicrophoneAudio};
 use voicepuncher::adapters::secondary::recording::cpal::capture::{on_frames, CaptureHealth};
 
@@ -282,6 +283,7 @@ fn hold_connection(stream: TcpStream, report_drop: bool) {
     let _ = socket
         .get_ref()
         .set_read_timeout(Some(Duration::from_millis(10)));
+    take_greeting(&mut socket);
     if report_drop {
         let _ = socket.send(Message::text(r#"{"event":"dropped","samples":1600}"#));
     }

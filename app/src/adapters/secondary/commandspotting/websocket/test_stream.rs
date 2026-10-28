@@ -29,3 +29,32 @@ pub fn open_stream(
     let stream = AudioStream::start(url, commands, microphone, inputs_tx)?;
     Ok(OpenStream { stream, audio, inputs })
 }
+
+/// Takes the client's greeting as the command spotting service does: reads the hello and the
+/// ping after it, and sends the pong at once; a stand-in service calls it before it speaks.
+pub fn take_greeting<S: std::io::Read + std::io::Write>(socket: &mut tungstenite::WebSocket<S>) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while std::time::Instant::now() < deadline {
+        match socket.read() {
+            Ok(tungstenite::Message::Ping(_)) => {
+                let _ = socket.flush();
+                return;
+            }
+            Ok(_) => {}
+            Err(tungstenite::Error::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(_) => return,
+        }
+    }
+}
+
+/// Refuses the client's hello as a command spotting service of protocol version 2 does: closes
+/// with the policy reason naming both versions, then reads until the client is gone.
+pub fn refuse_as_version_2<S: std::io::Read + std::io::Write>(
+    socket: &mut tungstenite::WebSocket<S>,
+) {
+    use tungstenite::protocol::{frame::coding::CloseCode, CloseFrame};
+    let _ = socket.read();
+    let reason = "the app speaks protocol version 3, the service version 2".into();
+    let _ = socket.close(Some(CloseFrame { code: CloseCode::Policy, reason }));
+    while socket.read().is_ok() {}
+}

@@ -192,8 +192,10 @@ impl Stream {
             |_| (Instant::now(), Vec::new()),
             |heard| heard.replay_from(replay_from),
         );
-        let mut client = SpottingClient::connect(&self.service.url, audio_start)?
-            .confirming(self.service.confirm_commands);
+        let refused = |port| self.service.refused.report(port);
+        let mut client =
+            SpottingClient::connect_reporting(&self.service.url, audio_start, &refused)?
+                .confirming(self.service.confirm_commands);
         client.listen_for(&self.commands)?;
         if !samples.is_empty() {
             client.send_audio(&samples)?;

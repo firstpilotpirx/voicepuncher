@@ -1,8 +1,11 @@
 use std::net::{SocketAddr, TcpStream};
 use std::time::{Duration, Instant};
 
+use crate::adapters::secondary::commandspotting::websocket::client::{
+    protocol_at, Greeting, PROTOCOL_VERSION,
+};
 use crate::adapters::secondary::http::agent;
-use crate::core::application::{ProbeAnswer, ServiceProbe};
+use crate::core::application::{OtherProtocol, ProbeAnswer, ServiceProbe};
 use crate::core::domain::ServiceKind;
 
 /// How long a connection to a port may take: loopback answers in well under a millisecond.
@@ -73,6 +76,20 @@ impl ServiceProbe for HttpProbe {
             return ProbeAnswer::Busy;
         }
         ProbeAnswer::Ready
+    }
+
+    /// The command spotting service's protocol, from its answer to the app's hello; a copy that
+    /// does not answer it says nothing of its version.
+    fn other_protocol(&self, kind: ServiceKind, port: u16) -> Option<OtherProtocol> {
+        if kind != ServiceKind::CommandSpotting {
+            return None;
+        }
+        match protocol_at(&format!("ws://127.0.0.1:{port}")) {
+            Ok(Greeting::OtherVersion(service)) => {
+                Some(OtherProtocol { service, app: PROTOCOL_VERSION })
+            }
+            Ok(Greeting::Accepted) | Err(_) => None,
+        }
     }
 
     fn warm_up(&self, kind: ServiceKind, port: u16) -> Option<Duration> {

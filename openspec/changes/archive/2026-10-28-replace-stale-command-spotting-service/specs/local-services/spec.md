@@ -8,7 +8,7 @@ When the app manages its services and finds a copy of the command spotting servi
 - **WHEN** the app launches with voice control on
 - **THEN** that copy is stopped and the app starts its own copy on the same port
 - **AND** the log names the port, the old and the new protocol version in one line
-- **AND** a spoken command is carried out without any manual step
+- **AND** the copy the app started answers on that port, without any manual step
 
 #### Scenario: A copy of the same protocol version is adopted as before
 - **GIVEN** a command spotting service of the app's protocol version runs on a copy port
@@ -26,8 +26,7 @@ When the app manages its services and an adopted copy of the command spotting se
 #### Scenario: A stale copy appears after the app started
 - **GIVEN** the app runs with voice control on and an adopted copy of the command spotting service is replaced from outside by one of an older protocol version
 - **WHEN** voice control connects to that copy and is refused for its protocol version
-- **THEN** the app stops that copy and starts its own on the same port
-- **AND** voice control works again without any manual step
+- **THEN** the app stops that copy and starts its own on the same port, which answers, without any manual step
 
 ### Requirement: Voice control passes over a copy of another protocol version
 When voice control connects to the command spotting service and a copy refuses it for its protocol version, voice control SHALL connect to the next copy instead, so commands keep working while the refused copy is replaced.

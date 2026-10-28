@@ -4,6 +4,7 @@ use std::net::{TcpListener, TcpStream};
 use std::time::Duration;
 
 use tungstenite::WebSocket;
+use voicepuncher::adapters::secondary::commandspotting::websocket::test_stream::take_greeting;
 
 /// How long a stand-in service waits on a read before it looks again.
 const READ_WAIT: Duration = Duration::from_millis(10);
@@ -15,14 +16,15 @@ pub fn free_listener() -> (TcpListener, String) {
     (listener, url)
 }
 
-/// A service that accepts one connection and hands it to `serve` on a thread of its own, its
+/// A service that accepts one connection, takes the client's greeting and hands it to `serve` on a thread of its own, its
 /// reads waiting at most [`READ_WAIT`]; the service's URL.
 pub fn serve_one(serve: impl FnOnce(WebSocket<TcpStream>) + Send + 'static) -> String {
     let (listener, url) = free_listener();
     std::thread::spawn(move || {
         let (stream, _) = listener.accept().unwrap();
-        let socket = tungstenite::accept(stream).unwrap();
+        let mut socket = tungstenite::accept(stream).unwrap();
         socket.get_ref().set_read_timeout(Some(READ_WAIT)).unwrap();
+        take_greeting(&mut socket);
         serve(socket);
     });
     url

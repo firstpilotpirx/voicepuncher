@@ -124,3 +124,4 @@ fn should_refuse_to_start_a_missing_program() {
 
 mod holder;
 mod probe;
+mod protocol;

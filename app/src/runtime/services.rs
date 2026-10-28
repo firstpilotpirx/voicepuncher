@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 
+use crate::adapters::secondary::commandspotting::websocket::RefusedCopies;
 use crate::adapters::secondary::localservices::catalog::{self, Machine, Needs};
 use crate::adapters::secondary::localservices::process::{HttpProbe, ProcessLauncher};
 use crate::config::Config;
@@ -26,10 +27,17 @@ pub trait LocalServices: Send {
     fn stop(&mut self);
 }
 
-/// The menu's view of the services: their states, and a restart of one.
+/// The menu's view of the services: their states, and a restart of one; and voice control's,
+/// which asks to check again a copy that refused it.
 pub trait ServicesView: Send + Sync {
     fn statuses(&self) -> Vec<ServiceStatus>;
     fn restart(&self, port: u16);
+    fn recheck(&self, port: u16);
+}
+
+/// Hands every command spotting copy that refuses voice control to `view` to be checked again.
+pub fn rechecking(view: Arc<dyn ServicesView>) -> RefusedCopies {
+    RefusedCopies::new(move |port| view.recheck(port))
 }
 
 /// The services started as processes on this machine and watched over loopback HTTP.
@@ -117,6 +125,10 @@ impl ServicesView for View {
     fn restart(&self, port: u16) {
         self.0.restart(port);
     }
+
+    fn recheck(&self, port: u16) {
+        self.0.recheck(port);
+    }
 }
 
 /// The clock of the process: real time and real pauses.
@@ -131,3 +143,7 @@ impl Clock for SystemClock {
         std::thread::sleep(pause);
     }
 }
+
+#[cfg(test)]
+#[path = "services_tests.rs"]
+mod tests;

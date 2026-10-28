@@ -4,7 +4,7 @@ use super::*;
 use crate::core::application::local_services::fakes::{
     spec, FakeClock, FakeLauncher, FakeProbe, Spawns,
 };
-use crate::core::application::local_services::Clock;
+use crate::core::application::local_services::{Clock, OtherProtocol};
 use crate::core::application::pipeline::tests::doubles::captured_log;
 use crate::core::domain::{ServiceKind, ServiceState};
 
@@ -43,6 +43,11 @@ impl Harness {
 
     pub(super) fn answers(&self, answer: ProbeAnswer) {
         self.probe.set(PORT, answer);
+    }
+
+    /// The protocol the copy on the port speaks: `None` for the app's own.
+    pub(super) fn speaks(&self, other: Option<OtherProtocol>) {
+        self.probe.speak(PORT, other);
     }
 
     pub(super) fn state(&self) -> ServiceState {

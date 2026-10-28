@@ -32,6 +32,8 @@ impl ServicesView for ViewDouble {
     fn restart(&self, port: u16) {
         self.restarted.lock().unwrap().push(port);
     }
+
+    fn recheck(&self, _port: u16) {}
 }
 
 /// The Services submenu: each service's line and whether it offers Restart.

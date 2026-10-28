@@ -5,9 +5,12 @@ use std::time::{Duration, Instant};
 
 use crate::core::domain::{ServiceSpec, ServiceState, ServiceStatus};
 
-use super::{HolderStop, ProbeAnswer, ServiceLauncher, ServiceProbe, ServiceProcess};
+use super::{
+    HolderStop, OtherProtocol, ProbeAnswer, ServiceLauncher, ServiceProbe, ServiceProcess,
+};
 
 mod adopted;
+mod stale;
 
 /// How long a started service has to answer, and how long a port that answers as nothing
 /// known is waited for before the decision to adopt gives up.
@@ -142,14 +145,7 @@ impl Supervision {
 
     fn decide(&mut self, senses: &Senses) {
         match senses.probe.answer(self.spec.kind, self.spec.port) {
-            ProbeAnswer::Ready => {
-                log::info!(
-                    "services: adopted {} at port {}",
-                    self.spec.label,
-                    self.spec.port
-                );
-                self.adopt(senses.now);
-            }
+            ProbeAnswer::Ready => self.adopt_or_replace(senses),
             ProbeAnswer::Busy if senses.now.duration_since(self.since) >= READINESS_LIMIT => {
                 self.fail(format!(
                     "port {} is held by a program that does not answer as the {}",

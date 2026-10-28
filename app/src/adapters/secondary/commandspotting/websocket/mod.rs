@@ -50,17 +50,44 @@ pub struct MicrophoneAudio<A> {
     pub captured_from: Instant,
 }
 
-/// The command spotting service to stream to: its address, and whether it confirms commands
-/// before it reports them.
+/// The command spotting service to stream to: its address, whether it confirms commands
+/// before it reports them, and who hears of a copy that refused the app's protocol version.
 #[derive(Debug, Clone)]
 pub struct SpottingService {
     pub url: String,
     pub confirm_commands: bool,
+    pub refused: RefusedCopies,
 }
 
 impl From<&str> for SpottingService {
     fn from(url: &str) -> Self {
-        Self { url: url.to_owned(), confirm_commands: true }
+        Self { url: url.to_owned(), confirm_commands: true, refused: RefusedCopies::default() }
+    }
+}
+
+/// Told the port of every copy that refuses the app's protocol version; by default no one.
+#[derive(Clone, Default)]
+pub struct RefusedCopies(Option<Arc<dyn Fn(u16) + Send + Sync>>);
+
+impl RefusedCopies {
+    pub fn new(tell: impl Fn(u16) + Send + Sync + 'static) -> Self {
+        Self(Some(Arc::new(tell)))
+    }
+
+    pub fn report(&self, port: u16) {
+        if let Some(tell) = &self.0 {
+            tell(port);
+        }
+    }
+}
+
+impl std::fmt::Debug for RefusedCopies {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(if self.0.is_some() {
+            "RefusedCopies(told)"
+        } else {
+            "RefusedCopies(none)"
+        })
     }
 }
 
@@ -108,7 +135,8 @@ impl AudioStream {
     ) -> Result<Self> {
         let MicrophoneAudio { audio, native_rate, captured_from: audio_start } = microphone;
         let service = service.into();
-        let mut client = SpottingClient::connect(&service.url, audio_start)?
+        let refused = |port| service.refused.report(port);
+        let mut client = SpottingClient::connect_reporting(&service.url, audio_start, &refused)?
             .confirming(service.confirm_commands);
         client.listen_for(commands)?;
         let session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
@@ -172,6 +200,7 @@ pub struct WebSocketCommandSpotter {
     input_device: String,
     /// Where the kept microphone's audio is shared with the dictation recorder.
     tap: MicTap,
+    refused: RefusedCopies,
 }
 
 impl WebSocketCommandSpotter {
@@ -183,7 +212,14 @@ impl WebSocketCommandSpotter {
             listening: None,
             input_device: devices::DEFAULT_DEVICE.to_owned(),
             tap: MicTap::default(),
+            refused: RefusedCopies::default(),
         }
+    }
+
+    /// Tells `refused` the port of every copy that refuses the app's protocol version.
+    pub fn reporting_refused(mut self, refused: RefusedCopies) -> Self {
+        self.refused = refused;
+        self
     }
 
     /// Shares the kept microphone's audio through `tap` while listening.
@@ -217,8 +253,11 @@ impl CommandSpotter for WebSocketCommandSpotter {
         let open: MicOpener = Box::new(move || kept_mic::open_device(&device));
         let (mic, audio, started_at) = KeptMic::start(open, KeeperTimings::default())?;
         log::info!("command spotting: connecting to {}", self.url);
-        let service =
-            SpottingService { url: self.url.clone(), confirm_commands: self.confirm_commands };
+        let service = SpottingService {
+            url: self.url.clone(),
+            confirm_commands: self.confirm_commands,
+            refused: self.refused.clone(),
+        };
         let stream = AudioStream::start(
             service,
             commands,

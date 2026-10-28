@@ -40,8 +40,8 @@ pub use input_devices::InputDevices;
 pub use key_presser::KeyPresser;
 pub use live_transcript_view::LiveTranscriptView;
 pub use local_services::{
-    Clock, HolderStop, ProbeAnswer, ServiceLauncher, ServiceProbe, ServiceProcess, ServiceRuntime,
-    Services, TICK,
+    Clock, HolderStop, OtherProtocol, ProbeAnswer, ServiceLauncher, ServiceProbe, ServiceProcess,
+    ServiceRuntime, Services, TICK,
 };
 pub use login_item::{LoginItem, LoginItemStatus};
 pub use model_download::{

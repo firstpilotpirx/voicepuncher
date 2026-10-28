@@ -171,6 +171,45 @@ fn should_restart_the_service_on_a_port() {
 }
 
 #[test]
+fn should_replace_an_adopted_copy_found_of_another_protocol_version_on_a_recheck() {
+    // Given
+    let mut harness = Harness::new(false);
+    harness.probe.set(49083, ProbeAnswer::Ready);
+    harness
+        .services
+        .supervise(vec![spec(ServiceKind::CommandSpotting, 49083)]);
+    harness.services.tick();
+    harness
+        .probe
+        .speak(49083, Some(OtherProtocol { service: 2, app: 3 }));
+    // When
+    harness.services.recheck(49083);
+    harness.services.tick();
+    // Then
+    assert_eq!(harness.spawns.holders_stopped(), vec![49083]);
+    let state = harness.services.snapshot()[0].state.clone();
+    assert_eq!(state, ServiceState::Starting { attempt: 1 });
+}
+
+#[test]
+fn should_leave_an_owned_service_as_it_is_on_a_recheck() {
+    // Given
+    let mut harness = Harness::new(false);
+    harness
+        .services
+        .supervise(vec![spec(ServiceKind::CommandSpotting, 49083)]);
+    harness.services.tick();
+    harness.probe.set(49083, ProbeAnswer::Ready);
+    harness.services.tick();
+    // When
+    harness.services.recheck(49083);
+    harness.services.tick();
+    // Then
+    assert!(harness.spawns.holders_stopped().is_empty());
+    assert_eq!(harness.services.snapshot()[0].state, ServiceState::Ready);
+}
+
+#[test]
 fn should_publish_the_states_and_stop_the_owned_services_from_its_thread() {
     // Given
     let spawns = Spawns::default();

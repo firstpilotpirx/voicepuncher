@@ -63,9 +63,22 @@ pub enum ProbeAnswer {
     Closed,
 }
 
+/// A copy of a service that speaks another protocol version than the app.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OtherProtocol {
+    pub service: u32,
+    pub app: u32,
+}
+
 /// Asks a service's port whether the service answers.
 pub trait ServiceProbe: Send + Sync {
     fn answer(&self, kind: ServiceKind, port: u16) -> ProbeAnswer;
+
+    /// The protocol of the copy answering on `port` when it is another than the app's; `None`
+    /// for the app's own, and for a service with no protocol of its own.
+    fn other_protocol(&self, _kind: ServiceKind, _port: u16) -> Option<OtherProtocol> {
+        None
+    }
 
     /// Has a copy of a speech recognition service transcribe a short utterance, so its first
     /// decode is behind it before a client's first request; how long that took, or `None` when
@@ -132,6 +145,15 @@ impl Services {
         }
     }
 
+    /// Checks again the adopted copy on `port`, which refused a client: it goes back to the
+    /// decision to adopt or replace it; an owned service is left as it is.
+    pub fn recheck(&mut self, port: u16) {
+        let now = self.clock.now();
+        if let Some(unit) = self.units.iter_mut().find(|unit| unit.spec().port == port) {
+            unit.recheck(now);
+        }
+    }
+
     /// Stops every owned service, kind after kind in stop order: each is asked to end and
     /// killed after the grace period; adopted services keep running.
     pub fn stop_all(&mut self) {
@@ -165,6 +187,7 @@ fn stop_group(group: &mut [&mut Supervision], clock: &dyn Clock) {
 enum Command {
     Supervise(Vec<ServiceSpec>),
     Restart(u16),
+    Recheck(u16),
     Stop,
 }
 
@@ -195,6 +218,11 @@ impl ServiceRuntime {
 
     pub fn restart(&self, port: u16) {
         let _ = self.commands.send(Command::Restart(port));
+    }
+
+    /// Checks again the adopted copy on `port`, which refused a client.
+    pub fn recheck(&self, port: u16) {
+        let _ = self.commands.send(Command::Recheck(port));
     }
 
     /// The states after the last step.
@@ -230,6 +258,7 @@ fn serve(
         match inbox.recv_timeout(tick) {
             Ok(Command::Supervise(specs)) => services.supervise(specs),
             Ok(Command::Restart(port)) => services.restart(port),
+            Ok(Command::Recheck(port)) => services.recheck(port),
             Ok(Command::Stop) | Err(RecvTimeoutError::Disconnected) => break,
             Err(RecvTimeoutError::Timeout) => {}
         }
