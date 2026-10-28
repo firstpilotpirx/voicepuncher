@@ -11,7 +11,9 @@ The user wants an HTML page with a diagram of the project — for example a pack
   - the layers of `app/`: primary and secondary adapters, `core/application` (ports), `core/domain`, and the allowed dependency direction;
   - the main components and how they interact at runtime: the menu bar app, the dictation and command speech recognition services (whisper-server copies and the copy pool), the command spotting service, and the protocols between them (loopback HTTP, WebSocket);
   - a short legend and a one-line explanation of every box, using the terms of `docs/ubiquitous-language.md`.
-- A link to the page from the README and/or `AGENTS.md`, so a newcomer finds it.
+- A link to the page from the README and the repository layout section of `AGENTS.md`, so a newcomer finds it.
+- A test in the change-workflow harness (`dev-tools`) that fails when the page's crate diagram and the Cargo workspace members differ.
+- `docs/architecture/overview.md`: its crate table says "four crates" though the workspace has ten; it lists all of them and links to the page.
 
 Current stage: PoC. Target stage: PoC.
 Scope: one HTML architecture page (package, layer and component/interaction diagrams) under `docs/`, plus a link to it.
@@ -22,19 +24,18 @@ Out of scope: changing the code or the architecture; generating other documentat
 
 ### Modified Capabilities
 
-- None: documentation only, no behavior change.
+- `change-workflow`: a new requirement — the architecture page names exactly the workspace crates, checked by the project's tests.
 
 ## Impact
 
-- `docs/` (new HTML page), `README.md` and/or `AGENTS.md` (link).
-- No build input changes; `just test` only.
+- `docs/architecture/project-architecture.html` (new), `docs/architecture/overview.md`, `README.md`, `AGENTS.md`.
+- `dev-tools/tests/` (the crate check): a build input, so `just check` runs and the branch lands through the landing queue.
 
-## Open points
+## Decisions
 
-- Hand-drawn diagram or generated from the code (e.g. from `cargo metadata` and the module tree) so it cannot drift — proposed: generated where cheap (crate graph), with a test or recipe that fails when a crate is missing from the page.
-- Diagram technology — proposed: inline SVG (or the kit's `kit report` diagrams) with no external network access, per the HTML report rule.
-- Level of detail inside `app/`: per adapter technology folder or only per layer — proposed: per adapter folder, with ports listed in `core/application`.
-- Where to link it — proposed: README and the repository layout section of `AGENTS.md`.
+- Drawing: by hand with the kit's report diagrams (`kit report`, inline SVG, no network); the crate list is guarded by a test against `cargo metadata` instead of being generated.
+- Detail inside `app/`: one box per adapter folder, ports listed in `core/application`; pictures of at most 12 boxes, split by layer.
+- Links: README and the repository layout section of `AGENTS.md`.
 
 ## Release
 
