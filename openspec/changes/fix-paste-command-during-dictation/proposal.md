@@ -23,11 +23,11 @@ Out of scope: other voice commands during dictation; the behavior of "paste" wit
 
 - The voice command handling of the app and its interplay with a running dictation (pasting the dictated text uses the clipboard too).
 
-## Open points
+## Decisions
 
-- Dictation's own paste of its text also goes through the clipboard: the clipboard contents the user had must not be replaced by dictated text at the moment of the command, and the user's clipboard must survive dictation's paste. Proposed: the "paste" command reads the user's clipboard as it is, and dictation's paste keeps restoring the user's clipboard afterwards.
-- Where the pasted text lands relative to dictated text not yet pasted (dictation pastes on stop or per chunk). Proposed: at the cursor at the moment of the command; dictated text comes after it.
-- Whether "paste" spoken during dictation should be removed from the dictated text. Proposed: yes, the command word does not appear in the dictation.
+- The command reads the clipboard as it is at that moment: dictation does not touch the clipboard until it pastes its own text on stop, so what is pasted is what the user copied, before or during the dictation.
+- The clipboard text lands at the cursor at once; the dictated text lands where the cursor is when the dictation ends, as before. The order of the two is not part of this change.
+- "paste" spoken during a dictation is removed from the dictated text.
 
 ## Release
 
