@@ -3,7 +3,8 @@
 use crate::core::application::pipeline::archiving::DictationTrace;
 use crate::core::application::DictationStart;
 use crate::core::domain::{
-    without_leading_command, without_trailing_command, FailingPart, FailureNotice, VoiceCommand,
+    without_leading_command, without_spoken_pastes, without_trailing_command, FailingPart,
+    FailureNotice, VoiceCommand,
 };
 
 use super::failure_notices::graver;
@@ -28,6 +29,8 @@ pub(super) struct CommandWords {
     pub(super) opening: Option<VoiceCommand>,
     /// A command said without a pause ended the dictation.
     pub(super) closing: bool,
+    /// The "paste text" commands carried out while the dictation ran.
+    pub(super) pastes: usize,
 }
 
 impl Dictation {
@@ -63,12 +66,14 @@ impl Dictation {
         });
     }
 
-    /// `text` without the command words said in one breath with the dictation.
+    /// `text` without the command words said in one breath with the dictation, and without
+    /// the "paste text" commands carried out while it ran.
     pub(super) fn without_command_words(&mut self, text: &str) -> String {
         let words = std::mem::take(&mut self.command_words);
+        let text = without_spoken_pastes(text, words.pastes);
         let text = match words.opening {
-            Some(command) => without_leading_command(command, text),
-            None => text.to_owned(),
+            Some(command) => without_leading_command(command, &text),
+            None => text,
         };
         if words.closing {
             without_trailing_command(&text)

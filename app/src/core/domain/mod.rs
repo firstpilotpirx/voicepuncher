@@ -21,7 +21,9 @@ pub mod voice_start_timing;
 pub use audio_buffer::AudioBuffer16k;
 pub use audio_level::AudioLevel;
 pub use cleaned_text::CleanedText;
-pub use command_words::{without_leading_command, without_trailing_command, COMMAND_FORMS};
+pub use command_words::{
+    without_leading_command, without_spoken_pastes, without_trailing_command, COMMAND_FORMS,
+};
 pub use failure_notice::{
     AccessibilityMissing, FailingPart, FailureNotice, ForeignProgram, ServicePortTaken,
 };

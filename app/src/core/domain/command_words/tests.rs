@@ -123,3 +123,49 @@ fn should_remove_a_doubled_start_that_opens_the_text() {
         );
     }
 }
+
+#[test]
+fn should_remove_a_paste_said_as_its_own_sentence() {
+    for (text, kept) in [
+        ("Hello there. Paste. And more.", "Hello there. And more."),
+        (
+            "Hello there. Paste text, please. And more.",
+            "Hello there. And more.",
+        ),
+        ("Hello there. Paste.", "Hello there."),
+        ("Paste. Hello there.", "Hello there."),
+    ] {
+        assert_eq!(without_spoken_pastes(text, 1), kept, "{text}");
+    }
+}
+
+#[test]
+fn should_remove_a_paste_that_ends_a_sentence() {
+    for (text, kept) in [
+        ("Here it is, paste. Next one.", "Here it is. Next one."),
+        ("Here it is paste", "Here it is"),
+    ] {
+        assert_eq!(without_spoken_pastes(text, 1), kept, "{text}");
+    }
+}
+
+#[test]
+fn should_keep_a_paste_inside_a_sentence() {
+    assert_eq!(
+        without_spoken_pastes("Paste the link here. Paste.", 1),
+        "Paste the link here."
+    );
+}
+
+#[test]
+fn should_remove_no_more_pastes_than_were_carried_out() {
+    assert_eq!(
+        without_spoken_pastes("One. Paste. Two. Paste.", 1),
+        "One. Two. Paste."
+    );
+    assert_eq!(without_spoken_pastes("One. Paste.", 0), "One. Paste.");
+    assert_eq!(
+        without_spoken_pastes("One. Paste. Two. Paste.", 2),
+        "One. Two."
+    );
+}

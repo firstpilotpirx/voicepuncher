@@ -16,12 +16,14 @@ pub const COMMAND_FORMS: &[&[&str]] = &[
     &["start", "dictation"],
     &["press", "enter"],
     &["clear", "text"],
+    &["paste", "text"],
     &["stop"],
     &["cancel"],
     &["restart"],
     &["start"],
     &["enter"],
     &["clear"],
+    &["paste"],
     &["стоп"],
     &["старт"],
     &["энтер"],
@@ -29,6 +31,7 @@ pub const COMMAND_FORMS: &[&[&str]] = &[
     &["кенсел"],
     &["кэнсел"],
 ];
+const PASTE_FORMS: &[&[&str]] = &[&["paste", "text"], &["paste"]];
 const START_FORMS: &[&[&str]] = &[&["start", "dictation"], &["start"], &["старт"]];
 const RESTART_FORMS: &[&[&str]] = &[&["restart", "dictation"], &["restart"]];
 const POLITE_WORDS: &[&str] = &["please", "пожалуйста"];
@@ -36,9 +39,10 @@ const POLITE_WORDS: &[&str] = &["please", "пожалуйста"];
 const SEPARATORS: &[char] = &[',', ';', ':', '-', '—'];
 const SENTENCE_ENDS: &[char] = &['.', '!', '?'];
 
-/// A word of `text`: where it starts, and its lowercase letters.
+/// A word of `text`: where it starts and ends, and its lowercase letters.
 struct Word {
     start: usize,
+    end: usize,
     text: String,
 }
 
@@ -52,7 +56,7 @@ fn words(text: &str) -> Vec<Word> {
         match (current, c.is_alphabetic()) {
             (None, true) => current = Some(at),
             (Some(start), false) => {
-                words.push(Word { start, text: text[start..at].to_lowercase() });
+                words.push(Word { start, end: at, text: text[start..at].to_lowercase() });
                 current = None;
             }
             _ => {}
@@ -155,6 +159,65 @@ pub(crate) fn capitalized(text: &str) -> String {
         .next()
         .map(|first| first.to_uppercase().chain(chars).collect())
         .unwrap_or_default()
+}
+
+/// Removes up to `count` "paste" or "paste text" commands said during a dictation.
+///
+/// Each may end with "please"; only those that close a sentence or the text go, as a command
+/// is said on its own or ending an utterance. A "paste" inside a sentence is speech and stays.
+pub fn without_spoken_pastes(text: &str, count: usize) -> String {
+    let mut text = text.to_owned();
+    for _ in 0..count {
+        match without_first_closing_paste(&text) {
+            Some(shorter) => text = shorter,
+            None => break,
+        }
+    }
+    text
+}
+
+/// `text` without its first paste command that closes a sentence; none when it has none.
+fn without_first_closing_paste(text: &str) -> Option<String> {
+    let words = words(text);
+    (0..words.len()).find_map(|at| {
+        let end = paste_words_end(&words, at)?;
+        let rest = text[end..].trim_start();
+        let closes = rest.is_empty() || rest.starts_with(SENTENCE_ENDS);
+        closes.then(|| joined_around(&text[..words[at].start], rest))
+    })
+}
+
+/// Where the paste command said from word `at` ends, its "please" included.
+fn paste_words_end(words: &[Word], at: usize) -> Option<usize> {
+    let rest = &words[at..];
+    let form = PASTE_FORMS
+        .iter()
+        .find(|form| rest.len() >= form.len() && says(&rest[..form.len()], form))?;
+    let mut last = &rest[form.len() - 1];
+    if let Some(next) = rest.get(form.len()) {
+        if POLITE_WORDS.contains(&next.text.as_str()) {
+            last = next;
+        }
+    }
+    Some(last.end)
+}
+
+/// The text before a removed command joined to the text after it.
+///
+/// `rest` starts with the command's sentence end: a command that was a sentence of its own goes
+/// with its end.
+fn joined_around(head: &str, rest: &str) -> String {
+    let kept = head.trim_end().trim_end_matches(SEPARATORS).trim_end();
+    if kept.is_empty() || kept.ends_with(SENTENCE_ENDS) {
+        let after = rest.trim_start_matches(SENTENCE_ENDS).trim_start();
+        let joined = format!("{head}{after}");
+        return if kept.is_empty() {
+            capitalized(&joined)
+        } else {
+            joined.trim_end().to_owned()
+        };
+    }
+    format!("{kept}{rest}")
 }
 
 #[cfg(test)]

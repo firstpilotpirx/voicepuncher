@@ -3,7 +3,8 @@
 use super::{
     bail, given, run, when, CommandPlacement, Context, Instant, IntegrationWorld, PipelineInput,
     PttSignal, Result, SpottingEvent, VoiceCommand, VoiceRun, COMMAND_AFTER, COMMAND_LENGTH,
-    LATE_CUT, MORE_WORDS, PHRASE_LEAD, PHRASE_LENGTH, SEGMENT_TAIL, SENTENCE, SETTLE, STOP_PHRASE,
+    LATE_CUT, MORE_WORDS, OTHER_SENTENCE, PHRASE_LEAD, PHRASE_LENGTH, SEGMENT_TAIL, SENTENCE,
+    SETTLE, STOP_PHRASE,
 };
 use voicepuncher::test_doubles::StartedOnDemand;
 
@@ -193,4 +194,31 @@ pub(super) fn back_with_command_said_away(
         segment_start..phrase_end + SEGMENT_TAIL,
         phrase_start..phrase_end,
     )
+}
+
+#[given(expr = "the user has said a sentence, then {string} on its own, then another sentence")]
+pub(super) fn sentence_paste_sentence(world: &mut IntegrationWorld, said: String) -> Result<()> {
+    let run = run(world);
+    run.speak(SENTENCE, Instant::now());
+    let segment_start = Instant::now();
+    let phrase_start = segment_start + PHRASE_LEAD;
+    let phrase_end = phrase_start + PHRASE_LENGTH;
+    // Speech recognition writes a command said on its own as a sentence of its own.
+    run.speak(&format!("{}.", capitalized(&said)), phrase_start);
+    let phrase = short_form(&said).context("no command")?.phrase();
+    run.send_segment(
+        phrase,
+        segment_start..phrase_end + SEGMENT_TAIL,
+        phrase_start..phrase_end,
+    )?;
+    run.speak(OTHER_SENTENCE, Instant::now());
+    Ok(())
+}
+
+fn capitalized(word: &str) -> String {
+    let mut chars = word.chars();
+    chars
+        .next()
+        .map(|first| first.to_uppercase().chain(chars).collect())
+        .unwrap_or_default()
 }

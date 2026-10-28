@@ -126,6 +126,22 @@ Feature: voice-control
       When the user says "paste"
       Then the clipboard still holds the same sentence
 
+    Scenario: Saying paste during a dictation pastes the clipboard and the dictation goes on
+      Given a dictation runs
+      And the user has said a sentence in it
+      And the clipboard holds a sentence
+      When the user says "paste text"
+      Then Cmd+V is pressed in the focused app
+      And the paste sound plays
+      And the dictation keeps running
+
+    Scenario: A dictation with a paste in it pastes its text without the command
+      Given a dictation runs
+      And the user has said a sentence, then "paste" on its own, then another sentence
+      When the user says "stop dictation"
+      Then both dictated sentences are pasted into the focused app
+      And the pasted text does not contain "paste"
+
   Rule: A command counts on its own or in its set places
 
     Scenario: A stop phrase inside a dictated sentence does not end the dictation
@@ -144,7 +160,7 @@ Feature: voice-control
       And the Return key is pressed after it
       And the enter sound plays and the overlay shows the enter sign after the paste
 
-  Rule: Each state accepts its own commands
+  Rule: Each state accepts its own commands, paste in both
 
     Scenario: Clear during a dictation is ignored
       Given a dictation runs
@@ -152,10 +168,10 @@ Feature: voice-control
       Then no key is pressed
       And the dictation keeps running
 
-    Scenario: Paste during a dictation is ignored
+    Scenario: Paste during a dictation is carried out
       Given a dictation runs
       When the user says "paste text"
-      Then no key is pressed
+      Then Cmd+V is pressed in the focused app
       And the dictation keeps running
 
     Scenario: Stop dictation without a dictation is ignored

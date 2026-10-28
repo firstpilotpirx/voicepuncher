@@ -47,12 +47,14 @@ impl VoiceCommand {
         Self::PasteText,
     ];
 
-    /// Commands accepted during a dictation; "press enter" there also ends it.
-    pub const DICTATING: [Self; 4] = [
+    /// Commands accepted during a dictation; "press enter" there also ends it, "paste text"
+    /// leaves it running.
+    pub const DICTATING: [Self; 5] = [
         Self::StopDictation,
         Self::CancelDictation,
         Self::RestartDictation,
         Self::PressEnter,
+        Self::PasteText,
     ];
 
     /// Every command, in the order of the spec.
@@ -131,14 +133,15 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_stop_cancel_restart_and_enter_during_a_dictation() {
+    fn should_accept_stop_cancel_restart_enter_and_paste_during_a_dictation() {
         assert_eq!(
             VoiceCommand::DICTATING.map(VoiceCommand::phrase),
             [
                 "stop dictation",
                 "cancel dictation",
                 "restart dictation",
-                "press enter"
+                "press enter",
+                "paste text"
             ]
         );
     }

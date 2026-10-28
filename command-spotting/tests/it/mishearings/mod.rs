@@ -31,10 +31,10 @@ fn recorded(voice_samples: &str, recording: &Recording) -> Vec<f32> {
 
 /// The matcher of the state that accepts `phrase`.
 fn matcher_accepting(phrase: &str) -> PhraseMatcher {
-    let state = if DICTATING.contains(&phrase) {
-        DICTATING
-    } else {
+    let state = if STANDBY.contains(&phrase) {
         STANDBY
+    } else {
+        DICTATING
     };
     PhraseMatcher::new(&state.iter().map(|p| (*p).to_owned()).collect::<Vec<_>>())
 }

@@ -180,7 +180,7 @@ Feature: voice-control
       Then the sentence is pasted into the focused app
       And the Return key is pressed after it
 
-  Rule: Each state accepts its own commands
+  Rule: Each state accepts its own commands, paste in both
 
     Scenario Outline: Start or let's start on its own during a dictation is ignored
       Given the command spotting service is running

@@ -16,8 +16,8 @@ pub const COMMANDS: [&str; 7] = [START, STOP, CANCEL, RESTART, ENTER, CLEAR, PAS
 
 /// The phrases each state accepts; a dictation runs or it does not.
 pub const STANDBY: &[&str] = &[START, ENTER, CLEAR, PASTE];
-/// "enter" during a dictation ends it and presses Return.
-pub const DICTATING: &[&str] = &[STOP, CANCEL, RESTART, ENTER];
+/// "enter" during a dictation ends it and presses Return; "paste" leaves it running.
+pub const DICTATING: &[&str] = &[STOP, CANCEL, RESTART, ENTER, PASTE];
 
 /// The phrases accepted after `phrase` was carried out.
 pub fn accepted_after(phrase: &str) -> &'static [&'static str] {

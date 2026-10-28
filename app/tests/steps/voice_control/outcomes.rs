@@ -2,7 +2,7 @@
 
 use super::{
     bail, given, is_key_press, pipeline_log, run, then, Duration, Event, Instant, IntegrationWorld,
-    Result, MORE_WORDS, PASTED_SIGN, REACTION, SENTENCE, SETTLE, STOP_PHRASE,
+    Result, MORE_WORDS, OTHER_SENTENCE, PASTED_SIGN, REACTION, SENTENCE, SETTLE, STOP_PHRASE,
 };
 
 #[then("nothing was pasted before the dictation was ended")]
@@ -249,4 +249,13 @@ pub(super) fn error_logged(_world: &mut IntegrationWorld) -> Result<()> {
         }
         std::thread::sleep(Duration::from_millis(5));
     }
+}
+
+#[then("both dictated sentences are pasted into the focused app")]
+pub(super) fn both_sentences_pasted(world: &mut IntegrationWorld) -> Result<()> {
+    let pasted = run(world).pasted()?;
+    if !pasted.contains(SENTENCE) || !pasted.contains(OTHER_SENTENCE) {
+        bail!("pasted {pasted:?}, expected {SENTENCE:?} and {OTHER_SENTENCE:?}");
+    }
+    Ok(())
 }

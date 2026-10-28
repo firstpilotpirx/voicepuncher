@@ -256,6 +256,10 @@ impl Pipeline {
     /// Presses the keys of "press enter", "clear all text" or "paste text", then confirms the
     /// command.
     fn press_keys(&mut self, command: VoiceCommand) {
+        if command == VoiceCommand::PasteText {
+            // A dictation runs on through it: its text loses the command's words when it ends.
+            (self.dictation.iter_mut()).for_each(|d| d.command_words.pastes += 1);
+        }
         let Voice::On(voice) = &mut self.voice else {
             return;
         };
