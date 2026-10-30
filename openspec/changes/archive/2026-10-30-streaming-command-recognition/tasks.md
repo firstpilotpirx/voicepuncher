@@ -45,5 +45,5 @@
 ## 6. Release
 
 - [x] 6.1 Bump `version` in `app/Cargo.toml` to 0.42.0
-- [ ] 6.2 Run `just check`; commit
+- [x] 6.2 Run `just check`; commit
 - [x] 6.3 Manual checks: none (no hotkey, recording, overlay, paste or permission change); the user may run voice control and paste the command spotting log
