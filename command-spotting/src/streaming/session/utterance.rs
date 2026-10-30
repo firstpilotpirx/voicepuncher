@@ -1,26 +1,28 @@
 //! One utterance in every recognizer: its streams, its audio, the pause after it and what
 //! each recognizer heard and reported of it.
 
-use std::time::{Duration, Instant};
-
 use crate::confirm::TimedWord;
 use crate::matcher::PhraseMatcher;
 use crate::protocol::ServerEvent;
+use crate::worker::Wake;
 
 use super::super::decide::{decide, doubles, Finding, Moment};
-use super::super::ports::{Decoded, RecognizerStream, StreamingModel};
+use super::super::ports::{Decoded, StreamingModel};
 use super::super::trace::Trace;
 use super::super::words::timed_words;
+use super::decoder::{Decoder, Update};
 use super::{samples_in, seconds};
 
 /// The longest audio an entry of the command history keeps.
 const MAX_AUDIO_SECS: f32 = 30.0;
 
-pub struct Utterance<'a> {
+pub struct Utterance {
     /// Where its audio starts, in seconds of the stream.
     start: f32,
-    streams: Vec<Box<dyn RecognizerStream + 'a>>,
+    decoders: Vec<Decoder>,
     respelled: Vec<bool>,
+    /// What each recognizer held after its last decode.
+    last: Vec<Decoded>,
     audio: Vec<f32>,
     /// Samples since the gate last heard speech.
     quiet: usize,
@@ -39,14 +41,33 @@ pub struct Closed {
     pub audio: Vec<f32>,
 }
 
-impl<'a> Utterance<'a> {
-    /// Opens it at `onset`, its audio from `start` on, with `replay` fed to every recognizer.
-    pub fn open(models: &[&'a dyn StreamingModel], start: f32, onset: f32, replay: &[f32]) -> Self {
+/// Whether collecting waits for every recognizer to decode all the audio fed to it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Wait {
+    No,
+    CaughtUp,
+}
+
+impl Utterance {
+    /// Opens it at `onset`, its audio from `start` on, with `replay` fed to every recognizer,
+    /// each decoding on a thread of its own that calls `wake` when it decoded more.
+    pub fn open(
+        models: &[&dyn StreamingModel],
+        start: f32,
+        onset: f32,
+        replay: &[f32],
+        wake: Option<&Wake>,
+    ) -> std::io::Result<Self> {
         let names: Vec<&str> = models.iter().map(|m| m.name()).collect();
+        let decoders = models
+            .iter()
+            .map(|m| Decoder::start(m.name(), m.stream(), wake.cloned()))
+            .collect::<std::io::Result<_>>()?;
         let mut utterance = Self {
             start,
-            streams: models.iter().map(|m| m.stream()).collect(),
+            decoders,
             respelled: models.iter().map(|m| m.respelled()).collect(),
+            last: vec![Decoded::default(); models.len()],
             audio: Vec::new(),
             quiet: 0,
             reported_until: 0.0,
@@ -54,15 +75,15 @@ impl<'a> Utterance<'a> {
             trace: Trace::new(start, onset, &names),
         };
         utterance.feed(replay);
-        utterance
+        Ok(utterance)
     }
 
     pub fn feed(&mut self, samples: &[f32]) {
         if self.audio.len() < samples_in(MAX_AUDIO_SECS) {
             self.audio.extend_from_slice(samples);
         }
-        for stream in &mut self.streams {
-            stream.accept(samples);
+        for decoder in &mut self.decoders {
+            decoder.feed(samples);
         }
     }
 
@@ -80,20 +101,40 @@ impl<'a> Utterance<'a> {
         self.quiet
     }
 
-    /// Decodes the new audio in every recognizer and reports what they heard, at `now`.
-    pub fn step(&mut self, matcher: &PhraseMatcher, moment: Moment, now: f32) -> Vec<ServerEvent> {
-        let took = decode_all(&mut self.streams);
+    /// Reports what the recognizers decoded since the last call, at `now` in the stream.
+    pub fn collect(&mut self, matcher: &PhraseMatcher, now: f32, wait: Wait) -> Vec<ServerEvent> {
         let mut events = Vec::new();
-        for (r, took) in took.into_iter().enumerate() {
-            self.trace.decoded(r, took);
-            let decoded = self.streams[r].decoded();
-            self.trace.heard(r, now, &text_of(&decoded));
-            let words = self.words(r, &decoded);
-            if let Some(found) = decide(matcher, &words, moment, self.reported_until) {
-                events.extend(self.report(r, found, now));
+        for r in 0..self.decoders.len() {
+            let updates = match wait {
+                Wait::No => self.decoders[r].arrived(),
+                Wait::CaughtUp => self.decoders[r].caught_up(),
+            };
+            for update in updates {
+                events.extend(self.heard(matcher, r, update, now));
             }
         }
         events
+    }
+
+    /// Recognizer `r` decoded `update`: what it says is reported at `now`.
+    fn heard(
+        &mut self,
+        matcher: &PhraseMatcher,
+        r: usize,
+        update: Update,
+        now: f32,
+    ) -> Option<ServerEvent> {
+        self.trace.decoded(r, update.took);
+        self.trace.heard(r, now, &text_of(&update.decoded));
+        let words = self.words(r, &update.decoded);
+        self.last[r] = update.decoded;
+        let moment = if update.finished {
+            Moment::Closing
+        } else {
+            Moment::Decoding { now: self.start + seconds(update.fed) }
+        };
+        let found = decide(matcher, &words, moment, self.reported_until)?;
+        self.report(r, found, now)
     }
 
     /// Reports `found`, heard by recognizer `r` at `now`, unless it doubles the last report.
@@ -107,17 +148,18 @@ impl<'a> Utterance<'a> {
         })
     }
 
-    /// Ends every stream, decodes what is left and reports it; the speech end follows.
+    /// Ends every stream, waits for what is left to be decoded and reports it; the speech end
+    /// follows.
     pub fn close(mut self, matcher: &PhraseMatcher, now: f32) -> Closed {
-        for stream in &mut self.streams {
-            stream.finish();
+        for decoder in &mut self.decoders {
+            decoder.finish();
         }
-        let mut events = self.step(matcher, Moment::Closing, now);
+        let mut events = self.collect(matcher, now, Wait::CaughtUp);
         events.push(ServerEvent::SpeechEnd { t: self.trace.speech_end });
         self.trace.closed = now;
-        let heard = (0..self.streams.len())
+        let heard = (0..self.last.len())
             .filter_map(|r| {
-                let words = self.words(r, &self.streams[r].decoded());
+                let words = self.words(r, &self.last[r]);
                 decide(matcher, &words, Moment::Closing, 0.0).map(|found| (r, found))
             })
             .collect();
@@ -132,26 +174,6 @@ impl<'a> Utterance<'a> {
             self.respelled[r],
         )
     }
-}
-
-/// Decodes every stream at once, each on its own thread; how long each took.
-fn decode_all(streams: &mut [Box<dyn RecognizerStream + '_>]) -> Vec<Duration> {
-    std::thread::scope(|scope| {
-        let decoding: Vec<_> = streams
-            .iter_mut()
-            .map(|stream| {
-                scope.spawn(move || {
-                    let began = Instant::now();
-                    stream.decode();
-                    began.elapsed()
-                })
-            })
-            .collect();
-        decoding
-            .into_iter()
-            .map(|d| d.join().unwrap_or_default())
-            .collect()
-    })
 }
 
 /// The text the tokens spell, as the recognizer wrote it.

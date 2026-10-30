@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 
 use crate::history::{CommandHistory, HistoryCfg};
+use crate::worker::Wake;
 
 use super::ports::StreamingModel;
 use super::session::{Session, SessionCfg};
@@ -51,6 +52,11 @@ impl StreamingEngine {
 
     /// The session of connection `conn`.
     pub fn session_for(&self, conn: u64) -> Result<Session<'_>> {
+        self.session_waking(conn, None)
+    }
+
+    /// The session of connection `conn`; `wake` is called when a recognizer decoded more.
+    pub fn session_waking(&self, conn: u64, wake: Option<Wake>) -> Result<Session<'_>> {
         let models = self
             .models
             .iter()
@@ -61,6 +67,7 @@ impl StreamingEngine {
             conn,
             min_silence_secs: self.min_silence_secs,
             history: self.history.as_ref(),
+            wake,
         };
         Ok(Session::new(models, gate, &cfg))
     }

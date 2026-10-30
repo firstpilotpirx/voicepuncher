@@ -25,13 +25,16 @@ impl From<Engine> for Service {
 }
 
 impl Service {
-    /// The session of connection `conn`; a confirmation's answer calls `wake`.
+    /// The session of connection `conn`; a confirmation's answer, or a recognizer's decode,
+    /// calls `wake`.
     pub fn session_waking(&self, conn: u64, wake: Option<Wake>) -> Result<Listening<'_>> {
         Ok(match self {
             Self::KeywordSpotting(engine) => {
                 Listening::KeywordSpotting(Box::new(engine.session_waking(conn, wake)?))
             }
-            Self::Streaming(engine) => Listening::Streaming(Box::new(engine.session_for(conn)?)),
+            Self::Streaming(engine) => {
+                Listening::Streaming(Box::new(engine.session_waking(conn, wake)?))
+            }
         })
     }
 }

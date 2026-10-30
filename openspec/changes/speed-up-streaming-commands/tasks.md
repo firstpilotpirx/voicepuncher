@@ -1,16 +1,16 @@
 ## 1. Replay bench
 
-- [ ] 1.1 Red: unit tests for the bench's clip labels and latency summary (median, p90, accuracy, false alarms) in `command-spotting/src/bench/`
-- [ ] 1.2 Green: `streaming-bench` binary streaming voice samples, labelled history entries and negatives through the streaming session in real time; `just streaming-bench` recipe
-- [ ] 1.3 Record the baseline (current code, Nemotron 2 threads) in `research/README.md` of this change
-- [ ] 1.4 `just test`; commit
+- [x] 1.1 Red: unit tests for the bench's clip labels and latency summary (median, p90, accuracy, false alarms) in `command-spotting/src/bench/`
+- [x] 1.2 Green: `streaming-bench` binary streaming voice samples, labelled history entries and negatives through the streaming session in real time; `just streaming-bench` recipe
+- [x] 1.3 Record the baseline (current code, Nemotron 2 threads) in `research/README.md` of this change
+- [x] 1.4 `just test`; commit
 
 ## 2. Independent recognizers
 
-- [ ] 2.1 Red: unit test "a slow recognizer does not hold back the other" in `streaming/session/tests.rs` (scripted slow English model)
-- [ ] 2.2 Green: one worker thread per recognizer in `streaming/session/`, reports de-duplicated as now
-- [ ] 2.3 Bench run; record the result
-- [ ] 2.4 `just test`; commit
+- [x] 2.1 Red: unit test "a slow recognizer does not hold back the other" in `streaming/session/tests.rs` (scripted slow English model)
+- [x] 2.2 Green: one worker thread per recognizer in `streaming/session/`, reports de-duplicated as now
+- [x] 2.3 Bench run; record the result
+- [x] 2.4 `just test`; commit
 
 ## 3. English recognizer speed and choice
 

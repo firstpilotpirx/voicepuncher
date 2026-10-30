@@ -57,9 +57,14 @@ fn commands_in(engine: &StreamingEngine, audio: &[f32]) -> Vec<String> {
     session
         .select(&PhraseSelection { phrases, ..PhraseSelection::default() })
         .expect("known phrases");
-    paused(audio)
+    let mut events: Vec<ServerEvent> = paused(audio)
         .chunks(SAMPLE_RATE / 10)
         .flat_map(|chunk| session.accept(chunk))
+        .collect();
+    // WHY: the recognizers decode on threads of their own; a sync waits for what is left.
+    events.extend(session.sync(0));
+    events
+        .into_iter()
         .filter_map(|event| match event {
             ServerEvent::Command { commands, .. } => Some(commands),
             _ => None,

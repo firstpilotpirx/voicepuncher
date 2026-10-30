@@ -2,6 +2,7 @@
 //! the Silero voice activity detector as the gate.
 
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use sherpa_onnx::{
@@ -28,7 +29,7 @@ const GATE_BUFFER_SECS: f32 = 30.0;
 pub struct SherpaModel {
     name: String,
     respelled: bool,
-    recognizer: OnlineRecognizer,
+    recognizer: Arc<OnlineRecognizer>,
 }
 
 impl SherpaModel {
@@ -45,7 +46,7 @@ impl SherpaModel {
         config.decoding_method = Some("greedy_search".to_owned());
         let recognizer = OnlineRecognizer::create(&config)
             .ok_or_else(|| anyhow!("cannot load the streaming model from {}", dir.display()))?;
-        Ok(Self { name: name.to_owned(), respelled, recognizer })
+        Ok(Self { name: name.to_owned(), respelled, recognizer: Arc::new(recognizer) })
     }
 }
 
@@ -58,20 +59,20 @@ impl StreamingModel for SherpaModel {
         self.respelled
     }
 
-    fn stream(&self) -> Box<dyn RecognizerStream + '_> {
+    fn stream(&self) -> Box<dyn RecognizerStream> {
         Box::new(SherpaStream {
-            recognizer: &self.recognizer,
+            recognizer: Arc::clone(&self.recognizer),
             stream: self.recognizer.create_stream(),
         })
     }
 }
 
-struct SherpaStream<'a> {
-    recognizer: &'a OnlineRecognizer,
+struct SherpaStream {
+    recognizer: Arc<OnlineRecognizer>,
     stream: OnlineStream,
 }
 
-impl RecognizerStream for SherpaStream<'_> {
+impl RecognizerStream for SherpaStream {
     fn accept(&mut self, samples: &[f32]) {
         self.stream.accept_waveform(rate(), samples);
     }
