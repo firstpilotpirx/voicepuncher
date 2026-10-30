@@ -836,3 +836,63 @@ Feature: voice-control
       Given the command spotting service listens for the commands of standby and keeps a command history in a folder it cannot write to
       When the user says "press enter" to the command spotting service as it is spoken
       Then the command spotting service reports "press enter" and its log warns that the utterance was not kept
+
+  # The streaming recognizer runs in this process on the real streaming models, as the
+  # service runs it: the voice gate, the English and the Russian recognizer.
+  Rule: Streaming recognizers hear commands behind a voice gate
+
+    @smoke
+    Scenario: A command said alone is reported before its pause ends
+      Given the command spotting service runs with the streaming recognizer
+      When an app streams "press enter" followed by half a second of silence and asks for a sync
+      Then the streaming recognizer reports "press enter" before it answers the sync
+
+    @smoke
+    Scenario: Silence wakes no recognizer
+      Given the command spotting service runs with the streaming recognizer
+      When an app streams three seconds of silence
+      Then the streaming recognizer reports no command
+      And the service's log shows that no streaming recognizer ran
+
+    @smoke
+    Scenario: Speech without a command is no command
+      Given the command spotting service runs with the streaming recognizer
+      When an app streams the sentence "the weather is nice today"
+      Then the streaming recognizer reports no command
+
+  Rule: A command said in Russian sounds counts as the command
+
+    @smoke
+    Scenario: A Russian-accented stop is heard as stop
+      Given the command spotting service runs with the streaming recognizer
+      When an app streams "стоп" said by a Russian voice followed by silence
+      Then the streaming recognizer reports "stop dictation" exactly once
+
+    @smoke
+    Scenario: A Russian word that is no command stays speech
+      Given the command spotting service runs with the streaming recognizer
+      When an app streams "привет" said by a Russian voice followed by silence
+      Then the streaming recognizer reports no command
+
+  Rule: The first recognizer to hear a command reports it once
+
+    @smoke
+    Scenario: A command both recognizers hear is reported once
+      Given the command spotting service runs with the streaming recognizer
+      When an app streams "press enter" followed by silence
+      Then the streaming recognizer reports "press enter" exactly once
+
+    @smoke
+    Scenario: A doubled command is reported once
+      Given the command spotting service runs with the streaming recognizer
+      When an app streams "enter enter" followed by silence
+      Then the streaming recognizer reports "press enter" exactly once
+
+  Rule: Each streaming utterance is kept with its texts and stage times
+
+    @smoke
+    Scenario: A reported command leaves an entry with its timeline
+      Given the command spotting service runs with the streaming recognizer and keeps a command history
+      When an app streams "press enter" followed by silence
+      Then the command history holds an entry with the utterance's audio
+      And the entry names "press enter", the recognizer that heard it, each recognizer's texts with their times and the times of each stage

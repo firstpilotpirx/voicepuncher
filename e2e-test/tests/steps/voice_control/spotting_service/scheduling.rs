@@ -40,7 +40,7 @@ const SYNC_RUN_DELAY: Duration = Duration::from_millis(600);
 const LOADED_DELAY: Duration = Duration::from_secs(2);
 
 /// ONNX Runtime aborts when models load or run on several threads at once.
-static ENGINE_RUNS: Mutex<()> = Mutex::new(());
+pub(crate) static ENGINE_RUNS: Mutex<()> = Mutex::new(());
 
 /// The engine's set-up in a scenario, and what each run of it reported.
 #[derive(Debug, Default)]

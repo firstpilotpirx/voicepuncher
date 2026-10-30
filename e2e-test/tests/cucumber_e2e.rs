@@ -64,6 +64,8 @@ pub struct VoiceRun {
     pub session: Option<steps::voice_control::HandsFreeSession>,
     /// The confirmation of commands is off for the scenario's session.
     pub unconfirmed_commands: bool,
+    /// The streaming recognizer a scenario drives in this process.
+    pub streaming: steps::voice_control::streaming::StreamingRun,
 }
 
 /// The corpus sample of an accuracy scenario and its word error rates.

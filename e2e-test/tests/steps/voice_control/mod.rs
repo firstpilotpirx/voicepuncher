@@ -23,6 +23,7 @@ pub(crate) mod outages;
 pub(crate) mod session;
 pub(crate) mod spotting_service;
 mod stand_ins;
+pub(crate) mod streaming;
 
 pub use session::HandsFreeSession;
 
