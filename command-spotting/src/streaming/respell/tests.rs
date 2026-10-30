@@ -37,6 +37,35 @@ fn should_split_a_glued_double_into_two_words() {
 }
 
 #[test]
+fn should_respell_the_users_mishearings_from_the_command_history() {
+    // Given the words the Russian recognizer wrote for the user's commands in the history
+    let heard = [
+        ("лентер", vec!["enter"]),
+        ("яндер", vec!["enter"]),
+        ("поист", vec!["paste"]),
+        ("клио", vec!["clear"]),
+        ("клет", vec!["clear"]),
+        ("тартарт", vec!["start", "start"]),
+        ("стартарт", vec!["start", "start"]),
+        ("тарстард", vec!["start", "start"]),
+    ];
+    for (cyrillic, english) in heard {
+        // When
+        let respelled = respell_word(cyrillic);
+        // Then
+        assert_eq!(respelled, Some(english), "{cyrillic}");
+    }
+}
+
+#[test]
+fn should_leave_russian_words_close_to_a_command() {
+    // When
+    let respelled = respell("пост центр клевер стартовый");
+    // Then
+    assert_eq!(respelled, "пост центр клевер стартовый");
+}
+
+#[test]
 fn should_respell_the_other_words_of_a_command_form() {
     // When
     let respelled = respell("пресс энтер плиз, старт диктейшн, клир ол текст");

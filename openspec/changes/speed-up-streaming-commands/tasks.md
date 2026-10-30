@@ -38,9 +38,9 @@
 
 ## 6. Mishearings and accuracy
 
-- [ ] 6.1 List recurring mishearings of the user's commands from the bench's misses
-- [ ] 6.2 Red: unit tests for those mishearings in `voice-commands/`
-- [ ] 6.3 Green: add them to the command forms in `voice-commands/`
+- [x] 6.1 List recurring mishearings of the user's commands from the bench's misses
+- [x] 6.2 Red: unit tests for those mishearings (the Russian ones are respellings: `command-spotting/src/streaming/respell/`)
+- [x] 6.3 Green: add them to the respellings, a glued double split with backtracking; the English ones stay out (research README § Mishearings)
 - [ ] 6.4 Red/Green: integration tests "the user's recorded commands are reported within their bound" and "are heard" (`needs_voice_samples`) in `command-spotting/tests/it/streaming/`
 - [x] 6.5 Update `docs/ubiquitous-language.md` (streaming bench, outcome `none`)
 - [ ] 6.6 `just test`; commit

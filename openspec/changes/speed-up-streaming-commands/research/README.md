@@ -68,3 +68,23 @@ With the flush, the tail past the pause (`TAIL_SECS`) on every fourth clip:
 
 No command is lost at 0.1 s (one more is heard); the p90 moves within the run-to-run spread.
 Chosen: 0.1 s, so an utterance closes 0.4 s after its speech instead of 0.8 s.
+
+## Mishearings
+
+The misses of the whole bench, as the Russian recognizer wrote the command:
+
+| Written | Command | Where | Taken |
+|---|---|---|---|
+| «тартарт», «стартарт», «тарстард» | start, doubled | history | yes: "с" may drop, "т" may sound "д", and a glued double is split with backtracking ("тар" + "тарт") |
+| «лентер», «яндер» | enter | history | yes |
+| «поист» | paste | history | yes |
+| «клио», «клет» | clear | voice samples | yes: "р" may drop |
+| «центр», «клевер», «сто» | enter, clear, stop | history, voice samples | no: Russian words |
+| «интернтер», «терендер» | enter | history | no: no single reading |
+
+The English recognizer's misses ("Store objectation", "To dictation", "Capture dictation",
+"Lectation", "Addictation") are left: the matcher's near forms already take "capsule
+dictation" for cancel, and widening them reads one command as another.
+
+Scored against the commands each voice sample states (`forms.jsonl`, not the words said): 105
+of 115 clips before relabelling — 103 before the new spellings.

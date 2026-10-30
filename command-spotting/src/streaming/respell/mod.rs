@@ -38,14 +38,13 @@ const SOUNDS: &[(&str, &[&[Letter]])] = &[
         "start",
         &[
             &[
-                ("с", Once),
+                ("с", Maybe),
                 ("т", Once),
                 ("а", Once),
                 ("р", Once),
-                ("т", Once),
+                ("тд", Maybe),
             ],
             &[("с", Once), ("т", Once), ("а", Once), ("т", Once)],
-            &[("с", Once), ("т", Once), ("а", Once), ("р", Once)],
         ],
     ),
     (
@@ -55,7 +54,8 @@ const SOUNDS: &[(&str, &[&[Letter]])] = &[
     (
         "enter",
         &[&[
-            ("эеи", Once),
+            ("л", Maybe),
+            ("эеия", Once),
             ("н", Once),
             ("тд", Once),
             ("еэоа", Maybe),
@@ -68,8 +68,8 @@ const SOUNDS: &[(&str, &[&[Letter]])] = &[
             ("к", Once),
             ("л", Once),
             ("иеэ", Once),
-            ("иеэа", Maybe),
-            ("р", Once),
+            ("иеэао", Maybe),
+            ("рт", Maybe),
         ]],
     ),
     (
@@ -85,13 +85,22 @@ const SOUNDS: &[(&str, &[&[Letter]])] = &[
     ),
     (
         "paste",
-        &[&[
-            ("п", Once),
-            ("еэ", Once),
-            ("й", Maybe),
-            ("с", Once),
-            ("т", Once),
-        ]],
+        &[
+            &[
+                ("п", Once),
+                ("еэ", Once),
+                ("й", Maybe),
+                ("с", Once),
+                ("т", Once),
+            ],
+            &[
+                ("п", Once),
+                ("о", Once),
+                ("ий", Once),
+                ("с", Once),
+                ("т", Once),
+            ],
+        ],
     ),
     (
         "dictation",
@@ -172,40 +181,52 @@ fn is_cyrillic(c: char) -> bool {
 /// The English words a Cyrillic word sounds like; none when part of it is no command sound.
 pub fn respell_word(word: &str) -> Option<Vec<&'static str>> {
     let letters: Vec<char> = word.to_lowercase().replace('ё', "е").chars().collect();
-    let mut rest = letters.as_slice();
-    let mut words = Vec::new();
-    while !rest.is_empty() {
-        let (english, used) = SOUNDS.iter().find_map(|(english, ways)| {
-            ways.iter()
-                .find_map(|way| said(way, rest))
-                .map(|used| (*english, used))
-        })?;
-        words.push(english);
-        rest = &rest[used..];
-    }
-    (!words.is_empty()).then_some(words)
+    (!letters.is_empty()).then(|| split(&letters)).flatten()
 }
 
-/// How many of the letters at the start of `word` say `way`, each letter taken greedily.
-fn said(way: &[Letter], word: &[char]) -> Option<usize> {
-    let mut at = 0;
+/// `letters` read as command sounds one after another; a sound that leaves letters no other
+/// sound reads is tried shorter, so "тартарт" is "тар" and "тарт".
+fn split(letters: &[char]) -> Option<Vec<&'static str>> {
+    if letters.is_empty() {
+        return Some(Vec::new());
+    }
+    SOUNDS.iter().find_map(|(english, ways)| {
+        ways.iter().find_map(|way| {
+            said(way, letters).into_iter().rev().find_map(|used| {
+                let mut words = split(&letters[used..])?;
+                words.insert(0, *english);
+                Some(words)
+            })
+        })
+    })
+}
+
+/// How many of the letters at the start of `word` can say `way`, shortest first.
+fn said(way: &[Letter], word: &[char]) -> Vec<usize> {
+    let mut ends = vec![0];
     for &(letters, times) in way {
-        at = taken(letters, times, word, at)?;
+        ends = ends
+            .iter()
+            .flat_map(|&at| taken(letters, times, word, at))
+            .collect();
+        ends.sort_unstable();
+        ends.dedup();
     }
-    (at > 0).then_some(at)
+    ends.retain(|&at| at > 0);
+    ends
 }
 
-/// Where `word` goes on after `letters`, said `times` from `at`; none when they are not there.
-fn taken(letters: &str, times: Times, word: &[char], at: usize) -> Option<usize> {
+/// Where `word` can go on after `letters`, said `times` from `at`; none when they are not there.
+fn taken(letters: &str, times: Times, word: &[char], at: usize) -> Vec<usize> {
     let run = word[at..]
         .iter()
         .take_while(|c| letters.contains(**c))
         .count();
     match times {
-        Once => (run > 0).then_some(at + 1),
-        Maybe => Some(at + run.min(1)),
-        Many => (run > 0).then_some(at + run),
-        Rest => Some(word.len()),
+        Once => (run > 0).then_some(vec![at + 1]).unwrap_or_default(),
+        Maybe => (at..=at + run.min(1)).collect(),
+        Many => (at + 1..=at + run).collect(),
+        Rest => vec![word.len()],
     }
 }
 
