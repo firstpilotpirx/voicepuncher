@@ -48,7 +48,7 @@ With the streaming recognizer and a command history, the service SHALL keep ever
 ## ADDED Requirements
 
 ### Requirement: Streaming commands are reported within 0.3 s of their words
-With the streaming recognizer, the command spotting service SHALL report "start" and "stop", said alone, opening an utterance or doubled, within 0.3 s of the end of their words for at least half of them and within 0.6 s for at least 9 of 10, measured by the wall clock from the moment the end of the words reached the service on a machine without other checks running. A command said alone SHALL be reported once the voice gate hears the pause after it, without waiting for more text from a recognizer. A command ending an utterance after other speech SHALL be reported within 0.6 s of the end of its words.
+With the streaming recognizer on an idle machine, the command spotting service SHALL report "start" and "stop" within 0.3 s of the end of their words (wall clock) for at least half of them and within 0.6 s for 9 of 10; a command said alone SHALL count at the pause the gate hears after it, and one ending an utterance after speech within 0.6 s.
 
 #### Scenario: Start said alone is reported within its bound
 - **GIVEN** the command spotting service runs with the streaming recognizer on an otherwise idle machine
