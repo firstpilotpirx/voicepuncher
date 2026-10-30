@@ -495,7 +495,7 @@ Run only when changing a model, decoding params or the prompt. Missing models an
 | Command | Samples | Time |
 |---|---|---|
 | `just bench` | full corpus | long |
-| `just bench-smoke` | 10 | ~2 min |
+| `just bench --limit 10` | 10 | ~2 min |
 
 Example output (the layout; the numbers are illustrative):
 

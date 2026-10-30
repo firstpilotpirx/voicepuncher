@@ -728,21 +728,20 @@ corpus max_samples="50":
 
 # ── Model comparison ── not a gate; only when changing a model, decoding params or the prompt
 
-# Full benchmark — every Whisper model on the full corpus
-bench: _dev-tools
-    @MACHINE_LOCK_TIMEOUT=14400 {{locked}} _bench
+# Benchmark — every Whisper model on the full corpus; `just bench --limit 10` for a quick one (~2 min)
+bench *args: _dev-tools
+    @MACHINE_LOCK_TIMEOUT=14400 {{locked}} _bench {{args}}
 
-_bench:
+_bench *args:
     uv run --python 3.11 --with "datasets<3.0.0" --with soundfile --with numpy --with librosa \
-        python3 e2e-test/scripts/bench.py
+        python3 e2e-test/scripts/bench.py {{args}}
 
-# Quick benchmark — 10 samples, ~2 min
-bench-smoke: _dev-tools
-    @{{locked}} _bench-smoke
+# Streaming command bench — the user's labelled clips through the streaming recognizer, in real time
+streaming-bench *args: _dev-tools
+    @{{locked}} _streaming-bench {{args}}
 
-_bench-smoke:
-    uv run --python 3.11 --with "datasets<3.0.0" --with soundfile --with numpy --with librosa \
-        python3 e2e-test/scripts/bench.py --limit 10
+_streaming-bench *args:
+    cargo run --release --quiet -p voicepuncher-command-spotting --bin streaming-bench -- {{args}}
 
 # ── Guards ── fail fast instead of letting E2E tests skip silently (GATED) ────
 
