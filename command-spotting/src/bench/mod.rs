@@ -49,14 +49,24 @@ pub fn load_dataset(path: &Path) -> Result<Vec<Clip>> {
         if line.source == "history" && line.confident != Some(true) {
             continue;
         }
-        let audio = read_wav(Path::new(&line.path))?;
-        let audio = line
-            .cut
-            .map_or(audio.clone(), |(from, to)| cut(&audio, from, to));
-        let word_end = (line.label.len() == 1).then_some(line.word_end).flatten();
-        clips.push(Clip { id: line.id, audio, label: line.label, word_end });
+        clips.push(clip(line)?);
     }
     Ok(clips)
+}
+
+/// The clip of a trusted dataset line.
+fn clip(line: Line) -> Result<Clip> {
+    let audio = read_wav(Path::new(&line.path))?;
+    let audio = match line.cut {
+        Some((from, to)) => cut(&audio, from, to),
+        None => audio,
+    };
+    let secs = audio.len() as f32 / 16_000.0;
+    // WHY: some voice samples carry the end of the words in the whole session, past the clip.
+    let word_end = line
+        .word_end
+        .filter(|end| line.label.len() == 1 && *end <= secs);
+    Ok(Clip { id: line.id, audio, label: line.label, word_end })
 }
 
 /// The command word a reported phrase counts as in a label: `press enter` → `enter`.

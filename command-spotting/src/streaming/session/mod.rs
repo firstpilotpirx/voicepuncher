@@ -129,7 +129,7 @@ impl<'a> Session<'a> {
     fn frame(&mut self, frame: &[f32]) -> Vec<ServerEvent> {
         let speech = self.gate_hears(frame);
         let mut events = Vec::new();
-        if self.utterance.is_none() && speech {
+        if self.utterance.is_none() && speech == Some(true) {
             events.push(self.open());
         }
         self.remember(frame);
@@ -148,8 +148,9 @@ impl<'a> Session<'a> {
         events
     }
 
-    /// Whether the gate heard speech in any whole window of `frame`.
-    fn gate_hears(&mut self, frame: &[f32]) -> bool {
+    /// Whether the gate heard speech in any whole window of `frame`; nothing when `frame`
+    /// completed no window.
+    fn gate_hears(&mut self, frame: &[f32]) -> Option<bool> {
         self.gate_pending.extend_from_slice(frame);
         let windows = self.gate_pending.len() / GATE_WINDOW;
         let mut speech = false;
@@ -157,7 +158,7 @@ impl<'a> Session<'a> {
             speech |= self.gate.hears(window);
         }
         self.gate_pending.drain(..windows * GATE_WINDOW);
-        speech
+        (windows > 0).then_some(speech)
     }
 
     fn remember(&mut self, frame: &[f32]) {

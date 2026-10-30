@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use voicepuncher_command_spotting::bench::{load_dataset, run_clip, Outcome, Pace, Summary};
+use voicepuncher_command_spotting::bench::{load_dataset, run_clip, Clip, Outcome, Pace, Summary};
 use voicepuncher_command_spotting::streaming::engine::{StreamingCfg, StreamingEngine};
 
 #[derive(Parser)]
@@ -32,6 +32,9 @@ struct Args {
     /// Only the clips whose id holds this text.
     #[arg(long)]
     only: Option<String>,
+    /// Only the clips whose label holds this command word.
+    #[arg(long)]
+    word: Option<String>,
     /// Only every n-th clip: a quick comparison.
     #[arg(long, default_value_t = 1)]
     sample: usize,
@@ -41,6 +44,7 @@ struct Args {
 }
 
 fn main() -> Result<()> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     let args = Args::parse();
     let dataset = expand_home(&args.dataset)?;
     let engine = StreamingEngine::load(&StreamingCfg {
@@ -70,12 +74,11 @@ fn run_all(engine: &StreamingEngine, args: &Args, dataset: &Path) -> Result<Vec<
     } else {
         Pace::RealTime
     };
-    let wanted = |id: &str| args.only.as_deref().is_none_or(|o| id.contains(o));
     let mut outcomes = Vec::new();
     let clips = load_dataset(dataset)?
         .into_iter()
         .step_by(args.sample.max(1));
-    for clip in clips.filter(|c| wanted(&c.id)) {
+    for clip in clips.filter(|c| wanted(args, c)) {
         let outcome = run_clip(engine, &clip, pace)?;
         if args.verbose || !outcome.right() {
             print_outcome(&outcome);
@@ -83,6 +86,12 @@ fn run_all(engine: &StreamingEngine, args: &Args, dataset: &Path) -> Result<Vec<
         outcomes.push(outcome);
     }
     Ok(outcomes)
+}
+
+/// Whether `clip` passes the `--only` and `--word` filters.
+fn wanted(args: &Args, clip: &Clip) -> bool {
+    args.only.as_deref().is_none_or(|o| clip.id.contains(o))
+        && args.word.as_ref().is_none_or(|w| clip.label.contains(w))
 }
 
 fn print_outcome(o: &Outcome) {

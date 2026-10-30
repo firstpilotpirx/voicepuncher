@@ -15,6 +15,8 @@ use super::{samples_in, seconds};
 
 /// The longest audio an entry of the command history keeps.
 const MAX_AUDIO_SECS: f32 = 30.0;
+/// The silence fed to every recognizer at the gate's pause, ahead of the stream.
+pub const FLUSH_SECS: f32 = 0.6;
 
 pub struct Utterance {
     /// Where its audio starts, in seconds of the stream.
@@ -24,6 +26,10 @@ pub struct Utterance {
     /// What each recognizer held after its last decode.
     last: Vec<Decoded>,
     audio: Vec<f32>,
+    /// Samples fed to the recognizers, the flushed silence too.
+    streamed: usize,
+    /// Where silence was flushed into the recognizers' stream, and how much, in samples.
+    flushes: Vec<(usize, usize)>,
     /// Samples since the gate last heard speech.
     quiet: usize,
     /// Commands ending before this are reported already, by whichever recognizer.
@@ -69,6 +75,8 @@ impl Utterance {
             respelled: models.iter().map(|m| m.respelled()).collect(),
             last: vec![Decoded::default(); models.len()],
             audio: Vec::new(),
+            streamed: 0,
+            flushes: Vec::new(),
             quiet: 0,
             reported_until: 0.0,
             last_report: None,
@@ -82,19 +90,49 @@ impl Utterance {
         if self.audio.len() < samples_in(MAX_AUDIO_SECS) {
             self.audio.extend_from_slice(samples);
         }
+        self.stream(samples);
+    }
+
+    fn stream(&mut self, samples: &[f32]) {
+        self.streamed += samples.len();
         for decoder in &mut self.decoders {
             decoder.feed(samples);
         }
     }
 
-    /// The gate heard speech in the `samples` up to `seen`, or did not.
-    pub fn listen(&mut self, speech: bool, samples: usize, seen: usize) {
+    /// The gate heard speech in the `samples` up to `seen`, or did not, or judged none of them:
+    /// they then go on as speech or the pause before them.
+    pub fn listen(&mut self, speech: Option<bool>, samples: usize, seen: usize) {
+        let speech = speech.unwrap_or(self.quiet == 0);
         if speech {
             self.quiet = 0;
             self.trace.speech_end = seconds(seen);
         } else {
+            if self.quiet == 0 {
+                self.flush();
+            }
             self.quiet += samples;
         }
+    }
+
+    /// Feeds silence ahead of the stream at the gate's pause, so a recognizer that emits a
+    /// word's last sound only once more audio came emits it now.
+    fn flush(&mut self) {
+        let silence = vec![0.0; samples_in(FLUSH_SECS)];
+        self.flushes.push((self.streamed, silence.len()));
+        self.stream(&silence);
+    }
+
+    /// The time in the stream of `at`, a time in the recognizers' stream, the flushed silence
+    /// before it left out; a time inside a flush falls at its start.
+    fn unflushed(&self, at: f32) -> f32 {
+        let since = at - self.start;
+        let flushed: f32 = self
+            .flushes
+            .iter()
+            .map(|&(from, len)| (since - seconds(from)).clamp(0.0, seconds(len)))
+            .sum();
+        at - flushed
     }
 
     pub const fn quiet(&self) -> usize {
@@ -132,7 +170,7 @@ impl Utterance {
             Moment::Closing
         } else {
             Moment::Decoding {
-                now: self.start + seconds(update.fed),
+                now: self.unflushed(self.start + seconds(update.fed)),
                 pause: (self.quiet > 0).then_some(self.trace.speech_end),
             }
         };
@@ -170,12 +208,17 @@ impl Utterance {
     }
 
     fn words(&self, r: usize, decoded: &Decoded) -> Vec<TimedWord> {
-        timed_words(
+        let mut words = timed_words(
             &decoded.tokens,
             &decoded.times,
             self.start,
             self.respelled[r],
-        )
+        );
+        for word in &mut words {
+            word.start = self.unflushed(word.start);
+            word.end = self.unflushed(word.end);
+        }
+        words
     }
 }
 

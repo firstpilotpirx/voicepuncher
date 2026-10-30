@@ -6,6 +6,8 @@ use super::*;
 use crate::history::HistoryCfg;
 use crate::streaming::ports::{Decoded, RecognizerStream};
 
+mod pause_flush;
+
 const RATE: usize = 16_000;
 
 /// Hears speech in a window holding a sample louder than 0.1.
@@ -18,13 +20,14 @@ impl SpeechGate for LoudGate {
 }
 
 /// A recognizer that decodes its words, each at its time in the stream, once 0.1 s of audio
-/// past it came, each decode taking `decode_time`; it counts the streams opened and the audio
+/// past it came (or its lag), each decode taking `decode_time`; it counts the streams opened and the audio
 /// of each first accept.
 struct Scripted {
     name: &'static str,
     respelled: bool,
     words: Arc<Vec<(&'static str, f32)>>,
     decode_time: Duration,
+    lag: f32,
     streams: Arc<AtomicUsize>,
     first_accept: Arc<AtomicUsize>,
 }
@@ -36,6 +39,7 @@ impl Scripted {
             respelled: name == "ru",
             words: Arc::new(words.to_vec()),
             decode_time: Duration::ZERO,
+            lag: 0.1,
             streams: Arc::default(),
             first_accept: Arc::default(),
         }
@@ -45,11 +49,18 @@ impl Scripted {
         self.decode_time = decode_time;
         self
     }
+
+    /// Decodes each word only once `lag` of audio past it came.
+    fn lagging(mut self, lag: f32) -> Self {
+        self.lag = lag;
+        self
+    }
 }
 
 struct ScriptedStream {
     words: Arc<Vec<(&'static str, f32)>>,
     decode_time: Duration,
+    lag: f32,
     first_accept: Arc<AtomicUsize>,
     accepted: usize,
     finished: bool,
@@ -67,6 +78,7 @@ impl StreamingModel for Scripted {
         Box::new(ScriptedStream {
             words: Arc::clone(&self.words),
             decode_time: self.decode_time,
+            lag: self.lag,
             first_accept: Arc::clone(&self.first_accept),
             accepted: 0,
             finished: false,
@@ -89,7 +101,7 @@ impl RecognizerStream for ScriptedStream {
     }
     fn decoded(&self) -> Decoded {
         let heard_to = self.accepted as f32 / RATE as f32;
-        let lag = if self.finished { 0.0 } else { 0.1 };
+        let lag = if self.finished { 0.0 } else { self.lag };
         let (tokens, times) = self
             .words
             .iter()
