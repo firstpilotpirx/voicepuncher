@@ -29,6 +29,7 @@ fn entry(second: u64) -> Entry {
             whisper: None,
         }],
         outcome: Outcome::Agreed,
+        streaming: None,
     }
 }
 

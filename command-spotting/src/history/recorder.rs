@@ -156,6 +156,7 @@ impl Recorder {
             hearings: shifted(hearings, from),
             reported: shifted(reported, from),
             outcome,
+            streaming: None,
         })
     }
 

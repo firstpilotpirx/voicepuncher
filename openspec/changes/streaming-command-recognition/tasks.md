@@ -10,11 +10,11 @@
 
 ## 2. Gate, session and trace (command-spotting)
 
-- [ ] 2.1 Red: session unit tests with a scripted gate and recognizers (no recognizer runs in silence, replay of 0.5 s at onset, hangover then close, first recognizer wins once, speech events) in `command-spotting/src/streaming/session/tests.rs`
-- [ ] 2.2 Green: implement `SpeechGate`, `StreamingRecognizer` and the session
-- [ ] 2.3 Red: unit tests for the trace, its log line and its history entry (`streaming` field, outcome) in `command-spotting/src/streaming/trace.rs` and `command-spotting/src/history/entry.rs`
-- [ ] 2.4 Green: implement the trace, the log line and the entry
-- [ ] 2.5 Run `just test`; commit
+- [x] 2.1 Red: session unit tests with a scripted gate and recognizers (no recognizer runs in silence, replay of 0.5 s at onset, hangover then close, first recognizer wins once, speech events) in `command-spotting/src/streaming/session/tests.rs`
+- [x] 2.2 Green: implement `SpeechGate`, `StreamingRecognizer` and the session
+- [x] 2.3 Red: unit tests for the trace, its log line and its history entry (`streaming` field, outcome) in `command-spotting/src/streaming/trace.rs` and `command-spotting/src/history/entry.rs`
+- [x] 2.4 Green: implement the trace, the log line and the entry
+- [x] 2.5 Run `just test`; commit
 
 ## 3. Service wiring and real models (command-spotting)
 

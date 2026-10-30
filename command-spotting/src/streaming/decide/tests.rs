@@ -144,3 +144,13 @@ fn should_report_nothing_without_words() {
     // Then
     assert_eq!(found, None);
 }
+
+#[test]
+fn should_wait_for_a_command_heard_with_a_word_after_it_to_settle() {
+    // Given "stop the" heard so far of "stop the car"
+    let words = said(1.0, "stop the");
+    // When
+    let found = decide(&dictating(), &words, decoding(1.6), 0.0);
+    // Then
+    assert_eq!(found, None);
+}
