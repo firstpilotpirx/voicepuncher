@@ -78,6 +78,9 @@ url = "ws://127.0.0.1:8082"
 # Confirm each command with Whisper before it is carried out. Off is faster: the keyword
 # spotter alone decides, and the log and command history record whether Whisper agreed.
 confirm_commands = true
+# What hears the commands: "streaming" (an English and a Russian streaming recognizer) or
+# "keyword_spotting" (the keyword spotter, confirmed by Whisper).
+recognizer = "streaming"
 
 [archive]
 # Keep every dictation's audio and texts.

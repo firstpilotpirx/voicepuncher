@@ -10,7 +10,7 @@ use voicepuncher::adapters::secondary::localservices::catalog::{
 };
 use voicepuncher::config::Config;
 use voicepuncher::core::application::{HolderStop, ServiceLauncher, ServiceProcess, Services};
-use voicepuncher::core::domain::{ServiceKind, ServiceSpec, ServiceState};
+use voicepuncher::core::domain::{CommandRecognizer, ServiceKind, ServiceSpec, ServiceState};
 
 use super::home::{touch, FakeHome, COMMAND_MODEL_VAR, COMMAND_SPOTTING, KWS_MODEL_DIR, WHISPER};
 use super::{local, Answering, StepClock};
@@ -36,6 +36,7 @@ impl CatalogRun {
         let machine = home.machine();
         let mut config = Config::default();
         config.voice_control.enabled = true;
+        config.voice_control.recognizer = CommandRecognizer::KeywordSpotting;
         Ok(Self {
             home,
             machine,

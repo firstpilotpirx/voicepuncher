@@ -28,5 +28,6 @@ pub(crate) use host::*;
 mod check;
 use check::{app_misses_dictation_model, download};
 mod downloads;
+mod recognizer;
 
 const GB: u64 = 1_000_000_000;

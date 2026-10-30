@@ -1,3 +1,4 @@
+use crate::core::domain::CommandRecognizer;
 #[test]
 fn should_not_record_the_login_question_as_asked_by_default() {
     // Given / When
@@ -53,6 +54,19 @@ fn should_keep_voice_control_off_with_the_local_service_url_when_the_section_is_
     assert!(!cfg.voice_control.enabled);
     assert_eq!(cfg.voice_control.url, "ws://127.0.0.1:8082");
     assert!(cfg.voice_control.confirm_commands);
+}
+
+#[test]
+fn should_read_the_command_recognizer_and_default_to_streaming() {
+    // When
+    let chosen = loaded("[voice_control]\nrecognizer = \"keyword_spotting\"");
+    let unset = loaded("[voice_control]\nenabled = true");
+    // Then
+    assert_eq!(
+        chosen.voice_control.recognizer,
+        CommandRecognizer::KeywordSpotting
+    );
+    assert_eq!(unset.voice_control.recognizer, CommandRecognizer::Streaming);
 }
 
 #[test]

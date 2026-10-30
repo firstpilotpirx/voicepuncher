@@ -8,7 +8,7 @@ pub(super) fn should_need_only_the_dictation_copies_when_voice_control_is_off() 
     let home = Home::complete();
     let needs = Needs { voice_control: false };
     // When
-    let specs = needed(&Config::default(), needs, &home.machine(), &NOTHING_RUNS);
+    let specs = needed(&keyword_spotting(), needs, &home.machine(), &NOTHING_RUNS);
     // Then
     assert_eq!(
         kinds_and_ports(&specs),
@@ -26,7 +26,7 @@ pub(super) fn should_need_the_command_services_when_voice_control_is_on() {
     // Given
     let home = Home::complete();
     // When
-    let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
+    let specs = needed(&keyword_spotting(), ALL, &home.machine(), &NOTHING_RUNS);
     // Then
     let commands: Vec<(ServiceKind, u16)> = kinds_and_ports(&specs)
         .into_iter()
@@ -48,7 +48,7 @@ pub(super) fn should_need_the_command_services_when_voice_control_is_on() {
 pub(super) fn should_run_one_copy_on_the_service_port_with_every_core() {
     // Given
     let home = Home::complete();
-    let mut cfg = Config::default();
+    let mut cfg = keyword_spotting();
     cfg.services.dictation_copies = 1;
     // When
     let specs = needed(&cfg, ALL, &home.machine(), &NOTHING_RUNS);
@@ -70,7 +70,7 @@ pub(super) fn should_split_the_cores_between_the_copies() {
 pub(super) fn should_run_one_configured_command_spotting_copy_on_the_service_port() {
     // Given
     let home = Home::complete();
-    let mut cfg = Config::default();
+    let mut cfg = keyword_spotting();
     cfg.services.command_spotting_copies = 1;
     // When
     let specs = needed(&cfg, ALL, &home.machine(), &NOTHING_RUNS);
@@ -86,7 +86,7 @@ pub(super) fn should_run_one_configured_command_spotting_copy_on_the_service_por
 #[test]
 pub(super) fn should_label_each_command_spotting_copy() {
     let home = Home::complete();
-    let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
+    let specs = needed(&keyword_spotting(), ALL, &home.machine(), &NOTHING_RUNS);
     let labels: Vec<&str> = specs
         .iter()
         .filter(|spec| spec.kind == ServiceKind::CommandSpotting)
@@ -105,7 +105,7 @@ pub(super) fn should_label_each_command_spotting_copy() {
 pub(super) fn should_start_each_command_spotting_copy_on_its_own_port() {
     // Given
     let home = Home::complete();
-    let mut cfg = Config::default();
+    let mut cfg = keyword_spotting();
     cfg.services.command_spotting_copies = 3;
     // When
     let specs = needed(&cfg, ALL, &home.machine(), &NOTHING_RUNS);
@@ -132,7 +132,7 @@ pub(super) fn should_health_check_every_service_it_starts_each_copy_too() {
     // Given
     let home = Home::complete();
     // When
-    let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
+    let specs = needed(&keyword_spotting(), ALL, &home.machine(), &NOTHING_RUNS);
     // Then
     let unchecked: Vec<&str> = specs
         .iter()
@@ -145,7 +145,7 @@ pub(super) fn should_health_check_every_service_it_starts_each_copy_too() {
 #[test]
 pub(super) fn should_log_each_service_to_a_file_named_by_its_program_and_port() {
     let home = Home::complete();
-    let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
+    let specs = needed(&keyword_spotting(), ALL, &home.machine(), &NOTHING_RUNS);
     let logs: Vec<PathBuf> = specs.iter().map(|spec| spec.log_file.clone()).collect();
     let in_logs = home.path().join(".voicepuncher/logs");
     assert!(logs.contains(&in_logs.join("whisper-server-18082.log")));

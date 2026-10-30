@@ -66,6 +66,28 @@ pub fn command_spotting_args(
     ])
 }
 
+/// The command spotting service's arguments with the streaming recognizers
+/// (`VOICEPUNCHER_COMMAND_RECOGNIZER=streaming`): no speech recognition service for commands.
+pub fn streaming_args(
+    port: &str,
+    en_model_dir: &str,
+    ru_model_dir: &str,
+    vad: &str,
+) -> Vec<String> {
+    owned(&[
+        "--port",
+        port,
+        "--recognizer",
+        "streaming",
+        "--en-model-dir",
+        en_model_dir,
+        "--ru-model-dir",
+        ru_model_dir,
+        "--vad-model",
+        vad,
+    ])
+}
+
 fn owned(words: &[&str]) -> Vec<String> {
     words.iter().map(|word| (*word).to_string()).collect()
 }

@@ -8,7 +8,7 @@ use cucumber::{given, then, when};
 use tempfile::TempDir;
 
 use voicepuncher::config::Config;
-use voicepuncher::core::domain::{ModelFile, ModelKind, CATALOG};
+use voicepuncher::core::domain::{CommandRecognizer, ModelFile, ModelKind, CATALOG};
 use voicepuncher::runtime::models::MIRROR_VARIABLE;
 use voicepuncher::runtime::{CatalogModels, ModelsGate};
 
@@ -25,6 +25,8 @@ pub struct ModelFilesRun {
     env: HashMap<String, String>,
     missing: Option<Vec<&'static str>>,
     output: Option<Output>,
+    /// The recognizer voice control is on with; off when none.
+    pub(super) voice_control: Option<CommandRecognizer>,
 }
 
 impl Default for ModelFilesRun {
@@ -34,6 +36,7 @@ impl Default for ModelFilesRun {
             env: HashMap::new(),
             missing: None,
             output: None,
+            voice_control: None,
         }
     }
 }
@@ -41,6 +44,13 @@ impl Default for ModelFilesRun {
 impl ModelFilesRun {
     fn folder(&self) -> PathBuf {
         self.home.path().join("models")
+    }
+
+    /// The files the last check listed as missing.
+    pub(super) fn listed_missing(&self) -> Result<&[&'static str]> {
+        self.missing
+            .as_deref()
+            .context("the models were not checked")
     }
 
     /// Puts every catalog file but `missing` in the models folder at its catalog size.
@@ -78,7 +88,7 @@ fn dictation_model() -> &'static ModelFile {
         .expect("the catalog holds the dictation model")
 }
 
-fn files(world: &mut IntegrationWorld) -> &mut ModelFilesRun {
+pub(super) fn files(world: &mut IntegrationWorld) -> &mut ModelFilesRun {
     world
         .extra
         .ui
@@ -118,6 +128,10 @@ fn app_checks_models(world: &mut IntegrationWorld) {
     let run = files(world);
     let mut config = Config::default();
     config.services.models_dir = run.folder();
+    if let Some(recognizer) = run.voice_control {
+        config.voice_control.enabled = true;
+        config.voice_control.recognizer = recognizer;
+    }
     let gate = CatalogModels::new(run.home.path(), run.env.clone());
     run.missing = Some(gate.missing(&config));
 }

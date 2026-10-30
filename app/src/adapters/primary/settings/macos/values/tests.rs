@@ -101,6 +101,20 @@ fn should_offer_both_recording_modes_and_every_log_level() {
 }
 
 #[test]
+fn should_offer_both_command_recognizers_by_their_configuration_values() {
+    // When
+    let recognizers = options(Choices::CommandRecognizers, &[]);
+    // Then
+    assert_eq!(
+        recognizers
+            .iter()
+            .map(|c| c.value.clone())
+            .collect::<Vec<_>>(),
+        ["streaming", "keyword_spotting"].map(|v| Value::String(v.into()))
+    );
+}
+
+#[test]
 fn should_turn_the_language_list_into_text_and_back() {
     // Given
     let list = Value::Array(vec![Value::String("ru".into()), Value::String("en".into())]);

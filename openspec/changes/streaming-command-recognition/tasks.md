@@ -27,13 +27,13 @@
 
 ## 4. App configuration, services and models
 
-- [ ] 4.1 Red: component scenarios "Voice control starts the streaming recognizer by default" and "The keyword spotter can still be chosen" in `app/tests/features/component/local_services.feature`, steps in `app/tests/steps/local_services/`
-- [ ] 4.2 Green: `[voice_control] recognizer` in `app/src/config/`, `default.toml`, the service catalog skipping the commands Whisper service, streaming arguments in `catalog/args.rs`; existing keyword spotting scenarios choose the keyword spotter
-- [ ] 4.3 Red: parity test for the streaming command line in `dev-tools/src/services/tests.rs`
-- [ ] 4.4 Green: `dev-tools` streaming command line under `VOICEPUNCHER_COMMAND_RECOGNIZER=streaming`
-- [ ] 4.5 Red: component scenarios "The streaming recognizer needs the streaming models" and "The keyword spotter needs its own models" in `app/tests/features/component/model_download.feature`
-- [ ] 4.6 Green: the two archives in `app/src/core/domain/model_catalog.rs`, needs by recognizer
-- [ ] 4.7 Run `just test`; commit
+- [x] 4.1 Red: component scenarios "Voice control starts the streaming recognizer by default" and "The keyword spotter can still be chosen" in `app/tests/features/component/local_services.feature`, steps in `app/tests/steps/local_services/`
+- [x] 4.2 Green: `[voice_control] recognizer` in `app/src/config/`, `default.toml`, the service catalog skipping the commands Whisper service, streaming arguments in `catalog/args.rs`; existing keyword spotting scenarios choose the keyword spotter
+- [x] 4.3 Red: parity test for the streaming command line in `dev-tools/src/services/tests.rs`
+- [x] 4.4 Green: `dev-tools` streaming command line under `VOICEPUNCHER_COMMAND_RECOGNIZER=streaming`
+- [x] 4.5 Red: component scenarios "The streaming recognizer needs the streaming models" and "The keyword spotter needs its own models" in `app/tests/features/component/model_download.feature`
+- [x] 4.6 Green: the two archives in `app/src/core/domain/model_catalog.rs`, needs by recognizer
+- [x] 4.7 Run `just test`; commit
 
 ## 5. E2E
 

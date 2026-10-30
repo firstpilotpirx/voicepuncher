@@ -61,15 +61,46 @@ pub fn command_spotting_args(
     ]
     .map(String::from)
     .to_vec();
-    if let Some(history) = history {
-        args.extend([
+    args.extend(history_args(history));
+    args
+}
+
+/// `dev-tools`'s command spotting service line with the streaming recognizers, without the
+/// program; `models` are the English and Russian model folders and the voice gate model.
+pub fn streaming_args(
+    port: u16,
+    models: &[String; 3],
+    history: Option<&CommandHistoryArgs>,
+) -> Vec<String> {
+    let port = port.to_string();
+    let [en_model_dir, ru_model_dir, vad] = models;
+    let mut args: Vec<String> = [
+        "--port",
+        &port,
+        "--recognizer",
+        "streaming",
+        "--en-model-dir",
+        en_model_dir,
+        "--ru-model-dir",
+        ru_model_dir,
+        "--vad-model",
+        vad,
+    ]
+    .map(String::from)
+    .to_vec();
+    args.extend(history_args(history));
+    args
+}
+
+fn history_args(history: Option<&CommandHistoryArgs>) -> Vec<String> {
+    history.map_or_else(Vec::new, |history| {
+        vec![
             "--command-history-dir".to_owned(),
             history.dir.clone(),
             "--command-history-max-mb".to_owned(),
             history.max_size_mb.to_string(),
-        ]);
-    }
-    args
+        ]
+    })
 }
 
 /// Where a command spotting service the app starts keeps the command history, and how much.

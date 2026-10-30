@@ -54,6 +54,7 @@ impl Tab {
 pub enum Choices {
     Hotkeys,
     RecordingModes,
+    CommandRecognizers,
     Microphones,
     Languages,
     Sounds,

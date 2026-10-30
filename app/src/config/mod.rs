@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 
-use crate::core::domain::{HotKey, RecordingMode};
+use crate::core::domain::{CommandRecognizer, HotKey, RecordingMode};
 
 pub mod document;
 mod loopback;
@@ -131,11 +131,18 @@ pub struct VoiceControlCfg {
     /// Whether the speech recognition service for commands confirms a command before it is
     /// carried out; off, the keyword spotter alone decides and Whisper's verdict is logged.
     pub confirm_commands: bool,
+    /// What hears the commands: the streaming recognizers, or the keyword spotter.
+    pub recognizer: CommandRecognizer,
 }
 
 impl Default for VoiceControlCfg {
     fn default() -> Self {
-        Self { enabled: false, url: "ws://127.0.0.1:8082".into(), confirm_commands: true }
+        Self {
+            enabled: false,
+            url: "ws://127.0.0.1:8082".into(),
+            confirm_commands: true,
+            recognizer: CommandRecognizer::default(),
+        }
     }
 }
 

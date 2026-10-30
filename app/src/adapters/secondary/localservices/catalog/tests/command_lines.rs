@@ -4,6 +4,9 @@ use std::fs;
 
 use super::super::*;
 
+/// The command spotting service with the streaming recognizers, compared as a service of its own.
+const STREAMING: &str = "voicepuncher-command-spotting --recognizer streaming";
+
 /// The service scripts' command lines: one literal list per service.
 fn scripts() -> String {
     fs::read_to_string(concat!(
@@ -39,6 +42,7 @@ fn list_of(text: &str, function: &str) -> Vec<String> {
 fn script_args(service: &str, text: &str) -> Vec<String> {
     let function = match service {
         WHISPER => "whisper_args",
+        STREAMING => "streaming_args",
         _ => "command_spotting_args",
     };
     list_of(text, function)
@@ -54,13 +58,17 @@ fn script_args(service: &str, text: &str) -> Vec<String> {
 fn catalog_args(service: &str) -> Vec<String> {
     match service {
         WHISPER => whisper_args("model", 0, 0, "vad"),
+        STREAMING => {
+            let models = ["en_model_dir", "ru_model_dir", "vad"].map(String::from);
+            streaming_args(0, &models, None)
+        }
         _ => command_spotting_args(0, "model_dir", "vad", "commands_url", None),
     }
 }
 
 /// The services whose arguments differ between the service scripts in `text` and the catalog.
 fn drifted(text: &str) -> Vec<&'static str> {
-    [WHISPER, COMMAND_SPOTTING]
+    [WHISPER, COMMAND_SPOTTING, STREAMING]
         .into_iter()
         .filter(|service| script_args(service, text) != catalog_args(service))
         .collect()
@@ -87,6 +95,16 @@ fn should_name_the_service_whose_arguments_changed_in_one_place_only() {
     let drifted = drifted(&text);
     // Then
     assert_eq!(drifted, vec![WHISPER]);
+}
+
+#[test]
+fn should_name_the_streaming_recognizer_when_only_its_arguments_changed() {
+    // Given
+    let text = scripts().replace("\"--en-model-dir\"", "\"--english-model-dir\"");
+    // When
+    let drifted = drifted(&text);
+    // Then
+    assert_eq!(drifted, vec![STREAMING]);
 }
 
 #[test]

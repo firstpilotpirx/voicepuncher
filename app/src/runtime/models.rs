@@ -25,7 +25,11 @@ pub trait ModelsGate: Send {
 
 /// The parts of the app `config` turns on, for the model catalog.
 pub fn needs_of(config: &Config) -> ModelNeeds {
-    ModelNeeds { voice_control: config.voice_control.enabled }
+    if config.voice_control.enabled {
+        ModelNeeds::voice_control(config.voice_control.recognizer)
+    } else {
+        ModelNeeds::DICTATION
+    }
 }
 
 /// The models folder on this machine, the older folders and the variables naming a model.
