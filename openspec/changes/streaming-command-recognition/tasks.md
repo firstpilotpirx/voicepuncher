@@ -1,12 +1,12 @@
 ## 1. Streaming engine core (command-spotting)
 
-- [ ] 1.1 Red: unit tests for Cyrillic respelling (commands, glued doubles, fillers, other words untouched) in `command-spotting/src/streaming/respell.rs`
-- [ ] 1.2 Green: implement `respell` from `research/bench/common.py` `RU_CMD`/`RU_FILL`
-- [ ] 1.3 Red: unit tests for tokens to timed words in `command-spotting/src/streaming/words.rs`
-- [ ] 1.4 Green: implement timed words
-- [ ] 1.5 Red: unit tests for the decision rules (doubled at once, two-word form at once, one-word form after settling, at end only at close, early start, skip before the last report) in `command-spotting/src/streaming/decide.rs`
-- [ ] 1.6 Green: implement the decision on `PhraseMatcher`
-- [ ] 1.7 Run `just test`; commit
+- [x] 1.1 Red: unit tests for Cyrillic respelling (commands, glued doubles, fillers, other words untouched) in `command-spotting/src/streaming/respell.rs`
+- [x] 1.2 Green: implement `respell` from `research/bench/common.py` `RU_CMD`/`RU_FILL`
+- [x] 1.3 Red: unit tests for tokens to timed words in `command-spotting/src/streaming/words.rs`
+- [x] 1.4 Green: implement timed words
+- [x] 1.5 Red: unit tests for the decision rules (doubled at once, two-word form at once, one-word form after settling, at end only at close, early start, skip before the last report) in `command-spotting/src/streaming/decide.rs`
+- [x] 1.6 Green: implement the decision on `PhraseMatcher`
+- [x] 1.7 Run `just test`; commit
 
 ## 2. Gate, session and trace (command-spotting)
 

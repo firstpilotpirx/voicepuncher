@@ -13,4 +13,5 @@ pub mod orderer;
 pub mod outbox;
 pub mod protocol;
 pub mod server;
+pub mod streaming;
 pub mod worker;
