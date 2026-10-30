@@ -16,9 +16,9 @@
 
 - [x] 3.1 Bench Nemotron at 2, 4, 6 threads and with decode threads at user-interactive QoS; record
 - [x] 3.2 Bench the Nemotron 80 ms chunk variant and Parakeet Realtime EOU 120M (when sherpa-onnx 2.0.1 loads it); record
-- [ ] 3.3 Red: test that the chosen setup's threads and QoS reach the model (`streaming/sherpa/`) and, for a new model, that the model catalog lists it (`app/` model catalog test)
-- [ ] 3.4 Green: apply the chosen setup; new model archive in the model catalog and service command line when one wins
-- [ ] 3.5 `just test`; commit
+- [x] 3.3 Red: test that the chosen setup's threads and QoS reach the model (`streaming/sherpa/`) and, for a new model, that the model catalog lists it (`app/` model catalog test)
+- [x] 3.4 Green: apply the chosen setup; new model archive in the model catalog and service command line when one wins
+- [x] 3.5 `just test`; commit
 
 ## 4. Lone command at the pause, shorter tail
 
