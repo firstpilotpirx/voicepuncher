@@ -15,6 +15,7 @@ use crate::kws_models::kws_models;
 
 use voicepuncher_command_spotting::conversions::saturating_usize;
 use voicepuncher_command_spotting::engine::{Engine, EngineCfg, SAMPLE_RATE};
+use voicepuncher_command_spotting::listening::Service;
 use voicepuncher_command_spotting::server;
 use voicepuncher_test_steps::log_lines::{captured, LogLines};
 use voicepuncher_test_steps::loopback::{serve_each, skip_request};
@@ -74,10 +75,10 @@ fn engine_cfg(transcription_url: String) -> EngineCfg {
 /// The service on a free port, confirming with the speech recognition service on `stt_port`.
 fn start_service(stt_port: u16) -> u16 {
     let cfg = engine_cfg(format!("http://127.0.0.1:{stt_port}/v1"));
-    let engine = Arc::new(Engine::load(&cfg).expect("models load"));
+    let service = Arc::new(Service::from(Engine::load(&cfg).expect("models load")));
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
-    std::thread::spawn(move || server::serve(&listener, &engine));
+    std::thread::spawn(move || server::serve(&listener, &service));
     port
 }
 

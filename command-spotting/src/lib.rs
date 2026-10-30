@@ -8,6 +8,7 @@ pub mod engine;
 pub mod health;
 pub mod history;
 pub mod keywords;
+pub mod listening;
 pub mod matcher;
 pub mod orderer;
 pub mod outbox;

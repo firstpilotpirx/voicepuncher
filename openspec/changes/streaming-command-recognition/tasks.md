@@ -18,12 +18,12 @@
 
 ## 3. Service wiring and real models (command-spotting)
 
-- [ ] 3.1 Red: argument tests for `--recognizer`, `--en-model-dir`, `--ru-model-dir` in `command-spotting/src/main.rs`
-- [ ] 3.2 Green: sherpa-onnx adapter, `Listening` over both sessions in the server, arguments
-- [ ] 3.3 Add the need `needs_streaming_models` to `.config/stages.toml`, the model discovery to `justfile`, the need to `AGENTS.md`
-- [ ] 3.4 Red: integration test hearing synthesized "press enter" through the real models in `command-spotting/tests/it/streaming/mod.rs` (`needs_streaming_models`), and the user's recordings (`needs_voice_samples`)
-- [ ] 3.5 Green: make it pass
-- [ ] 3.6 Run `just test`; commit
+- [x] 3.1 Red: argument tests for `--recognizer`, `--en-model-dir`, `--ru-model-dir` in `command-spotting/src/main.rs`
+- [x] 3.2 Green: sherpa-onnx adapter, `Listening` over both sessions in the server, arguments
+- [x] 3.3 Add the need `needs_streaming_models` to `.config/stages.toml`, the model discovery to `justfile`, the need to `AGENTS.md`
+- [x] 3.4 Red: integration test hearing synthesized "press enter" through the real models in `command-spotting/tests/it/streaming/mod.rs` (`needs_streaming_models`), and the user's recordings (`needs_voice_samples`)
+- [x] 3.5 Green: make it pass
+- [x] 3.6 Run `just test`; commit
 
 ## 4. App configuration, services and models
 

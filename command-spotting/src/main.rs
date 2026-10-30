@@ -12,7 +12,9 @@ use clap::Parser;
 
 use voicepuncher_command_spotting::engine::{Engine, EngineCfg};
 use voicepuncher_command_spotting::history::HistoryCfg;
+use voicepuncher_command_spotting::listening::Service;
 use voicepuncher_command_spotting::server;
+use voicepuncher_command_spotting::streaming::engine::{StreamingCfg, StreamingEngine};
 
 #[derive(Parser, Debug)]
 #[command(name = "voicepuncher-command-spotting", version, about)]
@@ -22,9 +24,8 @@ struct Args {
     host: IpAddr,
     #[arg(long, default_value_t = 8082)]
     port: u16,
-    /// Directory of the sherpa-onnx keyword spotting model (zipformer gigaspeech).
-    #[arg(long)]
-    model_dir: PathBuf,
+    #[command(flatten)]
+    models: ModelArgs,
     /// Silero voice activity detector model for sherpa-onnx (`silero_vad.onnx`).
     #[arg(long)]
     vad_model: PathBuf,
@@ -52,6 +53,31 @@ struct Args {
     confirmation_deadline_secs: f32,
     #[command(flatten)]
     history: HistoryArgs,
+}
+
+/// Which recognizer hears the commands, and its models.
+#[derive(clap::Args, Debug)]
+struct ModelArgs {
+    /// What hears the commands: the keyword spotter confirmed by the speech recognition
+    /// service, or the English and the Russian streaming recognizers behind a voice gate.
+    #[arg(long, value_enum, default_value_t = Recognizer::KeywordSpotting)]
+    recognizer: Recognizer,
+    /// Directory of the sherpa-onnx keyword spotting model (zipformer gigaspeech), needed
+    /// unless the streaming models are given (clap's `required_if_eq` ignores a default).
+    #[arg(long, required_unless_present = "en_model_dir")]
+    model_dir: Option<PathBuf>,
+    /// Directory of the English streaming model (Nemotron), for `--recognizer streaming`.
+    #[arg(long, required_if_eq("recognizer", "streaming"))]
+    en_model_dir: Option<PathBuf>,
+    /// Directory of the Russian streaming model (zipformer vosk), for `--recognizer streaming`.
+    #[arg(long, required_if_eq("recognizer", "streaming"))]
+    ru_model_dir: Option<PathBuf>,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+enum Recognizer {
+    KeywordSpotting,
+    Streaming,
 }
 
 #[derive(clap::Args, Debug)]
@@ -84,8 +110,29 @@ fn main() -> Result<()> {
             args.host
         );
     }
-    let engine = Engine::load(&EngineCfg {
-        model_dir: args.model_dir,
+    let (host, port) = (args.host, args.port);
+    let service = load(args)?;
+    let listener =
+        TcpListener::bind((host, port)).with_context(|| format!("listen on {host}:{port}"))?;
+    log::info!("command spotting service ready at ws://{host}:{port}");
+    server::serve(&listener, &Arc::new(service))
+}
+
+/// The engine `args` ask for, its models loaded.
+fn load(args: Args) -> Result<Service> {
+    if args.models.recognizer == Recognizer::Streaming {
+        let dir = |d: Option<PathBuf>| d.context("--recognizer streaming needs its model dirs");
+        return Ok(Service::Streaming(StreamingEngine::load(&StreamingCfg {
+            en_model_dir: dir(args.models.en_model_dir)?,
+            ru_model_dir: dir(args.models.ru_model_dir)?,
+            vad_model: args.vad_model,
+            threads: args.threads,
+            min_silence_secs: args.min_silence_secs,
+            command_history: args.history.cfg(),
+        })?));
+    }
+    Ok(Service::KeywordSpotting(Engine::load(&EngineCfg {
+        model_dir: args.models.model_dir.context("--model-dir is needed")?,
         vad_model: args.vad_model,
         threads: args.threads,
         min_silence_secs: args.min_silence_secs,
@@ -99,15 +146,7 @@ fn main() -> Result<()> {
         max_command_secs: args.max_command_secs,
         confirmation_deadline: Duration::from_secs_f32(args.confirmation_deadline_secs),
         command_history: args.history.cfg(),
-    })?;
-    let listener = TcpListener::bind((args.host, args.port))
-        .with_context(|| format!("listen on {}:{}", args.host, args.port))?;
-    log::info!(
-        "command spotting service ready at ws://{}:{}",
-        args.host,
-        args.port
-    );
-    server::serve(&listener, &Arc::new(engine))
+    })?))
 }
 
 #[cfg(test)]
@@ -149,5 +188,59 @@ mod tests {
             Args::try_parse_from(["service", "--model-dir", "m", "--vad-model", "v"]).unwrap();
         // Then
         assert_eq!(args.history.cfg(), None);
+    }
+
+    #[test]
+    fn should_spot_keywords_unless_told_otherwise() {
+        // When
+        let args =
+            Args::try_parse_from(["service", "--model-dir", "m", "--vad-model", "v"]).unwrap();
+        // Then
+        assert_eq!(args.models.recognizer, Recognizer::KeywordSpotting);
+    }
+
+    #[test]
+    fn should_take_the_streaming_models_for_the_streaming_recognizer() {
+        // When
+        let args = Args::try_parse_from([
+            "service",
+            "--recognizer",
+            "streaming",
+            "--en-model-dir",
+            "en",
+            "--ru-model-dir",
+            "ru",
+            "--vad-model",
+            "v",
+        ])
+        .unwrap();
+        // Then
+        assert_eq!(args.models.recognizer, Recognizer::Streaming);
+        assert_eq!(args.models.en_model_dir, Some(PathBuf::from("en")));
+        assert_eq!(args.models.ru_model_dir, Some(PathBuf::from("ru")));
+    }
+
+    #[test]
+    fn should_refuse_the_streaming_recognizer_without_its_russian_model() {
+        // When
+        let args = Args::try_parse_from([
+            "service",
+            "--recognizer",
+            "streaming",
+            "--en-model-dir",
+            "en",
+            "--vad-model",
+            "v",
+        ]);
+        // Then
+        assert!(args.is_err(), "{args:?}");
+    }
+
+    #[test]
+    fn should_refuse_the_keyword_spotter_without_its_model() {
+        // When
+        let args = Args::try_parse_from(["service", "--vad-model", "v"]);
+        // Then
+        assert!(args.is_err(), "{args:?}");
     }
 }

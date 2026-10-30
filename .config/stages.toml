@@ -149,6 +149,7 @@ test_needs = '''
     needs_command_stt    VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL                  no speech recognition service for commands (the model stages start one)
     needs_kws            VOICEPUNCHER_COMMAND_SPOTTING_URL                       no command spotting service (the model stages start one)
     needs_kws_models     VOICEPUNCHER_KWS_MODEL_DIR+VOICEPUNCHER_KWS_VAD_MODEL   no command spotting models (just models)
+    needs_streaming_models VOICEPUNCHER_STREAMING_EN_MODEL_DIR+VOICEPUNCHER_STREAMING_RU_MODEL_DIR+VOICEPUNCHER_KWS_VAD_MODEL   no streaming command models (just models)
     needs_voice_samples  VOICEPUNCHER_VOICE_SAMPLES                              no recordings of the user's voice (~/.voicepuncher/voice-samples)
     needs_corpus         file:$VOICEPUNCHER_BENCH_CORPUS/manifest.jsonl          no corpus (just corpus, or VOICEPUNCHER_BENCH_CORPUS)
     needs_desktop        VOICEPUNCHER_DESKTOP_IT                                 the microphone, Accessibility and window tests run in the it-real stage
