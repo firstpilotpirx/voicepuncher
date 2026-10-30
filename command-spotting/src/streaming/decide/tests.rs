@@ -154,3 +154,17 @@ fn should_wait_for_a_command_heard_with_a_word_after_it_to_settle() {
     // Then
     assert_eq!(found, None);
 }
+
+fn found_at(start: f32, end: f32) -> Finding {
+    Finding { commands: vec!["press enter".into()], start, end, placement: Placement::Tail }
+}
+
+#[test]
+fn should_take_the_same_command_right_after_a_report_for_its_double() {
+    // Given "enter" reported at 1.24–1.34 s
+    let last = found_at(1.24, 1.34);
+    // When / Then
+    assert!(doubles(Some(&last), &found_at(1.64, 1.98)));
+    assert!(!doubles(Some(&last), &found_at(2.5, 2.8)));
+    assert!(!doubles(None, &found_at(1.64, 1.98)));
+}

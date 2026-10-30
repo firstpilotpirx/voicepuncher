@@ -7,7 +7,7 @@ use crate::confirm::TimedWord;
 use crate::matcher::PhraseMatcher;
 use crate::protocol::ServerEvent;
 
-use super::super::decide::{decide, Finding, Moment};
+use super::super::decide::{decide, doubles, Finding, Moment};
 use super::super::ports::{Decoded, RecognizerStream, StreamingModel};
 use super::super::trace::Trace;
 use super::super::words::timed_words;
@@ -26,6 +26,7 @@ pub struct Utterance<'a> {
     quiet: usize,
     /// Commands ending before this are reported already, by whichever recognizer.
     reported_until: f32,
+    last_report: Option<Finding>,
     trace: Trace,
 }
 
@@ -49,6 +50,7 @@ impl<'a> Utterance<'a> {
             audio: Vec::new(),
             quiet: 0,
             reported_until: 0.0,
+            last_report: None,
             trace: Trace::new(start, onset, &names),
         };
         utterance.feed(replay);
@@ -88,12 +90,21 @@ impl<'a> Utterance<'a> {
             self.trace.heard(r, now, &text_of(&decoded));
             let words = self.words(r, &decoded);
             if let Some(found) = decide(matcher, &words, moment, self.reported_until) {
-                self.reported_until = found.end;
-                self.trace.reported(r, &found, now);
-                events.push(command(found));
+                events.extend(self.report(r, found, now));
             }
         }
         events
+    }
+
+    /// Reports `found`, heard by recognizer `r` at `now`, unless it doubles the last report.
+    fn report(&mut self, r: usize, found: Finding, now: f32) -> Option<ServerEvent> {
+        self.reported_until = found.end;
+        let doubled = doubles(self.last_report.as_ref(), &found);
+        self.last_report = Some(found.clone());
+        (!doubled).then(|| {
+            self.trace.reported(r, &found, now);
+            command(found)
+        })
     }
 
     /// Ends every stream, decodes what is left and reports it; the speech end follows.

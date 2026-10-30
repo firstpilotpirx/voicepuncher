@@ -25,6 +25,17 @@ pub struct Finding {
 /// "stop" opening "stop the car" is no command.
 const SETTLE_SECS: f32 = 0.2;
 
+/// How soon after a report the same command again is its doubled form ("enter enter"), not
+/// a new command: the first word may settle before the recognizer decoded the second.
+const DOUBLE_GAP_SECS: f32 = 0.6;
+
+/// Whether `found` repeats `last`, the utterance's previous report, right after it.
+pub fn doubles(last: Option<&Finding>, found: &Finding) -> bool {
+    last.is_some_and(|last| {
+        last.commands == found.commands && found.start - last.end < DOUBLE_GAP_SECS
+    })
+}
+
 /// The commands to report of `words`, heard so far in the utterance, at `moment`; only the
 /// words said after `reported_until`, the end of the last report, count.
 pub fn decide(

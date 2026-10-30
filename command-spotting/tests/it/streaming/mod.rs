@@ -81,6 +81,15 @@ mod needs_streaming_models {
     }
 
     #[test]
+    fn should_report_a_synthesized_doubled_enter_once() {
+        let engine = engine();
+        // When
+        let commands = commands_in(&engine, &common::spoken_by(None, "enter enter"));
+        // Then
+        assert_eq!(commands, ["press enter"]);
+    }
+
+    #[test]
     fn should_report_nothing_in_a_sentence_without_a_command() {
         let engine = engine();
         // When
