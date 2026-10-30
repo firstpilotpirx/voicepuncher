@@ -203,7 +203,7 @@ fn should_close_the_utterance_only_after_the_pause_and_its_tail() {
     let mut session = session(&[&en], None);
     let open = session.accept(&[silence(1.0), speech(0.5)].concat());
     // When
-    let within = session.accept(&silence(0.7));
+    let within = session.accept(&silence(0.3));
     let after = session.accept(&silence(0.2));
     // Then
     assert_eq!(count(&open, true), 1);
@@ -223,7 +223,7 @@ fn should_continue_the_utterance_when_speech_returns_within_the_tail() {
     let audio = [
         silence(1.0),
         speech(0.5),
-        silence(0.5),
+        silence(0.3),
         speech(0.5),
         silence(1.0),
     ]
@@ -265,7 +265,7 @@ fn should_report_a_command_one_recognizer_heard_while_the_other_still_decodes() 
     let began = Instant::now();
     // When the audio streams in, the pause after it shorter than the one that closes it
     let mut events = Vec::new();
-    for frame in [silence(1.0), speech(0.3), silence(0.5)]
+    for frame in [silence(1.0), speech(0.3), silence(0.3)]
         .concat()
         .chunks(320)
     {

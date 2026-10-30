@@ -921,3 +921,10 @@ Feature: voice-control
       When an app streams "press enter" followed by silence
       Then the command history holds an entry with the utterance's audio
       And the entry names "press enter", the recognizer that heard it, each recognizer's texts with their times and the times of each stage
+
+    @smoke
+    Scenario: An utterance without a command is kept too
+      Given the command spotting service runs with the streaming recognizer and keeps a command history
+      When an app streams "the weather is nice today" followed by silence
+      Then the command history holds an entry with the utterance's audio and each recognizer's texts
+      And the entry names no command

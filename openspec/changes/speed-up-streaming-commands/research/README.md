@@ -55,3 +55,16 @@ render"; it halves the lone "stop" and cuts the tail by a quarter. Kept.
 Not benched: decode threads at user-interactive QoS and Parakeet Realtime EOU 120M; 4 threads
 already put the English decode well under real time, so the delay left is the models' own
 lookahead, which the flush addresses.
+
+## Utterance tail
+
+With the flush, the tail past the pause (`TAIL_SECS`) on every fourth clip:
+
+| Tail | Right | Median | p90 |
+|---|---|---|---|
+| 0.5 s | 90/104 | 154 ms | 634 ms |
+| 0.3 s | 90/104 | 158 ms | 721 ms |
+| 0.1 s | 91/104 | 147 ms | 780 ms |
+
+No command is lost at 0.1 s (one more is heard); the p90 moves within the run-to-run spread.
+Chosen: 0.1 s, so an utterance closes 0.4 s after its speech instead of 0.8 s.

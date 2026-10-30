@@ -25,15 +25,15 @@
 - [x] 4.1 Red: unit tests in `streaming/decide/tests.rs`: "stop" alone settles at the gate's pause; "stop the car" still no command
 - [x] 4.2 Red: E2E scenarios "start said alone", "stop said alone", "press enter after a sentence" within their wall-clock bounds in `e2e-test/tests/features/voice_control.feature` (`@cues`)
 - [x] 4.3 Green: settle on the gate's pause in `streaming/decide/` and `streaming/session/`
-- [ ] 4.4 Sweep the utterance tail on the bench; Green: set the shortest tail that keeps every command
-- [ ] 4.5 `just test`; commit
+- [x] 4.4 Sweep the utterance tail on the bench; Green: set the shortest tail that keeps every command
+- [x] 4.5 `just test`; commit
 
 ## 5. Quiet speech and missed utterances
 
-- [ ] 5.1 Red: integration test "a quiet command opens the gate" in `command-spotting/tests/it/streaming/`
+- [x] 5.1 Red: integration test "a quiet command opens the gate" in `command-spotting/tests/it/streaming/`
 - [ ] 5.2 Sweep gate gain and threshold on the bench; Green: set the chosen pair in `streaming/sherpa/`
-- [ ] 5.3 Red: scenario "An utterance without a command is kept too" in `e2e-test/tests/features/voice_control.feature` with its steps
-- [ ] 5.4 Green: keep every gate-opened utterance in `streaming/session/kept.rs`, outcome `none`
+- [x] 5.3 Red: scenario "An utterance without a command is kept too" in `e2e-test/tests/features/voice_control.feature` with its steps
+- [x] 5.4 Green: keep every gate-opened utterance in `streaming/session/kept.rs`, outcome `none`
 - [ ] 5.5 `just test`; commit
 
 ## 6. Mishearings and accuracy
@@ -42,7 +42,7 @@
 - [ ] 6.2 Red: unit tests for those mishearings in `voice-commands/`
 - [ ] 6.3 Green: add them to the command forms in `voice-commands/`
 - [ ] 6.4 Red/Green: integration tests "the user's recorded commands are reported within their bound" and "are heard" (`needs_voice_samples`) in `command-spotting/tests/it/streaming/`
-- [ ] 6.5 Update `docs/ubiquitous-language.md` (streaming bench, outcome `none`)
+- [x] 6.5 Update `docs/ubiquitous-language.md` (streaming bench, outcome `none`)
 - [ ] 6.6 `just test`; commit
 
 ## 7. Version and checks

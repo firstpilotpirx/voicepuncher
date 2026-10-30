@@ -22,7 +22,8 @@ struct Args {
     ru_model_dir: PathBuf,
     #[arg(long, env = "VOICEPUNCHER_KWS_VAD_MODEL")]
     vad_model: PathBuf,
-    #[arg(long, default_value_t = 2)]
+    /// Threads each model decodes on, as the service's default.
+    #[arg(long, default_value_t = 4)]
     threads: i32,
     #[arg(long, default_value_t = 0.3)]
     min_silence_secs: f32,

@@ -51,6 +51,16 @@ fn paused(audio: &[f32]) -> Vec<f32> {
     [pause.as_slice(), audio, pause.as_slice()].concat()
 }
 
+/// `audio` as quiet as the user's quietest recorded commands: its loudest 10 ms at an RMS of
+/// 0.005 (`say` speaks at about 0.24).
+fn at_quiet_level(audio: &[f32]) -> Vec<f32> {
+    let loudest = audio
+        .chunks(SAMPLE_RATE / 100)
+        .map(|frame| (frame.iter().map(|s| s * s).sum::<f32>() / frame.len() as f32).sqrt())
+        .fold(0.0_f32, f32::max);
+    audio.iter().map(|s| s * 0.005 / loudest).collect()
+}
+
 /// The commands a session listening for every phrase reports in `audio`.
 fn commands_in(engine: &StreamingEngine, audio: &[f32]) -> Vec<String> {
     let mut session = engine.session_for(1).expect("a session");
@@ -93,6 +103,16 @@ mod needs_streaming_models {
         let commands = commands_in(&engine, &common::spoken_by(None, "enter enter"));
         // Then
         assert_eq!(commands, ["press enter"]);
+    }
+
+    #[test]
+    fn should_open_the_gate_on_a_quiet_start() {
+        let engine = engine();
+        // When
+        let quiet = at_quiet_level(&common::spoken_by(None, "start"));
+        let commands = commands_in(&engine, &quiet);
+        // Then
+        assert_eq!(commands, ["start dictation"]);
     }
 
     #[test]

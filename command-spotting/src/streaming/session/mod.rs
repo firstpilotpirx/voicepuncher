@@ -25,7 +25,7 @@ use utterance::{Utterance, Wait};
 /// The audio before the onset replayed into the recognizers: the gate notices speech late.
 const REPLAY_SECS: f32 = 0.5;
 /// The audio past a pause the recognizers still get before their final decode.
-const TAIL_SECS: f32 = 0.5;
+const TAIL_SECS: f32 = 0.1;
 /// 100 ms: how often the recognizers decode.
 const FRAME_SAMPLES: usize = 1_600;
 
@@ -198,9 +198,12 @@ impl<'a> Session<'a> {
             self.entries += 1;
             let source = format!("{}-{}-{}", std::process::id(), self.conn, self.entries);
             let kept = Kept { opened: self.opened, source };
-            if let Some(entry) = kept::entry(&closed.trace, &closed.heard, closed.audio, kept) {
-                history.keep(entry);
-            }
+            history.keep(kept::entry(
+                &closed.trace,
+                &closed.heard,
+                closed.audio,
+                kept,
+            ));
         }
         closed.events
     }

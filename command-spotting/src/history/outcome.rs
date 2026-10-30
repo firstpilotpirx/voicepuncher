@@ -14,6 +14,8 @@ pub enum Outcome {
     Rejected,
     /// A command was reported and nothing was spotted.
     Missed,
+    /// Neither: an utterance of the streaming recognizer kept without a command.
+    None,
 }
 
 /// The outcome of an utterance with `spotted` phrases and `reported` commands; none when it

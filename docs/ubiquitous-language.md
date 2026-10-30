@@ -399,7 +399,7 @@
 
 ### Command history
 - **Type:** Folder written by the command spotting service (`CommandHistory`, `Recorder`)
-- **Definition:** The local folder (`~/.voicepuncher/command-history/`, `[archive] keep_commands`, on by default) where the command spotting services the app starts keep a *command history entry* for every utterance in which the keyword spotter spotted a selected phrase or the speech recognition service for commands heard a command; ordinary speech leaves none. Kept within the *dictation archive*'s size limit by removing the oldest entries; a service given no folder (the service scripts, tests, benchmarks) keeps nothing; never sent anywhere.
+- **Definition:** The local folder (`~/.voicepuncher/command-history/`, `[archive] keep_commands`, on by default) where the command spotting services the app starts keep a *command history entry* for every utterance in which the keyword spotter spotted a selected phrase or the speech recognition service for commands heard a command, and for every utterance the *streaming recognizer*'s *voice gate* opened; with the keyword spotter, ordinary speech leaves none. Kept within the *dictation archive*'s size limit by removing the oldest entries; a service given no folder (the service scripts, tests, benchmarks) keeps nothing; never sent anywhere.
 - **Code:** `command-spotting/src/history/`; `app/src/adapters/secondary/localservices/catalog/args.rs` — `CommandHistoryArgs`
 - **Synonyms to AVOID:** "history" (alone — the dictation archive's folder), "command log", "recordings"
 
@@ -410,8 +410,8 @@
 - **Synonyms to AVOID:** "archive entry" (a dictation's), "sample", "log entry"
 
 ### Command history outcome
-- **Type:** Value Object (`Outcome`: `agreed`, `corrected`, `rejected`, `missed`)
-- **Definition:** How the two models of voice control compared on one utterance: **agreed** — the speech recognition service heard only commands the keyword spotter spotted; **corrected** — it heard another command; **rejected** — the spotter spotted a phrase and the speech recognition service heard no command (the spotter's phrase may still have been reported); **missed** — the speech recognition service heard a command the spotter did not spot.
+- **Type:** Value Object (`Outcome`: `agreed`, `corrected`, `rejected`, `missed`, `none`)
+- **Definition:** How the two models of voice control compared on one utterance: **agreed** — the speech recognition service heard only commands the keyword spotter spotted; **corrected** — it heard another command; **rejected** — the spotter spotted a phrase and the speech recognition service heard no command (the spotter's phrase may still have been reported); **missed** — the speech recognition service heard a command the spotter did not spot; **none** — an utterance of the *streaming recognizer* in which no recognizer's final text holds a command and none was reported, kept so a missed command can be found (the keyword spotter keeps no such utterance).
 - **Code:** `command-spotting/src/history/outcome.rs`
 - **Synonyms to AVOID:** "result", "status", "verdict"
 
@@ -629,8 +629,14 @@
 
 ### Streaming recognizer
 - **Type:** Command recognizer of the *command spotting service*
-- **Definition:** An English and a Russian sherpa-onnx streaming speech recognizer, woken by the *voice gate* at the onset of speech and fed the speech with the half second before it. The first of them to hear a command reports it at once, without a Whisper confirmation; the Russian one's Cyrillic command words ("стоп", "энтер") are respelled as the English words they sound like. Each utterance's texts, reports and stage times go to the log and the *command history*.
+- **Definition:** An English and a Russian sherpa-onnx streaming speech recognizer, woken by the *voice gate* at the onset of speech and fed the speech with the half second before it. The first of them to hear a command reports it at once, without a Whisper confirmation; the Russian one's Cyrillic command words ("стоп", "энтер") are respelled as the English words they sound like. Each recognizer decodes on a thread of its own (4 model threads by default), so a slow one holds back neither the other nor the gate; at the gate's pause every recognizer gets 0.6 s of silence ahead of the stream (the *pause flush*), so a word's last sound comes out at once. Each utterance's texts, reports and stage times go to the log and the *command history*.
 - **Synonyms to AVOID:** "online ASR", "the two models"
+
+### Pause flush
+- **Type:** Behavior of the *streaming recognizer*
+- **Definition:** The silence fed into every recognizer when the *voice gate* hears a pause, ahead of the audio still coming, so a recognizer that emits a word only once more audio follows it emits it now; the recognizers' word times are mapped back to the stream's, the flushed silence left out.
+- **Code:** `command-spotting/src/streaming/session/utterance.rs`
+- **Synonyms to AVOID:** "padding", "tail"
 
 ### Voice gate
 - **Type:** Part of the *streaming recognizer*
@@ -651,6 +657,12 @@
 ## E2E / Test vocabulary
 
 > These terms describe reference data used for accuracy measurement only. They are NOT part of the production domain.
+
+### Streaming bench
+- **Type:** Measurement tool (`just streaming-bench`, binary `streaming-bench` of `command-spotting/`; not a gate)
+- **Definition:** Streams labelled clips — the user's voice samples, confident *command history entries* and utterances without a command — through the *streaming recognizer* in real time and prints how many commands it heard right, its false alarms and the delay from the end of a command's words to its report (median, p90). Its dataset stays on this machine and is never committed.
+- **Code:** `command-spotting/src/bench/`
+- **Synonyms to AVOID:** "benchmark" alone (the WER benchmark of the *corpus*)
 
 ### Corpus
 - **Type:** E2E/test reference dataset (not a domain type)
