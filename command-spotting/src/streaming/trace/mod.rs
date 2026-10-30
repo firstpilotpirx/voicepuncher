@@ -108,8 +108,8 @@ impl Trace {
             .map_or("", |t| t.text.as_str())
     }
 
-    /// One log line of the utterance: its bounds, each recognizer's text and decoding, each
-    /// report and its delay.
+    /// One log line of the utterance: its bounds, each recognizer's text, the time of its first
+    /// text and its decoding, each report and its delay.
     pub fn log_line(&self) -> String {
         let mut line = format!(
             "utterance {:.2}–{:.2}s closed {:.2}s",
@@ -119,9 +119,13 @@ impl Trace {
             // WHY: writing to a String cannot fail.
             let _ = write!(
                 line,
-                " | {} {:?} {}ms/{}ms",
+                " | {} {:?} first {} {}ms/{}ms",
                 recognizer.name,
                 self.final_text(r),
+                recognizer
+                    .texts
+                    .first()
+                    .map_or_else(|| "–".to_owned(), |t| format!("{:.2}s", t.at)),
                 recognizer.decode_ms,
                 recognizer.slowest_frame_ms
             );

@@ -82,13 +82,14 @@ fn entry_timeline(world: &mut E2eWorld, command: String) -> Result<()> {
     Ok(())
 }
 
-/// A report of `command` by one of the recognizers, with its delay.
+/// A report of `command` by one of the recognizers, with its time and delay.
 fn names_command(trace: &serde_json::Value, command: &str) -> bool {
     let reports = trace["reports"].as_array().cloned().unwrap_or_default();
     reports.iter().any(|r| {
         r["commands"] == serde_json::json!([command])
             && ["en", "ru"].contains(&r["recognizer"].as_str().unwrap_or_default())
             && r["delay_ms"].is_u64()
+            && r["at"].is_f64()
     })
 }
 

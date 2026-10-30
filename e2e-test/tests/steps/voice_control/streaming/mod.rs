@@ -12,7 +12,9 @@ use voicepuncher_command_spotting::history::HistoryCfg;
 use voicepuncher_command_spotting::protocol::{PhraseSelection, ServerEvent};
 use voicepuncher_command_spotting::streaming::engine::{StreamingCfg, StreamingEngine};
 use voicepuncher_e2e_test::conversions::saturating_usize;
-use voicepuncher_e2e_test::voice_commands::{spoken_by, spoken_with_pauses};
+use voicepuncher_e2e_test::voice_commands::{
+    spoken_by, spoken_with_pauses, without_trailing_silence,
+};
 use voicepuncher_test_steps::required_env;
 
 use super::spotting_service::scheduling::ENGINE_RUNS;
@@ -133,10 +135,8 @@ fn runs_streaming(world: &mut E2eWorld) {
 #[when(expr = "an app streams {string} followed by half a second of silence and asks for a sync")]
 async fn streams_then_syncs(world: &mut E2eWorld, words: String) -> Result<()> {
     off_thread(world, move |world| {
-        let spoken = spoken_with_pauses(&words)?;
-        // The pause after the words cut to half a second
-        let half_a_second = spoken.len().saturating_sub(SAMPLE_RATE / 2);
-        run(world).stream(&spoken[..half_a_second], true)
+        let spoken = without_trailing_silence(spoken_with_pauses(&words)?);
+        run(world).stream(&[spoken, silence(0.5)].concat(), true)
     })
     .await
 }
@@ -176,11 +176,17 @@ fn reported_before_sync(world: &mut E2eWorld, command: String) -> Result<()> {
     let said = events.iter().position(
         |e| matches!(e, ServerEvent::Command { commands, .. } if commands == &[command.clone()]),
     );
+    let ended = events
+        .iter()
+        .position(|e| matches!(e, ServerEvent::SpeechEnd { .. }));
     let synced = events
         .iter()
         .position(|e| matches!(e, ServerEvent::Synced { .. }));
-    if said.zip(synced).is_none_or(|(said, synced)| said >= synced) {
-        bail!("expected {command:?} before the sync is answered: {events:?}");
+    let before_the_pause_ends = said.is_some_and(|said| ended.is_none_or(|ended| said < ended));
+    if !before_the_pause_ends || said.zip(synced).is_none_or(|(said, synced)| said >= synced) {
+        bail!(
+            "expected {command:?} before the utterance ends and the sync is answered: {events:?}"
+        );
     }
     Ok(())
 }

@@ -45,13 +45,13 @@ fn should_sum_decoding_and_keep_the_slowest_frame() {
 }
 
 #[test]
-fn should_log_texts_decoding_and_each_report_with_its_delay() {
+fn should_log_texts_their_first_time_decoding_and_each_report_with_its_delay() {
     // When
     let line = traced().log_line();
     // Then
     assert_eq!(
         line,
-        "utterance 1.50–1.80s closed 2.60s | en \"press enter\" 42ms/30ms \
-         | ru \"пресс энтер\" 0ms/0ms | press enter by en at 2.00s +300ms"
+        "utterance 1.50–1.80s closed 2.60s | en \"press enter\" first 1.80s 42ms/30ms \
+         | ru \"пресс энтер\" first 2.00s 0ms/0ms | press enter by en at 2.00s +300ms"
     );
 }
