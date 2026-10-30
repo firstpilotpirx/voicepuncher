@@ -619,8 +619,28 @@
 
 ### Command spotting service
 - **Type:** Local service (separate process, loopback WebSocket)
-- **Definition:** The `voicepuncher-command-spotting` program in `command-spotting/`: sherpa-onnx keyword spotting plus a voice activity detector, with each short utterance confirmed by the *speech recognition service for commands* (the whole transcript must be a command phrase). It turns streamed microphone audio into *spotting events*; it opens no microphone itself.
+- **Definition:** The `voicepuncher-command-spotting` program in `command-spotting/`. It turns streamed microphone audio into *spotting events* with its *command recognizer*: by default the *streaming recognizer*, or the *keyword spotter*, whose short utterances the *speech recognition service for commands* confirms (the whole transcript must be a command phrase). It opens no microphone itself.
 - **Synonyms to AVOID:** "KWS server", "wake word engine"
+
+### Command recognizer
+- **Type:** Configuration value (`[voice_control] recognizer`, `CommandRecognizer`)
+- **Definition:** How the *command spotting service* hears commands: `streaming` (the default, the *streaming recognizer*) or `keyword_spotting` (the *keyword spotter* with Whisper confirmation). It decides which services and models voice control needs: the streaming recognizer needs no *speech recognition service for commands*.
+- **Synonyms to AVOID:** "engine", "backend"
+
+### Streaming recognizer
+- **Type:** Command recognizer of the *command spotting service*
+- **Definition:** An English and a Russian sherpa-onnx streaming speech recognizer, woken by the *voice gate* at the onset of speech and fed the speech with the half second before it. The first of them to hear a command reports it at once, without a Whisper confirmation; the Russian one's Cyrillic command words ("стоп", "энтер") are respelled as the English words they sound like. Each utterance's texts, reports and stage times go to the log and the *command history*.
+- **Synonyms to AVOID:** "online ASR", "the two models"
+
+### Voice gate
+- **Type:** Part of the *streaming recognizer*
+- **Definition:** The Silero voice activity detector that hears whether a window of audio holds speech; without speech no streaming recognizer runs.
+- **Synonyms to AVOID:** "VAD" in prose, "wake word"
+
+### Keyword spotter
+- **Type:** Command recognizer of the *command spotting service*
+- **Definition:** sherpa-onnx keyword spotting with the English `zipformer-gigaspeech-3.3M` model, each spotted utterance confirmed by the *speech recognition service for commands*; chosen with `recognizer = "keyword_spotting"`.
+- **Synonyms to AVOID:** "KWS" in prose
 
 ### Key press
 - **Type:** Effect of a *voice command*
