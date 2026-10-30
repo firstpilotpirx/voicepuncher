@@ -130,6 +130,19 @@ Feature: local-services
       Then the speech recognition service for commands is Failed with a reason naming the model file it looked for
       And the app started no service
 
+  Rule: The command recognizer is chosen in the configuration
+
+    Scenario: Voice control starts the streaming recognizer by default
+      Given no local service runs, voice control is on and the user never chose a command recognizer
+      When the services it needs are looked up
+      Then the command spotting service is started with the streaming models
+      And the speech recognition service for commands is not started
+
+    Scenario: The keyword spotter can still be chosen
+      Given no local service runs, voice control is on and the keyword spotter is chosen as the command recognizer
+      When the services it needs are looked up
+      Then the speech recognition service for commands and the command spotting service with the keyword spotting model are started
+
   Rule: The app and the service scripts start a service alike
 
     Scenario: Of two keyword spotting models the newest is used

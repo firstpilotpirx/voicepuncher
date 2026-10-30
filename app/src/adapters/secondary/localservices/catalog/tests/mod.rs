@@ -82,6 +82,14 @@ mod command_lines;
 
 const ALL: Needs = Needs { voice_control: true };
 
+/// The default configuration with the keyword spotter hearing the commands: voice control
+/// then needs the speech recognition service for commands too.
+fn keyword_spotting() -> Config {
+    let mut cfg = Config::default();
+    cfg.voice_control.recognizer = crate::core::domain::CommandRecognizer::KeywordSpotting;
+    cfg
+}
+
 /// Writes an empty `file`, with the folders it needs.
 fn touch(file: &Path) {
     fs::create_dir_all(file.parent().unwrap()).unwrap();

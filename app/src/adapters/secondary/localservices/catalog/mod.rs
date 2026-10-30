@@ -4,18 +4,21 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use voicepuncher_copy_pool::{ServiceAddress, COMMAND_SPOTTING_COPY_OFFSET};
+use voicepuncher_copy_pool::ServiceAddress;
 
 use crate::adapters::secondary::logging::file::logs_dir;
 use crate::config::Config;
 use crate::core::application::{ProbeAnswer, ServiceProbe};
-use crate::core::domain::{ServiceKind, ServiceSpec};
+use crate::core::domain::{CommandRecognizer, ServiceKind, ServiceSpec};
 
 mod engines;
 pub use engines::*;
 mod args;
 pub use args::*;
+mod command_spotting;
 mod found;
+mod keyword_spotting;
+mod streaming;
 use found::{existing, file_name_starts, first_problem, newest, shown};
 
 const WHISPER: &str = "whisper-server";
@@ -55,20 +58,29 @@ pub fn needed(
         cfg.services.dictation_copies,
         probe,
     );
-    if needs.voice_control {
-        specs.extend(lookup.whisper(
-            ServiceKind::Commands,
-            &cfg.services.commands_url,
-            cfg.services.command_copies,
-            probe,
-        ));
-        specs.extend(lookup.command_spotting(
+    if !needs.voice_control {
+        return specs;
+    }
+    if cfg.voice_control.recognizer == CommandRecognizer::Streaming {
+        specs.extend(lookup.streaming(
             &cfg.voice_control.url,
-            &cfg.services.commands_url,
             cfg.services.command_spotting_copies,
             probe,
         ));
+        return specs;
     }
+    specs.extend(lookup.whisper(
+        ServiceKind::Commands,
+        &cfg.services.commands_url,
+        cfg.services.command_copies,
+        probe,
+    ));
+    specs.extend(lookup.command_spotting(
+        &cfg.voice_control.url,
+        &cfg.services.commands_url,
+        cfg.services.command_spotting_copies,
+        probe,
+    ));
     specs
 }
 
@@ -161,35 +173,6 @@ impl<'a> Lookup<'a> {
         let cores = self.machine.cores;
         self.copies(&service, &address, probe, |port, count| {
             whisper_args(&shown(&model), port, threads(cores, count), &shown(&vad))
-        })
-    }
-
-    fn command_spotting(
-        &self,
-        url: &str,
-        commands_url: &str,
-        copies: u32,
-        probe: &dyn ServiceProbe,
-    ) -> Vec<ServiceSpec> {
-        let Ok(address) = ServiceAddress::parse(url) else {
-            return Vec::new();
-        };
-        let address = address.with_copy_offset(COMMAND_SPOTTING_COPY_OFFSET);
-        let program = self.command_spotting_program();
-        let model_dir = self.kws_model_dir();
-        let vad = self.model("VOICEPUNCHER_KWS_VAD_MODEL", KWS_VAD_MODEL);
-        let problem = first_problem([&program, &model_dir, &vad]);
-        let kind = ServiceKind::CommandSpotting;
-        let service = Service { kind, binary: COMMAND_SPOTTING, program, problem, copies };
-        self.copies(&service, &address, probe, |port, _| {
-            let history = self.command_history.as_ref();
-            command_spotting_args(
-                port,
-                &shown(&model_dir),
-                &shown(&vad),
-                commands_url,
-                history,
-            )
         })
     }
 
@@ -292,14 +275,14 @@ impl<'a> Lookup<'a> {
         .ok_or_else(|| self.not_found(&format!("{WHISPER_VAD_PREFIX}*.bin"), var))
     }
 
-    /// The newest `sherpa-onnx-kws-*` folder, as the `justfile` picks it.
-    fn kws_model_dir(&self) -> Result<PathBuf, Missing> {
-        let var = "VOICEPUNCHER_KWS_MODEL_DIR";
+    /// The environment's path, else the newest folder named `prefix*`, as the `justfile`
+    /// picks it.
+    fn newest_dir(&self, var: &str, prefix: &str) -> Result<PathBuf, Missing> {
         if let Some(path) = self.machine.var(var) {
             return existing(path, var);
         }
-        newest(self.entries(|path| path.is_dir() && file_name_starts(path, KWS_MODEL_DIR_PREFIX)))
-            .ok_or_else(|| self.not_found(&format!("{KWS_MODEL_DIR_PREFIX}*"), var))
+        newest(self.entries(|path| path.is_dir() && file_name_starts(path, prefix)))
+            .ok_or_else(|| self.not_found(&format!("{prefix}*"), var))
     }
 
     fn entries(&self, keep: impl Fn(&Path) -> bool) -> Vec<PathBuf> {

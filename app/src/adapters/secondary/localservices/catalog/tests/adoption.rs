@@ -8,7 +8,7 @@ fn should_take_a_speech_recognition_service_as_the_scripts_run_it() {
     let home = Home::complete();
     // When
     let specs = needed(
-        &Config::default(),
+        &keyword_spotting(),
         ALL,
         &home.machine(),
         &Answering(vec![8081]),
@@ -28,7 +28,7 @@ fn should_take_a_command_spotting_service_as_the_scripts_run_it() {
     let home = Home::complete();
     let scripts_run = Answering(vec![8082]);
     // When
-    let specs = needed(&Config::default(), ALL, &home.machine(), &scripts_run);
+    let specs = needed(&keyword_spotting(), ALL, &home.machine(), &scripts_run);
     // Then: one spec on 8082, no copy ports
     let spotting: Vec<u16> = specs
         .iter()

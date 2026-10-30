@@ -12,6 +12,7 @@ use super::Outcome;
 use crate::audio::SAMPLE_RATE;
 use crate::conversions::saturating_i16;
 use crate::protocol::Verdict;
+use crate::streaming::trace::Trace;
 
 /// Version of the `entry.json` layout; bump it when a field changes meaning or goes away.
 const ENTRY_FORMAT: u32 = 1;
@@ -66,6 +67,8 @@ pub struct Entry {
     pub transcript: String,
     pub reported: Vec<Reported>,
     pub outcome: Outcome,
+    /// What the streaming recognizers heard of it; none from the keyword spotter.
+    pub streaming: Option<Trace>,
 }
 
 impl Entry {
@@ -89,6 +92,8 @@ struct EntryFile<'a> {
     transcript: &'a str,
     reported: &'a [Reported],
     hearings: &'a [Hearing],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    streaming: Option<&'a Trace>,
     service_version: &'static str,
 }
 
@@ -110,6 +115,7 @@ pub fn write_files(folder: &Path, entry: &Entry) -> Result<()> {
         transcript: &entry.transcript,
         reported: &entry.reported,
         hearings: &entry.hearings,
+        streaming: entry.streaming.as_ref(),
         service_version: env!("CARGO_PKG_VERSION"),
     };
     let path = folder.join(ENTRY_FILE);

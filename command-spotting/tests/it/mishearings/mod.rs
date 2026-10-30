@@ -3,7 +3,6 @@
 //! command it stands for. The recordings stay on the machine
 //! (`~/.voicepuncher/voice-samples/<session>.wav`).
 
-use std::path::PathBuf;
 use std::time::Duration;
 
 use voicepuncher_command_spotting::confirm::UtteranceTranscriber;
@@ -19,12 +18,7 @@ const DEADLINE: Duration = Duration::from_secs(20);
 
 /// The recorded stretch of `recording`, from `voice_samples`.
 fn recorded(voice_samples: &str, recording: &Recording) -> Vec<f32> {
-    let path = PathBuf::from(voice_samples).join(format!("{}.wav", recording.session));
-    let audio: Vec<f32> = hound::WavReader::open(path)
-        .unwrap()
-        .samples::<i16>()
-        .map(|s| f32::from(s.unwrap()) / f32::from(i16::MAX))
-        .collect();
+    let audio = crate::common::recorded_session(voice_samples, recording.session);
     let at = |secs: f32| saturating_usize(secs * SAMPLE_RATE as f32).min(audio.len());
     audio[at(recording.at_secs - BEFORE_SECS)..at(recording.at_secs + AFTER_SECS)].to_vec()
 }

@@ -13,8 +13,8 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, Result};
 use tungstenite::{Message, WebSocket};
 
-use crate::engine::{Engine, Session};
 use crate::health::{Beat, Health};
+use crate::listening::{Listening, Service};
 use crate::protocol::{samples_from_bytes, AppMessage, PhraseSelection, ServerEvent};
 use crate::worker::Wake;
 
@@ -50,17 +50,17 @@ enum Output {
     Refuse(String),
 }
 
-pub fn serve(listener: &TcpListener, engine: &Arc<Engine>) -> Result<()> {
+pub fn serve(listener: &TcpListener, service: &Arc<Service>) -> Result<()> {
     let health = Health::default();
     for stream in listener.incoming() {
         let stream = stream?;
         let conn = NEXT_CONN.fetch_add(1, Ordering::Relaxed);
-        let engine = Arc::clone(engine);
+        let service = Arc::clone(service);
         let health = health.clone();
         std::thread::Builder::new()
             .name(format!("conn-{conn}-io"))
             .spawn(move || {
-                if let Err(e) = serve_connection(stream, &engine, conn, &health) {
+                if let Err(e) = serve_connection(stream, &service, conn, &health) {
                     log::warn!("conn={conn} ended: {e:#}");
                 }
             })?;
@@ -68,7 +68,12 @@ pub fn serve(listener: &TcpListener, engine: &Arc<Engine>) -> Result<()> {
     Ok(())
 }
 
-fn serve_connection(stream: TcpStream, engine: &Engine, conn: u64, health: &Health) -> Result<()> {
+fn serve_connection(
+    stream: TcpStream,
+    service: &Service,
+    conn: u64,
+    health: &Health,
+) -> Result<()> {
     if is_health_probe(&stream) {
         return answer_health(stream, health);
     }
@@ -85,7 +90,7 @@ fn serve_connection(stream: TcpStream, engine: &Engine, conn: u64, health: &Heal
     let wake: Wake = Arc::new(move || {
         let _ = answered.send(Input::Answered);
     });
-    let session = engine.session_waking(conn, Some(wake))?;
+    let session = service.session_waking(conn, Some(wake))?;
     let beat = health.register(conn);
     log::info!("conn={conn} app connected");
     let (output_tx, outputs) = mpsc::channel();
@@ -212,7 +217,7 @@ fn text_input(text: &str, greeted: bool) -> Result<Input> {
 
 /// The processing thread: spots and detects speech in the audio, in the order it came.
 fn process(
-    mut session: Session<'_>,
+    mut session: Listening<'_>,
     inputs: &Receiver<Input>,
     outputs: &Sender<Output>,
     conn: u64,
@@ -243,7 +248,7 @@ fn process(
 
 /// The events `input` gives; the refusal's reason for a selection of unknown phrases.
 fn handle(
-    session: &mut Session<'_>,
+    session: &mut Listening<'_>,
     input: Input,
     stats: &mut Stats,
     conn: u64,

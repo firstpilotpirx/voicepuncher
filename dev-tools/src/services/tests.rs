@@ -1,4 +1,4 @@
-use super::command_lines::{command_spotting_args, whisper_args};
+use super::command_lines::{command_spotting_args, streaming_args, whisper_args};
 use super::e2e::{unlisted, watched_ports, Watched};
 use super::launch::{last_lines, supervisor_args, Service};
 use super::ready::{note, port_open, Ready};
@@ -75,6 +75,14 @@ fn should_start_command_spotting_with_its_arguments() {
     assert_eq!(
         command_spotting_args("8082", "kws", "vad.onnx", "http://127.0.0.1:8085/v1").join(" "),
         "--port 8082 --model-dir kws --vad-model vad.onnx --transcription-url http://127.0.0.1:8085/v1"
+    );
+}
+
+#[test]
+fn should_start_command_spotting_with_the_streaming_recognizers_arguments() {
+    assert_eq!(
+        streaming_args("8082", "en", "ru", "vad.onnx").join(" "),
+        "--port 8082 --recognizer streaming --en-model-dir en --ru-model-dir ru --vad-model vad.onnx"
     );
 }
 

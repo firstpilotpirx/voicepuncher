@@ -295,7 +295,7 @@ When the app runs from the hotkey and manages its services, it SHALL start at la
 - **AND** dictation starts once every started service answers
 
 #### Scenario: Voice control needs the command services
-- **GIVEN** no local service runs and voice control is on
+- **GIVEN** no local service runs, voice control is on and the keyword spotter is the command recognizer
 - **WHEN** the app launches
 - **THEN** the speech recognition service for commands is started as its copies and the command spotting service is started besides the others
 
@@ -464,6 +464,11 @@ The app SHALL start each local service with the same arguments as the service sc
 - **WHEN** the arguments of the speech recognition services and the command spotting service are compared
 - **THEN** each service gets the same arguments in the same order from both
 
+#### Scenario: The app and the scripts start the streaming recognizer with the same arguments
+- **GIVEN** the service scripts told to use the streaming recognizer and the app's own list of service command lines
+- **WHEN** the arguments of the command spotting service with the streaming recognizer are compared
+- **THEN** it gets the same arguments in the same order from both
+
 #### Scenario: A changed argument in only one place is caught
 - **GIVEN** a service argument that the service scripts set and the app does not
 - **WHEN** the tests run
@@ -615,3 +620,17 @@ When voice control connects to the command spotting service and a copy refuses i
 - **GIVEN** two copies of the command spotting service answer and the first speaks an older protocol version
 - **WHEN** voice control connects
 - **THEN** it is served by the second copy and a spoken command is carried out
+
+### Requirement: The command recognizer is chosen in the configuration
+The configuration SHALL name the command recognizer: the streaming recognizer (the default) or the keyword spotter confirmed by Whisper. With the streaming recognizer the app SHALL start the command spotting service with the streaming models and no speech recognition service for commands; with the keyword spotter, both as before. The service scripts SHALL use the keyword spotter unless told otherwise.
+
+#### Scenario: Voice control starts the streaming recognizer by default
+- **GIVEN** no local service runs, voice control is on and the user never chose a command recognizer
+- **WHEN** the app launches
+- **THEN** the command spotting service is started with the streaming models
+- **AND** the speech recognition service for commands is not started
+
+#### Scenario: The keyword spotter can still be chosen
+- **GIVEN** no local service runs, voice control is on and the keyword spotter is chosen as the command recognizer
+- **WHEN** the app launches
+- **THEN** the speech recognition service for commands and the command spotting service with the keyword spotting model are started

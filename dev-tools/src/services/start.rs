@@ -2,7 +2,7 @@
 //! commands and the command spotting service, or only the named ones; one that
 //! already answers on its port is skipped.
 
-use super::command_lines::{command_spotting_args, whisper_args};
+use super::command_lines::{command_spotting_args, streaming_args, whisper_args};
 use super::launch::{self, Service};
 use super::ready::{port_open, Ready};
 use super::{copy_ports, outcome, selected, unknown, Settings, Speech, Step, Stop, MAX_COPIES};
@@ -159,16 +159,10 @@ fn start_command_spotting(settings: &Settings) -> Step {
         );
         return Ok(());
     }
-    let model_dir = require_model_dir("VOICEPUNCHER_KWS_MODEL_DIR")?;
-    let vad = require_model("VOICEPUNCHER_KWS_VAD_MODEL")?;
+    let args = command_spotting_line(settings)?;
     build_command_spotting(settings)?;
     let mut command = vec![settings.kws_binary().display().to_string()];
-    command.extend(command_spotting_args(
-        &port.to_string(),
-        &model_dir,
-        &vad,
-        &settings.command_stt_url(),
-    ));
+    command.extend(args);
     if let Some(dir) = var("VOICEPUNCHER_KWS_SAVE_SPEECH_DIR") {
         command.extend(["--save-speech-dir".to_string(), dir]);
     }
@@ -181,6 +175,25 @@ fn start_command_spotting(settings: &Settings) -> Step {
         command,
     };
     launch::start(settings, &service)
+}
+
+/// The command spotting service's arguments: the streaming recognizers when
+/// `VOICEPUNCHER_COMMAND_RECOGNIZER` is `streaming`, else the keyword spotter.
+fn command_spotting_line(settings: &Settings) -> Result<Vec<String>, Stop> {
+    let port = settings.kws_port.to_string();
+    let vad = require_model("VOICEPUNCHER_KWS_VAD_MODEL")?;
+    if var("VOICEPUNCHER_COMMAND_RECOGNIZER").as_deref() == Some("streaming") {
+        let en = require_model_dir("VOICEPUNCHER_STREAMING_EN_MODEL_DIR")?;
+        let ru = require_model_dir("VOICEPUNCHER_STREAMING_RU_MODEL_DIR")?;
+        return Ok(streaming_args(&port, &en, &ru, &vad));
+    }
+    let model_dir = require_model_dir("VOICEPUNCHER_KWS_MODEL_DIR")?;
+    Ok(command_spotting_args(
+        &port,
+        &model_dir,
+        &vad,
+        &settings.command_stt_url(),
+    ))
 }
 
 /// Builds the command spotting service without the variables cargo sets for a test it runs, because the

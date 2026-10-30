@@ -6,7 +6,7 @@ Voice commands often register only on the 2nd or 3rd try when said quietly or wi
 
 - The command spotting service gets a streaming recognizer: a voice gate (Silero) wakes two streaming recognizers, English and Russian, at speech onset, replaying 0.5 s of audio before it; the first to hear a command reports it, at once, with no Whisper confirmation.
 - Russian spellings of the English command words ("стоп", "энтер") count as those commands.
-- Every gated utterance is logged and kept in the command history: its audio, each recognizer's texts over time, and the time of each stage (onset, first text, command, end of speech, decode load).
+- Every gated utterance is logged; every one in which a recognizer heard a command word is kept in the command history: its audio, each recognizer's texts over time, and the time of each stage (onset, first text, command, end of speech, decode load).
 - The app chooses the recognizer in its configuration, streaming by default; streaming needs no speech recognition service for commands, so the app no longer starts it, and voice control downloads the two streaming models instead of the Whisper small and keyword spotting models.
 - The service scripts can start either recognizer, keyword spotting by default.
 
@@ -30,4 +30,4 @@ Out of scope: removing the keyword spotting path, the speech recognition service
 
 ## Impact
 
-`command-spotting/` (new streaming engine, history entries), `app/` (config, service catalog, model catalog), `dev-tools/` (service start), `justfile` (model discovery), `.config/stages.toml` (a test need). SemVer: MINOR, 0.41.5 → 0.42.0.
+`command-spotting/` (new streaming engine, history entries), `app/` (config, service catalog, model catalog), `dev-tools/` (service start), `justfile` (model discovery), `.config/stages.toml` (a test need). SemVer: MINOR, target version 0.42.0.

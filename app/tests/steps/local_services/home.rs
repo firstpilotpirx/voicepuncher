@@ -8,6 +8,8 @@ pub(crate) use voicepuncher::adapters::secondary::localservices::catalog::Machin
 pub(super) const WHISPER: &str = "whisper-server";
 pub(super) const COMMAND_SPOTTING: &str = "voicepuncher-command-spotting";
 pub(super) const KWS_MODEL_DIR: &str = "sherpa-onnx-kws-zipformer";
+pub(super) const STREAMING_EN_MODEL_DIR: &str = "sherpa-onnx-nemotron-speech-streaming-en-0.6b";
+pub(super) const STREAMING_RU_MODEL_DIR: &str = "sherpa-onnx-streaming-zipformer-small-ru-vosk";
 pub(super) const COMMAND_MODEL_VAR: &str = "VOICEPUNCHER_COMMAND_WHISPER_MODEL";
 
 /// A home with every model in `~/.voicepuncher/models` and every engine in one `$PATH` folder.
@@ -27,7 +29,13 @@ impl FakeHome {
         ] {
             touch(&home.models().join(file))?;
         }
-        std::fs::create_dir_all(home.models().join(KWS_MODEL_DIR))?;
+        for dir in [
+            KWS_MODEL_DIR,
+            STREAMING_EN_MODEL_DIR,
+            STREAMING_RU_MODEL_DIR,
+        ] {
+            std::fs::create_dir_all(home.models().join(dir))?;
+        }
         for engine in [WHISPER, COMMAND_SPOTTING] {
             touch(&home.bin().join(engine))?;
         }

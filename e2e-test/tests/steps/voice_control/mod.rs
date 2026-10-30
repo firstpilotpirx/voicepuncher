@@ -23,6 +23,7 @@ pub(crate) mod outages;
 pub(crate) mod session;
 pub(crate) mod spotting_service;
 mod stand_ins;
+pub(crate) mod streaming;
 
 pub use session::HandsFreeSession;
 
@@ -152,7 +153,7 @@ pub(crate) async fn app_starts(world: &mut E2eWorld) -> Result<()> {
         std::fs::write(
             &config,
             format!(
-                "[voice_control]\nenabled = {}\nurl = \"{url}\"\n\n[services]\nmanage = {}\n",
+                "[voice_control]\nenabled = {}\nurl = \"{url}\"\nrecognizer = \"keyword_spotting\"\n\n[services]\nmanage = {}\n",
                 world.voice.voice_control, world.services.manage_services
             ),
         )?;

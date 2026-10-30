@@ -2,25 +2,25 @@ set dotenv-load
 
 # ── Settings ── override any of these via env or .env ─────────────────────────
 
-# Models: env var wins; else the file `just models` downloads, found by name in ~/.voicepuncher or its models/
-# (empty when not on disk: the start and _require-models then fail with "Run 'just models' or set it in .env")
+# Models: env var wins; else the file `just models` downloads, found by name in ~/.voicepuncher or its models/ (empty when not on disk: the start and _require-models then fail with "Run 'just models' or set it in .env")
 dictation_model_file := "ggml-large-v3-turbo-q5_0.bin"
 command_model_file := "ggml-small.bin"
 find_model := 'find ~/.voicepuncher -maxdepth 2 -name "$1" 2>/dev/null | head -1'
-# Speech recognition service for dictation (what the app uses)
+find_model_dir := 'find ~/.voicepuncher -maxdepth 2 -type d -name "$1" -exec ls -td {} + 2>/dev/null | head -1'
+# Speech recognition services for dictation (what the app uses) and for commands (the command spotting service's confirmations)
 export VOICEPUNCHER_WHISPER_MODEL := env_var_or_default("VOICEPUNCHER_WHISPER_MODEL", shell(find_model, dictation_model_file))
-# Speech recognition service for commands (the command spotting service's confirmations)
 export VOICEPUNCHER_COMMAND_WHISPER_MODEL := env_var_or_default("VOICEPUNCHER_COMMAND_WHISPER_MODEL", shell(find_model, command_model_file))
 # Voice activity detection model of the speech recognition service: the newest Silero model found
 export VOICEPUNCHER_VAD_MODEL := env_var_or_default("VOICEPUNCHER_VAD_MODEL", `find ~/.voicepuncher -maxdepth 2 -name 'ggml-silero-*.bin' -exec ls -t {} + 2>/dev/null | head -1`)
-# Command spotting service (voice control): sherpa-onnx keyword spotting model directory and its Silero VAD
-export VOICEPUNCHER_KWS_MODEL_DIR := env_var_or_default("VOICEPUNCHER_KWS_MODEL_DIR", `find ~/.voicepuncher -maxdepth 2 -type d -name 'sherpa-onnx-kws-*' -exec ls -td {} + 2>/dev/null | head -1`)
+# Command spotting service (voice control): sherpa-onnx keyword spotting model, its Silero VAD, the streaming models
+export VOICEPUNCHER_KWS_MODEL_DIR := env_var_or_default("VOICEPUNCHER_KWS_MODEL_DIR", shell(find_model_dir, 'sherpa-onnx-kws-*'))
+export VOICEPUNCHER_STREAMING_EN_MODEL_DIR := env_var_or_default("VOICEPUNCHER_STREAMING_EN_MODEL_DIR", shell(find_model_dir, 'sherpa-onnx-nemotron-speech-streaming-en-*'))
+export VOICEPUNCHER_STREAMING_RU_MODEL_DIR := env_var_or_default("VOICEPUNCHER_STREAMING_RU_MODEL_DIR", shell(find_model_dir, 'sherpa-onnx-streaming-zipformer-small-ru-*'))
 # The user's own recorded voice commands (never committed): tests run on them when they exist
 export VOICEPUNCHER_VOICE_SAMPLES := env_var_or_default("VOICEPUNCHER_VOICE_SAMPLES", `if test -d ~/.voicepuncher/voice-samples; then echo ~/.voicepuncher/voice-samples; fi`)
 export VOICEPUNCHER_KWS_VAD_MODEL := env_var_or_default("VOICEPUNCHER_KWS_VAD_MODEL", `find ~/.voicepuncher -maxdepth 2 -name 'silero_vad.onnx' 2>/dev/null | head -1`)
 
-# Corpus directory containing manifest.jsonl — absolute, because cargo runs tests from e2e-test/.
-# The corpus is gitignored, so a worktree without one uses the main checkout's (first of `git worktree list`)
+# Corpus directory containing manifest.jsonl — absolute, because cargo runs tests from e2e-test/; gitignored, so a worktree without one uses the main checkout's
 export VOICEPUNCHER_BENCH_CORPUS := env_var_or_default("VOICEPUNCHER_BENCH_CORPUS", `main=$(git worktree list 2>/dev/null | head -1 | cut -d' ' -f1); if [ ! -f e2e-test/corpus/manifest.jsonl ] && [ -f "$main/e2e-test/corpus/manifest.jsonl" ]; then echo "$main/e2e-test/corpus"; else echo "$PWD/e2e-test/corpus"; fi`)
 
 # The services' ports (dev-tools reads the same variables): their URLs are the app's defaults, and the E2E recipes

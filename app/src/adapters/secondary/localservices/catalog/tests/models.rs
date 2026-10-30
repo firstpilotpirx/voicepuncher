@@ -4,7 +4,7 @@ use super::*;
 
 /// The command spotting service as `needed` starts it on the home's machine.
 pub(super) fn spotting_spec(home: &Home) -> ServiceSpec {
-    needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS)
+    needed(&keyword_spotting(), ALL, &home.machine(), &NOTHING_RUNS)
         .into_iter()
         .find(|spec| spec.kind == ServiceKind::CommandSpotting)
         .unwrap()
@@ -32,7 +32,7 @@ pub(super) fn should_find_a_model_in_the_old_folder_and_prefer_the_environment()
     touch(&old);
     let mut machine = home.machine();
     let model_of = |machine: &Machine| {
-        let specs = needed(&Config::default(), ALL, machine, &NOTHING_RUNS);
+        let specs = needed(&keyword_spotting(), ALL, machine, &NOTHING_RUNS);
         let commands = specs
             .iter()
             .find(|spec| spec.kind == ServiceKind::Commands)

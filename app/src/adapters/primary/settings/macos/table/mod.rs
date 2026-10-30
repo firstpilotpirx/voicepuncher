@@ -72,6 +72,13 @@ pub const FIELDS: &[Field] = &[
     ),
     field(
         "voice_control",
+        "recognizer",
+        Tab::General,
+        "Command recognizer",
+        Control::Radio(Choices::CommandRecognizers),
+    ),
+    field(
+        "voice_control",
         "confirm_commands",
         Tab::General,
         "Confirm commands with Whisper",

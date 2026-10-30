@@ -13,7 +13,7 @@ pub(super) fn should_name_the_command_model_it_looked_for_when_it_is_not_on_disk
         missing.display().to_string(),
     );
     // When
-    let specs = needed(&Config::default(), ALL, &machine, &NOTHING_RUNS);
+    let specs = needed(&keyword_spotting(), ALL, &machine, &NOTHING_RUNS);
     // Then
     let commands = specs
         .iter()
@@ -32,7 +32,7 @@ pub(super) fn should_name_a_missing_engine_with_how_to_get_it() {
     let home = Home::complete();
     fs::remove_file(home.path().join("bin").join(WHISPER)).unwrap();
     // When
-    let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
+    let specs = needed(&keyword_spotting(), ALL, &home.machine(), &NOTHING_RUNS);
     // Then
     let problem = specs[0].problem.clone().unwrap();
     assert!(problem.contains("whisper-server not found"), "{problem}");
@@ -49,7 +49,7 @@ pub(super) fn should_find_an_engine_from_the_environment_then_the_bundle_then_th
     touch(&chosen);
     let mut machine = home.machine();
     let lookup_program = |machine: &Machine| {
-        needed(&Config::default(), ALL, machine, &NOTHING_RUNS)
+        needed(&keyword_spotting(), ALL, machine, &NOTHING_RUNS)
             .into_iter()
             .find(|spec| spec.kind == ServiceKind::Dictation)
             .unwrap()
@@ -76,7 +76,7 @@ pub(super) fn should_take_every_engine_from_its_folder_in_the_bundle_before_the_
         touch(&engines.join(folder).join(program));
     }
     // When
-    let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
+    let specs = needed(&keyword_spotting(), ALL, &home.machine(), &NOTHING_RUNS);
     // Then
     assert!(!specs.is_empty());
     for spec in &specs {
@@ -94,7 +94,7 @@ pub(super) fn should_take_every_engine_from_the_path_outside_a_bundle() {
     // Given
     let home = Home::complete();
     // When
-    let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
+    let specs = needed(&keyword_spotting(), ALL, &home.machine(), &NOTHING_RUNS);
     // Then
     for spec in &specs {
         assert_eq!(

@@ -6,6 +6,7 @@ mod adopted_steps;
 mod catalog;
 mod catalog_copies;
 mod catalog_history;
+mod catalog_recognizer;
 mod copies;
 mod fake_copies;
 mod foreign_program;

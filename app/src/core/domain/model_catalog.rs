@@ -1,6 +1,8 @@
 //! The model catalog: every model file the local services load, where it is downloaded from,
 //! its sha256 and size, and which part of the app needs it.
 
+use super::CommandRecognizer;
+
 /// How a downloaded file becomes what the services load.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelKind {
@@ -14,7 +16,12 @@ pub enum ModelKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelUse {
     Dictation,
+    /// Voice control, whichever command recognizer hears the commands.
     VoiceControl,
+    /// Voice control with the keyword spotter.
+    KeywordSpotting,
+    /// Voice control with the streaming recognizers.
+    Streaming,
 }
 
 /// One model file of the catalog.
@@ -46,7 +53,7 @@ impl ModelFile {
 }
 
 /// Every model file, in download order.
-pub const CATALOG: [ModelFile; 5] = [
+pub const CATALOG: [ModelFile; 7] = [
     ModelFile {
         name: "ggml-large-v3-turbo-q5_0.bin",
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo-q5_0.bin",
@@ -74,7 +81,7 @@ pub const CATALOG: [ModelFile; 5] = [
         size_bytes: 487_601_967,
         purpose: "speech recognition — commands",
         kind: ModelKind::File,
-        used_by: ModelUse::VoiceControl,
+        used_by: ModelUse::KeywordSpotting,
         variable: "VOICEPUNCHER_COMMAND_WHISPER_MODEL",
     },
     ModelFile {
@@ -96,25 +103,62 @@ pub const CATALOG: [ModelFile; 5] = [
         kind: ModelKind::TarBz2 {
             folder: "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01",
         },
-        used_by: ModelUse::VoiceControl,
+        used_by: ModelUse::KeywordSpotting,
         variable: "VOICEPUNCHER_KWS_MODEL_DIR",
+    },
+    ModelFile {
+        name: "sherpa-onnx-nemotron-speech-streaming-en-0.6b-160ms-int8-2026-04-25.tar.bz2",
+        url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemotron-speech-streaming-en-0.6b-160ms-int8-2026-04-25.tar.bz2",
+        sha256: "0ae73a41cd51599dc7cac9ac083d9d35de53d762ca45923505fde47a3751814b",
+        size_bytes: 463_945_198,
+        purpose: "streaming speech recognition, English — voice control",
+        kind: ModelKind::TarBz2 {
+            folder: "sherpa-onnx-nemotron-speech-streaming-en-0.6b-160ms-int8-2026-04-25",
+        },
+        used_by: ModelUse::Streaming,
+        variable: "VOICEPUNCHER_STREAMING_EN_MODEL_DIR",
+    },
+    ModelFile {
+        name: "sherpa-onnx-streaming-zipformer-small-ru-vosk-2025-08-16.tar.bz2",
+        url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-small-ru-vosk-2025-08-16.tar.bz2",
+        sha256: "cc2e99ed0c67cae8801170e7b7539b4cac00b716076af86f974bf5b888d9370c",
+        size_bytes: 89_653_224,
+        purpose: "streaming speech recognition, Russian — voice control",
+        kind: ModelKind::TarBz2 {
+            folder: "sherpa-onnx-streaming-zipformer-small-ru-vosk-2025-08-16",
+        },
+        used_by: ModelUse::Streaming,
+        variable: "VOICEPUNCHER_STREAMING_RU_MODEL_DIR",
     },
 ];
 
 /// The parts of the app that are on, and so which models are needed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ModelNeeds {
-    pub voice_control: bool,
+    pub keyword_spotting: bool,
+    pub streaming: bool,
 }
 
 impl ModelNeeds {
     /// Every model of the catalog.
-    pub const ALL: Self = Self { voice_control: true };
+    pub const ALL: Self = Self { keyword_spotting: true, streaming: true };
+    /// The dictation models alone: voice control off.
+    pub const DICTATION: Self = Self { keyword_spotting: false, streaming: false };
 
-    fn includes(self, used_by: ModelUse) -> bool {
+    /// Dictation and voice control heard by `recognizer`.
+    pub const fn voice_control(recognizer: CommandRecognizer) -> Self {
+        match recognizer {
+            CommandRecognizer::Streaming => Self { keyword_spotting: false, streaming: true },
+            CommandRecognizer::KeywordSpotting => Self { keyword_spotting: true, streaming: false },
+        }
+    }
+
+    const fn includes(self, used_by: ModelUse) -> bool {
         match used_by {
             ModelUse::Dictation => true,
-            ModelUse::VoiceControl => self.voice_control,
+            ModelUse::VoiceControl => self.keyword_spotting || self.streaming,
+            ModelUse::KeywordSpotting => self.keyword_spotting,
+            ModelUse::Streaming => self.streaming,
         }
     }
 }
@@ -146,9 +190,9 @@ mod tests {
     }
 
     #[test]
-    fn should_list_five_files_each_with_a_pinned_address_checksum_size_and_purpose() {
+    fn should_list_seven_files_each_with_a_pinned_address_checksum_size_and_purpose() {
         // Then
-        assert_eq!(CATALOG.len(), 5);
+        assert_eq!(CATALOG.len(), 7);
         for file in CATALOG {
             assert!(file.url.starts_with("https://"), "{}", file.url);
             assert!(file.url.ends_with(file.name), "{}", file.url);
@@ -202,7 +246,7 @@ mod tests {
     #[test]
     fn should_need_only_the_dictation_models_with_voice_control_off() {
         // When
-        let files = needed(ModelNeeds { voice_control: false });
+        let files = needed(ModelNeeds::DICTATION);
         // Then
         assert_eq!(
             names(&files),
@@ -213,6 +257,33 @@ mod tests {
     #[test]
     fn should_need_every_file_with_everything_on() {
         assert_eq!(needed(ModelNeeds::ALL), CATALOG.to_vec());
+    }
+
+    #[test]
+    fn should_need_the_streaming_models_and_not_the_keyword_spotting_ones_for_streaming() {
+        // When
+        let files = needed(ModelNeeds::voice_control(CommandRecognizer::Streaming));
+        // Then
+        assert_eq!(
+            names(&files),
+            vec![
+                "ggml-large-v3-turbo-q5_0.bin",
+                "ggml-silero-v5.1.2.bin",
+                "silero_vad.onnx",
+                "sherpa-onnx-nemotron-speech-streaming-en-0.6b-160ms-int8-2026-04-25.tar.bz2",
+                "sherpa-onnx-streaming-zipformer-small-ru-vosk-2025-08-16.tar.bz2",
+            ]
+        );
+    }
+
+    #[test]
+    fn should_need_the_keyword_spotting_models_for_the_keyword_spotter() {
+        // When
+        let files = needed(ModelNeeds::voice_control(
+            CommandRecognizer::KeywordSpotting,
+        ));
+        // Then
+        assert_eq!(names(&files), names(&CATALOG[..5]));
     }
 
     #[test]
@@ -229,6 +300,6 @@ mod tests {
 
     #[test]
     fn should_add_up_the_sizes() {
-        assert_eq!(total_bytes(&CATALOG), 1_080_798_837);
+        assert_eq!(total_bytes(&CATALOG), 1_634_397_259);
     }
 }

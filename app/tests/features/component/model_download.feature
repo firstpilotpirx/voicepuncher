@@ -92,3 +92,17 @@ Feature: model-download
       When the user runs the headless download of the models into that folder
       Then the command names the failed file
       And the command exits 1
+
+  Rule: Voice control downloads the models of its recognizer
+
+    Scenario: The streaming recognizer needs the streaming models
+      Given voice control is on with the streaming recognizer and no voice control model is on disk
+      When the app checks the models
+      Then the English and the Russian streaming models and the voice gate model are listed as Missing
+      And neither the Whisper small model nor the keyword spotting model is listed
+
+    Scenario: The keyword spotter needs its own models
+      Given voice control is on with the keyword spotter and no voice control model is on disk
+      When the app checks the models
+      Then the Whisper small model, the keyword spotting model and the voice gate model are listed as Missing
+      And no streaming model is listed

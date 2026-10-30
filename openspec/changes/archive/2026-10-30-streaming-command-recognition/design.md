@@ -12,7 +12,7 @@ See proposal.md — Why; `research/README.md` holds the whole bench and how to r
 
 **Decision rules, per recognizer, on every decode.** Tokens become words (`▁` opens a word). A Russian word made only of Cyrillic command patterns and fillers (`research/bench/common.py` `RU_CMD`, `RU_FILL`) is respelled in English ("энтерэнтер" → "enter enter"); other words stay. Then the existing `PhraseMatcher` decides, so forms, mishearings, states and "please" keep one definition:
 - `anywhere` (doubled, chained) and the early start (`start_so_far`, `start_at_head`) report at once;
-- a whole utterance that is one command (`phrase_in`) reports at once for a form of two or more words, and once settled (no new token for 0.2 s of audio) for one word, so "stop the car" is no "stop";
+- a whole utterance that is one command (`phrase_in`) reports at once when its words are the phrase itself ("press enter"), else once settled (no new word for 0.2 s of audio), so neither "stop" nor "stop the" of "stop the car" is a command;
 - `at_end` (speech, then a command) reports when the utterance ends.
 Reports are `Command` events (a whole-utterance command is `Tail`), which the app carries out at once. An utterance keeps the end time of its last report; a finding starting before it is skipped, whichever recognizer found it.
 

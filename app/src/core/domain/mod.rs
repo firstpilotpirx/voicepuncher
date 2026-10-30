@@ -1,6 +1,7 @@
 pub mod audio_buffer;
 pub mod audio_level;
 pub mod cleaned_text;
+pub mod command_recognizer;
 pub mod command_words;
 pub mod conversions;
 pub mod failure_notice;
@@ -21,6 +22,7 @@ pub mod voice_start_timing;
 pub use audio_buffer::AudioBuffer16k;
 pub use audio_level::AudioLevel;
 pub use cleaned_text::CleanedText;
+pub use command_recognizer::CommandRecognizer;
 pub use command_words::{
     without_leading_command, without_spoken_pastes, without_trailing_command, COMMAND_FORMS,
 };

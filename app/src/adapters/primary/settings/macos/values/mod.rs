@@ -6,6 +6,7 @@ use super::field::{Choices, Control, Field};
 use crate::config::{Config, TranscriptionCfg};
 use crate::core::domain::hotkey::HotKey;
 use crate::core::domain::recording_mode::RecordingMode;
+use crate::core::domain::CommandRecognizer;
 
 /// The system sounds of macOS a sound field offers after None.
 const SYSTEM_SOUNDS: [&str; 14] = [
@@ -76,11 +77,6 @@ pub fn to_item(value: &Value) -> toml_edit::Item {
 /// The entries `choices` offers; `microphones` are the Mac's input devices by name.
 pub fn options(choices: Choices, microphones: &[String]) -> Vec<Choice> {
     match choices {
-        Choices::Hotkeys => HotKey::ALL.iter().copied().map(hotkey_choice).collect(),
-        Choices::RecordingModes => [RecordingMode::Hold, RecordingMode::Toggle]
-            .into_iter()
-            .map(mode_choice)
-            .collect(),
         Choices::Microphones => with_first(
             Choice::new("System default", DEFAULT_MICROPHONE),
             microphones.iter().map(|name| Choice::new(name, name)),
@@ -97,7 +93,20 @@ pub fn options(choices: Choices, microphones: &[String]) -> Vec<Choice> {
                 .iter()
                 .map(|sound| Choice::new(*sound, *sound)),
         ),
-        Choices::LogLevels => LOG_LEVELS.iter().map(level_choice).collect(),
+        fixed => fixed_options(fixed),
+    }
+}
+
+/// The lists that are the same on every Mac.
+fn fixed_options(choices: Choices) -> Vec<Choice> {
+    match choices {
+        Choices::Hotkeys => HotKey::ALL.iter().copied().map(hotkey_choice).collect(),
+        Choices::RecordingModes => [RecordingMode::Hold, RecordingMode::Toggle]
+            .into_iter()
+            .map(mode_choice)
+            .collect(),
+        Choices::CommandRecognizers => recognizer_choices(),
+        _ => LOG_LEVELS.iter().map(level_choice).collect(),
     }
 }
 
@@ -107,6 +116,16 @@ fn hotkey_choice(key: HotKey) -> Choice {
 
 fn mode_choice(mode: RecordingMode) -> Choice {
     Choice::new(mode.to_string(), serialized(&mode))
+}
+
+fn recognizer_choices() -> Vec<Choice> {
+    vec![
+        Choice::new("Streaming", serialized(&CommandRecognizer::Streaming)),
+        Choice::new(
+            "Keyword spotting",
+            serialized(&CommandRecognizer::KeywordSpotting),
+        ),
+    ]
 }
 
 fn level_choice(level: &&str) -> Choice {
