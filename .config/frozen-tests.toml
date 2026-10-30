@@ -46,3 +46,12 @@ stage = "e2e-smoke-voice"
 beside = "machine lock held by this run alone (wait 0.1 s); other sessions building beside it"
 branch = "fix/restart-crashed-services"
 
+
+[[frozen]]
+test = "voicepuncher::it transcription_openai::copy_recovery::should_fail_naming_the_copies_when_every_copy_refuses"
+frozen = "2026-10-30"
+recipe = "test"
+stage = "test"
+beside = "the whole test stage (1438 tests) beside other sessions builds; it passed in the previous run on this branch"
+branch = "feat/streaming-command-recognition"
+
