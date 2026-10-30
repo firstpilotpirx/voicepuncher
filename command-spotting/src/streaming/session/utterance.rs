@@ -131,7 +131,10 @@ impl Utterance {
         let moment = if update.finished {
             Moment::Closing
         } else {
-            Moment::Decoding { now: self.start + seconds(update.fed) }
+            Moment::Decoding {
+                now: self.start + seconds(update.fed),
+                pause: (self.quiet > 0).then_some(self.trace.speech_end),
+            }
         };
         let found = decide(matcher, &words, moment, self.reported_until)?;
         self.report(r, found, now)

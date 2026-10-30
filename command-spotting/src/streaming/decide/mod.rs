@@ -6,8 +6,9 @@ use crate::matcher::{Found, PhraseMatcher, Placement};
 /// What a decision is asked at.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Moment {
-    /// While the utterance runs, with the audio decoded up to `now` seconds.
-    Decoding { now: f32 },
+    /// While the utterance runs, with the audio decoded up to `now` seconds; `pause` is when
+    /// the gate's current silence began, none while it hears speech.
+    Decoding { now: f32, pause: Option<f32> },
     /// When the utterance ends: nothing more will be said in it.
     Closing,
 }
@@ -22,7 +23,8 @@ pub struct Finding {
 }
 
 /// How long after a one-word command no new word may come before it counts as said alone:
-/// "stop" opening "stop the car" is no command.
+/// "stop" opening "stop the car" is no command. Sooner when the gate hears a pause after it and
+/// the recognizer decoded up to that pause.
 const SETTLE_SECS: f32 = 0.2;
 
 /// How soon after a report the same command again is its doubled form ("enter enter"), not
@@ -76,16 +78,24 @@ fn alone(matcher: &PhraseMatcher, fresh: &[&TimedWord], moment: Moment) -> Optio
     let (first, last) = (fresh.first()?, fresh.last()?);
     let text: Vec<&str> = fresh.iter().map(|w| w.text.as_str()).collect();
     let phrase = matcher.phrase_in(&text.join(" "))?;
-    let settled = match moment {
-        Moment::Closing => true,
-        Moment::Decoding { now } => is_phrase(&text, &phrase) || now - last.end >= SETTLE_SECS,
-    };
+    let settled = is_phrase(&text, &phrase) || settled(moment, last.end);
     settled.then(|| Finding {
         commands: vec![phrase],
         start: first.start,
         end: last.end,
         placement: Placement::Tail,
     })
+}
+
+/// Whether a one-word command ending at `end` is said alone at `moment`: the utterance
+/// ended, nothing came for a while after it, or the gate heard the pause after it.
+fn settled(moment: Moment, end: f32) -> bool {
+    match moment {
+        Moment::Closing => true,
+        Moment::Decoding { now, pause } => {
+            now - end >= SETTLE_SECS || pause.is_some_and(|p| now >= p)
+        }
+    }
 }
 
 /// Whether `words` say `phrase` word for word, case and punctuation aside.

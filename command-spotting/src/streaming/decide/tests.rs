@@ -29,7 +29,7 @@ fn said(from: f32, text: &str) -> Vec<TimedWord> {
 }
 
 fn decoding(now: f32) -> Moment {
-    Moment::Decoding { now }
+    Moment::Decoding { now, pause: None }
 }
 
 #[test]
@@ -167,4 +167,34 @@ fn should_take_the_same_command_right_after_a_report_for_its_double() {
     assert!(doubles(Some(&last), &found_at(1.64, 1.98)));
     assert!(!doubles(Some(&last), &found_at(2.5, 2.8)));
     assert!(!doubles(None, &found_at(1.64, 1.98)));
+}
+
+fn paused_at(now: f32, pause: f32) -> Moment {
+    Moment::Decoding { now, pause: Some(pause) }
+}
+
+#[test]
+fn should_report_a_lone_stop_once_decoded_up_to_the_gates_pause() {
+    // Given "stop" ending at 1.25 s, the gate silent from 1.3 s
+    let words = said(1.0, "stop");
+    // When
+    let found = decide(&dictating(), &words, paused_at(1.32, 1.3), 0.0);
+    // Then
+    assert_eq!(found.expect("a lone stop").commands, ["stop dictation"]);
+}
+
+#[test]
+fn should_wait_for_the_recognizer_to_decode_up_to_the_pause() {
+    // When
+    let found = decide(&dictating(), &said(1.0, "stop"), paused_at(1.28, 1.3), 0.0);
+    // Then
+    assert_eq!(found, None);
+}
+
+#[test]
+fn should_not_settle_a_lone_stop_while_the_gate_hears_speech() {
+    // When "stop" is decoded but speech goes on
+    let found = decide(&dictating(), &said(1.0, "stop"), decoding(1.35), 0.0);
+    // Then
+    assert_eq!(found, None);
 }

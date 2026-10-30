@@ -32,6 +32,9 @@ struct Args {
     /// Only the clips whose id holds this text.
     #[arg(long)]
     only: Option<String>,
+    /// Only every n-th clip: a quick comparison.
+    #[arg(long, default_value_t = 1)]
+    sample: usize,
     /// Print each clip's outcome, not only the wrong ones.
     #[arg(long)]
     verbose: bool,
@@ -49,7 +52,15 @@ fn main() -> Result<()> {
         command_history: None,
     })?;
     let outcomes = run_all(&engine, &args, &dataset)?;
-    println!("{}", Summary::of(&outcomes));
+    println!("all   {}", Summary::of(&outcomes));
+    for word in ["start", "stop"] {
+        let said: Vec<Outcome> = outcomes
+            .iter()
+            .filter(|o| o.label == [word])
+            .cloned()
+            .collect();
+        println!("{word:<5} {}", Summary::of(&said));
+    }
     Ok(())
 }
 
@@ -61,7 +72,10 @@ fn run_all(engine: &StreamingEngine, args: &Args, dataset: &Path) -> Result<Vec<
     };
     let wanted = |id: &str| args.only.as_deref().is_none_or(|o| id.contains(o));
     let mut outcomes = Vec::new();
-    for clip in load_dataset(dataset)?.into_iter().filter(|c| wanted(&c.id)) {
+    let clips = load_dataset(dataset)?
+        .into_iter()
+        .step_by(args.sample.max(1));
+    for clip in clips.filter(|c| wanted(&c.id)) {
         let outcome = run_clip(engine, &clip, pace)?;
         if args.verbose || !outcome.right() {
             print_outcome(&outcome);
