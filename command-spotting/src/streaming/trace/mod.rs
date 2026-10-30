@@ -4,6 +4,7 @@
 //! Times are seconds of the connection's stream until [`Trace::shifted`] counts them from
 //! the start of the entry's audio.
 
+use std::fmt::Write;
 use std::time::Duration;
 
 use serde::Serialize;
@@ -115,22 +116,26 @@ impl Trace {
             self.onset, self.speech_end, self.closed
         );
         for (r, recognizer) in self.recognizers.iter().enumerate() {
-            line.push_str(&format!(
+            // WHY: writing to a String cannot fail.
+            let _ = write!(
+                line,
                 " | {} {:?} {}ms/{}ms",
                 recognizer.name,
                 self.final_text(r),
                 recognizer.decode_ms,
                 recognizer.slowest_frame_ms
-            ));
+            );
         }
         for report in &self.reports {
-            line.push_str(&format!(
+            // WHY: writing to a String cannot fail.
+            let _ = write!(
+                line,
                 " | {} by {} at {:.2}s +{}ms",
                 report.commands.join(", "),
                 report.recognizer,
                 report.at,
                 report.delay_ms
-            ));
+            );
         }
         line
     }

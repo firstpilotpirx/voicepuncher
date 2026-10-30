@@ -32,7 +32,10 @@ impl StreamingHistory {
             .map(|e| e.map(|e| e.path()))
             .collect::<std::io::Result<_>>()?;
         let [entry] = entries.as_slice() else {
-            bail!("expected one command history entry in {dir:?}: {entries:?}");
+            bail!(
+                "expected one command history entry in {}: {entries:?}",
+                dir.display()
+            );
         };
         let json = serde_json::from_str(&std::fs::read_to_string(entry.join(ENTRY_FILE))?)?;
         Ok((entry.clone(), json))

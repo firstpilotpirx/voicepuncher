@@ -85,11 +85,11 @@ impl RecognizerStream for ScriptedStream<'_> {
 }
 
 fn silence(secs: f32) -> Vec<f32> {
-    vec![0.0; (secs * RATE as f32) as usize]
+    vec![0.0; saturating_usize(secs * RATE as f32)]
 }
 
 fn speech(secs: f32) -> Vec<f32> {
-    vec![0.5; (secs * RATE as f32) as usize]
+    vec![0.5; saturating_usize(secs * RATE as f32)]
 }
 
 fn session<'a>(models: &[&'a Scripted], history: Option<&'a CommandHistory>) -> Session<'a> {

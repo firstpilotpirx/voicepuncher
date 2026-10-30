@@ -1,6 +1,7 @@
-//! The user's English command words as the Russian recognizer writes them ("стоп", "энтер"),
-//! respelled in English so the phrase matcher reads them like the English recognizer's.
-//! The patterns are those of the bench (`research/bench/common.py`, `RU_CMD` and `RU_FILL`).
+//! The user's English command words as the Russian recognizer writes them ("стоп", "энтер").
+//!
+//! They are respelled in English so the phrase matcher reads them like the English
+//! recognizer's. The patterns are those of the bench (`research/bench/common.py`, `RU_CMD` and `RU_FILL`).
 
 /// How often a letter of a pattern is said.
 #[derive(Clone, Copy)]

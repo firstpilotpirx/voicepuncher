@@ -8,8 +8,9 @@ use super::respell::respell_word;
 /// How long the last token of a word lasts after the time it was decoded at.
 const TOKEN_SECS: f32 = 0.1;
 
-/// The words of `tokens`, decoded at `times` seconds after `offset`: a token opening with a
-/// word boundary (`▁` or a space) starts a word. With `respelled`, a Cyrillic word of command
+/// The words of `tokens`, decoded at `times` seconds after `offset`.
+///
+/// A token opening with a word boundary (`▁` or a space) starts a word. With `respelled`, a Cyrillic word of command
 /// sounds becomes its English words, sharing its time evenly.
 pub fn timed_words(
     tokens: &[String],

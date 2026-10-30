@@ -1,5 +1,6 @@
-//! One connection's audio in the streaming recognizer: the gate hears speech window by
-//! window, an utterance opens at its onset with the half second before it replayed into every
+//! One connection's audio in the streaming recognizer.
+//!
+//! The gate hears speech window by window, an utterance opens at its onset with the half second before it replayed into every
 //! recognizer, and closes after a pause and half a second more audio.
 
 use std::collections::VecDeque;

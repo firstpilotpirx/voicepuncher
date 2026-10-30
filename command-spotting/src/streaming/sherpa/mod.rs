@@ -161,7 +161,11 @@ fn onnx_files(dir: &Path) -> Result<Vec<String>> {
     Ok(entries
         .flatten()
         .filter_map(|e| e.file_name().into_string().ok())
-        .filter(|name| name.ends_with(".onnx"))
+        .filter(|name| {
+            std::path::Path::new(name)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("onnx"))
+        })
         .collect())
 }
 
