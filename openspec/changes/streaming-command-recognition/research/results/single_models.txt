@@ -1,0 +1,19 @@
+model                   voice +alias   hist +alias    FA FA+al delay50 delay90    RTF chunk95ms
+whisper-turbo             92%    94%   100%   100%    2%    2%     nan     nan  0.234     512.9
+whisper-small             90%    93%    97%    97%   11%   11%     nan     nan  0.068     137.2
+vosk-small-grammar        96%    96%    95%    95%   36%   36%   -0.15    0.31  0.009       1.8
+vosk-lgraph-grammar       91%    91%    91%    91%   49%   49%    0.10    0.59  0.035       6.9
+nemotron-0.6b-160ms       85%    88%    86%    86%    5%    6%    0.27    0.77  0.397      49.6
+ru-zipformer              45%    45%    91%    91%   11%   11%    0.26    0.66  0.026      13.7
+ru-tone                   44%    44%    90%    90%   11%   11%    0.66    1.07  0.064      16.5
+whisper-small-ru          50%    55%    76%    79%    4%    6%     nan     nan  0.086     155.3
+multi-zipformer           45%    46%    82%    82%   10%   11%    0.23    0.73  0.084      21.9
+nemo-fc-80ms              63%    69%    67%    70%    6%    6%    0.38    0.85  0.112      14.3
+kroko                     65%    67%    69%    70%    5%    5%    0.62    1.50  0.019       9.9
+nemo-fc-480ms             65%    68%    65%    66%    6%    7%    0.56    1.08  0.044      20.6
+vosk-lgraph               61%    64%    60%    63%   18%   19%    0.40    0.75  1.384     552.0
+vosk-ru                   28%    28%    66%    66%    6%    6%    0.17    0.64  0.140      38.5
+zipformer-70M             44%    47%    36%    37%    7%    7%    0.57    0.91  0.043      11.2
+kws-current               49%    49%    21%    21%   58%   58%    0.11    0.64  0.018       4.6
+zipformer-20M              6%     6%     2%     2%    1%    2%    0.49    1.11  0.021       5.4
+n: voice samples 121, history 294, negatives 101
