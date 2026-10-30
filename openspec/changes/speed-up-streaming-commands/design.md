@@ -41,7 +41,7 @@ Live traces (2026-10-30) find a command ~0.2 s after its words in stream time bu
 | A slow recognizer does not hold back the other | unit, scripted slow model |
 | A quiet command opens the gate | adapter integration (`streaming`) |
 | An utterance without a command is kept too | E2E (`voice_control.feature`) |
-| Start said alone is reported within its bound; Stop said alone is reported at the pause after it; Press enter after a sentence is reported soon after the pause | adapter integration, real time, `needs_streaming_models` |
+| Start said alone is reported within its bound; Stop said alone is reported at the pause after it; Press enter after a sentence is reported soon after the pause | E2E (`voice_control.feature`), real time, `@cues`: timed on an otherwise idle machine |
 | Stop opening a sentence is still no command | unit (`decide`) and E2E |
 | The user's recorded commands are reported within their bound; The user's recorded commands are heard | adapter integration, `needs_voice_samples` |
 | A mishearing from the history counts as its command | unit (`voice-commands`) |

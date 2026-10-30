@@ -24,6 +24,7 @@ use crate::steps::off_thread;
 use crate::E2eWorld;
 
 mod history;
+mod timed;
 
 const SAMPLE_RATE: usize = 16_000;
 /// 100 ms of audio per message, as the app sends it.
@@ -38,6 +39,7 @@ static CONNECTIONS: AtomicU64 = AtomicU64::new(9_000);
 #[derive(Debug, Default)]
 pub struct StreamingRun {
     history: history::StreamingHistory,
+    timed: timed::Timed,
     events: Vec<ServerEvent>,
     conn: u64,
     log_from: usize,
@@ -82,6 +84,14 @@ impl StreamingRun {
             Some(engine) => engine,
             None => shared()?,
         };
+        self.feed(engine, audio, sync)?;
+        engine.flush_history();
+        Ok(())
+    }
+
+    /// Streams `audio` into a new session of `engine`, then a sync, whose answer is kept
+    /// only when `sync`.
+    fn feed(&mut self, engine: &StreamingEngine, audio: &[f32], sync: bool) -> Result<()> {
         self.conn = CONNECTIONS.fetch_add(1, Ordering::Relaxed);
         self.log_from = log_mark();
         let mut session = engine.session_for(self.conn)?;
@@ -90,11 +100,12 @@ impl StreamingRun {
         for frame in audio.chunks(FRAME_SAMPLES) {
             self.events.extend(session.accept(frame));
         }
-        if sync {
-            self.events.extend(session.sync(1));
+        // WHY: the recognizers decode on threads of their own; the sync waits for what is left.
+        let mut left = session.sync(1);
+        if !sync {
+            left.retain(|e| !matches!(e, ServerEvent::Synced { .. }));
         }
-        drop(session);
-        engine.flush_history();
+        self.events.extend(left);
         Ok(())
     }
 

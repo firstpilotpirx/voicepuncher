@@ -860,6 +860,31 @@ Feature: voice-control
       When an app streams the sentence "the weather is nice today"
       Then the streaming recognizer reports no command
 
+    @smoke
+    Scenario: Stop opening a sentence is still no command
+      Given the command spotting service runs with the streaming recognizer
+      When an app streams the sentence "stop the car"
+      Then the streaming recognizer reports no command
+
+  # Real-time streams timed by the wall clock; @cues runs them with the machine otherwise idle.
+  @serial @cues
+  Rule: Streaming commands are reported within 0.3 s of their words
+
+    Scenario: Start said alone is reported within its bound
+      Given the command spotting service runs with the streaming recognizer
+      When an app streams "start" followed by silence, in real time
+      Then the streaming recognizer reports "start dictation" within 0.3 s of the end of the words by the wall clock
+
+    Scenario: Stop said alone is reported at the pause after it
+      Given the command spotting service runs with the streaming recognizer
+      When an app streams "stop" followed by silence, in real time
+      Then the streaming recognizer reports "stop dictation" within 0.3 s of the end of the words by the wall clock
+
+    Scenario: Press enter after a sentence is reported soon after the pause
+      Given the command spotting service runs with the streaming recognizer
+      When an app streams "we meet at ten press enter" followed by silence, in real time
+      Then the streaming recognizer reports "press enter" within 0.6 s of the end of the words by the wall clock
+
   Rule: A command said in Russian sounds counts as the command
 
     @smoke

@@ -22,9 +22,9 @@
 
 ## 4. Lone command at the pause, shorter tail
 
-- [ ] 4.1 Red: unit tests in `streaming/decide/tests.rs`: "stop" alone settles at the gate's pause; "stop the car" still no command
-- [ ] 4.2 Red: integration tests "start said alone", "stop said alone", "press enter after a sentence" within their wall-clock bounds in `command-spotting/tests/it/streaming/`
-- [ ] 4.3 Green: settle on the gate's pause in `streaming/decide/` and `streaming/session/`
+- [x] 4.1 Red: unit tests in `streaming/decide/tests.rs`: "stop" alone settles at the gate's pause; "stop the car" still no command
+- [x] 4.2 Red: E2E scenarios "start said alone", "stop said alone", "press enter after a sentence" within their wall-clock bounds in `e2e-test/tests/features/voice_control.feature` (`@cues`)
+- [x] 4.3 Green: settle on the gate's pause in `streaming/decide/` and `streaming/session/`
 - [ ] 4.4 Sweep the utterance tail on the bench; Green: set the shortest tail that keeps every command
 - [ ] 4.5 `just test`; commit
 
