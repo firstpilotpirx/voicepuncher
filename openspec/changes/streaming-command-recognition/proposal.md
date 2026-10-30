@@ -30,4 +30,4 @@ Out of scope: removing the keyword spotting path, the speech recognition service
 
 ## Impact
 
-`command-spotting/` (new streaming engine, history entries), `app/` (config, service catalog, model catalog), `dev-tools/` (service start), `justfile` (model discovery), `.config/stages.toml` (a test need). SemVer: MINOR, 0.41.5 → 0.42.0.
+`command-spotting/` (new streaming engine, history entries), `app/` (config, service catalog, model catalog), `dev-tools/` (service start), `justfile` (model discovery), `.config/stages.toml` (a test need). SemVer: MINOR, target version 0.42.0.

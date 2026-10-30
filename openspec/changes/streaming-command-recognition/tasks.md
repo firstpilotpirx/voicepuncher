@@ -37,7 +37,7 @@
 
 ## 5. E2E
 
-- [x] 5.1 Red: the eight voice-control scenarios in `e2e-test/tests/features/voice_control.feature` (`@smoke`), steps in `e2e-test/tests/steps/voice_control/streaming.rs` starting a streaming service on its own port
+- [x] 5.1 Red: the eight voice-control scenarios in `e2e-test/tests/features/voice_control.feature` (`@smoke`), steps in `e2e-test/tests/steps/voice_control/streaming/`, driving the streaming engine in the test process
 - [x] 5.2 Green: make them pass
 - [x] 5.3 Update `docs/ubiquitous-language.md` (streaming recognizer, voice gate, command recognizer) and `README.md`
 - [x] 5.4 Run `just test`; commit
