@@ -1,0 +1,13 @@
+nemotron-0.6b-160ms                        commands   87%   false alarms    6%
+kroko                                      commands   69%   false alarms    5%
+nemo-fc-80ms                               commands   70%   false alarms    6%
+ru-zipformer                               commands   82%   false alarms   11%
+ru-tone                                    commands   80%   false alarms   11%
+vosk-ru                                    commands   61%   false alarms    7%
+multi-zipformer                            commands   77%   false alarms   11%
+whisper-small                              commands   96%   false alarms   11%
+whisper-small-ru                           commands   77%   false alarms    6%
+nemotron-0.6b-160ms + ru-zipformer         commands   94%   false alarms   13%
+kroko + ru-zipformer                       commands   90%   false alarms   13%
+nemo-fc-80ms + ru-zipformer                commands   89%   false alarms   13%
+whisper-small + whisper-small-ru           commands   97%   false alarms   13%
