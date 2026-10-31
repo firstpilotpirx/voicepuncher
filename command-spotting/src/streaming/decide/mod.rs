@@ -23,20 +23,16 @@ pub struct Finding {
 }
 
 /// How long after a one-word command no new word may come before it counts as said alone:
-/// "stop" opening "stop the car" is no command. Longer than the recognizer's lag in giving out
-/// the next word: "the" of "stop the car" comes out about 0.35 s after "stop" ends.
-const SETTLE_SECS: f32 = 0.4;
+/// "stop" opening "stop the car" is no command. Sooner when the gate hears a pause after it and
+/// the recognizer decoded up to that pause.
+const SETTLE_SECS: f32 = 0.2;
 
-/// How long after a one-word command no new word may come when the gate's pause began right
-/// after it (within `QUIET_AFTER_SECS`): the gate hears no next word, so the recognizer's lag
-/// cannot hide one. The gate's pause after a lone "stop" begins about 0.26 s after the word, after
-/// "stop the car" 0.66 s after "stop".
-const QUIET_SETTLE_SECS: f32 = 0.2;
-const QUIET_AFTER_SECS: f32 = 0.35;
-
-/// How far past a command ending a sentence the recognizer decodes before it counts at the
-/// gate's pause: the words before it may still change ("let's start" becomes "restart").
-const DRAFT_SECS: f32 = 0.2;
+/// How long instead when the gate already heard speech go on past `SPEECH_AFTER_SECS` after the
+/// word: the next word comes out of the recognizer about 0.35 s after the command ends, so "stop"
+/// of "stop the car" would settle before "the" shows. The gate's pause after a lone "stop" begins
+/// about 0.26 s after the word, after "stop the car" 0.66 s after "stop".
+const LATE_SETTLE_SECS: f32 = 0.4;
+const SPEECH_AFTER_SECS: f32 = 0.35;
 
 /// How soon after a report the same command again is its doubled form ("enter enter"), not
 /// a new command: the first word may settle before the recognizer decoded the second.
@@ -101,27 +97,30 @@ fn alone(matcher: &PhraseMatcher, fresh: &[&TimedWord], moment: Moment) -> Optio
 }
 
 /// Whether a one-word command ending at `end` is said alone at `moment`: the utterance
-/// ended, nothing came for a while after it (sooner when the gate's pause began right after
+/// ended, nothing came for a while after it (longer when the gate heard speech go on after
 /// it), or the gate heard the pause after it.
 fn settled(moment: Moment, end: f32) -> bool {
     match moment {
         Moment::Closing => true,
         Moment::Decoding { now, pause } => {
-            let quiet_after = pause.is_some_and(|p| p - end <= QUIET_AFTER_SECS);
-            now - end >= SETTLE_SECS
-                || (quiet_after && now - end >= QUIET_SETTLE_SECS)
-                || ended(moment)
+            let speech_after = pause.is_some_and(|p| p - end > SPEECH_AFTER_SECS);
+            let settle = if speech_after {
+                LATE_SETTLE_SECS
+            } else {
+                SETTLE_SECS
+            };
+            now - end >= settle || ended(moment)
         }
     }
 }
 
-/// Whether the recognizer decoded `DRAFT_SECS` past `end` at `moment`, or the utterance
+/// Whether the recognizer decoded `SETTLE_SECS` past `end` at `moment`, or the utterance
 /// closed: at a pause the words before a command may still change ("let's start" becomes
 /// "restart").
 fn decoded_past(moment: Moment, end: f32) -> bool {
     match moment {
         Moment::Closing => true,
-        Moment::Decoding { now, .. } => now - end >= DRAFT_SECS,
+        Moment::Decoding { now, .. } => now - end >= SETTLE_SECS,
     }
 }
 
