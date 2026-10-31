@@ -127,6 +127,15 @@ mod needs_streaming_models {
         assert_eq!(commands, Vec::<String>::new());
     }
 
+    #[test]
+    fn should_report_nothing_for_stop_opening_a_sentence() {
+        let engine = engine();
+        // When
+        let commands = commands_in(&engine, &common::spoken_by(None, "stop the car"));
+        // Then
+        assert_eq!(commands, Vec::<String>::new());
+    }
+
     mod needs_voice_samples {
         use super::*;
 
