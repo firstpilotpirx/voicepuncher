@@ -893,7 +893,7 @@ Feature: voice-control
 
   Rule: Streaming commands are heard in the user's own voice
 
-    @smoke @voice_samples
+    @regression @voice_samples
     Scenario: The user's recorded commands are heard
       Given the user's own recordings of the commands exist on the machine
       When every recording of the user's commands is streamed to the service
