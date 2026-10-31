@@ -48,5 +48,5 @@
 ## 7. Version and checks
 
 - [x] 7.1 Bump `version` in `app/Cargo.toml` to 0.42.1
-- [ ] 7.2 `just test`; `just check`; commit
-- [ ] 7.3 Manual checks: none (no hotkey, recording, overlay, paste or permission change)
+- [x] 7.2 `just test`; `just check`; commit
+- [x] 7.3 Manual checks: none (no hotkey, recording, overlay, paste or permission change)
