@@ -240,3 +240,26 @@ fn should_wait_for_the_close_when_a_sentence_ends_in_the_end_of_another_command(
         ["start dictation"]
     );
 }
+
+#[test]
+fn should_settle_a_one_word_form_sooner_when_the_gates_pause_follows_it() {
+    // Given "stop" ending at 1.25 s, the gate's pause beginning at 1.51 s
+    let words = said(1.0, "stop");
+    // When
+    let settled = decide(&dictating(), &words, paused_at(1.46, 1.51), 0.0);
+    // Then
+    assert_eq!(
+        settled.expect("a stop followed by the pause").commands,
+        ["stop dictation"]
+    );
+}
+
+#[test]
+fn should_wait_for_a_one_word_form_when_the_gates_pause_begins_later() {
+    // Given "stop" ending at 1.25 s, the gate's pause beginning only at 1.91 s ("stop the car")
+    let words = said(1.0, "stop");
+    // When
+    let early = decide(&dictating(), &words, paused_at(1.55, 1.91), 0.0);
+    // Then
+    assert_eq!(early, None);
+}

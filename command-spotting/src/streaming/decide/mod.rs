@@ -23,10 +23,16 @@ pub struct Finding {
 }
 
 /// How long after a one-word command no new word may come before it counts as said alone:
-/// "stop" opening "stop the car" is no command. Sooner when the gate hears a pause after it and
-/// the recognizer decoded up to that pause. Longer than the recognizer's lag in giving out the
-/// next word: "the" of "stop the car" comes out about 0.35 s after "stop" ends.
+/// "stop" opening "stop the car" is no command. Longer than the recognizer's lag in giving out
+/// the next word: "the" of "stop the car" comes out about 0.35 s after "stop" ends.
 const SETTLE_SECS: f32 = 0.4;
+
+/// How long after a one-word command no new word may come when the gate's pause began right
+/// after it (within `QUIET_AFTER_SECS`): the gate hears no next word, so the recognizer's lag
+/// cannot hide one. The gate's pause after a lone "stop" begins about 0.26 s after the word, after
+/// "stop the car" 0.66 s after "stop".
+const QUIET_SETTLE_SECS: f32 = 0.2;
+const QUIET_AFTER_SECS: f32 = 0.35;
 
 /// How far past a command ending a sentence the recognizer decodes before it counts at the
 /// gate's pause: the words before it may still change ("let's start" becomes "restart").
@@ -95,11 +101,17 @@ fn alone(matcher: &PhraseMatcher, fresh: &[&TimedWord], moment: Moment) -> Optio
 }
 
 /// Whether a one-word command ending at `end` is said alone at `moment`: the utterance
-/// ended, nothing came for a while after it, or the gate heard the pause after it.
+/// ended, nothing came for a while after it (sooner when the gate's pause began right after
+/// it), or the gate heard the pause after it.
 fn settled(moment: Moment, end: f32) -> bool {
     match moment {
         Moment::Closing => true,
-        Moment::Decoding { now, .. } => now - end >= SETTLE_SECS || ended(moment),
+        Moment::Decoding { now, pause } => {
+            let quiet_after = pause.is_some_and(|p| p - end <= QUIET_AFTER_SECS);
+            now - end >= SETTLE_SECS
+                || (quiet_after && now - end >= QUIET_SETTLE_SECS)
+                || ended(moment)
+        }
     }
 }
 
