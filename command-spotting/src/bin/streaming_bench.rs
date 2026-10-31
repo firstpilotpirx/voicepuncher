@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use voicepuncher_command_spotting::bench::{load_dataset, run_clip, Clip, Outcome, Pace, Summary};
+use voicepuncher_command_spotting::bench::{
+    load_dataset, recorded_clips, run_clip, Clip, Outcome, Pace, Summary,
+};
 use voicepuncher_command_spotting::streaming::engine::{StreamingCfg, StreamingEngine};
 
 #[derive(Parser)]
@@ -16,6 +18,9 @@ struct Args {
         default_value = "~/.voicepuncher/research/command-bench/dataset.jsonl"
     )]
     dataset: String,
+    /// The user's recorded sessions (`~/.voicepuncher/voice-samples`) in place of the dataset.
+    #[arg(long)]
+    recorded: Option<String>,
     #[arg(long, env = "VOICEPUNCHER_STREAMING_EN_MODEL_DIR")]
     en_model_dir: PathBuf,
     #[arg(long, env = "VOICEPUNCHER_STREAMING_RU_MODEL_DIR")]
@@ -76,7 +81,7 @@ fn run_all(engine: &StreamingEngine, args: &Args, dataset: &Path) -> Result<Vec<
         Pace::RealTime
     };
     let mut outcomes = Vec::new();
-    let clips = load_dataset(dataset)?
+    let clips = clips(args, dataset)?
         .into_iter()
         .step_by(args.sample.max(1));
     for clip in clips.filter(|c| wanted(args, c)) {
@@ -87,6 +92,14 @@ fn run_all(engine: &StreamingEngine, args: &Args, dataset: &Path) -> Result<Vec<
         outcomes.push(outcome);
     }
     Ok(outcomes)
+}
+
+/// The user's recorded sessions when `--recorded` names them, else the dataset's clips.
+fn clips(args: &Args, dataset: &Path) -> Result<Vec<Clip>> {
+    match &args.recorded {
+        Some(dir) => recorded_clips(&expand_home(dir)?),
+        None => load_dataset(dataset),
+    }
 }
 
 /// Whether `clip` passes the `--only` and `--word` filters.

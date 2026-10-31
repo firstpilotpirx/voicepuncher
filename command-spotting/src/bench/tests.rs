@@ -68,3 +68,53 @@ fn should_print_the_scores_on_one_line() {
         "right 1/1 (100.0%) · false alarms 0/0 · delay median 250ms p90 250ms of 1"
     );
 }
+
+fn row(json: &str) -> Row {
+    serde_json::from_str(json).expect("a row")
+}
+
+#[test]
+fn should_cut_each_recorded_row_between_its_neighbours() {
+    // Given three rows of a session, the second said in standby, the last unclear
+    let rows = [
+        row(r#"{"start": 1.0, "end": 1.5, "state": "dictating", "commands": ["stop dictation"]}"#),
+        row(
+            r#"{"start": 1.8, "end": 2.2, "state": "standby", "commands": ["start dictation", "press enter"]}"#,
+        ),
+        row(r#"{"start": 2.9, "end": 3.0, "state": "standby", "commands": [], "unclear": true}"#),
+    ];
+    // When
+    let spans = spans(&rows);
+    // Then
+    assert_eq!(spans.len(), 2);
+    let (n, stop) = &spans[0];
+    assert_eq!(*n, 0);
+    assert!(
+        (stop.from - 0.4).abs() < 1e-4 && (stop.to - 1.8).abs() < 1e-4,
+        "{stop:?}"
+    );
+    assert_eq!(stop.label, ["stop"]);
+    assert!((stop.word_end.expect("one command") - 1.1).abs() < 1e-4);
+    assert!(stop.listening.contains(&"stop dictation".to_owned()));
+    let (_, chain) = &spans[1];
+    assert!(
+        (chain.from - 1.5).abs() < 1e-4 && (chain.to - 2.9).abs() < 1e-4,
+        "{chain:?}"
+    );
+    assert_eq!(chain.label, ["start", "enter"]);
+    assert_eq!(chain.word_end, None);
+    assert!(chain.listening.contains(&"start dictation".to_owned()));
+}
+
+#[test]
+fn should_read_session_ones_manifest_row() {
+    // Given
+    let row = row(
+        r#"{"file": "01-start-dictation.wav", "start": 4.98, "end": 6.19, "command": "start dictation", "unclear": false}"#,
+    );
+    // When
+    let spans = spans(&[row]);
+    // Then
+    assert_eq!(spans[0].1.label, ["start"]);
+    assert!(spans[0].1.listening.contains(&"start dictation".to_owned()));
+}

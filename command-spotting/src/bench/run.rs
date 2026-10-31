@@ -23,13 +23,10 @@ const CHUNK: usize = 320;
 /// Silence after the clip, so its last utterance closes.
 const TAIL_SECS: f32 = 1.0;
 
-/// Streams `clip` through a new session of `engine` listening for every command.
+/// Streams `clip` through a new session of `engine` listening for the clip's commands.
 pub fn run_clip(engine: &StreamingEngine, clip: &Clip, pace: Pace) -> Result<Outcome> {
     let mut session = engine.session_for(0)?;
-    let phrases = voicepuncher_voice_commands::COMMANDS
-        .iter()
-        .map(|p| (*p).to_owned())
-        .collect();
+    let phrases = clip.listening.clone();
     session.select(&PhraseSelection { phrases, ..PhraseSelection::default() })?;
     let tail = vec![0.0f32; crate::conversions::saturating_usize(TAIL_SECS * 16_000.0)];
     let audio = [clip.audio.as_slice(), tail.as_slice()].concat();

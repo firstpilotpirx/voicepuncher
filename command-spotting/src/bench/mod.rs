@@ -6,8 +6,10 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
+mod recorded;
 mod run;
 mod summary;
+pub use recorded::{recorded_clips, spans, Row, Span};
 pub use run::{run_clip, Pace};
 pub use summary::{Outcome, Summary};
 
@@ -18,6 +20,8 @@ pub struct Clip {
     pub audio: Vec<f32>,
     /// The command words said, in order (`start`, `enter`, …); empty when none was said.
     pub label: Vec<String>,
+    /// The command phrases the session listens for.
+    pub listening: Vec<String>,
     /// Where, in seconds of the clip, the words of its only command end.
     pub word_end: Option<f32>,
 }
@@ -66,7 +70,11 @@ fn clip(line: Line) -> Result<Clip> {
     let word_end = line
         .word_end
         .filter(|end| line.label.len() == 1 && *end <= secs);
-    Ok(Clip { id: line.id, audio, label: line.label, word_end })
+    let listening = voicepuncher_voice_commands::COMMANDS
+        .iter()
+        .map(|p| (*p).to_owned())
+        .collect();
+    Ok(Clip { id: line.id, audio, label: line.label, listening, word_end })
 }
 
 /// The command word a reported phrase counts as in a label: `press enter` → `enter`.
