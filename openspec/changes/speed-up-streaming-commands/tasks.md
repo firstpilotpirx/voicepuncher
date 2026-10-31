@@ -31,7 +31,7 @@
 ## 5. Quiet speech and missed utterances
 
 - [x] 5.1 Red: integration test "a quiet command opens the gate" in `command-spotting/tests/it/streaming/`
-- [ ] 5.2 Sweep gate gain and threshold on the bench; Green: set the chosen pair in `streaming/sherpa/`
+- [x] 5.2 Sweep gate gain and threshold on the bench; Green: set the chosen pair in `streaming/sherpa/`
 - [x] 5.3 Red: scenario "An utterance without a command is kept too" in `e2e-test/tests/features/voice_control.feature` with its steps
 - [x] 5.4 Green: keep every gate-opened utterance in `streaming/session/kept.rs`, outcome `none`
 - [ ] 5.5 `just test`; commit
@@ -41,7 +41,7 @@
 - [x] 6.1 List recurring mishearings of the user's commands from the bench's misses
 - [x] 6.2 Red: unit tests for those mishearings (the Russian ones are respellings: `command-spotting/src/streaming/respell/`)
 - [x] 6.3 Green: add them to the respellings, a glued double split with backtracking; the English ones stay out (research README § Mishearings)
-- [ ] 6.4 Red/Green: integration tests "the user's recorded commands are reported within their bound" and "are heard" (`needs_voice_samples`) in `command-spotting/tests/it/streaming/`
+- [x] 6.4 Red/Green: E2E scenarios "the user's recorded commands are reported within their bound", "are heard" and "a mishearing from the history counts as its command" (`@voice_samples`) on the bench's recorded clips (`command-spotting/src/bench/recorded.rs`); a command ending a sentence reported at the gate's pause; «сто» before "please" taken for "stop"
 - [x] 6.5 Update `docs/ubiquitous-language.md` (streaming bench, outcome `none`)
 - [ ] 6.6 `just test`; commit
 

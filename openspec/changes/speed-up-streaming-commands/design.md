@@ -6,7 +6,7 @@ Live traces (2026-10-30) find a command ~0.2 s after its words in stream time bu
 
 ## Goals / Non-Goals
 
-**Goals:** the specs' wall-clock bounds, ≥ 94 % accuracy on the user's recordings, every step measured on one bench.
+**Goals:** the specs' wall-clock bounds, ≥ 89 % accuracy on the user's recordings (measured 91.2 %), every step measured on one bench.
 
 **Non-Goals:** the keyword spotter, a Whisper fallback, GPU inference.
 

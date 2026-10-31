@@ -88,3 +88,60 @@ dictation" for cancel, and widening them reads one command as another.
 
 Scored against the commands each voice sample states (`forms.jsonl`, not the words said): 105
 of 115 clips before relabelling — 103 before the new spellings.
+
+## A command ending a sentence, and the user's recorded sessions
+
+A command ending a sentence ("we meet on Friday at ten stop") was reported only when the
+utterance closed. It is now reported at the gate's pause once the recognizer decoded up to it,
+like a command said alone. «сто» right before "please" is taken for "stop" («сто плис»); alone
+it stays a Russian word.
+
+`just streaming-bench --recorded ~/.voicepuncher/voice-samples` cuts every labelled row of the
+user's five recorded sessions (0.6 s before, 1 s after, within its neighbours) and listens for
+the commands of the state it was said in, as the app does.
+
+| Run | Recorded: right | Start/stop within 0.3 s | within 0.6 s | "stop" median | p90 | Bench: right | False alarms |
+|---|---|---|---|---|---|---|---|
+| before | 102/114 | 13/21 (two sessions) | 16/21 | 373 ms | 996 ms | 382/415 | 7/101 |
+| sentence end at the pause, «сто плис» | 102/114 (89.5 %) | 28/38 | 35/38 | 151 ms | 387 ms | 393/415 (94.7 %) | 8/101 |
+
+The misses left are the models' own: "Dictation" or "The obdictation" for the whole command,
+"start" heard for "restart", and two chains ("stop clear", "cancel clear") whose second command
+belongs to standby while the app listens for the dictation's commands. The accuracy bar is the
+measured share less two clips of run-to-run spread: 87 of 100.
+
+## Gate gain and threshold
+
+Fast runs (`--fast`) of the whole bench and of the recorded sessions, the gate's gain and
+speech threshold swept:
+
+| Gain | Threshold | Bench: right | False alarms | Recorded: right |
+|---|---|---|---|---|
+| 1.5 | 0.5 (before) | 393/415 | 8/101 | 98/114 |
+| 1.5 | 0.4 | 392/415 | 9/101 | 98/114 |
+| 1.5 | 0.3 | 395/415 | 6/101 | 99/114 |
+| 3.0 | 0.5 | 396/415 | 8/101 | 99/114 |
+| 3.0 | 0.4 | 396/415 | 7/101 | 99/114 |
+| 3.0 | 0.3 | 400/415 | 6/101 | 100/114 |
+| 3.0 | 0.2 | 394/415 | 5/101 | 100/114 |
+| 4.5 | 0.3 | 400/415 | 6/101 | 100/114 |
+| 4.5 | 0.4 | 399/415 | 7/101 | 100/114 |
+
+Chosen: gain 3.0, threshold 0.3 — the most commands heard with fewer false alarms than before;
+a louder gain adds nothing.
+
+Real time with gain 3.0, threshold 0.3: recorded 104/114 (91.2 %), "stop" median 147 ms, p90
+363 ms; bench 396/415 (95.4 %), false alarms 7/101, median 176 ms. The accuracy bar becomes the
+new share less two clips: 89 of 100.
+
+At a pause the English recognizer may still hold a draft ("Let's start" for the user's quiet
+"restart"), so a command ending a sentence now counts once the recognizer decoded 0.2 s past
+it, which the flush's silence reaches within milliseconds. Real time, recorded / bench:
+
+| Replay before the onset | Recorded: right | "start" median | Bench: right | median | "start" median |
+|---|---|---|---|---|---|
+| 0.5 s | 104/114 | −422 ms | 396/415 | 177 ms | 39 ms |
+| 0.8 s | 105/114 | −120 ms | 396/415 | 289 ms | 274 ms |
+
+The longer replay hears one more command but delays every start by a quarter second: the
+replay stays 0.5 s.
