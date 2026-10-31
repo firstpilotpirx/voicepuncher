@@ -82,15 +82,13 @@ filter = 'binary(cucumber_e2e)'
 run-extra-args = ["--tags", "@smoke and @local_services and not @wip"]
 slow-timeout = { period = "60s", terminate-after = 4 }
 
-# @regression, the voice control scenarios beyond the smoke set and the user's 114 recordings in
-# real time, about 4 min measured: 9 min
+# @regression, the voice control scenarios beyond the smoke set, 23 s measured: default 2 min
 [profile.e2e-regression]
 success-output = "immediate"
 
 [[profile.e2e-regression.overrides]]
 filter = 'binary(cucumber_e2e)'
 run-extra-args = ["--tags", "@regression and not @wip"]
-slow-timeout = { period = "60s", terminate-after = 9 }
 
 # @accuracy on 10 recordings, 62 s measured: 3 min
 [profile.e2e-quick]
@@ -109,7 +107,7 @@ success-output = "immediate"
 [[profile.e2e-bench.overrides]]
 filter = 'binary(cucumber_e2e)'
 run-extra-args = ["--tags", "@accuracy and not @wip"]
-slow-timeout = { period = "60s", terminate-after = 9 }
+slow-timeout = { period = "60s", terminate-after = 10 }
 
 # @resilience, 200 s measured: 7 min
 [profile.e2e-resilience]

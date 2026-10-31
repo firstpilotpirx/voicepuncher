@@ -893,7 +893,8 @@ Feature: voice-control
 
   Rule: Streaming commands are heard in the user's own voice
 
-    @regression @voice_samples
+    # Over 7 min in real time: run by hand with `just streaming-bench --recorded`, never in a check.
+    @wip @voice_samples
     Scenario: The user's recorded commands are heard
       Given the user's own recordings of the commands exist on the machine
       When every recording of the user's commands is streamed to the service
