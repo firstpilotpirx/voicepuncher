@@ -81,12 +81,11 @@ pub fn spans(rows: &[Row]) -> Vec<(usize, Span)> {
 
 /// The commands an app listens for in `state`; without one, those of the commands said.
 fn listening(state: Option<&str>, said: &[String]) -> Vec<String> {
-    let phrases = match state {
-        Some("standby") => STANDBY,
-        Some(_) => DICTATING,
-        None if said.iter().any(|c| STANDBY.contains(&c.as_str())) => STANDBY,
-        None => DICTATING,
-    };
+    let standby = state.map_or_else(
+        || said.iter().any(|c| STANDBY.contains(&c.as_str())),
+        |s| s == "standby",
+    );
+    let phrases = if standby { STANDBY } else { DICTATING };
     phrases.iter().map(|p| (*p).to_owned()).collect()
 }
 

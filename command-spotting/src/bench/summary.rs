@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use crate::conversions::saturating_usize;
+
 /// What the session reported for one clip.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Outcome {
@@ -78,7 +80,7 @@ fn share(part: usize, whole: usize) -> f64 {
 /// The value at `share` of the sorted `values`, nearest rank.
 fn percentile(sorted: &[f64], share: f64) -> Option<f64> {
     let last = sorted.len().checked_sub(1)?;
-    let rank = (share * sorted.len() as f64).ceil() as usize;
+    let rank = saturating_usize((share * sorted.len() as f64).ceil());
     sorted.get(rank.saturating_sub(1).min(last)).copied()
 }
 

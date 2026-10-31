@@ -121,13 +121,13 @@ fn within_their_bound(world: &mut E2eWorld) -> Result<()> {
 }
 
 #[then(expr = "the service reports the recorded {string}")]
-fn reports_the_recorded(world: &mut E2eWorld, word: String) -> Result<()> {
+fn reports_the_recorded(world: &mut E2eWorld, command: String) -> Result<()> {
     let outcomes = &run(world).recorded;
     ensure!(
         outcomes
             .iter()
-            .all(|o| o.right() && o.heard == [word.clone()]),
-        "expected {word:?}: {:#?}",
+            .all(|o| o.right() && o.heard == [command.clone()]),
+        "expected {command:?}: {:#?}",
         listed(outcomes)
     );
     Ok(())
