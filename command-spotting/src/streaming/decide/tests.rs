@@ -60,7 +60,7 @@ fn should_wait_for_a_one_word_form_to_settle() {
     let words = said(1.0, "stop");
     // When
     let early = decide(&dictating(), &words, decoding(1.3), 0.0);
-    let settled = decide(&dictating(), &words, decoding(1.5), 0.0);
+    let settled = decide(&dictating(), &words, decoding(1.7), 0.0);
     // Then
     assert_eq!(early, None);
     assert_eq!(
@@ -143,7 +143,7 @@ fn should_report_the_next_command_said_after_the_last_report() {
     // Given "press enter" reported up to 1.55 s, then "stop"
     let words = said(1.0, "press enter stop");
     // When
-    let next = decide(&dictating(), &words, decoding(2.1), 1.55);
+    let next = decide(&dictating(), &words, decoding(2.3), 1.55);
     // Then
     assert_eq!(
         next.expect("the stop after it").commands,

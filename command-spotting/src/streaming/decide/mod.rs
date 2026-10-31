@@ -24,8 +24,13 @@ pub struct Finding {
 
 /// How long after a one-word command no new word may come before it counts as said alone:
 /// "stop" opening "stop the car" is no command. Sooner when the gate hears a pause after it and
-/// the recognizer decoded up to that pause.
-const SETTLE_SECS: f32 = 0.2;
+/// the recognizer decoded up to that pause. Longer than the recognizer's lag in giving out the
+/// next word: "the" of "stop the car" comes out about 0.35 s after "stop" ends.
+const SETTLE_SECS: f32 = 0.4;
+
+/// How far past a command ending a sentence the recognizer decodes before it counts at the
+/// gate's pause: the words before it may still change ("let's start" becomes "restart").
+const DRAFT_SECS: f32 = 0.2;
 
 /// How soon after a report the same command again is its doubled form ("enter enter"), not
 /// a new command: the first word may settle before the recognizer decoded the second.
@@ -98,13 +103,13 @@ fn settled(moment: Moment, end: f32) -> bool {
     }
 }
 
-/// Whether the recognizer decoded `SETTLE_SECS` past `end` at `moment`, or the utterance
+/// Whether the recognizer decoded `DRAFT_SECS` past `end` at `moment`, or the utterance
 /// closed: at a pause the words before a command may still change ("let's start" becomes
 /// "restart").
 fn decoded_past(moment: Moment, end: f32) -> bool {
     match moment {
         Moment::Closing => true,
-        Moment::Decoding { now, .. } => now - end >= SETTLE_SECS,
+        Moment::Decoding { now, .. } => now - end >= DRAFT_SECS,
     }
 }
 
