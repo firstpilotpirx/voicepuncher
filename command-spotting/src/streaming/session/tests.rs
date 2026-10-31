@@ -1,9 +1,12 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use super::*;
 use crate::history::HistoryCfg;
 use crate::streaming::ports::{Decoded, RecognizerStream};
+
+mod pause_flush;
 
 const RATE: usize = 16_000;
 
@@ -17,11 +20,14 @@ impl SpeechGate for LoudGate {
 }
 
 /// A recognizer that decodes its words, each at its time in the stream, once 0.1 s of audio
-/// past it came; it counts the streams opened and the audio of each first accept.
+/// past it came (or its lag), each decode taking `decode_time`; it counts the streams opened and the audio
+/// of each first accept.
 struct Scripted {
     name: &'static str,
     respelled: bool,
-    words: Vec<(&'static str, f32)>,
+    words: Arc<Vec<(&'static str, f32)>>,
+    decode_time: Duration,
+    lag: f32,
     streams: Arc<AtomicUsize>,
     first_accept: Arc<AtomicUsize>,
 }
@@ -31,15 +37,31 @@ impl Scripted {
         Self {
             name,
             respelled: name == "ru",
-            words: words.to_vec(),
+            words: Arc::new(words.to_vec()),
+            decode_time: Duration::ZERO,
+            lag: 0.1,
             streams: Arc::default(),
             first_accept: Arc::default(),
         }
     }
+
+    fn slow(mut self, decode_time: Duration) -> Self {
+        self.decode_time = decode_time;
+        self
+    }
+
+    /// Decodes each word only once `lag` of audio past it came.
+    fn lagging(mut self, lag: f32) -> Self {
+        self.lag = lag;
+        self
+    }
 }
 
-struct ScriptedStream<'a> {
-    model: &'a Scripted,
+struct ScriptedStream {
+    words: Arc<Vec<(&'static str, f32)>>,
+    decode_time: Duration,
+    lag: f32,
+    first_accept: Arc<AtomicUsize>,
     accepted: usize,
     finished: bool,
 }
@@ -51,30 +73,36 @@ impl StreamingModel for Scripted {
     fn respelled(&self) -> bool {
         self.respelled
     }
-    fn stream(&self) -> Box<dyn RecognizerStream + '_> {
+    fn stream(&self) -> Box<dyn RecognizerStream> {
         self.streams.fetch_add(1, Ordering::SeqCst);
-        Box::new(ScriptedStream { model: self, accepted: 0, finished: false })
+        Box::new(ScriptedStream {
+            words: Arc::clone(&self.words),
+            decode_time: self.decode_time,
+            lag: self.lag,
+            first_accept: Arc::clone(&self.first_accept),
+            accepted: 0,
+            finished: false,
+        })
     }
 }
 
-impl RecognizerStream for ScriptedStream<'_> {
+impl RecognizerStream for ScriptedStream {
     fn accept(&mut self, samples: &[f32]) {
         if self.accepted == 0 {
-            self.model
-                .first_accept
-                .store(samples.len(), Ordering::SeqCst);
+            self.first_accept.store(samples.len(), Ordering::SeqCst);
         }
         self.accepted += samples.len();
     }
     fn finish(&mut self) {
         self.finished = true;
     }
-    fn decode(&mut self) {}
+    fn decode(&mut self) {
+        std::thread::sleep(self.decode_time);
+    }
     fn decoded(&self) -> Decoded {
         let heard_to = self.accepted as f32 / RATE as f32;
-        let lag = if self.finished { 0.0 } else { 0.1 };
+        let lag = if self.finished { 0.0 } else { self.lag };
         let (tokens, times) = self
-            .model
             .words
             .iter()
             .filter(|(_, at)| at + lag <= heard_to)
@@ -94,7 +122,7 @@ fn speech(secs: f32) -> Vec<f32> {
 
 fn session<'a>(models: &[&'a Scripted], history: Option<&'a CommandHistory>) -> Session<'a> {
     let models = models.iter().map(|m| *m as &dyn StreamingModel).collect();
-    let cfg = SessionCfg { conn: 1, min_silence_secs: 0.3, history };
+    let cfg = SessionCfg { conn: 1, min_silence_secs: 0.3, history, wake: None };
     let mut session = Session::new(models, Box::new(LoudGate), &cfg);
     let phrases = ["stop dictation", "cancel dictation", "press enter"].map(String::from);
     let selection = PhraseSelection { phrases: phrases.to_vec(), ..PhraseSelection::default() };
@@ -145,6 +173,7 @@ fn should_replay_the_half_second_before_the_onset_into_every_recognizer() {
     let mut session = session(&[&en, &ru], None);
     // When
     let events = session.accept(&[silence(1.0), speech(0.3)].concat());
+    session.sync(0);
     // Then
     assert_eq!(events, [ServerEvent::SpeechStart { t: 1.0 }]);
     assert_eq!(en.first_accept.load(Ordering::SeqCst), RATE / 2);
@@ -157,7 +186,8 @@ fn should_place_a_command_in_the_stream_from_the_start_of_the_replay() {
     let en = Scripted::new("en", &[("press", 0.6), ("enter", 0.9)]);
     let mut session = session(&[&en], None);
     // When
-    let events = session.accept(&[silence(1.0), speech(0.8)].concat());
+    let mut events = session.accept(&[silence(1.0), speech(0.8)].concat());
+    events.extend(session.sync(0));
     // Then
     let start = events.iter().find_map(|e| match e {
         ServerEvent::Command { start, .. } => Some(*start),
@@ -173,7 +203,7 @@ fn should_close_the_utterance_only_after_the_pause_and_its_tail() {
     let mut session = session(&[&en], None);
     let open = session.accept(&[silence(1.0), speech(0.5)].concat());
     // When
-    let within = session.accept(&silence(0.7));
+    let within = session.accept(&silence(0.3));
     let after = session.accept(&silence(0.2));
     // Then
     assert_eq!(count(&open, true), 1);
@@ -193,7 +223,7 @@ fn should_continue_the_utterance_when_speech_returns_within_the_tail() {
     let audio = [
         silence(1.0),
         speech(0.5),
-        silence(0.5),
+        silence(0.3),
         speech(0.5),
         silence(1.0),
     ]
@@ -227,6 +257,33 @@ fn should_report_a_command_said_in_russian_sounds() {
 }
 
 #[test]
+fn should_report_a_command_one_recognizer_heard_while_the_other_still_decodes() {
+    // Given an English recognizer that takes a second per decode, and "стоп" said at 1.1 s
+    let en = Scripted::new("en", &[("stop", 0.6)]).slow(Duration::from_secs(1));
+    let ru = Scripted::new("ru", &[("стоп", 0.6)]);
+    let mut session = session(&[&en, &ru], None);
+    let began = Instant::now();
+    // When the audio streams in, the pause after it shorter than the one that closes it
+    let mut events = Vec::new();
+    for frame in [silence(1.0), speech(0.3), silence(0.3)]
+        .concat()
+        .chunks(320)
+    {
+        events.extend(session.accept(frame));
+    }
+    while commands(&events).is_empty() && began.elapsed() < Duration::from_secs(3) {
+        events.extend(session.poll());
+    }
+    // Then the Russian recognizer's command came before the English one decoded once
+    assert_eq!(commands(&events), [["stop dictation"]]);
+    assert!(
+        began.elapsed() < Duration::from_millis(500),
+        "{:?}",
+        began.elapsed()
+    );
+}
+
+#[test]
 fn should_report_no_command_for_speech_without_one() {
     // Given
     let en = Scripted::new("en", &[("stop", 0.6), ("the", 0.75), ("car", 0.9)]);
@@ -237,7 +294,7 @@ fn should_report_no_command_for_speech_without_one() {
 }
 
 #[test]
-fn should_answer_a_sync_at_once() {
+fn should_answer_a_sync_at_once_without_speech() {
     // Given
     let en = Scripted::new("en", &[]);
     let mut session = session(&[&en], None);

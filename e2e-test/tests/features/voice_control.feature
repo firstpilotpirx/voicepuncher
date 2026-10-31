@@ -860,6 +860,53 @@ Feature: voice-control
       When an app streams the sentence "the weather is nice today"
       Then the streaming recognizer reports no command
 
+    @smoke
+    Scenario: Stop opening a sentence is still no command
+      Given the command spotting service runs with the streaming recognizer
+      When an app streams the sentence "stop the car"
+      Then the streaming recognizer reports no command
+
+  # Real-time streams timed by the wall clock; @cues runs them with the machine otherwise idle.
+  @serial @cues
+  Rule: Streaming commands are reported within 0.3 s of their words
+
+    Scenario: Start said alone is reported within its bound
+      Given the command spotting service runs with the streaming recognizer
+      When an app streams "start" followed by silence, in real time
+      Then the streaming recognizer reports "start dictation" within 0.3 s of the end of the words by the wall clock
+
+    Scenario: Stop said alone is reported at the pause after it
+      Given the command spotting service runs with the streaming recognizer
+      When an app streams "stop" followed by silence, in real time
+      Then the streaming recognizer reports "stop dictation" within 0.3 s of the end of the words by the wall clock
+
+    Scenario: Press enter after a sentence is reported soon after the pause
+      Given the command spotting service runs with the streaming recognizer
+      When an app streams "we meet at ten press enter" followed by silence, in real time
+      Then the streaming recognizer reports "press enter" within 0.6 s of the end of the words by the wall clock
+
+    # Minutes in real time: run by hand with `just streaming-bench --recorded`, never in a check.
+    @wip @voice_samples
+    Scenario: The user's recorded commands are reported within their bound
+      Given the user's own recordings of the commands exist on the machine
+      When each recorded "start" and "stop" is streamed to the service in real time
+      Then at least half are reported within 0.3 s and at least 9 of 10 within 0.6 s of the end of their words
+
+  Rule: Streaming commands are heard in the user's own voice
+
+    # Over 7 min in real time: run by hand with `just streaming-bench --recorded`, never in a check.
+    @wip @voice_samples
+    Scenario: The user's recorded commands are heard
+      Given the user's own recordings of the commands exist on the machine
+      When every recording of the user's commands is streamed to the service
+      Then at least 89 of 100 commands are reported as the command said
+
+    @smoke @voice_samples
+    Scenario: A mishearing from the history counts as its command
+      Given the user's own recordings of the commands exist on the machine
+      When the user's recorded "clear" that the Russian recognizer mishears is streamed again
+      Then the service reports the recorded "clear"
+
   Rule: A command said in Russian sounds counts as the command
 
     @smoke
@@ -896,3 +943,10 @@ Feature: voice-control
       When an app streams "press enter" followed by silence
       Then the command history holds an entry with the utterance's audio
       And the entry names "press enter", the recognizer that heard it, each recognizer's texts with their times and the times of each stage
+
+    @smoke
+    Scenario: An utterance without a command is kept too
+      Given the command spotting service runs with the streaming recognizer and keeps a command history
+      When an app streams "the weather is nice today" followed by silence
+      Then the command history holds an entry with the utterance's audio and each recognizer's texts
+      And the entry names no command

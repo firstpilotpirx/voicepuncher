@@ -29,7 +29,7 @@ fn said(from: f32, text: &str) -> Vec<TimedWord> {
 }
 
 fn decoding(now: f32) -> Moment {
-    Moment::Decoding { now }
+    Moment::Decoding { now, pause: None }
 }
 
 #[test]
@@ -87,6 +87,20 @@ fn should_report_a_command_ending_speech_only_when_the_utterance_closes() {
     // Then
     assert_eq!(running, None);
     let found = closing.expect("a stop ending the utterance");
+    assert_eq!(found.commands, ["stop dictation"]);
+    assert_eq!(found.placement, Placement::Tail);
+}
+
+#[test]
+fn should_report_a_command_ending_a_sentence_at_the_gates_pause() {
+    // Given "this is done stop", its "stop" ending at 2.15 s, the gate silent from 2.2 s
+    let words = said(1.0, "this is done stop");
+    // When
+    let early = decide(&dictating(), &words, paused_at(2.18, 2.2), 0.0);
+    let paused = decide(&dictating(), &words, paused_at(2.36, 2.2), 0.0);
+    // Then
+    assert_eq!(early, None);
+    let found = paused.expect("a stop ending the sentence");
     assert_eq!(found.commands, ["stop dictation"]);
     assert_eq!(found.placement, Placement::Tail);
 }
@@ -167,4 +181,72 @@ fn should_take_the_same_command_right_after_a_report_for_its_double() {
     assert!(doubles(Some(&last), &found_at(1.64, 1.98)));
     assert!(!doubles(Some(&last), &found_at(2.5, 2.8)));
     assert!(!doubles(None, &found_at(1.64, 1.98)));
+}
+
+fn paused_at(now: f32, pause: f32) -> Moment {
+    Moment::Decoding { now, pause: Some(pause) }
+}
+
+#[test]
+fn should_report_a_lone_stop_once_decoded_up_to_the_gates_pause() {
+    // Given "stop" ending at 1.25 s, the gate silent from 1.3 s
+    let words = said(1.0, "stop");
+    // When
+    let found = decide(&dictating(), &words, paused_at(1.32, 1.3), 0.0);
+    // Then
+    assert_eq!(found.expect("a lone stop").commands, ["stop dictation"]);
+}
+
+#[test]
+fn should_wait_for_the_recognizer_to_decode_up_to_the_pause() {
+    // When
+    let found = decide(&dictating(), &said(1.0, "stop"), paused_at(1.28, 1.3), 0.0);
+    // Then
+    assert_eq!(found, None);
+}
+
+#[test]
+fn should_not_settle_a_lone_stop_while_the_gate_hears_speech() {
+    // When "stop" is decoded but speech goes on
+    let found = decide(&dictating(), &said(1.0, "stop"), decoding(1.35), 0.0);
+    // Then
+    assert_eq!(found, None);
+}
+
+#[test]
+fn should_wait_for_a_command_ending_a_sentence_to_settle_past_the_pause() {
+    // Given "let's start" heard so far, its "start" ending at 1.55 s, the gate silent from
+    // 1.55 s: the recognizer may still revise it to "restart"
+    let words = said(1.0, "let's start");
+    // When
+    let found = decide(&standby(), &words, paused_at(1.6, 1.55), 0.0);
+    // Then
+    assert_eq!(found, None);
+}
+
+#[test]
+fn should_wait_for_the_close_when_a_sentence_ends_in_the_end_of_another_command() {
+    // Given "I start" heard for a quiet "restart" while both are listened for, the gate
+    // silent from 1.6 s
+    let matcher = PhraseMatcher::new(&["start dictation".into(), "restart dictation".into()]);
+    let words = said(1.0, "I start");
+    // When
+    let paused = decide(&matcher, &words, paused_at(2.0, 1.6), 0.0);
+    let closing = decide(&matcher, &words, Moment::Closing, 0.0);
+    // Then
+    assert_eq!(paused, None);
+    assert_eq!(
+        closing.expect("the close decides").commands,
+        ["start dictation"]
+    );
+}
+
+#[test]
+fn should_wait_longer_for_a_one_word_form_when_the_gate_heard_speech_go_on_after_it() {
+    // Given "stop" ending at 1.25 s, the gate's pause beginning only at 1.91 s ("stop the car")
+    let words = said(1.0, "stop");
+    // When
+    let early = decide(&dictating(), &words, paused_at(1.55, 1.91), 0.0);
+    // Then
+    assert_eq!(early, None);
 }

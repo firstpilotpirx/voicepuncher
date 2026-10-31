@@ -18,8 +18,7 @@ fn should_keep_an_entry_with_the_timeline_from_the_start_of_its_audio() {
         &[(1, press_enter(1.5, 1.8))],
         vec![0.1; 16_000],
         kept(),
-    )
-    .expect("an entry");
+    );
     // Then
     assert_eq!(entry.outcome, Outcome::Agreed);
     assert!((entry.reported[0].start - 0.5).abs() < 1e-4);
@@ -30,21 +29,22 @@ fn should_keep_an_entry_with_the_timeline_from_the_start_of_its_audio() {
 }
 
 #[test]
-fn should_keep_no_entry_without_a_command_heard_or_reported() {
+fn should_keep_an_utterance_without_a_command_as_none() {
     // Given
     let mut trace = Trace::new(1.0, 1.5, &["en"]);
     trace.heard(0, 1.9, "hello there");
     // When
     let entry = entry(&trace, &[], vec![0.1; 16_000], kept());
     // Then
-    assert_eq!(entry, None);
+    assert_eq!(entry.outcome, Outcome::None);
+    assert_eq!(entry.transcript, "en: hello there");
 }
 
 #[test]
 fn should_write_the_trace_into_the_entry_file() {
     // Given
     let dir = tempfile::tempdir().expect("a temporary folder");
-    let entry = entry(&traced(), &[], vec![0.1; 16_000], kept()).expect("an entry");
+    let entry = entry(&traced(), &[], vec![0.1; 16_000], kept());
     // When
     write_files(dir.path(), &entry).expect("written");
     // Then

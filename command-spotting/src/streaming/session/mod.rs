@@ -12,19 +12,20 @@ use crate::history::CommandHistory;
 use crate::keywords::UnknownPhrases;
 use crate::matcher::PhraseMatcher;
 use crate::protocol::{PhraseSelection, ServerEvent};
+use crate::worker::Wake;
 
-use super::decide::Moment;
 use super::ports::{SpeechGate, StreamingModel, GATE_WINDOW};
 
+mod decoder;
 mod kept;
 mod utterance;
 use kept::Kept;
-use utterance::Utterance;
+use utterance::{Utterance, Wait};
 
 /// The audio before the onset replayed into the recognizers: the gate notices speech late.
 const REPLAY_SECS: f32 = 0.5;
 /// The audio past a pause the recognizers still get before their final decode.
-const TAIL_SECS: f32 = 0.5;
+const TAIL_SECS: f32 = 0.1;
 /// 100 ms: how often the recognizers decode.
 const FRAME_SAMPLES: usize = 1_600;
 
@@ -34,10 +35,18 @@ pub struct SessionCfg<'a> {
     /// The silence that ends an utterance.
     pub min_silence_secs: f32,
     pub history: Option<&'a CommandHistory>,
+    /// Called when a recognizer decoded more, so its events go out without waiting for audio.
+    pub wake: Option<Wake>,
+}
+
+/// The recognizers an utterance opens in, and whom their decodes wake.
+struct Recognizers<'a> {
+    models: Vec<&'a dyn StreamingModel>,
+    wake: Option<Wake>,
 }
 
 pub struct Session<'a> {
-    models: Vec<&'a dyn StreamingModel>,
+    recognizers: Recognizers<'a>,
     gate: Box<dyn SpeechGate + 'a>,
     history: Option<&'a CommandHistory>,
     conn: u64,
@@ -49,7 +58,7 @@ pub struct Session<'a> {
     gate_pending: Vec<f32>,
     replay: VecDeque<f32>,
     matcher: PhraseMatcher,
-    utterance: Option<Utterance<'a>>,
+    utterance: Option<Utterance>,
 }
 
 impl<'a> Session<'a> {
@@ -59,7 +68,7 @@ impl<'a> Session<'a> {
         cfg: &SessionCfg<'a>,
     ) -> Self {
         Self {
-            models,
+            recognizers: Recognizers { models, wake: cfg.wake.clone() },
             gate,
             history: cfg.history,
             conn: cfg.conn,
@@ -89,14 +98,23 @@ impl<'a> Session<'a> {
             .collect()
     }
 
-    /// Every event of the audio before it is out already: the answer is at once.
+    /// Answers once every recognizer decoded the audio before it, its events first.
     pub fn sync(&mut self, id: u64) -> Vec<ServerEvent> {
-        vec![ServerEvent::Synced { id }]
+        let mut events = self.collect(Wait::CaughtUp);
+        events.push(ServerEvent::Synced { id });
+        events
     }
 
-    /// Nothing is answered later: no event waits.
+    /// What the recognizers decoded since the last call.
     pub fn poll(&mut self) -> Vec<ServerEvent> {
-        Vec::new()
+        self.collect(Wait::No)
+    }
+
+    fn collect(&mut self, wait: Wait) -> Vec<ServerEvent> {
+        let now = seconds(self.seen);
+        self.utterance
+            .as_mut()
+            .map_or_else(Vec::new, |u| u.collect(&self.matcher, now, wait))
     }
 
     /// No confirmation runs, so none stalls.
@@ -111,7 +129,7 @@ impl<'a> Session<'a> {
     fn frame(&mut self, frame: &[f32]) -> Vec<ServerEvent> {
         let speech = self.gate_hears(frame);
         let mut events = Vec::new();
-        if self.utterance.is_none() && speech {
+        if self.utterance.is_none() && speech == Some(true) {
             events.push(self.open());
         }
         self.remember(frame);
@@ -123,15 +141,16 @@ impl<'a> Session<'a> {
         utterance.feed(frame);
         utterance.listen(speech, frame.len(), self.seen);
         if utterance.quiet() < self.closing_quiet {
-            events.extend(utterance.step(&self.matcher, Moment::Decoding { now }, now));
+            events.extend(utterance.collect(&self.matcher, now, Wait::No));
         } else {
             events.extend(self.close(now));
         }
         events
     }
 
-    /// Whether the gate heard speech in any whole window of `frame`.
-    fn gate_hears(&mut self, frame: &[f32]) -> bool {
+    /// Whether the gate heard speech in any whole window of `frame`; nothing when `frame`
+    /// completed no window.
+    fn gate_hears(&mut self, frame: &[f32]) -> Option<bool> {
         self.gate_pending.extend_from_slice(frame);
         let windows = self.gate_pending.len() / GATE_WINDOW;
         let mut speech = false;
@@ -139,7 +158,7 @@ impl<'a> Session<'a> {
             speech |= self.gate.hears(window);
         }
         self.gate_pending.drain(..windows * GATE_WINDOW);
-        speech
+        (windows > 0).then_some(speech)
     }
 
     fn remember(&mut self, frame: &[f32]) {
@@ -153,7 +172,19 @@ impl<'a> Session<'a> {
         let start = self.seen - self.replay.len();
         let replay: Vec<f32> = self.replay.iter().copied().collect();
         let (start, onset) = (seconds(start), seconds(self.seen));
-        self.utterance = Some(Utterance::open(&self.models, start, onset, &replay));
+        match Utterance::open(
+            &self.recognizers.models,
+            start,
+            onset,
+            &replay,
+            self.recognizers.wake.as_ref(),
+        ) {
+            Ok(utterance) => self.utterance = Some(utterance),
+            Err(e) => log::error!(
+                "conn={} cannot start the recognizers' threads: {e}",
+                self.conn
+            ),
+        }
         ServerEvent::SpeechStart { t: onset }
     }
 
@@ -167,9 +198,12 @@ impl<'a> Session<'a> {
             self.entries += 1;
             let source = format!("{}-{}-{}", std::process::id(), self.conn, self.entries);
             let kept = Kept { opened: self.opened, source };
-            if let Some(entry) = kept::entry(&closed.trace, &closed.heard, closed.audio, kept) {
-                history.keep(entry);
-            }
+            history.keep(kept::entry(
+                &closed.trace,
+                &closed.heard,
+                closed.audio,
+                kept,
+            ));
         }
         closed.events
     }

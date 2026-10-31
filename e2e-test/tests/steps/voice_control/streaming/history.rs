@@ -57,6 +57,26 @@ fn entry_with_audio(world: &mut E2eWorld) -> Result<()> {
     playable(&folder.join(AUDIO_FILE))
 }
 
+#[then("the command history holds an entry with the utterance's audio and each recognizer's texts")]
+fn entry_with_texts(world: &mut E2eWorld) -> Result<()> {
+    let (folder, entry) = run(world).history.only_entry()?;
+    playable(&folder.join(AUDIO_FILE))?;
+    if !texts_timed(&entry["streaming"]) {
+        bail!("the entry lacks the recognizers' texts: {entry}");
+    }
+    Ok(())
+}
+
+#[then("the entry names no command")]
+fn entry_without_command(world: &mut E2eWorld) -> Result<()> {
+    let (_, entry) = run(world).history.only_entry()?;
+    let reports = entry["streaming"]["reports"].as_array().map_or(0, Vec::len);
+    if reports != 0 || entry["outcome"] != "none" {
+        bail!("expected an entry without a command, outcome \"none\": {entry}");
+    }
+    Ok(())
+}
+
 fn playable(path: &Path) -> Result<()> {
     let wav = hound::WavReader::open(path)?;
     // At least the replayed half second before the onset

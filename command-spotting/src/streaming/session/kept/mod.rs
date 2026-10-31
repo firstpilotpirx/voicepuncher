@@ -2,7 +2,7 @@
 
 use std::time::{Duration, SystemTime};
 
-use crate::history::{outcome, Entry, Reported, SpottedPhrase};
+use crate::history::{outcome, Entry, Outcome, Reported, SpottedPhrase};
 
 use super::super::decide::Finding;
 use super::super::trace::{ReportTrace, Trace};
@@ -14,13 +14,9 @@ pub struct Kept {
 }
 
 /// The entry of the utterance `trace` followed, its times counted from its audio's start;
-/// none when no final text holds a command (`heard`, by recognizer) and nothing was reported.
-pub fn entry(
-    trace: &Trace,
-    heard: &[(usize, Finding)],
-    audio: Vec<f32>,
-    kept: Kept,
-) -> Option<Entry> {
+/// its outcome `none` when no final text holds a command (`heard`, by recognizer) and nothing
+/// was reported, so a missed command can still be found.
+pub fn entry(trace: &Trace, heard: &[(usize, Finding)], audio: Vec<f32>, kept: Kept) -> Entry {
     let spotted: Vec<SpottedPhrase> = heard
         .iter()
         .flat_map(|(r, found)| spotted(trace, *r, found))
@@ -35,8 +31,8 @@ pub fn entry(
         .iter()
         .flat_map(|r| r.commands.iter().map(String::as_str))
         .collect();
-    let outcome = outcome(&spotted_names, &reported_names)?;
-    Some(Entry {
+    let outcome = outcome(&spotted_names, &reported_names).unwrap_or(Outcome::None);
+    Entry {
         started_at: kept.opened + Duration::from_secs_f32(trace.start.max(0.0)),
         source: kept.source,
         audio,
@@ -46,7 +42,7 @@ pub fn entry(
         reported,
         outcome,
         streaming: Some(trace.shifted()),
-    })
+    }
 }
 
 fn spotted(trace: &Trace, r: usize, found: &Finding) -> Vec<SpottedPhrase> {

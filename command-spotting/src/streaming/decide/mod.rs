@@ -6,8 +6,9 @@ use crate::matcher::{Found, PhraseMatcher, Placement};
 /// What a decision is asked at.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Moment {
-    /// While the utterance runs, with the audio decoded up to `now` seconds.
-    Decoding { now: f32 },
+    /// While the utterance runs, with the audio decoded up to `now` seconds; `pause` is when
+    /// the gate's current silence began, none while it hears speech.
+    Decoding { now: f32, pause: Option<f32> },
     /// When the utterance ends: nothing more will be said in it.
     Closing,
 }
@@ -22,8 +23,16 @@ pub struct Finding {
 }
 
 /// How long after a one-word command no new word may come before it counts as said alone:
-/// "stop" opening "stop the car" is no command.
+/// "stop" opening "stop the car" is no command. Sooner when the gate hears a pause after it and
+/// the recognizer decoded up to that pause.
 const SETTLE_SECS: f32 = 0.2;
+
+/// How long instead when the gate already heard speech go on past `SPEECH_AFTER_SECS` after the
+/// word: the next word comes out of the recognizer about 0.35 s after the command ends, so "stop"
+/// of "stop the car" would settle before "the" shows. The gate's pause after a lone "stop" begins
+/// about 0.26 s after the word, after "stop the car" 0.66 s after "stop".
+const LATE_SETTLE_SECS: f32 = 0.4;
+const SPEECH_AFTER_SECS: f32 = 0.35;
 
 /// How soon after a report the same command again is its doubled form ("enter enter"), not
 /// a new command: the first word may settle before the recognizer decoded the second.
@@ -50,10 +59,12 @@ pub fn decide(
         return Some(finding(&fresh, &found));
     }
     alone(matcher, &fresh, moment).or_else(|| {
-        (moment == Moment::Closing)
+        ended(moment)
             .then(|| matcher.at_end(&texts))
             .flatten()
             .map(|found| finding(&fresh, &found))
+            .filter(|found| decoded_past(moment, found.end))
+            .filter(|_| moment == Moment::Closing || !ends_a_longer_word(matcher, &texts))
     })
 }
 
@@ -76,16 +87,56 @@ fn alone(matcher: &PhraseMatcher, fresh: &[&TimedWord], moment: Moment) -> Optio
     let (first, last) = (fresh.first()?, fresh.last()?);
     let text: Vec<&str> = fresh.iter().map(|w| w.text.as_str()).collect();
     let phrase = matcher.phrase_in(&text.join(" "))?;
-    let settled = match moment {
-        Moment::Closing => true,
-        Moment::Decoding { now } => is_phrase(&text, &phrase) || now - last.end >= SETTLE_SECS,
-    };
+    let settled = is_phrase(&text, &phrase) || settled(moment, last.end);
     settled.then(|| Finding {
         commands: vec![phrase],
         start: first.start,
         end: last.end,
         placement: Placement::Tail,
     })
+}
+
+/// Whether a one-word command ending at `end` is said alone at `moment`: the utterance
+/// ended, nothing came for a while after it (longer when the gate heard speech go on after
+/// it), or the gate heard the pause after it.
+fn settled(moment: Moment, end: f32) -> bool {
+    match moment {
+        Moment::Closing => true,
+        Moment::Decoding { now, pause } => {
+            let speech_after = pause.is_some_and(|p| p - end > SPEECH_AFTER_SECS);
+            let settle = if speech_after {
+                LATE_SETTLE_SECS
+            } else {
+                SETTLE_SECS
+            };
+            now - end >= settle || ended(moment)
+        }
+    }
+}
+
+/// Whether the recognizer decoded `SETTLE_SECS` past `end` at `moment`, or the utterance
+/// closed: at a pause the words before a command may still change ("let's start" becomes
+/// "restart").
+fn decoded_past(moment: Moment, end: f32) -> bool {
+    match moment {
+        Moment::Closing => true,
+        Moment::Decoding { now, .. } => now - end >= SETTLE_SECS,
+    }
+}
+
+/// Whether the last of `texts` may be a draft of a longer command word: then only the
+/// utterance's close decides.
+fn ends_a_longer_word(matcher: &PhraseMatcher, texts: &[&str]) -> bool {
+    texts.last().is_some_and(|w| matcher.ends_a_longer_word(w))
+}
+
+/// Whether nothing more is said for now at `moment`: the utterance ended, or the gate heard a
+/// pause and the recognizer decoded up to it, so a command ending the words ends a sentence.
+fn ended(moment: Moment) -> bool {
+    match moment {
+        Moment::Closing => true,
+        Moment::Decoding { now, pause } => pause.is_some_and(|p| now >= p),
+    }
 }
 
 /// Whether `words` say `phrase` word for word, case and punctuation aside.

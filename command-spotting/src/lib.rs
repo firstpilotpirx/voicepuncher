@@ -2,6 +2,7 @@
 //! bounds of speech in audio streamed over a loopback WebSocket.
 
 pub mod audio;
+pub mod bench;
 pub mod confirm;
 pub mod conversions;
 pub mod engine;

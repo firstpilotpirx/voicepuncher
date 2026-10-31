@@ -29,8 +29,9 @@ struct Args {
     /// Silero voice activity detector model for sherpa-onnx (`silero_vad.onnx`).
     #[arg(long)]
     vad_model: PathBuf,
-    #[arg(long, default_value_t = 2)]
-    threads: i32,
+    /// Threads each model decodes on [default: 4 for the streaming recognizer, else 2].
+    #[arg(long)]
+    threads: Option<i32>,
     /// Silence in seconds that ends an utterance: the pause around a command.
     #[arg(long, default_value_t = 0.3)]
     min_silence_secs: f32,
@@ -53,6 +54,18 @@ struct Args {
     confirmation_deadline_secs: f32,
     #[command(flatten)]
     history: HistoryArgs,
+}
+
+impl Args {
+    /// The threads each model decodes on: as asked, else what its recognizer was measured
+    /// fastest with.
+    fn threads(&self) -> i32 {
+        let measured = match self.models.recognizer {
+            Recognizer::Streaming => 4,
+            Recognizer::KeywordSpotting => 2,
+        };
+        self.threads.unwrap_or(measured)
+    }
 }
 
 /// Which recognizer hears the commands, and its models.
@@ -120,13 +133,14 @@ fn main() -> Result<()> {
 
 /// The engine `args` ask for, its models loaded.
 fn load(args: Args) -> Result<Service> {
+    let threads = args.threads();
     if args.models.recognizer == Recognizer::Streaming {
         let dir = |d: Option<PathBuf>| d.context("--recognizer streaming needs its model dirs");
         return Ok(Service::Streaming(StreamingEngine::load(&StreamingCfg {
             en_model_dir: dir(args.models.en_model_dir)?,
             ru_model_dir: dir(args.models.ru_model_dir)?,
             vad_model: args.vad_model,
-            threads: args.threads,
+            threads,
             min_silence_secs: args.min_silence_secs,
             command_history: args.history.cfg(),
         })?));
@@ -134,7 +148,7 @@ fn load(args: Args) -> Result<Service> {
     Ok(Service::KeywordSpotting(Engine::load(&EngineCfg {
         model_dir: args.models.model_dir.context("--model-dir is needed")?,
         vad_model: args.vad_model,
-        threads: args.threads,
+        threads,
         min_silence_secs: args.min_silence_secs,
         save_speech_dir: args.save_speech_dir,
         keywords: args
@@ -234,6 +248,44 @@ mod tests {
         ]);
         // Then
         assert!(args.is_err(), "{args:?}");
+    }
+
+    /// The streaming recognizer's arguments, followed by `more`.
+    fn streaming_args(more: &[&str]) -> Args {
+        let base = [
+            "service",
+            "--recognizer",
+            "streaming",
+            "--en-model-dir",
+            "en",
+        ];
+        let rest = ["--ru-model-dir", "ru", "--vad-model", "v"];
+        Args::try_parse_from(base.iter().chain(&rest).chain(more)).unwrap()
+    }
+
+    #[test]
+    fn should_decode_the_streaming_models_on_4_threads_by_default() {
+        // When
+        let args = streaming_args(&[]);
+        // Then
+        assert_eq!(args.threads(), 4);
+    }
+
+    #[test]
+    fn should_spot_keywords_on_2_threads_by_default() {
+        // When
+        let args =
+            Args::try_parse_from(["service", "--model-dir", "m", "--vad-model", "v"]).unwrap();
+        // Then
+        assert_eq!(args.threads(), 2);
+    }
+
+    #[test]
+    fn should_take_the_threads_asked_for() {
+        // When
+        let args = streaming_args(&["--threads", "6"]);
+        // Then
+        assert_eq!(args.threads(), 6);
     }
 
     #[test]

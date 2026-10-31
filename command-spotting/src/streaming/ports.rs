@@ -16,8 +16,8 @@ pub trait StreamingModel: Send + Sync {
     fn name(&self) -> &str;
     /// Whether the English words it writes in Cyrillic are respelled before matching.
     fn respelled(&self) -> bool;
-    /// A new stream for one utterance.
-    fn stream(&self) -> Box<dyn RecognizerStream + '_>;
+    /// A new stream for one utterance, free to decode on a thread of its own.
+    fn stream(&self) -> Box<dyn RecognizerStream>;
 }
 
 /// One utterance's audio in a recognizer.
