@@ -235,5 +235,8 @@ fn should_wait_for_the_close_when_a_sentence_ends_in_the_end_of_another_command(
     let closing = decide(&matcher, &words, Moment::Closing, 0.0);
     // Then
     assert_eq!(paused, None);
-    assert_eq!(closing.expect("the close decides").commands, ["start dictation"]);
+    assert_eq!(
+        closing.expect("the close decides").commands,
+        ["start dictation"]
+    );
 }

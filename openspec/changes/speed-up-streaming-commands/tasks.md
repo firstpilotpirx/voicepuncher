@@ -34,7 +34,7 @@
 - [x] 5.2 Sweep gate gain and threshold on the bench; Green: set the chosen pair in `streaming/sherpa/`
 - [x] 5.3 Red: scenario "An utterance without a command is kept too" in `e2e-test/tests/features/voice_control.feature` with its steps
 - [x] 5.4 Green: keep every gate-opened utterance in `streaming/session/kept.rs`, outcome `none`
-- [ ] 5.5 `just test`; commit
+- [x] 5.5 `just test`; commit
 
 ## 6. Mishearings and accuracy
 
@@ -43,10 +43,10 @@
 - [x] 6.3 Green: add them to the respellings, a glued double split with backtracking; the English ones stay out (research README § Mishearings)
 - [x] 6.4 Red/Green: E2E scenarios "the user's recorded commands are reported within their bound", "are heard" and "a mishearing from the history counts as its command" (`@voice_samples`) on the bench's recorded clips (`command-spotting/src/bench/recorded.rs`); a command ending a sentence reported at the gate's pause; «сто» before "please" taken for "stop"
 - [x] 6.5 Update `docs/ubiquitous-language.md` (streaming bench, outcome `none`)
-- [ ] 6.6 `just test`; commit
+- [x] 6.6 `just test`; commit
 
 ## 7. Version and checks
 
-- [ ] 7.1 Bump `version` in `app/Cargo.toml` to 0.42.1
+- [x] 7.1 Bump `version` in `app/Cargo.toml` to 0.42.1
 - [ ] 7.2 `just test`; `just check`; commit
 - [ ] 7.3 Manual checks: none (no hotkey, recording, overlay, paste or permission change)
