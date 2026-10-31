@@ -41,6 +41,17 @@ impl PhraseMatcher {
         self.phrases.iter().any(|p| p == phrase)
     }
 
+    /// Whether `word` ends a longer word of a selected command ("start" of "restart"): a
+    /// recognizer's draft may hold it before the whole word is heard.
+    pub fn ends_a_longer_word(&self, word: &str) -> bool {
+        let word = word.to_lowercase();
+        FORMS
+            .iter()
+            .filter(|form| self.selects(form.phrase))
+            .flat_map(|form| form.words.iter())
+            .any(|w| w.len() > word.len() && w.ends_with(word.as_str()))
+    }
+
     pub fn new(phrases: &[String]) -> Self {
         let early_start = phrases.iter().any(|p| p == STARTED_EARLY);
         Self { phrases: phrases.to_vec(), early_start }

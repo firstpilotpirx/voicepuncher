@@ -48,6 +48,7 @@ fn should_respell_the_users_mishearings_from_the_command_history() {
         ("тартарт", vec!["start", "start"]),
         ("стартарт", vec!["start", "start"]),
         ("тарстард", vec!["start", "start"]),
+        ("рестард", vec!["restart"]),
     ];
     for (cyrillic, english) in heard {
         // When

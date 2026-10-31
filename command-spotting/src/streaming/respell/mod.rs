@@ -31,7 +31,7 @@ const SOUNDS: &[(&str, &[&[Letter]])] = &[
             ("т", Once),
             ("а", Once),
             ("р", Maybe),
-            ("т", Maybe),
+            ("тд", Maybe),
         ]],
     ),
     (

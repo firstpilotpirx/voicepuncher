@@ -57,6 +57,7 @@ pub fn decide(
             .flatten()
             .map(|found| finding(&fresh, &found))
             .filter(|found| decoded_past(moment, found.end))
+            .filter(|_| moment == Moment::Closing || !ends_a_longer_word(matcher, &texts))
     })
 }
 
@@ -105,6 +106,12 @@ fn decoded_past(moment: Moment, end: f32) -> bool {
         Moment::Closing => true,
         Moment::Decoding { now, .. } => now - end >= SETTLE_SECS,
     }
+}
+
+/// Whether the last of `texts` may be a draft of a longer command word: then only the
+/// utterance's close decides.
+fn ends_a_longer_word(matcher: &PhraseMatcher, texts: &[&str]) -> bool {
+    texts.last().is_some_and(|w| matcher.ends_a_longer_word(w))
 }
 
 /// Whether nothing more is said for now at `moment`: the utterance ended, or the gate heard a

@@ -223,3 +223,17 @@ fn should_wait_for_a_command_ending_a_sentence_to_settle_past_the_pause() {
     // Then
     assert_eq!(found, None);
 }
+
+#[test]
+fn should_wait_for_the_close_when_a_sentence_ends_in_the_end_of_another_command() {
+    // Given "I start" heard for a quiet "restart" while both are listened for, the gate
+    // silent from 1.6 s
+    let matcher = PhraseMatcher::new(&["start dictation".into(), "restart dictation".into()]);
+    let words = said(1.0, "I start");
+    // When
+    let paused = decide(&matcher, &words, paused_at(2.0, 1.6), 0.0);
+    let closing = decide(&matcher, &words, Moment::Closing, 0.0);
+    // Then
+    assert_eq!(paused, None);
+    assert_eq!(closing.expect("the close decides").commands, ["start dictation"]);
+}
