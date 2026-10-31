@@ -24,6 +24,7 @@ use crate::steps::off_thread;
 use crate::E2eWorld;
 
 mod history;
+mod recorded;
 mod timed;
 
 const SAMPLE_RATE: usize = 16_000;
@@ -40,6 +41,7 @@ static CONNECTIONS: AtomicU64 = AtomicU64::new(9_000);
 pub struct StreamingRun {
     history: history::StreamingHistory,
     timed: timed::Timed,
+    recorded: Vec<voicepuncher_command_spotting::bench::Outcome>,
     events: Vec<ServerEvent>,
     conn: u64,
     log_from: usize,

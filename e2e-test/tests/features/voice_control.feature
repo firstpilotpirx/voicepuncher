@@ -885,6 +885,26 @@ Feature: voice-control
       When an app streams "we meet at ten press enter" followed by silence, in real time
       Then the streaming recognizer reports "press enter" within 0.6 s of the end of the words by the wall clock
 
+    @voice_samples
+    Scenario: The user's recorded commands are reported within their bound
+      Given the user's own recordings of the commands exist on the machine
+      When each recorded "start" and "stop" is streamed to the service in real time
+      Then at least half are reported within 0.3 s and at least 9 of 10 within 0.6 s of the end of their words
+
+  Rule: Streaming commands are heard in the user's own voice
+
+    @smoke @voice_samples
+    Scenario: The user's recorded commands are heard
+      Given the user's own recordings of the commands exist on the machine
+      When every recording of the user's commands is streamed to the service
+      Then at least 89 of 100 commands are reported as the command said
+
+    @smoke @voice_samples
+    Scenario: A mishearing from the history counts as its command
+      Given the user's own recordings of the commands exist on the machine
+      When the user's recorded "clear" that the Russian recognizer mishears is streamed again
+      Then the service reports the recorded "clear"
+
   Rule: A command said in Russian sounds counts as the command
 
     @smoke
