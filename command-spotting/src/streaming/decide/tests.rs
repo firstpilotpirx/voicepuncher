@@ -92,6 +92,20 @@ fn should_report_a_command_ending_speech_only_when_the_utterance_closes() {
 }
 
 #[test]
+fn should_report_a_command_ending_a_sentence_at_the_gates_pause() {
+    // Given "this is done stop", its "stop" ending at 2.15 s, the gate silent from 2.2 s
+    let words = said(1.0, "this is done stop");
+    // When
+    let early = decide(&dictating(), &words, paused_at(2.18, 2.2), 0.0);
+    let paused = decide(&dictating(), &words, paused_at(2.36, 2.2), 0.0);
+    // Then
+    assert_eq!(early, None);
+    let found = paused.expect("a stop ending the sentence");
+    assert_eq!(found.commands, ["stop dictation"]);
+    assert_eq!(found.placement, Placement::Tail);
+}
+
+#[test]
 fn should_report_a_start_opening_speech_at_its_head() {
     // When
     let found = decide(
@@ -195,6 +209,17 @@ fn should_wait_for_the_recognizer_to_decode_up_to_the_pause() {
 fn should_not_settle_a_lone_stop_while_the_gate_hears_speech() {
     // When "stop" is decoded but speech goes on
     let found = decide(&dictating(), &said(1.0, "stop"), decoding(1.35), 0.0);
+    // Then
+    assert_eq!(found, None);
+}
+
+#[test]
+fn should_wait_for_a_command_ending_a_sentence_to_settle_past_the_pause() {
+    // Given "let's start" heard so far, its "start" ending at 1.55 s, the gate silent from
+    // 1.55 s: the recognizer may still revise it to "restart"
+    let words = said(1.0, "let's start");
+    // When
+    let found = decide(&standby(), &words, paused_at(1.6, 1.55), 0.0);
     // Then
     assert_eq!(found, None);
 }

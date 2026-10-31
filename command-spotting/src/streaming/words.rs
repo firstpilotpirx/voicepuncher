@@ -3,7 +3,7 @@
 
 use crate::confirm::TimedWord;
 
-use super::respell::respell_word;
+use super::respell::{before_please, respell_word};
 
 /// How long the last token of a word lasts after the time it was decoded at.
 const TOKEN_SECS: f32 = 0.1;
@@ -34,8 +34,21 @@ pub fn timed_words(
     words.retain(|w| !w.text.is_empty());
     if respelled {
         words = words.into_iter().flat_map(respell_timed).collect();
+        respell_before_please(&mut words);
     }
     words
+}
+
+/// A Russian word that is a command word only before "please" («сто плиз»), respelled.
+fn respell_before_please(words: &mut [TimedWord]) {
+    for i in 1..words.len() {
+        let english = (words[i].text == "please")
+            .then(|| before_please(&words[i - 1].text))
+            .flatten();
+        if let Some(english) = english {
+            english.clone_into(&mut words[i - 1].text);
+        }
+    }
 }
 
 fn respell_timed(word: TimedWord) -> Vec<TimedWord> {
@@ -109,5 +122,21 @@ mod tests {
         let words = timed_words(&tokens(&["▁при", "вет"]), &[1.0, 1.1], 0.0, true);
         // Then
         assert_eq!(texts(&words), ["привет"]);
+    }
+
+    #[test]
+    fn should_take_sto_before_please_for_stop() {
+        // When
+        let words = timed_words(&tokens(&["▁сто", "▁плис"]), &[1.0, 1.3], 0.0, true);
+        // Then
+        assert_eq!(texts(&words), ["stop", "please"]);
+    }
+
+    #[test]
+    fn should_keep_sto_before_another_word() {
+        // When
+        let words = timed_words(&tokens(&["▁сто", "▁рублей"]), &[1.0, 1.3], 0.0, true);
+        // Then
+        assert_eq!(texts(&words), ["сто", "рублей"]);
     }
 }

@@ -52,10 +52,11 @@ pub fn decide(
         return Some(finding(&fresh, &found));
     }
     alone(matcher, &fresh, moment).or_else(|| {
-        (moment == Moment::Closing)
+        ended(moment)
             .then(|| matcher.at_end(&texts))
             .flatten()
             .map(|found| finding(&fresh, &found))
+            .filter(|found| decoded_past(moment, found.end))
     })
 }
 
@@ -92,9 +93,26 @@ fn alone(matcher: &PhraseMatcher, fresh: &[&TimedWord], moment: Moment) -> Optio
 fn settled(moment: Moment, end: f32) -> bool {
     match moment {
         Moment::Closing => true,
-        Moment::Decoding { now, pause } => {
-            now - end >= SETTLE_SECS || pause.is_some_and(|p| now >= p)
-        }
+        Moment::Decoding { now, .. } => now - end >= SETTLE_SECS || ended(moment),
+    }
+}
+
+/// Whether the recognizer decoded `SETTLE_SECS` past `end` at `moment`, or the utterance
+/// closed: at a pause the words before a command may still change ("let's start" becomes
+/// "restart").
+fn decoded_past(moment: Moment, end: f32) -> bool {
+    match moment {
+        Moment::Closing => true,
+        Moment::Decoding { now, .. } => now - end >= SETTLE_SECS,
+    }
+}
+
+/// Whether nothing more is said for now at `moment`: the utterance ended, or the gate heard a
+/// pause and the recognizer decoded up to it, so a command ending the words ends a sentence.
+fn ended(moment: Moment) -> bool {
+    match moment {
+        Moment::Closing => true,
+        Moment::Decoding { now, pause } => pause.is_some_and(|p| now >= p),
     }
 }
 

@@ -16,8 +16,8 @@ use super::ports::{Decoded, RecognizerStream, SpeechGate, StreamingModel, GATE_W
 
 /// How much louder the gate hears the stream than the microphone gave it: as the keyword
 /// spotting engine's detector, so the user's quietest commands still open an utterance.
-const GATE_GAIN: f32 = 1.5;
-const GATE_THRESHOLD: f32 = 0.5;
+const GATE_GAIN: f32 = 3.0;
+const GATE_THRESHOLD: f32 = 0.3;
 /// Shorter speech is noise to the gate.
 const GATE_MIN_SPEECH_SECS: f32 = 0.15;
 /// The gate's own hold after speech; the session's pause counts from its end.

@@ -178,6 +178,19 @@ fn is_cyrillic(c: char) -> bool {
     ('\u{0400}'..='\u{04ff}').contains(&c)
 }
 
+/// Russian words that are a command word only right before "please": «сто плиз» is "stop
+/// please", while «сто» alone is a hundred.
+const BEFORE_PLEASE: &[(&str, &str)] = &[("сто", "stop")];
+
+/// The command word `word` is when "please" follows it.
+pub fn before_please(word: &str) -> Option<&'static str> {
+    let word = word.to_lowercase();
+    BEFORE_PLEASE
+        .iter()
+        .find(|(ru, _)| *ru == word)
+        .map(|(_, en)| *en)
+}
+
 /// The English words a Cyrillic word sounds like; none when part of it is no command sound.
 pub fn respell_word(word: &str) -> Option<Vec<&'static str>> {
     let letters: Vec<char> = word.to_lowercase().replace('ё', "е").chars().collect();
