@@ -51,7 +51,7 @@ async fn every_recording(world: &mut E2eWorld) -> Result<()> {
             .into_iter()
             .filter(|c| !c.label.is_empty())
             .collect();
-        run(world).recorded = streamed(&said, Pace::Fast)?;
+        run(world).recorded = streamed(&said, Pace::RealTime)?;
         Ok(())
     })
     .await
