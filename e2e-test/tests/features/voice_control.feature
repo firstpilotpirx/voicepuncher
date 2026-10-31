@@ -885,7 +885,8 @@ Feature: voice-control
       When an app streams "we meet at ten press enter" followed by silence, in real time
       Then the streaming recognizer reports "press enter" within 0.6 s of the end of the words by the wall clock
 
-    @voice_samples
+    # Minutes in real time: run by hand with `just streaming-bench --recorded`, never in a check.
+    @wip @voice_samples
     Scenario: The user's recorded commands are reported within their bound
       Given the user's own recordings of the commands exist on the machine
       When each recorded "start" and "stop" is streamed to the service in real time
