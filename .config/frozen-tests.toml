@@ -91,3 +91,12 @@ stage = "e2e-cues"
 beside = "the e2e-cues stage at the end of full-check; 0.364 s against 0.3 s"
 branch = "feat/faster-stop-to-paste"
 
+
+[[frozen]]
+test = "scenario: Press enter after a sentence is reported soon after the pause"
+frozen = "2026-11-01"
+recipe = "full-check"
+stage = "e2e-cues"
+beside = "agent-kit Go tests beside it (load average 13.7); 1.736 s against 0.6 s"
+branch = "feat/faster-stop-to-paste"
+
