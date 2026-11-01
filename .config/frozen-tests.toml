@@ -55,3 +55,12 @@ stage = "test"
 beside = "the whole test stage (1438 tests) beside other sessions builds; it passed in the previous run on this branch"
 branch = "feat/streaming-command-recognition"
 
+
+[[frozen]]
+test = "scenario: Another program on the port is not killed"
+frozen = "2026-11-01"
+recipe = "test"
+stage = "test"
+beside = "the whole test stage (1325 tests), other worktrees building beside it; the app started its own copy within the check window"
+branch = "feat/faster-stop-to-paste"
+
