@@ -5,9 +5,6 @@ use crate::context::target_dir;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// The shared libraries the command spotting program links, which Cargo leaves beside it.
-const SHARED_LIBRARIES: [&str; 2] = ["libsherpa-onnx-c-api.dylib", "libonnxruntime.dylib"];
-
 /// One staging of engines into a scratch folder beside the output.
 pub(super) struct Staging<'a> {
     pub(super) lock: &'a EngineLock,
@@ -70,7 +67,6 @@ impl Staging<'_> {
 
     fn command_spotting(&self) -> Result<(), String> {
         let spotting = self.lock.section("command-spotting", "the lock")?;
-        let program = field(spotting, "program");
         run(
             "cargo",
             &[
@@ -84,8 +80,8 @@ impl Staging<'_> {
         let dir = self.stage.join("command-spotting");
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let release = target_dir().join("release");
-        for file in std::iter::once(program).chain(SHARED_LIBRARIES) {
-            copy_file(&release.join(file), &dir.join(file), file)?;
+        for (file, place) in &self.lock.optional("command-spotting.from") {
+            copy_file(&release.join(place), &dir.join(file), file)?;
         }
         write(
             &dir.join("VERSION"),

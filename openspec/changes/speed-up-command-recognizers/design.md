@@ -36,7 +36,7 @@ The E2E step keeps every core busy with spinning threads of the test process (on
 | Start said on its own gives its cue at once | E2E `.feature` (existing) |
 | Restart restart followed by the new dictation at once gives its cue at once | E2E `.feature` (existing) |
 | Restart said on its own gives its cue at once | E2E `.feature` (existing) |
-| The user's recorded starts give their cue at once | E2E `.feature` (existing; "start please" recordings skipped) |
+| The user's recorded starts give their cue at once | E2E `.feature` (existing; "start please" recordings skipped, so 6 remain and the bar is 5 of 6: 9 of 10 of six would allow no miss, stricter than before) |
 | The overlay shows with the start cue | component `.feature` (existing) |
 | A faster start keeps the dictation where the command's words end | E2E (existing) |
 | A faster start adds no false start | E2E (existing); "start stop" at service integration (existing) |
