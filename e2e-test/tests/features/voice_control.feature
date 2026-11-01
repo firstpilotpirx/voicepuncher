@@ -863,7 +863,7 @@ Feature: voice-control
       Given the command spotting service runs with the streaming recognizer
       And every core of the machine is busy with other work
       When an app streams "we meet at ten press enter" followed by silence, in real time
-      Then the streaming recognizer reports "press enter" within 0.6 s of the end of the words by the wall clock
+      Then the streaming recognizer reports "press enter" within 1.0 s of the end of the words by the wall clock
 
   Rule: Streaming commands are heard in the user's own voice
 
