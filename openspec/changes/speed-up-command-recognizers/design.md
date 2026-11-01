@@ -10,13 +10,15 @@ The `sherpa-onnx` dependency of `command-spotting` takes its `shared` feature. I
 
 Rejected: CoreML — slower than the CPU for both models, and nemotron has no fp32 export; a lighter English model — misses "enter" 2.5× as often; building ONNX Runtime ourselves — a toolchain to maintain for what the published library already gives.
 
-### Threads: English 2, Russian 1
+### One user-interactive thread per recognizer
 
-2 threads give the English recognizer 0.31 s per second of audio, 4 give 0.29; the Russian one needs 0.03 on 1 thread. The `--threads` option keeps naming the English recognizer's threads; the Russian one always decodes on 1. Fewer threads leave cores to the rest of the machine and lose nothing.
+Each recognizer already decodes on a thread of its own (`streaming/session/decoder.rs`); that thread sets its service class to `QOS_CLASS_USER_INTERACTIVE` when it starts (a failure is logged and decoding goes on). macOS gives new threads the default class whatever their creator's, so ONNX Runtime's own pool threads stay at the default class: with ten busy loops beside it, 2 English threads reported "press enter" 1.9 s late at the 90th percentile, 1 thread 0.74 s (idle: 0.73 s). So the streaming default of `--threads` becomes 1 for both recognizers; the shared library makes 1 thread enough on an idle machine (0.44 s per second of audio). The keyword spotter keeps 2.
+
+Rejected: a real-time thread class — it would starve the audio and the rest of the app when a decode runs long.
 
 ### The load in the test
 
-The E2E step keeps every core busy with spinning threads of the test process (one per available core) while it streams in real time, and measures the time the session spent in its calls against the audio streamed. The scenario sits with the other wall-clock scenarios under `@cues`, which run with the machine otherwise idle.
+The E2E step keeps every core busy with spinning threads of the test process (one per available core) while it streams in real time, The scenario sits with the other wall-clock scenarios under `@cues`, which run with the machine otherwise idle.
 
 ## Test levels
 

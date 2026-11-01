@@ -892,6 +892,17 @@ Feature: voice-control
       When each recorded "start" and "stop" is streamed to the service in real time
       Then at least half are reported within 0.3 s and at least 9 of 10 within 0.6 s of the end of their words
 
+  # Timed by the wall clock while the scenario keeps every core busy itself; @cues runs it with
+  # the machine otherwise idle.
+  @serial @cues
+  Rule: Streaming commands keep their bounds while every core is busy
+
+    Scenario: Press enter after a sentence is reported in time with every core busy
+      Given the command spotting service runs with the streaming recognizer
+      And every core of the machine is busy with other work
+      When an app streams "we meet at ten press enter" followed by silence, in real time
+      Then the streaming recognizer reports "press enter" within 0.6 s of the end of the words by the wall clock
+
   Rule: Streaming commands are heard in the user's own voice
 
     # Over 7 min in real time: run by hand with `just streaming-bench --recorded`, never in a check.

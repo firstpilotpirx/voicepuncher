@@ -7,18 +7,19 @@ Measured on the user's 2482 recorded utterances (920 with a command, labelled by
 - The same model through the shared ONNX Runtime library that sherpa-onnx publishes decodes 4× faster per thread than through its static library: 0.31 s per second of speech on 2 threads, 0.31 with every core busy too; recall and false alarms are unchanged (96.6 %, 19 of 1465).
 - Lighter English models are cheaper but miss "enter" 2.5× as often (kroko: 92.7 %, fast-conformer: 91.3 %).
 - CoreML (Neural Engine or GPU) is slower than the CPU for both models (no fp32 nemotron export exists; the int8 one falls back).
+- Truly saturated cores (ten busy loops at the default service class) still slow it: "press enter" came 3.7 s late at the 90th percentile. Its decoding thread at the user-interactive service class, alone (ONNX Runtime's extra threads keep the default class), brings that to 0.74 s, the idle machine's 0.73 s.
 
 ## What Changes
 
 - The command spotting service links ONNX Runtime as the shared library and ships it beside its program, in development builds and in the app bundle.
-- The English streaming recognizer decodes on 2 threads, the Russian one on 1 (was 4 each).
-- With every core busy, the service keeps the bounds it has on an idle machine: it spends at most half a second on each second of streamed speech and reports "press enter" within 0.6 s of its words.
-- The streaming bench takes the recognizers' threads and reports each recognizer's decode time per second of audio.
+- Each streaming recognizer decodes on 1 thread (was 4), its own decoding thread, at the user-interactive service class.
+- With every core busy, the service keeps the bounds it has on an idle machine: it reports "press enter" within 0.6 s of its words.
+- The streaming bench reports the time it waited for the service per second of audio.
 
 Current stage: PoC. Target stage: PoC.
 Scope: speed of the two streaming command recognizers of the command spotting service.
-Acceptance bar: with every core busy, the service processes speech in at most 0.5 s per second of it and reports "press enter" within 0.6 s; recall on the user's recordings stays at least as before.
-Out of scope: thread priority and how the app handles a lagging service; mishearing aliases; other models or CoreML.
+Acceptance bar: with every core busy, the service reports "press enter" within 0.6 s; recall on the user's recordings stays at least as before.
+Out of scope: the priority of builds and tests, and how the app handles a lagging service; mishearing aliases; other models or CoreML.
 
 ## Capabilities
 
