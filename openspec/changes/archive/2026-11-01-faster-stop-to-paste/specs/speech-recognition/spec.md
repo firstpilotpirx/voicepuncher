@@ -46,4 +46,4 @@ When the configuration names no chunk threshold, the chunk threshold SHALL be 10
 #### Scenario: A short dictation is one chunk
 - **GIVEN** the configuration names no chunk threshold
 - **WHEN** the user dictates for 8 seconds and stops
-- **THEN** the dictation is sent to the service as one chunk after the stop
+- **THEN** the dictation is handed on for transcription as one chunk after the stop
