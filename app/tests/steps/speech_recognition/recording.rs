@@ -16,6 +16,8 @@ use voicepuncher::adapters::secondary::recording::cpal::{
 use crate::steps::voice_control::pipeline_log;
 use crate::IntegrationWorld;
 
+mod default_chunks;
+
 const MIC_RATE_HZ: u32 = 48_000;
 const MIC_RATE: usize = MIC_RATE_HZ as usize;
 /// Microphone samples per recorded sample at 16 kHz.
@@ -38,6 +40,10 @@ pub struct RecordingRun {
     recorded: Vec<i16>,
     joined: Vec<i16>,
     dropped_logged: Vec<String>,
+    /// Lengths of the live chunks made before the user stopped, in recorded samples.
+    early_chunks: Vec<usize>,
+    /// Lengths of the live chunks made only after the stop.
+    late_chunks: Vec<usize>,
 }
 
 impl std::fmt::Debug for RecordingRun {

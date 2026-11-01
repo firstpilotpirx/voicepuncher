@@ -127,3 +127,26 @@ fn report_names_load(world: &mut IntegrationWorld) -> Result<()> {
     }
     Ok(())
 }
+
+#[then("every request asks the service for Russian")]
+fn asks_for_russian(world: &mut IntegrationWorld) -> Result<()> {
+    let taken = service_run(world)?
+        .service
+        .as_ref()
+        .context("no service")?
+        .taken();
+    let languages: Vec<Option<String>> = taken
+        .iter()
+        .map(|request| {
+            field(&String::from_utf8_lossy(&request.body), "language").map(str::to_owned)
+        })
+        .collect();
+    if languages.is_empty()
+        || languages
+            .iter()
+            .any(|language| language.as_deref() != Some("ru"))
+    {
+        bail!("the requests asked for the languages {languages:?}");
+    }
+    Ok(())
+}

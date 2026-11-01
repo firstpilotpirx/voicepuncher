@@ -19,7 +19,9 @@ pub(super) fn spawn_answering_stub(
             let _ = tx.send(request);
         }
     });
-    (cfg_for(port), rx)
+    let cfg =
+        TranscriptionCfg { language: TranscriptionCfg::AUTO_LANGUAGE.into(), ..cfg_for(port) };
+    (cfg, rx)
 }
 
 pub(super) const KOREAN_ANSWER: &str = r#"{"text": " 네, 좋아요.", "language": "korean"}"#;

@@ -32,6 +32,11 @@ fn user_languages(world: &mut E2eWorld) -> Result<()> {
     Ok(())
 }
 
+#[given("the configuration names no spoken language")]
+fn no_language(world: &mut E2eWorld) {
+    world.config = None;
+}
+
 #[given(regex = r"^a recording file of a short (Russian|English) phrase$")]
 fn short_phrase(world: &mut E2eWorld, language: String) -> Result<()> {
     let (voice, text) = match language.as_str() {

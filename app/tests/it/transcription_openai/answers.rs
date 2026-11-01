@@ -34,6 +34,7 @@ pub(super) fn should_post_multipart_request_and_return_transcript() {
 pub(super) fn should_omit_language_when_auto() {
     // Given
     let (cfg, requests) = spawn_stub(StubReply::ok(r#"{"text": "привет"}"#));
+    let cfg = TranscriptionCfg { language: TranscriptionCfg::AUTO_LANGUAGE.into(), ..cfg };
     // When
     transcribe(cfg).unwrap();
     // Then

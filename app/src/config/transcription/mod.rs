@@ -39,6 +39,9 @@ pub struct TranscriptionCfg {
 
 impl TranscriptionCfg {
     pub const AUTO_LANGUAGE: &'static str = "auto";
+    /// The spoken language when the configuration names none: detection costs a second
+    /// encoder pass per request, and Russian keeps English words in Latin letters.
+    pub const DEFAULT_LANGUAGE: &'static str = "ru";
 
     fn default_base_url() -> String {
         "http://127.0.0.1:8081/v1".into()
@@ -47,7 +50,7 @@ impl TranscriptionCfg {
         "whisper-1".into()
     }
     fn default_language() -> String {
-        Self::AUTO_LANGUAGE.into()
+        Self::DEFAULT_LANGUAGE.into()
     }
     fn default_languages() -> Vec<String> {
         DEFAULT_LANGUAGES
@@ -73,8 +76,10 @@ impl TranscriptionCfg {
     fn default_timeout_secs() -> u64 {
         60
     }
+    /// Short enough that "stop" waits only for a last piece of at most 10 s (0.6 s to
+    /// recognize against 1.2 s for 30 s); shorter pieces barely recognize faster.
     fn default_chunk_threshold_secs() -> u32 {
-        30
+        10
     }
     fn default_chunk_overlap_secs() -> u32 {
         2
