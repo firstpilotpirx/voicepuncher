@@ -1,6 +1,6 @@
-//! Every way of saying the commands, in the user's own recorded voice: short forms, "please",
-//! commands at the end or start of speech, doubled and chained commands, and speech that
-//! is no command. Each labelled stretch of a recording goes on its own through the real
+//! Every way of saying the commands, in the user's own recorded voice: short forms, commands
+//! at the end or start of speech, doubled and chained commands, and speech that is no
+//! command. Each labelled stretch of a recording goes on its own through the real
 //! command spotting service and the app's recognizer, in the state it was said in, and
 //! must give exactly the commands labelled. The recordings stay on the machine
 //! (`~/.voicepuncher/voice-samples/<session>.wav` and `<session>/forms.jsonl`); without them
@@ -34,6 +34,11 @@ const FROZEN: &[(&str, f32, &str)] = &[
         "flaky beside another full-check, 2026-10-23",
     ),
 ];
+
+/// A command closed by "please", which the recordings hold.
+fn is_please_form(form: &Form) -> bool {
+    !form.commands.is_empty() && crate::recorded_sessions::ends_with_please(&form.said)
+}
 
 fn listed<'a>(list: &[(&str, f32, &'a str)], session: &Session, form: &Form) -> Option<&'a str> {
     let at = |e: &&(&str, f32, &str)| e.0 == session.name && (e.1 - form.start).abs() < 0.01;
@@ -127,7 +132,8 @@ mod needs_kws {
                     session
                         .labels
                         .iter()
-                        .filter(|f| !f.unclear && listed(FROZEN, session, f).is_none())
+                        .filter(|f| !f.unclear && !is_please_form(f))
+                        .filter(|f| listed(FROZEN, session, f).is_none())
                         .map(move |form| (session, form))
                 })
                 .collect();

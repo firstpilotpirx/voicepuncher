@@ -69,12 +69,9 @@ fn should_leave_russian_words_close_to_a_command() {
 #[test]
 fn should_respell_the_other_words_of_a_command_form() {
     // When
-    let respelled = respell("пресс энтер плиз, старт диктейшн, клир ол текст");
+    let respelled = respell("пресс энтер, старт диктейшн, клир ол текст");
     // Then
-    assert_eq!(
-        respelled,
-        "press enter please, start dictation, clear all text"
-    );
+    assert_eq!(respelled, "press enter, start dictation, clear all text");
 }
 
 #[test]

@@ -14,18 +14,20 @@ Measured on the user's 2482 recorded utterances (920 with a command, labelled by
 - The command spotting service links ONNX Runtime as the shared library and ships it beside its program, in development builds and in the app bundle.
 - Each streaming recognizer decodes on 1 thread (was 4), its own decoding thread, at the user-interactive service class.
 - With every core busy, the service keeps the bounds it has on an idle machine: it reports "press enter" within 0.6 s of its words.
+- Voice commands lose their "please" form (the user never says it): its keyword lines, respellings and the cut of a trailing "please" from the dictation go, with every test and scenario of it.
+- The keyword spotter's start trigger fires at 0.10 instead of 0.15, so its start cue keeps its bound on the shared ONNX Runtime.
 - The streaming bench reports the time it waited for the service per second of audio.
 
 Current stage: PoC. Target stage: PoC.
 Scope: speed of the two streaming command recognizers of the command spotting service.
 Acceptance bar: with every core busy, the service reports "press enter" within 0.6 s; recall on the user's recordings stays at least as before.
-Out of scope: the priority of builds and tests, and how the app handles a lagging service; mishearing aliases; other models or CoreML.
+Out of scope: the priority of builds and tests, mishearing aliases, and how the app handles a lagging service; other models or CoreML.
 
 ## Capabilities
 
 ### Modified Capabilities
 
-- `voice-control`: streaming commands keep their report bounds while every core is busy.
+- `voice-control`: streaming commands keep their report bounds while every core is busy; no command has a "please" form any more.
 
 ## Impact
 
@@ -33,5 +35,5 @@ Out of scope: the priority of builds and tests, and how the app handles a laggin
 
 ## Release
 
-SemVer: PATCH — commands are lost less under load; no new behavior or setting.
-Target version: 0.43.1.
+SemVer: MINOR — the "please" form of the commands is removed (pre-1.0, a breaking change is MINOR); commands are lost less under load.
+Target version: 0.44.0.

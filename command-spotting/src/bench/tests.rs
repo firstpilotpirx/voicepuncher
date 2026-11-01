@@ -136,3 +136,20 @@ fn should_read_session_ones_manifest_row() {
     assert_eq!(spans[0].1.label, ["start"]);
     assert!(spans[0].1.listening.contains(&"start dictation".to_owned()));
 }
+
+#[test]
+fn should_leave_out_a_command_closed_by_please() {
+    // Given a recorded start closed by "please" between two plain ones
+    let rows = [
+        row(r#"{"start": 1.0, "end": 1.4, "said": "start", "commands": ["start dictation"]}"#),
+        row(
+            r#"{"start": 3.0, "end": 3.6, "said": "start please", "commands": ["start dictation"]}"#,
+        ),
+        row(r#"{"start": 5.0, "end": 5.4, "said": "start", "commands": ["start dictation"]}"#),
+    ];
+    // When
+    let spans = spans(&rows);
+    // Then
+    let kept: Vec<usize> = spans.iter().map(|(n, _)| *n).collect();
+    assert_eq!(kept, [0, 2]);
+}

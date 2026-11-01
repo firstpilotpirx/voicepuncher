@@ -19,17 +19,10 @@ fn should_spot_each_phrase_spoken_on_its_own_inside_its_speech_segment() {
 }
 
 #[test]
-fn should_spot_the_polite_and_short_variants_by_keyword_alone() {
+fn should_spot_the_short_variant_by_keyword_alone() {
     let engine = engine();
-    for (said, phrase) in [
-        ("press enter please", "press enter"),
-        ("stop dictation please", "stop dictation"),
-        ("clear text", "clear all text"),
-        ("clear text please", "clear all text"),
-    ] {
-        let events = events_for(&engine, said);
-        assert_eq!(spotted(&events), [phrase], "{said}: {events:?}");
-    }
+    let events = events_for(&engine, "clear text");
+    assert_eq!(spotted(&events), ["clear all text"], "{events:?}");
 }
 
 #[test]

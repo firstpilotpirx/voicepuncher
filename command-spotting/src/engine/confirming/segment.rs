@@ -185,7 +185,7 @@ impl Session<'_> {
             .running
             .get_mut(&utterance)
             .and_then(|r| r.last_window.take());
-        let clip = HeardClip { heard, from: *from, end: None };
+        let clip = HeardClip { heard, from: *from };
         self.place_anywhere_or_at_end(reading, clip, utterance)
             .or_else(|| self.tail_heard_while_running(reading, last_window, *end, utterance))
     }

@@ -28,6 +28,12 @@ pub fn sessions<L: DeserializeOwned>(labels_file: &str) -> (String, Vec<Session<
     (url, dirs.iter().map(|dir| load(dir, labels_file)).collect())
 }
 
+/// Whether `said` ends with "please": the recordings hold commands closed by it, a form voice
+/// control no longer has, so they are not checked.
+pub fn ends_with_please(said: &str) -> bool {
+    said.split_whitespace().last() == Some("please")
+}
+
 fn load<L: DeserializeOwned>(dir: &Path, labels_file: &str) -> Session<L> {
     let labels = std::fs::read_to_string(dir.join(labels_file))
         .unwrap()

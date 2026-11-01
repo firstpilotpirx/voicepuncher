@@ -15,7 +15,7 @@ const ROOM_BEFORE_SECS: f32 = 1.0;
 /// The user's labelled recording session holding their starts from standby.
 const RECORDED_STARTS_SESSION: &str = "session-2";
 /// The ways of saying a start from standby that are only the command's words.
-const START_FORMS: [&str; 3] = ["start", "start start", "start please"];
+const START_FORMS: [&str; 2] = ["start", "start start"];
 
 #[when(
     "each of the user's recorded starts is played, on its own and followed at once by a sentence"

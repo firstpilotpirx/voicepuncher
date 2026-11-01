@@ -153,7 +153,7 @@ mod tests {
             // SAFETY: returns the calling thread's own handle; no argument.
             let thread = unsafe { libc::pthread_self() };
             // SAFETY: reads that live thread's class into the two locals above.
-            unsafe { libc::pthread_get_qos_class_np(thread, &mut class, &mut relative) };
+            unsafe { libc::pthread_get_qos_class_np(thread, &raw mut class, &raw mut relative) };
             *self.0.lock().expect("not poisoned") = Some(class);
         }
         fn decoded(&self) -> Decoded {

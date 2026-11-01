@@ -118,21 +118,5 @@ pub const MISHEARINGS: &[Mishearing] = &[
     ),
 ];
 
-/// A word that may close a command and is still being said when a clip cuts it: the speech
-/// heard up to `cut_secs` after the clip may be the rest of the word.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TrailingWord {
-    pub word: &'static str,
-    pub cut_secs: f32,
-}
-
-/// The words said after a command out of politeness; they do not change it.
-pub const TRAILING_WORDS: &[TrailingWord] = &[TrailingWord { word: "please", cut_secs: 0.25 }];
-
-/// The trailing word `word` is, if any.
-pub fn trailing(word: &str) -> Option<&'static TrailingWord> {
-    TRAILING_WORDS.iter().find(|t| t.word == word)
-}
-
 #[cfg(test)]
 mod tests;

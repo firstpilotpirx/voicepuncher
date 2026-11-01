@@ -30,8 +30,8 @@ pub struct Found {
 }
 
 use voicepuncher_voice_commands::{
-    accepted_after, trailing, Form, Mishearing, MishearingKind, TrailingWord, DICTATING,
-    MISHEARINGS, RESTART, STANDBY, START,
+    accepted_after, Form, Mishearing, MishearingKind, DICTATING, MISHEARINGS, RESTART, STANDBY,
+    START,
 };
 
 use super::forms;
@@ -80,7 +80,7 @@ fn difference_from(tokens: &[Token], form: &Form) -> Option<f32> {
     Some(total)
 }
 
-/// The command said at `from`, and how many tokens it takes with a trailing word.
+/// The command said at `from`, and how many tokens it takes.
 fn command_at(tokens: &[Token], from: usize) -> Option<(&'static str, usize)> {
     let rest = tokens.get(from..)?;
     // The longest form said, and of those the closest: "restart dictation" is close to
@@ -88,11 +88,7 @@ fn command_at(tokens: &[Token], from: usize) -> Option<(&'static str, usize)> {
     let (form, _) = forms()
         .filter_map(|form| difference_from(rest, &form).map(|d| (form, d)))
         .min_by(|(a, da), (b, db)| b.words.len().cmp(&a.words.len()).then(da.total_cmp(db)))?;
-    let mut used = form.words.len();
-    if rest.get(used).is_some_and(|t| trailing(&t.text).is_some()) {
-        used += 1;
-    }
-    Some((form.phrase, used))
+    Some((form.phrase, form.words.len()))
 }
 
 impl PhraseMatcher {
@@ -138,16 +134,14 @@ impl PhraseMatcher {
             .then(|| start_opening(&tokens, used))
     }
 
-    /// "start dictation" or "start" opening `words`, with more speech after it or closed by
-    /// a trailing word.
+    /// "start dictation" or "start" opening `words`, with more speech after it.
     pub fn start_at_head(&self, words: &[&str]) -> Option<Found> {
         let tokens = tokens(words);
         let (phrase, used) = command_at(&tokens, 0)?;
         // "start stop" ends the dictation it would start: no dictation at all.
         let command_follows = command_at(&tokens, used).is_some();
-        // A trailing word closes the command: nothing has to follow it.
-        let closed = used < tokens.len() || trailing(&tokens[used - 1].text).is_some();
-        (phrase == START && self.accepted().contains(&START) && closed && !command_follows)
+        let speech_follows = used < tokens.len();
+        (phrase == START && self.accepted().contains(&START) && speech_follows && !command_follows)
             .then(|| start_opening(&tokens, used))
     }
 
@@ -174,15 +168,6 @@ impl PhraseMatcher {
             })
         })
     }
-}
-
-/// The trailing word that closes `found`, a start with nothing after it in `words`.
-pub fn closing_word_of_start(words: &[&str], found: &Found) -> Option<&'static TrailingWord> {
-    let tokens = tokens(words);
-    let last = tokens.last().filter(|t| t.at == found.last)?;
-    (found.placement == Placement::Head && found.commands == [START])
-        .then(|| trailing(&last.text))
-        .flatten()
 }
 
 /// The start command said by the first `used` of `tokens`, at the head of its utterance.

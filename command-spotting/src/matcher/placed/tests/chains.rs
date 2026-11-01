@@ -23,8 +23,8 @@ const CHAINS: [(bool, &str, Chain); 6] = [
     ),
     (
         true,
-        "stop dictation press enter please",
-        &[("stop dictation", 0, 1), ("press enter", 2, 4)],
+        "stop dictation press enter",
+        &[("stop dictation", 0, 1), ("press enter", 2, 3)],
     ),
     (
         true,

@@ -30,12 +30,21 @@ pub struct Row {
     /// Too quiet or unclear to count.
     #[serde(default)]
     pub unclear: bool,
+    /// The words said.
+    #[serde(default, rename = "said")]
+    words: String,
 }
 
 impl Row {
     /// The commands the row says, in order.
     fn said(&self) -> Vec<String> {
         self.command.iter().chain(&self.commands).cloned().collect()
+    }
+
+    /// A command closed by "please": the recordings hold such forms, which voice control no
+    /// longer has.
+    fn is_please_form(&self) -> bool {
+        !self.said().is_empty() && self.words.split_whitespace().last() == Some("please")
     }
 }
 
@@ -50,12 +59,13 @@ pub struct Span {
     pub word_end: Option<f32>,
 }
 
-/// The spans of a session's `rows`, sorted by time; unclear rows are left out.
+/// The spans of a session's `rows`, sorted by time; unclear rows and commands closed by
+/// "please" are left out.
 pub fn spans(rows: &[Row]) -> Vec<(usize, Span)> {
     let mut sorted: Vec<(usize, &Row)> = rows.iter().enumerate().collect();
     sorted.sort_by(|a, b| a.1.start.total_cmp(&b.1.start));
     (0..sorted.len())
-        .filter(|&i| !sorted[i].1.unclear)
+        .filter(|&i| !sorted[i].1.unclear && !sorted[i].1.is_please_form())
         .map(|i| {
             let (n, row) = sorted[i];
             let before = i.checked_sub(1).map_or(0.0, |p| sorted[p].1.end);

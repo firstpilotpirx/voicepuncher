@@ -3,7 +3,7 @@
 #   uv run --with sentencepiece python3 -c "import sentencepiece as s; \
 #     print(' '.join(s.SentencePieceProcessor(model_file='bpe.model').encode('PRESS ENTER', out_type=str)))"
 # A phrase may have several lines: "press enter" runs together into "presenter", "start"
-# may sound like "star", any phrase may end with "please", and "clear text" is "clear all text".
+# may sound like "star", and "clear text" is "clear all text".
 # A lower threshold or a higher boost makes a phrase easier to spot. press enter, clear
 # all text and paste text are spotted less reliably than the dictation phrases, so they need the looser
 # values; the app's pause rule (the phrase must be the whole utterance) guards them.
@@ -12,26 +12,17 @@
 # and a short "stop" or "cancel" said twice in a row asks it about the doubled form at once.
 ▁START ▁DI C T ATION :1.0 #0.25 @start_dictation
 ▁ST AR ▁DI C T ATION :1.0 #0.25 @start_dictation
-▁START ▁DI C T ATION ▁P LE AS E :1.0 #0.25 @start_dictation
 ▁ST O P ▁DI C T ATION :1.0 #0.25 @stop_dictation
-▁ST O P ▁DI C T ATION ▁P LE AS E :1.0 #0.25 @stop_dictation
 ▁CAN CE L ▁DI C T ATION :1.0 #0.25 @cancel_dictation
-▁CAN CE L ▁DI C T ATION ▁P LE AS E :1.0 #0.25 @cancel_dictation
 ▁RE S T AR T ▁DI C T ATION :1.0 #0.25 @restart_dictation
-▁RE S T AR T ▁DI C T ATION ▁P LE AS E :1.0 #0.25 @restart_dictation
 ▁PRE S S ▁EN TER :1.5 #0.20 @press_enter
 ▁PRE S ENT ER :1.5 #0.20 @press_enter
 ▁PRE S S ENT ER :1.5 #0.20 @press_enter
-▁PRE S S ▁EN TER ▁P LE AS E :1.5 #0.20 @press_enter
-▁PRE S ENT ER ▁P LE AS E :1.5 #0.20 @press_enter
 ▁C LE AR ▁ALL ▁T E X T :1.5 #0.20 @clear_all_text
-▁C LE AR ▁ALL ▁T E X T ▁P LE AS E :1.5 #0.20 @clear_all_text
 ▁C LE AR ▁T E X T :1.5 #0.20 @clear_all_text
-▁C LE AR ▁T E X T ▁P LE AS E :1.5 #0.20 @clear_all_text
 ▁PA S TE ▁T E X T :1.5 #0.20 @paste_text
-▁PA S TE ▁T E X T ▁P LE AS E :1.5 #0.20 @paste_text
-▁START :1.5 #0.15 @start_trigger
-▁ST AR :1.5 #0.15 @start_trigger
+▁START :1.5 #0.10 @start_trigger
+▁ST AR :1.5 #0.10 @start_trigger
 ▁RE S T AR T :1.0 #0.25 @restart_trigger
 ▁ST O P :1.5 #0.15 @stop_trigger
 ▁CAN CE L :1.5 #0.15 @cancel_trigger

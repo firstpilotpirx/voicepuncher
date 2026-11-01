@@ -4,10 +4,7 @@ use super::*;
 fn should_remove_the_command_that_ends_the_text() {
     for (text, kept) in [
         ("We meet on Friday. Stop.", "We meet on Friday."),
-        (
-            "We meet on Friday, stop dictation please.",
-            "We meet on Friday.",
-        ),
+        ("We meet on Friday, stop dictation.", "We meet on Friday."),
         ("We meet on Friday stop stop", "We meet on Friday"),
         ("We meet on Friday. Stop, enter.", "We meet on Friday."),
         ("Встреча в пятницу. Стоп.", "Встреча в пятницу."),
@@ -75,30 +72,6 @@ fn should_remove_a_restart_that_opens_the_text_of_a_restarted_dictation() {
 }
 
 #[test]
-fn should_remove_a_please_that_opens_the_text_after_a_voice_start() {
-    for (command, text, kept) in [
-        (
-            VoiceCommand::StartDictation,
-            "please. The build is green again.",
-            "The build is green again.",
-        ),
-        (
-            VoiceCommand::StartDictation,
-            "Start dictation please, meeting moved to Friday.",
-            "Meeting moved to Friday.",
-        ),
-        (
-            VoiceCommand::RestartDictation,
-            "Пожалуйста. Встреча в пятницу.",
-            "Встреча в пятницу.",
-        ),
-        (VoiceCommand::StartDictation, "Please.", "Please."),
-    ] {
-        assert_eq!(without_leading_command(command, text), kept, "{text}");
-    }
-}
-
-#[test]
 fn should_keep_words_of_another_command_that_open_the_text() {
     for (opened_by, text) in [
         (VoiceCommand::StartDictation, "Restart the server tonight."),
@@ -129,7 +102,7 @@ fn should_remove_a_paste_said_as_its_own_sentence() {
     for (text, kept) in [
         ("Hello there. Paste. And more.", "Hello there. And more."),
         (
-            "Hello there. Paste text, please. And more.",
+            "Hello there. Paste text. And more.",
             "Hello there. And more.",
         ),
         ("Hello there. Paste.", "Hello there."),

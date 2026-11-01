@@ -58,7 +58,7 @@ const COMMAND_PAUSE_SECS: f32 = 0.8;
 /// would test the speech recognition model, not the session.
 const MIN_WORDS_KEPT: f32 = 0.6;
 /// Words of the command phrases: none may reach the pasted text unless the sentence has it.
-const COMMAND_WORDS: [&str; 8] = [
+const COMMAND_WORDS: [&str; 7] = [
     "start",
     "stop",
     "cancel",
@@ -66,7 +66,6 @@ const COMMAND_WORDS: [&str; 8] = [
     "press",
     "enter",
     "clear",
-    "please",
 ];
 
 /// What the scenario expects, in order; a paste names the sentence it must hold.

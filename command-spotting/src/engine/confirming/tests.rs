@@ -59,22 +59,6 @@ fn should_not_take_start_heard_alone_by_the_first_spotted_check() {
 }
 
 #[test]
-fn should_take_start_please_heard_alone_by_the_first_spotted_check() {
-    // Given the first check of a spotted "start" heard a start closed by "please" and
-    // nothing after it
-    for said in ["Start please.", "Start dictation, please."] {
-        // When
-        let found = spotted_command(&standby(), &words(said), true, Round::First);
-        // Then
-        assert_eq!(
-            found.map(|f| f.commands),
-            Some(vec!["start dictation".to_owned()]),
-            "{said}"
-        );
-    }
-}
-
-#[test]
 fn should_take_start_heard_alone_by_the_second_spotted_check() {
     // Given the second check of a spotted "start" still heard "start" alone
     let said = words("Start.");

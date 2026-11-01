@@ -68,7 +68,7 @@ A command works when it is:
 - doubled anywhere, no pause needed: "stop stop", "enter enter";
 - a chain of 2–3 commands: "stop enter", "stop clear enter", "stop enter start", "paste enter".
 
-Any command may end with "please". The same words inside a sentence ("we should stop the server") do nothing. Details: [Voice control](#voice-control).
+The same words inside a sentence ("we should stop the server") do nothing. Details: [Voice control](#voice-control).
 
 **Example.** Press `RightOption`, say "hello world, I think the API is fine", press it again; the transcript is pasted at the cursor as soon as speech recognition returns it.
 
@@ -93,7 +93,7 @@ Push-to-talk keeps working as without voice control: the hotkey starts and stops
 | `clear all text`, `clear text` or `clear` | listening, no dictation | presses Cmd+A, then Delete, in the focused app |
 | `paste text` or `paste` | listening, no dictation | presses Cmd+V in the focused app, which pastes what the clipboard holds; the clipboard stays as it is |
 
-Every command may end with "please" ("press enter please"). A pause of 0.3 s ends an utterance, also after a quiet word and when more speech follows the pause at once ("restart", a short breath, the next sentence). A command counts:
+A pause of 0.3 s ends an utterance, also after a quiet word and when more speech follows the pause at once ("restart", a short breath, the next sentence). A command counts:
 
 - **on its own**, with a pause before and after it;
 - **at the end of an utterance**, right after other speech: "…and that is all, stop" ends the dictation and pastes the speech before it; the same words inside a sentence ("we should stop the server") are ignored;
