@@ -208,3 +208,23 @@ Feature: speech-recognition
       Given a recording is set up on a microphone that records at 48 kHz
       When the user dictates three and a half seconds cut into chunks of a second and stops
       Then the chunks laid end to end are the whole recording, with no gap or repeated samples
+
+  Rule: Spoken language follows the configuration
+
+    Scenario: Russian is the language when none is configured
+      Given the speech recognition service answers every request
+      When a recording is transcribed through the speech recognition service
+      Then every request asks the service for Russian
+
+  Rule: Stopping a dictation waits only for its last chunk
+
+    Scenario: A long dictation is transcribed while it goes on
+      Given a recording is set up on a microphone that records at 48 kHz
+      When the user dictates for 25 seconds with the default settings and stops
+      Then every chunk but the last was made before the stop
+      And the last chunk is at most 10 seconds long
+
+    Scenario: A short dictation is one chunk
+      Given a recording is set up on a microphone that records at 48 kHz
+      When the user dictates for 8 seconds with the default settings and stops
+      Then the dictation is one chunk, made after the stop

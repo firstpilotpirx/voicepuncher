@@ -42,6 +42,14 @@ pub enum Lang {
 impl Lang {
     pub const ALL: [Self; 2] = [Self::Ru, Self::En];
 
+    /// The language code the speech recognition service is asked for.
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Ru => "ru",
+            Self::En => "en",
+        }
+    }
+
     pub fn text(self) -> &'static str {
         match self {
             Self::Ru => TEXT_RU,

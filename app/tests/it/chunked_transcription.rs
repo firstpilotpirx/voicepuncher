@@ -76,6 +76,18 @@ mod needs_stt {
         })
     }
 
+    /// One transcriber per language, asking the service for it: a user who dictates in a
+    /// language picks it.
+    fn transcribers(cfg: &TranscriptionCfg) -> Vec<(Lang, OpenAiTranscriber)> {
+        Lang::ALL
+            .into_iter()
+            .map(|lang| {
+                let cfg = TranscriptionCfg { language: lang.code().into(), ..cfg.clone() };
+                (lang, OpenAiTranscriber::connect(cfg).unwrap())
+            })
+            .collect()
+    }
+
     #[test]
     fn should_merge_chunked_speech_without_repeating_or_dropping_a_phrase() {
         // Given
@@ -86,7 +98,7 @@ mod needs_stt {
             chunk_overlap_secs: cfg.chunk_overlap_secs,
             vad_lookback_secs: cfg.vad_lookback_secs,
         };
-        let mut transcriber = OpenAiTranscriber::connect(cfg).unwrap();
+        let mut transcribers = transcribers(&cfg);
         let cases: Vec<(Lang, Condition, f32)> = Lang::ALL
             .into_iter()
             .flat_map(|lang| CONDITIONS.into_iter().map(move |c| (lang, c)))
@@ -95,7 +107,10 @@ mod needs_stt {
         // When
         let failures: Vec<String> = cases
             .iter()
-            .filter_map(|&case| merge_failure(&mut transcriber, chunking, case))
+            .filter_map(|&case| {
+                let (_, transcriber) = transcribers.iter_mut().find(|(l, _)| *l == case.0)?;
+                merge_failure(transcriber, chunking, case)
+            })
             .collect();
         // Then
         assert!(

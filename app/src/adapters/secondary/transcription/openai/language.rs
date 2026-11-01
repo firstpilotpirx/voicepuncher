@@ -33,28 +33,33 @@ pub fn retry_language<'a>(
 mod tests {
     use super::*;
 
+    /// The configuration that lets the service detect the language.
+    fn auto() -> TranscriptionCfg {
+        TranscriptionCfg {
+            language: TranscriptionCfg::AUTO_LANGUAGE.into(),
+            ..TranscriptionCfg::default()
+        }
+    }
+
     fn detected(language: Option<&str>) -> TranscriptionResponse {
         TranscriptionResponse { text: "text".into(), language: language.map(str::to_owned) }
     }
 
     #[test]
     fn should_request_again_in_the_first_user_language_after_a_foreign_one() {
-        let cfg = TranscriptionCfg::default();
+        let cfg = auto();
         assert_eq!(retry_language(&detected(Some("korean")), &cfg), Some("ru"));
     }
 
     #[test]
     fn should_keep_a_language_named_by_code_or_by_name() {
-        let cfg = TranscriptionCfg::default();
+        let cfg = auto();
         assert_eq!(retry_language(&detected(Some("English")), &cfg), None);
         assert_eq!(retry_language(&detected(Some("ru")), &cfg), None);
     }
 
     #[test]
     fn should_keep_a_transcript_whose_language_the_service_does_not_name() {
-        assert_eq!(
-            retry_language(&detected(None), &TranscriptionCfg::default()),
-            None
-        );
+        assert_eq!(retry_language(&detected(None), &auto()), None);
     }
 }

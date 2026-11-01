@@ -220,3 +220,21 @@ Feature: settings-window
       When the user switches "Confirm commands with Whisper" off and saves
       Then the configuration file has commands carried out without the Whisper confirmation
       And the settings say the settings are applied
+
+  Rule: The language choice offers Russian, English and automatic detection
+
+    Scenario: The language choice offers three entries
+      When the user opens the settings
+      Then the spoken language choice offers Russian, English and automatic detection, and nothing else
+
+    Scenario: Russian is shown when the file names no language
+      Given the configuration file names no spoken language
+      When the user opens the settings
+      Then the spoken language control shows Russian
+
+    Scenario: Another language from the file is kept
+      Given the configuration file names German as the spoken language
+      And the user opens the settings
+      When the user changes the logging level and saves
+      Then the spoken language control shows the German code
+      And the configuration file still names German

@@ -14,8 +14,8 @@ fn should_default_to_local_service_on_port_8081() {
 }
 
 #[test]
-fn should_default_language_to_auto() {
-    assert_eq!(TranscriptionCfg::default().language, "auto");
+fn should_default_language_to_russian() {
+    assert_eq!(TranscriptionCfg::default().language, "ru");
 }
 
 #[test]
@@ -55,7 +55,7 @@ fn should_default_chunking_fields() {
     // Given / When
     let cfg = TranscriptionCfg::default();
     // Then
-    assert_eq!(cfg.chunk_threshold_secs, 30);
+    assert_eq!(cfg.chunk_threshold_secs, 10);
     assert_eq!(cfg.chunk_overlap_secs, 2);
     assert_eq!(cfg.vad_lookback_secs, 5);
 }

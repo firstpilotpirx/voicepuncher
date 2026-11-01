@@ -56,6 +56,13 @@ Feature: speech-recognition
       When the user transcribes the recording file
       Then the printed text holds the English words of the phrase, in Latin letters
 
+    @smoke @serial
+    Scenario: English speech stays English with the default language
+      Given the configuration names no spoken language
+      And a recording file of a short English phrase
+      When the user transcribes the recording file
+      Then the printed text holds the English words of the phrase, in Latin letters
+
   Rule: Known recognition hallucinations are discarded
 
     @smoke @serial

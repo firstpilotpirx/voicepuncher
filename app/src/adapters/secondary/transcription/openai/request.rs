@@ -138,7 +138,10 @@ mod tests {
     #[test]
     fn should_omit_language_for_auto_and_empty_prompt() {
         // Given
-        let cfg = TranscriptionCfg::default();
+        let cfg = TranscriptionCfg {
+            language: TranscriptionCfg::AUTO_LANGUAGE.into(),
+            ..TranscriptionCfg::default()
+        };
         // When
         let body = body_text(&cfg);
         // Then

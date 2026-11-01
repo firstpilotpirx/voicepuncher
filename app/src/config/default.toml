@@ -25,7 +25,7 @@ base_url = "http://127.0.0.1:8081/v1"
 # Model name sent with every request; the local service ignores it.
 model = "whisper-1"
 # Spoken language code (ru, en, …), or auto to let the service detect it.
-language = "auto"
+language = "ru"
 # The languages you speak; with auto, a transcript in another language is asked again in
 # the first of them.
 languages = ["ru", "en"]
@@ -36,7 +36,7 @@ temperature = 0.0
 # Seconds one transcription request may take, upload and recognition included.
 timeout_secs = 60
 # A recording longer than this many seconds is transcribed in chunks while you speak.
-chunk_threshold_secs = 30
+chunk_threshold_secs = 10
 # Seconds two neighbouring chunks share, so no word is cut in half.
 chunk_overlap_secs = 2
 # Seconds before a chunk's end searched for a pause to cut at.

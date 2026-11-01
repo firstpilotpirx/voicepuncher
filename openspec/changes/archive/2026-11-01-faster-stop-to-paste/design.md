@@ -24,7 +24,7 @@ Live chunking already transcribes chunks while the user speaks, cuts them in a p
 
 - Three times more seams per dictation: a merge error costs a word more often. The seam sweep and matrix (`e2e-seams`) run in `full-check`, since the threshold is on the chunking path.
 - English-only corpus recordings now go out as Russian; if the accuracy ratchet fails on them, the benchmark asks for each recording's own language (the corpus knows it), as a user who dictates English picks English in settings.
-- E2E steps that assumed `auto` by default set it in their own configuration.
+- E2E steps that assumed `auto` by default set it in their own configuration: the hands-free voice sessions, which speak English and Russian sentences, ask for `auto`, and the accuracy benchmark sends each corpus recording with its own language.
 
 ## Test levels
 
