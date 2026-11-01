@@ -24,5 +24,5 @@
 ▁START :1.5 #0.10 @start_trigger
 ▁ST AR :1.5 #0.10 @start_trigger
 ▁RE S T AR T :1.0 #0.25 @restart_trigger
-▁ST O P :1.5 #0.15 @stop_trigger
-▁CAN CE L :1.5 #0.15 @cancel_trigger
+▁ST O P :1.5 #0.10 @stop_trigger
+▁CAN CE L :1.5 #0.10 @cancel_trigger
