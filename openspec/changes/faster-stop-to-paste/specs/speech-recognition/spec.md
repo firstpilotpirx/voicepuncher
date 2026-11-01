@@ -35,12 +35,12 @@ The system SHALL send the configured spoken language with every request; the val
 ## ADDED Requirements
 
 ### Requirement: Stopping a dictation waits only for its last chunk
-When the configuration names no chunk threshold, the chunk threshold SHALL be 10 seconds. Every chunk of a dictation but the last SHALL be sent to the service while the user goes on dictating, so after the user stops only the last chunk, at most the chunk threshold long, is left to transcribe.
+When the configuration names no chunk threshold, the chunk threshold SHALL be 10 seconds. Every chunk of a dictation but the last SHALL be cut and handed on for transcription while the user goes on dictating, so after the user stops only the last chunk, at most the chunk threshold long, is left to transcribe.
 
 #### Scenario: A long dictation is transcribed while it goes on
 - **GIVEN** the configuration names no chunk threshold
 - **WHEN** the user dictates for 25 seconds and stops
-- **THEN** every chunk but the last was sent to the service before the stop
+- **THEN** every chunk but the last was cut and handed on for transcription before the stop
 - **AND** the last chunk is at most 10 seconds long
 
 #### Scenario: A short dictation is one chunk
