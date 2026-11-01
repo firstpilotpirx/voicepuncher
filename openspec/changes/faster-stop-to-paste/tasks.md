@@ -24,6 +24,6 @@
 
 ## 4. Version and checks
 
-- [ ] 4.1 Bump `version` in `app/Cargo.toml` to 0.43.0
-- [ ] 4.2 `just test`; commit
+- [x] 4.1 Bump `version` in `app/Cargo.toml` to 0.43.0
+- [x] 4.2 `just test`; commit
 - [ ] 4.3 Manual checks: one dictation of 20–30 s after "stop" logs `stop→paste: total` at most ~0.8 s (recording and paste timing changed)
