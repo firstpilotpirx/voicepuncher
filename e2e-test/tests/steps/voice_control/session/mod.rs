@@ -134,6 +134,16 @@ impl std::fmt::Debug for HandsFreeSession {
     }
 }
 
+/// A transcriber at `url` that lets the service detect the language: the sessions speak English
+/// and Russian sentences.
+fn detecting_transcriber(url: String) -> Result<OpenAiTranscriber> {
+    OpenAiTranscriber::connect(TranscriptionCfg {
+        base_url: url,
+        language: TranscriptionCfg::AUTO_LANGUAGE.into(),
+        ..TranscriptionCfg::default()
+    })
+}
+
 impl HandsFreeSession {
     fn start(service: SpottingService, transcription_url: String) -> Result<Self> {
         let events = Events::default();
@@ -142,10 +152,7 @@ impl HandsFreeSession {
         let microphone = Arc::new(Microphone::default());
         let (to_spotter, heard) = mpsc::channel();
         let (inputs_tx, inputs_rx) = mpsc::channel();
-        let transcriber = OpenAiTranscriber::connect(TranscriptionCfg {
-            base_url: transcription_url,
-            ..TranscriptionCfg::default()
-        })?;
+        let transcriber = detecting_transcriber(transcription_url)?;
         let mut spotter = StreamingSpotter::new(service.url, inputs_tx, &events);
         spotter.confirm_commands = service.confirm_commands;
         spotter.heard = Some(heard);

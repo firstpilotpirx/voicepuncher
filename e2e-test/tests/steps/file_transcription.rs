@@ -68,8 +68,10 @@ async fn transcribe_recording(world: &mut E2eWorld) -> Result<()> {
 #[when("the user transcribes every recording of the sample")]
 async fn transcribe_sample(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, move |world| {
+        // Each recording in its own language, as a user who dictates it picks that language
+        let configs = language_configs(world.workdir()?)?;
         let outputs = map_concurrently(&world.accuracy.corpus, CONCURRENT_RECORDINGS, |sample| {
-            transcribe(&sample.path, None)
+            transcribe(&sample.path, config_for(&configs, &sample.lang))
         });
         eprintln!("\n  {:<20} {:<4} {:>7} {:>8}", "id", "lang", "dur", "wer");
         for (sample, output) in world.accuracy.corpus.iter().zip(outputs) {
@@ -84,6 +86,25 @@ async fn transcribe_sample(world: &mut E2eWorld) -> Result<()> {
         Ok(())
     })
     .await
+}
+
+/// One configuration file in `dir` per corpus language, naming it as the spoken language.
+fn language_configs(dir: &Path) -> Result<Vec<(&'static str, PathBuf)>> {
+    ["ru", "en"]
+        .into_iter()
+        .map(|lang| {
+            let path = dir.join(format!("config-{lang}.toml"));
+            std::fs::write(&path, format!("[transcription]\nlanguage = \"{lang}\"\n"))?;
+            Ok((lang, path))
+        })
+        .collect()
+}
+
+fn config_for<'a>(configs: &'a [(&str, PathBuf)], lang: &str) -> Option<&'a Path> {
+    configs
+        .iter()
+        .find(|(known, _)| *known == lang)
+        .map(|(_, path)| path.as_path())
 }
 
 #[then("the app does not exit with a startup failure")]
