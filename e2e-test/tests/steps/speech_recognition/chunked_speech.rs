@@ -129,7 +129,8 @@ pub(super) fn language_of(name: &str) -> Result<Lang> {
     }
 }
 
-/// The lead-in moves the chunk seams onto other words.
+/// The lead-in moves the chunk seams onto other words; the file is transcribed in `lang`, as a
+/// user who dictates in it picks it.
 pub(super) fn record_speech(
     world: &mut E2eWorld,
     lang: Lang,
@@ -141,5 +142,12 @@ pub(super) fn record_speech(
     write_wav(&path, &samples)?;
     world.recording = Some(path);
     world.spoken = Some(lang);
+    let code = match lang {
+        Lang::Ru => "ru",
+        Lang::En => "en",
+    };
+    let config = world.workdir()?.join("config.toml");
+    std::fs::write(&config, format!("[transcription]\nlanguage = \"{code}\"\n"))?;
+    world.config = Some(config);
     Ok(())
 }
