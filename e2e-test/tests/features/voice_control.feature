@@ -74,6 +74,8 @@ Feature: voice-control
         | 0.7   |
         | 0.8   |
 
+    # @serial: each quiet command waits for its confirmation, and five rows at once queue past its budget
+    @serial
     Scenario Outline: A command said in a quiet voice is recognized
       Given the command spotting service is running
       When the user says "<said>" in a quiet voice with a pause before and after it
