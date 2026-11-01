@@ -142,10 +142,7 @@ pub(super) fn record_speech(
     write_wav(&path, &samples)?;
     world.recording = Some(path);
     world.spoken = Some(lang);
-    let code = match lang {
-        Lang::Ru => "ru",
-        Lang::En => "en",
-    };
+    let code = lang.code();
     let config = world.workdir()?.join("config.toml");
     std::fs::write(&config, format!("[transcription]\nlanguage = \"{code}\"\n"))?;
     world.config = Some(config);
