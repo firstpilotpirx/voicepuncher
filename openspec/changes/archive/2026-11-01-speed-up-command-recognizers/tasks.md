@@ -14,5 +14,5 @@
 ## 2. Release
 
 - [x] 2.1 Bump `version` in `app/Cargo.toml` to 0.44.0
-- [ ] 2.2 `just check`, commit
+- [x] 2.2 `just check`, commit
 - [x] 2.3 Manual checks: none
