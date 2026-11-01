@@ -31,6 +31,9 @@ const NO_SOUND: &str = "";
 const DEFAULT_MICROPHONE: &str = "default";
 /// The language value that lets the speech recognition service detect the language.
 const AUTO_LANGUAGE: &str = "auto";
+/// The spoken languages the Language pop-up offers before Detect automatically; a code the file
+/// names outside them is shown as an extra entry of its own.
+const OFFERED_LANGUAGES: [&str; 2] = ["ru", "en"];
 const LOG_LEVELS: [&str; 5] = ["error", "warn", "info", "debug", "trace"];
 /// What separates the codes of the language list in its text field.
 const LANGUAGE_SEPARATOR: char = ',';
@@ -81,12 +84,15 @@ pub fn options(choices: Choices, microphones: &[String]) -> Vec<Choice> {
             Choice::new("System default", DEFAULT_MICROPHONE),
             microphones.iter().map(|name| Choice::new(name, name)),
         ),
-        Choices::Languages => with_first(
-            Choice::new("Detect automatically", AUTO_LANGUAGE),
-            TranscriptionCfg::language_names()
-                .iter()
-                .map(|(code, name)| Choice::new(capitalized(name), *code)),
-        ),
+        Choices::Languages => OFFERED_LANGUAGES
+            .iter()
+            .filter_map(|code| TranscriptionCfg::language_name(code).map(|name| (code, name)))
+            .map(|(code, name)| Choice::new(capitalized(name), *code))
+            .chain(std::iter::once(Choice::new(
+                "Detect automatically",
+                AUTO_LANGUAGE,
+            )))
+            .collect(),
         Choices::Sounds => with_first(
             Choice::new("None", NO_SOUND),
             SYSTEM_SOUNDS

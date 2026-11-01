@@ -18,9 +18,9 @@
 
 ## 3. Language choice of three
 
-- [ ] 3.1 Red: rule "The language choice offers Russian, English and automatic detection" with its three scenarios in `app/tests/features/component/settings_window.feature` with their steps
-- [ ] 3.2 Green: the Languages choices offer Russian, English, Detect automatically in `app/src/adapters/primary/settings/macos/values/mod.rs`; update `values/tests.rs`
-- [ ] 3.3 `just test`; commit
+- [x] 3.1 Red: rule "The language choice offers Russian, English and automatic detection" with its three scenarios in `app/tests/features/component/settings_window.feature` with their steps
+- [x] 3.2 Green: the Languages choices offer Russian, English, Detect automatically in `app/src/adapters/primary/settings/macos/values/mod.rs`; update `values/tests.rs`
+- [x] 3.3 `just test`; commit
 
 ## 4. Version and checks
 

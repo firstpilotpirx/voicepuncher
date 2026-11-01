@@ -30,6 +30,7 @@ use givens::open_settings;
 mod applied;
 mod edits;
 mod file;
+mod languages;
 
 const FIRST_HOTKEY: HotKey = HotKey::RightOption;
 const SECOND_HOTKEY: HotKey = HotKey::F19;

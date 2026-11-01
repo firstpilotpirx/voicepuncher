@@ -77,14 +77,15 @@ fn should_offer_none_and_the_fourteen_system_sounds() {
 }
 
 #[test]
-fn should_offer_automatic_detection_and_every_known_language() {
+fn should_offer_russian_english_and_automatic_detection() {
     // When
     let languages = options(Choices::Languages, &[]);
     // Then
-    assert_eq!(languages[0].value, Value::String("auto".into()));
-    assert!(languages
-        .iter()
-        .any(|c| c.title == "Russian" && c.value == Value::String("ru".into())));
+    assert_eq!(
+        titles(&languages),
+        ["Russian", "English", "Detect automatically"]
+    );
+    assert_eq!(languages[2].value, Value::String("auto".into()));
 }
 
 #[test]
