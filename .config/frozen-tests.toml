@@ -64,3 +64,12 @@ stage = "test"
 beside = "the whole test stage (1325 tests), other worktrees building beside it; the app started its own copy within the check window"
 branch = "feat/faster-stop-to-paste"
 
+
+[[frozen]]
+test = "voicepuncher::it macos::textpasting_macos::should_bring_back_copied_text_with_every_type_after_the_paste"
+frozen = "2026-11-01"
+recipe = "full-check"
+stage = "test"
+beside = "the test stage of full-check; the system pasteboard is shared with the user and other worktrees"
+branch = "feat/faster-stop-to-paste"
+
