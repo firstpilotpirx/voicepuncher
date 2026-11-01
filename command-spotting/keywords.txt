@@ -13,7 +13,7 @@
 ▁START ▁DI C T ATION :1.0 #0.25 @start_dictation
 ▁ST AR ▁DI C T ATION :1.0 #0.25 @start_dictation
 ▁ST O P ▁DI C T ATION :1.0 #0.25 @stop_dictation
-▁CAN CE L ▁DI C T ATION :1.0 #0.25 @cancel_dictation
+▁CAN CE L ▁DI C T ATION :1.0 #0.20 @cancel_dictation
 ▁RE S T AR T ▁DI C T ATION :1.0 #0.25 @restart_dictation
 ▁PRE S S ▁EN TER :1.5 #0.20 @press_enter
 ▁PRE S ENT ER :1.5 #0.20 @press_enter
