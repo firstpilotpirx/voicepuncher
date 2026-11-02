@@ -21,7 +21,7 @@ When the app manages its services and a model file its configuration needs is mi
 - **THEN** no Download window opens and the services start
 
 ### Requirement: A model is present by its place and size
-A model file SHALL count as present when it is in the models folder, in `~/.voicepuncher/models` or in `~/.voicepuncher` with the size the catalog gives, or when the variable that names it names an existing file; the keyword spotting folder SHALL count as present when the folder exists. Presence SHALL NOT read the files' contents.
+A model file SHALL count as present when it is in the models folder, in `~/.voicepuncher/models` or in `~/.voicepuncher` with the size the catalog gives, or when the variable that names it names an existing file; a streaming model folder SHALL count as present when the folder exists. Presence SHALL NOT read the files' contents.
 
 #### Scenario: A file of the wrong size is missing
 - **GIVEN** the dictation model file in the models folder is shorter than the catalog size
@@ -34,7 +34,7 @@ A model file SHALL count as present when it is in the models folder, in `~/.voic
 - **THEN** the dictation model is Present
 
 ### Requirement: Download fetches, verifies and places each file
-Choosing Download SHALL fetch every missing file, one at a time, from its pinned address to a temporary file `NAME.part` in the models folder, computing its sha256 while it streams, and SHALL move it to its name only when the sha256 matches the catalog. The keyword spotting archive SHALL be extracted into the models folder and then deleted. The window SHALL show each file's progress in percent and the total received out of the total needed.
+Choosing Download SHALL fetch every missing file, one at a time, from its pinned address to a temporary file `NAME.part` in the models folder, computing its sha256 while it streams, and SHALL move it to its name only when the sha256 matches the catalog. A streaming model archive SHALL be extracted into the models folder and then deleted. The window SHALL show each file's progress in percent and the total received out of the total needed.
 
 #### Scenario: Every missing file is downloaded and placed
 - **GIVEN** two needed files are missing
@@ -43,7 +43,7 @@ Choosing Download SHALL fetch every missing file, one at a time, from its pinned
 - **AND** no `.part` file is left
 
 #### Scenario: The keyword spotting archive is extracted
-- **GIVEN** the keyword spotting folder is missing
+- **GIVEN** a streaming model folder is missing
 - **WHEN** its archive is downloaded and verified
 - **THEN** the folder is in the models folder and the archive is gone
 
@@ -116,17 +116,11 @@ When every needed file is present, the runtime SHALL leave Waiting for models an
 - **WHEN** `voicepuncher --download-models --models-dir` names that folder
 - **THEN** the command names the failed file and exits 1
 
-### Requirement: Voice control downloads the models of its recognizer
-The catalog SHALL hold the English and the Russian streaming models, each a pinned archive extracted into the models folder like the keyword spotting archive. With voice control on, the models needed SHALL be those of the chosen command recognizer: for the streaming recognizer the two streaming models and the voice gate model, and neither the Whisper small model nor the keyword spotting model; for the keyword spotter those two and the voice gate model.
+### Requirement: Voice control downloads the streaming models
+The catalog SHALL hold the English and the Russian streaming models, each a pinned archive extracted into the models folder. With voice control on, the models needed SHALL be the two streaming models and the voice gate model; the catalog SHALL hold neither the Whisper small model nor the keyword spotting model.
 
 #### Scenario: The streaming recognizer needs the streaming models
 - **GIVEN** voice control is on with the streaming recognizer and no voice control model is on disk
 - **WHEN** the app checks the models
 - **THEN** the English and the Russian streaming models and the voice gate model are listed as Missing
 - **AND** neither the Whisper small model nor the keyword spotting model is listed
-
-#### Scenario: The keyword spotter needs its own models
-- **GIVEN** voice control is on with the keyword spotter and no voice control model is on disk
-- **WHEN** the app checks the models
-- **THEN** the Whisper small model, the keyword spotting model and the voice gate model are listed as Missing
-- **AND** no streaming model is listed

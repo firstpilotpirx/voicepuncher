@@ -184,9 +184,9 @@ While the runtime starts its services, the status item SHALL show the waiting ic
 When the app manages its services, the menu SHALL offer a Services submenu that lists every service with its state in words — Ready, Starting, Restarting (with the try), Failed, Adopted — and, for each, Restart, offered only for a service the app started, and Open Log, which shows the service's log file.
 
 #### Scenario: The services are listed with their states
-- **GIVEN** the app started the speech recognition service for dictation and adopted the one for commands
+- **GIVEN** the app started the speech recognition service for dictation and adopted the command spotting service
 - **WHEN** the user opens the Services submenu
-- **THEN** it lists the dictation copies as Ready and the speech recognition service for commands as Adopted
+- **THEN** it lists the dictation copies as Ready and the command spotting service as Adopted
 - **AND** Restart is offered for the dictation copies only
 
 #### Scenario: Restart from the menu
