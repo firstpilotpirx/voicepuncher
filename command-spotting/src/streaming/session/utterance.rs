@@ -17,6 +17,9 @@ use super::{samples_in, seconds};
 const MAX_AUDIO_SECS: f32 = 30.0;
 /// The silence fed to every recognizer at the gate's pause, ahead of the stream.
 pub const FLUSH_SECS: f32 = 0.6;
+/// The silence fed to every recognizer ahead of the replay, so the first sound of an utterance
+/// is not the first sound of its stream.
+pub const LEAD_SECS: f32 = 0.3;
 /// How much later than the gate's onset a recognizer may time the first word of an utterance.
 const OPENING_SLACK_SECS: f32 = 0.5;
 
@@ -84,6 +87,7 @@ impl Utterance {
             last_report: None,
             trace: Trace::new(start, onset, &names),
         };
+        utterance.silence(LEAD_SECS);
         utterance.feed(replay);
         Ok(utterance)
     }
@@ -120,7 +124,12 @@ impl Utterance {
     /// Feeds silence ahead of the stream at the gate's pause, so a recognizer that emits a
     /// word's last sound only once more audio came emits it now.
     fn flush(&mut self) {
-        let silence = vec![0.0; samples_in(FLUSH_SECS)];
+        self.silence(FLUSH_SECS);
+    }
+
+    /// Feeds `secs` of silence to every recognizer, left out of the times they give.
+    fn silence(&mut self, secs: f32) {
+        let silence = vec![0.0; samples_in(secs)];
         self.flushes.push((self.streamed, silence.len()));
         self.stream(&silence);
     }

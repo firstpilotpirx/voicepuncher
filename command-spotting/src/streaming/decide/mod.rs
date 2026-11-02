@@ -27,11 +27,11 @@ pub struct Finding {
 /// the recognizer decoded up to that pause.
 const SETTLE_SECS: f32 = 0.2;
 
-/// How long instead when the gate already heard speech go on past `SPEECH_AFTER_SECS` after the
-/// word: the next word comes out of the recognizer about 0.35 s after the command ends, so "stop"
-/// of "stop the car" would settle before "the" shows. The gate's pause after a lone "stop" begins
-/// about 0.26 s after the word, after "stop the car" 0.66 s after "stop".
-const LATE_SETTLE_SECS: f32 = 0.4;
+/// When the gate's pause begins later than this after the word, it heard speech go on after it,
+/// and the word settles only once decoded up to the pause: the next word may come out of the
+/// recognizer well after the command ends, so "stop" of "stop the car" would settle before "the"
+/// shows. The gate's pause after a lone "stop" begins about 0.26 s after the word, after
+/// "stop the car" 0.66 s after "stop".
 const SPEECH_AFTER_SECS: f32 = 0.35;
 
 /// How soon after a report the same command again is its doubled form ("enter enter"), not
@@ -111,19 +111,14 @@ fn alone(matcher: &PhraseMatcher, fresh: &[&TimedWord], moment: Moment) -> Optio
 }
 
 /// Whether a one-word command ending at `end` is said alone at `moment`: the utterance
-/// ended, nothing came for a while after it (longer when the gate heard speech go on after
-/// it), or the gate heard the pause after it.
+/// ended, the gate heard the pause after it, or nothing came for a while after it unless the
+/// gate heard speech go on after it.
 fn settled(moment: Moment, end: f32) -> bool {
     match moment {
         Moment::Closing => true,
         Moment::Decoding { now, pause } => {
             let speech_after = pause.is_some_and(|p| p - end > SPEECH_AFTER_SECS);
-            let settle = if speech_after {
-                LATE_SETTLE_SECS
-            } else {
-                SETTLE_SECS
-            };
-            now - end >= settle || ended(moment)
+            (!speech_after && now - end >= SETTLE_SECS) || ended(moment)
         }
     }
 }

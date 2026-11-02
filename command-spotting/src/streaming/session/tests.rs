@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use super::*;
@@ -21,9 +21,9 @@ impl SpeechGate for LoudGate {
     }
 }
 
-/// A recognizer that decodes its words, each at its time in the stream, once 0.1 s of audio
-/// past it came (or its lag), each decode taking `decode_time`; it counts the streams opened and the audio
-/// of each first accept.
+/// A recognizer that decodes its words, each at its time in the audio after the silence ahead,
+/// once 0.1 s of audio past it came (or its lag), each decode taking `decode_time`; it counts the
+/// streams opened and keeps the size of each accept of the last one.
 struct Scripted {
     name: &'static str,
     respelled: bool,
@@ -31,7 +31,7 @@ struct Scripted {
     decode_time: Duration,
     lag: f32,
     streams: Arc<AtomicUsize>,
-    first_accept: Arc<AtomicUsize>,
+    accepts: Arc<Mutex<Vec<usize>>>,
 }
 
 impl Scripted {
@@ -43,13 +43,24 @@ impl Scripted {
             decode_time: Duration::ZERO,
             lag: 0.1,
             streams: Arc::default(),
-            first_accept: Arc::default(),
+            accepts: Arc::default(),
         }
     }
 
     fn slow(mut self, decode_time: Duration) -> Self {
         self.decode_time = decode_time;
         self
+    }
+
+    /// The sizes of the first two accepts of the last stream: the silence ahead, then the replay.
+    fn opening(&self) -> Vec<usize> {
+        self.accepts
+            .lock()
+            .expect("accepts")
+            .iter()
+            .take(2)
+            .copied()
+            .collect()
     }
 
     /// Decodes each word only once `lag` of audio past it came.
@@ -63,7 +74,7 @@ struct ScriptedStream {
     words: Arc<Vec<(&'static str, f32)>>,
     decode_time: Duration,
     lag: f32,
-    first_accept: Arc<AtomicUsize>,
+    accepts: Arc<Mutex<Vec<usize>>>,
     accepted: usize,
     finished: bool,
 }
@@ -77,11 +88,12 @@ impl StreamingModel for Scripted {
     }
     fn stream(&self) -> Box<dyn RecognizerStream> {
         self.streams.fetch_add(1, Ordering::SeqCst);
+        self.accepts.lock().expect("accepts").clear();
         Box::new(ScriptedStream {
             words: Arc::clone(&self.words),
             decode_time: self.decode_time,
             lag: self.lag,
-            first_accept: Arc::clone(&self.first_accept),
+            accepts: Arc::clone(&self.accepts),
             accepted: 0,
             finished: false,
         })
@@ -90,9 +102,7 @@ impl StreamingModel for Scripted {
 
 impl RecognizerStream for ScriptedStream {
     fn accept(&mut self, samples: &[f32]) {
-        if self.accepted == 0 {
-            self.first_accept.store(samples.len(), Ordering::SeqCst);
-        }
+        self.accepts.lock().expect("accepts").push(samples.len());
         self.accepted += samples.len();
     }
     fn finish(&mut self) {
@@ -102,13 +112,14 @@ impl RecognizerStream for ScriptedStream {
         std::thread::sleep(self.decode_time);
     }
     fn decoded(&self) -> Decoded {
-        let heard_to = self.accepted as f32 / RATE as f32;
+        // WHY: the words are scripted at their time in the audio, after the silence ahead.
+        let heard_to = self.accepted as f32 / RATE as f32 - utterance::LEAD_SECS;
         let lag = if self.finished { 0.0 } else { self.lag };
         let (tokens, times) = self
             .words
             .iter()
             .filter(|(_, at)| at + lag <= heard_to)
-            .map(|(word, at)| (format!("▁{word}"), *at))
+            .map(|(word, at)| (format!("▁{word}"), at + utterance::LEAD_SECS))
             .unzip();
         Decoded { tokens, times }
     }
@@ -177,7 +188,7 @@ fn should_wake_no_recognizer_in_silence() {
 }
 
 #[test]
-fn should_replay_the_half_second_before_the_onset_into_every_recognizer() {
+fn should_feed_silence_then_the_half_second_before_the_onset_into_every_recognizer() {
     // Given
     let (en, ru) = (Scripted::new("en", &[]), Scripted::new("ru", &[]));
     let mut session = session(&[&en, &ru], None);
@@ -186,8 +197,8 @@ fn should_replay_the_half_second_before_the_onset_into_every_recognizer() {
     session.sync(0);
     // Then
     assert_eq!(events, [ServerEvent::SpeechStart { t: 1.0 }]);
-    assert_eq!(en.first_accept.load(Ordering::SeqCst), RATE / 2);
-    assert_eq!(ru.first_accept.load(Ordering::SeqCst), RATE / 2);
+    assert_eq!(en.opening(), [RATE * 3 / 10, RATE / 2]);
+    assert_eq!(ru.opening(), [RATE * 3 / 10, RATE / 2]);
 }
 
 #[test]

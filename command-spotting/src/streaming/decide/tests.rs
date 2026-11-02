@@ -258,3 +258,13 @@ fn should_wait_longer_for_a_one_word_form_when_the_gate_heard_speech_go_on_after
     // Then
     assert_eq!(early, None);
 }
+
+#[test]
+fn should_wait_for_the_pause_when_the_gate_heard_speech_go_on_after_a_one_word_form() {
+    // Given "stop" ending at 1.25 s, decoded to 1.75 s, the gate's pause beginning at 2.1 s
+    let words = said(1.0, "stop");
+    // When
+    let found = decide(&dictating(), &words, paused_at(1.75, 2.1), 0.0);
+    // Then
+    assert_eq!(found, None);
+}

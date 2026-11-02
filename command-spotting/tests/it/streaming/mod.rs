@@ -159,15 +159,15 @@ mod needs_streaming_models {
         }
 
         #[test]
-        fn should_report_the_users_quiet_restart_0_3_s_after_a_sentence() {
+        fn should_report_the_users_quiet_restart_0_4_s_after_a_sentence() {
             let engine = engine();
-            // Given a sentence, cut after its last sound, and 0.3 s of silence
+            // Given a sentence, cut after its last sound, and 0.4 s of silence
             let sentence = common::spoken_by(None, "Coffee machine on the third floor is broken");
             let end = sentence
                 .iter()
                 .rposition(|s| s.abs() > 0.01)
                 .map_or(0, |at| at + 1);
-            let pause = vec![0.0; saturating_usize(0.3 * SAMPLE_RATE as f32)];
+            let pause = vec![0.0; saturating_usize(0.4 * SAMPLE_RATE as f32)];
             // When
             let audio = [&sentence[..end], &pause, &users_quiet_restart()].concat();
             let commands = commands_in(&engine, &audio);

@@ -47,5 +47,5 @@ fn should_replay_none_of_the_last_utterances_speech_into_the_next() {
     session.sync(0);
     // Then the next utterance hears only the quiet before it
     assert_eq!(en.streams.load(Ordering::SeqCst), 2);
-    assert!(en.first_accept.load(Ordering::SeqCst) <= RATE * 2 / 5);
+    assert!(en.opening()[1] <= RATE * 2 / 5);
 }
