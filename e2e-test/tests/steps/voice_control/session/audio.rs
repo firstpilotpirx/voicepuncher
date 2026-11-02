@@ -55,10 +55,23 @@ pub(super) fn command_audio(voice: CommandVoice, said: &str) -> Result<Vec<f32>>
         CommandVoice::Synthesized => spoken_with_pauses(said),
         CommandVoice::Recorded { .. } => {
             let mut audio = room_noise(COMMAND_PAUSE_SECS)?;
-            audio.extend(recorded_form(said)?);
+            audio.extend(recorded_or_twice(said)?);
             audio.extend(room_noise(COMMAND_PAUSE_SECS)?);
             Ok(audio)
         }
+    }
+}
+
+/// The user's recorded `said`; a doubled word the user never recorded doubled is their
+/// recording of the word, said twice.
+fn recorded_or_twice(said: &str) -> Result<Vec<f32>> {
+    match said.split_once(' ') {
+        Some((first, second)) if first == second && recorded_form(said).is_err() => {
+            let mut audio = recorded_form(first)?;
+            audio.extend(recorded_form(first)?);
+            Ok(audio)
+        }
+        _ => recorded_form(said),
     }
 }
 
@@ -66,11 +79,13 @@ pub(super) fn command_audio(voice: CommandVoice, said: &str) -> Result<Vec<f32>>
 /// command is often too short for the voice gate, the user's recorded one too: the keyword
 /// spotter hears it, no speech segment closes, so nothing confirms it. So the session says
 /// "start" doubled in either voice, and a synthesized voice doubles "stop" and "cancel" as
-/// well; "enter" and "clear" alone are heard.
+/// well. The user's recorded "enter" (0.27 s) after a long pause is sometimes not heard at
+/// all, no trigger and no segment, so a recorded session doubles it too; "clear" alone is
+/// heard.
 pub(super) fn session_form(voice: CommandVoice, said: &str) -> String {
     let doubled = match voice {
         CommandVoice::Synthesized => ["start", "stop", "cancel"].contains(&said),
-        CommandVoice::Recorded { .. } => said == "start",
+        CommandVoice::Recorded { .. } => ["start", "enter"].contains(&said),
     };
     if doubled {
         format!("{said} {said}")

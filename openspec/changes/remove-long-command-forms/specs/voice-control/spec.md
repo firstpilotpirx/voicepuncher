@@ -322,7 +322,7 @@ The system SHALL end an utterance after 0.3 s of silence, so a command said afte
 
 #### Scenario: Stop after a short breath
 - **GIVEN** a dictation runs
-- **WHEN** the user says a sentence, pauses for about 0.35 s and says "stop", then pauses
+- **WHEN** the user says a sentence, pauses for about 0.35 s and says "stop stop", then pauses
 - **THEN** the sentence is pasted into the focused app without "stop"
 
 #### Scenario: Restart, a short pause, then speech that starts like another word
@@ -370,7 +370,7 @@ When a voice command starts a dictation ("start" said on its own, opening an utt
 #### Scenario: Restart, a short pause, then the new dictation
 - **GIVEN** a dictation runs
 - **AND** the user has said a sentence in it
-- **WHEN** the user says "restart", pauses for about 0.5 s and says another sentence, and later ends the dictation
+- **WHEN** the user says "restart restart", pauses for about 0.5 s and says another sentence, and later ends the dictation
 - **THEN** only the other sentence is pasted, its first words included
 
 #### Scenario: A chain ending in start followed by the next dictation at once

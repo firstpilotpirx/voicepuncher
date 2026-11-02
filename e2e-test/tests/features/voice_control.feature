@@ -290,7 +290,7 @@ Feature: voice-control
       Given the command spotting service is running
       And listening is on for a whole session
       And a dictation runs and someone has said a sentence in it
-      When someone says "Restart", pauses for about 0.5 s and says another sentence, and later ends the dictation
+      When someone says "Restart, restart", pauses for about 0.5 s and says another sentence, and later ends the dictation
       Then only the other sentence is pasted, its first words included
 
     @smoke @voice_samples
@@ -469,7 +469,7 @@ Feature: voice-control
       Given the command spotting service is running
       And listening is on for a whole session
       And a dictation started by voice runs
-      When someone says a sentence, takes a short breath and says "stop"
+      When someone says a sentence, takes a short breath and says "stop stop"
       Then the whole sentence, its first words included, is pasted without "stop"
 
     @smoke @serial

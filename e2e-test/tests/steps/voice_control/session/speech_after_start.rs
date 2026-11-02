@@ -186,12 +186,14 @@ fn dictation_by_voice(world: &mut E2eWorld) -> Result<()> {
     Ok(())
 }
 
-#[when("someone says a sentence, takes a short breath and says \"stop\"")]
+/// A lone synthesized "stop" after a sentence gets a trigger but no speech segment of its
+/// own, so nothing confirms it: the breath is followed by "stop stop".
+#[when("someone says a sentence, takes a short breath and says \"stop stop\"")]
 fn says_sentence_breath_stop(world: &mut E2eWorld) -> Result<()> {
     let session = session_of(world)?;
     let mut audio = without_trailing_silence(from_first_sound(spoken_by(ENGLISH_VOICE, SENTENCE)?));
     audio.extend(silence(BREATH_SECS));
-    audio.extend(from_first_sound(spoken_by(ENGLISH_VOICE, "stop")?));
+    audio.extend(from_first_sound(spoken_by(ENGLISH_VOICE, "stop stop")?));
     let seen = session.events().len();
     session.hear_in_real_time(&audio)?;
     // The Then step checks what was pasted; this only waits for the paste.
