@@ -88,10 +88,10 @@ mod needs_streaming_models {
     use super::*;
 
     #[test]
-    fn should_report_a_synthesized_press_enter() {
+    fn should_report_a_synthesized_enter() {
         let engine = engine();
         // When
-        let commands = commands_in(&engine, &common::spoken_by(None, "press enter"));
+        let commands = commands_in(&engine, &common::spoken_by(None, "enter"));
         // Then
         assert_eq!(commands, ["press enter"]);
     }

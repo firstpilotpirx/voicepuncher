@@ -127,7 +127,7 @@ When the system pastes a dictation, the clipboard SHALL afterwards hold again wh
 #### Scenario: A screenshot copied during the recording survives the paste
 - **GIVEN** a text field has keyboard focus and a recording runs
 - **AND** the user copies a screenshot to the clipboard
-- **WHEN** the user ends the recording by saying "stop dictation" and the text is pasted
+- **WHEN** the user ends the recording by saying "stop" and the text is pasted
 - **THEN** the clipboard holds the screenshot again after the paste
 
 #### Scenario: Copied text survives the paste

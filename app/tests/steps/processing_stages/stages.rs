@@ -4,6 +4,7 @@ use super::{
     bail, given, overlay, position, recognition_covers_transcription, run, then, when, Event,
     IntegrationWorld, Overlay, Recorded, Result, VoiceCommand,
 };
+use crate::steps::voice_control::command_word;
 
 #[given("the user records a dictation with the hotkey")]
 pub(super) fn records_with_hotkey(world: &mut IntegrationWorld) -> Result<()> {
@@ -46,8 +47,8 @@ pub(super) fn ends_with_hotkey(world: &mut IntegrationWorld) -> Result<()> {
 
 #[when(expr = "the user says {string} to end it")]
 pub(super) fn says_to_end(world: &mut IntegrationWorld, phrase: String) -> Result<()> {
-    if VoiceCommand::from_phrase(&phrase) != Some(VoiceCommand::StopDictation) {
-        bail!("only \"stop dictation\" ends a dictation here, not {phrase:?}");
+    if command_word(&phrase)? != VoiceCommand::StopDictation {
+        bail!("only \"stop\" ends a dictation here, not {phrase:?}");
     }
     run(world).end_by_voice()
 }

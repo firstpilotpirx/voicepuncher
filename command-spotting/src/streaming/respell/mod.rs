@@ -1,26 +1,23 @@
 //! The user's English command words as the Russian recognizer writes them ("стоп", "энтер").
 //!
 //! They are respelled in English so the phrase matcher reads them like the English
-//! recognizer's. The patterns are those of the bench (`research/bench/common.py`, `RU_CMD` and `RU_FILL`).
+//! recognizer's. The patterns are those of the bench (`research/bench/common.py`, `RU_CMD`).
 
 /// How often a letter of a pattern is said.
 #[derive(Clone, Copy)]
 enum Times {
     Once,
     Maybe,
-    /// Once or more.
-    Many,
-    /// Any letters to the end of the word ("диктейшн", "диктэйшен").
-    Rest,
 }
 
 /// One letter of a pattern: any of `letters`, said `times`.
 type Letter = (&'static str, Times);
 
-use Times::{Many, Maybe, Once, Rest};
+use Times::{Maybe, Once};
 
-/// Each command and form word with the ways it is written, tried in this order: "restart"
-/// before "start", the commands before the other words.
+/// Each command word with the ways it is written, tried in this order: "restart" before
+/// "start". The other words of the long forms ("dictation", "press", "text") are no command
+/// words and stay as written.
 const SOUNDS: &[(&str, &[&[Letter]])] = &[
     (
         "restart",
@@ -102,37 +99,6 @@ const SOUNDS: &[(&str, &[&[Letter]])] = &[
             ],
         ],
     ),
-    (
-        "dictation",
-        &[&[
-            ("д", Once),
-            ("и", Once),
-            ("к", Once),
-            ("т", Once),
-            ("", Rest),
-        ]],
-    ),
-    (
-        "press",
-        &[&[
-            ("п", Once),
-            ("р", Once),
-            ("е", Once),
-            ("с", Once),
-            ("с", Maybe),
-        ]],
-    ),
-    (
-        "text",
-        &[&[
-            ("т", Once),
-            ("еэ", Once),
-            ("к", Once),
-            ("с", Maybe),
-            ("т", Once),
-        ]],
-    ),
-    ("all", &[&[("о", Once), ("л", Many)]]),
 ];
 
 /// The text with every Cyrillic word that is made only of command sounds respelled in English.
@@ -212,8 +178,6 @@ fn taken(letters: &str, times: Times, word: &[char], at: usize) -> Vec<usize> {
     match times {
         Once => (run > 0).then_some(vec![at + 1]).unwrap_or_default(),
         Maybe => (at..=at + run.min(1)).collect(),
-        Many => (at + 1..=at + run).collect(),
-        Rest => vec![word.len()],
     }
 }
 

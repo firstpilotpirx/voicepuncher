@@ -1,12 +1,13 @@
 //! Utterances confirmed, ended and heard again by speech recognition.
 
 use super::*;
+use voicepuncher_command_spotting::protocol::Placement;
 
 #[test]
 fn should_confirm_an_utterance_with_what_the_speech_recognition_service_heard() {
     let _shared = engine();
     // Given
-    let engine = own_engine(None).hearing(Arc::new(HearsPressEnter));
+    let engine = own_engine(None).hearing(Arc::new(HearsEnter));
     // When
     let events = events_for(&engine, NOT_A_COMMAND);
     // Then
@@ -31,7 +32,7 @@ fn should_spot_a_command_after_a_hung_confirmation() {
     let engine = own_engine(Some(speech_recognition_hanging_first(2)));
     let mut session = listening(&engine, &ALL_PHRASES);
     let mut audio = spoken(NOT_A_COMMAND);
-    audio.extend(spoken("press enter"));
+    audio.extend(spoken("enter"));
     // When
     let events = fed(&mut session, &audio);
     // Then
@@ -67,7 +68,7 @@ fn should_leave_the_keyword_spotted_phrase_to_decide_when_its_segment_confirmati
     // Given
     let engine = own_engine(None).hearing(Arc::new(NeverInTime));
     // When
-    let events = events_for(&engine, "press enter");
+    let events = events_for(&engine, "enter");
     // Then
     assert_eq!(spotted(&events), ["press enter"], "{events:?}");
 }
@@ -93,8 +94,17 @@ fn should_hear_a_command_ending_a_long_utterance_in_its_last_seconds() {
     let engine = own_engine(None).hearing(Arc::new(HearsTheCommandOnlyInTheTail));
     // When
     let events = events_for(&engine, SENTENCE_ENDING_IN_ENTER);
-    // Then
-    assert_eq!(reported_phrases(&events), ["press enter"], "{events:?}");
+    // Then the check of its last seconds heard it; the keyword spotter's "enter" is its own
+    let heard_at_the_tail: Vec<&[String]> = events
+        .iter()
+        .filter_map(|e| match e {
+            ServerEvent::Command { commands, placement: Placement::Tail, .. } => {
+                Some(commands.as_slice())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(heard_at_the_tail, [["press enter"]], "{events:?}");
 }
 
 #[test]

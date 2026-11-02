@@ -26,7 +26,7 @@ Feature: visual-feedback
 
     Scenario: A command right after the paste replaces the Pasted sign
       Given voice control is turned on and the overlay shows the Pasted sign
-      When the user says "press enter"
+      When the user says "enter"
       Then the enter sign replaces the Pasted sign at once
 
   # The rules below draw the real overlay on the main thread and read its first screen.
@@ -35,7 +35,7 @@ Feature: visual-feedback
 
     Scenario: The enter sign shows its icon and name
       Given the overlay is ready
-      When the overlay shows the sign of "press enter"
+      When the overlay shows the enter sign
       Then the pill shows the icon "return" and the label "Enter"
 
   Rule: A failure notice shows an amber glass sign with its message

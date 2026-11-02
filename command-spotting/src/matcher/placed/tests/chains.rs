@@ -6,7 +6,7 @@ use super::*;
 type Chain = &'static [(&'static str, usize, usize)];
 
 /// Chains said anywhere, in a dictation, or in standby when the flag is false.
-const CHAINS: [(bool, &str, Chain); 6] = [
+const CHAINS: [(bool, &str, Chain); 5] = [
     (
         true,
         "that is it, stop, enter.",
@@ -20,11 +20,6 @@ const CHAINS: [(bool, &str, Chain); 6] = [
             ("press enter", 1, 1),
             ("start dictation", 2, 2),
         ],
-    ),
-    (
-        true,
-        "stop dictation press enter",
-        &[("stop dictation", 0, 1), ("press enter", 2, 3)],
     ),
     (
         true,
@@ -114,12 +109,12 @@ pub(super) fn should_find_paste_like_the_other_standby_commands() {
         ))
     );
     assert_eq!(
-        dictating().anywhere(&words("stop paste text enter")),
+        dictating().anywhere(&words("stop paste enter")),
         Some(found(
             &[
                 ("stop dictation", 0, 0),
-                ("paste text", 1, 2),
-                ("press enter", 3, 3)
+                ("paste text", 1, 1),
+                ("press enter", 2, 2)
             ],
             Placement::Anywhere
         ))
@@ -156,22 +151,22 @@ pub(super) fn should_not_find_a_command_followed_by_a_filler_word() {
 #[test]
 pub(super) fn should_find_start_as_all_said_so_far_in_a_running_utterance() {
     assert_eq!(
-        standby().start_so_far(&words("Start dictation.")),
-        Some(found(&[("start dictation", 0, 1)], Placement::Head))
+        standby().start_so_far(&words("Start.")),
+        Some(found(&[("start dictation", 0, 0)], Placement::Head))
     );
     assert_eq!(standby().start_so_far(&words("start the meeting")), None);
     assert_eq!(dictating().start_so_far(&words("start")), None);
 }
 
 #[test]
-pub(super) fn should_tell_restart_dictation_from_start_dictation() {
+pub(super) fn should_tell_restart_from_start() {
     assert_eq!(
-        dictating().at_end(&words("Let me try once more, restart dictation.")),
-        Some(found(&[("restart dictation", 5, 6)], Placement::Tail))
+        dictating().at_end(&words("Let me try once more, restart.")),
+        Some(found(&[("restart dictation", 5, 5)], Placement::Tail))
     );
     assert_eq!(
-        standby().at_end(&words("Okay, start dictation.")),
-        Some(found(&[("start dictation", 1, 2)], Placement::Tail))
+        standby().at_end(&words("Okay, start.")),
+        Some(found(&[("start dictation", 1, 1)], Placement::Tail))
     );
 }
 
@@ -185,10 +180,27 @@ pub(super) fn should_find_no_command_in_start_stop() {
 }
 
 #[test]
-pub(super) fn should_take_stuck_dictation_as_start_dictation() {
+pub(super) fn should_find_no_command_in_a_long_form() {
+    for text in ["okay clear all text", "paste text", "stop dictation now"] {
+        assert_eq!(dictating().anywhere(&words(text)), None, "{text}");
+        assert_eq!(dictating().at_end(&words(text)), None, "{text}");
+        assert_eq!(standby().at_end(&words(text)), None, "{text}");
+    }
     assert_eq!(
-        standby().start_at_head(&words("Stuck dictation, the build is green again.")),
-        Some(found(&[("start dictation", 0, 1)], Placement::Head))
+        standby().start_at_head(&words("Stuck dictation, the build is green.")),
+        None
+    );
+}
+
+#[test]
+pub(super) fn should_take_a_long_form_ending_in_a_command_word_by_that_word() {
+    assert_eq!(
+        standby().at_end(&words("press enter")),
+        Some(found(&[("press enter", 1, 1)], Placement::Tail))
+    );
+    assert_eq!(
+        standby().start_at_head(&words("start dictation now")),
+        Some(found(&[("start dictation", 0, 0)], Placement::Head))
     );
 }
 

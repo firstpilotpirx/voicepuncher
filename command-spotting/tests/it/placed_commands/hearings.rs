@@ -233,3 +233,14 @@ pub(super) fn heard_finely_misheard(
     let asked_after = asked.iter().map(|&asked| secs_after_end(asked)).collect();
     FinelyHeard { events, said_after: said_at.map(secs_after_end), asked_after, last_word_secs }
 }
+
+/// A hearing that, as whisper does, leaves out a word the clip's start cuts off.
+pub(super) struct DropsWordCutAtStart<H>(pub(super) H);
+
+impl<H: Hear> Hear for DropsWordCutAtStart<H> {
+    fn hear(&self, clip: &[f32], deadline: Duration) -> anyhow::Result<Heard> {
+        let heard = self.0.hear(clip, deadline)?;
+        let words: Vec<TimedWord> = heard.words.into_iter().filter(|w| w.start > 0.0).collect();
+        Ok(Heard { text: words.iter().map(|w| w.text.as_str()).collect(), words })
+    }
+}

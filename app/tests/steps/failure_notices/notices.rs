@@ -5,6 +5,7 @@ use super::{
     Event, FailingPart, FailureNotice, IntegrationWorld, Result, Shown, VoiceCommand,
     LOCAL_SERVICES_REMEDY, NOTICE_DEADLINE, RAW_TRANSCRIPT,
 };
+use crate::steps::voice_control::command_word;
 
 #[then("within 2 seconds of the stop the overlay shows a failure notice naming speech recognition")]
 pub(super) fn notice_names_recognition_in_time(world: &mut IntegrationWorld) -> Result<()> {
@@ -124,8 +125,7 @@ pub(super) fn microphone_unavailable(world: &mut IntegrationWorld) -> Result<()>
     expr = "the overlay shows a failure notice that {string} failed for lack of the Accessibility permission"
 )]
 fn command_failed(world: &mut IntegrationWorld, phrase: String) -> Result<()> {
-    let command = VoiceCommand::from_phrase(&phrase)
-        .with_context(|| format!("{phrase:?} is not a voice command"))?;
+    let command = command_word(&phrase)?;
     let expected = FailureNotice::CommandFailed(command, Some(FailingPart::Accessibility));
     let events = run(world).settled();
     if notices(&events) != [expected.clone()] {

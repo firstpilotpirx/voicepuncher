@@ -1,9 +1,10 @@
 //! Given and When steps: what fails and what the user does.
 
 use super::{
-    given, run, show_recognition_notice, when, Context, IntegrationWorld, Microphone, Recognition,
+    bail, given, run, show_recognition_notice, when, IntegrationWorld, Microphone, Recognition,
     Result, VoiceCommand, VoiceSetup,
 };
+use crate::steps::voice_control::command_word;
 
 #[given("speech recognition is not running")]
 #[given("speech recognition does not answer")]
@@ -73,11 +74,10 @@ pub(super) fn stops_hotkey_dictation(world: &mut IntegrationWorld) -> Result<()>
 
 #[when(expr = "the user ends the voice dictation by saying {string}")]
 pub(super) fn ends_voice_dictation(world: &mut IntegrationWorld, phrase: String) -> Result<()> {
-    let command = VoiceCommand::from_phrase(&phrase)
-        .filter(|command| *command == VoiceCommand::StopDictation)
-        .with_context(|| {
-            format!("only \"stop dictation\" ends a dictation here, not {phrase:?}")
-        })?;
+    let command = command_word(&phrase)?;
+    if command != VoiceCommand::StopDictation {
+        bail!("only \"stop\" ends a dictation here, not {phrase:?}");
+    }
     let run = run(world);
     run.mark_stop();
     run.say(command)
@@ -92,8 +92,7 @@ pub(super) fn presses_hotkey(world: &mut IntegrationWorld) -> Result<()> {
 
 #[when(expr = "the user gives the voice command {string}")]
 pub(super) fn says(world: &mut IntegrationWorld, phrase: String) -> Result<()> {
-    let command = VoiceCommand::from_phrase(&phrase)
-        .with_context(|| format!("{phrase:?} is not a voice command"))?;
+    let command = command_word(&phrase)?;
     let run = run(world);
     run.mark_stop();
     run.say(command)

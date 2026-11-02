@@ -39,8 +39,8 @@ impl Session<'_> {
             if self.worker.is_some() {
                 at_once.extend(self.ask_checks_of(&spotted));
             }
-            let late = self.orderer.phrase(spotted);
-            let verdict = self.report_late(&late);
+            let mut late = self.orderer.phrase(spotted);
+            let verdict = self.report_late(&mut late);
             events.extend(late);
             events.extend(verdict);
         }

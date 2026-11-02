@@ -67,11 +67,11 @@ fn should_leave_russian_words_close_to_a_command() {
 }
 
 #[test]
-fn should_respell_the_other_words_of_a_command_form() {
-    // When
+fn should_respell_only_the_command_words_of_a_long_form() {
+    // When the long forms, no commands of their own, are written in Cyrillic
     let respelled = respell("пресс энтер, старт диктейшн, клир ол текст");
-    // Then
-    assert_eq!(respelled, "press enter, start dictation, clear all text");
+    // Then only their command words are respelled
+    assert_eq!(respelled, "пресс enter, start диктейшн, clear ол текст");
 }
 
 #[test]

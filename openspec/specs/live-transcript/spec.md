@@ -20,7 +20,7 @@ While a recording runs and is transcribed in chunks, the overlay SHALL show, nex
 - **THEN** the overlay shows the text of both parts joined, with their shared words once
 
 #### Scenario: A dictation started by voice shows its text so far
-- **GIVEN** voice control is turned on and the user started a dictation by saying "start dictation"
+- **GIVEN** voice control is turned on and the user started a dictation by saying "start"
 - **WHEN** the first part of the recording is transcribed while the user speaks
 - **THEN** the overlay shows the text of that part next to the recording sign
 

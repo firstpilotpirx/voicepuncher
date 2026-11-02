@@ -33,11 +33,13 @@ fn verdicts(events: &[ServerEvent]) -> Vec<(Vec<String>, Verdict)> {
         .collect()
 }
 
-/// Where the first unconfirmed report of `command` and the first verdict lie in `events`.
+/// Where the first report of `command` and the first verdict lie in `events`. A short
+/// "enter" is heard at half the pause, before the keyword spotter fires, and that hearing
+/// reports it at once: the report counts whether a hearing confirmed it or not.
 fn report_and_verdict(events: &[ServerEvent], command: &str) -> (Option<usize>, Option<usize>) {
     let reported = events.iter().position(|e| match e {
-        ServerEvent::Phrase { phrase, timing: None, .. } => phrase == command,
-        ServerEvent::Command { commands, timing: None, .. } => commands == &[command],
+        ServerEvent::Phrase { phrase, .. } => phrase == command,
+        ServerEvent::Command { commands, .. } => commands == &[command],
         _ => false,
     });
     let verdict = events
@@ -50,16 +52,17 @@ fn report_and_verdict(events: &[ServerEvent], command: &str) -> (Option<usize>, 
 fn should_report_a_spotted_command_before_its_hearing_without_confirmation() {
     let _shared = engine();
     // Given
-    let engine = own_engine(None).hearing(Arc::new(HearsAlways(" press enter")));
+    let engine = own_engine(None).hearing(Arc::new(HearsAlways(" enter")));
     let mut session = unconfirmed(&engine, &ALL_PHRASES);
     // When
-    let events = fed(&mut session, &spoken("press enter"));
+    let events = fed(&mut session, &spoken("enter"));
     // Then
     let (reported, verdict) = report_and_verdict(&events, "press enter");
     assert!(
         reported.is_some() && verdict.is_some() && reported < verdict,
         "{events:?}"
     );
+    assert_eq!(reported_phrases(&events), ["press enter"], "{events:?}");
     assert_eq!(
         verdicts(&events),
         [(vec!["press enter".to_owned()], Verdict::Agreed)]
@@ -73,7 +76,7 @@ fn should_keep_a_spotted_command_the_hearing_does_not_confirm_and_say_so() {
     let engine = own_engine(None).hearing(Arc::new(HearsAlways(" hello there")));
     let mut session = unconfirmed(&engine, &ALL_PHRASES);
     // When
-    let events = fed(&mut session, &spoken("press enter"));
+    let events = fed(&mut session, &spoken("enter"));
     // Then
     assert_eq!(reported_phrases(&events), ["press enter"], "{events:?}");
     assert_eq!(
@@ -121,11 +124,20 @@ fn fed_until_reported(
         let mut got = session.accept(frame);
         got.extend(session.settle());
         fed_so_far += frame.len();
-        if reported_at.is_none() && report_and_verdict(&got, command).0.is_some() {
+        if reported_at.is_none() && got.iter().any(|e| reported_unconfirmed(e, command)) {
             reported_at = Some(fed_so_far);
         }
         events.extend(got);
     }
     events.extend(session.settle());
     (events, reported_at)
+}
+
+/// Whether `event` reports `command` before any hearing confirmed it.
+fn reported_unconfirmed(event: &ServerEvent, command: &str) -> bool {
+    match event {
+        ServerEvent::Phrase { phrase, timing: None, .. } => phrase == command,
+        ServerEvent::Command { commands, timing: None, .. } => commands == &[command],
+        _ => false,
+    }
 }

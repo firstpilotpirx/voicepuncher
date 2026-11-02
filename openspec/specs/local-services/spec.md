@@ -125,7 +125,7 @@ The command spotting service SHALL keep taking in audio, spotting commands and a
 #### Scenario: Commands are spotted after a hung confirmation
 - **GIVEN** an app streams speech to the command spotting service
 - **AND** the speech recognition service for commands never answered one confirmation
-- **WHEN** the app streams the command "press enter" after it
+- **WHEN** the app streams the command "enter" after it
 - **THEN** the service reports "press enter"
 
 ### Requirement: The command spotting service does not pile up confirmations
@@ -138,7 +138,7 @@ While a confirmation of a running utterance waits for the speech recognition ser
 
 #### Scenario: A command said alone is confirmed by the second attempt
 - **GIVEN** the speech recognition service for commands does not answer the first confirmation in time and answers the second
-- **WHEN** an app streams "press enter" said alone
+- **WHEN** an app streams "enter" said alone
 - **THEN** the service reports "press enter"
 
 ### Requirement: A request given up by its client does not hold a copy
@@ -166,7 +166,7 @@ The speech recognition service for commands SHALL answer the command spotting se
 
 #### Scenario: A command right after such speech is carried out
 - **GIVEN** voice control runs and the speech recognition service for commands is otherwise idle
-- **WHEN** the user says that Russian speech and then "press enter"
+- **WHEN** the user says that Russian speech and then "enter"
 - **THEN** the command spotting service reports "press enter"
 
 #### Scenario: A confirmation still decoding after 1 second is cut short
@@ -175,9 +175,9 @@ The speech recognition service for commands SHALL answer the command spotting se
 - **THEN** the confirmation ends in about 1 second with nothing heard, the utterance is not sent again, and the next confirmation is sent to that copy at once
 
 #### Scenario: A confirmation decoding slowly under load is heard in full
-- **GIVEN** the speech recognition service for commands runs as one copy, which took close to a second for each of its recent confirmations, as under machine load, and keeps decoding "press enter" for 1.5 seconds before it answers
+- **GIVEN** the speech recognition service for commands runs as one copy, which took close to a second for each of its recent confirmations, as under machine load, and keeps decoding "enter" for 1.5 seconds before it answers
 - **WHEN** the command spotting service sends that utterance for confirmation
-- **THEN** the confirmation is answered with "press enter", not cut short
+- **THEN** the confirmation is answered with "enter", not cut short
 
 #### Scenario: The budget never passes the deadline
 - **GIVEN** the speech recognition service for commands runs as one copy, which took longer than half the confirmation deadline for each of its recent confirmations
@@ -200,7 +200,7 @@ The service scripts SHALL start, beside the speech recognition service for dicta
 #### Scenario: A command is confirmed by the speech recognition service for commands
 - **GIVEN** the models that the service scripts download are on disk
 - **AND** the user started all services with the service scripts
-- **WHEN** an app streams "press enter" to the command spotting service
+- **WHEN** an app streams "enter" to the command spotting service
 - **THEN** the command spotting service reports "press enter"
 - **AND** the speech recognition service for commands answered its confirmation with the small model, and the speech recognition service for dictation got no request
 

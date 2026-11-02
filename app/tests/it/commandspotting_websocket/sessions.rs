@@ -61,6 +61,15 @@ pub(super) fn at_microphone_rate(speech: &[f32]) -> Vec<f32> {
         .collect()
 }
 
+/// The word the user says for `command`: its one-word form.
+pub(super) fn word_of(command: VoiceCommand) -> &'static str {
+    voicepuncher_voice_commands::FORMS
+        .iter()
+        .find(|form| form.phrase == command.phrase())
+        .and_then(|form| form.words.first())
+        .unwrap_or_else(|| panic!("{command:?} has no one-word form"))
+}
+
 /// The phrases the app listens for in the state where `command` is accepted.
 pub(super) fn listened_for(command: VoiceCommand) -> &'static [VoiceCommand] {
     if VoiceCommand::DICTATING.contains(&command) {

@@ -14,7 +14,7 @@ use voicepuncher::adapters::secondary::commandspotting::websocket::{
 use voicepuncher::adapters::secondary::transcription::openai::OpenAiTranscriber;
 use voicepuncher::config::TranscriptionCfg;
 use voicepuncher_e2e_test::speech::read_wav;
-use voicepuncher_e2e_test::voice_commands::spoken_by;
+use voicepuncher_e2e_test::voice_commands::{spoken_by, spoken_with_pauses};
 
 mod doubled;
 mod noisy_room;
@@ -34,7 +34,7 @@ use doubles::{MicrophoneRecorder, NoOverlay, RecordingSounds};
 use super::stand_ins::{run_with_voice_control, Event, Events, RecordingPaster, StreamingSpotter};
 
 mod audio;
-use audio::{command_audio, room_noise, session, to_f32};
+use audio::{command_audio, room_noise, session, session_form, to_f32};
 mod session_steps;
 use session_steps::session_of;
 use voicepuncher_e2e_test::conversions::{saturating_u32, saturating_usize};
@@ -243,7 +243,7 @@ impl HandsFreeSession {
             Step::Dictate(speaker, sentence) => self.hear(&spoken_by(speaker, sentence)?),
             Step::Command(said, reaction) => {
                 let seen = self.events().len();
-                self.hear(&command_audio(voice, said)?)?;
+                self.hear(&command_audio(voice, &session_form(voice, said))?)?;
                 self.reacted(seen, &reaction, room).map(drop)
             }
         }

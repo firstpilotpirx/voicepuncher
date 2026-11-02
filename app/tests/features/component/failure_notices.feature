@@ -27,7 +27,7 @@ Feature: failure-notices
     Scenario: A voice dictation is lost
       Given speech recognition does not answer
       And voice control is turned on and a dictation started by voice runs
-      When the user ends the voice dictation by saying "stop dictation"
+      When the user ends the voice dictation by saying "stop"
       Then the dictation's text is not pasted
       And the overlay shows a failure notice that the dictation was lost because speech recognition failed
 
@@ -104,8 +104,8 @@ Feature: failure-notices
 
     Scenario: A key press is refused
       Given voice control is turned on and pressing keys in the focused app is refused
-      When the user gives the voice command "press enter"
-      Then the overlay shows a failure notice that "press enter" failed for lack of the Accessibility permission
+      When the user gives the voice command "enter"
+      Then the overlay shows a failure notice that "enter" failed for lack of the Accessibility permission
       And the next voice command is still carried out
 
   Rule: Voice control that cannot start listening is announced

@@ -16,12 +16,13 @@ use voicepuncher_e2e_test::voice_commands::{
 };
 
 use super::super::confirmations::{log_len, log_since_speech, GIVEN_UP};
-use super::super::services;
+use super::super::{services, wait_until};
 use super::speech_as_f32;
 use crate::steps::off_thread;
+use crate::steps::voice_control::command_said;
 use crate::E2eWorld;
 
-const PRESS_ENTER: &str = r#"{"text":" press enter","segments":[]}"#;
+const ENTER: &str = r#"{"text":" enter","segments":[]}"#;
 /// How long the confirmation thread waits for one attempt.
 const DEADLINE: Duration = Duration::from_millis(200);
 /// How long the steps wait for an answer of the confirmation thread.
@@ -31,6 +32,10 @@ const LATE: Duration = Duration::from_millis(30);
 /// More confirmations than a stalled thread may hold waiting.
 const MORE_THAN_THE_BOUND: u64 = 8;
 const CONNECTION: u64 = 1;
+/// The copy pool probes every second; a few rounds are plenty.
+const POOL_TAKES_IT_WITHIN: Duration = Duration::from_secs(5);
+/// A probe round's connection and `GET /`, then the next round's connection.
+const PROBES_OF_TWO_ROUNDS: u32 = 3;
 
 /// A confirmation thread of the command spotting service, and what it answered.
 pub struct Confirmations {
@@ -47,12 +52,14 @@ impl std::fmt::Debug for Confirmations {
 }
 
 /// A speech recognition service for commands on `listener` that never answers its first
-/// request and hears "press enter" in every later one.
-fn hanging_once(listener: TcpListener) {
+/// confirmation and hears "enter" in every later one. The copy pool's probes are no
+/// confirmations: they are answered as a whisper-server or dropped, and counted in `probes`.
+fn hanging_once(listener: TcpListener, probes: Arc<AtomicU32>) {
     std::thread::spawn(move || {
         let mut held = Vec::new();
         for mut stream in listener.incoming().flatten() {
-            if voicepuncher_test_steps::loopback::answered_as_whisper(&mut stream) {
+            if !voicepuncher_test_steps::loopback::is_request(&mut stream) {
+                probes.fetch_add(1, Ordering::SeqCst);
                 continue;
             }
             let mut buf = vec![0u8; 65536];
@@ -64,17 +71,28 @@ fn hanging_once(listener: TcpListener) {
             }
             let _ = write!(
                 stream,
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{PRESS_ENTER}",
-                PRESS_ENTER.len()
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{ENTER}",
+                ENTER.len()
             );
         }
     });
 }
 
+/// The command spotting service started before the stand-in, so its copy pool takes the
+/// stand-in only at a later probe round: once the round after the one that asked the
+/// stand-in what it is (a connection, `GET /`, a connection) has begun, the pool sends it
+/// the confirmations.
 #[given("the speech recognition service for commands never answers one confirmation")]
 fn one_confirmation_hangs(world: &mut E2eWorld) -> Result<()> {
     let services = services(world)?;
-    hanging_once(TcpListener::bind(("127.0.0.1", services.command_stt_port))?);
+    let probes = Arc::new(AtomicU32::new(0));
+    let listener = TcpListener::bind(("127.0.0.1", services.command_stt_port))?;
+    hanging_once(listener, Arc::clone(&probes));
+    ensure!(
+        wait_until(POOL_TAKES_IT_WITHIN, || probes.load(Ordering::SeqCst)
+            >= PROBES_OF_TWO_ROUNDS),
+        "the command spotting service never probed the speech recognition service for commands"
+    );
     Ok(())
 }
 
@@ -112,7 +130,7 @@ fn hung_given_up(world: &mut E2eWorld) -> Result<()> {
     Ok(())
 }
 
-/// Hears "press enter", after failing the first `failures` attempts at their deadline.
+/// Hears "enter", after failing the first `failures` attempts at their deadline.
 struct LateAtFirst {
     failures: u32,
     calls: AtomicU32,
@@ -126,7 +144,7 @@ impl Hear for LateAtFirst {
             return Err(anyhow!("timed out reading response"));
         }
         std::thread::sleep(self.late);
-        Ok(Heard { text: " press enter".to_owned(), words: Vec::new() })
+        Ok(Heard { text: " enter".to_owned(), words: Vec::new() })
     }
 }
 
@@ -160,7 +178,7 @@ fn late_first(world: &mut E2eWorld) -> Result<()> {
 
 #[when(expr = "the confirmation of {string} said alone is asked")]
 fn said_alone(world: &mut E2eWorld, phrase: String) -> Result<()> {
-    VoiceCommand::from_phrase(&phrase).with_context(|| format!("{phrase:?} is no command"))?;
+    command_said(&phrase)?;
     let run = confirmations(world)?;
     // a command said alone is decided by the confirmation of its whole speech segment
     run.worker.submit(job(1, JobKind::Segment));
@@ -173,7 +191,7 @@ fn said_alone(world: &mut E2eWorld, phrase: String) -> Result<()> {
         .collect();
     world.voice.recognized = heard
         .iter()
-        .filter_map(|text| VoiceCommand::from_phrase(text.trim()))
+        .filter_map(|text| command_said(text.trim()).ok())
         .collect();
     Ok(())
 }

@@ -4,7 +4,6 @@ use super::*;
 fn should_remove_the_command_that_ends_the_text() {
     for (text, kept) in [
         ("We meet on Friday. Stop.", "We meet on Friday."),
-        ("We meet on Friday, stop dictation.", "We meet on Friday."),
         ("We meet on Friday stop stop", "We meet on Friday"),
         ("We meet on Friday. Stop, enter.", "We meet on Friday."),
         ("Встреча в пятницу. Стоп.", "Встреча в пятницу."),
@@ -21,6 +20,7 @@ fn should_keep_a_text_that_ends_in_other_words() {
         "We meet on Friday.",
         "Please don't stop the server.",
         "Clear text editing is enabled",
+        "We meet on Friday, stop dictation.",
         "",
     ] {
         assert_eq!(without_trailing_command(text), text, "{text}");
@@ -37,10 +37,7 @@ fn should_remove_a_start_that_opens_the_text() {
         "Meeting moved to Friday."
     );
     assert_eq!(
-        without_leading_command(
-            VoiceCommand::StartDictation,
-            "start dictation we meet at ten"
-        ),
+        without_leading_command(VoiceCommand::StartDictation, "start we meet at ten"),
         "We meet at ten"
     );
     assert_eq!(
@@ -60,7 +57,7 @@ fn should_remove_a_restart_that_opens_the_text_of_a_restarted_dictation() {
             "Restart, restart, coffee machine is broken.",
             "Coffee machine is broken.",
         ),
-        ("restart dictation we meet at ten", "We meet at ten"),
+        ("restart we meet at ten", "We meet at ten"),
         ("Restart. Lunch is at noon.", "Lunch is at noon."),
     ] {
         assert_eq!(
@@ -87,7 +84,6 @@ fn should_remove_a_doubled_start_that_opens_the_text() {
         ("Start, start, the build is green.", "The build is green."),
         ("start start we meet at ten", "We meet at ten"),
         ("Старт старт. Встреча в пятницу.", "Встреча в пятницу."),
-        ("Start dictation, start the engine.", "Start the engine."),
     ] {
         assert_eq!(
             without_leading_command(VoiceCommand::StartDictation, text),
@@ -101,10 +97,6 @@ fn should_remove_a_doubled_start_that_opens_the_text() {
 fn should_remove_a_paste_said_as_its_own_sentence() {
     for (text, kept) in [
         ("Hello there. Paste. And more.", "Hello there. And more."),
-        (
-            "Hello there. Paste text. And more.",
-            "Hello there. And more.",
-        ),
         ("Hello there. Paste.", "Hello there."),
         ("Paste. Hello there.", "Hello there."),
     ] {

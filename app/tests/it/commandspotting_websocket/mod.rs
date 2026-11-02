@@ -33,7 +33,7 @@ mod needs_kws {
     fn should_report_a_spoken_phrase_with_its_speech() {
         let url = required_env("VOICEPUNCHER_COMMAND_SPOTTING_URL");
         // Given
-        let audio = spoken_with_pauses("press enter").unwrap();
+        let audio = spoken_with_pauses("enter").unwrap();
         // When
         let events = spotting_events(&url, &audio, &VoiceCommand::STANDBY).unwrap();
         // Then
@@ -101,11 +101,11 @@ mod needs_kws {
         let url = required_env("VOICEPUNCHER_COMMAND_SPOTTING_URL");
         // When
         let recognized = each_at_once(&VoiceCommand::ALL, |command| {
-            recognized_from_microphone(&url, command.phrase(), listened_for(command))
+            recognized_from_microphone(&url, word_of(command), listened_for(command))
         });
         // Then
         for (command, recognized) in VoiceCommand::ALL.into_iter().zip(recognized) {
-            assert_eq!(recognized, [command], "spoken: {:?}", command.phrase());
+            assert_eq!(recognized, [command], "spoken: {:?}", word_of(command));
         }
     }
 
@@ -115,13 +115,13 @@ mod needs_kws {
         // Given listening for a long time with nothing said
         let mut listening = Listening::start(&url, &VoiceCommand::STANDBY);
         // When the user starts a dictation, stops it and sends the message
-        listening.say_after(LONG_LISTENING_SECS, "start dictation");
+        listening.say_after(LONG_LISTENING_SECS, "start");
         let started = listening.next_command();
         listening.stream.listen_for(&VoiceCommand::DICTATING);
-        listening.say_after(BETWEEN_COMMANDS_SECS, "stop dictation");
+        listening.say_after(BETWEEN_COMMANDS_SECS, "stop");
         let stopped = listening.next_command();
         listening.stream.listen_for(&VoiceCommand::STANDBY);
-        listening.say_after(BETWEEN_COMMANDS_SECS, "press enter");
+        listening.say_after(BETWEEN_COMMANDS_SECS, "enter");
         let entered = listening.next_command();
         listening.stream.stop();
         // Then
@@ -139,9 +139,9 @@ mod needs_kws {
     fn should_take_a_command_phrase_that_ends_the_utterance() {
         let url = required_env("VOICEPUNCHER_COMMAND_SPOTTING_URL");
         let cases = [
-            ("now start dictation", VoiceCommand::StartDictation),
-            ("I think we should press enter", VoiceCommand::PressEnter),
-            ("and then clear all text", VoiceCommand::ClearAllText),
+            ("now start", VoiceCommand::StartDictation),
+            ("I think we should hit enter", VoiceCommand::PressEnter),
+            ("and then clear", VoiceCommand::ClearAllText),
         ];
         // Given listening, when a sentence ends with a command
         let heard = each_at_once(&cases, |(sentence, _)| heard_after_a_pause(&url, sentence));
@@ -152,7 +152,7 @@ mod needs_kws {
     }
 
     #[test]
-    fn should_recognize_stop_dictation_and_press_enter_said_with_a_short_pause_in_real_time() {
+    fn should_recognize_stop_and_enter_said_with_a_short_pause_in_real_time() {
         let url = required_env("VOICEPUNCHER_COMMAND_SPOTTING_URL");
         // Given a dictation runs
         let mut listening = Listening::start(&url, &VoiceCommand::DICTATING);
@@ -162,12 +162,12 @@ mod needs_kws {
             let speaker = scope.spawn(move || {
                 say_in_real_time(
                     &audio,
-                    &at_microphone_rate(&spoken_with_pauses("stop dictation").unwrap()),
+                    &at_microphone_rate(&spoken_with_pauses("stop").unwrap()),
                 );
                 say_in_real_time(&audio, &microphone_silence(SHORT_PAUSE_SECS));
                 say_in_real_time(
                     &audio,
-                    &at_microphone_rate(&spoken_with_pauses("press enter").unwrap()),
+                    &at_microphone_rate(&spoken_with_pauses("enter").unwrap()),
                 );
             });
             let stopped = listening.next_command();
@@ -199,7 +199,7 @@ mod needs_kws {
                 VoiceCommand::StartDictation,
             ]
             .into_iter()
-            .map(|command| (command.phrase(), url.clone()))
+            .map(|command| (word_of(command), url.clone()))
             .map(|(phrase, url)| {
                 scope
                     .spawn(move || recognized_from_microphone(&url, phrase, &VoiceCommand::STANDBY))
@@ -238,11 +238,13 @@ mod needs_kws {
     #[test]
     fn should_start_a_dictation_with_start_opening_the_utterance() {
         let url = required_env("VOICEPUNCHER_COMMAND_SPOTTING_URL");
+        // Long enough for the service's head check: an utterance as short as "start again"
+        // closes before it, and only its whole is matched against the command forms.
         let sentences = [
-            "start dictation again",
-            "start dictation for the next message",
+            "start we meet again at ten",
+            "start the next message please",
         ];
-        // Given listening, when a sentence opens with "start dictation"
+        // Given listening, when a sentence opens with "start"
         let heard = each_at_once(&sentences, |sentence| heard_after_a_pause(&url, sentence));
         // Then
         for (sentence, heard) in sentences.into_iter().zip(heard) {
@@ -257,12 +259,9 @@ mod needs_kws {
     #[test]
     fn should_ignore_a_command_phrase_with_more_speech_after_it() {
         let url = required_env("VOICEPUNCHER_COMMAND_SPOTTING_URL");
-        // A single short word right after a command ("press enter now") is within the margin
+        // A single short word right after a command ("enter now") is within the margin
         // quiet speech needs and still passes: a known limit of the pause rule.
-        let sentences = [
-            "press enter when you are ready",
-            "clear all text in the morning",
-        ];
+        let sentences = ["enter when you are ready", "clear in the morning"];
         // Given listening, when a command phrase is followed by more speech
         let heard = each_at_once(&sentences, |sentence| heard_after_a_pause(&url, sentence));
         // Then

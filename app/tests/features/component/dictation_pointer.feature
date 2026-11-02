@@ -18,7 +18,7 @@ Feature: dictation-pointer
 
     Scenario: A recording started by voice shows the dictation sign
       Given voice control is turned on and no dictation runs for the dictation sign
-      When the user says "start dictation" to start a dictation
+      When the user says "start" to start a dictation
       Then the dictation sign shows a red microphone
 
     Scenario: The dictation sign mirrors every stage of a dictation
@@ -33,7 +33,7 @@ Feature: dictation-pointer
 
     Scenario: A command sign leaves the dictation sign as it was
       Given voice control is turned on, a recording runs and the dictation sign shows
-      When the user says "clear all text" during the recording
+      When the user says "clear" during the recording
       Then the dictation sign keeps showing the red microphone
 
   Rule: The dictation sign goes away once the dictation is over
@@ -55,7 +55,7 @@ Feature: dictation-pointer
 
     Scenario: Restarting a dictation shows the sign for the new recording
       Given voice control is turned on, a recording runs and the dictation sign shows
-      When the user says "restart dictation" during the recording
+      When the user says "restart" during the recording
       Then the dictation sign shows next to the pointer for the new recording
 
     Scenario: Commands unavailable in standby show no dictation sign

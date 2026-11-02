@@ -161,7 +161,7 @@ impl ArchiveRun {
         self.say(VoiceCommand::StopDictation, said_at + STOP_AFTER, placement)
     }
 
-    /// Starts a dictation by voice, drops it with "restart dictation", then stops the
+    /// Starts a dictation by voice, drops it with "restart", then stops the
     /// restarted one by voice: speech recognition only ever hears the restarted one.
     pub(crate) fn dictate_after_a_restart(&mut self) -> Result<()> {
         self.queue_dictation(1, &[]);

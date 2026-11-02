@@ -95,12 +95,12 @@ pub(super) fn says(world: &mut IntegrationWorld, phrase: String) -> Result<()> {
             )
         }
         Some(commands) if commands.len() == 1 => run.say_alone(commands[0].phrase()),
-        _ => run.say_alone(&phrase),
+        _ => bail!("{phrase:?} is not said as command words"),
     }
 }
 
 /// The command a short form names.
-pub(super) fn short_form(word: &str) -> Option<VoiceCommand> {
+pub(crate) fn short_form(word: &str) -> Option<VoiceCommand> {
     match word {
         "start" => Some(VoiceCommand::StartDictation),
         "stop" => Some(VoiceCommand::StopDictation),
@@ -110,6 +110,24 @@ pub(super) fn short_form(word: &str) -> Option<VoiceCommand> {
         "clear" => Some(VoiceCommand::ClearAllText),
         "paste" => Some(VoiceCommand::PasteText),
         _ => None,
+    }
+}
+
+/// The command `word` names: the user says a command as its short form, never as its name.
+pub(crate) fn command_word(word: &str) -> Result<VoiceCommand> {
+    short_form(word).with_context(|| format!("{word:?} is not a command word"))
+}
+
+/// The word the user says for `command`.
+pub(crate) fn word_of(command: VoiceCommand) -> &'static str {
+    match command {
+        VoiceCommand::StartDictation => "start",
+        VoiceCommand::StopDictation => "stop",
+        VoiceCommand::CancelDictation => "cancel",
+        VoiceCommand::RestartDictation => "restart",
+        VoiceCommand::PressEnter => "enter",
+        VoiceCommand::ClearAllText => "clear",
+        VoiceCommand::PasteText => "paste",
     }
 }
 
@@ -179,18 +197,19 @@ pub(crate) fn service_went_away_and_is_back(world: &mut IntegrationWorld) -> Res
 #[when(expr = "the service is back and reports {string}, said while it was away")]
 pub(super) fn back_with_command_said_away(
     world: &mut IntegrationWorld,
-    phrase: String,
+    said: String,
 ) -> Result<()> {
     let run = run(world);
     let away_since = run.away_since.context("the service did not go away")?;
+    let command = command_word(&said)?;
     run.start_when();
     run.send(PipelineInput::SpottingBack)?;
     let segment_start = away_since + PHRASE_LEAD;
     let phrase_start = segment_start + PHRASE_LEAD;
     let phrase_end = phrase_start + PHRASE_LENGTH;
-    run.speak(&phrase, phrase_start);
+    run.speak(&said, phrase_start);
     run.send_segment(
-        &phrase,
+        command.phrase(),
         segment_start..phrase_end + SEGMENT_TAIL,
         phrase_start..phrase_end,
     )

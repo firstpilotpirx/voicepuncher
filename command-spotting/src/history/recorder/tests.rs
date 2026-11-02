@@ -14,6 +14,26 @@ fn heard(phrase: &str, start: f32, end: f32) -> ServerEvent {
     ServerEvent::Phrase { phrase: phrase.to_owned(), start, end, timing }
 }
 
+/// Whisper's verdict "agreed" on "press enter" spotted at 1.2–1.9 s.
+fn agreed_on_enter() -> ServerEvent {
+    ServerEvent::Heard {
+        commands: vec!["press enter".to_owned()],
+        start: 1.2,
+        end: 1.9,
+        verdict: Verdict::Agreed,
+    }
+}
+
+/// The one entry of a segment at 1–2 s in which `reported` went out and Whisper agreed.
+fn only_entry_of(recorder: &mut Recorder, reported: ServerEvent) -> Entry {
+    recorder.went_out(&[segment(1.0, 2.0), vec![reported, agreed_on_enter()]].concat());
+    let entries = recorder.due(3.0, false, &audio());
+    let [entry] = entries.as_slice() else {
+        panic!("one entry: {entries:?}")
+    };
+    entry.clone()
+}
+
 fn audio() -> RecentAudio {
     let mut audio = RecentAudio::new(sample_at(30.0));
     audio.push(&vec![0.1; sample_at(10.0)]);
@@ -93,19 +113,18 @@ fn should_keep_what_whisper_heard_of_a_command_reported_without_confirmation() {
         end: 1.9,
         timing: None,
     };
-    let verdict = ServerEvent::Heard {
-        commands: vec!["press enter".to_owned()],
-        start: 1.2,
-        end: 1.9,
-        verdict: Verdict::Agreed,
-    };
-    recorder.went_out(&[segment(1.0, 2.0), vec![unconfirmed, verdict]].concat());
+    let entry = only_entry_of(&mut recorder, unconfirmed);
 
-    let entries = recorder.due(3.0, false, &audio());
-
-    let [entry] = entries.as_slice() else {
-        panic!("one entry: {entries:?}")
-    };
     assert_eq!(entry.reported[0].whisper, Some(Verdict::Agreed));
     assert_eq!(entry.outcome, Outcome::Agreed);
+}
+
+#[test]
+fn should_keep_whisper_s_verdict_on_a_command_its_hearing_reported_first_without_confirmation() {
+    let mut recorder = Recorder::new(1);
+    recorder.spotted("press enter", "▁EN TER", 1.2, 1.9);
+    let reported = heard("press enter", 1.0, 1.6);
+    let entry = only_entry_of(&mut recorder, reported);
+
+    assert_eq!(entry.reported[0].whisper, Some(Verdict::Agreed));
 }

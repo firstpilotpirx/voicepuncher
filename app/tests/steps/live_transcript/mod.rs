@@ -1,6 +1,7 @@
 //! Drives the real pipeline on its own thread and watches, in one ordered log, what the
 //! overlay shows while the parts of a recording are transcribed during the dictation.
 
+use crate::steps::voice_control::command_word;
 use std::collections::VecDeque;
 use voicepuncher::test_doubles::prelude::*;
 
@@ -213,8 +214,8 @@ fn dictates_with_hotkey(world: &mut IntegrationWorld) -> Result<()> {
 
 #[given(expr = "voice control is turned on and the user started a dictation by saying {string}")]
 fn started_by_voice(world: &mut IntegrationWorld, phrase: String) -> Result<()> {
-    if VoiceCommand::from_phrase(&phrase) != Some(VoiceCommand::StartDictation) {
-        bail!("only \"start dictation\" starts a dictation here, not {phrase:?}");
+    if command_word(&phrase)? != VoiceCommand::StartDictation {
+        bail!("only \"start\" starts a dictation here, not {phrase:?}");
     }
     run(world).start_by_voice()
 }

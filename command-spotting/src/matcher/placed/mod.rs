@@ -30,11 +30,9 @@ pub struct Found {
 }
 
 use voicepuncher_voice_commands::{
-    accepted_after, Form, Mishearing, MishearingKind, DICTATING, MISHEARINGS, RESTART, STANDBY,
-    START,
+    accepted_after, Form, Mishearing, MishearingKind, DICTATING, FORMS, MISHEARINGS, RESTART,
+    STANDBY, START,
 };
-
-use super::forms;
 
 /// The most commands a chain holds.
 const LONGEST_CHAIN: usize = 3;
@@ -83,11 +81,11 @@ fn difference_from(tokens: &[Token], form: &Form) -> Option<f32> {
 /// The command said at `from`, and how many tokens it takes.
 fn command_at(tokens: &[Token], from: usize) -> Option<(&'static str, usize)> {
     let rest = tokens.get(from..)?;
-    // The longest form said, and of those the closest: "restart dictation" is close to
-    // "start dictation" too.
-    let (form, _) = forms()
-        .filter_map(|form| difference_from(rest, &form).map(|d| (form, d)))
-        .min_by(|(a, da), (b, db)| b.words.len().cmp(&a.words.len()).then(da.total_cmp(db)))?;
+    // The closest form said: "restart" is close to "start" too.
+    let (form, _) = FORMS
+        .iter()
+        .filter_map(|form| difference_from(rest, form).map(|d| (form, d)))
+        .min_by(|(_, da), (_, db)| da.total_cmp(db))?;
     Some((form.phrase, form.words.len()))
 }
 

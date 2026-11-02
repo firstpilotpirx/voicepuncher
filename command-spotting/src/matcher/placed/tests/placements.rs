@@ -9,16 +9,8 @@ pub(super) fn should_find_a_command_that_ends_the_utterance() {
         Some(found(&[("stop dictation", 4, 4)], Placement::Tail))
     );
     assert_eq!(
-        dictating().at_end(&words("that is all stop dictation")),
-        Some(found(&[("stop dictation", 3, 4)], Placement::Tail))
-    );
-    assert_eq!(
-        dictating().at_end(&words("never mind, cancel dictation.")),
-        Some(found(&[("cancel dictation", 2, 3)], Placement::Tail))
-    );
-    assert_eq!(
-        standby().at_end(&words("Okay, press enter.")),
-        Some(found(&[("press enter", 1, 2)], Placement::Tail))
+        dictating().at_end(&words("never mind, cancel.")),
+        Some(found(&[("cancel dictation", 2, 2)], Placement::Tail))
     );
     assert_eq!(
         standby().at_end(&words("okay enter")),
@@ -50,10 +42,6 @@ pub(super) fn should_find_start_opening_the_utterance() {
     assert_eq!(
         standby().start_at_head(&words("Start, meeting moved to Friday.")),
         Some(found(&[("start dictation", 0, 0)], Placement::Head))
-    );
-    assert_eq!(
-        standby().start_at_head(&words("start dictation we meet at ten")),
-        Some(found(&[("start dictation", 0, 1)], Placement::Head))
     );
 }
 

@@ -39,16 +39,8 @@ const fn form(phrase: &'static str, words: &'static [&'static str]) -> Form {
     Form { phrase, words }
 }
 
-/// The ways people say each command, longer forms first, so "stop dictation" wins over "stop".
+/// The ways people say each command: its one word; said twice, it is the doubled form.
 pub const FORMS: &[Form] = &[
-    form(CLEAR, &["clear", "all", "text"]),
-    form(START, &["start", "dictation"]),
-    form(STOP, &["stop", "dictation"]),
-    form(CANCEL, &["cancel", "dictation"]),
-    form(RESTART, &["restart", "dictation"]),
-    form(ENTER, &["press", "enter"]),
-    form(CLEAR, &["clear", "text"]),
-    form(PASTE, &["paste", "text"]),
     form(START, &["start"]),
     form(STOP, &["stop"]),
     form(RESTART, &["restart"]),
@@ -61,8 +53,6 @@ pub const FORMS: &[Form] = &[
 /// How a mishearing stands for its commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MishearingKind {
-    /// The words are heard in place of the whole command, wherever it is said.
-    Alias,
     /// A short sentence ending in the words is heard for a quiet short form of the command;
     /// a longer sentence ending in them is speech.
     NearMiss,
@@ -98,11 +88,6 @@ const fn mishearing(
 
 /// The mishearings met so far: one row each, never a branch in the matcher.
 pub const MISHEARINGS: &[Mishearing] = &[
-    // "press enter" runs together.
-    mishearing(&["presenter"], &[ENTER], MishearingKind::Alias),
-    mishearing(&["star", "dictation"], &[START], MishearingKind::Alias),
-    mishearing(&["stuck", "dictation"], &[START], MishearingKind::Alias),
-    mishearing(&["capsule", "dictation"], &[CANCEL], MishearingKind::Alias),
     // The user's quiet "restart" comes out as "Let's start." or "Start.".
     Mishearing {
         heard: &["start"],

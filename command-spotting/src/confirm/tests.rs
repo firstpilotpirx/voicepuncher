@@ -184,7 +184,7 @@ fn should_send_a_confirmation_refused_by_its_copy_to_the_other_copy() {
     };
     let down_port = down.local_addr().unwrap().port();
     let down = voicepuncher_test_steps::loopback::WhisperUntilClosed::on(down);
-    let requests = serve_copy(up, PRESS_ENTER, Duration::ZERO);
+    let requests = serve_copy(up, ENTER, Duration::ZERO);
     let transcriber = UtteranceTranscriber::new(&url).unwrap();
     // The first probe round saw both copies before one went down.
     assert!(CopyPool::shared(&url).unwrap().has_copies());
@@ -192,7 +192,7 @@ fn should_send_a_confirmation_refused_by_its_copy_to_the_other_copy() {
     // When
     let heard = heard_by(&transcriber);
     // Then
-    assert_eq!(heard.text, " press enter");
+    assert_eq!(heard.text, " enter");
     assert_eq!(requests.load(Ordering::SeqCst), 1);
     let refused = lines.containing("confirmation refused by copy");
     assert!(
@@ -203,7 +203,7 @@ fn should_send_a_confirmation_refused_by_its_copy_to_the_other_copy() {
     );
 }
 
-const PRESS_ENTER: &str = r#"{"text":" press enter","segments":[]}"#;
+const ENTER: &str = r#"{"text":" enter","segments":[]}"#;
 const DEADLINE: Duration = Duration::from_millis(300);
 const SAMPLE_RATE: u32 = 16_000;
 
@@ -211,7 +211,7 @@ const SAMPLE_RATE: u32 = 16_000;
 fn should_give_a_confirmation_up_unsent_when_every_copy_stays_busy_past_its_deadline() {
     // Given
     let lines = voicepuncher_test_steps::log_lines::captured(log::LevelFilter::Trace);
-    let (url, requests) = spawn_copy(PRESS_ENTER);
+    let (url, requests) = spawn_copy(ENTER);
     let transcriber = UtteranceTranscriber::new(&url).unwrap();
     let held = CopyPool::shared(&url).unwrap().lease(DEADLINE).unwrap();
     // When
@@ -236,7 +236,7 @@ fn should_give_a_confirmation_up_unsent_when_every_copy_stays_busy_past_its_dead
 #[test]
 fn should_send_a_confirmation_to_the_copy_that_frees_before_its_deadline() {
     // Given
-    let (url, requests) = spawn_copy(PRESS_ENTER);
+    let (url, requests) = spawn_copy(ENTER);
     let transcriber = UtteranceTranscriber::new(&url).unwrap();
     let held = CopyPool::shared(&url).unwrap().lease(DEADLINE).unwrap();
     thread::spawn(move || {
@@ -246,7 +246,7 @@ fn should_send_a_confirmation_to_the_copy_that_frees_before_its_deadline() {
     // When
     let heard = heard_by(&transcriber);
     // Then
-    assert_eq!(heard.text, " press enter");
+    assert_eq!(heard.text, " enter");
     assert_eq!(requests.load(Ordering::SeqCst), 1);
 }
 
@@ -260,8 +260,8 @@ fn should_send_a_confirmation_its_copy_does_not_answer_within_the_budget_to_the_
     } else {
         (second, first)
     };
-    serve_copy(slow, PRESS_ENTER, Duration::from_secs(5));
-    let answered = serve_copy(fast, PRESS_ENTER, Duration::ZERO);
+    serve_copy(slow, ENTER, Duration::from_secs(5));
+    let answered = serve_copy(fast, ENTER, Duration::ZERO);
     let transcriber = UtteranceTranscriber::new(&url).unwrap();
     // When
     let started = Instant::now();
@@ -270,7 +270,7 @@ fn should_send_a_confirmation_its_copy_does_not_answer_within_the_budget_to_the_
         .unwrap();
     let took = started.elapsed();
     // Then
-    assert_eq!(heard.text, " press enter");
+    assert_eq!(heard.text, " enter");
     assert_eq!(answered.load(Ordering::SeqCst), 1);
     assert!(took < Duration::from_millis(1_800), "took {took:?}");
     let cut = lines.containing("confirmation cut short");
@@ -283,7 +283,7 @@ fn should_send_a_confirmation_its_copy_does_not_answer_within_the_budget_to_the_
 #[test]
 fn should_fail_a_confirmation_when_every_copy_stays_silent_past_its_deadline() {
     // Given
-    let (url, _) = spawn_slow_copy(PRESS_ENTER, Duration::from_secs(5));
+    let (url, _) = spawn_slow_copy(ENTER, Duration::from_secs(5));
     let transcriber = UtteranceTranscriber::new(&url).unwrap();
     // When
     let started = Instant::now();

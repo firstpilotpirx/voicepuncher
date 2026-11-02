@@ -81,14 +81,13 @@ fn placed(matcher: &PhraseMatcher, texts: &[&str]) -> Option<Found> {
         .or_else(|| matcher.start_at_head(texts))
 }
 
-/// The command the whole of `fresh` says: at once when its words are the whole phrase
-/// ("press enter"), else once settled, so "stop the" of "stop the car" waits for "car".
+/// The command the whole of `fresh` says once settled, so "stop the" of "stop the car" waits
+/// for "car".
 fn alone(matcher: &PhraseMatcher, fresh: &[&TimedWord], moment: Moment) -> Option<Finding> {
     let (first, last) = (fresh.first()?, fresh.last()?);
     let text: Vec<&str> = fresh.iter().map(|w| w.text.as_str()).collect();
     let phrase = matcher.phrase_in(&text.join(" "))?;
-    let settled = is_phrase(&text, &phrase) || settled(moment, last.end);
-    settled.then(|| Finding {
+    settled(moment, last.end).then(|| Finding {
         commands: vec![phrase],
         start: first.start,
         end: last.end,
@@ -137,17 +136,6 @@ fn ended(moment: Moment) -> bool {
         Moment::Closing => true,
         Moment::Decoding { now, pause } => pause.is_some_and(|p| now >= p),
     }
-}
-
-/// Whether `words` say `phrase` word for word, case and punctuation aside.
-fn is_phrase(words: &[&str], phrase: &str) -> bool {
-    let bare = |w: &str| {
-        w.chars()
-            .filter(|c| c.is_alphanumeric())
-            .collect::<String>()
-    };
-    let said: Vec<String> = words.iter().map(|w| bare(w).to_lowercase()).collect();
-    said.len() > 1 && said.join(" ") == phrase
 }
 
 fn finding(fresh: &[&TimedWord], found: &Found) -> Finding {

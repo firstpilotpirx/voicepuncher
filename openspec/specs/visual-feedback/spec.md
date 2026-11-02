@@ -55,7 +55,7 @@ The enter, clear, paste and restart signs SHALL each show the command's icon and
 
 #### Scenario: The enter sign shows its icon and name
 - **GIVEN** voice control is turned on and no dictation runs
-- **WHEN** the user says "press enter"
+- **WHEN** the user says "enter"
 - **THEN** the overlay shows the return icon and "Enter" for about a second
 
 ### Requirement: A failure notice shows an amber glass sign with its message
@@ -211,7 +211,7 @@ Right after the text of a dictation is pasted, the overlay SHALL show a green ch
 
 #### Scenario: A command right after the paste replaces the Pasted sign
 - **GIVEN** voice control is turned on and the overlay shows the Pasted sign
-- **WHEN** the user says "press enter"
+- **WHEN** the user says "enter"
 - **THEN** the enter sign replaces the Pasted sign at once
 
 ### Requirement: The overlay appears without rebuilding its windows

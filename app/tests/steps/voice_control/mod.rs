@@ -44,6 +44,7 @@ const COMMAND_LENGTH: Duration = Duration::from_millis(500);
 /// How late the service places a command's start: a cut this late keeps the first command
 /// word in the recording, so the text must lose it.
 const LATE_CUT: Duration = Duration::from_millis(50);
+/// The name the service reports for the command the user starts by saying "stop".
 const STOP_PHRASE: &str = "stop dictation";
 /// Longest a pipeline reaction may take in these scenarios.
 const REACTION: Duration = Duration::from_secs(2);
@@ -86,7 +87,7 @@ pub(crate) fn listening_on_given(world: &mut IntegrationWorld) -> Result<()> {
 fn dictation_runs(world: &mut IntegrationWorld) -> Result<()> {
     listening_on_given(world)?;
     let run = run(world);
-    run.say_alone("start dictation")?;
+    run.say_alone(VoiceCommand::StartDictation.phrase())?;
     run.wait_for(|e| *e == Event::RecordingStarted)?;
     Ok(())
 }
@@ -103,10 +104,11 @@ fn sentence_said(world: &mut IntegrationWorld) {
 }
 
 #[given(expr = "the user has said {string}")]
-fn phrase_said(world: &mut IntegrationWorld, phrase: String) -> Result<()> {
+fn phrase_said(world: &mut IntegrationWorld, said: String) -> Result<()> {
+    let command = command_word(&said)?;
     let run = run(world);
     run.speak(SENTENCE, Instant::now());
-    run.say_alone(&phrase)
+    run.say_alone(command.phrase())
 }
 
 pub(crate) fn app_starts(world: &mut IntegrationWorld) {

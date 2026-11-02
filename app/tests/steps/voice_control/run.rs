@@ -1,5 +1,6 @@
 //! The voice run: the pipeline under test with its doubles and its event log.
 
+use super::word_of;
 use super::{
     bail, mpsc, Arc, CommandPlacement, Cut, Duration, Event, Events, Instant, IntegrationWorld,
     NotingRecorder, OnceLock, Phrases, Pipeline, PipelineConfig, PipelineInput, PipelineLog,
@@ -86,12 +87,15 @@ impl VoiceRun {
         Ok(())
     }
 
-    /// Says `words` as a whole utterance, with a pause before and after.
+    /// Says `words` as a whole utterance, with a pause before and after; a command's name
+    /// is said as its short form and reported by its name, as the service does.
     pub(crate) fn say_alone(&mut self, words: &str) -> Result<()> {
         let segment_start = Instant::now();
         let phrase_start = segment_start + PHRASE_LEAD;
         let phrase_end = phrase_start + PHRASE_LENGTH;
-        self.speak(words, phrase_start);
+        let spoken: &str =
+            VoiceCommand::from_phrase(words).map_or(words, |command| word_of(command));
+        self.speak(spoken, phrase_start);
         self.send_segment(
             words,
             segment_start..phrase_end + SEGMENT_TAIL,

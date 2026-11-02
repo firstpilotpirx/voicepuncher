@@ -80,13 +80,13 @@ pub fn all_lines(keywords: &[Keyword]) -> String {
         .join("\n")
 }
 
-/// The per-stream keyword list for `phrases`, or the phrases this service does not know.
+/// The per-stream keyword list for `phrases`, empty when only triggers serve them, or the
+/// phrases this service does not know.
 pub fn select(keywords: &[Keyword], phrases: &[String]) -> Result<String, UnknownPhrases> {
-    let unknown: Vec<String> = phrases
-        .iter()
-        .filter(|p| !keywords.iter().any(|k| &k.phrase == *p))
-        .cloned()
-        .collect();
+    let known = |phrase: &str| {
+        keywords.iter().any(|k| k.phrase == phrase) || TRIGGERS.iter().any(|(_, p)| *p == phrase)
+    };
+    let unknown: Vec<String> = phrases.iter().filter(|p| !known(p)).cloned().collect();
     if !unknown.is_empty() {
         return Err(UnknownPhrases(unknown));
     }

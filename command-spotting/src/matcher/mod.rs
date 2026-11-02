@@ -4,19 +4,17 @@ mod placed;
 
 pub use placed::{Found, Placement};
 
-use voicepuncher_voice_commands::{Form, MishearingKind, FORMS, MISHEARINGS};
+use voicepuncher_voice_commands::{MishearingKind, FORMS, MISHEARINGS};
 
 /// Where a transcript's sentences end.
 const SENTENCE_ENDS: &[char] = &['.', ',', '!', '?', '\n'];
-/// Words a transcript may hold inside a phrase without changing it ("cancel the quotation").
-const FILLER_WORDS: &[&str] = &["the", "a", "an"];
 /// The most words a transcript may hold to be a near miss: "Let's start." is "let", "s",
 /// "start"; a longer sentence ending in the word is speech, not a misheard command.
 const NEAR_MISS_WORDS: usize = 3;
 /// Largest share of characters that may differ between a transcript and a phrase.
 const MAX_DIFFERENCE: f32 = 0.25;
-/// Largest share of characters that may differ within one word ("activation" for
-/// "dictation"), so that "stop" never passes for "start".
+/// Largest share of characters that may differ within one word, so that "stop" never
+/// passes for "start".
 const MAX_WORD_DIFFERENCE: f32 = 0.4;
 
 /// The command whose words open speech: the start of an utterance is searched early for it
@@ -128,30 +126,22 @@ impl PhraseMatcher {
     /// Every way to say each selected phrase, with the phrase it stands for.
     fn surface_forms(&self) -> impl Iterator<Item = (String, String)> + '_ {
         self.phrases.iter().flat_map(|phrase| {
-            forms()
+            FORMS
+                .iter()
                 .filter(move |form| form.phrase == phrase)
                 .map(move |form| (phrase.clone(), form.words.join(" ")))
         })
     }
 }
 
-/// Lowercase words of letters only, in any script, without filler words.
+/// Lowercase words of letters only, in any script.
 fn words(transcript: &str) -> Vec<String> {
     transcript
         .to_lowercase()
         .split(|c: char| !c.is_alphabetic())
-        .filter(|w| !w.is_empty() && !FILLER_WORDS.contains(w))
+        .filter(|w| !w.is_empty())
         .map(str::to_owned)
         .collect()
-}
-
-/// Every way to say a command: its forms, then the words heard in place of it.
-fn forms() -> impl Iterator<Item = Form> {
-    let aliases = MISHEARINGS
-        .iter()
-        .filter(|m| m.kind == MishearingKind::Alias)
-        .map(|m| Form { phrase: m.means[0], words: m.heard });
-    FORMS.iter().copied().chain(aliases)
 }
 
 /// Whether `said` ends with the words `heard`.
@@ -163,7 +153,7 @@ fn ends_with(said: &[String], heard: &[&str]) -> bool {
             .all(|(a, b)| a == b)
 }
 
-/// The words said once when the utterance repeats them ("press enter, press enter").
+/// The words said once when the utterance repeats them ("enter, enter").
 fn once(words: &[String]) -> Vec<String> {
     let half = words.len() / 2;
     if words.len() % 2 == 0 && half > 0 && words[..half] == words[half..] {
