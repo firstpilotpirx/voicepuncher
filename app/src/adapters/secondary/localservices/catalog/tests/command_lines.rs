@@ -55,12 +55,11 @@ fn script_args(service: &str, text: &str) -> Vec<String> {
 
 /// The catalog's arguments of `service`, with the scripts' parameter names, port 0 and 0 threads.
 fn catalog_args(service: &str) -> Vec<String> {
-    match service {
-        WHISPER => whisper_args("model", 0, 0, "vad"),
-        _ => {
-            let models = ["en_model_dir", "ru_model_dir", "vad"].map(String::from);
-            streaming_args(0, &models, None)
-        }
+    if service == WHISPER {
+        whisper_args("model", 0, 0, "vad")
+    } else {
+        let models = ["en_model_dir", "ru_model_dir", "vad"].map(String::from);
+        streaming_args(0, &models, None)
     }
 }
 

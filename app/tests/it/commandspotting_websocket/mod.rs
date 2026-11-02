@@ -78,7 +78,7 @@ mod needs_kws {
     fn should_recognize_stop_and_enter_said_with_a_short_pause_in_real_time() {
         let url = required_env("VOICEPUNCHER_COMMAND_SPOTTING_URL");
         // Given a dictation runs
-        let mut listening = Listening::start(&url, &VoiceCommand::DICTATING);
+        let listening = Listening::start(&url, &VoiceCommand::DICTATING);
         // When the user says both commands with a short pause, as the app switches phrase sets
         let speech = std::thread::scope(|scope| {
             let audio = listening.audio.clone();

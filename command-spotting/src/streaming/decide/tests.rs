@@ -277,8 +277,8 @@ fn should_take_each_command_of_an_utterance_said_with_a_pause_between_them() {
     let first = decide(&standby(), &words, Moment::Closing, 0.0).expect("the first");
     let second = decide(&standby(), &words, Moment::Closing, first.end).expect("the second");
     // Then
-    assert_eq!(first.end, 1.55);
-    assert_eq!(second.end, 2.85);
+    assert!((first.end - 1.55).abs() < 1e-6, "{}", first.end);
+    assert!((second.end - 2.85).abs() < 1e-6, "{}", second.end);
 }
 
 #[test]

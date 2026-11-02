@@ -184,7 +184,7 @@ impl Listening {
     }
 
     /// The next command the app recognizes, as the pipeline would get it.
-    pub(crate) fn next_command(&mut self) -> Option<VoiceCommand> {
+    pub(crate) fn next_command(&self) -> Option<VoiceCommand> {
         let deadline = Instant::now() + COMMAND_TIMEOUT;
         let inputs = &self.inputs;
         std::iter::from_fn(|| {

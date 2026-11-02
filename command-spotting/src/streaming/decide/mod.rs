@@ -42,9 +42,11 @@ const WORD_PAUSE_SECS: f32 = DOUBLE_GAP_SECS;
 /// a new command: the first word may settle before the recognizer decoded the second.
 const DOUBLE_GAP_SECS: f32 = 0.6;
 
-/// Whether `found` repeats `last`, the utterance's previous report: the same commands right
-/// after it, or the end of its command word anywhere in the utterance ("start" heard of a
-/// "restart" by the other recognizer, which may time it well after the "restart" ends).
+/// Whether `found` repeats `last`, the utterance's previous report.
+///
+/// It does when it holds the same commands right after it, or the end of its command word
+/// anywhere in the utterance ("start" heard of a "restart" by the other recognizer, which may
+/// time it well after the "restart" ends).
 pub fn doubles(last: Option<&Finding>, found: &Finding) -> bool {
     last.is_some_and(|last| {
         ends_its_word(last, found)

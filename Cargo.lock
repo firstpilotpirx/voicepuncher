@@ -3115,7 +3115,6 @@ dependencies = [
  "sherpa-onnx",
  "tempfile",
  "tungstenite",
- "ureq",
  "voicepuncher-entry-folders",
  "voicepuncher-log-line",
  "voicepuncher-test-steps",

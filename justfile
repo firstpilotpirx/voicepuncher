@@ -741,14 +741,12 @@ _streaming-bench *args:
 _require-models:
     #!/usr/bin/env bash
     set -euo pipefail
-    # Defaults are found by exact file name (see the settings at the top); a default that is not on disk is empty
-    for entry in VOICEPUNCHER_WHISPER_MODEL={{dictation_model_file}}; do
-        var=${entry%%=*} path="${!var:-}"
-        if [[ -z "$path" || ! -f "$path" ]]; then
-            echo "✗ $var: no model file (got '${path}', default ${entry#*=} in ~/.voicepuncher or ~/.voicepuncher/models). Run 'just models' or set it in .env" >&2
-            exit 1
-        fi
-    done
+    # The default is found by exact file name (see the settings at the top); a default that is not on disk is empty
+    path="${VOICEPUNCHER_WHISPER_MODEL:-}"
+    if [[ -z "$path" || ! -f "$path" ]]; then
+        echo "✗ VOICEPUNCHER_WHISPER_MODEL: no model file (got '${path}', default {{dictation_model_file}} in ~/.voicepuncher or ~/.voicepuncher/models). Run 'just models' or set it in .env" >&2
+        exit 1
+    fi
     echo "whisper (dictation): $VOICEPUNCHER_WHISPER_MODEL"
 
 # The test runner every test recipe uses, pinned like .config/nextest.toml's nextest-version; installs nothing
