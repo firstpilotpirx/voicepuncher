@@ -13,12 +13,17 @@ use super::JobContext;
 impl Session<'_> {
     /// A phrase the keyword spotter found but no speech segment took: the voice activity
     /// detector missed the utterance. It counts when the speech recognition service hears
-    /// only the command around it.
+    /// only the command around it. A phrase inside the utterance still running is that
+    /// utterance's ("enter enter" with speech after it), whose checks hear it.
     pub(in crate::engine) fn confirm_unheld(&mut self) {
         if self.worker.is_none() {
             return;
         }
-        for spotted in self.orderer.unheld(seconds(self.detector.samples_seen)) {
+        let running_since = (self.utterances.current)
+            .and_then(|id| self.utterances.running.get(&id))
+            .map(|running| seconds(running.start));
+        let now = seconds(self.detector.samples_seen);
+        for spotted in self.orderer.unheld(now, running_since) {
             let around = samples_in(PRE_ROLL_SECS / 2.0);
             let from = samples_in(spotted.start)
                 .saturating_sub(around)

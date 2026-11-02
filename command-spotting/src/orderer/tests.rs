@@ -80,10 +80,23 @@ fn should_give_up_waiting_for_the_segment_of_a_phrase_the_detector_missed() {
     let mut orderer = EventOrderer::default();
     orderer.phrase(spotted(10.0, 11.0));
     // When
-    let early = orderer.unheld(11.5);
-    let late = orderer.unheld(12.5);
+    let early = orderer.unheld(11.5, None);
+    let late = orderer.unheld(12.5, None);
     // Then
     assert!(early.is_empty());
     assert_eq!(late, [spotted(10.0, 11.0)]);
-    assert!(orderer.unheld(13.0).is_empty());
+    assert!(orderer.unheld(13.0, None).is_empty());
+}
+
+#[test]
+fn should_keep_a_phrase_of_speech_still_running_waiting_for_its_segment() {
+    // Given a phrase spotted in speech that began at 9.5 s and still runs
+    let mut orderer = EventOrderer::default();
+    orderer.phrase(spotted(10.0, 11.0));
+    // When the speech runs on well past the phrase
+    let running = orderer.unheld(13.0, Some(9.5));
+    let then = orderer.segment(Segment { start: 9.5, end: 13.5 });
+    // Then its segment takes it
+    assert!(running.is_empty());
+    assert!(then.contains(&phrase(10.0, 11.0)), "{then:?}");
 }

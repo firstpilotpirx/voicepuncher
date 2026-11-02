@@ -50,11 +50,13 @@ impl EventOrderer {
     }
 
     /// The phrases no speech segment took although `now` (seconds of audio) is well past
-    /// their end; they are dropped from the waiting ones.
-    pub fn unheld(&mut self, now: f32) -> Vec<Spotted> {
+    /// their end; they are dropped from the waiting ones. A phrase that ends in speech still
+    /// running since `running_since` waits on: that speech's segment takes it once it ends.
+    pub fn unheld(&mut self, now: f32, running_since: Option<f32>) -> Vec<Spotted> {
+        let in_running = |p: &Spotted| running_since.is_some_and(|start| p.end >= start);
         let (unheld, waiting): (Vec<Spotted>, Vec<Spotted>) = std::mem::take(&mut self.pending)
             .into_iter()
-            .partition(|p| now - p.end > UNHELD_AFTER);
+            .partition(|p| now - p.end > UNHELD_AFTER && !in_running(p));
         self.pending = waiting;
         unheld
     }
