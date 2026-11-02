@@ -14,7 +14,7 @@ use voicepuncher::adapters::secondary::commandspotting::websocket::{
 use voicepuncher::adapters::secondary::transcription::openai::OpenAiTranscriber;
 use voicepuncher::config::TranscriptionCfg;
 use voicepuncher_e2e_test::speech::read_wav;
-use voicepuncher_e2e_test::voice_commands::spoken_by;
+use voicepuncher_e2e_test::voice_commands::{spoken_by, spoken_with_pauses};
 
 mod doubled;
 mod noisy_room;
