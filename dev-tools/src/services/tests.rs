@@ -1,4 +1,4 @@
-use super::command_lines::{command_spotting_args, streaming_args, whisper_args};
+use super::command_lines::{streaming_args, whisper_args};
 use super::e2e::{unlisted, watched_ports, Watched};
 use super::launch::{last_lines, supervisor_args, Service};
 use super::ready::{note, port_open, Ready};
@@ -71,14 +71,6 @@ fn should_start_whisper_with_the_arguments_of_both_speech_recognition_services()
 }
 
 #[test]
-fn should_start_command_spotting_with_its_arguments() {
-    assert_eq!(
-        command_spotting_args("8082", "kws", "vad.onnx", "http://127.0.0.1:8085/v1").join(" "),
-        "--port 8082 --model-dir kws --vad-model vad.onnx --transcription-url http://127.0.0.1:8085/v1"
-    );
-}
-
-#[test]
 fn should_start_command_spotting_with_the_streaming_recognizers_arguments() {
     assert_eq!(
         streaming_args("8082", "en", "ru", "vad.onnx").join(" "),
@@ -110,7 +102,6 @@ fn should_name_the_pid_log_and_copy_files_by_binary_and_port() {
 #[test]
 fn should_give_the_urls_of_the_services() {
     let settings = settings();
-    assert_eq!(settings.command_stt_url(), "http://127.0.0.1:28085/v1");
     assert_eq!(settings.kws_url(), "ws://127.0.0.1:28082");
 }
 

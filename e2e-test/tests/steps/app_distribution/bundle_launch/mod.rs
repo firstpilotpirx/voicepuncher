@@ -198,7 +198,7 @@ fn write_config(home: &Path, ports: Ports) -> Result<PathBuf> {
         format!(
             "[transcription]\nbase_url = \"{}\"\n\n\
              [voice_control]\nenabled = true\nurl = \"ws://127.0.0.1:{kws}\"\n\
-             recognizer = \"keyword_spotting\"\n\n\
+             \n\
              [services]\nmanage = true\ndictation_copies = 1\ncommand_copies = 1\n\
              command_spotting_copies = 1\n\
              commands_url = \"{}\"\n",

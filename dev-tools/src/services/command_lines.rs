@@ -46,28 +46,8 @@ pub fn whisper_args(model: &str, port: &str, threads: &str, vad: &str) -> Vec<St
     ])
 }
 
-/// The command spotting service's arguments; `--save-speech-dir` follows when `VOICEPUNCHER_KWS_SAVE_SPEECH_DIR`
-/// is set.
-pub fn command_spotting_args(
-    port: &str,
-    model_dir: &str,
-    vad: &str,
-    commands_url: &str,
-) -> Vec<String> {
-    owned(&[
-        "--port",
-        port,
-        "--model-dir",
-        model_dir,
-        "--vad-model",
-        vad,
-        "--transcription-url",
-        commands_url,
-    ])
-}
-
-/// The command spotting service's arguments with the streaming recognizers
-/// (`VOICEPUNCHER_COMMAND_RECOGNIZER=streaming`): no speech recognition service for commands.
+/// The command spotting service's arguments with the streaming recognizers; `--save-speech-dir` follows when
+/// `VOICEPUNCHER_KWS_SAVE_SPEECH_DIR` is set.
 pub fn streaming_args(
     port: &str,
     en_model_dir: &str,

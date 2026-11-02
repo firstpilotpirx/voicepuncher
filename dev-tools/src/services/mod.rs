@@ -111,11 +111,6 @@ impl Settings {
         })
     }
 
-    /// The URL of the speech recognition service for commands, which the command spotting service confirms with.
-    pub fn command_stt_url(&self) -> String {
-        format!("http://127.0.0.1:{}/v1", self.commands.port)
-    }
-
     /// The URL of the command spotting service.
     pub fn kws_url(&self) -> String {
         format!("ws://127.0.0.1:{}", self.kws_port)
