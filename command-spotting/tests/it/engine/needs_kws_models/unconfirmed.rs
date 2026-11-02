@@ -60,6 +60,7 @@ fn should_report_a_spotted_command_before_its_hearing_without_confirmation() {
         reported.is_some() && verdict.is_some() && reported < verdict,
         "{events:?}"
     );
+    assert_eq!(reported_phrases(&events), ["press enter"], "{events:?}");
     assert_eq!(
         verdicts(&events),
         [(vec!["press enter".to_owned()], Verdict::Agreed)]
