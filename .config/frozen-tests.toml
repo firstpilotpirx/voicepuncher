@@ -109,3 +109,12 @@ stage = "e2e-smoke-voice"
 beside = "the command STT copies stopped answering (15 of 28 confirmations cut short) while the installed app’s command spotting service used 2.6 cores"
 branch = "feat/speed-up-command-recognizers"
 
+
+[[frozen]]
+test = "scenario: Start start without confirmation starts at once"
+frozen = "2026-11-02"
+recipe = "e2e-cues"
+stage = "e2e-cues"
+beside = "load average 12 from other sessions; KWS reports the second start ~0.28 s after its end, 0.3 s bound"
+branch = "feat/speed-up-command-recognizers"
+
