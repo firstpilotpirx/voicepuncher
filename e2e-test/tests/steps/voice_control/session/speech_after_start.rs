@@ -211,7 +211,8 @@ fn says_command_and_sentence(world: &mut E2eWorld, said: String) -> Result<()> {
     expr = "someone says {string}, pauses for about {float} s and says a/another sentence, and later ends the dictation"
 )]
 fn says_command_pause_sentence(world: &mut E2eWorld, said: String, pause_secs: f32) -> Result<()> {
-    let mut audio = without_trailing_silence(spoken_by(ENGLISH_VOICE, &said)?);
+    // WHY: the streaming models hear nothing of Eddy's lone "Start" (see `synthesized_command`).
+    let mut audio = super::start_cue::synthesized_command(&said)?;
     audio.extend(silence(pause_secs));
     audio.extend(from_first_sound(spoken_by(ENGLISH_VOICE, SENTENCE)?));
     session_of(world)?.dictate_by_voice(&audio)
