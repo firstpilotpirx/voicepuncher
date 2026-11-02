@@ -49,3 +49,18 @@ fn should_replay_none_of_the_last_utterances_speech_into_the_next() {
     assert_eq!(en.streams.load(Ordering::SeqCst), 2);
     assert!(en.opening()[1] <= RATE * 2 / 5);
 }
+
+#[test]
+fn should_refuse_a_phrase_that_is_no_command() {
+    // Given
+    let en = Scripted::new("en", &[]);
+    let mut session = session(&[&en], None);
+    let phrases = vec!["press enter".to_owned(), "open the door".to_owned()];
+    // When
+    let refused = session.select(&PhraseSelection { phrases, ..PhraseSelection::default() });
+    // Then
+    assert_eq!(
+        refused,
+        Err(UnknownPhrases(vec!["open the door".to_owned()]))
+    );
+}

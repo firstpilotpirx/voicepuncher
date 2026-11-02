@@ -83,8 +83,17 @@ impl<'a> Session<'a> {
         }
     }
 
-    /// Listens for the phrases of `selection` from now on.
+    /// Listens for the phrases of `selection` from now on; refuses a phrase that is no command.
     pub fn select(&mut self, selection: &PhraseSelection) -> Result<(), UnknownPhrases> {
+        let unknown: Vec<String> = selection
+            .phrases
+            .iter()
+            .filter(|p| !voicepuncher_voice_commands::COMMANDS.contains(&p.as_str()))
+            .cloned()
+            .collect();
+        if !unknown.is_empty() {
+            return Err(UnknownPhrases(unknown));
+        }
         self.matcher =
             PhraseMatcher::new(&selection.phrases).with_early_start(selection.early_start);
         Ok(())
