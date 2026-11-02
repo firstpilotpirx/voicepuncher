@@ -97,6 +97,8 @@ const SOUNDS: &[(&str, &[&[Letter]])] = &[
                 ("с", Once),
                 ("т", Once),
             ],
+            // A short synthesized "paste" loses its "п" ("эйст"); the "й" keeps "ест" apart.
+            &[("эе", Once), ("й", Once), ("с", Once), ("т", Once)],
         ],
     ),
 ];

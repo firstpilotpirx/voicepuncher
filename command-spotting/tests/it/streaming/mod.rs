@@ -13,13 +13,14 @@ use crate::common;
 const SAMPLE_RATE: usize = 16_000;
 const PAUSE_SECS: f32 = 1.0;
 
-const PHRASES: [&str; 6] = [
+const PHRASES: [&str; 7] = [
     "start dictation",
     "stop dictation",
     "cancel dictation",
     "restart dictation",
     "press enter",
     "clear all text",
+    "paste text",
 ];
 
 /// ONNX Runtime aborts when models load or run on several test threads at once.
@@ -103,6 +104,15 @@ mod needs_streaming_models {
         let commands = commands_in(&engine, &common::spoken_by(None, "enter enter"));
         // Then
         assert_eq!(commands, ["press enter"]);
+    }
+
+    #[test]
+    fn should_report_a_synthesized_paste() {
+        let engine = engine();
+        // When
+        let commands = commands_in(&engine, &common::spoken_by(None, "paste"));
+        // Then
+        assert_eq!(commands, ["paste text"]);
     }
 
     #[test]
