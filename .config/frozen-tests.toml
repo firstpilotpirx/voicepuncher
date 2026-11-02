@@ -145,3 +145,12 @@ stage = "test"
 beside = "the whole test stage (1660 tests) beside the user app whisper-server copies on 18082-18084; a branch touching only command-spotting"
 branch = "feat/remove-long-command-forms"
 
+
+[[frozen]]
+test = "scenario: Enter after a sentence is reported soon after the pause"
+frozen = "2026-11-02"
+recipe = "e2e-cues"
+stage = "e2e-cues"
+beside = "nothing else: e2e-cues alone on the machine; also failed 2026-11-01 at 0.712 s on feat/speed-up-command-recognizers"
+branch = "feat/remove-long-command-forms"
+
