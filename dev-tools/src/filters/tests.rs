@@ -17,9 +17,7 @@ fn needs() -> String {
 fn env(changed: &[(&str, &str)], corpus: &std::path::Path) -> BTreeMap<String, String> {
     let mut env: BTreeMap<String, String> = [
         "VOICEPUNCHER_TRANSCRIPTION_URL",
-        "VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL",
         "VOICEPUNCHER_COMMAND_SPOTTING_URL",
-        "VOICEPUNCHER_KWS_MODEL_DIR",
         "VOICEPUNCHER_KWS_VAD_MODEL",
         "VOICEPUNCHER_STREAMING_EN_MODEL_DIR",
         "VOICEPUNCHER_STREAMING_RU_MODEL_DIR",

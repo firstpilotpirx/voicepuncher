@@ -27,13 +27,8 @@ use std::path::{Path, PathBuf};
 /// 10001–10004 above its own (10000 below when they would pass 65535), crate copy-pool, `address.rs` `MAX_COPIES`.
 pub const MAX_COPIES: u32 = 4;
 
-/// Every service, in the order a start without names starts them: the service for commands before the command
-/// spotting service, so its first confirmation finds it ready.
-pub const SERVICES: [&str; 3] = [
-    "whisper-server",
-    "whisper-server-commands",
-    "voicepuncher-command-spotting",
-];
+/// Every service, in the order a start without names starts them.
+pub const SERVICES: [&str; 2] = ["whisper-server", "voicepuncher-command-spotting"];
 
 /// Why a start or stop ends early: a message printed after `✗ `, or an exit code whose reason was printed already.
 #[derive(Debug, PartialEq, Eq)]
@@ -79,13 +74,11 @@ pub struct Settings {
     pub run_dir: PathBuf,
     pub log_dir: PathBuf,
     pub dictation: Speech,
-    pub commands: Speech,
     pub kws_port: u32,
 }
 
 impl Settings {
-    /// The settings of this environment: `VOICEPUNCHER_STT_PORT` (8081), `VOICEPUNCHER_STT_INSTANCES` (3),
-    /// `VOICEPUNCHER_COMMAND_STT_PORT` (8085), `VOICEPUNCHER_COMMAND_STT_INSTANCES` (3) and
+    /// The settings of this environment: `VOICEPUNCHER_STT_PORT` (8081), `VOICEPUNCHER_STT_INSTANCES` (3) and
     /// `VOICEPUNCHER_KWS_PORT` (8082).
     pub fn from_env() -> Result<Self, String> {
         let home = home();
@@ -99,13 +92,6 @@ impl Settings {
                 copies: setting("VOICEPUNCHER_STT_INSTANCES", "3"),
                 model_var: "VOICEPUNCHER_WHISPER_MODEL",
                 label: "speech recognition service for dictation",
-            },
-            commands: Speech {
-                name: "whisper-server-commands",
-                port: port("VOICEPUNCHER_COMMAND_STT_PORT", "8085")?,
-                copies: setting("VOICEPUNCHER_COMMAND_STT_INSTANCES", "3"),
-                model_var: "VOICEPUNCHER_COMMAND_WHISPER_MODEL",
-                label: "speech recognition service for commands",
             },
             kws_port: port("VOICEPUNCHER_KWS_PORT", "8082")?,
         })
@@ -174,8 +160,7 @@ pub fn selected(args: &[String]) -> Vec<String> {
 /// The message for a name that is no service.
 pub fn unknown(service: &str) -> Stop {
     Stop::Message(format!(
-        "unknown service '{service}' — use whisper-server, whisper-server-commands or \
-         voicepuncher-command-spotting"
+        "unknown service '{service}' — use whisper-server or voicepuncher-command-spotting"
     ))
 }
 

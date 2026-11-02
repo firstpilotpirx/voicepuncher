@@ -29,7 +29,6 @@ pub fn start(settings: &Settings, services: &[String]) -> Step {
     for service in selected(services) {
         match service.as_str() {
             "whisper-server" => start_whisper(settings, &settings.dictation)?,
-            "whisper-server-commands" => start_whisper(settings, &settings.commands)?,
             "voicepuncher-command-spotting" => start_command_spotting(settings)?,
             _ => return Err(unknown(&service)),
         }

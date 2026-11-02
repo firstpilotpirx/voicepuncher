@@ -36,6 +36,6 @@
 
 ## 5. Recipes, docs and version
 
-- [ ] 5.1 `dev-tools` loses the service for commands; the `justfile` loses `command_model_file`, `command_stt_url`, the KWS and command Whisper variables and the service for commands in `start-` and `stop-model-servers`
-- [ ] 5.2 `README.md`, `AGENTS.md`, `docs/ubiquitous-language.md` and `docs/architecture/` no longer name the keyword spotter, the confirmation or the service for commands
-- [ ] 5.3 Bump `version` in `app/Cargo.toml` to 0.46.0
+- [x] 5.1 `dev-tools` loses the service for commands; the `justfile` loses `command_model_file`, `command_stt_url`, the KWS and command Whisper variables and the service for commands in `start-` and `stop-model-servers`
+- [x] 5.2 `README.md`, `AGENTS.md`, `docs/ubiquitous-language.md` and `docs/architecture/` no longer name the keyword spotter, the confirmation or the service for commands
+- [x] 5.3 Bump `version` in `app/Cargo.toml` to 0.46.0

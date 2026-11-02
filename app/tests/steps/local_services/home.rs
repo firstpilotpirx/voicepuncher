@@ -7,7 +7,6 @@ pub(crate) use voicepuncher::adapters::secondary::localservices::catalog::Machin
 
 pub(super) const WHISPER: &str = "whisper-server";
 pub(super) const COMMAND_SPOTTING: &str = "voicepuncher-command-spotting";
-pub(super) const KWS_MODEL_DIR: &str = "sherpa-onnx-kws-zipformer";
 pub(super) const STREAMING_EN_MODEL_DIR: &str = "sherpa-onnx-nemotron-speech-streaming-en-0.6b";
 pub(super) const STREAMING_RU_MODEL_DIR: &str = "sherpa-onnx-streaming-zipformer-small-ru-vosk";
 
@@ -22,17 +21,12 @@ impl FakeHome {
         let home = Self { dir: tempfile::tempdir()? };
         for file in [
             "ggml-large-v3-turbo-q5_0.bin",
-            "ggml-small.bin",
             "silero_vad.onnx",
             "ggml-silero-v5.1.2.bin",
         ] {
             touch(&home.models().join(file))?;
         }
-        for dir in [
-            KWS_MODEL_DIR,
-            STREAMING_EN_MODEL_DIR,
-            STREAMING_RU_MODEL_DIR,
-        ] {
+        for dir in [STREAMING_EN_MODEL_DIR, STREAMING_RU_MODEL_DIR] {
             std::fs::create_dir_all(home.models().join(dir))?;
         }
         for engine in [WHISPER, COMMAND_SPOTTING] {

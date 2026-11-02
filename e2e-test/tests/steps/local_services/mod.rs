@@ -50,9 +50,6 @@ const BROKEN_MODEL_LOG_LINE: &str = "failed to load model";
 #[derive(Debug)]
 pub struct ScenarioServices {
     pub stt_port: u16,
-    /// The port of the speech recognition service for commands, passed on every call of the
-    /// service scripts, so they never stop or reuse the shared one.
-    command_stt_port: u16,
     kws_port: u16,
     options: ScriptOptions,
     /// A home of the scenario's own, holding the models the scripts download; the service
@@ -73,16 +70,12 @@ pub struct ScenarioServices {
 #[derive(Debug, Default)]
 struct ScriptOptions {
     speech_model: Option<PathBuf>,
-    /// Whether the dictation and commands model variables are removed from the scripts'
-    /// environment, so the scripts pick their own default models.
+    /// Whether the dictation model variable is removed from the scripts' environment, so the
+    /// scripts pick their own default model.
     default_speech_model: bool,
-    default_command_model: bool,
     /// How many copies of the speech recognition service to start; the scripts' default
     /// when `None`.
     copies: Option<u32>,
-    /// How many copies of the speech recognition service for commands to start; the
-    /// scripts' default when `None`.
-    command_copies: Option<u32>,
     /// How many seconds apart the scripts check that a service still answers; the scripts'
     /// default when `None`.
     health_check_secs: Option<u32>,
@@ -123,7 +116,6 @@ impl ScenarioServices {
     fn with_copies(copies: Option<u32>) -> Result<Self> {
         Ok(Self {
             stt_port: free_speech_recognition_port()?,
-            command_stt_port: free_speech_recognition_port()?,
             kws_port: free_port()?,
             options: ScriptOptions { copies, ..ScriptOptions::default() },
             home: None,
@@ -237,10 +229,6 @@ impl ScenarioServices {
         just.current_dir(workspace_root())
             .args(args)
             .env("VOICEPUNCHER_STT_PORT", self.stt_port.to_string())
-            .env(
-                "VOICEPUNCHER_COMMAND_STT_PORT",
-                self.command_stt_port.to_string(),
-            )
             .env("VOICEPUNCHER_KWS_PORT", self.kws_port.to_string());
         if let Some(home) = &self.home {
             just.env("HOME", home.path());
@@ -251,16 +239,10 @@ impl ScenarioServices {
         if let Some(copies) = self.options.copies {
             just.env("VOICEPUNCHER_STT_INSTANCES", copies.to_string());
         }
-        if let Some(copies) = self.options.command_copies {
-            just.env("VOICEPUNCHER_COMMAND_STT_INSTANCES", copies.to_string());
-        }
         if let Some(model) = &self.options.speech_model {
             just.env("VOICEPUNCHER_WHISPER_MODEL", model);
         } else if self.options.default_speech_model {
             just.env_remove("VOICEPUNCHER_WHISPER_MODEL");
-        }
-        if self.options.default_command_model {
-            just.env_remove("VOICEPUNCHER_COMMAND_WHISPER_MODEL");
         }
         just.output().context("just runs")
     }
@@ -305,18 +287,12 @@ impl Drop for ScenarioServices {
             let _ = signal(pid, "-CONT");
         }
         let left_spotting = self.command_spotting_process();
-        let command_copy_ports = self.copy_ports_of(self.command_stt_port);
         let _ = self.just(&["stop-model-servers"]);
-        let left = self
-            .copy_ports
-            .iter()
-            .chain(&command_copy_ports)
-            .filter_map(|port| any_process(*port));
+        let left = self.copy_ports.iter().filter_map(|port| any_process(*port));
         for pid in [
             self.run.supervisor,
             self.run.service,
             service_process(self.stt_port),
-            any_process(self.command_stt_port),
             left_spotting,
             self.command_spotting_process(),
         ]
@@ -329,25 +305,23 @@ impl Drop for ScenarioServices {
                 .stderr(std::process::Stdio::null())
                 .status();
         }
-        self.remove_service_files(&command_copy_ports);
+        self.remove_service_files();
         copies::remove_copy_list(self.stt_port);
-        copies::remove_copy_list(self.command_stt_port);
     }
 }
 
 impl ScenarioServices {
     /// Removes the pid and log files of the scenario's services and copies.
-    fn remove_service_files(&self, command_copy_ports: &[u16]) {
+    fn remove_service_files(&self) {
         for (dir, ext) in [("run", "pid"), ("logs", "log")] {
             for (binary, port) in [
                 (SPEECH_RECOGNITION, self.stt_port),
-                (SPEECH_RECOGNITION, self.command_stt_port),
                 ("voicepuncher-command-spotting", self.kws_port),
             ] {
                 let _ =
                     std::fs::remove_file(services_dir(dir).join(format!("{binary}-{port}.{ext}")));
             }
-            for port in self.copy_ports.iter().chain(command_copy_ports) {
+            for port in &self.copy_ports {
                 let _ = std::fs::remove_file(
                     services_dir(dir).join(format!("{SPEECH_RECOGNITION}-{port}.{ext}")),
                 );

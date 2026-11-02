@@ -6,10 +6,7 @@ use voicepuncher::test_doubles::prelude::*;
 
 /// The dictation model `just models` downloads.
 pub(super) const DICTATION_MODEL: &str = "ggml-large-v3-turbo-q5_0.bin";
-/// The commands model `just models` downloads.
-pub(super) const COMMAND_MODEL: &str = "ggml-small.bin";
 const DICTATION_MODEL_VAR: &str = "VOICEPUNCHER_WHISPER_MODEL";
-const COMMAND_MODEL_VAR: &str = "VOICEPUNCHER_COMMAND_WHISPER_MODEL";
 /// A file named like a Whisper model, larger than every real one, that is no model: a rule
 /// that takes the largest model file would start a service on it, which then fails to load.
 const LARGER_FILE: &str = "ggml-larger-than-any-model.bin";
@@ -20,12 +17,10 @@ const VAD_MODEL_PREFIX: &str = "ggml-silero-";
 /// larger file that is no model.
 pub(super) fn link_models(models: &std::path::Path) -> Result<()> {
     std::fs::create_dir_all(models)?;
-    for (file, var) in [
-        (DICTATION_MODEL, DICTATION_MODEL_VAR),
-        (COMMAND_MODEL, COMMAND_MODEL_VAR),
-    ] {
-        std::os::unix::fs::symlink(downloaded_model(file, var)?, models.join(file))?;
-    }
+    std::os::unix::fs::symlink(
+        downloaded_model(DICTATION_MODEL, DICTATION_MODEL_VAR)?,
+        models.join(DICTATION_MODEL),
+    )?;
     for vad in vad_models() {
         let file = vad.file_name().context("a VAD model has a file name")?;
         std::os::unix::fs::symlink(&vad, models.join(file))?;

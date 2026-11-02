@@ -53,7 +53,7 @@ pub(super) fn free_copies(n: usize) -> (TranscriptionCfg, Vec<TcpListener>) {
 /// The service ports the fake copies' addresses take: their copies land on 21001–28000, clear of
 /// the system's ephemeral ports (49152+), which the stubs of the other tests take and whose
 /// pools go on probing ports they freed, and clear of the user's copies (18082–18089) and the
-/// test services (28080–28085, 38082–38089).
+/// test services (28080–28082, 38082–38089).
 pub(super) const FAKE_SERVICE_PORTS: std::ops::Range<u16> = 11_000..18_000;
 
 /// A port of `FAKE_SERVICE_PORTS` bound without listening for the life of the test process.
