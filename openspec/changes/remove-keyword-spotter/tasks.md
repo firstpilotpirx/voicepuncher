@@ -2,10 +2,10 @@
 
 - [x] 1.1 Red: `should_report_a_synthesized_paste` in `command-spotting/tests/it/streaming` and the "эйст" row and "ест" guard in `streaming/respell/tests.rs` fail
 - [x] 1.2 Green: respell "эйст"/"ейст" as "paste" (design D2)
-- [ ] 1.3 `dev-tools` starts the command spotting service only with the streaming recognizer; `VOICEPUNCHER_COMMAND_RECOGNIZER` goes (design D3); its unit test follows
-- [ ] 1.4 The E2E harness stops choosing the keyword spotter in `voice_control/mod.rs`, `local_services/managed.rs` and `app_distribution/bundle_launch/mod.rs`
-- [ ] 1.5 Red: run the smoke, cues, resilience and bundle E2E stages on the streaming recognizer and list every failure of a moved scenario
-- [ ] 1.6 Green: fix each failure test-first (design D2): "start", a short pause and a sentence; a sentence, a short breath and "stop stop"; the hands-free session's pasted "stop"; the user's quiet recorded "restart" after a pause; the user's recorded "press enter"; and any further failure of 1.5
+- [x] 1.3 `dev-tools` starts the command spotting service only with the streaming recognizer; `VOICEPUNCHER_COMMAND_RECOGNIZER` goes (design D3); its unit test follows
+- [x] 1.4 The E2E harness stops choosing the keyword spotter in `voice_control/mod.rs`, `local_services/managed.rs` and `app_distribution/bundle_launch/mod.rs`
+- [x] 1.5 Red: run the smoke, cues, resilience and bundle E2E stages on the streaming recognizer and list every failure of a moved scenario
+- [ ] 1.6 Green: fix each failure test-first (design D2): "start", a short pause and a sentence; a sentence, a short breath and "stop stop"; the hands-free session's pasted "stop"; the user's quiet recorded "restart" after a pause; the user's recorded "press enter"; the start cues over their bounds (the English model's lag and the close of an utterance waiting for it, which holds the next one back); and any further failure of 1.5
 - [ ] 1.7 `voice_samples`, `voice_forms` and the adapter tests of `commandspotting_websocket` run against the streaming service; the tests of keyword spotter events among them go to group 2
 - [ ] 1.8 Commit: `test: move the voice tests to the streaming recognizer`
 
