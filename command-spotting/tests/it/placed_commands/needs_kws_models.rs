@@ -15,6 +15,21 @@ fn should_restart_once_in_a_dictation_while_confirmations_come_back_slowly() {
 }
 
 #[test]
+fn should_press_enter_once_for_a_doubled_enter_with_speech_running_on_after_it() {
+    // Given standby, each confirmation back at once, a word cut at a clip's start unheard
+    // When "enter enter" is said with more than a second of speech after it in one breath
+    let events = heard_in_time_by(
+        &STANDBY,
+        "Fine, enter enter, thanks a lot for that",
+        Duration::ZERO,
+        |hearing| Arc::new(DropsWordCutAtStart(hearing)),
+    );
+    // Then one enter is pressed: the spotted "enter" belongs to the running utterance, not
+    // to an utterance the voice activity detector missed
+    assert_eq!(carried_out(&events), ["press enter"], "{events:?}");
+}
+
+#[test]
 fn should_carry_out_the_chain_when_confirmations_come_back_at_once() {
     assert_chain_carried_out(Duration::ZERO);
 }
