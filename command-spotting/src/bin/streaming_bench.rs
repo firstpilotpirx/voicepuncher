@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use clap::Parser;
 use voicepuncher_command_spotting::bench::{
-    load_dataset, recorded_clips, run_clip, Clip, Outcome, Pace, Summary,
+    load_dataset, processing_per_second, recorded_clips, run_clip, Clip, Outcome, Pace, Summary,
 };
 use voicepuncher_command_spotting::streaming::engine::{StreamingCfg, StreamingEngine};
 
@@ -28,7 +28,7 @@ struct Args {
     #[arg(long, env = "VOICEPUNCHER_KWS_VAD_MODEL")]
     vad_model: PathBuf,
     /// Threads each model decodes on, as the service's default.
-    #[arg(long, default_value_t = 4)]
+    #[arg(long, default_value_t = 1)]
     threads: i32,
     #[arg(long, default_value_t = 0.3)]
     min_silence_secs: f32,
@@ -70,6 +70,9 @@ fn main() -> Result<()> {
             .cloned()
             .collect();
         println!("{word:<5} {}", Summary::of(&said));
+    }
+    if let Some(per_second) = processing_per_second(&outcomes) {
+        println!("processing {per_second:.3} s per second of audio");
     }
     Ok(())
 }

@@ -29,7 +29,7 @@ struct Args {
     /// Silero voice activity detector model for sherpa-onnx (`silero_vad.onnx`).
     #[arg(long)]
     vad_model: PathBuf,
-    /// Threads each model decodes on [default: 4 for the streaming recognizer, else 2].
+    /// Threads each model decodes on [default: 1 for the streaming recognizer, else 2].
     #[arg(long)]
     threads: Option<i32>,
     /// Silence in seconds that ends an utterance: the pause around a command.
@@ -58,10 +58,11 @@ struct Args {
 
 impl Args {
     /// The threads each model decodes on: as asked, else what its recognizer was measured
-    /// fastest with.
+    /// fastest with; the streaming models decode on their own interactive thread alone, as
+    /// ONNX Runtime's extra threads run at the default service class and wait on a busy machine.
     fn threads(&self) -> i32 {
         let measured = match self.models.recognizer {
-            Recognizer::Streaming => 4,
+            Recognizer::Streaming => 1,
             Recognizer::KeywordSpotting => 2,
         };
         self.threads.unwrap_or(measured)
@@ -264,11 +265,11 @@ mod tests {
     }
 
     #[test]
-    fn should_decode_the_streaming_models_on_4_threads_by_default() {
+    fn should_decode_the_streaming_models_on_1_thread_by_default() {
         // When
         let args = streaming_args(&[]);
         // Then
-        assert_eq!(args.threads(), 4);
+        assert_eq!(args.threads(), 1);
     }
 
     #[test]

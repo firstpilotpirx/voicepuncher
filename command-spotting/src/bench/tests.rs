@@ -6,6 +6,8 @@ fn outcome(label: &[&str], heard: &[&str], delay_ms: Option<f64>) -> Outcome {
         label: label.iter().map(|w| (*w).to_owned()).collect(),
         heard: heard.iter().map(|w| (*w).to_owned()).collect(),
         delay_ms,
+        processing_secs: 0.5,
+        audio_secs: 2.0,
     }
 }
 
@@ -69,6 +71,22 @@ fn should_print_the_scores_on_one_line() {
     );
 }
 
+#[test]
+fn should_weigh_the_processing_time_by_each_clip_s_audio() {
+    // Given a clip processed in 0.5 s of 2 s and one in 1 s of 2 s
+    let slow = Outcome { processing_secs: 1.0, ..outcome(&[], &[], None) };
+    let outcomes = [outcome(&[], &[], None), slow];
+    // When
+    let per_second = processing_per_second(&outcomes);
+    // Then
+    assert_eq!(per_second, Some(0.375));
+}
+
+#[test]
+fn should_have_no_processing_time_without_audio() {
+    assert_eq!(processing_per_second(&[]), None);
+}
+
 fn row(json: &str) -> Row {
     serde_json::from_str(json).expect("a row")
 }
@@ -117,4 +135,21 @@ fn should_read_session_ones_manifest_row() {
     // Then
     assert_eq!(spans[0].1.label, ["start"]);
     assert!(spans[0].1.listening.contains(&"start dictation".to_owned()));
+}
+
+#[test]
+fn should_leave_out_a_command_closed_by_please() {
+    // Given a recorded start closed by "please" between two plain ones
+    let rows = [
+        row(r#"{"start": 1.0, "end": 1.4, "said": "start", "commands": ["start dictation"]}"#),
+        row(
+            r#"{"start": 3.0, "end": 3.6, "said": "start please", "commands": ["start dictation"]}"#,
+        ),
+        row(r#"{"start": 5.0, "end": 5.4, "said": "start", "commands": ["start dictation"]}"#),
+    ];
+    // When
+    let spans = spans(&rows);
+    // Then
+    let kept: Vec<usize> = spans.iter().map(|(n, _)| *n).collect();
+    assert_eq!(kept, [0, 2]);
 }

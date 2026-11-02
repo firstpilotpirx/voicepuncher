@@ -32,15 +32,20 @@ pub fn run_clip(engine: &StreamingEngine, clip: &Clip, pace: Pace) -> Result<Out
     let audio = [clip.audio.as_slice(), tail.as_slice()].concat();
     let began = Instant::now();
     let mut heard: Vec<(String, Instant)> = Vec::new();
+    let mut processing = Duration::ZERO;
     for (i, chunk) in audio.chunks(CHUNK).enumerate() {
         if pace == Pace::RealTime {
             wait_until(began + chunk_end(i, chunk.len()));
         }
+        let called = Instant::now();
         let mut events = session.accept(chunk);
         events.extend(session.poll());
+        processing += called.elapsed();
         note(&mut heard, events);
     }
+    let called = Instant::now();
     note(&mut heard, session.sync(0));
+    processing += called.elapsed();
     let delay_ms = match (pace, clip.word_end, heard.first()) {
         (Pace::RealTime, Some(end), Some((_, at))) => {
             let ended = began + Duration::from_secs_f32(end);
@@ -53,6 +58,8 @@ pub fn run_clip(engine: &StreamingEngine, clip: &Clip, pace: Pace) -> Result<Out
         label: clip.label.clone(),
         heard: heard.into_iter().map(|(w, _)| w).collect(),
         delay_ms,
+        processing_secs: processing.as_secs_f64(),
+        audio_secs: audio.len() as f64 / 16_000.0,
     })
 }
 

@@ -7,7 +7,7 @@ use super::{
 };
 use voicepuncher_e2e_test::conversions::saturating_usize;
 
-/// Send, cancel, clear, send again — each with and without "please".
+/// Send, cancel, clear, send again.
 pub(super) fn session() -> Vec<Step> {
     use Expected::{Cancelled, Cleared, Pasted, RecordingStarted, ReturnPressed};
     vec![
@@ -18,14 +18,14 @@ pub(super) fn session() -> Vec<Step> {
         Step::Command("start dictation", RecordingStarted),
         Step::Dictate(ENGLISH_VOICE, CANCELLED_EN),
         Step::Command("cancel dictation", Cancelled),
-        Step::Command("start dictation please", RecordingStarted),
+        Step::Command("start dictation", RecordingStarted),
         Step::Dictate(ENGLISH_VOICE, CLEARED_EN),
-        Step::Command("stop dictation please", Pasted(CLEARED_EN)),
+        Step::Command("stop dictation", Pasted(CLEARED_EN)),
         Step::Command("clear text", Cleared),
         Step::Command("start dictation", RecordingStarted),
         Step::Dictate(RUSSIAN_VOICE, SENT_AGAIN_RU),
         Step::Command("stop dictation", Pasted(SENT_AGAIN_RU)),
-        Step::Command("press enter please", ReturnPressed),
+        Step::Command("press enter", ReturnPressed),
     ]
 }
 
@@ -40,14 +40,11 @@ pub(super) fn recorded(said: &str) -> Result<Vec<f32>> {
 }
 
 /// The recording of the first session that holds each phrase.
-const RECORDINGS: [(&str, &str); 8] = [
+const RECORDINGS: [(&str, &str); 5] = [
     ("start dictation", "02-start-dictation.wav"),
-    ("start dictation please", "05-start-dictation.wav"),
     ("stop dictation", "10-stop-dictation.wav"),
-    ("stop dictation please", "13-stop-dictation.wav"),
     ("cancel dictation", "18-cancel-dictation.wav"),
     ("press enter", "26-press-enter.wav"),
-    ("press enter please", "25-press-enter.wav"),
     ("clear text", "38-clear-text.wav"),
 ];
 

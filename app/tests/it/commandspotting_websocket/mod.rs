@@ -261,7 +261,7 @@ mod needs_kws {
         // quiet speech needs and still passes: a known limit of the pause rule.
         let sentences = [
             "press enter when you are ready",
-            "clear all text in the morning please",
+            "clear all text in the morning",
         ];
         // Given listening, when a command phrase is followed by more speech
         let heard = each_at_once(&sentences, |sentence| heard_after_a_pause(&url, sentence));

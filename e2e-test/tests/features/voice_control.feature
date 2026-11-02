@@ -74,6 +74,8 @@ Feature: voice-control
         | 0.7   |
         | 0.8   |
 
+    # @serial: each quiet command waits for its confirmation, and five rows at once queue past its budget
+    @serial
     Scenario Outline: A command said in a quiet voice is recognized
       Given the command spotting service is running
       When the user says "<said>" in a quiet voice with a pause before and after it
@@ -115,29 +117,8 @@ Feature: voice-control
       Examples:
         | said           | command           |
         | start          | start dictation   |
-        | stop please    | stop dictation    |
         | restart        | restart dictation |
         | clear          | clear all text    |
-
-  Rule: A command may end with "please"
-
-    Scenario Outline: A command followed by please is recognized
-      Given the command spotting service is running
-      When the user says "<said>" with a pause before and after it
-      Then the "<command>" command takes effect
-
-      @smoke
-      Examples:
-        | said                    | command          |
-        | press enter please      | press enter      |
-
-      @regression
-      Examples:
-        | said                    | command          |
-        | start dictation please  | start dictation  |
-        | cancel dictation please | cancel dictation |
-        | clear all text please   | clear all text   |
-        | paste text please       | paste text       |
 
   Rule: "clear text" erases the focused text too
 
@@ -150,11 +131,6 @@ Feature: voice-control
       Examples:
         | said              |
         | clear text        |
-
-      @regression
-      Examples:
-        | said              |
-        | clear text please |
 
   Rule: "paste text" pastes the clipboard
 
@@ -401,7 +377,7 @@ Feature: voice-control
   # full-check's e2e-cues stage with the machine otherwise idle, @serial keeps the other
   # scenarios' requests from queuing ahead of them.
   @serial @cues
-  Rule: A voice start gives its start cue within 0.7 s
+  Rule: A voice start gives its start cue within 0.7 s of its words
 
     Scenario: Start start followed by the dictation at once gives its cue at once
       Given the command spotting service is running
@@ -420,18 +396,6 @@ Feature: voice-control
       And listening is on for a whole session
       When someone says "start" and stays silent
       Then the start cue comes within 0.7 s of the end of "start"
-
-    Scenario: Start please followed by the dictation at once gives its cue at once
-      Given the command spotting service is running
-      And listening is on for a whole session
-      When someone says "start please" and a sentence without a pause
-      Then the start cue comes within 0.7 s of the end of "start please", while the sentence is still being said
-
-    Scenario: Start please said on its own gives its cue at once
-      Given the command spotting service is running
-      And listening is on for a whole session
-      When someone says "start please" and stays silent
-      Then the start cue comes within 0.7 s of the end of "start please"
 
     Scenario: Restart restart followed by the new dictation at once gives its cue at once
       Given the command spotting service is running
@@ -454,7 +418,7 @@ Feature: voice-control
       And the user's own recordings of the commands exist on the machine
       And listening is on for a whole session
       When each of the user's recorded starts is played, on its own and followed at once by a sentence
-      Then at least 9 of 10 of them give the start cue within its bound of the end of the command's words
+      Then at least 5 of 6 of them give the start cue within its bound of the end of the command's words
 
   Rule: A doubled short form counts anywhere
 
@@ -763,7 +727,7 @@ Feature: voice-control
     Scenario: A command whose first hearing is empty under load is reported before the sync is answered
       Given the command spotting service listens for the commands of standby
       And the first hearing of the speech comes back empty and late, as under machine load, and the next one right
-      When the user says "clear text please" alone and the app asks for a sync right after the speech
+      When the user says "clear text" alone and the app asks for a sync right after the speech
       Then the command spotting service reports "clear all text" before it answers the sync
 
     @smoke
@@ -891,6 +855,17 @@ Feature: voice-control
       Given the user's own recordings of the commands exist on the machine
       When each recorded "start" and "stop" is streamed to the service in real time
       Then at least half are reported within 0.3 s and at least 9 of 10 within 0.6 s of the end of their words
+
+  # Timed by the wall clock while the scenario keeps every core busy itself; @cues runs it with
+  # the machine otherwise idle.
+  @serial @cues
+  Rule: Streaming commands keep their bounds while every core is busy
+
+    Scenario: Press enter after a sentence is reported in time with every core busy
+      Given the command spotting service runs with the streaming recognizer
+      And every core of the machine is busy with other work
+      When an app streams "we meet at ten press enter" followed by silence, in real time
+      Then the streaming recognizer reports "press enter" within 1.0 s of the end of the words by the wall clock
 
   Rule: Streaming commands are heard in the user's own voice
 

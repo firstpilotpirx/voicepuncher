@@ -21,10 +21,6 @@ const FLOOR_FRAMES: usize = 300;
 const EDGE_FRAMES: usize = 2;
 /// Quieter than this, an utterance has had no speech yet to measure a pause against.
 const NO_SPEECH_RMS: f32 = 1e-4;
-/// A quiet run this long is a gap between words: 30 ms.
-const GAP_FRAMES: usize = 3;
-/// How far back the gaps between words are kept: 5 s.
-const GAP_MEMORY_SAMPLES: usize = 80_000;
 
 /// The loudness of the utterance heard now, and how long it has been quiet.
 pub(super) struct PauseWatch {
@@ -38,8 +34,6 @@ pub(super) struct PauseWatch {
     recent: VecDeque<f32>,
     quiet_frames: usize,
     quiet_from: usize,
-    /// Where the gaps between words of the last seconds began, oldest first.
-    gaps: VecDeque<usize>,
     pending: Vec<f32>,
     /// Sample position of the first sample in `pending`.
     position: usize,
@@ -59,7 +53,6 @@ impl PauseWatch {
             recent: VecDeque::with_capacity(FLOOR_FRAMES),
             quiet_frames: 0,
             quiet_from: 0,
-            gaps: VecDeque::new(),
             pending: Vec::new(),
             position: 0,
         }
@@ -79,13 +72,6 @@ impl PauseWatch {
         }
         self.pending.drain(..frames * FRAME_SAMPLES);
         self.position += frames * FRAME_SAMPLES;
-        while self
-            .gaps
-            .front()
-            .is_some_and(|&gap| gap + GAP_MEMORY_SAMPLES < self.position)
-        {
-            self.gaps.pop_front();
-        }
         pause
     }
 
@@ -110,9 +96,6 @@ impl PauseWatch {
             self.quiet_from = at;
         }
         self.quiet_frames += 1;
-        if self.quiet_frames == GAP_FRAMES.min(self.min_quiet_frames) {
-            self.gaps.push_back(self.quiet_from);
-        }
         (self.quiet_frames >= self.min_quiet_frames).then_some(self.quiet_from)
     }
 
@@ -135,16 +118,6 @@ impl PauseWatch {
     /// Where the quiet run heard now began; none while the last frame was louder.
     pub(super) fn quiet_run_from(&self) -> Option<usize> {
         (self.quiet_frames > 0).then_some(self.quiet_from)
-    }
-
-    /// Where the first gap between words at or after sample `at` began, of the last seconds.
-    pub(super) fn gap_after(&self, at: usize) -> Option<usize> {
-        self.gaps.iter().copied().find(|&gap| gap >= at)
-    }
-
-    /// The sample position up to which the stream was heard.
-    pub(super) fn heard_until(&self) -> usize {
-        self.position
     }
 
     /// Starts over for the next utterance.
@@ -323,33 +296,5 @@ mod tests {
         let at = first_sound(&after_end, 0.01);
         // Then
         assert_eq!(at, after_end.len());
-    }
-
-    #[test]
-    fn should_remember_where_a_gap_between_words_began_after_speech_went_on() {
-        // Given
-        let mut watch = PauseWatch::new(MIN_SILENCE_SAMPLES);
-        watch.hear(&tone(20, 0.01), true);
-        watch.hear(&tone(5, 0.001), true);
-        // When
-        watch.hear(&tone(20, 0.01), true);
-        // Then
-        assert_eq!(
-            watch.gap_after(10 * FRAME_SAMPLES),
-            Some(20 * FRAME_SAMPLES)
-        );
-        assert_eq!(watch.quiet_run_from(), None);
-    }
-
-    #[test]
-    fn should_take_no_gap_from_a_dip_shorter_than_a_gap_between_words() {
-        // Given
-        let mut watch = PauseWatch::new(MIN_SILENCE_SAMPLES);
-        watch.hear(&tone(20, 0.01), true);
-        watch.hear(&tone(2, 0.001), true);
-        // When
-        watch.hear(&tone(20, 0.01), true);
-        // Then
-        assert_eq!(watch.gap_after(0), None);
     }
 }

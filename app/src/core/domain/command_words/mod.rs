@@ -34,7 +34,6 @@ pub const COMMAND_FORMS: &[&[&str]] = &[
 const PASTE_FORMS: &[&[&str]] = &[&["paste", "text"], &["paste"]];
 const START_FORMS: &[&[&str]] = &[&["start", "dictation"], &["start"], &["старт"]];
 const RESTART_FORMS: &[&[&str]] = &[&["restart", "dictation"], &["restart"]];
-const POLITE_WORDS: &[&str] = &["please", "пожалуйста"];
 /// What may sit between the kept text and the removed command.
 const SEPARATORS: &[char] = &[',', ';', ':', '-', '—'];
 const SENTENCE_ENDS: &[char] = &['.', '!', '?'];
@@ -70,7 +69,7 @@ fn says(words: &[Word], form: &[&str]) -> bool {
 }
 
 /// Removes command words that end `text` ("…on Friday. Stop." → "…on Friday."): one
-/// command, a doubled one or a chain, each maybe with "please".
+/// command, a doubled one or a chain.
 pub fn without_trailing_command(text: &str) -> String {
     let words = words(text);
     let kept = trailing_commands_start(&words);
@@ -97,25 +96,20 @@ pub fn without_trailing_command(text: &str) -> String {
 fn trailing_commands_start(words: &[Word]) -> usize {
     let mut kept = words.len();
     loop {
-        let mut end = kept;
-        if end > 0 && POLITE_WORDS.contains(&words[end - 1].text.as_str()) {
-            end -= 1;
-        }
         let Some(form) = COMMAND_FORMS
             .iter()
-            .find(|form| end >= form.len() && says(&words[end - form.len()..end], form))
+            .find(|form| kept >= form.len() && says(&words[kept - form.len()..kept], form))
         else {
             return kept;
         };
-        kept = end - form.len();
+        kept -= form.len();
     }
 }
 
 /// Removes the words of `command`, the command that started a dictation, that open `text`
 /// when more text follows.
 ///
-/// "start", a doubled "start start" or "start dictation", and the same for "restart", each maybe
-/// with "please"; or "please" alone, when the recording began after the command.
+/// "start", a doubled "start start" or "start dictation", and the same for "restart".
 pub fn without_leading_command(command: VoiceCommand, text: &str) -> String {
     let forms = match command {
         VoiceCommand::StartDictation => START_FORMS,
@@ -123,21 +117,11 @@ pub fn without_leading_command(command: VoiceCommand, text: &str) -> String {
         _ => return text.to_owned(),
     };
     let words = words(text);
-    let opening = opening_words(forms, &words);
+    let opening = command_words(forms, &words);
     if opening == 0 {
         return text.to_owned();
     }
     capitalized(&text[words[opening].start..])
-}
-
-/// How many of `words` say the command in one of `forms`, a doubled single word and a closing
-/// "please" included; a "please" alone counts too, when the recording began after the command.
-fn opening_words(forms: &[&[&str]], words: &[Word]) -> usize {
-    let opening = command_words(forms, words);
-    if words.len() > opening + 1 && POLITE_WORDS.contains(&words[opening].text.as_str()) {
-        return opening + 1;
-    }
-    opening
 }
 
 /// How many of `words` say the command in one of `forms`, a doubled single word included.
@@ -163,8 +147,8 @@ pub(crate) fn capitalized(text: &str) -> String {
 
 /// Removes up to `count` "paste" or "paste text" commands said during a dictation.
 ///
-/// Each may end with "please"; only those that close a sentence or the text go, as a command
-/// is said on its own or ending an utterance. A "paste" inside a sentence is speech and stays.
+/// Only those that close a sentence or the text go, as a command is said on its own or ending
+/// an utterance. A "paste" inside a sentence is speech and stays.
 pub fn without_spoken_pastes(text: &str, count: usize) -> String {
     let mut text = text.to_owned();
     for _ in 0..count {
@@ -187,19 +171,13 @@ fn without_first_closing_paste(text: &str) -> Option<String> {
     })
 }
 
-/// Where the paste command said from word `at` ends, its "please" included.
+/// Where the paste command said from word `at` ends.
 fn paste_words_end(words: &[Word], at: usize) -> Option<usize> {
     let rest = &words[at..];
     let form = PASTE_FORMS
         .iter()
         .find(|form| rest.len() >= form.len() && says(&rest[..form.len()], form))?;
-    let mut last = &rest[form.len() - 1];
-    if let Some(next) = rest.get(form.len()) {
-        if POLITE_WORDS.contains(&next.text.as_str()) {
-            last = next;
-        }
-    }
-    Some(last.end)
+    Some(rest[form.len() - 1].end)
 }
 
 /// The text before a removed command joined to the text after it.

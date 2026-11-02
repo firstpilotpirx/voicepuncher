@@ -13,6 +13,10 @@ pub struct Outcome {
     pub heard: Vec<String>,
     /// From the end of the command's words to its report, by the wall clock.
     pub delay_ms: Option<f64>,
+    /// Seconds the session spent taking the clip's audio and answering, and the audio's
+    /// seconds.
+    pub processing_secs: f64,
+    pub audio_secs: f64,
 }
 
 impl Outcome {
@@ -68,6 +72,13 @@ impl fmt::Display for Summary {
             self.delays,
         )
     }
+}
+
+/// The seconds the sessions spent processing each second of the audio of `outcomes`.
+pub fn processing_per_second(outcomes: &[Outcome]) -> Option<f64> {
+    let audio: f64 = outcomes.iter().map(|o| o.audio_secs).sum();
+    let processing: f64 = outcomes.iter().map(|o| o.processing_secs).sum();
+    (audio > 0.0).then(|| processing / audio)
 }
 
 fn share(part: usize, whole: usize) -> f64 {

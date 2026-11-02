@@ -151,30 +151,6 @@ fn should_start_nothing_for_start_and_stop_with_a_dip_shorter_than_a_pause_in_st
 }
 
 #[test]
-fn should_end_a_start_closed_by_please_where_please_ends() {
-    // Given each confirmation 0.3 s late
-    // When "start dictation please" is said in standby
-    let heard = heard_finely(
-        &STANDBY,
-        &[(0.0, "start"), (0.0, "dictation"), (0.0, "please")],
-        Duration::from_millis(300),
-    );
-    // Then a start a check placed ends no sooner than "please" does: the dictation after it
-    // holds none of it
-    let events = &heard.events;
-    assert!(!said(events).is_empty(), "no start: {events:?}");
-    for event in events {
-        if let ServerEvent::Command { end, .. } = event {
-            assert!(
-                *end >= heard.said_end_secs - 0.05,
-                "start ends at {end:.2}s, \"please\" at {:.2}s: {events:?}",
-                heard.said_end_secs
-            );
-        }
-    }
-}
-
-#[test]
 fn should_hear_no_utterance_in_a_dictation_before_its_pause_ends() {
     // Given each confirmation 0.6 s late
     // When a short word is said alone in a dictation

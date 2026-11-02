@@ -15,6 +15,8 @@ use voicepuncher::core::domain::{SpokenCommand, VoiceCommand, VoiceCommandRecogn
 use voicepuncher_e2e_test::concurrency::map_concurrently;
 use voicepuncher_e2e_test::voice_commands::SYNC_ANSWER_LIMIT;
 
+use crate::recorded_sessions::ends_with_please;
+
 const SAMPLE_RATE_HZ: f32 = 16_000.0;
 const FRAME_SAMPLES: usize = 1_600;
 /// 2 s of audio: sent before waiting for the service to answer it, so the audio in flight
@@ -124,7 +126,8 @@ fn distance(group: &[&Utterance], at: f32) -> f32 {
 }
 
 /// Compares what was recognized in `session` with its utterances, noting each missed and each
-/// unexpected command; returns how many clear commands the session holds.
+/// unexpected command; returns how many clear commands the session holds. A command closed by
+/// "please" is not counted: a recognition near it is neither a miss nor unexpected.
 fn compare_session(
     session: &Session,
     recognized: Vec<(f32, VoiceCommand)>,
@@ -142,7 +145,7 @@ fn compare_session(
     let clear = groups
         .iter()
         .zip(heard)
-        .filter(|(g, _)| g.iter().any(|u| !u.unclear));
+        .filter(|(g, _)| g.iter().any(|u| !u.unclear && !ends_with_please(&u.said)));
     let mut counted = 0;
     for (group, heard) in clear {
         counted += 1;

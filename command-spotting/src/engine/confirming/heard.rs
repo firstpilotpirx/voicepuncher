@@ -22,7 +22,7 @@ impl Session<'_> {
     ) -> Option<ServerEvent> {
         match context {
             JobContext::Head { utterance, from, early } => {
-                let clip = HeardClip { heard: &heard, from, end: Some(asked_at) };
+                let clip = HeardClip { heard: &heard, from };
                 self.apply_head(reading, clip, utterance, early)
             }
             spotted @ JobContext::Spotted { .. } => {
@@ -40,7 +40,7 @@ impl Session<'_> {
             // Its answer waits for the segment it may stand for.
             JobContext::HalfPause { .. } => None,
             JobContext::Tail { utterance, from } => {
-                let whole = HeardClip { heard: &heard, from, end: None };
+                let whole = HeardClip { heard: &heard, from };
                 self.place_anywhere_or_at_end(reading, whole, utterance)
             }
             JobContext::Rehear { bounds, origin, phrase, .. } => {
@@ -78,7 +78,7 @@ impl Session<'_> {
         let &JobContext::Spotted { utterance, from, at_head, round, said_end } = context else {
             return None;
         };
-        let clip = HeardClip { heard, from, end: Some(asked_at) };
+        let clip = HeardClip { heard, from };
         let found = self.place(clip, utterance, |w| {
             spotted_command(reading, w, at_head, round)
         });
@@ -99,7 +99,7 @@ impl Session<'_> {
         utterance: u64,
         from: usize,
     ) -> Option<ServerEvent> {
-        let whole = HeardClip { heard: &heard, from, end: None };
+        let whole = HeardClip { heard: &heard, from };
         let found = self.place(whole, utterance, |w| reading.anywhere(w));
         self.mark(utterance, |r| r.last_window = Some((heard, from)));
         found

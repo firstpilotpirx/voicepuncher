@@ -141,8 +141,6 @@ pub(super) struct FinelyHeard {
     pub(crate) asked_after: Vec<f32>,
     /// How long the last word lasted, in seconds.
     pub(crate) last_word_secs: f32,
-    /// Where the last word ended in the stream, in seconds.
-    pub(crate) said_end_secs: f32,
 }
 
 /// Every event for `words`, each said by `say` after the gap of seconds given with it and fed
@@ -233,11 +231,5 @@ pub(super) fn heard_finely_misheard(
     eprintln!("{events:?}");
     let asked = hearing.asked.lock().unwrap();
     let asked_after = asked.iter().map(|&asked| secs_after_end(asked)).collect();
-    FinelyHeard {
-        events,
-        said_after: said_at.map(secs_after_end),
-        asked_after,
-        last_word_secs,
-        said_end_secs: said_end as f32 / SAMPLE_RATE as f32,
-    }
+    FinelyHeard { events, said_after: said_at.map(secs_after_end), asked_after, last_word_secs }
 }

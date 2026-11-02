@@ -67,7 +67,6 @@ impl Staging<'_> {
 
     fn command_spotting(&self) -> Result<(), String> {
         let spotting = self.lock.section("command-spotting", "the lock")?;
-        let program = field(spotting, "program");
         run(
             "cargo",
             &[
@@ -80,11 +79,10 @@ impl Staging<'_> {
         )?;
         let dir = self.stage.join("command-spotting");
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        copy_file(
-            &target_dir().join("release").join(program),
-            &dir.join(program),
-            program,
-        )?;
+        let release = target_dir().join("release");
+        for (file, place) in &self.lock.optional("command-spotting.from") {
+            copy_file(&release.join(place), &dir.join(file), file)?;
+        }
         write(
             &dir.join("VERSION"),
             &format!(

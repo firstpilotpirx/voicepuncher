@@ -23,6 +23,7 @@ use crate::steps::local_services::{log_mark, logged_since};
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
+mod busy;
 mod history;
 mod recorded;
 mod timed;
@@ -40,6 +41,8 @@ static CONNECTIONS: AtomicU64 = AtomicU64::new(9_000);
 #[derive(Debug, Default)]
 pub struct StreamingRun {
     history: history::StreamingHistory,
+    /// Spinning threads that keep every core busy while the scenario runs.
+    busy: Option<busy::BusyCores>,
     timed: timed::Timed,
     recorded: Vec<voicepuncher_command_spotting::bench::Outcome>,
     events: Vec<ServerEvent>,
@@ -57,7 +60,7 @@ fn cfg(command_history: Option<HistoryCfg>) -> StreamingCfg {
         ru_model_dir: required_env("VOICEPUNCHER_STREAMING_RU_MODEL_DIR").into(),
         vad_model: required_env("VOICEPUNCHER_KWS_VAD_MODEL").into(),
         // WHY: as the service decodes the streaming models by default.
-        threads: 4,
+        threads: 1,
         min_silence_secs: 0.3,
         command_history,
     }

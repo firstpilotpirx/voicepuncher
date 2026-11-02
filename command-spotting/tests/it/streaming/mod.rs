@@ -38,7 +38,7 @@ fn load_engine() -> StreamingEngine {
         ru_model_dir: required_env("VOICEPUNCHER_STREAMING_RU_MODEL_DIR").into(),
         vad_model: required_env("VOICEPUNCHER_KWS_VAD_MODEL").into(),
         // WHY: as the service decodes the streaming models by default.
-        threads: 4,
+        threads: 1,
         min_silence_secs: 0.3,
         command_history: None,
     };

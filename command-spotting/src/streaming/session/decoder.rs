@@ -96,6 +96,7 @@ fn run(
     updates: &Sender<Update>,
     wake: Option<&Wake>,
 ) {
+    interactive();
     let mut fed = 0;
     while let Ok(job) = jobs.recv() {
         let finished = match job {
@@ -119,5 +120,61 @@ fn run(
         if let Some(wake) = wake {
             wake();
         }
+    }
+}
+
+/// Runs this thread at the user-interactive service class, so other work on a busy machine
+/// waits for a command rather than the other way round.
+fn interactive() {
+    // SAFETY: sets the calling thread's own class; no pointer or shared state is passed.
+    let failed = unsafe {
+        libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_USER_INTERACTIVE, 0)
+    };
+    if failed != 0 {
+        log::warn!("the decoding thread keeps its service class: error {failed}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use super::*;
+
+    /// A stream that notes the service class of the thread it decodes on.
+    struct ClassNoting(Arc<Mutex<Option<libc::qos_class_t>>>);
+
+    impl RecognizerStream for ClassNoting {
+        fn accept(&mut self, _samples: &[f32]) {}
+        fn finish(&mut self) {}
+        fn decode(&mut self) {
+            let mut class = libc::qos_class_t::QOS_CLASS_UNSPECIFIED;
+            let mut relative = 0;
+            // SAFETY: returns the calling thread's own handle; no argument.
+            let thread = unsafe { libc::pthread_self() };
+            // SAFETY: reads that live thread's class into the two locals above.
+            unsafe { libc::pthread_get_qos_class_np(thread, &raw mut class, &raw mut relative) };
+            *self.0.lock().expect("not poisoned") = Some(class);
+        }
+        fn decoded(&self) -> Decoded {
+            Decoded::default()
+        }
+    }
+
+    #[test]
+    fn should_decode_at_the_user_interactive_service_class() {
+        // Given
+        let class = Arc::new(Mutex::new(None));
+        let stream = Box::new(ClassNoting(Arc::clone(&class)));
+        let mut decoder = Decoder::start("en", stream, None).expect("a thread");
+        // When
+        decoder.feed(&[0.0; 160]);
+        decoder.finish();
+        decoder.caught_up();
+        // Then
+        assert!(matches!(
+            *class.lock().expect("not poisoned"),
+            Some(libc::qos_class_t::QOS_CLASS_USER_INTERACTIVE)
+        ));
     }
 }

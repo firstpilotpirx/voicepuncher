@@ -248,15 +248,6 @@ Feature: voice-control
       Then the sentence is pasted into the focused app
       And the pasted text does not contain "start"
 
-  Rule: A command may end with "please"
-
-    Scenario: Please after start dictation is not pasted
-      Given listening is on
-      And no dictation runs
-      When the user says "start dictation please" and a sentence without a pause, the command recognized before "please" was heard, and later ends the dictation
-      Then the sentence is pasted into the focused app
-      And the pasted text does not contain "please"
-
   Rule: A dictation started by voice holds the speech right after the command
 
     Scenario: Start start followed by the dictation at once
@@ -466,7 +457,7 @@ Feature: voice-control
       Then the sentence is pasted into the focused app
       And the pasted text does not contain the stop phrase
 
-  Rule: A voice start gives its start cue within 0.7 s
+  Rule: A voice start gives its start cue within 0.7 s of its words
 
     Scenario: The overlay shows with the start cue
       Given listening is on

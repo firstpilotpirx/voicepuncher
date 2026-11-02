@@ -1,18 +1,16 @@
 //! Commands placed in an utterance by the times of their words.
 
 use crate::confirm::{Heard, TimedWord};
-use crate::matcher::{closing_word_of_start, Found, PhraseMatcher};
+use crate::matcher::{Found, PhraseMatcher};
 use crate::protocol::ServerEvent;
 
 use super::super::{samples_in, seconds, Session, TAIL_SLACK_SECS};
 
-/// What a confirmation heard, and where its clip lay in the stream: from sample `from` to
-/// `end`; none when the clip ran to the utterance's end.
+/// What a confirmation heard, and where its clip began in the stream: at sample `from`.
 #[derive(Clone, Copy)]
 pub(super) struct HeardClip<'a> {
     pub(super) heard: &'a Heard,
     pub(super) from: usize,
-    pub(super) end: Option<usize>,
 }
 
 impl HeardClip<'_> {
@@ -39,13 +37,9 @@ impl Session<'_> {
     ) -> Option<ServerEvent> {
         let words = clip.heard.word_texts();
         let found = find(&words)?;
-        let speech_end = match closing_word_of_start(&words, &found) {
-            Some(word) => self.speech_end_after(clip, &found, word.cut_secs)?,
-            None => 0,
-        };
         let kept = self.first_unreported(clip, &found, utterance)?;
         let start = clip.at(found.spans[kept].0, |w| w.start);
-        let end = clip.at(found.last, |w| w.end).max(speech_end);
+        let end = clip.at(found.last, |w| w.end);
         if let Some(running) = self.utterances.running.get_mut(&utterance) {
             running.reported_until = end;
         }
@@ -86,21 +80,6 @@ impl Session<'_> {
         }
     }
 
-    /// Where the speech ended after a start closed by a trailing word (0: not known, the
-    /// start ends with its words), or none while the start waits for a later hearing. A clip cut while the word is still said times the word too soon, and the rest
-    /// of it would open the dictation. Without a gap after the word yet, the start waits while
-    /// the speech may still be the word's, `cut_secs` past the clip; speech going on longer
-    /// than that is the dictation, said at once.
-    fn speech_end_after(&self, clip: HeardClip<'_>, found: &Found, cut_secs: f32) -> Option<usize> {
-        if let Some(gap) = self.detector.pause.gap_after(clip.middle(found.last)) {
-            return Some(gap);
-        }
-        let went_on = clip.end.is_none_or(|end| {
-            self.detector.pause.heard_until() >= end.saturating_add(samples_in(cut_secs))
-        });
-        went_on.then_some(0)
-    }
-
     /// A doubled or chained command anywhere in what `clip` heard, else one that ends it.
     pub(super) fn place_anywhere_or_at_end(
         &mut self,
@@ -123,7 +102,7 @@ impl Session<'_> {
         utterance: u64,
     ) -> Option<ServerEvent> {
         let (heard, from) = last_window?;
-        let clip = HeardClip { heard: &heard, from, end: None };
+        let clip = HeardClip { heard: &heard, from };
         let event = self.place(clip, utterance, |w| reading.at_end(w))?;
         match event {
             ServerEvent::Command { end: said_end, .. }

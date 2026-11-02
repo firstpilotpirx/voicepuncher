@@ -2,9 +2,9 @@
 
 mod placed;
 
-pub use placed::{closing_word_of_start, Found, Placement};
+pub use placed::{Found, Placement};
 
-use voicepuncher_voice_commands::{trailing, Form, MishearingKind, FORMS, MISHEARINGS};
+use voicepuncher_voice_commands::{Form, MishearingKind, FORMS, MISHEARINGS};
 
 /// Where a transcript's sentences end.
 const SENTENCE_ENDS: &[char] = &['.', ',', '!', '?', '\n'];
@@ -113,7 +113,7 @@ impl PhraseMatcher {
     }
 
     fn phrase_in_sentence(&self, sentence: &str) -> Option<String> {
-        let said = once(&without_trailing_word(&words(sentence)));
+        let said = once(&words(sentence));
         if said.is_empty() {
             return None;
         }
@@ -161,13 +161,6 @@ fn ends_with(said: &[String], heard: &[&str]) -> bool {
             .iter()
             .zip(heard)
             .all(|(a, b)| a == b)
-}
-
-fn without_trailing_word(words: &[String]) -> Vec<String> {
-    match words.split_last() {
-        Some((last, rest)) if trailing(last).is_some() => rest.to_vec(),
-        _ => words.to_vec(),
-    }
 }
 
 /// The words said once when the utterance repeats them ("press enter, press enter").

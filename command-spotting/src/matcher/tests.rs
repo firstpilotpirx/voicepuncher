@@ -75,25 +75,9 @@ fn should_take_an_exact_phrase_whatever_its_case_and_punctuation() {
 }
 
 #[test]
-fn should_take_a_phrase_followed_by_please() {
-    assert_eq!(
-        standby().phrase_in("Press enter, please."),
-        Some("press enter".into())
-    );
-    assert_eq!(
-        dictating().phrase_in("Cancel dictation please"),
-        Some("cancel dictation".into())
-    );
-}
-
-#[test]
 fn should_take_clear_text_as_clear_all_text() {
     assert_eq!(
         standby().phrase_in("Clear text."),
-        Some("clear all text".into())
-    );
-    assert_eq!(
-        standby().phrase_in("Clear text, please."),
         Some("clear all text".into())
     );
 }
@@ -117,7 +101,7 @@ fn should_take_the_slips_heard_in_the_users_voice() {
         Some("clear all text".into())
     );
     assert_eq!(
-        dictating().phrase_in("Cancel the quotation please."),
+        dictating().phrase_in("Cancel the quotation."),
         Some("cancel dictation".into())
     );
 }
@@ -145,7 +129,7 @@ fn should_take_a_phrase_said_twice_once() {
 #[test]
 fn should_take_a_repeat_whose_sentences_say_the_same_command() {
     assert_eq!(
-        dictating().phrase_in(" Cancel dictation please. Cancel dictation.\n"),
+        dictating().phrase_in(" Cancel dictation. Cancel.\n"),
         Some("cancel dictation".into())
     );
 }
@@ -172,14 +156,10 @@ fn should_not_take_a_phrase_with_other_words_around_it() {
 fn should_take_the_short_forms() {
     for (transcript, phrase) in [
         ("Enter.", "press enter"),
-        ("Enter, please.", "press enter"),
         ("Clear.", "clear all text"),
-        ("Clear please.", "clear all text"),
         ("Paste text.", "paste text"),
         ("Paste.", "paste text"),
-        ("Paste please.", "paste text"),
         ("Start.", "start dictation"),
-        ("Start please.", "start dictation"),
     ] {
         assert_eq!(
             standby().phrase_in(transcript),
@@ -192,15 +172,11 @@ fn should_take_the_short_forms() {
         Some("stop dictation".into())
     );
     assert_eq!(
-        dictating().phrase_in("Stop, please."),
-        Some("stop dictation".into())
-    );
-    assert_eq!(
         dictating().phrase_in("Cancel."),
         Some("cancel dictation".into())
     );
     assert_eq!(
-        dictating().phrase_in("Restart, please."),
+        dictating().phrase_in("Restart."),
         Some("restart dictation".into())
     );
 }
@@ -305,5 +281,5 @@ fn should_close_a_chain_with_an_after_command_row() {
 
 #[test]
 fn should_read_the_words_of_a_cyrillic_transcript() {
-    assert_eq!(words("Стоп, пожалуйста."), ["стоп", "пожалуйста"]);
+    assert_eq!(words("Стоп, коллеги."), ["стоп", "коллеги"]);
 }
