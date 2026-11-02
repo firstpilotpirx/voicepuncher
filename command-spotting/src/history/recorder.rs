@@ -111,14 +111,16 @@ impl Recorder {
     }
 
     /// The speech recognition service made `verdict` of `commands`, the last reported
-    /// without confirmation.
+    /// without confirmation; else the last its hearing reported first, at half the pause,
+    /// before the keyword spotter's phrase brought the verdict.
     fn verdict(&mut self, commands: &[String], verdict: Verdict) {
-        let unheard = self
-            .reported
-            .iter_mut()
-            .rev()
-            .find(|r| !r.heard && r.whisper.is_none() && r.commands == commands);
-        if let Some(reported) = unheard {
+        let awaiting = |r: &&mut Reported| r.whisper.is_none() && r.commands == commands;
+        let unheard = (self.reported.iter_mut().rev()).find(|r| !r.heard && awaiting(r));
+        let reported = match unheard {
+            Some(reported) => Some(reported),
+            None => self.reported.iter_mut().rev().find(awaiting),
+        };
+        if let Some(reported) = reported {
             reported.whisper = Some(verdict);
         }
     }
