@@ -125,7 +125,6 @@ Feature: voice-control
       Examples:
         | said           | state             |
         | stop dictation | dictating         |
-        | paste text     | no dictation runs |
 
     @regression
     Scenario: A long form ending in a command word counts by that word

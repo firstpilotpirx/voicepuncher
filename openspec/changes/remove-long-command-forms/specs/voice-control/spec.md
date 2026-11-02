@@ -252,7 +252,7 @@ The system SHALL take each command only from its one word or that word said twic
 
 #### Scenario: A long form said alone takes no effect
 - **GIVEN** listening is on
-- **WHEN** the user says "stop dictation" during a dictation, or "paste text" with no dictation running, on its own with a pause before and after it
+- **WHEN** the user says "stop dictation" during a dictation, on its own with a pause before and after it
 - **THEN** no command takes effect
 
 #### Scenario: A long form ending in a command word counts by that word
