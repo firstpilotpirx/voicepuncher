@@ -34,7 +34,7 @@ Choosing Download SHALL fetch every missing file, one at a time, from its pinned
 - **AND** no `.part` file is left
 
 #### Scenario: The keyword spotting archive is extracted
-- **GIVEN** the keyword spotting folder is missing
+- **GIVEN** a streaming model folder is missing
 - **WHEN** its archive is downloaded and verified
 - **THEN** the folder is in the models folder and the archive is gone
 

@@ -261,14 +261,14 @@ fn should_start_a_failed_service_again_on_retry() {
 fn should_fail_a_service_with_a_missing_model_without_a_start() {
     // Given
     let mut missing = spec(ServiceKind::CommandSpotting, PORT);
-    missing.problem = Some("model ggml-small.bin not found in /models".into());
+    missing.problem = Some("model ggml-large-v3-turbo-q5_0.bin not found in /models".into());
     let mut harness = Harness::of(missing);
     // When
     harness.tick();
     // Then
     assert_eq!(
         harness.state(),
-        ServiceState::Failed("model ggml-small.bin not found in /models".into())
+        ServiceState::Failed("model ggml-large-v3-turbo-q5_0.bin not found in /models".into())
     );
     assert_eq!(harness.spawns.count(), 0);
 }

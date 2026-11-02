@@ -13,6 +13,14 @@ use crate::common;
 const SAMPLE_RATE: usize = 16_000;
 const PAUSE_SECS: f32 = 1.0;
 
+/// The phrases the app listens for in standby, when no dictation runs.
+const STANDBY: [&str; 4] = [
+    "start dictation",
+    "press enter",
+    "clear all text",
+    "paste text",
+];
+
 const PHRASES: [&str; 7] = [
     "start dictation",
     "stop dictation",
@@ -62,11 +70,16 @@ fn at_quiet_level(audio: &[f32]) -> Vec<f32> {
     audio.iter().map(|s| s * 0.005 / loudest).collect()
 }
 
-/// The events a session listening for every phrase reports in `audio`, fed in 0.1 s chunks,
+/// The events a session listening for `phrases` reports in `audio`, fed in 0.1 s chunks,
 /// followed by the answer to a sync of `id`.
-fn events_with_sync(engine: &StreamingEngine, audio: &[f32], id: u64) -> Vec<ServerEvent> {
+fn events_with_sync(
+    engine: &StreamingEngine,
+    phrases: &[&str],
+    audio: &[f32],
+    id: u64,
+) -> Vec<ServerEvent> {
     let mut session = engine.session_for(1).expect("a session");
-    let phrases = PHRASES.iter().map(|p| (*p).to_owned()).collect();
+    let phrases = phrases.iter().map(|p| (*p).to_owned()).collect();
     session
         .select(&PhraseSelection { phrases, ..PhraseSelection::default() })
         .expect("known phrases");
@@ -80,8 +93,13 @@ fn events_with_sync(engine: &StreamingEngine, audio: &[f32], id: u64) -> Vec<Ser
 
 /// The commands a session listening for every phrase reports in `audio`.
 fn commands_in(engine: &StreamingEngine, audio: &[f32]) -> Vec<String> {
+    commands_heard(engine, &PHRASES, audio)
+}
+
+/// The commands a session listening for `phrases` reports in `audio`.
+fn commands_heard(engine: &StreamingEngine, phrases: &[&str], audio: &[f32]) -> Vec<String> {
     // WHY: the recognizers decode on threads of their own; a sync waits for what is left.
-    events_with_sync(engine, &paused(audio), 0)
+    events_with_sync(engine, phrases, &paused(audio), 0)
         .into_iter()
         .filter_map(|event| match event {
             ServerEvent::Command { commands, .. } => Some(commands),
@@ -109,12 +127,34 @@ mod needs_streaming_models {
         let pause = vec![0.0f32; saturating_usize(PAUSE_SECS * SAMPLE_RATE as f32)];
         let audio = [pause.as_slice(), &common::spoken_by(None, "enter")].concat();
         // When the app asks for a sync right after the speech, before any pause after it
-        let events = events_with_sync(&engine, &audio, 7);
+        let events = events_with_sync(&engine, &PHRASES, &audio, 7);
         // Then
         let at = |wanted: fn(&ServerEvent) -> bool| events.iter().position(wanted);
-        let command = at(|e| matches!(e, ServerEvent::Command { .. })).expect("the command");
+        let command = at(
+            |e| matches!(e, ServerEvent::Command { commands, .. } if commands == &["press enter"]),
+        )
+        .expect("press enter");
         let synced = at(|e| matches!(e, ServerEvent::Synced { id: 7 })).expect("the sync");
         assert!(command < synced, "{events:?}");
+    }
+
+    #[test]
+    fn should_start_nothing_for_speech_that_is_no_start() {
+        let engine = engine();
+        let speech = [
+            (None, "we should start the meeting a bit later today"),
+            (None, "the weather is nice and the coffee is hot"),
+            (Some("Milena"), "давай встретимся завтра утром"),
+        ];
+        for (voice, words) in speech {
+            // When
+            let commands = commands_heard(&engine, &STANDBY, &common::spoken_by(voice, words));
+            // Then
+            assert!(
+                !commands.contains(&"start dictation".to_owned()),
+                "{words}: {commands:?}"
+            );
+        }
     }
 
     #[test]

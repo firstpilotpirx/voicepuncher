@@ -46,7 +46,7 @@ pub(super) struct MeasuredStart {
     /// When the sample that ends the command's words was fed.
     words_ended: Instant,
     /// Where the command's words end in the stream the command spotting service heard, in
-    /// seconds: its log places each confirmation there.
+    /// seconds.
     words_end_in_stream: f32,
     /// When the last sample of the speech after the command was fed, if speech followed.
     speech_ended: Option<Instant>,
@@ -230,7 +230,7 @@ pub(super) fn sentence_at_once() -> Result<Vec<f32>> {
 }
 
 /// A cue over its bound fails naming what ran beside it: the spec bounds the cue on an
-/// idle machine, so the load at the failure tells a slow confirmation from a loaded machine.
+/// idle machine, so the load at the failure tells a slow recognizer from a loaded machine.
 fn check_within(start: &MeasuredStart, bound_secs: f32) -> Result<()> {
     if !start.within(Duration::from_secs_f32(bound_secs)) {
         bail!(

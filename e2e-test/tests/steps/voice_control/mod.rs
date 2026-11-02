@@ -63,7 +63,7 @@ const RUSSIAN_COUNTING_WORDS: [&str; 10] = [
 ];
 
 /// Said after a command and a short pause; it opens with a hard consonant, whose first sound
-/// a confirmation clip running past the pause would take in.
+/// a command's words running past the pause would take in.
 const SENTENCE_AFTER_PAUSE: &str = "Coffee machine on the third floor is broken";
 const ENGLISH_VOICE: &str = "Eddy";
 

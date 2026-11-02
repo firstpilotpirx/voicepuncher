@@ -122,7 +122,7 @@ Feature: local-services
       When the services it needs are looked up
       Then the speech recognition service is named as running whisper-server 1.9.5 from $PATH
 
-  # Proved by the service tests of dev-tools/src/services/tests.rs (integration).
+  # Proved by the unit tests of the app's catalog (catalog/tests/engines.rs) and supervision (supervision_tests.rs).
   Rule: A service whose program or model is missing is named
 
   # Proved by the service tests of dev-tools/src/services/tests.rs and the app's catalog tests (integration).

@@ -28,7 +28,9 @@ Fixed along the way, each with its Red test: a recognizer that heard only the en
 
 **D5. Retired configuration keys load and are ignored.** The configuration denies unknown keys, so an old file naming `[voice_control] recognizer` or `confirm_commands`, or `[services] command_copies` or `commands_url`, would fail to load. Each stays as a field that accepts any value, is never written back and is read by nothing; every other unknown key still fails. Alternative — drop `deny_unknown_fields`: loses the typo check for every key.
 
-**D6. The service for commands leaves the app.** `ServiceKind::Commands`, its catalog branch, `ggml-small.bin` and the keyword spotting model in the model catalog, the settings switch and its hint, the `confirm=` stage of the voice start timing and the `Stalled` handling in the supervisor go. Scenarios that used the service for commands as their example (adopted, hung, quit, menu) use the dictation service or the command spotting service instead.
+**D6. The service for commands leaves the app.** `ServiceKind::Commands`, its catalog branch, `ggml-small.bin` and the keyword spotting model in the model catalog, the settings switch and its hint, the `confirm=` stage of the voice start timing and the `Stalled` handling in the supervisor go. Scenarios that used the service for commands as their example (adopted, hung, quit, menu) use the dictation service or the command spotting service instead. Without the confirmation, hearing a command and delivering it to the app are one `hear=` stage of the voice start timing. The model-download scenario "The keyword spotting archive is extracted" keeps its name, as a modified requirement keeps its scenarios' names, and now speaks of a streaming model archive.
+
+**D8. "start stop" is no longer kept from starting.** Only the keyword spotter's confirmation kept "start stop" and "start", a dip and "stop" from starting a dictation. The streaming recognizer reports "start" as soon as it is the only word heard, so the start cue comes within its bound, before "stop" is decoded; waiting for the next word would cost the cue its bound. Such a dictation is stopped by the "stop" that follows. The two scenarios that promised otherwise are dropped from the faster start's scenarios.
 
 **D7. Tests are deleted by the audit's lists.** Group 1 (keyword spotter, confirmation, service for commands, their copies) and group 3 (duplicates) of the audit are deleted; the nextest group `command-spotting-engine`, the filters `engine::`/`placed_commands::`, the test needs `needs_command_stt` and `needs_kws_models` and the `e2e-test` helpers `stalled_copies`, `spotting_service/` and `tests/it/confirmation_time.rs` go with them. The `@cues` checks lose their warm-copies and cut-short reporting, which only the confirmation needed.
 
@@ -39,9 +41,9 @@ Fixed along the way, each with its Red test: a recognizer that heard only the en
 | local-services | The app and the scripts start the speech recognition service with the same arguments | integration (`dev-tools/src/services/tests.rs`, app catalog tests) |
 | local-services | The app and the scripts start the streaming recognizer with the same arguments | integration (`dev-tools/src/services/tests.rs`, app catalog tests) |
 | local-services | A changed argument in only one place is caught | integration (`dev-tools/src/services/tests.rs`) |
-| local-services | The dictation model is not on disk | integration (`dev-tools/src/services/tests.rs`) |
+| local-services | The dictation model is not on disk | unit (`app/src/adapters/secondary/localservices/catalog/tests/engines.rs`, `supervision_tests.rs`) |
 | local-services | Only the speech recognition service is started | E2E |
-| local-services | The scripts know no text refinement service | integration (`dev-tools/src/services/tests.rs`) |
+| local-services | The scripts know no text refinement service | E2E (`local_services.feature`) and the service list of `dev-tools/src/services/` |
 | local-services | The command spotting service hangs | E2E |
 | local-services | A busy service is not restarted | E2E |
 | local-services | A cold launch starts the needed services | unit (`app/src/core/application/local_services/`) |
@@ -80,10 +82,9 @@ Fixed along the way, each with its Red test: a recognizer that heard only the en
 | voice-control | The user's recorded starts give their cue at once | E2E |
 | voice-control | The overlay shows with the start cue | component |
 | voice-control | A faster start keeps the dictation where the command's words end | E2E (`voice_control.feature`, `@cues`) |
-| voice-control | A faster start adds no false start | E2E (`voice_control.feature`, `@cues`) |
-| voice-control | A brief dip inside the command words starts nothing early | E2E (`voice_control.feature`, `@cues`) |
-| voice-control | The start cue is timed once the other checks' builds have ended | E2E (`voice_control.feature`, `@cues`) |
-| voice-control | A late start cue names what ran beside it | E2E (`voice_control.feature`, `@cues`) |
+| voice-control | A faster start adds no false start | integration (`command-spotting/tests/it/streaming/`) |
+| voice-control | The start cue is timed once the other checks' builds have ended | unit (`dev-tools/src/locks/tests.rs`) |
+| voice-control | A late start cue names what ran beside it | unit (`e2e-test/src/machine_load.rs`) |
 | voice-control | A command said alone is reported before its pause ends | E2E |
 | voice-control | Silence wakes no recognizer | E2E |
 | voice-control | Speech without a command is no command | E2E |

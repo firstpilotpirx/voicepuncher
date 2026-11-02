@@ -5,8 +5,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// How long a connection with audio waiting may make no progress before it counts as stuck;
-/// well above the longest a confirmation holds anything, since none holds the audio.
+/// How long a connection with audio waiting may make no progress before it counts as stuck.
 const STUCK_AFTER: Duration = Duration::from_secs(10);
 /// The longest audio may wait for the processing thread: past it, the service no longer
 /// keeps up. Audio sent faster than real time (a replay) waits only while it is processed.

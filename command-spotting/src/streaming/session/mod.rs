@@ -125,7 +125,6 @@ impl<'a> Session<'a> {
             .map_or_else(Vec::new, |u| u.collect(&self.matcher, now, wait))
     }
 
-    /// No confirmation runs, so none stalls.
     fn frame(&mut self, frame: &[f32]) -> Vec<ServerEvent> {
         let speech = self.gate_hears(frame);
         let mut events = Vec::new();

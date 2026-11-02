@@ -373,8 +373,8 @@ Feature: voice-control
       When each of the user's recorded starts is played, on its own and followed at once by a sentence
       Then at least 5 of 6 of them give the start cue within its bound of the end of the command's words
 
-  # Proved by the e2e lock of dev-tools (the cue stage runs with the machine alone) and the
-  # failure report of e2e-test/tests/steps/voice_control/session/start_cue.rs.
+  # Proved by the e2e lock of dev-tools (dev-tools/src/locks/tests.rs: the cue stage runs with the
+  # machine alone) and the load report of e2e-test/src/machine_load.rs, which a late cue's failure prints.
   Rule: The start cue is timed on an idle machine
 
   Rule: A doubled short form counts anywhere

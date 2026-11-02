@@ -289,13 +289,16 @@ fn should_end_the_pipeline_and_wait_when_a_reload_needs_missing_models() {
     wait_for_state(&seen, &ready(HotKey::F13));
     seen.lock().unwrap().clear();
     // When
-    models.missing_now(&["ggml-small.bin"]);
+    models.missing_now(&["ggml-large-v3-turbo-q5_0.bin"]);
     runtime.reload(with_hotkey(HotKey::F19)).unwrap();
-    wait_for_state(&seen, &waiting_for(&["ggml-small.bin"]));
+    wait_for_state(&seen, &waiting_for(&["ggml-large-v3-turbo-q5_0.bin"]));
     // Then
     assert_eq!(
         *seen.lock().unwrap(),
-        vec![RuntimeState::Restarting, waiting_for(&["ggml-small.bin"]),]
+        vec![
+            RuntimeState::Restarting,
+            waiting_for(&["ggml-large-v3-turbo-q5_0.bin"]),
+        ]
     );
 }
 

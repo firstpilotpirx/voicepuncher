@@ -20,6 +20,7 @@ fn should_respell_each_command_word_heard_in_cyrillic() {
         ("пейст", "paste"),
         ("пэст", "paste"),
         ("эйст", "paste"),
+        ("ейст", "paste"),
         ("хейст", "paste"),
     ];
     for (cyrillic, english) in heard {
