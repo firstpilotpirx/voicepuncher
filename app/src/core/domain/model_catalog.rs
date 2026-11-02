@@ -1,8 +1,6 @@
 //! The model catalog: every model file the local services load, where it is downloaded from,
 //! its sha256 and size, and which part of the app needs it.
 
-use super::CommandRecognizer;
-
 /// How a downloaded file becomes what the services load.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelKind {
@@ -16,12 +14,8 @@ pub enum ModelKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelUse {
     Dictation,
-    /// Voice control, whichever command recognizer hears the commands.
+    /// Voice control: the voice gate and the streaming recognizers.
     VoiceControl,
-    /// Voice control with the keyword spotter.
-    KeywordSpotting,
-    /// Voice control with the streaming recognizers.
-    Streaming,
 }
 
 /// One model file of the catalog.
@@ -53,7 +47,7 @@ impl ModelFile {
 }
 
 /// Every model file, in download order.
-pub const CATALOG: [ModelFile; 7] = [
+pub const CATALOG: [ModelFile; 5] = [
     ModelFile {
         name: "ggml-large-v3-turbo-q5_0.bin",
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo-q5_0.bin",
@@ -75,16 +69,6 @@ pub const CATALOG: [ModelFile; 7] = [
         variable: "VOICEPUNCHER_VAD_MODEL",
     },
     ModelFile {
-        name: "ggml-small.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-small.bin",
-        sha256: "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
-        size_bytes: 487_601_967,
-        purpose: "speech recognition — commands",
-        kind: ModelKind::File,
-        used_by: ModelUse::KeywordSpotting,
-        variable: "VOICEPUNCHER_COMMAND_WHISPER_MODEL",
-    },
-    ModelFile {
         name: "silero_vad.onnx",
         url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
         sha256: "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6",
@@ -95,18 +79,6 @@ pub const CATALOG: [ModelFile; 7] = [
         variable: "VOICEPUNCHER_KWS_VAD_MODEL",
     },
     ModelFile {
-        name: "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2",
-        url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2",
-        sha256: "f170013b4716e41b62b9bfd809687c207cef798ef9bc6534d524e17af9b6561a",
-        size_bytes: 17_626_723,
-        purpose: "keyword spotting — voice control",
-        kind: ModelKind::TarBz2 {
-            folder: "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01",
-        },
-        used_by: ModelUse::KeywordSpotting,
-        variable: "VOICEPUNCHER_KWS_MODEL_DIR",
-    },
-    ModelFile {
         name: "sherpa-onnx-nemotron-speech-streaming-en-0.6b-160ms-int8-2026-04-25.tar.bz2",
         url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemotron-speech-streaming-en-0.6b-160ms-int8-2026-04-25.tar.bz2",
         sha256: "0ae73a41cd51599dc7cac9ac083d9d35de53d762ca45923505fde47a3751814b",
@@ -115,7 +87,7 @@ pub const CATALOG: [ModelFile; 7] = [
         kind: ModelKind::TarBz2 {
             folder: "sherpa-onnx-nemotron-speech-streaming-en-0.6b-160ms-int8-2026-04-25",
         },
-        used_by: ModelUse::Streaming,
+        used_by: ModelUse::VoiceControl,
         variable: "VOICEPUNCHER_STREAMING_EN_MODEL_DIR",
     },
     ModelFile {
@@ -127,7 +99,7 @@ pub const CATALOG: [ModelFile; 7] = [
         kind: ModelKind::TarBz2 {
             folder: "sherpa-onnx-streaming-zipformer-small-ru-vosk-2025-08-16",
         },
-        used_by: ModelUse::Streaming,
+        used_by: ModelUse::VoiceControl,
         variable: "VOICEPUNCHER_STREAMING_RU_MODEL_DIR",
     },
 ];
@@ -135,30 +107,19 @@ pub const CATALOG: [ModelFile; 7] = [
 /// The parts of the app that are on, and so which models are needed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ModelNeeds {
-    pub keyword_spotting: bool,
-    pub streaming: bool,
+    pub voice_control: bool,
 }
 
 impl ModelNeeds {
-    /// Every model of the catalog.
-    pub const ALL: Self = Self { keyword_spotting: true, streaming: true };
+    /// Every model of the catalog: dictation and voice control.
+    pub const ALL: Self = Self { voice_control: true };
     /// The dictation models alone: voice control off.
-    pub const DICTATION: Self = Self { keyword_spotting: false, streaming: false };
-
-    /// Dictation and voice control heard by `recognizer`.
-    pub const fn voice_control(recognizer: CommandRecognizer) -> Self {
-        match recognizer {
-            CommandRecognizer::Streaming => Self { keyword_spotting: false, streaming: true },
-            CommandRecognizer::KeywordSpotting => Self { keyword_spotting: true, streaming: false },
-        }
-    }
+    pub const DICTATION: Self = Self { voice_control: false };
 
     const fn includes(self, used_by: ModelUse) -> bool {
         match used_by {
             ModelUse::Dictation => true,
-            ModelUse::VoiceControl => self.keyword_spotting || self.streaming,
-            ModelUse::KeywordSpotting => self.keyword_spotting,
-            ModelUse::Streaming => self.streaming,
+            ModelUse::VoiceControl => self.voice_control,
         }
     }
 }
@@ -190,9 +151,9 @@ mod tests {
     }
 
     #[test]
-    fn should_list_seven_files_each_with_a_pinned_address_checksum_size_and_purpose() {
+    fn should_list_five_files_each_with_a_pinned_address_checksum_size_and_purpose() {
         // Then
-        assert_eq!(CATALOG.len(), 7);
+        assert_eq!(CATALOG.len(), 5);
         for file in CATALOG {
             assert!(file.url.starts_with("https://"), "{}", file.url);
             assert!(file.url.ends_with(file.name), "{}", file.url);
@@ -219,7 +180,6 @@ mod tests {
             url("ggml-large-v3-turbo-q5_0.bin"),
             format!("{whisper}/ggml-large-v3-turbo-q5_0.bin")
         );
-        assert_eq!(url("ggml-small.bin"), format!("{whisper}/ggml-small.bin"));
         assert_eq!(
             url("ggml-silero-v5.1.2.bin"),
             "https://huggingface.co/ggml-org/whisper-vad/resolve/9ffd54a1e1ee413ddf265af9913beaf518d1639b/ggml-silero-v5.1.2.bin"
@@ -229,9 +189,9 @@ mod tests {
             format!("{sherpa}/asr-models/silero_vad.onnx")
         );
         assert_eq!(
-            url("sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2"),
+            url("sherpa-onnx-streaming-zipformer-small-ru-vosk-2025-08-16.tar.bz2"),
             format!(
-                "{sherpa}/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2"
+                "{sherpa}/asr-models/sherpa-onnx-streaming-zipformer-small-ru-vosk-2025-08-16.tar.bz2"
             )
         );
     }
@@ -240,7 +200,7 @@ mod tests {
     fn should_keep_the_checksums_the_model_scripts_held() {
         let sha = |name| by_name(name).unwrap().sha256;
         assert!(sha("ggml-large-v3-turbo-q5_0.bin").starts_with("394221709cd5"));
-        assert!(sha("ggml-small.bin").starts_with("1be3a9b2"));
+        assert!(sha("silero_vad.onnx").starts_with("9e2449e1"));
     }
 
     #[test]
@@ -260,9 +220,9 @@ mod tests {
     }
 
     #[test]
-    fn should_need_the_streaming_models_and_not_the_keyword_spotting_ones_for_streaming() {
+    fn should_need_the_streaming_models_for_voice_control() {
         // When
-        let files = needed(ModelNeeds::voice_control(CommandRecognizer::Streaming));
+        let files = needed(ModelNeeds::ALL);
         // Then
         assert_eq!(
             names(&files),
@@ -277,16 +237,6 @@ mod tests {
     }
 
     #[test]
-    fn should_need_the_keyword_spotting_models_for_the_keyword_spotter() {
-        // When
-        let files = needed(ModelNeeds::voice_control(
-            CommandRecognizer::KeywordSpotting,
-        ));
-        // Then
-        assert_eq!(names(&files), names(&CATALOG[..5]));
-    }
-
-    #[test]
     fn should_place_the_archive_as_its_folder() {
         let archive = CATALOG
             .iter()
@@ -294,12 +244,12 @@ mod tests {
             .unwrap();
         assert_eq!(
             archive.placed_name(),
-            "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"
+            "sherpa-onnx-nemotron-speech-streaming-en-0.6b-160ms-int8-2026-04-25"
         );
     }
 
     #[test]
     fn should_add_up_the_sizes() {
-        assert_eq!(total_bytes(&CATALOG), 1_634_397_259);
+        assert_eq!(total_bytes(&CATALOG), 1_129_168_569);
     }
 }

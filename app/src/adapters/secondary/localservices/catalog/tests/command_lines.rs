@@ -113,7 +113,8 @@ fn should_pass_the_archive_size_limit_to_the_command_history() {
     let home = std::path::Path::new("/Users/someone");
     // When
     let kept = CommandHistoryArgs::of(&archive, home);
-    let args = command_spotting_args(0, "model_dir", "vad", "commands_url", kept.as_ref());
+    let models = ["en_model_dir", "ru_model_dir", "vad"].map(String::from);
+    let args = streaming_args(0, &models, kept.as_ref());
     // Then
     let tail = &args[args.len() - 4..];
     let expected = [

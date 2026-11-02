@@ -71,7 +71,7 @@ impl ServiceProbe for HttpProbe {
         if page("/health").is_none() {
             return ProbeAnswer::Busy;
         }
-        let whisper = matches!(kind, ServiceKind::Dictation | ServiceKind::Commands);
+        let whisper = kind == ServiceKind::Dictation;
         if whisper && !page("/").is_some_and(|text| text.to_lowercase().contains("whisper")) {
             return ProbeAnswer::Busy;
         }
@@ -93,7 +93,7 @@ impl ServiceProbe for HttpProbe {
     }
 
     fn warm_up(&self, kind: ServiceKind, port: u16) -> Option<Duration> {
-        if !matches!(kind, ServiceKind::Dictation | ServiceKind::Commands) {
+        if kind != ServiceKind::Dictation {
             return Some(Duration::ZERO);
         }
         let began = Instant::now();

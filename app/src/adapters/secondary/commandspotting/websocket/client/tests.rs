@@ -1,28 +1,5 @@
 use super::*;
-use crate::core::domain::{CommandPlacement, ConfirmationTiming, ReportTiming};
-
-#[test]
-fn should_read_service_times_as_instants_from_the_audio_start() {
-    // Given
-    let json = r#"{"event":"phrase","phrase":"press enter","start":1.5,"end":2.25}"#;
-    let audio_start = Instant::now();
-    // When
-    let converted = arrived_at_the_start(json, audio_start);
-    // Then
-    assert_eq!(
-        converted,
-        SpottingEvent::PhraseSpotted {
-            phrase: "press enter".into(),
-            start: audio_start + Duration::from_millis(1500),
-            end: audio_start + Duration::from_millis(2250),
-            timing: Some(ReportTiming {
-                words_ended: audio_start + Duration::from_millis(2250),
-                confirmation: None,
-                arrived_at: audio_start,
-            }),
-        }
-    );
-}
+use crate::core::domain::{CommandPlacement, ReportTiming};
 
 #[test]
 fn should_read_commands_said_without_a_pause() {
@@ -41,37 +18,7 @@ fn should_read_commands_said_without_a_pause() {
             placement: CommandPlacement::Anywhere,
             timing: Some(ReportTiming {
                 words_ended: audio_start + Duration::from_millis(4750),
-                confirmation: None,
                 arrived_at: audio_start,
-            }),
-        }
-    );
-}
-
-#[test]
-fn should_read_the_timing_of_a_confirmed_command() {
-    // Given
-    let json = r#"{"event":"command","commands":["start dictation"],"start":4.0,"end":4.75,"placement":"head","timing":{"asked_at":5.0,"took_ms":250}}"#;
-    let event: ServiceEvent = serde_json::from_str(json).unwrap();
-    let audio_start = Instant::now();
-    let arrived_at = audio_start + Duration::from_secs(6);
-    // When
-    let converted = to_spotting_event(event, audio_start, arrived_at);
-    // Then
-    assert_eq!(
-        converted.unwrap(),
-        SpottingEvent::CommandsSaid {
-            commands: vec![VoiceCommand::StartDictation],
-            start: audio_start + Duration::from_secs(4),
-            end: audio_start + Duration::from_millis(4750),
-            placement: CommandPlacement::Head,
-            timing: Some(ReportTiming {
-                words_ended: audio_start + Duration::from_millis(4750),
-                confirmation: Some(ConfirmationTiming {
-                    asked_at: audio_start + Duration::from_secs(5),
-                    took: Duration::from_millis(250),
-                }),
-                arrived_at,
             }),
         }
     );
@@ -103,74 +50,26 @@ fn should_read_the_answer_to_a_sync() {
 }
 
 #[test]
-fn should_read_a_failed_confirmation_as_its_segment() {
+fn should_read_dropped_audio_as_no_spotting_event() {
     // Given
-    let json = r#"{"event":"confirmation_failed","start":1.5,"end":2.25}"#;
-    let audio_start = Instant::now();
+    let json = r#"{"event":"dropped","samples":1600}"#;
+    let event: ServiceEvent = serde_json::from_str(json).unwrap();
     // When
-    let converted = arrived_at_the_start(json, audio_start);
+    let converted = to_spotting_event(event, Instant::now(), Instant::now());
     // Then
-    assert_eq!(
-        converted,
-        SpottingEvent::ConfirmationFailed {
-            start: audio_start + Duration::from_millis(1500),
-            end: audio_start + Duration::from_millis(2250),
-        }
-    );
-}
-
-#[test]
-fn should_read_a_stall_and_dropped_audio_as_no_spotting_event() {
-    for json in [
-        r#"{"event":"stalled","waited_ms":12000}"#,
-        r#"{"event":"dropped","samples":1600}"#,
-    ] {
-        let event: ServiceEvent = serde_json::from_str(json).unwrap();
-        assert_eq!(
-            to_spotting_event(event, Instant::now(), Instant::now()),
-            None,
-            "{json}"
-        );
-    }
+    assert_eq!(converted, None);
 }
 
 #[test]
 fn should_ask_for_an_early_start_only_while_start_dictation_is_listened_for() {
     // When
     let early = |commands| -> serde_json::Value {
-        serde_json::from_str::<serde_json::Value>(&selection_of(commands, true)).unwrap()
-            ["early_start"]
+        serde_json::from_str::<serde_json::Value>(&selection_of(commands)).unwrap()["early_start"]
             .clone()
     };
     // Then
     assert_eq!(early(&VoiceCommand::STANDBY), serde_json::json!(true));
     assert_eq!(early(&VoiceCommand::DICTATING), serde_json::json!(false));
-}
-
-#[test]
-fn should_tell_the_service_whether_commands_are_confirmed() {
-    // When
-    let confirm = |confirm| -> serde_json::Value {
-        serde_json::from_str::<serde_json::Value>(&selection_of(&VoiceCommand::STANDBY, confirm))
-            .unwrap()["confirm"]
-            .clone()
-    };
-    // Then
-    assert_eq!(confirm(true), serde_json::json!(true));
-    assert_eq!(confirm(false), serde_json::json!(false));
-}
-
-#[test]
-fn should_read_what_whisper_heard_of_an_unconfirmed_command_as_a_log_line() {
-    // Given
-    let json = r#"{"event":"heard","commands":["start dictation"],"start":1.5,"end":2.25,"verdict":"agreed"}"#;
-    // When
-    let event: ServiceEvent = serde_json::from_str(json).unwrap();
-    // Then
-    assert_eq!(
-        verdict_line(&event).as_deref(),
-        Some("whisper on unconfirmed [\"start dictation\"]: agreed")
-    );
 }
 
 /// The event the service line `json` becomes when it arrives at the audio start.

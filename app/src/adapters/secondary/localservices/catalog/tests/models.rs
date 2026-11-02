@@ -4,7 +4,7 @@ use super::*;
 
 /// The command spotting service as `needed` starts it on the home's machine.
 pub(super) fn spotting_spec(home: &Home) -> ServiceSpec {
-    needed(&keyword_spotting(), ALL, &home.machine(), &NOTHING_RUNS)
+    needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS)
         .into_iter()
         .find(|spec| spec.kind == ServiceKind::CommandSpotting)
         .unwrap()
@@ -27,24 +27,24 @@ pub(super) fn should_find_the_command_spotting_service_built_next_to_the_app() {
 pub(super) fn should_find_a_model_in_the_old_folder_and_prefer_the_environment() {
     // Given
     let home = Home::complete();
-    fs::remove_file(home.models().join(COMMAND_MODEL)).unwrap();
-    let old = home.path().join(".voicepuncher").join(COMMAND_MODEL);
+    fs::remove_file(home.models().join(DICTATION_MODEL)).unwrap();
+    let old = home.path().join(".voicepuncher").join(DICTATION_MODEL);
     touch(&old);
     let mut machine = home.machine();
     let model_of = |machine: &Machine| {
-        let specs = needed(&keyword_spotting(), ALL, machine, &NOTHING_RUNS);
-        let commands = specs
+        let specs = needed(&Config::default(), ALL, machine, &NOTHING_RUNS);
+        let dictation = specs
             .iter()
-            .find(|spec| spec.kind == ServiceKind::Commands)
+            .find(|spec| spec.kind == ServiceKind::Dictation)
             .unwrap();
-        commands.args[1].clone()
+        dictation.args[1].clone()
     };
     // When
     let found = model_of(&machine);
     let chosen = home.path().join("mine.bin");
     touch(&chosen);
     machine.env.insert(
-        "VOICEPUNCHER_COMMAND_WHISPER_MODEL".into(),
+        "VOICEPUNCHER_WHISPER_MODEL".into(),
         chosen.display().to_string(),
     );
     let overridden = model_of(&machine);
@@ -54,11 +54,11 @@ pub(super) fn should_find_a_model_in_the_old_folder_and_prefer_the_environment()
 }
 
 #[test]
-pub(super) fn should_use_the_newest_of_two_keyword_spotting_models() {
+pub(super) fn should_use_the_newest_of_two_english_streaming_models() {
     // Given
     let home = Home::complete();
-    let older = home.models().join("sherpa-onnx-kws-zipformer");
-    let newer = home.models().join("sherpa-onnx-kws-zz-newer");
+    let older = home.models().join(STREAMING_EN_MODEL);
+    let newer = home.models().join(format!("{STREAMING_EN_MODEL}-newer"));
     fs::create_dir_all(&newer).unwrap();
     let past = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
     fs::File::open(&older).unwrap().set_modified(past).unwrap();

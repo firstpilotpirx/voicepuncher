@@ -90,11 +90,6 @@ impl ManagedRun {
             free_service_port(SPEECH_RECOGNITION_COPY_OFFSET)?
         );
         config.services.dictation_copies = needed.dictation_copies;
-        config.services.commands_url = format!(
-            "http://127.0.0.1:{}/v1",
-            free_service_port(SPEECH_RECOGNITION_COPY_OFFSET)?
-        );
-        config.services.command_copies = 2;
         config.services.command_spotting_copies = 2;
         config.voice_control.enabled = needed.voice_control;
         config.voice_control.url = format!(

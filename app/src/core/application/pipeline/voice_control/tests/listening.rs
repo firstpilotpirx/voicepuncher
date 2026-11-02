@@ -167,7 +167,7 @@ pub(super) fn should_keep_listening_when_a_dictation_cannot_start() {
     let end = start + PHRASE_LENGTH;
     let results: Vec<anyhow::Result<()>> = [
         SpottingEvent::SpeechStarted(segment_start),
-        SpottingEvent::PhraseSpotted { phrase: "start dictation".into(), start, end, timing: None },
+        said_alone("start dictation", start, end),
         SpottingEvent::SpeechEnded(end + PHRASE_LEAD),
     ]
     .into_iter()

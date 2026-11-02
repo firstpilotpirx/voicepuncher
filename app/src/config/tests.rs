@@ -1,4 +1,3 @@
-use crate::core::domain::CommandRecognizer;
 #[test]
 fn should_not_record_the_login_question_as_asked_by_default() {
     // Given / When
@@ -53,30 +52,27 @@ fn should_keep_voice_control_off_with_the_local_service_url_when_the_section_is_
     // Then
     assert!(!cfg.voice_control.enabled);
     assert_eq!(cfg.voice_control.url, "ws://127.0.0.1:8082");
-    assert!(cfg.voice_control.confirm_commands);
 }
 
 #[test]
-fn should_read_the_command_recognizer_and_default_to_streaming() {
-    // When
-    let chosen = loaded("[voice_control]\nrecognizer = \"keyword_spotting\"");
-    let unset = loaded("[voice_control]\nenabled = true");
-    // Then
-    assert_eq!(
-        chosen.voice_control.recognizer,
-        CommandRecognizer::KeywordSpotting
-    );
-    assert_eq!(unset.voice_control.recognizer, CommandRecognizer::Streaming);
-}
-
-#[test]
-fn should_keep_commands_unconfirmed_when_the_file_says_so() {
+fn should_load_and_never_write_the_keys_of_the_retired_keyword_spotter() {
     // Given
-    let file = "[voice_control]\nconfirm_commands = false";
+    let file = "[voice_control]\nrecognizer = \"keyword_spotting\"\nconfirm_commands = false\n\
+                [services]\ncommand_copies = 9\ncommands_url = \"http://10.0.0.2:8085/v1\"";
     // When
-    let cfg = loaded(file);
+    let written = toml::to_string(&loaded(file)).unwrap();
     // Then
-    assert!(!cfg.voice_control.confirm_commands);
+    for retired in [
+        "recognizer",
+        "confirm_commands",
+        "command_copies",
+        "commands_url",
+    ] {
+        assert!(
+            !written.contains(retired),
+            "{retired} written back: {written}"
+        );
+    }
 }
 
 #[test]
@@ -291,22 +287,18 @@ fn should_accept_default_service_addresses() {
 }
 
 #[test]
-fn should_manage_three_copies_of_each_speech_recognition_service_by_default() {
+fn should_manage_three_copies_of_the_speech_recognition_service_by_default() {
     // Given
     let file = "[hotkey]\nkey = \"F13\"";
     // When
     let cfg = loaded(file);
     // Then
     assert!(cfg.services.manage);
-    assert_eq!(
-        (cfg.services.dictation_copies, cfg.services.command_copies),
-        (3, 3)
-    );
+    assert_eq!(cfg.services.dictation_copies, 3);
     assert_eq!(
         cfg.services.models_dir,
         PathBuf::from("~/.voicepuncher/models")
     );
-    assert_eq!(cfg.services.commands_url, "http://127.0.0.1:8085/v1");
 }
 
 #[test]
@@ -347,24 +339,13 @@ fn should_reject_more_copies_than_the_pool_looks_for() {
     for copies in [0, 5] {
         // Given
         let mut f = tempfile::NamedTempFile::new().unwrap();
-        writeln!(f, "[services]\ncommand_copies = {copies}").unwrap();
+        writeln!(f, "[services]\ndictation_copies = {copies}").unwrap();
         // When
         let message = format!("{:#}", load(f.path()).unwrap_err());
         // Then
-        assert!(message.contains("services.command_copies"), "{message}");
+        assert!(message.contains("services.dictation_copies"), "{message}");
         assert!(message.contains("1 to 4"), "{message}");
     }
-}
-
-#[test]
-fn should_reject_a_speech_recognition_service_for_commands_on_another_machine() {
-    // Given
-    let mut f = tempfile::NamedTempFile::new().unwrap();
-    writeln!(f, "[services]\ncommands_url = \"http://10.0.0.2:8085/v1\"").unwrap();
-    // When
-    let message = format!("{:#}", load(f.path()).unwrap_err());
-    // Then
-    assert!(message.contains("services.commands_url"), "{message}");
 }
 
 #[test]

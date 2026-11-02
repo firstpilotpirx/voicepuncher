@@ -208,9 +208,6 @@ fn spoken_command() -> Result<Vec<f32>> {
 /// The commands one event of the command spotting service reports.
 fn commands_in(event: SpottingEvent) -> Vec<VoiceCommand> {
     match event {
-        SpottingEvent::PhraseSpotted { phrase, .. } => {
-            VoiceCommand::from_phrase(&phrase).into_iter().collect()
-        }
         SpottingEvent::CommandsSaid { commands, .. } => commands,
         _ => Vec::new(),
     }

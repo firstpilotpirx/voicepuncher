@@ -50,18 +50,17 @@ pub struct MicrophoneAudio<A> {
     pub captured_from: Instant,
 }
 
-/// The command spotting service to stream to: its address, whether it confirms commands
-/// before it reports them, and who hears of a copy that refused the app's protocol version.
+/// The command spotting service to stream to: its address, and who hears of a copy that
+/// refused the app's protocol version.
 #[derive(Debug, Clone)]
 pub struct SpottingService {
     pub url: String,
-    pub confirm_commands: bool,
     pub refused: RefusedCopies,
 }
 
 impl From<&str> for SpottingService {
     fn from(url: &str) -> Self {
-        Self { url: url.to_owned(), confirm_commands: true, refused: RefusedCopies::default() }
+        Self { url: url.to_owned(), refused: RefusedCopies::default() }
     }
 }
 
@@ -136,8 +135,7 @@ impl AudioStream {
         let MicrophoneAudio { audio, native_rate, captured_from: audio_start } = microphone;
         let service = service.into();
         let refused = |port| service.refused.report(port);
-        let mut client = SpottingClient::connect_reporting(&service.url, audio_start, &refused)?
-            .confirming(service.confirm_commands);
+        let mut client = SpottingClient::connect_reporting(&service.url, audio_start, &refused)?;
         client.listen_for(commands)?;
         let session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
         log::info!(
@@ -192,8 +190,6 @@ struct Listening {
 
 pub struct WebSocketCommandSpotter {
     url: String,
-    /// Whether the service confirms commands before it reports them.
-    confirm_commands: bool,
     inputs: Sender<PipelineInput>,
     listening: Option<Listening>,
     /// The configuration's `input_device`: a device name or `default`.
@@ -207,7 +203,6 @@ impl WebSocketCommandSpotter {
     pub fn new(url: String, inputs: Sender<PipelineInput>) -> Self {
         Self {
             url,
-            confirm_commands: true,
             inputs,
             listening: None,
             input_device: devices::DEFAULT_DEVICE.to_owned(),
@@ -225,13 +220,6 @@ impl WebSocketCommandSpotter {
     /// Shares the kept microphone's audio through `tap` while listening.
     pub fn with_tap(mut self, tap: MicTap) -> Self {
         self.tap = tap;
-        self
-    }
-
-    /// Has the service confirm commands before it reports them, or not.
-    #[must_use]
-    pub const fn confirming(mut self, confirm_commands: bool) -> Self {
-        self.confirm_commands = confirm_commands;
         self
     }
 
@@ -253,11 +241,7 @@ impl CommandSpotter for WebSocketCommandSpotter {
         let open: MicOpener = Box::new(move || kept_mic::open_device(&device));
         let (mic, audio, started_at) = KeptMic::start(open, KeeperTimings::default())?;
         log::info!("command spotting: connecting to {}", self.url);
-        let service = SpottingService {
-            url: self.url.clone(),
-            confirm_commands: self.confirm_commands,
-            refused: self.refused.clone(),
-        };
+        let service = SpottingService { url: self.url.clone(), refused: self.refused.clone() };
         let stream = AudioStream::start(
             service,
             commands,

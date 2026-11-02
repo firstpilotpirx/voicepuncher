@@ -13,10 +13,7 @@ pub(super) fn start_session(world: &mut E2eWorld) -> Result<()> {
         .command_spotting_url
         .clone()
         .context("the command spotting service is not set up")?;
-    let service = SpottingService {
-        confirm_commands: !world.voice.unconfirmed_commands,
-        ..SpottingService::from(&url)
-    };
+    let service = SpottingService::from(&url);
     let session = HandsFreeSession::start(service, env("VOICEPUNCHER_TRANSCRIPTION_URL")?)?;
     let deadline = Instant::now() + REACTION;
     while !session.events().contains(&Event::Listening) {

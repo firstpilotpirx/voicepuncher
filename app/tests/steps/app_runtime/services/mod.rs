@@ -16,7 +16,6 @@ use crate::IntegrationWorld;
 const DICTATION: u16 = 18082;
 /// A second copy of the speech recognition service for dictation.
 const SECOND_COPY: u16 = 28082;
-const COMMANDS: u16 = 18086;
 const COMMAND_SPOTTING: u16 = 8082;
 /// How many looks of the runtime a service started by itself takes to answer.
 const LOOKS_TO_ANSWER: usize = 3;
@@ -197,7 +196,7 @@ fn voice_control_services_started(world: &mut IntegrationWorld) -> Result<()> {
         matches!(event, Event::State(RuntimeState::StartingServices { .. }))
     })?;
     let services = services(run)?;
-    if !(services.required(COMMANDS) && services.required(COMMAND_SPOTTING)) {
+    if !services.required(COMMAND_SPOTTING) {
         bail!(
             "the command services were not started: {:?}",
             services.states()

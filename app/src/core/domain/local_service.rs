@@ -4,13 +4,12 @@ use std::fmt;
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// The three local services, in the order they stop at quit.
+/// The two local services, in the order they stop at quit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ServiceKind {
-    /// Holds connections to the copies of the speech recognition service for commands.
+    /// Hears the voice commands in the audio the app streams to it.
     CommandSpotting,
     Dictation,
-    Commands,
 }
 
 impl ServiceKind {
@@ -19,7 +18,6 @@ impl ServiceKind {
         match self {
             Self::CommandSpotting => "command spotting service",
             Self::Dictation => "speech recognition service for dictation",
-            Self::Commands => "speech recognition service for commands",
         }
     }
 }
@@ -148,15 +146,13 @@ mod tests {
     }
 
     #[test]
-    fn should_stop_command_spotting_first_and_commands_last() {
-        let mut kinds = [
-            ServiceKind::Dictation,
-            ServiceKind::CommandSpotting,
-            ServiceKind::Commands,
-        ];
+    fn should_stop_command_spotting_first() {
+        let mut kinds = [ServiceKind::Dictation, ServiceKind::CommandSpotting];
         kinds.sort();
-        assert_eq!(kinds.first(), Some(&ServiceKind::CommandSpotting));
-        assert_eq!(kinds.last(), Some(&ServiceKind::Commands));
+        assert_eq!(
+            kinds,
+            [ServiceKind::CommandSpotting, ServiceKind::Dictation]
+        );
     }
 
     #[test]

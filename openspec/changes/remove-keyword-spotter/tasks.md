@@ -28,11 +28,11 @@
 
 ## 4. Delete the keyword spotter and the service for commands from the app
 
-- [ ] 4.1 Red: a configuration naming `recognizer`, `confirm_commands`, `command_copies` and `commands_url` still loads
-- [ ] 4.2 Green: those keys are accepted and ignored; `CommandRecognizer` and the fields go (design D5)
-- [ ] 4.3 Delete `ServiceKind::Commands`, `catalog/keyword_spotting.rs`, the Whisper branch of `catalog::needed`, the Whisper small and keyword spotting entries of the model catalog, the settings switch and its hint, `default.toml` keys (design D6)
-- [ ] 4.4 The websocket client, the supervisor and `VoiceCommandRecognizer` act only on the streaming events; `SpottingEvent::{PhraseSpotted, ConfirmationFailed}`, `ConfirmationTiming` and the `confirm=` stage go
-- [ ] 4.5 Commit: `refactor: delete the service for commands from the app`
+- [x] 4.1 Red: a configuration naming `recognizer`, `confirm_commands`, `command_copies` and `commands_url` still loads
+- [x] 4.2 Green: those keys are accepted and ignored; `CommandRecognizer` and the fields go (design D5)
+- [x] 4.3 Delete `ServiceKind::Commands`, `catalog/keyword_spotting.rs`, the Whisper branch of `catalog::needed`, the Whisper small and keyword spotting entries of the model catalog, the settings switch and its hint, `default.toml` keys (design D6)
+- [x] 4.4 The websocket client, the supervisor and `VoiceCommandRecognizer` act only on the streaming events; `SpottingEvent::{PhraseSpotted, ConfirmationFailed}`, `ConfirmationTiming` and the `confirm=` stage go
+- [x] 4.5 Commit: `refactor: delete the service for commands from the app`
 
 ## 5. Recipes, docs and version
 

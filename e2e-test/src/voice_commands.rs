@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 
 use voicepuncher::adapters::secondary::commandspotting::websocket::client::SpottingClient;
-use voicepuncher::core::domain::{SpottingEvent, VoiceCommand, VoiceCommandRecognizer};
+use voicepuncher::core::domain::{SpottingEvent, VoiceCommand};
 
 use crate::conversions::saturating_usize;
 use crate::speech_cache::{synthesized, SayRequest};
@@ -27,7 +27,7 @@ const LOUDNESS_FRAME_SAMPLES: usize = 160;
 /// stays far below what the socket holds and a send never blocks on a busy service.
 const SAMPLES_BETWEEN_WAITS: usize = 20 * FRAME_SAMPLES;
 /// How long the real command spotting service may take to answer a sync: more than 5 times
-/// its worst normal answer (confirmations give up after 3 s, plus 2 s of audio).
+/// its worst normal answer.
 pub const SYNC_ANSWER_LIMIT: Duration = Duration::from_secs(20);
 
 /// English `words` spoken by `say`, 16 kHz mono, with a pause of silence before and after.
@@ -114,10 +114,9 @@ pub fn spotting_events(
 
 /// The voice commands the app recognizes in `events`.
 pub fn recognized_commands(events: Vec<SpottingEvent>) -> Vec<VoiceCommand> {
-    let mut recognizer = VoiceCommandRecognizer::new();
     events
         .into_iter()
-        .flat_map(|e| recognizer.feed(e))
+        .flat_map(SpottingEvent::into_commands)
         .map(|spoken| spoken.command)
         .collect()
 }
@@ -142,11 +141,7 @@ pub fn carried_out_by_app(
 ) -> Result<Vec<VoiceCommand>> {
     let mut client = SpottingClient::connect(url, Instant::now())?;
     client.listen_for(commands)?;
-    let mut app = AppStates {
-        accepted: commands,
-        recognizer: VoiceCommandRecognizer::new(),
-        carried_out: Vec::new(),
-    };
+    let mut app = AppStates { accepted: commands, carried_out: Vec::new() };
     for frame in audio.chunks(FRAME_SAMPLES) {
         client.send_audio(frame)?;
         let events = client.events_for_sent_audio(SYNC_ANSWER_LIMIT)?;
@@ -159,7 +154,6 @@ pub fn carried_out_by_app(
 /// The commands the app accepts as it carries them out.
 struct AppStates {
     accepted: &'static [VoiceCommand],
-    recognizer: VoiceCommandRecognizer,
     carried_out: Vec<VoiceCommand>,
 }
 
@@ -167,7 +161,7 @@ impl AppStates {
     /// Carries out the commands `events` make that the state accepts, each moving the client
     /// on to the phrases of the state it leads to.
     fn hear(&mut self, client: &mut SpottingClient, events: Vec<SpottingEvent>) -> Result<()> {
-        for spoken in events.into_iter().flat_map(|e| self.recognizer.feed(e)) {
+        for spoken in events.into_iter().flat_map(SpottingEvent::into_commands) {
             if self.accepted.contains(&spoken.command) {
                 self.carried_out.push(spoken.command);
                 self.accepted = accepted_after(spoken.command);

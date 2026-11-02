@@ -1,5 +1,5 @@
 //! The command spotting service with the streaming recognizers: its two model folders and its
-//! voice gate, no speech recognition service for commands.
+//! voice gate.
 
 use super::{shown, streaming_args, Lookup, ServiceProbe, ServiceSpec, KWS_VAD_MODEL};
 

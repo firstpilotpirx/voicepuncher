@@ -6,7 +6,6 @@ use super::field::{Choices, Control, Field};
 use crate::config::{Config, TranscriptionCfg};
 use crate::core::domain::hotkey::HotKey;
 use crate::core::domain::recording_mode::RecordingMode;
-use crate::core::domain::CommandRecognizer;
 
 /// The system sounds of macOS a sound field offers after None.
 const SYSTEM_SOUNDS: [&str; 14] = [
@@ -111,7 +110,6 @@ fn fixed_options(choices: Choices) -> Vec<Choice> {
             .into_iter()
             .map(mode_choice)
             .collect(),
-        Choices::CommandRecognizers => recognizer_choices(),
         _ => LOG_LEVELS.iter().map(level_choice).collect(),
     }
 }
@@ -122,16 +120,6 @@ fn hotkey_choice(key: HotKey) -> Choice {
 
 fn mode_choice(mode: RecordingMode) -> Choice {
     Choice::new(mode.to_string(), serialized(&mode))
-}
-
-fn recognizer_choices() -> Vec<Choice> {
-    vec![
-        Choice::new("Streaming", serialized(&CommandRecognizer::Streaming)),
-        Choice::new(
-            "Keyword spotting",
-            serialized(&CommandRecognizer::KeywordSpotting),
-        ),
-    ]
 }
 
 fn level_choice(level: &&str) -> Choice {

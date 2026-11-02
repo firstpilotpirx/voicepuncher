@@ -12,7 +12,7 @@ use tungstenite::{Message, WebSocket};
 use voicepuncher::adapters::secondary::commandspotting::websocket::client::probe;
 use voicepuncher::adapters::secondary::commandspotting::websocket::AudioStream;
 use voicepuncher::core::application::PipelineInput;
-use voicepuncher::core::domain::{VoiceCommand, VoiceCommandRecognizer};
+use voicepuncher::core::domain::VoiceCommand;
 use voicepuncher_e2e_test::voice_commands::spoken_with_pauses;
 use voicepuncher_test_steps::required_env;
 

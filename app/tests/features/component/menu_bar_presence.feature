@@ -154,9 +154,9 @@ Feature: menu-bar-presence
   Rule: The menu lists the services
 
     Scenario: The services are listed with their states
-      Given the app started the speech recognition service for dictation and adopted the one for commands
+      Given the app started the dictation copies and adopted the command spotting service
       When the user opens the Services submenu
-      Then it lists the dictation copies as Ready and the speech recognition service for commands as Adopted
+      Then it lists the dictation copies as Ready and the command spotting service as Adopted
       And Restart is offered for the dictation copies only
 
     Scenario: Restart from the menu

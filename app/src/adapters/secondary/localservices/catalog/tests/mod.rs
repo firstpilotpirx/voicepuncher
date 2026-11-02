@@ -11,6 +11,9 @@ mod copies;
 mod engines;
 mod models;
 
+const STREAMING_EN_MODEL: &str = "sherpa-onnx-nemotron-speech-streaming-en-0.6b";
+const STREAMING_RU_MODEL: &str = "sherpa-onnx-streaming-zipformer-small-ru-vosk";
+
 /// Answers Ready on the given ports, Closed elsewhere.
 struct Answering(Vec<u16>);
 
@@ -35,15 +38,12 @@ impl Home {
     fn complete() -> Self {
         let home = Self::empty();
         let models = home.path().join(".voicepuncher/models");
-        for file in [
-            DICTATION_MODEL,
-            COMMAND_MODEL,
-            KWS_VAD_MODEL,
-            "ggml-silero-v5.1.2.bin",
-        ] {
+        for file in [DICTATION_MODEL, KWS_VAD_MODEL, "ggml-silero-v5.1.2.bin"] {
             touch(&models.join(file));
         }
-        fs::create_dir_all(models.join("sherpa-onnx-kws-zipformer")).unwrap();
+        for dir in [STREAMING_EN_MODEL, STREAMING_RU_MODEL] {
+            fs::create_dir_all(models.join(dir)).unwrap();
+        }
         for engine in [WHISPER, COMMAND_SPOTTING] {
             touch(&home.path().join("bin").join(engine));
         }
@@ -81,14 +81,6 @@ mod adoption;
 mod command_lines;
 
 const ALL: Needs = Needs { voice_control: true };
-
-/// The default configuration with the keyword spotter hearing the commands: voice control
-/// then needs the speech recognition service for commands too.
-fn keyword_spotting() -> Config {
-    let mut cfg = Config::default();
-    cfg.voice_control.recognizer = crate::core::domain::CommandRecognizer::KeywordSpotting;
-    cfg
-}
 
 /// Writes an empty `file`, with the folders it needs.
 fn touch(file: &Path) {

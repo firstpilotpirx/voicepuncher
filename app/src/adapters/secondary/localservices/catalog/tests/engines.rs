@@ -3,23 +3,23 @@
 use super::*;
 
 #[test]
-pub(super) fn should_name_the_command_model_it_looked_for_when_it_is_not_on_disk() {
+pub(super) fn should_name_the_dictation_model_it_looked_for_when_it_is_not_on_disk() {
     // Given
     let home = Home::complete();
-    let missing = home.path().join("elsewhere/ggml-commands.bin");
+    let missing = home.path().join("elsewhere/ggml-dictation.bin");
     let mut machine = home.machine();
     machine.env.insert(
-        "VOICEPUNCHER_COMMAND_WHISPER_MODEL".into(),
+        "VOICEPUNCHER_WHISPER_MODEL".into(),
         missing.display().to_string(),
     );
     // When
-    let specs = needed(&keyword_spotting(), ALL, &machine, &NOTHING_RUNS);
+    let specs = needed(&Config::default(), ALL, &machine, &NOTHING_RUNS);
     // Then
-    let commands = specs
+    let dictation = specs
         .iter()
-        .find(|spec| spec.kind == ServiceKind::Commands)
+        .find(|spec| spec.kind == ServiceKind::Dictation)
         .unwrap();
-    let problem = commands.problem.as_deref().unwrap();
+    let problem = dictation.problem.as_deref().unwrap();
     assert!(
         problem.contains(&missing.display().to_string()),
         "{problem}"
@@ -32,7 +32,7 @@ pub(super) fn should_name_a_missing_engine_with_how_to_get_it() {
     let home = Home::complete();
     fs::remove_file(home.path().join("bin").join(WHISPER)).unwrap();
     // When
-    let specs = needed(&keyword_spotting(), ALL, &home.machine(), &NOTHING_RUNS);
+    let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
     // Then
     let problem = specs[0].problem.clone().unwrap();
     assert!(problem.contains("whisper-server not found"), "{problem}");
@@ -49,7 +49,7 @@ pub(super) fn should_find_an_engine_from_the_environment_then_the_bundle_then_th
     touch(&chosen);
     let mut machine = home.machine();
     let lookup_program = |machine: &Machine| {
-        needed(&keyword_spotting(), ALL, machine, &NOTHING_RUNS)
+        needed(&Config::default(), ALL, machine, &NOTHING_RUNS)
             .into_iter()
             .find(|spec| spec.kind == ServiceKind::Dictation)
             .unwrap()
@@ -76,7 +76,7 @@ pub(super) fn should_take_every_engine_from_its_folder_in_the_bundle_before_the_
         touch(&engines.join(folder).join(program));
     }
     // When
-    let specs = needed(&keyword_spotting(), ALL, &home.machine(), &NOTHING_RUNS);
+    let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
     // Then
     assert!(!specs.is_empty());
     for spec in &specs {
@@ -94,7 +94,7 @@ pub(super) fn should_take_every_engine_from_the_path_outside_a_bundle() {
     // Given
     let home = Home::complete();
     // When
-    let specs = needed(&keyword_spotting(), ALL, &home.machine(), &NOTHING_RUNS);
+    let specs = needed(&Config::default(), ALL, &home.machine(), &NOTHING_RUNS);
     // Then
     for spec in &specs {
         assert_eq!(

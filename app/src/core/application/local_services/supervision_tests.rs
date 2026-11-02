@@ -302,9 +302,9 @@ fn should_start_an_owned_service_again_at_once_when_asked() {
     assert_eq!(harness.spawns.count(), 2);
 }
 
-/// A copy of the speech recognition service for commands, started and answering on its port.
+/// A copy of the speech recognition service, started and answering on its port.
 fn answering_speech_recognition_copy() -> Harness {
-    let mut harness = Harness::of(spec(ServiceKind::Commands, PORT));
+    let mut harness = Harness::of(spec(ServiceKind::Dictation, PORT));
     harness.tick();
     harness.answers(ProbeAnswer::Ready);
     harness

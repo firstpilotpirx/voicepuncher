@@ -45,8 +45,6 @@ pub(crate) struct StreamingSpotter {
     pub(crate) source: SoundSource,
     /// Whether the pipeline gets what the stream heard, as a lead-in; else an empty buffer.
     pub(crate) keeps_heard: bool,
-    /// Whether the service confirms commands before it reports them.
-    pub(crate) confirm_commands: bool,
 }
 
 impl StreamingSpotter {
@@ -59,7 +57,6 @@ impl StreamingSpotter {
             events: Arc::clone(events),
             source: Box::new(|| (AudioBuffer16k::SAMPLE_RATE_HZ, Instant::now())),
             keeps_heard: false,
-            confirm_commands: true,
         }
     }
 }
@@ -73,10 +70,7 @@ impl CommandSpotter for StreamingSpotter {
         let heard = self.heard.take().context("the sound is already in use")?;
         let (native_rate, captured_from) = (self.source)();
         let audio = MicrophoneAudio { audio: heard, native_rate, captured_from };
-        let service = SpottingService {
-            confirm_commands: self.confirm_commands,
-            ..SpottingService::from(&self.url)
-        };
+        let service = SpottingService::from(&self.url);
         let stream = AudioStream::start(service, commands, audio, self.inputs.clone())?;
         self.stream = Some(stream);
         self.events.lock().unwrap().push(Event::Listening);

@@ -81,7 +81,6 @@ pub(super) fn listened_for(command: VoiceCommand) -> &'static [VoiceCommand] {
 
 /// What the app recognizes from the events of `inputs` until the service goes quiet.
 fn recognized_until_quiet(inputs: &mpsc::Receiver<PipelineInput>) -> Vec<VoiceCommand> {
-    let mut command_recognizer = VoiceCommandRecognizer::new();
     let mut recognized = Vec::new();
     let deadline = Instant::now() + UTTERANCE_EVENTS_LIMIT;
     let wait = |recognized: &[VoiceCommand]| {
@@ -100,8 +99,8 @@ fn recognized_until_quiet(inputs: &mpsc::Receiver<PipelineInput>) -> Vec<VoiceCo
             panic!("unexpected input {input:?}");
         };
         recognized.extend(
-            command_recognizer
-                .feed(event)
+            event
+                .into_commands()
                 .into_iter()
                 .map(|spoken| spoken.command),
         );
@@ -171,34 +170,30 @@ pub(super) fn microphone_silence(secs: f32) -> Vec<f32> {
 }
 
 /// One listening session as the app runs it: a single connection, audio sent buffer by
-/// buffer, the `command_recognizer` fed every event.
+/// buffer, the commands taken from every event.
 pub(super) struct Listening {
     pub(crate) audio: mpsc::Sender<Vec<f32>>,
     inputs: mpsc::Receiver<PipelineInput>,
-    command_recognizer: VoiceCommandRecognizer,
     pub(crate) stream: AudioStream,
 }
 
 impl Listening {
     pub(crate) fn start(url: &str, commands: &[VoiceCommand]) -> Self {
         let OpenStream { stream, audio, inputs } = open_stream(url, commands).unwrap();
-        Self { audio, inputs, command_recognizer: VoiceCommandRecognizer::new(), stream }
+        Self { audio, inputs, stream }
     }
 
     /// The next command the app recognizes, as the pipeline would get it.
     pub(crate) fn next_command(&mut self) -> Option<VoiceCommand> {
         let deadline = Instant::now() + COMMAND_TIMEOUT;
         let inputs = &self.inputs;
-        let command_recognizer = &mut self.command_recognizer;
         std::iter::from_fn(|| {
             inputs
                 .recv_timeout(deadline.checked_duration_since(Instant::now())?)
                 .ok()
         })
         .find_map(|input| match input {
-            PipelineInput::Spotting(event) => {
-                command_recognizer.feed(event).first().map(|s| s.command)
-            }
+            PipelineInput::Spotting(event) => event.into_commands().first().map(|s| s.command),
             other => panic!("unexpected input {other:?}"),
         })
     }

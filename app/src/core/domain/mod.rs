@@ -1,7 +1,6 @@
 pub mod audio_buffer;
 pub mod audio_level;
 pub mod cleaned_text;
-pub mod command_recognizer;
 pub mod command_words;
 pub mod conversions;
 pub mod failure_notice;
@@ -14,15 +13,14 @@ pub mod permission;
 pub mod ptt_signal;
 pub mod raw_transcript;
 pub mod recording_mode;
+pub mod spotting_event;
 pub mod text_focus;
 pub mod voice_command;
-pub mod voice_command_recognizer;
 pub mod voice_start_timing;
 
 pub use audio_buffer::AudioBuffer16k;
 pub use audio_level::AudioLevel;
 pub use cleaned_text::CleanedText;
-pub use command_recognizer::CommandRecognizer;
 pub use command_words::{
     without_leading_command, without_spoken_pastes, without_trailing_command, COMMAND_FORMS,
 };
@@ -38,7 +36,7 @@ pub use permission::{Permission, PermissionStatus};
 pub use ptt_signal::PttSignal;
 pub use raw_transcript::{EmptyTranscript, RawTranscript};
 pub use recording_mode::RecordingMode;
+pub use spotting_event::SpottingEvent;
 pub use text_focus::{FocusedElement, TextFocus};
 pub use voice_command::{CommandPlacement, SpokenCommand, VoiceCommand};
-pub use voice_command_recognizer::{SpottingEvent, VoiceCommandRecognizer};
-pub use voice_start_timing::{ConfirmationTiming, ReportTiming, VoiceStartTiming};
+pub use voice_start_timing::{ReportTiming, VoiceStartTiming};

@@ -64,7 +64,6 @@ pub struct BundleLaunch {
 #[derive(Debug, Default, Clone, Copy)]
 struct Ports {
     stt: u16,
-    command_stt: u16,
     kws: u16,
 }
 
@@ -159,11 +158,7 @@ fn bundle_copy(world: &mut E2eWorld) -> Result<()> {
     copy_bundle(&bundle, folder.path())?;
     let launch = launch(world);
     launch.folder = Some(folder);
-    launch.ports = Ports {
-        stt: free_speech_recognition_port()?,
-        command_stt: free_speech_recognition_port()?,
-        kws: free_port()?,
-    };
+    launch.ports = Ports { stt: free_speech_recognition_port()?, kws: free_port()? };
     Ok(())
 }
 
@@ -191,7 +186,7 @@ async fn copy_starts_services(world: &mut E2eWorld) -> Result<()> {
 /// The copy's configuration in `home`: one copy of each service, so each answers on the port
 /// the scenario checks.
 fn write_config(home: &Path, ports: Ports) -> Result<PathBuf> {
-    let Ports { stt, command_stt, kws } = ports;
+    let Ports { stt, kws } = ports;
     let config = home.join("config.toml");
     fs::write(
         &config,
@@ -199,11 +194,9 @@ fn write_config(home: &Path, ports: Ports) -> Result<PathBuf> {
             "[transcription]\nbase_url = \"{}\"\n\n\
              [voice_control]\nenabled = true\nurl = \"ws://127.0.0.1:{kws}\"\n\
              \n\
-             [services]\nmanage = true\ndictation_copies = 1\ncommand_copies = 1\n\
-             command_spotting_copies = 1\n\
-             commands_url = \"{}\"\n",
-            url(stt),
-            url(command_stt)
+             [services]\nmanage = true\ndictation_copies = 1\n\
+             command_spotting_copies = 1\n",
+            url(stt)
         ),
     )?;
     Ok(config)
@@ -233,12 +226,8 @@ impl BundleLaunch {
     /// Waits up to [`READY_WITHIN`] for every service the app starts to be healthy, and notes
     /// which were; fails when the app ends first.
     fn wait_until_ready(&mut self) -> Result<()> {
-        let Ports { stt, command_stt, kws } = self.ports;
-        let services = [
-            ("speech recognition", stt),
-            ("speech recognition for commands", command_stt),
-            ("command spotting", kws),
-        ];
+        let Ports { stt, kws } = self.ports;
+        let services = [("speech recognition", stt), ("command spotting", kws)];
         let deadline = Instant::now() + READY_WITHIN;
         let mut ready = vec![false; services.len()];
         while Instant::now() < deadline && ready.contains(&false) {

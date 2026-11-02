@@ -9,7 +9,7 @@ use voicepuncher::adapters::secondary::localservices::catalog::{
     engine_origin, needed, Machine, Needs,
 };
 use voicepuncher::config::Config;
-use voicepuncher::core::domain::{CommandRecognizer, ServiceKind, ServiceSpec};
+use voicepuncher::core::domain::{ServiceKind, ServiceSpec};
 
 use super::home::{touch, FakeHome, COMMAND_SPOTTING, WHISPER};
 use super::{local, Answering};
@@ -32,7 +32,6 @@ impl CatalogRun {
         let machine = home.machine();
         let mut config = Config::default();
         config.voice_control.enabled = true;
-        config.voice_control.recognizer = CommandRecognizer::KeywordSpotting;
         Ok(Self { home, machine, config, specs: Vec::new(), copy_ports: Vec::new() })
     }
 

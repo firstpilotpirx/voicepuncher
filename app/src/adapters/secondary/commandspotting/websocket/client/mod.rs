@@ -15,7 +15,7 @@ use crate::core::domain::{SpottingEvent, VoiceCommand};
 
 mod events;
 
-use events::{to_spotting_event, verdict_line, ServiceEvent};
+use events::{to_spotting_event, ServiceEvent};
 
 mod greeting;
 
@@ -49,8 +49,6 @@ pub struct SpottingClient {
     last_ping: Option<Instant>,
     /// Waits for the service's answer so far, numbering the sync of each.
     answer_waits: u64,
-    /// Whether the service confirms a command before it reports it.
-    confirm: bool,
 }
 
 impl SpottingClient {
@@ -76,14 +74,7 @@ impl SpottingClient {
             stream.set_read_timeout(Some(READ_WAIT))?;
             stream.set_write_timeout(Some(WRITE_WAIT))?;
         }
-        Ok(Self {
-            socket,
-            audio_start,
-            unanswered_since: None,
-            last_ping: None,
-            answer_waits: 0,
-            confirm: true,
-        })
+        Ok(Self { socket, audio_start, unanswered_since: None, last_ping: None, answer_waits: 0 })
     }
 
     /// The port of the copy that serves this connection.
@@ -95,18 +86,9 @@ impl SpottingClient {
         }
     }
 
-    /// Has the service confirm commands before it reports them, or not, from the next
-    /// selection on.
-    #[must_use]
-    pub const fn confirming(mut self, confirm: bool) -> Self {
-        self.confirm = confirm;
-        self
-    }
-
     /// Spots the phrases of `commands` from now on.
     pub fn listen_for(&mut self, commands: &[VoiceCommand]) -> Result<()> {
-        self.socket
-            .send(Message::text(selection_of(commands, self.confirm)))?;
+        self.socket.send(Message::text(selection_of(commands)))?;
         Ok(())
     }
 
@@ -216,18 +198,8 @@ impl SpottingClient {
     fn parse(&self, text: &str) -> Result<Option<Answer>> {
         Ok(match serde_json::from_str::<ServiceEvent>(text) {
             Ok(ServiceEvent::Synced { id }) => Some(Answer::Synced(id)),
-            Ok(ServiceEvent::Stalled { waited_ms }) => {
-                bail!("the command spotting service stalled: a confirmation has run {waited_ms} ms")
-            }
             Ok(ServiceEvent::Dropped { samples }) => {
                 bail!("the command spotting service dropped {samples} samples it could not keep up with")
-            }
-            Ok(event @ ServiceEvent::Heard { .. }) => {
-                log::info!(
-                    "command spotting: {}",
-                    verdict_line(&event).unwrap_or_default()
-                );
-                None
             }
             Ok(event) => {
                 to_spotting_event(event, self.audio_start, Instant::now()).map(Answer::Event)
@@ -275,16 +247,15 @@ fn is_timeout(e: &std::io::Error) -> bool {
     )
 }
 
-/// The `select` message for `commands`, confirmed as `confirm` says: the start of an
-/// utterance is searched early while "start dictation" is among them.
-fn selection_of(commands: &[VoiceCommand], confirm: bool) -> String {
+/// The `select` message for `commands`: the start of an utterance is searched early while
+/// "start dictation" is among them.
+fn selection_of(commands: &[VoiceCommand]) -> String {
     let phrases: Vec<&str> = commands.iter().map(|c| c.phrase()).collect();
     let early_start = commands.contains(&VoiceCommand::StartDictation);
     serde_json::json!({
         "type": "select",
         "phrases": phrases,
         "early_start": early_start,
-        "confirm": confirm,
     })
     .to_string()
 }

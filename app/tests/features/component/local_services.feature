@@ -35,13 +35,13 @@ Feature: local-services
   Rule: An adopted service that hangs is replaced by the app's own
 
     Scenario: A hung adopted copy is killed and replaced
-      Given the app adopted a copy of the speech recognition service for commands
+      Given the app adopted a copy of the speech recognition service for dictation
       When the adopted copy stops answering without ending
       Then within 30 seconds the app has stopped that copy's process and started its own copy on that port, and it answers
       And the log names the service, the copy, the port and the process id it stopped
 
     Scenario: Another program on the port is not killed
-      Given the app adopted a copy of the speech recognition service for commands
+      Given the app adopted a copy of the speech recognition service for dictation
       When another program that is not that service takes its port and does not answer
       Then after three failed checks the other program keeps running and the log names it with its process id
 
@@ -68,10 +68,10 @@ Feature: local-services
   Rule: Quit stops every owned service
 
     Scenario: Quit with owned and adopted services
-      Given the app started the speech recognition service for dictation and adopted the speech recognition service for commands
+      Given the app started the speech recognition service for dictation and adopted the command spotting service
       When the user quits the app with its services
       Then no process of the speech recognition service for dictation is left
-      And the speech recognition service for commands still runs
+      And the command spotting service still runs
 
     Scenario: A service that ignores the request to end is killed
       Given the app started a service that does not end when asked
