@@ -144,3 +144,12 @@ recipe = "test"
 stage = "test"
 beside = "the whole test stage beside the cargo builds of other sessions; a branch touching no dictation chunking (remove-keyword-spotter)"
 branch = "feat/remove-keyword-spotter"
+
+[[frozen]]
+test = "scenario: A hands-free session with the user's recorded commands"
+frozen = "2026-11-03"
+recipe = "full-check"
+stage = "e2e-smoke-voice"
+beside = "user approved freezing: the voice gate missed the recorded enter/stop after a Russian dictation under service lag 3.7 s; offline the same audio is recognized"
+branch = "feat/remove-keyword-spotter"
+
