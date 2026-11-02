@@ -211,7 +211,7 @@ The system SHALL carry out a command when its phrase is the whole utterance, wit
 #### Scenario: A command phrase inside a sentence is ignored while listening
 - **GIVEN** listening is on
 - **AND** no dictation runs
-- **WHEN** someone says "I will press enter when I am done" without pausing
+- **WHEN** someone says "I will enter the code when I am done" without pausing
 - **THEN** no key is pressed
 - **AND** no dictation starts
 
@@ -222,7 +222,7 @@ The system SHALL carry out a command when its phrase is the whole utterance, wit
 
 #### Scenario: A stop phrase inside a dictated sentence does not end the dictation
 - **GIVEN** a dictation runs
-- **WHEN** the user says "please stop dictation software from crashing" without pausing
+- **WHEN** the user says "please stop the software from crashing" without pausing
 - **THEN** the dictation keeps running
 
 ### Requirement: "press enter" during a dictation pastes and sends
@@ -252,11 +252,17 @@ The system SHALL take each command only from its one word or that word said twic
 
 #### Scenario: A long form said alone takes no effect
 - **GIVEN** listening is on
-- **WHEN** the user says "stop dictation" during a dictation, or "press enter" with no dictation running, on its own with a pause before and after it
+- **WHEN** the user says "stop dictation" during a dictation, or "paste text" with no dictation running, on its own with a pause before and after it
 - **THEN** no command takes effect
 
+#### Scenario: A long form ending in a command word counts by that word
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** the user says "press enter" on its own
+- **THEN** the Return key is pressed, as for any utterance ending in "enter"
+
 ### Requirement: "restart dictation" starts the dictation over
-During a dictation, the system SHALL discard what was dictated so far, paste nothing, and start a new dictation at once when the user says "restart" or its short form "restart". It plays the restart sound alone, neither the cancel sound nor the start sound, and the overlay shows the restart sign for about a second, then the recording again. "restart restart" counts anywhere, like the other doubled short forms, and "restart" may end an utterance. It is in no chain: it only follows a running dictation, and nothing follows it in one breath.
+During a dictation, the system SHALL discard what was dictated so far, paste nothing, and start a new dictation at once when the user says "restart". It plays the restart sound alone, neither the cancel sound nor the start sound, and the overlay shows the restart sign for about a second, then the recording again. "restart restart" counts anywhere, like the other doubled short forms, and "restart" may end an utterance. It is in no chain: it only follows a running dictation, and nothing follows it in one breath.
 
 #### Scenario: Saying restart drops the dictation and starts a new one
 - **GIVEN** a dictation runs
@@ -497,7 +503,7 @@ The command spotting service SHALL carry out every command said exactly once, as
 #### Scenario: A start said right after a slowly confirmed stop stays a start
 - **GIVEN** listening is on and a dictation runs
 - **AND** the speech recognition service for commands takes 2.5 seconds to answer each confirmation
-- **WHEN** the user says "stop" and then, before its confirmation comes back, "start"
+- **WHEN** the user says "stop stop" and then, before its confirmation comes back, "start"
 - **THEN** the dictation ends and a new dictation starts
 
 #### Scenario: A chain is carried out the same on a busy machine
