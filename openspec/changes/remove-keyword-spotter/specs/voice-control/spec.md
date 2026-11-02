@@ -44,8 +44,7 @@ When an app asks the command spotting service to confirm that every event of the
 - **THEN** the command spotting service reports "clear all text" before it answers the sync
 
 ### Requirement: A voice start gives its start cue within 0.7 s of the end of its words
-When a voice command starts a dictation from standby, or "restart" starts one over, the system SHALL play the sound that start plays (the restart sound for "restart") and show the overlay's recording sign as soon as the command is heard, without waiting for the microphone of the dictation to open, within 0.7 s of the end of the command's words in at least 9 of 10 synthesized starts and in all but one of the user's recorded starts, with the services otherwise idle; a doubled form ("start start", "restart restart"), which is heard as a command without waiting for the pause after it or the next word, SHALL give it within 0.5 s. In the scenarios below "the start cue" means that sound. This holds for "start" alone, opening or ending an utterance, or doubled, and every form of "restart", also when the first hearing of a quiet "restart" takes it for another word. A check of this requirement SHALL time the start cue only on an idle machine: it waits for the builds, tests and model stages of every other check on the machine to end and keeps new ones out while it times, so the bound is measured under the condition it states. A start cue over its bound SHALL be reported with what ran beside it: the busiest processes on the machine and every check that held a lock at that moment.
-
+When a voice command starts a dictation from standby, or "restart" starts one over, the system SHALL play its start cue (the restart sound for "restart") and show the overlay's recording sign as soon as the command is heard, within 0.7 s of the end of the command's words in at least 9 of 10 synthesized starts and in all but one of the user's recorded starts, with the services otherwise idle; a doubled form ("start start", "restart restart") SHALL give it within 0.5 s.
 #### Scenario: Start start followed by the dictation at once gives its cue at once
 - **GIVEN** listening is on
 - **AND** no dictation runs
@@ -105,6 +104,9 @@ When a voice command starts a dictation from standby, or "restart" starts one ov
 - **AND** no dictation runs
 - **WHEN** the user says "start" and "stop" with a gap between them shorter than a pause
 - **THEN** no dictation starts
+
+### Requirement: The start cue is timed on an idle machine
+A check of the start cue bound SHALL time the start cue only once the builds, tests and model stages of every other check on the machine have ended, keeping new ones out while it times; a start cue over its bound SHALL be reported with the busiest processes on the machine and every check that held a lock at that moment.
 
 #### Scenario: The start cue is timed once the other checks' builds have ended
 - **GIVEN** another check on the machine is building or testing while this check reaches its cue-timing scenarios
