@@ -19,10 +19,10 @@ mod models;
 mod owned;
 mod warm_up;
 
+pub(crate) use copies::transcribe;
 pub use managed::{
     capture_log, connected_copy, kill_copy, log_mark, logged_since, ManagedRun, Needed,
 };
-pub(crate) use copies::transcribe;
 pub use owned::OwnedServices;
 
 mod processes;

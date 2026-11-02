@@ -66,8 +66,8 @@ Fixed along the way, each with its Red test: a recognizer that heard only the en
 | speech-recognition | Dictation of a chunk without speech | E2E (`speech_recognition.feature`) |
 | speech-recognition | Dictation is recognized with the large-v3-turbo model by default | E2E |
 | speech-recognition | Dictation is recognized with the model the user names | E2E |
-| voice-control | A pause of the app's own does not lose the service | integration (`app/tests/it/commandspotting_websocket/`) |
-| voice-control | A burst of audio after long listening does not lose the service | integration (`app/tests/it/commandspotting_websocket/`) |
+| voice-control | A pause of the app's own does not lose the service | integration (`app/tests/it/commandspotting_client.rs`) |
+| voice-control | A burst of audio after long listening does not lose the service | E2E (`voice_control.feature`, "A command said after a long time of listening is recognized") |
 | voice-control | A voice start logs its timing | component |
 | voice-control | The timing stays right after microphone audio was lost | component |
 | voice-control | A hotkey start logs no voice start timing | component |
@@ -87,7 +87,7 @@ Fixed along the way, each with its Red test: a recognizer that heard only the en
 | voice-control | A command said alone is reported before its pause ends | E2E |
 | voice-control | Silence wakes no recognizer | E2E |
 | voice-control | Speech without a command is no command | E2E |
-| voice-control | A slow recognizer does not hold back the other | integration (`command-spotting/tests/it/streaming/`) |
+| voice-control | A slow recognizer does not hold back the other | unit (`command-spotting/src/streaming/session/tests.rs`) |
 | voice-control | A quiet command opens the gate | integration (`command-spotting/tests/it/streaming/`) |
 
 ## Risks / Trade-offs

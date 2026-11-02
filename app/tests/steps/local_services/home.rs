@@ -10,7 +10,6 @@ pub(super) const COMMAND_SPOTTING: &str = "voicepuncher-command-spotting";
 pub(super) const KWS_MODEL_DIR: &str = "sherpa-onnx-kws-zipformer";
 pub(super) const STREAMING_EN_MODEL_DIR: &str = "sherpa-onnx-nemotron-speech-streaming-en-0.6b";
 pub(super) const STREAMING_RU_MODEL_DIR: &str = "sherpa-onnx-streaming-zipformer-small-ru-vosk";
-pub(super) const COMMAND_MODEL_VAR: &str = "VOICEPUNCHER_COMMAND_WHISPER_MODEL";
 
 /// A home with every model in `~/.voicepuncher/models` and every engine in one `$PATH` folder.
 #[derive(Debug)]

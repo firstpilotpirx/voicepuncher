@@ -64,14 +64,6 @@ fn outside_service_outlives_quit(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
-#[given("the app adopted the speech recognition service for dictation")]
-fn dictation_adopted_given(world: &mut IntegrationWorld) -> Result<()> {
-    scripts_run_dictation(world)?;
-    let run = supervised(world)?;
-    run.supervise_planned()?;
-    run.drive_until(DICTATION, |state| *state == ServiceState::Adopted)
-}
-
 #[given("the command spotting service exits at every start")]
 fn spotting_exits(world: &mut IntegrationWorld) -> Result<()> {
     let run = supervised(world)?;

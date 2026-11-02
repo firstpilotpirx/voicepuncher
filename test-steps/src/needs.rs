@@ -1,7 +1,7 @@
 //! The needs of the tests: a service, a model, recordings or the desktop.
 //!
 //! A test that needs one lives in a module named after the need
-//! (`needs_stt`, `needs_kws_models`, …); the gates of `dev-tools` leave it out, and count it, when the need is
+//! (`needs_stt`, `needs_streaming_models`, …); the gates of `dev-tools` leave it out, and count it, when the need is
 //! missing. A test that runs anyway fails here, naming what it needs.
 
 /// The value of `variable`, which the recipe that runs the test sets.

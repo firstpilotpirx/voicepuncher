@@ -19,9 +19,9 @@ use crate::E2eWorld;
 
 mod shared;
 
-use shared::{ensure_all_answered, unanswered_at_once, BusyProcessor};
 pub(super) use shared::short_speech;
 pub(crate) use shared::transcribe;
+use shared::{ensure_all_answered, unanswered_at_once, BusyProcessor};
 
 mod restart;
 mod start_failure;

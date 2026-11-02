@@ -10,8 +10,8 @@ use voicepuncher::adapters::secondary::commandspotting::websocket::client::Spott
 use voicepuncher_e2e_test::speech_cache::{synthesized, SayRequest};
 
 use super::{healthy, services, wait_until, ScenarioServices, COMMAND_SPOTTING};
-use crate::steps::voice_control::streaming::busy::BusyCores;
 use crate::steps::off_thread;
+use crate::steps::voice_control::streaming::busy::BusyCores;
 use crate::E2eWorld;
 
 /// How many seconds apart the scripts check the scenario's services: short, so the scenarios

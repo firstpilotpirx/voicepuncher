@@ -102,7 +102,10 @@ fn should_close_a_need_when_one_of_its_variables_is_empty_or_its_file_is_missing
         corpus.path(),
     );
     let filter = without("x", &closed_in(&env));
-    assert!(filter.contains("test(/needs_kws_models::/)"), "{filter}");
+    assert!(
+        filter.contains("test(/needs_streaming_models::/)"),
+        "{filter}"
+    );
     assert!(filter.contains("test(/needs_corpus::/)"), "{filter}");
     assert!(skipped_lines(LISTED, &closed_in(&env)).is_empty());
 }

@@ -6,7 +6,6 @@ mod adopted_steps;
 mod catalog;
 mod catalog_copies;
 mod catalog_history;
-mod catalog_recognizer;
 mod copies;
 mod fake_copies;
 mod foreign_program;
@@ -14,7 +13,6 @@ mod home;
 mod hung_steps;
 mod scripts;
 mod stale;
-mod stall;
 mod supervision;
 mod supervision_steps;
 
@@ -34,7 +32,6 @@ pub struct LocalRun {
     catalog: Option<catalog::CatalogRun>,
     copies: Option<copies::CopiesRun>,
     foreign: Option<foreign_program::ForeignRun>,
-    stall: Option<stall::StallRun>,
     stale: Option<stale::StaleRun>,
     scripts_config: Option<voicepuncher::config::Config>,
 }

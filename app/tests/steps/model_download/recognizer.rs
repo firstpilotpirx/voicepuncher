@@ -10,7 +10,6 @@ use super::files::files;
 use crate::IntegrationWorld;
 
 const VOICE_GATE_MODEL: &str = "silero_vad.onnx";
-const WHISPER_SMALL_MODEL: &str = "ggml-small.bin";
 
 /// The catalog files only `used_by` needs.
 fn used_by(used_by: ModelUse) -> Vec<&'static str> {
@@ -46,11 +45,6 @@ fn streaming_without_models(world: &mut IntegrationWorld) {
     files(world).voice_control = Some(CommandRecognizer::Streaming);
 }
 
-#[given("voice control is on with the keyword spotter and no voice control model is on disk")]
-fn keyword_spotter_without_models(world: &mut IntegrationWorld) {
-    files(world).voice_control = Some(CommandRecognizer::KeywordSpotting);
-}
-
 #[then(
     "the English and the Russian streaming models and the voice gate model are listed as Missing"
 )]
@@ -66,19 +60,4 @@ fn streaming_models_missing(world: &mut IntegrationWorld) -> Result<()> {
 #[then("neither the Whisper small model nor the keyword spotting model is listed")]
 fn keyword_spotting_models_not_listed(world: &mut IntegrationWorld) -> Result<()> {
     none_listed(world, ModelUse::KeywordSpotting)
-}
-
-#[then("the Whisper small model, the keyword spotting model and the voice gate model are listed as Missing")]
-fn keyword_spotting_models_missing(world: &mut IntegrationWorld) -> Result<()> {
-    let keyword_spotting = used_by(ModelUse::KeywordSpotting);
-    ensure!(
-        keyword_spotting.contains(&WHISPER_SMALL_MODEL) && keyword_spotting.len() == 2,
-        "keyword spotting models of the catalog: {keyword_spotting:?}"
-    );
-    all_listed(world, &keyword_spotting)
-}
-
-#[then("no streaming model is listed")]
-fn no_streaming_model_listed(world: &mut IntegrationWorld) -> Result<()> {
-    none_listed(world, ModelUse::Streaming)
 }

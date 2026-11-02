@@ -87,7 +87,10 @@ mod needs_streaming_models {
         // Then
         assert_eq!(code, CloseCode::Policy);
         let speaks = format!("version {PROTOCOL_VERSION}");
-        assert!(reason.contains("version 1") && reason.contains(&speaks), "{reason}");
+        assert!(
+            reason.contains("version 1") && reason.contains(&speaks),
+            "{reason}"
+        );
     }
 
     #[test]
@@ -97,7 +100,10 @@ mod needs_streaming_models {
         // Then
         assert_eq!(code, CloseCode::Policy);
         let speaks = format!("version {PROTOCOL_VERSION}");
-        assert!(reason.contains("version 1") && reason.contains(&speaks), "{reason}");
+        assert!(
+            reason.contains("version 1") && reason.contains(&speaks),
+            "{reason}"
+        );
     }
 
     #[test]

@@ -45,11 +45,7 @@ pub(super) async fn no_words_and_service_answers(world: &mut E2eWorld) -> Result
             .local_services
             .as_ref()
             .context("the speech recognition service was not started by a Given step")?;
-        match services
-            .heard_words
-            .as_ref()
-            .context("no chunk was sent")?
-        {
+        match services.heard_words.as_ref().context("no chunk was sent")? {
             Ok(0) => {}
             Ok(words) => bail!("{words} words were heard in a chunk without speech"),
             Err(e) => bail!("the transcription of a chunk without speech failed: {e}"),

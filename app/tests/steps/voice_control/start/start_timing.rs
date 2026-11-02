@@ -163,27 +163,6 @@ fn says_alone_and_stays_silent(world: &mut IntegrationWorld, said: String) -> Re
     run.say_alone_and_stay_silent(&said, true)
 }
 
-#[when(
-    expr = "the user says {string}, reported without the Whisper confirmation, and stays silent"
-)]
-fn says_alone_unconfirmed(world: &mut IntegrationWorld, said: String) -> Result<()> {
-    let run = run(world);
-    run.start_when();
-    run.say_alone_and_stay_silent(&said, false)
-}
-
-#[then("the timing line of that start shows that it was not confirmed")]
-fn timing_line_unconfirmed(world: &mut IntegrationWorld) -> Result<()> {
-    let (line, _) = run(world).first_voice_start_line()?;
-    if !line
-        .split_whitespace()
-        .any(|field| field == "confirm=unconfirmed")
-    {
-        bail!("the timing line does not say the start was not confirmed: {line:?}");
-    }
-    Ok(())
-}
-
 #[then(
     "the log shows one timing line for that start, with its total and the time of each stage, the cue sound and the overlay included"
 )]

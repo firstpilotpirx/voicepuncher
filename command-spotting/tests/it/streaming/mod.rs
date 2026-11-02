@@ -62,20 +62,26 @@ fn at_quiet_level(audio: &[f32]) -> Vec<f32> {
     audio.iter().map(|s| s * 0.005 / loudest).collect()
 }
 
-/// The commands a session listening for every phrase reports in `audio`.
-fn commands_in(engine: &StreamingEngine, audio: &[f32]) -> Vec<String> {
+/// The events a session listening for every phrase reports in `audio`, fed in 0.1 s chunks,
+/// followed by the answer to a sync of `id`.
+fn events_with_sync(engine: &StreamingEngine, audio: &[f32], id: u64) -> Vec<ServerEvent> {
     let mut session = engine.session_for(1).expect("a session");
     let phrases = PHRASES.iter().map(|p| (*p).to_owned()).collect();
     session
         .select(&PhraseSelection { phrases, ..PhraseSelection::default() })
         .expect("known phrases");
-    let mut events: Vec<ServerEvent> = paused(audio)
+    let mut events: Vec<ServerEvent> = audio
         .chunks(SAMPLE_RATE / 10)
         .flat_map(|chunk| session.accept(chunk))
         .collect();
-    // WHY: the recognizers decode on threads of their own; a sync waits for what is left.
-    events.extend(session.sync(0));
+    events.extend(session.sync(id));
     events
+}
+
+/// The commands a session listening for every phrase reports in `audio`.
+fn commands_in(engine: &StreamingEngine, audio: &[f32]) -> Vec<String> {
+    // WHY: the recognizers decode on threads of their own; a sync waits for what is left.
+    events_with_sync(engine, &paused(audio), 0)
         .into_iter()
         .filter_map(|event| match event {
             ServerEvent::Command { commands, .. } => Some(commands),
@@ -100,19 +106,10 @@ mod needs_streaming_models {
     #[test]
     fn should_report_a_command_said_right_before_a_sync_before_answering_it() {
         let engine = engine();
-        let mut session = engine.session_for(1).expect("a session");
-        let phrases = PHRASES.iter().map(|p| (*p).to_owned()).collect();
-        session
-            .select(&PhraseSelection { phrases, ..PhraseSelection::default() })
-            .expect("known phrases");
         let pause = vec![0.0f32; saturating_usize(PAUSE_SECS * SAMPLE_RATE as f32)];
         let audio = [pause.as_slice(), &common::spoken_by(None, "enter")].concat();
         // When the app asks for a sync right after the speech, before any pause after it
-        let mut events: Vec<ServerEvent> = audio
-            .chunks(SAMPLE_RATE / 10)
-            .flat_map(|chunk| session.accept(chunk))
-            .collect();
-        events.extend(session.sync(7));
+        let events = events_with_sync(&engine, &audio, 7);
         // Then
         let at = |wanted: fn(&ServerEvent) -> bool| events.iter().position(wanted);
         let command = at(|e| matches!(e, ServerEvent::Command { .. })).expect("the command");

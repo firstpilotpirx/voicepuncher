@@ -12,8 +12,8 @@ use tungstenite::{Message, WebSocket};
 use voicepuncher::adapters::secondary::commandspotting::websocket::client::probe;
 use voicepuncher::adapters::secondary::commandspotting::websocket::AudioStream;
 use voicepuncher::core::application::PipelineInput;
-use voicepuncher::core::domain::{SpottingEvent, VoiceCommand, VoiceCommandRecognizer};
-use voicepuncher_e2e_test::voice_commands::{spoken_with_pauses, spotting_events};
+use voicepuncher::core::domain::{VoiceCommand, VoiceCommandRecognizer};
+use voicepuncher_e2e_test::voice_commands::spoken_with_pauses;
 use voicepuncher_test_steps::required_env;
 
 mod probe;
@@ -27,41 +27,6 @@ mod needs_kws {
     fn should_answer_a_probe() {
         let url = required_env("VOICEPUNCHER_COMMAND_SPOTTING_URL");
         probe(&url).unwrap();
-    }
-
-    #[test]
-    fn should_report_a_spoken_phrase_with_its_speech() {
-        let url = required_env("VOICEPUNCHER_COMMAND_SPOTTING_URL");
-        // Given
-        let audio = spoken_with_pauses("enter").unwrap();
-        // When
-        let events = spotting_events(&url, &audio, &VoiceCommand::STANDBY).unwrap();
-        // Then
-        let kinds: Vec<&str> = events
-            .iter()
-            .map(|e| match e {
-                SpottingEvent::SpeechStarted(_) => "speech started",
-                SpottingEvent::PhraseSpotted { phrase, .. } => phrase.as_str(),
-                SpottingEvent::SpeechEnded(_) => "speech ended",
-                _ => "another event",
-            })
-            .collect();
-        // The keyword spotter and the speech recognition of the utterance may both report it,
-        // each before or shortly after the end of the speech: a quiet pause may close the
-        // utterance before the spotter has decoded its last word.
-        assert_eq!(kinds.first(), Some(&"speech started"), "{kinds:?}");
-        assert_eq!(
-            kinds.iter().filter(|k| **k == "speech ended").count(),
-            1,
-            "{kinds:?}"
-        );
-        assert!(kinds.contains(&"press enter"), "{kinds:?}");
-        assert!(
-            kinds
-                .iter()
-                .all(|k| ["speech started", "press enter", "speech ended"].contains(k)),
-            "{kinds:?}"
-        );
     }
 
     #[test]
@@ -106,48 +71,6 @@ mod needs_kws {
         // Then
         for (command, recognized) in VoiceCommand::ALL.into_iter().zip(recognized) {
             assert_eq!(recognized, [command], "spoken: {:?}", word_of(command));
-        }
-    }
-
-    #[test]
-    fn should_recognize_commands_after_long_listening_with_the_phrase_set_switched_between_them() {
-        let url = required_env("VOICEPUNCHER_COMMAND_SPOTTING_URL");
-        // Given listening for a long time with nothing said
-        let mut listening = Listening::start(&url, &VoiceCommand::STANDBY);
-        // When the user starts a dictation, stops it and sends the message
-        listening.say_after(LONG_LISTENING_SECS, "start");
-        let started = listening.next_command();
-        listening.stream.listen_for(&VoiceCommand::DICTATING);
-        listening.say_after(BETWEEN_COMMANDS_SECS, "stop");
-        let stopped = listening.next_command();
-        listening.stream.listen_for(&VoiceCommand::STANDBY);
-        listening.say_after(BETWEEN_COMMANDS_SECS, "enter");
-        let entered = listening.next_command();
-        listening.stream.stop();
-        // Then
-        assert_eq!(
-            [started, stopped, entered],
-            [
-                Some(VoiceCommand::StartDictation),
-                Some(VoiceCommand::StopDictation),
-                Some(VoiceCommand::PressEnter)
-            ]
-        );
-    }
-
-    #[test]
-    fn should_take_a_command_phrase_that_ends_the_utterance() {
-        let url = required_env("VOICEPUNCHER_COMMAND_SPOTTING_URL");
-        let cases = [
-            ("now start", VoiceCommand::StartDictation),
-            ("I think we should hit enter", VoiceCommand::PressEnter),
-            ("and then clear", VoiceCommand::ClearAllText),
-        ];
-        // Given listening, when a sentence ends with a command
-        let heard = each_at_once(&cases, |(sentence, _)| heard_after_a_pause(&url, sentence));
-        // Then
-        for ((sentence, command), heard) in cases.into_iter().zip(heard) {
-            assert_eq!(heard, Some(command), "said: {sentence:?}");
         }
     }
 
@@ -233,40 +156,5 @@ mod needs_kws {
         // Then
         assert!(input.is_err(), "unexpected input {input:?}");
         stream.stop();
-    }
-
-    #[test]
-    fn should_start_a_dictation_with_start_opening_the_utterance() {
-        let url = required_env("VOICEPUNCHER_COMMAND_SPOTTING_URL");
-        // Long enough for the service's head check: an utterance as short as "start again"
-        // closes before it, and only its whole is matched against the command forms.
-        let sentences = [
-            "start we meet again at ten",
-            "start the next message please",
-        ];
-        // Given listening, when a sentence opens with "start"
-        let heard = each_at_once(&sentences, |sentence| heard_after_a_pause(&url, sentence));
-        // Then
-        for (sentence, heard) in sentences.into_iter().zip(heard) {
-            assert_eq!(
-                heard,
-                Some(VoiceCommand::StartDictation),
-                "said: {sentence:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn should_ignore_a_command_phrase_with_more_speech_after_it() {
-        let url = required_env("VOICEPUNCHER_COMMAND_SPOTTING_URL");
-        // A single short word right after a command ("enter now") is within the margin
-        // quiet speech needs and still passes: a known limit of the pause rule.
-        let sentences = ["enter when you are ready", "clear in the morning"];
-        // Given listening, when a command phrase is followed by more speech
-        let heard = each_at_once(&sentences, |sentence| heard_after_a_pause(&url, sentence));
-        // Then
-        for (sentence, heard) in sentences.into_iter().zip(heard) {
-            assert_eq!(heard, None, "said: {sentence:?}");
-        }
     }
 }

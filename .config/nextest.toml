@@ -20,25 +20,13 @@ final-status-level = "slow"
 # The tests that drive the shared command spotting service run one at a time: the shared services
 # must not see more load than before
 command-spotting-models = { max-threads = 1 }
-# The tests that load the command spotting models in their own process: ONNX Runtime aborts when
-# models load or run on several threads of one process, and nextest runs each test in a process of
-# its own, so several run at once (6: 49–53 s for `just test` over three runs, against 52–74 s with 4
-# and 93 s with 2)
-command-spotting-engine = { max-threads = 6 }
 
-[[profile.default.overrides]]
-filter = '(package(voicepuncher-command-spotting) & binary(it) & (test(/^engine::/) | test(/^placed_commands::/)))'
-test-group = "command-spotting-engine"
-# Started first (speed-up-smoke-and-test): the group's 6 threads hold about 85 s of model work, which bounds
-# `just test` when it starts after the quick tests
-priority = 50
-
-# The longest single tests start right after the model tests, so none of them starts last
+# The longest single tests start first, so none of them starts last
 [[profile.default.overrides]]
 filter = 'test(should_log_a_copy_hung_with_the_time_waited_only_past_twice_its_time_limit) | (package(voicepuncher) & binary(it) & (test(/^commandspotting_reconnect::/) | test(/^commandspotting_client::/))) | (package(voicepuncher-command-spotting) & binary(it) & (test(/^server::/)))'
 priority = 40
 
-# The tests that drive the real command spotting service run one at a time too, so one confirmation
+# The tests that drive the real command spotting service run one at a time too, so the shared
 # service never gets the utterances of several test processes at once
 [[profile.default.overrides]]
 filter = '(package(voicepuncher) & binary(it) & (test(/^commandspotting_websocket::/) | test(/^voice_forms::/) | test(/^voice_samples::/)))'

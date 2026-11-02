@@ -122,7 +122,8 @@ fn gated_without_models(world: &mut WorkflowWorld) {
     gate(
         world,
         &[
-            ("VOICEPUNCHER_KWS_MODEL_DIR", ""),
+            ("VOICEPUNCHER_STREAMING_EN_MODEL_DIR", ""),
+            ("VOICEPUNCHER_STREAMING_RU_MODEL_DIR", ""),
             ("VOICEPUNCHER_KWS_VAD_MODEL", ""),
         ],
     );

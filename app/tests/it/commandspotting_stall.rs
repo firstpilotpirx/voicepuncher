@@ -1,5 +1,5 @@
-//! The command spotting adapter's client leaves a service that says it stalled or dropped
-//! audio, so the adapter's outage path connects again and replays the audio.
+//! The command spotting adapter's client leaves a service that says it dropped audio, so
+//! the adapter's outage path connects again and replays the audio.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -40,17 +40,6 @@ fn error_read_from(url: &str) -> Option<String> {
         }
     }
     None
-}
-
-#[test]
-fn should_leave_a_service_that_says_a_confirmation_stalled() {
-    // Given
-    let url = service_sending(r#"{"event":"stalled","waited_ms":12000}"#);
-    // When
-    let error = error_read_from(&url);
-    // Then
-    let error = error.expect("the client kept the stalled service");
-    assert!(error.contains("stalled"), "{error}");
 }
 
 #[test]
@@ -104,28 +93,17 @@ fn inputs_of_the_adapter_until(url: &str, last: &PipelineInput) -> Vec<PipelineI
 }
 
 #[test]
-fn should_reach_for_a_service_again_after_it_stalled_or_dropped_audio() {
-    for event in [
-        r#"{"event":"stalled","waited_ms":12000}"#,
-        r#"{"event":"dropped","samples":1600}"#,
-    ] {
-        // Given
-        let (url, accepted) = service_sending_once(event);
-        // When
-        let inputs = inputs_of_the_adapter_until(&url, &PipelineInput::SpottingBack);
-        // Then
-        assert!(
-            inputs.contains(&PipelineInput::SpottingLost),
-            "{event}: {inputs:?}"
-        );
-        assert_eq!(
-            inputs.last(),
-            Some(&PipelineInput::SpottingBack),
-            "{event}: {inputs:?}"
-        );
-        assert!(
-            accepted.load(Ordering::SeqCst) >= 2,
-            "{event}: no second connection"
-        );
-    }
+fn should_reach_for_a_service_again_after_it_dropped_audio() {
+    // Given
+    let (url, accepted) = service_sending_once(r#"{"event":"dropped","samples":1600}"#);
+    // When
+    let inputs = inputs_of_the_adapter_until(&url, &PipelineInput::SpottingBack);
+    // Then
+    assert!(inputs.contains(&PipelineInput::SpottingLost), "{inputs:?}");
+    assert_eq!(
+        inputs.last(),
+        Some(&PipelineInput::SpottingBack),
+        "{inputs:?}"
+    );
+    assert!(accepted.load(Ordering::SeqCst) >= 2, "no second connection");
 }

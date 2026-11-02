@@ -198,10 +198,10 @@ Feature: change-workflow
 
     Scenario: Model tests skip on a machine without models
       Given a scratch repository with the project's test needs
-      And the listed tests are one that needs "needs_kws_models" and a plain one
+      And the listed tests are one that needs "needs_streaming_models" and a plain one
       When the test selection is gated with the model paths exported empty
-      Then the selection leaves out the tests of "needs_kws_models"
-      And the run says it skipped 1 test for "needs_kws_models"
+      Then the selection leaves out the tests of "needs_streaming_models"
+      And the run says it skipped 1 test for "needs_streaming_models"
 
   Rule: A missing machine lock names its install command
 

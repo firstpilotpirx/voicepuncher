@@ -512,7 +512,8 @@ Feature: voice-control
       When the app starts
       Then the app exits with an error that names the command spotting service and how to start it
 
-  # Proved by the adapter tests of app/tests/it/commandspotting_websocket/ (integration).
+  # Proved by app/tests/it/commandspotting_client.rs (a pause of the app's own, integration) and by
+  # "A command said after a long time of listening is recognized" above (a burst after long listening).
   Rule: A command spotting service that answers late does not stop listening
 
   @serial @resilience

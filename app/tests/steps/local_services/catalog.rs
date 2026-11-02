@@ -9,11 +9,10 @@ use voicepuncher::adapters::secondary::localservices::catalog::{
     engine_origin, needed, Machine, Needs,
 };
 use voicepuncher::config::Config;
-use voicepuncher::core::application::{HolderStop, ServiceLauncher, ServiceProcess, Services};
-use voicepuncher::core::domain::{CommandRecognizer, ServiceKind, ServiceSpec, ServiceState};
+use voicepuncher::core::domain::{CommandRecognizer, ServiceKind, ServiceSpec};
 
-use super::home::{touch, FakeHome, COMMAND_MODEL_VAR, COMMAND_SPOTTING, KWS_MODEL_DIR, WHISPER};
-use super::{local, Answering, StepClock};
+use super::home::{touch, FakeHome, COMMAND_SPOTTING, WHISPER};
+use super::{local, Answering};
 use crate::IntegrationWorld;
 
 /// What a lookup scenario looked up and on what.
@@ -23,9 +22,6 @@ pub(super) struct CatalogRun {
     machine: Machine,
     pub(super) config: Config,
     specs: Vec<ServiceSpec>,
-    /// The states of the services supervised after the lookup.
-    states: Vec<(ServiceKind, ServiceState)>,
-    spawns: usize,
     /// The copy ports of each service on its default address.
     pub(super) copy_ports: Vec<Vec<u16>>,
 }
@@ -37,15 +33,7 @@ impl CatalogRun {
         let mut config = Config::default();
         config.voice_control.enabled = true;
         config.voice_control.recognizer = CommandRecognizer::KeywordSpotting;
-        Ok(Self {
-            home,
-            machine,
-            config,
-            specs: Vec::new(),
-            states: Vec::new(),
-            spawns: 0,
-            copy_ports: Vec::new(),
-        })
+        Ok(Self { home, machine, config, specs: Vec::new(), copy_ports: Vec::new() })
     }
 
     /// The scenario's home folder.
@@ -118,73 +106,11 @@ fn homebrew_engine_version(world: &mut IntegrationWorld, version: String) -> Res
     Ok(())
 }
 
-#[given(
-    "the variable for the speech recognition model for commands names a file that is not on disk"
-)]
-fn command_model_missing(world: &mut IntegrationWorld) -> Result<()> {
-    let run = catalog(world)?;
-    let missing = run.home.path().join("elsewhere/ggml-commands.bin");
-    run.machine
-        .env
-        .insert(COMMAND_MODEL_VAR.into(), missing.display().to_string());
-    Ok(())
-}
-
-#[given("two keyword spotting model folders in the models folder, the older one first by name")]
-fn two_kws_models(world: &mut IntegrationWorld) -> Result<()> {
-    let run = catalog(world)?;
-    std::fs::create_dir_all(run.home.models().join("sherpa-onnx-kws-zz-newer"))?;
-    let past = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
-    std::fs::File::open(run.home.models().join(KWS_MODEL_DIR))?.set_modified(past)?;
-    Ok(())
-}
-
 #[when("the services it needs are looked up")]
 fn looked_up(world: &mut IntegrationWorld) -> Result<()> {
     let run = catalog(world)?;
     let needs = Needs::of(&run.config);
     run.specs = needed(&run.config, needs, &run.machine, &Answering::default());
-    Ok(())
-}
-
-/// Refuses every start, counting them: a lookup scenario starts no program.
-struct CountingLauncher(Arc<AtomicUsize>);
-
-impl ServiceLauncher for CountingLauncher {
-    fn spawn(&self, spec: &ServiceSpec) -> Result<Box<dyn ServiceProcess>> {
-        self.0.fetch_add(1, Ordering::SeqCst);
-        bail!("{} is not started in this scenario", spec.label)
-    }
-
-    fn stop_holder(&self, spec: &ServiceSpec) -> HolderStop {
-        HolderStop::Foreign(format!("nothing is stopped for {}", spec.label))
-    }
-}
-
-#[when("the services it needs are looked up and supervised")]
-fn looked_up_and_supervised(world: &mut IntegrationWorld) -> Result<()> {
-    looked_up(world)?;
-    let run = catalog(world)?;
-    let spawns = Arc::new(AtomicUsize::new(0));
-    let launcher = CountingLauncher(Arc::clone(&spawns));
-    let mut services = Services::new(
-        Box::new(launcher),
-        Box::new(Answering::default()),
-        Arc::new(StepClock::new()),
-    );
-    let commands = run
-        .of_kind(ServiceKind::Commands)
-        .into_iter()
-        .cloned()
-        .collect();
-    services.supervise(commands);
-    services.tick();
-    run.states = services
-        .snapshot()
-        .into_iter()
-        .map(|s| (s.kind, s.state))
-        .collect();
-    run.spawns = spawns.load(Ordering::SeqCst);
     Ok(())
 }
 
@@ -223,50 +149,5 @@ fn engine_named(world: &mut IntegrationWorld, named: String) -> Result<()> {
         .context("no speech recognition service was looked up")?;
     let origin = engine_origin(&spec.program, &run.machine).to_string();
     ensure!(origin == named, "the log names {origin:?}, not {named:?}");
-    Ok(())
-}
-
-#[then("the speech recognition service for commands is Failed with a reason naming the model file it looked for")]
-fn commands_failed_naming_model(world: &mut IntegrationWorld) -> Result<()> {
-    let run = catalog(world)?;
-    let missing = run
-        .machine
-        .env
-        .get(COMMAND_MODEL_VAR)
-        .context("no model was named")?;
-    ensure!(!run.states.is_empty(), "no service was supervised");
-    for (kind, state) in &run.states {
-        let ServiceState::Failed(reason) = state else {
-            bail!("the {} is {state}, not Failed", kind.name());
-        };
-        ensure!(reason.contains(missing.as_str()), "{reason}");
-    }
-    Ok(())
-}
-
-#[then("the app started no service")]
-fn started_no_service(world: &mut IntegrationWorld) -> Result<()> {
-    let spawns = catalog(world)?.spawns;
-    ensure!(spawns == 0, "{spawns} service(s) were started");
-    Ok(())
-}
-
-#[then("the command spotting service is started with the newer folder")]
-fn started_with_newer_kws(world: &mut IntegrationWorld) -> Result<()> {
-    let run = catalog(world)?;
-    let newer = run
-        .home
-        .models()
-        .join("sherpa-onnx-kws-zz-newer")
-        .display()
-        .to_string();
-    for spec in run.of_kind(ServiceKind::CommandSpotting) {
-        ensure!(
-            spec.args.contains(&newer),
-            "{} starts with {:?}",
-            spec.label,
-            spec.args
-        );
-    }
     Ok(())
 }

@@ -11,13 +11,13 @@
 
 ## 2. Delete the tests of the keyword spotter and the duplicates
 
-- [ ] 2.1 Delete the E2E scenarios, steps and helpers of audit group 1 (`voice_control.feature`, `local_services.feature`, `speech_recognition.feature`, `spotting_service/`, `stalled_copies`, `tests/it/confirmation_time.rs`), and the `.feature` rules of the requirements the delta specs remove or replace
-- [ ] 2.2 Delete the `command-spotting/tests/it` modules of group 1 (`engine/`, `placed_commands/`, `early_start/`, `stall.rs`, `mishearings/`, the confirmation test of `server.rs`, `kws_models.rs`, `scripted_hearing/`, `stream_clock/`) and move the protocol tests of `server.rs` to the streaming service
-- [ ] 2.3 Delete the app and dev-tools tests and component scenarios of group 1 (confirmation switch, keyword spotter choice and models, failed confirmation, stalled service, pause rule over spotted phrases) and rewrite the catalog tests' `keyword_spotting()` helper to the streaming recognizer
-- [ ] 2.4 Delete the duplicates of audit group 3 (four `command-spotting/tests/it/streaming` tests, the paste scenario that repeats the short-form row, the four `commandspotting_websocket` tests the E2E outlines repeat)
-- [ ] 2.5 `.config/nextest.toml` loses the `command-spotting-engine` group and its filters; `.config/stages.toml` loses `needs_command_stt` and `needs_kws_models`
-- [ ] 2.6 Rename the Gherkin rules of the replaced requirements to their new names, and move the two timing scenarios under a new rule "The start cue is timed on an idle machine", so `spec_mirror` passes
-- [ ] 2.7 Commit: `test: delete the keyword spotter tests`
+- [x] 2.1 Delete the E2E scenarios, steps and helpers of audit group 1 (`voice_control.feature`, `local_services.feature`, `speech_recognition.feature`, `spotting_service/`, `stalled_copies`, `tests/it/confirmation_time.rs`), and the `.feature` rules of the requirements the delta specs remove or replace
+- [x] 2.2 Delete the `command-spotting/tests/it` modules of group 1 (`engine/`, `placed_commands/`, `early_start/`, `stall.rs`, `mishearings/`, the confirmation test of `server.rs`, `kws_models.rs`, `scripted_hearing/`, `stream_clock/`) and move the protocol tests of `server.rs` to the streaming service
+- [x] 2.3 Delete the app and dev-tools tests and component scenarios of group 1 (confirmation switch, keyword spotter choice and models, failed confirmation, stalled service, pause rule over spotted phrases) and rewrite the catalog tests' `keyword_spotting()` helper to the streaming recognizer
+- [x] 2.4 Delete the duplicates of audit group 3 (four `command-spotting/tests/it/streaming` tests, the paste scenario that repeats the short-form row, the four `commandspotting_websocket` tests the E2E outlines repeat)
+- [x] 2.5 `.config/nextest.toml` loses the `command-spotting-engine` group and its filters; `.config/stages.toml` loses `needs_command_stt` and `needs_kws_models`
+- [x] 2.6 Rename the Gherkin rules of the replaced requirements to their new names, and move the two timing scenarios under a new rule "The start cue is timed on an idle machine", so `spec_mirror` passes
+- [x] 2.7 Commit: `test: delete the keyword spotter tests`
 
 ## 3. Delete the keyword spotter from the command spotting service
 

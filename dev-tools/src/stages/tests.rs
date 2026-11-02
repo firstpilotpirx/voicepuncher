@@ -172,7 +172,7 @@ fn should_run_voice_control_first_and_the_cues_last() {
     );
     assert!(full.ends_with(" e2e-seams it-real e2e-cues"), "{full}");
     assert!(variable("e2e_smoke_stages").starts_with("e2e-smoke-voice"));
-    assert!(variable("voice_smoke_modules").starts_with("placed_commands voice_forms "));
+    assert!(variable("voice_smoke_modules").starts_with("voice_forms "));
 }
 
 #[test]
