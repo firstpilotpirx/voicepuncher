@@ -40,10 +40,7 @@ fn should_carry_out_the_same_chain_on_a_busy_machine() {
 #[test]
 fn should_keep_a_start_confirmed_after_the_dictation_began_a_start() {
     let events = heard_with_dictation_started_at_first_pause(
-        &[
-            "start dictation",
-            "and the notes begin here with a few more words",
-        ],
+        &["start", "and the notes begin here with a few more words"],
         SLOW_HEARING,
     );
     let said = said(&events);
@@ -54,8 +51,8 @@ fn should_keep_a_start_confirmed_after_the_dictation_began_a_start() {
 #[test]
 fn should_keep_a_start_said_right_after_a_slowly_confirmed_stop_a_start() {
     // Given a dictation running, every confirmation 2.5 s late
-    // When "stop dictation" is said and then, before its confirmation, "start"
-    let events = heard_with_standby_once_stopped(&["stop dictation", "start"], SLOWER_HEARING);
+    // When "stop stop" is said and then, before its confirmation, "start"
+    let events = heard_with_standby_once_stopped(&["stop stop", "start"], SLOWER_HEARING);
     // Then the dictation ends and a new one starts: the spotter's report of the stop and
     // its confirmation are one command
     let mut said = said(&events);
@@ -185,7 +182,7 @@ mod needs_command_stt {
     #[test]
     fn should_hear_enter_right_after_other_speech() {
         let engine = engine();
-        let events = heard(&engine, &STANDBY, &speech("Okay, press enter"));
+        let events = heard(&engine, &STANDBY, &speech("Okay, enter"));
         // A phrase for the whole utterance would fail the app's pause rule here: only a
         // command placed at the end counts.
         assert_eq!(
@@ -249,7 +246,7 @@ mod needs_command_stt {
         let audio: Vec<f32> = sound_only(&speech("We meet on Friday"))
             .into_iter()
             .chain(silence(BREATH_SECS))
-            .chain(sound_only(&speech("stop dictation")))
+            .chain(sound_only(&speech("stop")))
             .collect();
         let events = heard(&engine, &DICTATING, &audio);
         let starts = events

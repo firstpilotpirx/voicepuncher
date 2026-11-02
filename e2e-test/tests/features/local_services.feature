@@ -23,7 +23,7 @@ Feature: local-services
     Scenario: A command is confirmed by the speech recognition service for commands
       Given the models that the service scripts download are on disk
       And the user started all services with the service scripts
-      When an app streams "press enter" to the command spotting service
+      When an app streams "enter" to the command spotting service
       Then the command spotting service reports "press enter"
       And the speech recognition service for commands answered its confirmation with the small model, and the speech recognition service for dictation got no request
 
@@ -161,7 +161,7 @@ Feature: local-services
 
     Scenario: A command right after such speech is carried out
       Given voice control runs and the speech recognition service for commands is otherwise idle
-      When the user says Russian counting and filler words and then "press enter"
+      When the user says Russian counting and filler words and then "enter"
       Then the command spotting service reports "press enter"
 
   @smoke @serial
@@ -205,7 +205,7 @@ Feature: local-services
     Scenario: Commands are spotted after a hung confirmation
       Given the service scripts started the command spotting service
       And the speech recognition service for commands never answers one confirmation
-      When an app streams speech that is no command and then "press enter" to the command spotting service
+      When an app streams speech that is no command and then "enter" to the command spotting service
       Then the command spotting service reports "press enter"
       And the connection answered the app throughout, and the hung confirmation is logged as given up
 
@@ -214,7 +214,7 @@ Feature: local-services
 
     Scenario: A command said alone is confirmed by the second attempt
       Given the speech recognition service for commands does not answer the first confirmation in time and answers the second
-      When the confirmation of "press enter" said alone is asked
+      When the confirmation of "enter" said alone is asked
       Then the command spotting service reports "press enter"
 
   @smoke

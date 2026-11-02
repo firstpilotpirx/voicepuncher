@@ -86,11 +86,11 @@ fn command(phrase: &str) -> Result<VoiceCommand> {
     VoiceCommand::from_phrase(phrase).with_context(|| format!("{phrase:?} is no voice command"))
 }
 
-/// The command a spoken phrase stands for: "clear text" and "clear" are "clear all text",
-/// "paste" is "paste text", and each other short form names its phrase.
-fn command_said(said: &str) -> Result<VoiceCommand> {
+/// The command a spoken word stands for: each command is said as one word ("enter" is
+/// "press enter"); a command's own name passes through unchanged.
+pub(crate) fn command_said(said: &str) -> Result<VoiceCommand> {
     command(match said {
-        "clear text" | "clear" => "clear all text",
+        "clear" => "clear all text",
         "paste" => "paste text",
         "enter" => "press enter",
         "start" => "start dictation",

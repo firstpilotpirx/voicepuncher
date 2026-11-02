@@ -23,8 +23,8 @@ pub struct ScriptedWord {
 pub struct ScriptedHearing {
     pub stream: Vec<f32>,
     pub script: Vec<ScriptedWord>,
-    /// Hears a word the clip's end cuts off whole, as whisper completes it ("start dicta…"
-    /// heard as "start dictation"); else only the words whose middle lies in the clip.
+    /// Hears a word the clip's end cuts off whole, as whisper completes it ("resta…"
+    /// heard as "restart"); else only the words whose middle lies in the clip.
     pub completes_cut_words: bool,
 }
 

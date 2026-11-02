@@ -17,7 +17,7 @@ Feature: processing-stages
 
     Scenario: A dictation ended by voice shows speech recognition after the stop
       Given voice control is turned on and a dictation runs
-      When the user says "stop dictation" to end it
+      When the user says "stop" to end it
       Then the overlay shows the speech recognition stage from the stop until the transcript is ready
 
     Scenario: A dictation transcribed while the user speaks shows speech recognition for its last part

@@ -7,16 +7,8 @@
 use super::voice_command::VoiceCommand;
 
 /// The ways a command reaches a transcript: English, or written in Cyrillic when the
-/// speech recognition service took the dictation for Russian. Longer ways first.
+/// speech recognition service took the dictation for Russian.
 pub const COMMAND_FORMS: &[&[&str]] = &[
-    &["clear", "all", "text"],
-    &["stop", "dictation"],
-    &["cancel", "dictation"],
-    &["restart", "dictation"],
-    &["start", "dictation"],
-    &["press", "enter"],
-    &["clear", "text"],
-    &["paste", "text"],
     &["stop"],
     &["cancel"],
     &["restart"],
@@ -31,9 +23,9 @@ pub const COMMAND_FORMS: &[&[&str]] = &[
     &["кенсел"],
     &["кэнсел"],
 ];
-const PASTE_FORMS: &[&[&str]] = &[&["paste", "text"], &["paste"]];
-const START_FORMS: &[&[&str]] = &[&["start", "dictation"], &["start"], &["старт"]];
-const RESTART_FORMS: &[&[&str]] = &[&["restart", "dictation"], &["restart"]];
+const PASTE_FORMS: &[&[&str]] = &[&["paste"]];
+const START_FORMS: &[&[&str]] = &[&["start"], &["старт"]];
+const RESTART_FORMS: &[&[&str]] = &[&["restart"]];
 /// What may sit between the kept text and the removed command.
 const SEPARATORS: &[char] = &[',', ';', ':', '-', '—'];
 const SENTENCE_ENDS: &[char] = &['.', '!', '?'];
@@ -109,7 +101,7 @@ fn trailing_commands_start(words: &[Word]) -> usize {
 /// Removes the words of `command`, the command that started a dictation, that open `text`
 /// when more text follows.
 ///
-/// "start", a doubled "start start" or "start dictation", and the same for "restart".
+/// "start" or a doubled "start start", and the same for "restart".
 pub fn without_leading_command(command: VoiceCommand, text: &str) -> String {
     let forms = match command {
         VoiceCommand::StartDictation => START_FORMS,
@@ -145,7 +137,7 @@ pub(crate) fn capitalized(text: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Removes up to `count` "paste" or "paste text" commands said during a dictation.
+/// Removes up to `count` "paste" commands said during a dictation.
 ///
 /// Only those that close a sentence or the text go, as a command is said on its own or ending
 /// an utterance. A "paste" inside a sentence is speech and stays.

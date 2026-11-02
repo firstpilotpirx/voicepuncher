@@ -3,13 +3,23 @@
 use super::*;
 use voicepuncher_command_spotting::conversions::saturating_usize;
 
-pub(super) const ALL_PHRASES: [&str; 6] = [
+/// Every command, by the name the protocol gives it.
+pub(super) const ALL_PHRASES: [&str; 7] = [
     "start dictation",
     "stop dictation",
     "cancel dictation",
     "restart dictation",
     "press enter",
     "clear all text",
+    "paste text",
+];
+
+/// Each word the keyword spotter reports by itself, with the command it names: "start",
+/// "stop", "cancel" and "restart" only ask the speech recognition check of their utterance.
+pub(super) const SPOTTED_WORDS: [(&str, &str); 3] = [
+    ("enter", "press enter"),
+    ("clear", "clear all text"),
+    ("paste", "paste text"),
 ];
 
 /// ONNX Runtime aborts when models load or run on several test threads at once.
@@ -187,7 +197,10 @@ pub(super) const ROOM_NOISE_RMS: f32 = 0.01;
 /// The loudest 10 ms of a quiet voice: the user's quietest recorded commands reach 0.0045.
 pub(super) const QUIET_VOICE_LEVEL: f32 = 0.005;
 
-pub(super) const SHORT_FORMS: [&str; 6] = ["start", "stop", "cancel", "restart", "enter", "clear"];
+/// Each command said as its one word.
+pub(super) const SHORT_FORMS: [&str; 7] = [
+    "start", "stop", "cancel", "restart", "enter", "clear", "paste",
+];
 
 /// `audio` scaled so its loudest 10 ms has an RMS of `level`.
 pub(super) fn at_level(audio: Vec<f32>, level: f32) -> Vec<f32> {

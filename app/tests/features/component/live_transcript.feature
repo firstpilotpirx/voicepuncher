@@ -19,7 +19,7 @@ Feature: live-transcript
       Then the overlay shows the text of both parts joined, with their shared words once
 
     Scenario: A dictation started by voice shows its text so far
-      Given voice control is turned on and the user started a dictation by saying "start dictation"
+      Given voice control is turned on and the user started a dictation by saying "start"
       When the first part of the recording is transcribed while the user speaks
       Then the overlay shows the text of that part next to the recording sign
 

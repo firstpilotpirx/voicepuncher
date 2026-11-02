@@ -147,7 +147,7 @@ fn should_check_a_running_utterance_soon_after_a_short_restart_and_never_report_
 #[test]
 fn should_report_nothing_of_a_check_answered_after_its_utterances_segment() {
     let _shared = engine();
-    // Given "start dictation today" said alone, its head check answered late
+    // Given "start" and "dictation today" said alone, its head check answered late
     let words = HearsTheWordsInTheClip::said(&["start", "dictation", "today"], 0.15);
     let stream = words.stream.clone();
     let hear = Arc::new(SlowFirstClip { words, clips: Mutex::new(0) });

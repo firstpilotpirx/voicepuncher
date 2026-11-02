@@ -20,7 +20,7 @@ fn loaded_copy(hearing: ScriptedHearing) -> Arc<dyn Hear> {
 fn should_hear_a_clip_a_copy_decodes_past_the_idle_budget() {
     // Given the hearing of the real-service tests, confirming with a copy that decodes every
     // confirmation for 1.2 s, as the shared service does beside another check
-    let (stream, script) = scripted("stop dictation");
+    let (stream, script) = scripted("stop stop");
     let hearing = ScriptedHearing { stream: stream.clone(), script, completes_cut_words: false };
     let url = scripted_copy::serve(hearing, LOADED_DECODING);
     // When it hears the speech
@@ -28,7 +28,7 @@ fn should_hear_a_clip_a_copy_decodes_past_the_idle_budget() {
     // Then every word is heard: the confirmation is not cut short at the idle budget
     assert_eq!(
         heard.text.split_whitespace().collect::<Vec<_>>(),
-        ["stop", "dictation"]
+        ["stop", "stop"]
     );
 }
 

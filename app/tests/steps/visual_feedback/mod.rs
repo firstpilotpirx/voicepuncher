@@ -13,7 +13,7 @@ pub mod overlay;
 pub mod pointer;
 mod spinner;
 
-/// The overlay event of the sign "press enter" shows.
+/// The overlay event of the enter sign.
 const ENTER_SIGN: &str = "enter sign";
 
 #[given("voice control is turned on and the overlay shows the Pasted sign")]

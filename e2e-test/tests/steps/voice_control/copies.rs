@@ -15,7 +15,7 @@ use crate::E2eWorld;
 /// A pause after the kill, shorter than the 5 s after which the app shows that voice
 /// commands do not work.
 const QUIET_AFTER_KILL: Duration = Duration::from_secs(1);
-const COMMAND: &str = "press enter";
+const COMMAND: &str = "enter";
 /// The supervisor notices an exited copy at once and starts it again.
 const BACK_WITHIN: Duration = Duration::from_secs(30);
 const POLL: Duration = Duration::from_millis(250);
@@ -47,7 +47,7 @@ async fn copies_listening(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[when("the copy of the command spotting service the app listens with is killed and the user says \"press enter\" a moment later")]
+#[when("the copy of the command spotting service the app listens with is killed and the user says \"enter\" a moment later")]
 async fn listening_copy_killed(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let run = run(world)?;
@@ -65,7 +65,7 @@ async fn listening_copy_killed(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[when("one copy of the speech recognition service for commands is killed and the user says \"press enter\" right away")]
+#[when("one copy of the speech recognition service for commands is killed and the user says \"enter\" right away")]
 async fn commands_copy_killed(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let run = run(world)?;

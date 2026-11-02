@@ -83,9 +83,9 @@ mod needs_kws_models {
     fn should_report_a_command_whose_first_hearing_is_empty_under_load_before_answering_a_sync() {
         // Given each confirmation 0.6 s late and every clip asked before the pause after the
         // speech closes heard empty, as clips cut short under load are
-        // When "clear text" is said alone in standby and a sync is asked right after it
+        // When "clear" is said alone in standby and a sync is asked right after it
         let events = heard_alone_then_synced(
-            "clear text",
+            "clear",
             Duration::from_millis(600),
             |hearing, clock, said_end| {
                 Arc::new(EmptyBefore {

@@ -26,7 +26,7 @@ fn should_take_a_start_said_in_standby_as_a_start_once_combined_with_the_dictati
     // Given the standby phrases combined with those of a running dictation
     let combined = standby().combined_with(&dictating());
     // When
-    let phrase = combined.phrase_in("Start dictation.");
+    let phrase = combined.phrase_in("Start start.");
     // Then
     assert_eq!(phrase, Some("start dictation".into()));
 }
@@ -64,64 +64,21 @@ fn should_select_the_phrases_of_both_sets_each_once() {
 
 #[test]
 fn should_take_an_exact_phrase_whatever_its_case_and_punctuation() {
+    assert_eq!(standby().phrase_in("ENTER!"), Some("press enter".into()));
     assert_eq!(
-        standby().phrase_in("Press Enter."),
-        Some("press enter".into())
-    );
-    assert_eq!(
-        dictating().phrase_in(" stop dictation "),
+        dictating().phrase_in(" stop "),
         Some("stop dictation".into())
-    );
-}
-
-#[test]
-fn should_take_clear_text_as_clear_all_text() {
-    assert_eq!(
-        standby().phrase_in("Clear text."),
-        Some("clear all text".into())
-    );
-}
-
-#[test]
-fn should_take_the_slips_heard_in_the_users_voice() {
-    assert_eq!(
-        standby().phrase_in("Star dictation."),
-        Some("start dictation".into())
-    );
-    assert_eq!(
-        standby().phrase_in("Start.\n Activation."),
-        Some("start dictation".into())
-    );
-    assert_eq!(
-        standby().phrase_in("Presenter."),
-        Some("press enter".into())
-    );
-    assert_eq!(
-        standby().phrase_in("Clear all texts."),
-        Some("clear all text".into())
-    );
-    assert_eq!(
-        dictating().phrase_in("Cancel the quotation."),
-        Some("cancel dictation".into())
-    );
-}
-
-#[test]
-fn should_take_capsule_dictation_for_cancel_dictation() {
-    assert_eq!(
-        dictating().phrase_in("Capsule dictation."),
-        Some("cancel dictation".into())
     );
 }
 
 #[test]
 fn should_take_a_phrase_said_twice_once() {
     assert_eq!(
-        standby().phrase_in("Star dictation, star dictation."),
+        standby().phrase_in("Start, start."),
         Some("start dictation".into())
     );
     assert_eq!(
-        standby().phrase_in("Press enter. Press enter."),
+        standby().phrase_in("Enter. Enter."),
         Some("press enter".into())
     );
 }
@@ -129,24 +86,24 @@ fn should_take_a_phrase_said_twice_once() {
 #[test]
 fn should_take_a_repeat_whose_sentences_say_the_same_command() {
     assert_eq!(
-        dictating().phrase_in(" Cancel dictation. Cancel.\n"),
+        dictating().phrase_in(" Cancel. Cancel!\n"),
         Some("cancel dictation".into())
     );
 }
 
 #[test]
 fn should_not_take_sentences_that_say_different_things() {
-    assert_eq!(standby().phrase_in("Press enter. Hello."), None);
-    assert_eq!(standby().phrase_in("Press enter. Clear text."), None);
+    assert_eq!(standby().phrase_in("Enter. Hello."), None);
+    assert_eq!(standby().phrase_in("Enter. Clear."), None);
 }
 
 #[test]
 fn should_not_take_a_phrase_with_other_words_around_it() {
     for transcript in [
-        "Please press enter.",
-        "Press enter when you are ready.",
-        "I think we should press enter.",
-        "Let's start dictation tomorrow.",
+        "Please enter.",
+        "Enter when you are ready.",
+        "I think we should enter.",
+        "Let's start tomorrow.",
     ] {
         assert_eq!(standby().phrase_in(transcript), None, "{transcript}");
     }
@@ -157,7 +114,6 @@ fn should_take_the_short_forms() {
     for (transcript, phrase) in [
         ("Enter.", "press enter"),
         ("Clear.", "clear all text"),
-        ("Paste text.", "paste text"),
         ("Paste.", "paste text"),
         ("Start.", "start dictation"),
     ] {
@@ -179,6 +135,30 @@ fn should_take_the_short_forms() {
         dictating().phrase_in("Restart."),
         Some("restart dictation".into())
     );
+}
+
+#[test]
+fn should_not_take_a_long_form_of_a_command() {
+    for transcript in [
+        "Start dictation.",
+        "Press enter.",
+        "Clear all text.",
+        "Clear text.",
+        "Paste text.",
+        "Presenter.",
+        "Star dictation.",
+    ] {
+        assert_eq!(standby().phrase_in(transcript), None, "{transcript}");
+    }
+    for transcript in [
+        "Stop dictation.",
+        "Cancel dictation.",
+        "Capsule dictation.",
+        "Cancel the quotation.",
+        "Restart dictation.",
+    ] {
+        assert_eq!(dictating().phrase_in(transcript), None, "{transcript}");
+    }
 }
 
 #[test]
@@ -224,41 +204,8 @@ fn should_not_take_start_in_a_longer_sentence_as_a_near_miss() {
 
 #[test]
 fn should_not_take_a_phrase_outside_the_selected_set() {
-    assert_eq!(standby().phrase_in("Stop dictation."), None);
-    assert_eq!(dictating().phrase_in("Clear all text."), None);
-}
-
-#[test]
-fn should_read_every_alias_row_as_its_command() {
-    for row in MISHEARINGS
-        .iter()
-        .filter(|m| m.kind == MishearingKind::Alias)
-    {
-        // Given a matcher selecting the command the row stands for
-        let matcher = PhraseMatcher::new(&[row.means[0].to_owned()]);
-        // When
-        let phrase = matcher.phrase_in(&row.heard.join(" "));
-        // Then
-        assert_eq!(phrase.as_deref(), Some(row.means[0]), "{:?}", row.heard);
-    }
-}
-
-#[test]
-fn should_read_an_alias_row_ending_speech_as_its_command() {
-    for row in MISHEARINGS
-        .iter()
-        .filter(|m| m.kind == MishearingKind::Alias)
-    {
-        // Given the row's words said at the end of a sentence, its command selected
-        let said = format!("we meet on friday {}", row.heard.join(" "));
-        let words: Vec<&str> = said.split(' ').collect();
-        let matcher = PhraseMatcher::new(&[row.means[0].to_owned()]);
-        // When
-        let found = matcher.at_end(&words);
-        // Then
-        let expected = vec![row.means[0].to_owned()];
-        assert_eq!(found.map(|f| f.commands), Some(expected), "{said}");
-    }
+    assert_eq!(standby().phrase_in("Stop."), None);
+    assert_eq!(dictating().phrase_in("Clear."), None);
 }
 
 #[test]

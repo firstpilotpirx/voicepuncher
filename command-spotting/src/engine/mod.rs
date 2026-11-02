@@ -248,7 +248,8 @@ impl Session<'_> {
     pub fn select(&mut self, selection: &PhraseSelection) -> Result<(), UnknownPhrases> {
         let phrases = &selection.phrases;
         let selected = keywords::select(&self.engine.keywords, phrases)?;
-        self.spotting.phrases = Some(self.engine.spotter.create_stream_with_keywords(&selected));
+        self.spotting.phrases = (!selected.is_empty())
+            .then(|| self.engine.spotter.create_stream_with_keywords(&selected));
         self.spotting.triggers = keywords::select_triggers(&self.engine.keywords, phrases)
             .filter(|_| self.engine.hear.is_some())
             .map(|lines| self.engine.spotter.create_stream_with_keywords(&lines));

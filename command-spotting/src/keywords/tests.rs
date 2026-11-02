@@ -5,7 +5,7 @@ fn phrases(list: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn should_parse_the_seven_phrases_of_voice_control() {
+fn should_parse_the_one_word_phrases_of_voice_control() {
     // When
     let keywords = parse(KEYWORDS);
     // Then
@@ -15,18 +15,7 @@ fn should_parse_the_seven_phrases_of_voice_control() {
         .filter(|phrase| !is_trigger(phrase))
         .collect();
     names.dedup();
-    assert_eq!(
-        names,
-        [
-            "start dictation",
-            "stop dictation",
-            "cancel dictation",
-            "restart dictation",
-            "press enter",
-            "clear all text",
-            "paste text"
-        ]
-    );
+    assert_eq!(names, ["press enter", "clear all text", "paste text"]);
 }
 
 #[test]
@@ -36,9 +25,9 @@ fn should_select_only_the_requested_phrases() {
     // When
     let selected = select(&keywords, &phrases(&["press enter", "stop dictation"])).unwrap();
     // Then
-    assert!(selected.contains("@stop_dictation"));
     assert!(selected.contains("@press_enter"));
-    assert!(!selected.contains("@start_dictation"));
+    assert!(!selected.contains("@clear_all_text"));
+    assert!(!selected.contains("_trigger"));
 }
 
 #[test]
@@ -64,7 +53,7 @@ fn should_never_select_a_trigger_as_a_phrase() {
     // When
     let selected = select(&keywords, &phrases(&["start dictation"])).unwrap();
     // Then
-    assert!(!selected.contains("_trigger"));
+    assert_eq!(selected, "");
     assert!(is_trigger("start trigger") && !is_trigger("start dictation"));
 }
 
@@ -85,7 +74,7 @@ fn should_reject_an_unknown_phrase_by_name() {
 }
 
 #[test]
-fn should_have_a_keyword_line_for_every_declared_command_and_none_else() {
+fn should_spot_every_declared_command_by_a_line_or_a_trigger_and_nothing_else() {
     // When
     let keywords = parse(KEYWORDS);
     // Then
@@ -101,9 +90,12 @@ fn should_have_a_keyword_line_for_every_declared_command_and_none_else() {
         );
     }
     for phrase in voicepuncher_voice_commands::COMMANDS {
+        let triggered = keywords
+            .iter()
+            .any(|k| served_by(&k.phrase) == Some(phrase));
         assert!(
-            spotted.contains(&phrase),
-            "keywords.txt has no line for {phrase:?}"
+            spotted.contains(&phrase) || triggered,
+            "keywords.txt has no line or trigger for {phrase:?}"
         );
     }
 }

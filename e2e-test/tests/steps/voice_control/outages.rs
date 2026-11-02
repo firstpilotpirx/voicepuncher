@@ -63,7 +63,7 @@ async fn dictation_on_own_services(world: &mut E2eWorld) -> Result<()> {
     listening_on_own_services(world)?;
     off_thread(world, |world| {
         let hands_free = hands_free(world)?;
-        hands_free.say("start dictation")?;
+        hands_free.say("start")?;
         ensure!(
             hands_free.saw(|e| *e == Event::RecordingStarted),
             "no dictation started: {:?}",
@@ -195,35 +195,35 @@ fn wait_for(limit: Duration, condition: impl Fn() -> bool) -> bool {
     condition()
 }
 
-#[when("the user keeps dictating through that hold and then says \"stop dictation\"")]
+#[when("the user keeps dictating through that hold and then says \"stop\"")]
 async fn dictate_through_stall(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let hands_free = hands_free(world)?;
         hands_free.keep_saying(SENTENCE, STALL + DICTATE_PAST_STALL)?;
-        hands_free.say("stop dictation")?;
+        hands_free.say("stop")?;
         hands_free.saw(|e| matches!(e, Event::Pasted(_)));
         Ok(())
     })
     .await
 }
 
-#[when("the user says \"press enter\" 5 seconds after the service answers again")]
+#[when("the user says \"enter\" 5 seconds after the service answers again")]
 async fn press_enter_after_return(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let hands_free = hands_free(world)?;
         hands_free.keep_quiet(SPEAKS_AFTER_RETURN)?;
-        hands_free.say("press enter")?;
+        hands_free.say("enter")?;
         hands_free.saw(|e| *e == Event::ReturnPressed);
         Ok(())
     })
     .await
 }
 
-#[when("the user says \"stop dictation\" once the service is back")]
+#[when("the user says \"stop\" once the service is back")]
 async fn stop_after_return(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let hands_free = hands_free(world)?;
-        hands_free.say("stop dictation")?;
+        hands_free.say("stop")?;
         hands_free.saw(|e| matches!(e, Event::Pasted(_)));
         Ok(())
     })

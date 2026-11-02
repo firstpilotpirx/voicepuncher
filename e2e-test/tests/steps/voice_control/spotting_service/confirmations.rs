@@ -18,7 +18,7 @@ use crate::steps::local_services::{log_mark, logged_since};
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
-const PRESS_ENTER: &str = r#"{"text":" press enter","segments":[]}"#;
+const ENTER: &str = r#"{"text":" enter","segments":[]}"#;
 /// The deadline of every confirmation in these scenarios.
 const DEADLINE: Duration = Duration::from_secs(3);
 /// How long a stalled copy decodes: past the deadline.
@@ -73,7 +73,7 @@ fn answer(mut stream: TcpStream, decoding: Duration) {
         let _ = reader.read_exact(&mut vec![0u8; length]);
         ANSWERED.lock().unwrap().push(port);
         std::thread::sleep(decoding);
-        PRESS_ENTER
+        ENTER
     };
     let reply = format!(
         "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -149,7 +149,7 @@ fn one_copy_stalls(world: &mut E2eWorld) -> Result<()> {
     bail!("no free window of copy ports")
 }
 
-#[when("the user says \"press enter\" and the command spotting service asks for its confirmation")]
+#[when("the user says \"enter\" and the command spotting service asks for its confirmation")]
 async fn confirm(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let url = world
@@ -204,23 +204,19 @@ fn given_up_unsent(world: &mut E2eWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("the confirmation is sent to the copy once it frees, and \"press enter\" is reported")]
+#[then("the confirmation is sent to the copy once it frees, and \"enter\" is reported")]
 fn sent_once_free(world: &mut E2eWorld) -> Result<()> {
     let received = ANSWERED.lock().unwrap().contains(&single_port(world)?);
-    if world.app.stdout != "press enter" || !received {
+    if world.app.stdout != "enter" || !received {
         bail!("{:?}, received by the copy: {received}", world.app.stdout);
     }
     Ok(())
 }
 
-#[then(
-    "the other copy confirms it within the confirmation's deadline and \"press enter\" is reported"
-)]
+#[then("the other copy confirms it within the confirmation's deadline and \"enter\" is reported")]
 fn other_copy_confirms(world: &mut E2eWorld) -> Result<()> {
     let took = world.app.elapsed.context("nothing was confirmed")?;
-    if world.app.stdout != "press enter"
-        || took >= DEADLINE
-        || !world.app.stderr.contains("another copy")
+    if world.app.stdout != "enter" || took >= DEADLINE || !world.app.stderr.contains("another copy")
     {
         bail!(
             "{:?} after {took:?}, log: {}",

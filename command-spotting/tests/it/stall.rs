@@ -58,7 +58,7 @@ mod needs_kws_models {
         let audio: Vec<f32> = pause
             .iter()
             .copied()
-            .chain(common::spoken_by(None, "press enter"))
+            .chain(common::spoken_by(None, "enter"))
             .chain(pause.iter().copied())
             .collect();
         // When

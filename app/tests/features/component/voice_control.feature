@@ -49,72 +49,72 @@ Feature: voice-control
       Given listening is on
       When the user records a dictation with the hotkey
       Then listening is on
-      And saying "press enter" presses Return
+      And saying "enter" presses Return
 
   Rule: "start dictation" starts a dictation
 
-    Scenario: Saying start dictation starts a dictation
+    Scenario: Saying start starts a dictation
       Given listening is on
       And no dictation runs
-      When the user says "start dictation"
+      When the user says "start"
       Then a dictation starts
       And the start sound plays
       And the overlay shows the recording
 
-    Scenario: Saying stop dictation plays the stop sound and shows processing
+    Scenario: Saying stop plays the stop sound and shows processing
       Given a dictation runs
       And the user has said a sentence in it
-      When the user says "stop dictation"
+      When the user says "stop"
       Then the stop sound plays
       And the overlay shows processing until the sentence is pasted, then hides
 
   Rule: "stop dictation" ends a dictation and pastes its text
 
-    Scenario: Saying stop dictation pastes the dictated text
+    Scenario: Saying stop pastes the dictated text
       Given a dictation runs
       And the user has said a sentence in it
-      When the user says "stop dictation"
+      When the user says "stop"
       Then the sentence is pasted into the focused app
-      And the pasted text does not contain the stop phrase
+      And the pasted text does not contain "stop"
       And listening stays on
 
   Rule: "cancel dictation" discards a dictation
 
-    Scenario: Saying cancel dictation pastes nothing
+    Scenario: Saying cancel pastes nothing
       Given a dictation runs
       And the user has said a sentence in it
-      When the user says "cancel dictation"
+      When the user says "cancel"
       Then no text is pasted
       And the cancel sound plays
       And listening stays on
 
   Rule: "press enter" presses Return
 
-    Scenario: Saying press enter presses Return
+    Scenario: Saying enter presses Return
       Given listening is on
       And no dictation runs
-      When the user says "press enter"
+      When the user says "enter"
       Then the Return key is pressed in the focused app
       And the enter sound plays
       And the overlay shows the enter sign for about a second, then hides
 
   Rule: "clear all text" erases the focused text
 
-    Scenario: Saying clear all text selects all and deletes
+    Scenario: Saying clear selects all and deletes
       Given listening is on
       And no dictation runs
-      When the user says "clear all text"
+      When the user says "clear"
       Then select all and delete are pressed in the focused app
       And the clear sound plays
       And the overlay shows the clear sign for about a second, then hides
 
   Rule: "paste text" pastes the clipboard
 
-    Scenario: Saying paste text pastes the clipboard at the cursor
+    Scenario: Saying paste pastes the clipboard at the cursor
       Given listening is on
       And no dictation runs
       And the clipboard holds a sentence
-      When the user says "paste text"
+      When the user says "paste"
       Then Cmd+V is pressed in the focused app
       And the paste sound plays
       And the overlay shows the paste sign for about a second, then hides
@@ -130,7 +130,7 @@ Feature: voice-control
       Given a dictation runs
       And the user has said a sentence in it
       And the clipboard holds a sentence
-      When the user says "paste text"
+      When the user says "paste"
       Then Cmd+V is pressed in the focused app
       And the paste sound plays
       And the dictation keeps running
@@ -138,15 +138,15 @@ Feature: voice-control
     Scenario: A dictation with a paste in it pastes its text without the command
       Given a dictation runs
       And the user has said a sentence, then "paste" on its own, then another sentence
-      When the user says "stop dictation"
+      When the user says "stop"
       Then both dictated sentences are pasted into the focused app
       And the pasted text does not contain "paste"
 
   Rule: A command counts on its own or in its set places
 
-    Scenario: A stop phrase inside a dictated sentence does not end the dictation
+    Scenario: The word stop inside a dictated sentence does not end the dictation
       Given a dictation runs
-      When the user says "please stop dictation software from crashing" without pausing
+      When the user says "please stop the software from crashing" without pausing
       Then the dictation keeps running
 
   Rule: "press enter" during a dictation pastes and sends
@@ -164,29 +164,29 @@ Feature: voice-control
 
     Scenario: Clear during a dictation is ignored
       Given a dictation runs
-      When the user says "clear all text"
+      When the user says "clear"
       Then no key is pressed
       And the dictation keeps running
 
     Scenario: Paste during a dictation is carried out
       Given a dictation runs
-      When the user says "paste text"
+      When the user says "paste"
       Then Cmd+V is pressed in the focused app
       And the dictation keeps running
 
-    Scenario: Stop dictation without a dictation is ignored
+    Scenario: Stop without a dictation is ignored
       Given listening is on
       And no dictation runs
-      When the user says "stop dictation"
+      When the user says "stop"
       Then no text is pasted
       And no sound plays
 
   Rule: Commands are carried out in the order spoken
 
-    Scenario: Press enter right after stop dictation follows the paste
+    Scenario: Enter right after stop follows the paste
       Given a dictation runs
-      And the user has said "stop dictation"
-      When the user says "press enter" before the text is pasted
+      And the user has said "stop"
+      When the user says "enter" before the text is pasted
       Then the text is pasted first
       And the Return key is pressed after it
 
@@ -202,15 +202,15 @@ Feature: voice-control
 
   Rule: Voice commands end a dictation the hotkey started
 
-    Scenario: Saying stop dictation ends a hotkey dictation
+    Scenario: Saying stop ends a hotkey dictation
       Given the user started a dictation with the hotkey and said a sentence
-      When the user says "stop dictation"
+      When the user says "stop"
       Then the sentence is pasted into the focused app
-      And the pasted text does not contain the stop phrase
+      And the pasted text does not contain "stop"
 
-    Scenario: Saying cancel dictation discards a hotkey dictation
+    Scenario: Saying cancel discards a hotkey dictation
       Given the user started a dictation with the hotkey and said a sentence
-      When the user says "cancel dictation"
+      When the user says "cancel"
       Then no text is pasted
       And the cancel sound plays
       And listening stays on
@@ -386,7 +386,7 @@ Feature: voice-control
     Scenario: Commands work again after the command spotting service restarts
       Given listening is on
       And the command spotting service went away and is back
-      When the user says "press enter"
+      When the user says "enter"
       Then the Return key is pressed in the focused app
       And no listening sound played after the app started
 
@@ -439,23 +439,23 @@ Feature: voice-control
       Then the sentence is pasted into the focused app
       And nothing was pasted before the dictation was ended
 
-    Scenario: "stop dictation" ends a dictation after the service is back
+    Scenario: "stop" ends a dictation after the service is back
       Given a dictation runs
       And the user has said a sentence in it
       And the command spotting service went away during it and is back
-      When the user says "stop dictation"
+      When the user says "stop"
       Then the sentence is pasted into the focused app
       And nothing was pasted before the dictation was ended
 
   Rule: A command said while the command spotting service was away still counts
 
-    Scenario: "stop dictation" said during a short outage ends the dictation
+    Scenario: "stop" said during a short outage ends the dictation
       Given a dictation runs
       And the user has said a sentence in it
       And the command spotting service went away during it
-      When the service is back and reports "stop dictation", said while it was away
+      When the service is back and reports "stop", said while it was away
       Then the sentence is pasted into the focused app
-      And the pasted text does not contain the stop phrase
+      And the pasted text does not contain "stop"
 
   Rule: A voice start gives its start cue within 0.7 s of its words
 

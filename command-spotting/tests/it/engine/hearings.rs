@@ -4,19 +4,20 @@ use super::*;
 use voicepuncher_command_spotting::conversions::saturating_usize;
 
 /// What the speech recognition service hears in every clip, word by word.
-pub(super) const HEARD_PRESS_ENTER: &str = r#"{"text":" press enter","segments":[{"words":[{"word":" press","start":0.1,"end":0.4},{"word":" enter","start":0.4,"end":0.8}]}]}"#;
+pub(super) const HEARD_ENTER: &str =
+    r#"{"text":" enter","segments":[{"words":[{"word":" enter","start":0.1,"end":0.5}]}]}"#;
 
 /// Speech the keyword spotter does not take for a command.
 pub(super) const NOT_A_COMMAND: &str = "hello there";
 
 pub(super) const SHORT_DEADLINE: Duration = Duration::from_millis(800);
 
-/// Hears "press enter" in every clip.
-pub(super) struct HearsPressEnter;
+/// Hears "enter" in every clip.
+pub(super) struct HearsEnter;
 
-impl Hear for HearsPressEnter {
+impl Hear for HearsEnter {
     fn hear(&self, _: &[f32], _: Duration) -> anyhow::Result<Heard> {
-        Ok(Heard { text: " press enter".to_owned(), words: Vec::new() })
+        Ok(Heard { text: " enter".to_owned(), words: Vec::new() })
     }
 }
 
@@ -29,7 +30,7 @@ pub(super) fn own_engine(transcription_url: Option<String>) -> Engine {
 }
 
 /// A speech recognition service that never answers its first `hung` requests and hears
-/// "press enter" in every later one.
+/// "enter" in every later one.
 pub(super) fn speech_recognition_hanging_first(hung: usize) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -42,7 +43,7 @@ pub(super) fn speech_recognition_hanging_first(hung: usize) -> String {
                 // Never answered and never closed: the client waits on it.
                 std::mem::forget(stream);
             } else {
-                answer(stream, HEARD_PRESS_ENTER);
+                answer(stream, HEARD_ENTER);
             }
         }
     });

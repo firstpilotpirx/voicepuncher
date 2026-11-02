@@ -131,7 +131,7 @@ fn shows_waiting(world: &mut IntegrationWorld) -> Result<()> {
     show(world, MacosVisualIndicator::show_waiting_for_focus)
 }
 
-#[when("the overlay shows the sign of \"press enter\"")]
+#[when("the overlay shows the enter sign")]
 fn shows_enter(world: &mut IntegrationWorld) -> Result<()> {
     show(world, |o| o.show_command_sign(VoiceCommand::PressEnter))
 }

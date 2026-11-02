@@ -1,14 +1,12 @@
 use super::*;
 
 #[test]
-fn should_give_every_command_a_form_of_its_own_words() {
+fn should_give_every_command_exactly_one_form_of_one_word() {
     for phrase in COMMANDS {
-        let words: Vec<&str> = phrase.split(' ').collect();
+        let forms: Vec<&Form> = FORMS.iter().filter(|f| f.phrase == phrase).collect();
         assert!(
-            FORMS
-                .iter()
-                .any(|f| f.phrase == phrase && f.words == words.as_slice()),
-            "{phrase} has no form of its own words"
+            forms.len() == 1 && forms[0].words.len() == 1,
+            "{phrase} has forms {forms:?}, not one form of one word"
         );
     }
 }

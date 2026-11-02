@@ -19,9 +19,10 @@ use super::super::confirmations::{log_len, log_since_speech, GIVEN_UP};
 use super::super::services;
 use super::speech_as_f32;
 use crate::steps::off_thread;
+use crate::steps::voice_control::command_said;
 use crate::E2eWorld;
 
-const PRESS_ENTER: &str = r#"{"text":" press enter","segments":[]}"#;
+const ENTER: &str = r#"{"text":" enter","segments":[]}"#;
 /// How long the confirmation thread waits for one attempt.
 const DEADLINE: Duration = Duration::from_millis(200);
 /// How long the steps wait for an answer of the confirmation thread.
@@ -47,7 +48,7 @@ impl std::fmt::Debug for Confirmations {
 }
 
 /// A speech recognition service for commands on `listener` that never answers its first
-/// request and hears "press enter" in every later one.
+/// request and hears "enter" in every later one.
 fn hanging_once(listener: TcpListener) {
     std::thread::spawn(move || {
         let mut held = Vec::new();
@@ -64,8 +65,8 @@ fn hanging_once(listener: TcpListener) {
             }
             let _ = write!(
                 stream,
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{PRESS_ENTER}",
-                PRESS_ENTER.len()
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{ENTER}",
+                ENTER.len()
             );
         }
     });
@@ -112,7 +113,7 @@ fn hung_given_up(world: &mut E2eWorld) -> Result<()> {
     Ok(())
 }
 
-/// Hears "press enter", after failing the first `failures` attempts at their deadline.
+/// Hears "enter", after failing the first `failures` attempts at their deadline.
 struct LateAtFirst {
     failures: u32,
     calls: AtomicU32,
@@ -126,7 +127,7 @@ impl Hear for LateAtFirst {
             return Err(anyhow!("timed out reading response"));
         }
         std::thread::sleep(self.late);
-        Ok(Heard { text: " press enter".to_owned(), words: Vec::new() })
+        Ok(Heard { text: " enter".to_owned(), words: Vec::new() })
     }
 }
 
@@ -160,7 +161,7 @@ fn late_first(world: &mut E2eWorld) -> Result<()> {
 
 #[when(expr = "the confirmation of {string} said alone is asked")]
 fn said_alone(world: &mut E2eWorld, phrase: String) -> Result<()> {
-    VoiceCommand::from_phrase(&phrase).with_context(|| format!("{phrase:?} is no command"))?;
+    command_said(&phrase)?;
     let run = confirmations(world)?;
     // a command said alone is decided by the confirmation of its whole speech segment
     run.worker.submit(job(1, JobKind::Segment));
@@ -173,7 +174,7 @@ fn said_alone(world: &mut E2eWorld, phrase: String) -> Result<()> {
         .collect();
     world.voice.recognized = heard
         .iter()
-        .filter_map(|text| VoiceCommand::from_phrase(text.trim()))
+        .filter_map(|text| command_said(text.trim()).ok())
         .collect();
     Ok(())
 }

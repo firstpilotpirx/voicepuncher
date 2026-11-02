@@ -9,7 +9,7 @@ use voicepuncher::core::domain::conversions::saturating_usize;
 /// The stand-ins' audio rate: one sample per millisecond is enough to measure a lead-in.
 const SAMPLES_PER_SEC: f32 = AudioBuffer16k::SAMPLE_RATE_HZ as f32;
 
-/// Long enough that a command spoken right after "stop dictation" arrives before the paste.
+/// Long enough that a command spoken right after "stop" arrives before the paste.
 pub const TRANSCRIPTION_TIME: Duration = Duration::from_millis(150);
 /// How late the pipeline's thread records the last event of a reaction, as a busy CPU makes it.
 /// It stays so a step that reads the log right after an earlier event of the reaction fails on

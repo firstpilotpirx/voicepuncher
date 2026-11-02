@@ -50,10 +50,10 @@ fn report_and_verdict(events: &[ServerEvent], command: &str) -> (Option<usize>, 
 fn should_report_a_spotted_command_before_its_hearing_without_confirmation() {
     let _shared = engine();
     // Given
-    let engine = own_engine(None).hearing(Arc::new(HearsAlways(" press enter")));
+    let engine = own_engine(None).hearing(Arc::new(HearsAlways(" enter")));
     let mut session = unconfirmed(&engine, &ALL_PHRASES);
     // When
-    let events = fed(&mut session, &spoken("press enter"));
+    let events = fed(&mut session, &spoken("enter"));
     // Then
     let (reported, verdict) = report_and_verdict(&events, "press enter");
     assert!(
@@ -73,7 +73,7 @@ fn should_keep_a_spotted_command_the_hearing_does_not_confirm_and_say_so() {
     let engine = own_engine(None).hearing(Arc::new(HearsAlways(" hello there")));
     let mut session = unconfirmed(&engine, &ALL_PHRASES);
     // When
-    let events = fed(&mut session, &spoken("press enter"));
+    let events = fed(&mut session, &spoken("enter"));
     // Then
     assert_eq!(reported_phrases(&events), ["press enter"], "{events:?}");
     assert_eq!(

@@ -21,9 +21,9 @@ use crate::E2eWorld;
 const REAL_TIME_FRAME_SAMPLES: usize = 320;
 /// Longest a start cue is waited for: one this late fails the scenario anyway.
 const CUE_WAIT: Duration = Duration::from_secs(5);
-/// The voices "cancel dictation" is said in, one per try, before the scenario gives up.
-/// WHY: decoding is deterministic, so the same audio misheard once ("Capsule dictation")
-/// is misheard the same way again; another voice is a new chance.
+/// The voices "cancel" is said in, one per try, before the scenario gives up.
+/// WHY: decoding is deterministic, so the same audio misheard once is misheard the same way
+/// again; another voice is a new chance.
 const CANCEL_VOICES: [&str; 2] = [ENGLISH_VOICE, "Samantha"];
 /// How long a dictation runs before the "restart" said on its own.
 /// Said during the dictation before a restart, one after another.
@@ -185,13 +185,13 @@ impl HandsFreeSession {
     }
 
     /// Ends a dictation the scenario started, without transcribing it: after a pause, so
-    /// "cancel dictation" is an utterance of its own, and once more in another voice when
+    /// "cancel" is an utterance of its own, and once more in another voice when
     /// it was not heard.
     pub(super) fn cancel_dictation(&self, room: &[f32]) -> Result<()> {
         for voice in CANCEL_VOICES {
             let seen = self.events().len();
             self.hear_timed(room, room.len())?;
-            self.hear(&spoken_by(voice, "cancel dictation")?)?;
+            self.hear(&spoken_by(voice, "cancel")?)?;
             if self.reacted(seen, &Expected::Cancelled, &silence(0.1))? {
                 return Ok(());
             }

@@ -2,25 +2,15 @@
 # then :boost, #threshold and @phrase, its words joined by _ (sherpa-onnx splits on spaces). Tokens come from the model's bpe.model:
 #   uv run --with sentencepiece python3 -c "import sentencepiece as s; \
 #     print(' '.join(s.SentencePieceProcessor(model_file='bpe.model').encode('PRESS ENTER', out_type=str)))"
-# A phrase may have several lines: "press enter" runs together into "presenter", "start"
-# may sound like "star", and "clear text" is "clear all text".
-# A lower threshold or a higher boost makes a phrase easier to spot. press enter, clear
-# all text and paste text are spotted less reliably than the dictation phrases, so they need the looser
-# values; the app's pause rule (the phrase must be the whole utterance) guards them.
-# The *_trigger lines are no phrases: spotted in a stream of their own, a short "start" or
-# "restart" only asks the speech recognition service to check the running utterance at once,
-# and a short "stop" or "cancel" said twice in a row asks it about the doubled form at once.
-▁START ▁DI C T ATION :1.0 #0.25 @start_dictation
-▁ST AR ▁DI C T ATION :1.0 #0.25 @start_dictation
-▁ST O P ▁DI C T ATION :1.0 #0.25 @stop_dictation
-▁CAN CE L ▁DI C T ATION :1.0 #0.20 @cancel_dictation
-▁RE S T AR T ▁DI C T ATION :1.0 #0.25 @restart_dictation
-▁PRE S S ▁EN TER :1.5 #0.20 @press_enter
-▁PRE S ENT ER :1.5 #0.20 @press_enter
-▁PRE S S ENT ER :1.5 #0.20 @press_enter
-▁C LE AR ▁ALL ▁T E X T :1.5 #0.20 @clear_all_text
-▁C LE AR ▁T E X T :1.5 #0.20 @clear_all_text
-▁PA S TE ▁T E X T :1.5 #0.20 @paste_text
+# Each command is said as one word, or that word twice. "enter", "clear" and "paste" are
+# phrases of their own, named after their commands. "start", "stop", "cancel" and "restart"
+# are only *_trigger lines, spotted in a stream of their own: a short "start" or "restart"
+# asks the speech recognition service to check the running utterance at once, and any of
+# them said twice in a row asks it about the doubled form at once. A lower threshold or a
+# higher boost makes a word easier to spot; the checks of the utterance guard them.
+▁EN TER :1.5 #0.20 @press_enter
+▁C LE AR :1.5 #0.20 @clear_all_text
+▁PA S TE :1.5 #0.20 @paste_text
 ▁START :1.5 #0.10 @start_trigger
 ▁ST AR :1.5 #0.10 @start_trigger
 ▁RE S T AR T :1.0 #0.25 @restart_trigger

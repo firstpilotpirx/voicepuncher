@@ -1,8 +1,8 @@
 //! Then steps: what was pasted, pressed and shown.
 
 use super::{
-    bail, given, is_key_press, pipeline_log, run, then, Duration, Event, Instant, IntegrationWorld,
-    Result, MORE_WORDS, OTHER_SENTENCE, PASTED_SIGN, REACTION, SENTENCE, SETTLE, STOP_PHRASE,
+    bail, command_word, given, is_key_press, pipeline_log, run, then, Duration, Event, Instant,
+    IntegrationWorld, Result, MORE_WORDS, OTHER_SENTENCE, PASTED_SIGN, REACTION, SENTENCE, SETTLE,
 };
 
 #[then("nothing was pasted before the dictation was ended")]
@@ -48,9 +48,10 @@ pub(super) fn listening_on(world: &mut IntegrationWorld) -> Result<()> {
 }
 
 #[then(expr = "saying {string} presses Return")]
-pub(super) fn saying_presses_return(world: &mut IntegrationWorld, phrase: String) -> Result<()> {
+pub(super) fn saying_presses_return(world: &mut IntegrationWorld, said: String) -> Result<()> {
+    let command = command_word(&said)?;
     run(world).start_when();
-    run(world).say_alone(&phrase)?;
+    run(world).say_alone(command.phrase())?;
     run(world).wait_since_mark(|e| *e == Event::ReturnPressed)
 }
 
@@ -118,15 +119,6 @@ pub(crate) fn sentence_pasted(world: &mut IntegrationWorld) -> Result<()> {
     let pasted = run(world).pasted()?;
     if !pasted.contains(SENTENCE) {
         bail!("pasted {pasted:?}, expected the sentence {SENTENCE:?}");
-    }
-    Ok(())
-}
-
-#[then("the pasted text does not contain the stop phrase")]
-pub(super) fn no_stop_phrase(world: &mut IntegrationWorld) -> Result<()> {
-    let pasted = run(world).pasted()?;
-    if pasted.contains(STOP_PHRASE) {
-        bail!("the stop phrase reached the pasted text: {pasted:?}");
     }
     Ok(())
 }

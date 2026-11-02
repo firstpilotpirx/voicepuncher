@@ -1,12 +1,12 @@
 //! The pointer run: the pipeline with the dictation sign's log.
 
 use super::{
-    bail, mpsc, Arc, AtomicBool, Context, DictationSignState, Duration, Event, FocusWaitCfg,
-    Instant, IntegrationWorld, Mutex, NoKeys, NotingOverlay, NotingSign, OneSecondRecorder,
-    Pipeline, PipelineConfig, PipelineInput, PipelineParts, PointerSignIndicator, PttSignal,
-    QuietPaster, QuietSpotter, RecordingMode, Result, Sender, Sign, SignLifetimes, Silent,
-    SlowTranscriber, SwitchableFocus, VoiceCommand, FAILURE_NOTICE_TIME, FOCUS_WAIT, REACTION,
-    SETTLE, TOO_SHORT_TO_KEEP_MS,
+    bail, mpsc, Arc, AtomicBool, DictationSignState, Duration, Event, FocusWaitCfg, Instant,
+    IntegrationWorld, Mutex, NoKeys, NotingOverlay, NotingSign, OneSecondRecorder, Pipeline,
+    PipelineConfig, PipelineInput, PipelineParts, PointerSignIndicator, PttSignal, QuietPaster,
+    QuietSpotter, RecordingMode, Result, Sender, Sign, SignLifetimes, Silent, SlowTranscriber,
+    SwitchableFocus, VoiceCommand, FAILURE_NOTICE_TIME, FOCUS_WAIT, REACTION, SETTLE,
+    TOO_SHORT_TO_KEEP_MS,
 };
 use voicepuncher::test_doubles::StartedOnDemand;
 
@@ -131,7 +131,7 @@ pub(super) fn sign(events: &[Event]) -> Vec<Sign> {
 }
 
 pub(super) fn voice_command(phrase: &str) -> Result<VoiceCommand> {
-    VoiceCommand::from_phrase(phrase).with_context(|| format!("{phrase:?} is no voice command"))
+    crate::steps::voice_control::command_word(phrase)
 }
 
 impl StartedOnDemand for PointerRun {

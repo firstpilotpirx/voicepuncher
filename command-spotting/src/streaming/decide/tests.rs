@@ -44,17 +44,6 @@ fn should_report_a_doubled_command_at_once() {
 }
 
 #[test]
-fn should_report_a_two_word_form_at_once() {
-    // When
-    let found = decide(&standby(), &said(1.0, "press enter"), decoding(1.56), 0.0);
-    // Then
-    let found = found.expect("press enter");
-    assert_eq!(found.commands, ["press enter"]);
-    assert_eq!(found.placement, Placement::Tail);
-    assert!((found.start - 1.0).abs() < 1e-4, "{}", found.start);
-}
-
-#[test]
 fn should_wait_for_a_one_word_form_to_settle() {
     // Given "stop" just heard, ending at 1.25 s
     let words = said(1.0, "stop");

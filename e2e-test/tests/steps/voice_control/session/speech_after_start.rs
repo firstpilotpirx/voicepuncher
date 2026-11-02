@@ -42,7 +42,7 @@ const LAST_SOUND_FRACTION: f32 = 0.03;
 /// 10 ms at 16 kHz.
 const LOUDNESS_FRAME_SAMPLES: usize = 160;
 /// The user's labelled recording sessions, searched in order for a way of saying a command.
-const RECORDED_SESSIONS: [&str; 2] = ["session-2", "session-5"];
+const RECORDED_SESSIONS: [&str; 3] = ["session-2", "session-5", "session-3"];
 
 #[derive(Deserialize)]
 pub(super) struct Form {
@@ -135,7 +135,7 @@ impl HandsFreeSession {
     }
 
     /// Says `audio`, which starts a dictation, waits for the dictation to start and ends
-    /// it with "stop dictation".
+    /// it with "stop".
     fn dictate_by_voice(&self, audio: &[f32]) -> Result<()> {
         let room = silence(0.1);
         let seen = self.events().len();
@@ -144,7 +144,7 @@ impl HandsFreeSession {
             bail!("no dictation started; events: {:?}", self.events());
         }
         let seen = self.events().len();
-        self.hear(&command_audio(CommandVoice::Synthesized, "stop dictation")?)?;
+        self.hear(&command_audio(CommandVoice::Synthesized, "stop")?)?;
         if !self.reacted(seen, &Expected::Pasted(SENTENCE), &room)? {
             bail!("nothing was pasted; events: {:?}", self.events());
         }
@@ -168,10 +168,7 @@ fn dictation_with_sentence(world: &mut E2eWorld) -> Result<()> {
     let session = session_of(world)?;
     let room = silence(0.1);
     let seen = session.events().len();
-    session.hear(&command_audio(
-        CommandVoice::Synthesized,
-        "start dictation",
-    )?)?;
+    session.hear(&command_audio(CommandVoice::Synthesized, "start")?)?;
     if !session.reacted(seen, &Expected::RecordingStarted, &room)? {
         bail!("no dictation started; events: {:?}", session.events());
     }
@@ -182,25 +179,19 @@ fn dictation_with_sentence(world: &mut E2eWorld) -> Result<()> {
 fn dictation_by_voice(world: &mut E2eWorld) -> Result<()> {
     let session = session_of(world)?;
     let seen = session.events().len();
-    session.hear(&command_audio(
-        CommandVoice::Synthesized,
-        "start dictation",
-    )?)?;
+    session.hear(&command_audio(CommandVoice::Synthesized, "start")?)?;
     if !session.reacted(seen, &Expected::RecordingStarted, &silence(0.1))? {
         bail!("no dictation started; events: {:?}", session.events());
     }
     Ok(())
 }
 
-#[when("someone says a sentence, takes a short breath and says \"stop dictation\"")]
+#[when("someone says a sentence, takes a short breath and says \"stop\"")]
 fn says_sentence_breath_stop(world: &mut E2eWorld) -> Result<()> {
     let session = session_of(world)?;
     let mut audio = without_trailing_silence(from_first_sound(spoken_by(ENGLISH_VOICE, SENTENCE)?));
     audio.extend(silence(BREATH_SECS));
-    audio.extend(from_first_sound(spoken_by(
-        ENGLISH_VOICE,
-        "stop dictation",
-    )?));
+    audio.extend(from_first_sound(spoken_by(ENGLISH_VOICE, "stop")?));
     let seen = session.events().len();
     session.hear_in_real_time(&audio)?;
     // The Then step checks what was pasted; this only waits for the paste.

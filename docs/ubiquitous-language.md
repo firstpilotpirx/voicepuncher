@@ -592,7 +592,7 @@
 - **Type:** Value Object (enum)
 - **Definition:** A spoken English command. `SpokenCommand` pairs it with when its words were said and its *command placement*: the whole utterance (the pause rule), the end of an utterance, "start" at its head, or a doubled form or *command chain* anywhere.
 - **Code:** `app/src/core/domain/voice_command.rs`, recognition (pause rule) in `app/src/core/domain/voice_command_recognizer/mod.rs`
-- **Variants:** `StartDictation` ("start dictation"), `StopDictation` ("stop dictation"), `CancelDictation` ("cancel dictation"), `RestartDictation` ("restart dictation"), `PressEnter` ("press enter"), `ClearAllText` ("clear all text"), `PasteText` ("paste text")
+- **Variants:** `StartDictation` ("start dictation"), `StopDictation` ("stop dictation"), `CancelDictation` ("cancel dictation"), `RestartDictation` ("restart dictation"), `PressEnter` ("press enter"), `ClearAllText` ("clear all text"), `PasteText` ("paste text"); the names in parentheses are the command's identifiers in the protocol, the code and the logs, never what the user says (*command word*)
 - **Synonyms to AVOID:** "keyword", "hotword", "wake word", "voice shortcut"
 
 ### SpottingEvent
@@ -600,6 +600,12 @@
 - **Definition:** What the *command spotting service* reports about the audio it hears: speech started, speech ended, a phrase spotted with its start and end. Fed to the `VoiceCommandRecognizer`.
 - **Code:** `app/src/core/domain/voice_command_recognizer/mod.rs`
 - **Variants:** `SpeechStarted`, `SpeechEnded`, `PhraseSpotted`, `CommandsSaid` (one to three commands said without a pause around them, carried out at once without the pause rule)
+
+### Command word
+- **Type:** Concept
+- **Definition:** The one word a *voice command* is said as: "start", "stop", "cancel", "restart", "enter", "clear", "paste"; said twice in a row, it is the command's doubled form. No other words say a command: "stop dictation" or "press enter" said aloud is speech.
+- **Code:** `FORMS` in `voice-commands/src/lib.rs`
+- **Synonyms to AVOID:** "short form" (there is no long one), "keyword"
 
 ### Command placement
 - **Type:** Value Object (enum `CommandPlacement`)

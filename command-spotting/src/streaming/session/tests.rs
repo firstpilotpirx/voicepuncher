@@ -182,8 +182,8 @@ fn should_replay_the_half_second_before_the_onset_into_every_recognizer() {
 
 #[test]
 fn should_place_a_command_in_the_stream_from_the_start_of_the_replay() {
-    // Given "press enter" said 0.6 s into a stream opened at 0.5 s
-    let en = Scripted::new("en", &[("press", 0.6), ("enter", 0.9)]);
+    // Given "enter enter" said 0.6 s into a stream opened at 0.5 s
+    let en = Scripted::new("en", &[("enter", 0.6), ("enter", 0.9)]);
     let mut session = session(&[&en], None);
     // When
     let mut events = session.accept(&[silence(1.0), speech(0.8)].concat());
