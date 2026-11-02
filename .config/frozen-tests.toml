@@ -102,15 +102,6 @@ branch = "feat/faster-stop-to-paste"
 
 
 [[frozen]]
-test = "scenario: Start start followed by the dictation at once"
-frozen = "2026-11-01"
-recipe = "full-check"
-stage = "e2e-smoke-voice"
-beside = "the command STT copies stopped answering (15 of 28 confirmations cut short) while the installed app’s command spotting service used 2.6 cores"
-branch = "feat/speed-up-command-recognizers"
-
-
-[[frozen]]
 test = "scenario: The pinned engines are staged"
 frozen = "2026-11-02"
 recipe = "full-check"

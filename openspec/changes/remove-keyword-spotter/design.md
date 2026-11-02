@@ -81,7 +81,7 @@ Fixed along the way, each with its Red test: a recognizer that heard only the en
 | voice-control | Restart said on its own gives its cue at once | E2E |
 | voice-control | The user's recorded starts give their cue at once | E2E |
 | voice-control | The overlay shows with the start cue | component |
-| voice-control | A faster start keeps the dictation where the command's words end | E2E (`voice_control.feature`, `@cues`) |
+| voice-control | A faster start keeps the dictation where the command's words end | E2E (`voice_control.feature`, `@smoke`, "Start start followed by the dictation at once") |
 | voice-control | A faster start adds no false start | integration (`command-spotting/tests/it/streaming/`) |
 | voice-control | The start cue is timed once the other checks' builds have ended | unit (`dev-tools/src/locks/tests.rs`) |
 | voice-control | A late start cue names what ran beside it | unit (`e2e-test/src/machine_load.rs`) |
