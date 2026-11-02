@@ -41,7 +41,10 @@ impl ScenarioServices {
 #[when("the service scripts start the speech recognition service for dictation")]
 async fn start_dictation_service(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
-        services(world)?.start_each(&[SPEECH_RECOGNITION])
+        let services = services(world)?;
+        // WHY: a scenario starts one copy by default, and one copy is started without warm-up.
+        services.options.copies = Some(2);
+        services.start_each(&[SPEECH_RECOGNITION])
     })
     .await
 }
