@@ -127,3 +127,12 @@ stage = "bundle"
 beside = "a just stage-times run of an audit agent in the same worktree"
 branch = "feat/remove-long-command-forms"
 
+
+[[frozen]]
+test = "scenario: A chunk whose copy is killed is transcribed by another copy"
+frozen = "2026-11-02"
+recipe = "test"
+stage = "test"
+beside = "the whole test stage (1660 tests) beside the user app whisper-server copies on 18082-18084; a branch touching only command-spotting"
+branch = "feat/remove-long-command-forms"
+
