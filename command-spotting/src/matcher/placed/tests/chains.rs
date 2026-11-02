@@ -193,6 +193,18 @@ pub(super) fn should_find_no_command_in_a_long_form() {
 }
 
 #[test]
+pub(super) fn should_take_a_long_form_ending_in_a_command_word_by_that_word() {
+    assert_eq!(
+        standby().at_end(&words("press enter")),
+        Some(found(&[("press enter", 1, 1)], Placement::Tail))
+    );
+    assert_eq!(
+        standby().start_at_head(&words("start dictation now")),
+        Some(found(&[("start dictation", 0, 0)], Placement::Head))
+    );
+}
+
+#[test]
 pub(super) fn should_take_and_restart_after_a_command_as_enter_start() {
     // "enter start" said quickly is heard as "and restart"
     assert_eq!(

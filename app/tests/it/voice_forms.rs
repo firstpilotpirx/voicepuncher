@@ -35,6 +35,29 @@ const FROZEN: &[(&str, f32, &str)] = &[
     ),
 ];
 
+/// Labels said in a long form that ends in no command word. Recorded when every long form was
+/// a command, they are ordinary speech since the long forms were removed and carry out
+/// nothing. "Okay press enter" (it ends in "enter") and "start dictation we will call you
+/// tomorrow" ("start" opens it) keep their labelled command.
+const LONG_FORM_SPEECH: [&str; 7] = [
+    "restart dictation",
+    "cancel dictation",
+    "clear text",
+    "stop dictation",
+    "That is all for today stop dictation",
+    "Never mind cancel dictation",
+    "We meet on Friday, stop dictation",
+];
+
+/// The commands `form` must carry out: its labelled ones, or none for a long form.
+fn expected(form: &Form) -> &[String] {
+    if LONG_FORM_SPEECH.contains(&form.said.as_str()) {
+        &[]
+    } else {
+        &form.commands
+    }
+}
+
 /// A command closed by "please", which the recordings hold.
 fn is_please_form(form: &Form) -> bool {
     !form.commands.is_empty() && crate::recorded_sessions::ends_with_please(&form.said)
@@ -51,9 +74,14 @@ fn went_wrong(session: &Session, form: &Form, commands: &[String]) -> Option<Str
     let known = listed(KNOWN_WRONG, session, form);
     let report = format!(
         "{} at {:.2}s, {}, said {:?} ({}): carried out {commands:?}, expected {:?}",
-        session.name, form.start, form.state, form.said, form.note, form.commands
+        session.name,
+        form.start,
+        form.state,
+        form.said,
+        form.note,
+        expected(form)
     );
-    match (commands == form.commands, known) {
+    match (commands == expected(form), known) {
         (true, None) => None,
         (false, None) => Some(report),
         (false, Some(why)) => {

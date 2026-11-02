@@ -3,7 +3,8 @@
 //! for longer than a confirmation may wait, through `UtteranceTranscriber`.
 //!
 //! The stand-in's address is kept in the world's `transcription_url`, the confirmation's
-//! outcome in `stdout`, its log lines in `stderr` and its time in `elapsed`.
+//! outcome (the command its transcript reports, or why it failed) in `stdout`, its log lines
+//! in `stderr` and its time in `elapsed`.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -11,7 +12,9 @@ use voicepuncher::test_doubles::prelude::*;
 
 use cucumber::{given, then, when};
 
+use voicepuncher::core::domain::VoiceCommand;
 use voicepuncher_command_spotting::confirm::UtteranceTranscriber;
+use voicepuncher_command_spotting::matcher::PhraseMatcher;
 use voicepuncher_copy_pool::{CopyPool, ServiceAddress};
 
 use crate::steps::local_services::{log_mark, logged_since};
@@ -162,13 +165,26 @@ async fn confirm(world: &mut E2eWorld) -> Result<()> {
         let outcome = transcriber.transcribe(&[0.0; 1_600], 16_000, DEADLINE);
         world.app.elapsed = Some(started.elapsed());
         world.app.stdout = match outcome {
-            Ok(heard) => heard.text.trim().to_owned(),
+            Ok(heard) => reported(&heard.text),
             Err(e) => format!("failed: {e:#}"),
         };
         world.app.stderr = logged_since(mark, "").join("\n");
         Ok(())
     })
     .await
+}
+
+/// The command the service reports for a confirmation that heard `transcript` while no
+/// dictation runs: the copy writes the word said ("enter"), the service reports the command's
+/// name ("press enter").
+fn reported(transcript: &str) -> String {
+    let phrases: Vec<String> = VoiceCommand::STANDBY
+        .iter()
+        .map(|c| c.phrase().to_owned())
+        .collect();
+    PhraseMatcher::new(&phrases)
+        .phrase_in(transcript)
+        .unwrap_or_default()
 }
 
 /// The port of the only copy at the stand-in's address.
@@ -204,19 +220,23 @@ fn given_up_unsent(world: &mut E2eWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("the confirmation is sent to the copy once it frees, and \"enter\" is reported")]
+#[then("the confirmation is sent to the copy once it frees, and \"press enter\" is reported")]
 fn sent_once_free(world: &mut E2eWorld) -> Result<()> {
     let received = ANSWERED.lock().unwrap().contains(&single_port(world)?);
-    if world.app.stdout != "enter" || !received {
+    if world.app.stdout != "press enter" || !received {
         bail!("{:?}, received by the copy: {received}", world.app.stdout);
     }
     Ok(())
 }
 
-#[then("the other copy confirms it within the confirmation's deadline and \"enter\" is reported")]
+#[then(
+    "the other copy confirms it within the confirmation's deadline and \"press enter\" is reported"
+)]
 fn other_copy_confirms(world: &mut E2eWorld) -> Result<()> {
     let took = world.app.elapsed.context("nothing was confirmed")?;
-    if world.app.stdout != "enter" || took >= DEADLINE || !world.app.stderr.contains("another copy")
+    if world.app.stdout != "press enter"
+        || took >= DEADLINE
+        || !world.app.stderr.contains("another copy")
     {
         bail!(
             "{:?} after {took:?}, log: {}",

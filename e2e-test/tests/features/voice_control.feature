@@ -88,6 +88,7 @@ Feature: voice-control
         | cancel            | cancel dictation  |
         | stop              | stop dictation    |
         | enter             | press enter       |
+        | clear             | clear all text    |
 
     @smoke
     Scenario: A short Russian phrase is no command
@@ -114,6 +115,23 @@ Feature: voice-control
         | start          | start dictation   |
         | restart        | restart dictation |
         | clear          | clear all text    |
+
+    @regression
+    Scenario Outline: A long form said alone takes no effect
+      Given the command spotting service is running
+      When someone says "<said>" in one breath while <state>
+      Then no command takes effect
+
+      Examples:
+        | said           | state             |
+        | stop dictation | dictating         |
+        | paste text     | no dictation runs |
+
+    @regression
+    Scenario: A long form ending in a command word counts by that word
+      Given the command spotting service is running
+      When someone says "press enter" in one breath while no dictation runs
+      Then the "press enter" command takes effect
 
   Rule: "paste text" pastes the clipboard
 
@@ -649,7 +667,7 @@ Feature: voice-control
     Scenario: A copy frees before the deadline
       Given every copy of the speech recognition service for commands is busy for one more second
       When the user says "enter" and the command spotting service asks for its confirmation
-      Then the confirmation is sent to the copy once it frees, and "enter" is reported
+      Then the confirmation is sent to the copy once it frees, and "press enter" is reported
 
   Rule: A confirmation whose copy stalls goes to another copy
 
@@ -657,7 +675,7 @@ Feature: voice-control
     Scenario: One copy for commands stalls mid-command
       Given the speech recognition service for commands runs as two copies and the copy a confirmation reaches first stops answering
       When the user says "enter" and the command spotting service asks for its confirmation
-      Then the other copy confirms it within the confirmation's deadline and "enter" is reported
+      Then the other copy confirms it within the confirmation's deadline and "press enter" is reported
 
     @smoke
     Scenario: Every copy for commands stalls

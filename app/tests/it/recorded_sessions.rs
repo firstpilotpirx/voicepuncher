@@ -34,6 +34,17 @@ pub fn ends_with_please(said: &str) -> bool {
     said.split_whitespace().last() == Some("please")
 }
 
+/// Whether `said` still says `command` (its protocol name): it ends in the command's one
+/// word, as "enter", "enter enter" and "press enter" do. A long form ending in another word
+/// ("stop dictation", "clear text") is ordinary speech since the long forms were removed.
+pub fn ends_in_its_command_word(said: &str, command: &str) -> bool {
+    let word = voicepuncher_voice_commands::FORMS
+        .iter()
+        .find(|form| form.phrase == command)
+        .and_then(|form| form.words.first());
+    word.is_some_and(|word| said.split_whitespace().last() == Some(*word))
+}
+
 fn load<L: DeserializeOwned>(dir: &Path, labels_file: &str) -> Session<L> {
     let labels = std::fs::read_to_string(dir.join(labels_file))
         .unwrap()

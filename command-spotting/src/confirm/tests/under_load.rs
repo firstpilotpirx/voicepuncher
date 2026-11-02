@@ -6,7 +6,7 @@ use super::*;
 fn transcriber_of_live_copy(decodings: Vec<Duration>) -> (UtteranceTranscriber, Arc<AtomicUsize>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}/v1", listener.local_addr().unwrap());
-    let requests = serve_live_copy_paced(listener, PRESS_ENTER, decodings);
+    let requests = serve_live_copy_paced(listener, ENTER, decodings);
     (UtteranceTranscriber::new(&url).unwrap(), requests)
 }
 
@@ -35,7 +35,7 @@ fn should_hear_nothing_when_a_live_copy_decodes_past_the_budget() {
     assert_eq!(requests.load(Ordering::SeqCst), 3);
     // And the next confirmation goes to that copy at once
     let (next, took) = timed(&transcriber, Duration::from_secs(3));
-    assert_eq!(next.unwrap().text, " press enter");
+    assert_eq!(next.unwrap().text, " enter");
     assert!(took < Duration::from_millis(500), "took {took:?}");
     assert_eq!(requests.load(Ordering::SeqCst), 4);
 }
@@ -72,7 +72,7 @@ fn should_hear_in_full_a_live_copy_that_decodes_slowly_after_slow_answers() {
     let (heard, _) = timed(&transcriber, Duration::from_secs(3));
     // Then it is answered, not cut short
     let heard = heard.unwrap();
-    assert_eq!(heard.text, " press enter");
+    assert_eq!(heard.text, " enter");
     assert_eq!(requests.load(Ordering::SeqCst), 3);
 }
 
@@ -138,10 +138,10 @@ fn should_keep_the_budget_after_an_answer_stuck_repeating() {
     serve_live_copy_scripted(
         listener,
         vec![
-            (loaded, PRESS_ENTER),
-            (loaded, PRESS_ENTER),
+            (loaded, ENTER),
+            (loaded, ENTER),
             (Duration::from_millis(1_600), stuck_repeating()),
-            (Duration::from_millis(2_500), PRESS_ENTER),
+            (Duration::from_millis(2_500), ENTER),
         ],
     );
     let transcriber = UtteranceTranscriber::new(&url).unwrap();
