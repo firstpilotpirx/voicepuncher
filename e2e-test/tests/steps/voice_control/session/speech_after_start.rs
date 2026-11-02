@@ -193,7 +193,9 @@ fn says_sentence_breath_stop(world: &mut E2eWorld) -> Result<()> {
     let session = session_of(world)?;
     let mut audio = without_trailing_silence(from_first_sound(spoken_by(ENGLISH_VOICE, SENTENCE)?));
     audio.extend(silence(BREATH_SECS));
-    audio.extend(from_first_sound(spoken_by(ENGLISH_VOICE, "stop stop")?));
+    audio.extend(from_first_sound(super::start_cue::synthesized_command(
+        "stop stop",
+    )?));
     let seen = session.events().len();
     session.hear_in_real_time(&audio)?;
     // The Then step checks what was pasted; this only waits for the paste.
