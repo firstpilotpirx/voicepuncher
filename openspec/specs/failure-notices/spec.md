@@ -24,7 +24,7 @@ The system SHALL show a failure notice saying the dictation was lost, and why, w
 
 #### Scenario: A voice dictation is lost
 - **GIVEN** voice control is on and the speech recognition service does not answer
-- **WHEN** the user says "stop dictation" after a dictation started by voice
+- **WHEN** the user says "stop" after a dictation started by voice
 - **THEN** nothing is pasted and the overlay shows that the dictation was lost because speech recognition failed
 
 ### Requirement: A partly lost dictation is announced
@@ -56,7 +56,7 @@ The system SHALL show a failure notice naming the voice command that could not b
 
 #### Scenario: A key press is refused
 - **GIVEN** voice control is on and pressing keys in the focused app fails
-- **WHEN** the user says "press enter"
+- **WHEN** the user says "enter"
 - **THEN** the overlay shows that "press enter" failed
 - **AND** the next voice command is still carried out
 

@@ -43,7 +43,7 @@ The system SHALL archive a dictation that reached speech recognition but pasted 
 
 #### Scenario: A dictation dropped by restarting leaves no entry
 - **GIVEN** the archive is on and voice control is on
-- **WHEN** the user starts a dictation by voice, says "restart dictation", dictates a phrase and stops it by voice
+- **WHEN** the user starts a dictation by voice, says "restart", dictates a phrase and stops it by voice
 - **THEN** the archive holds one entry, with the audio of the restarted dictation only
 
 #### Scenario: A press shorter than the minimum press time leaves no entry

@@ -30,7 +30,7 @@ From the moment a recording starts until the overlay hides, the app SHALL show t
 
 #### Scenario: A recording started by voice shows the dictation sign
 - **GIVEN** voice control is turned on and no dictation runs
-- **WHEN** the user says "start dictation"
+- **WHEN** the user says "start"
 - **THEN** the dictation sign shows next to the pointer with a red microphone
 
 #### Scenario: The dictation sign sits close to the pointer's tip
@@ -51,7 +51,7 @@ From the moment a recording starts until the overlay hides, the app SHALL show t
 
 #### Scenario: A command sign leaves the dictation sign as it was
 - **GIVEN** voice control is turned on and a dictation runs
-- **WHEN** the user says "clear text"
+- **WHEN** the user says "clear"
 - **THEN** the dictation sign keeps showing the red microphone
 
 ### Requirement: The dictation sign goes away once the dictation is over
@@ -75,7 +75,7 @@ The dictation sign SHALL go away within a moment of the overlay hiding after a d
 
 #### Scenario: Restarting a dictation shows the sign for the new recording
 - **GIVEN** voice control is turned on and a recording runs
-- **WHEN** the user says "restart dictation"
+- **WHEN** the user says "restart"
 - **THEN** the dictation sign shows next to the pointer for the new recording
 
 #### Scenario: Quitting the app during a recording leaves the normal pointer

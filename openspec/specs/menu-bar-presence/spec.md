@@ -48,7 +48,7 @@ While the runtime is ready, the icon SHALL mirror the stage of the dictation as 
 
 #### Scenario: A command sign leaves the icon as it was
 - **GIVEN** voice control is turned on and a recording runs
-- **WHEN** the user says "clear text"
+- **WHEN** the user says "clear"
 - **THEN** the status item keeps showing the recording icon
 
 ### Requirement: The icon shows voice control

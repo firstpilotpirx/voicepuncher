@@ -16,7 +16,7 @@ From the moment a recording stops until its transcript is ready, the overlay SHA
 
 #### Scenario: A dictation ended by voice shows speech recognition after the stop
 - **GIVEN** voice control is turned on and a dictation runs
-- **WHEN** the user says "stop dictation"
+- **WHEN** the user says "stop"
 - **THEN** the overlay shows the speech recognition stage from the stop until the transcript is ready
 
 #### Scenario: A dictation transcribed while the user speaks shows speech recognition for its last part
