@@ -38,11 +38,26 @@ const SPEECH_AFTER_SECS: f32 = 0.35;
 /// a new command: the first word may settle before the recognizer decoded the second.
 const DOUBLE_GAP_SECS: f32 = 0.6;
 
-/// Whether `found` repeats `last`, the utterance's previous report, right after it.
+/// Whether `found` repeats `last`, the utterance's previous report: the same commands right
+/// after it, or the end of its command word anywhere in the utterance ("start" heard of a
+/// "restart" by the other recognizer, which may time it well after the "restart" ends).
 pub fn doubles(last: Option<&Finding>, found: &Finding) -> bool {
     last.is_some_and(|last| {
-        last.commands == found.commands && found.start - last.end < DOUBLE_GAP_SECS
+        ends_its_word(last, found)
+            || (last.commands == found.commands && found.start - last.end < DOUBLE_GAP_SECS)
     })
+}
+
+/// Whether the first word of `found`'s command ends the longer first word of `last`'s.
+fn ends_its_word(last: &Finding, found: &Finding) -> bool {
+    let first = |f: &Finding| -> Option<String> {
+        let phrase = f.commands.first()?;
+        phrase.split_whitespace().next().map(str::to_owned)
+    };
+    match (first(last), first(found)) {
+        (Some(long), Some(short)) => long.len() > short.len() && long.ends_with(&short),
+        _ => false,
+    }
 }
 
 /// The commands to report of `words`, heard so far in the utterance, at `moment`; only the

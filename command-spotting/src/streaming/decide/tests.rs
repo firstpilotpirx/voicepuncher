@@ -172,6 +172,25 @@ fn should_take_the_same_command_right_after_a_report_for_its_double() {
     assert!(!doubles(None, &found_at(1.64, 1.98)));
 }
 
+#[test]
+fn should_take_a_start_timed_late_after_a_restart_for_its_end() {
+    // Given "restart" reported at 3.84–4.46 s and "start" timed by the other recognizer at 5.1 s
+    let restart = Finding {
+        commands: vec!["restart dictation".into()],
+        start: 3.84,
+        end: 4.46,
+        placement: Placement::Tail,
+    };
+    let start = Finding {
+        commands: vec!["start dictation".into()],
+        start: 5.1,
+        end: 5.1,
+        placement: Placement::Head,
+    };
+    // When / Then
+    assert!(doubles(Some(&restart), &start));
+}
+
 fn paused_at(now: f32, pause: f32) -> Moment {
     Moment::Decoding { now, pause: Some(pause) }
 }

@@ -143,17 +143,35 @@ impl Utterance {
 
     /// Reports what the recognizers decoded since the last call, at `now` in the stream.
     pub fn collect(&mut self, matcher: &PhraseMatcher, now: f32, wait: Wait) -> Vec<ServerEvent> {
+        let mut arrived: Vec<(usize, Vec<Update>)> = (0..self.decoders.len())
+            .map(|r| {
+                let updates = match wait {
+                    Wait::No => self.decoders[r].arrived(),
+                    Wait::CaughtUp => self.decoders[r].caught_up(),
+                };
+                (r, updates)
+            })
+            .collect();
+        // WHY: a recognizer that heard only the end of a command word ("start" of a quiet
+        // "restart") must not speak first when the other heard all of it.
+        arrived.sort_by_key(|(r, updates)| self.ends_a_longer_word(matcher, *r, updates));
         let mut events = Vec::new();
-        for r in 0..self.decoders.len() {
-            let updates = match wait {
-                Wait::No => self.decoders[r].arrived(),
-                Wait::CaughtUp => self.decoders[r].caught_up(),
-            };
+        for (r, updates) in arrived {
             for update in updates {
                 events.extend(self.heard(matcher, r, update, now));
             }
         }
         events
+    }
+
+    /// Whether the last word recognizer `r` holds after `updates` may be the end of a longer
+    /// command word.
+    fn ends_a_longer_word(&self, matcher: &PhraseMatcher, r: usize, updates: &[Update]) -> bool {
+        updates.last().is_some_and(|update| {
+            self.words(r, &update.decoded)
+                .last()
+                .is_some_and(|word| matcher.ends_a_longer_word(&word.text))
+        })
     }
 
     /// Recognizer `r` decoded `update`: what it says is reported at `now`.
