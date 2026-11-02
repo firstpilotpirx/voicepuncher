@@ -60,3 +60,18 @@ pub(super) fn command_audio(voice: CommandVoice, said: &str) -> Result<Vec<f32>>
         }
     }
 }
+
+/// The words a session says for the command `said`: "start", "stop" and "cancel"
+/// doubled, as a lone synthesized one is often too short for the voice gate (the keyword
+/// spotter hears it, no speech segment closes, so nothing confirms it); "enter" and "clear"
+/// alone are heard, and the user's recordings are said as recorded.
+pub(super) fn session_form(voice: CommandVoice, said: &str) -> String {
+    if matches!(voice, CommandVoice::Synthesized) && DOUBLED_WHEN_SYNTHESIZED.contains(&said) {
+        format!("{said} {said}")
+    } else {
+        said.to_owned()
+    }
+}
+
+/// The commands a synthesized session says twice.
+const DOUBLED_WHEN_SYNTHESIZED: [&str; 3] = ["start", "stop", "cancel"];

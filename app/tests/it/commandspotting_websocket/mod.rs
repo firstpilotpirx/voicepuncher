@@ -238,7 +238,12 @@ mod needs_kws {
     #[test]
     fn should_start_a_dictation_with_start_opening_the_utterance() {
         let url = required_env("VOICEPUNCHER_COMMAND_SPOTTING_URL");
-        let sentences = ["start again", "start the next message"];
+        // Long enough for the service's head check: an utterance as short as "start again"
+        // closes before it, and only its whole is matched against the command forms.
+        let sentences = [
+            "start we meet again at ten",
+            "start the next message please",
+        ];
         // Given listening, when a sentence opens with "start"
         let heard = each_at_once(&sentences, |sentence| heard_after_a_pause(&url, sentence));
         // Then
