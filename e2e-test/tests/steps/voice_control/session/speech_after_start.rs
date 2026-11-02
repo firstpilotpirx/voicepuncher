@@ -135,7 +135,7 @@ impl HandsFreeSession {
     }
 
     /// Says `audio`, which starts a dictation, waits for the dictation to start and ends
-    /// it with "stop".
+    /// it with "stop stop": a lone synthesized "stop" is too short for the voice gate.
     fn dictate_by_voice(&self, audio: &[f32]) -> Result<()> {
         let room = silence(0.1);
         let seen = self.events().len();
@@ -144,7 +144,7 @@ impl HandsFreeSession {
             bail!("no dictation started; events: {:?}", self.events());
         }
         let seen = self.events().len();
-        self.hear(&command_audio(CommandVoice::Synthesized, "stop")?)?;
+        self.hear(&command_audio(CommandVoice::Synthesized, "stop stop")?)?;
         if !self.reacted(seen, &Expected::Pasted(SENTENCE), &room)? {
             bail!("nothing was pasted; events: {:?}", self.events());
         }
