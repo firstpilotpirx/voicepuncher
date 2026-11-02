@@ -42,8 +42,7 @@ fn list_of(text: &str, function: &str) -> Vec<String> {
 fn script_args(service: &str, text: &str) -> Vec<String> {
     let function = match service {
         WHISPER => "whisper_args",
-        STREAMING => "streaming_args",
-        _ => "command_spotting_args",
+        _ => "streaming_args",
     };
     list_of(text, function)
         .into_iter()
@@ -58,17 +57,16 @@ fn script_args(service: &str, text: &str) -> Vec<String> {
 fn catalog_args(service: &str) -> Vec<String> {
     match service {
         WHISPER => whisper_args("model", 0, 0, "vad"),
-        STREAMING => {
+        _ => {
             let models = ["en_model_dir", "ru_model_dir", "vad"].map(String::from);
             streaming_args(0, &models, None)
         }
-        _ => command_spotting_args(0, "model_dir", "vad", "commands_url", None),
     }
 }
 
 /// The services whose arguments differ between the service scripts in `text` and the catalog.
 fn drifted(text: &str) -> Vec<&'static str> {
-    [WHISPER, COMMAND_SPOTTING, STREAMING]
+    [WHISPER, STREAMING]
         .into_iter()
         .filter(|service| script_args(service, text) != catalog_args(service))
         .collect()

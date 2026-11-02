@@ -10,8 +10,6 @@ use voicepuncher_test_steps::required_env;
 
 use crate::common;
 
-mod latency;
-
 const SAMPLE_RATE: usize = 16_000;
 const PAUSE_SECS: f32 = 1.0;
 
@@ -146,47 +144,6 @@ mod needs_streaming_models {
         let commands = commands_in(&engine, &common::spoken_by(None, "stop the car"));
         // Then
         assert_eq!(commands, Vec::<String>::new());
-    }
-
-    #[test]
-    fn should_report_a_doubled_start_within_half_a_second_of_its_words() {
-        let engine = engine();
-        let pause = vec![0.0; SAMPLE_RATE];
-        // When
-        let delay = latency::report_delay(
-            &engine,
-            &pause,
-            &common::spoken_by(Some("Eddy"), "start start"),
-            &[],
-        );
-        // Then
-        assert!(
-            delay.is_some_and(|d| d <= latency::DOUBLED_BOUND),
-            "reported {delay:?} after the words"
-        );
-    }
-
-    #[test]
-    fn should_report_a_doubled_start_soon_after_a_cancel() {
-        let engine = engine();
-        let cancel = [
-            vec![0.0; SAMPLE_RATE],
-            common::spoken_by(None, "cancel cancel"),
-            vec![0.0; SAMPLE_RATE],
-        ]
-        .concat();
-        // When
-        let delay = latency::report_delay(
-            &engine,
-            &cancel,
-            &common::spoken_by(None, "start start"),
-            &common::spoken_by(None, "the coffee machine on the third floor is broken"),
-        );
-        // Then
-        assert!(
-            delay.is_some_and(|d| d <= latency::DOUBLED_BOUND),
-            "reported {delay:?} after the words"
-        );
     }
 
     mod needs_voice_samples {

@@ -17,6 +17,8 @@ use super::{samples_in, seconds};
 const MAX_AUDIO_SECS: f32 = 30.0;
 /// The silence fed to every recognizer at the gate's pause, ahead of the stream.
 pub const FLUSH_SECS: f32 = 0.6;
+/// How much later than the gate's onset a recognizer may time the first word of an utterance.
+const OPENING_SLACK_SECS: f32 = 0.5;
 
 pub struct Utterance {
     /// Where its audio starts, in seconds of the stream.
@@ -175,7 +177,19 @@ impl Utterance {
             }
         };
         let found = decide(matcher, &words, moment, self.reported_until)?;
+        let found = self.started_at_onset(found, &words);
         self.report(r, found, now)
+    }
+
+    /// `found` starting at the gate's onset when it opens the utterance: a recognizer times a
+    /// first word later than it is said, and the dictation it ends would keep its first sounds.
+    fn started_at_onset(&self, mut found: Finding, words: &[TimedWord]) -> Finding {
+        let onset = self.trace.onset;
+        let opens = words.first().is_some_and(|w| w.start >= found.start);
+        if opens && found.start - onset <= OPENING_SLACK_SECS {
+            found.start = found.start.min(onset);
+        }
+        found
     }
 
     /// Reports `found`, heard by recognizer `r` at `now`, unless it doubles the last report.

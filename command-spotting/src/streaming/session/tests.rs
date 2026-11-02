@@ -6,6 +6,7 @@ use super::*;
 use crate::history::HistoryCfg;
 use crate::streaming::ports::{Decoded, RecognizerStream};
 
+mod opening;
 mod pause_flush;
 
 const RATE: usize = 16_000;
@@ -145,6 +146,14 @@ fn commands(events: &[ServerEvent]) -> Vec<Vec<String>> {
         .collect()
 }
 
+/// The start of the first command in `events`.
+fn command_start(events: &[ServerEvent]) -> Option<f32> {
+    events.iter().find_map(|e| match e {
+        ServerEvent::Command { start, .. } => Some(*start),
+        _ => None,
+    })
+}
+
 fn count(events: &[ServerEvent], speech_start: bool) -> usize {
     let is = |e: &&ServerEvent| match e {
         ServerEvent::SpeechStart { .. } => speech_start,
@@ -182,17 +191,14 @@ fn should_replay_the_half_second_before_the_onset_into_every_recognizer() {
 
 #[test]
 fn should_place_a_command_in_the_stream_from_the_start_of_the_replay() {
-    // Given "enter enter" said 0.6 s into a stream opened at 0.5 s
-    let en = Scripted::new("en", &[("enter", 0.6), ("enter", 0.9)]);
+    // Given "now enter enter", "enter" said 0.6 s into a stream opened at 0.5 s
+    let en = Scripted::new("en", &[("now", 0.5), ("enter", 0.6), ("enter", 0.9)]);
     let mut session = session(&[&en], None);
     // When
     let mut events = session.accept(&[silence(1.0), speech(0.8)].concat());
     events.extend(session.sync(0));
     // Then
-    let start = events.iter().find_map(|e| match e {
-        ServerEvent::Command { start, .. } => Some(*start),
-        _ => None,
-    });
+    let start = command_start(&events);
     assert!((start.expect("a command") - 1.1).abs() < 1e-3, "{start:?}");
 }
 
