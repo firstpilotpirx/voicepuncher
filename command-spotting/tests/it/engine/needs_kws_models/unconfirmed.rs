@@ -33,11 +33,13 @@ fn verdicts(events: &[ServerEvent]) -> Vec<(Vec<String>, Verdict)> {
         .collect()
 }
 
-/// Where the first unconfirmed report of `command` and the first verdict lie in `events`.
+/// Where the first report of `command` and the first verdict lie in `events`. A short
+/// "enter" is heard at half the pause, before the keyword spotter fires, and that hearing
+/// reports it at once: the report counts whether a hearing confirmed it or not.
 fn report_and_verdict(events: &[ServerEvent], command: &str) -> (Option<usize>, Option<usize>) {
     let reported = events.iter().position(|e| match e {
-        ServerEvent::Phrase { phrase, timing: None, .. } => phrase == command,
-        ServerEvent::Command { commands, timing: None, .. } => commands == &[command],
+        ServerEvent::Phrase { phrase, .. } => phrase == command,
+        ServerEvent::Command { commands, .. } => commands == &[command],
         _ => false,
     });
     let verdict = events
@@ -122,11 +124,20 @@ fn fed_until_reported(
         let mut got = session.accept(frame);
         got.extend(session.settle());
         fed_so_far += frame.len();
-        if reported_at.is_none() && report_and_verdict(&got, command).0.is_some() {
+        if reported_at.is_none() && got.iter().any(|e| reported_unconfirmed(e, command)) {
             reported_at = Some(fed_so_far);
         }
         events.extend(got);
     }
     events.extend(session.settle());
     (events, reported_at)
+}
+
+/// Whether `event` reports `command` before any hearing confirmed it.
+fn reported_unconfirmed(event: &ServerEvent, command: &str) -> bool {
+    match event {
+        ServerEvent::Phrase { phrase, timing: None, .. } => phrase == command,
+        ServerEvent::Command { commands, timing: None, .. } => commands == &[command],
+        _ => false,
+    }
 }

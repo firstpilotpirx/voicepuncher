@@ -169,8 +169,13 @@ impl Session<'_> {
 
     /// A phrase in `events`, spotted after the short segment that ended last went out at once,
     /// is that segment's report: its hearing gives the verdict, at once when it already
-    /// answered.
-    pub(in crate::engine) fn report_late(&mut self, events: &[ServerEvent]) -> Option<ServerEvent> {
+    /// answered. A hearing that answered first and heard the same command confirmed and
+    /// reported it already, so the phrase is dropped from `events` and only the verdict follows:
+    /// the command is carried out once.
+    pub(in crate::engine) fn report_late(
+        &mut self,
+        events: &mut Vec<ServerEvent>,
+    ) -> Option<ServerEvent> {
         let unconfirmed = &mut self.jobs.unconfirmed;
         let key = Awaited::Job(unconfirmed.last_segment?);
         let report = first_report(events)?;
@@ -180,7 +185,11 @@ impl Session<'_> {
                 None
             }
             Standing::Answered(heard, reading) => {
-                Some(self.verdict_event(&reading, heard.as_ref(), report, None))
+                let verdict = self.verdict_event(&reading, heard.as_ref(), report, None);
+                if matches!(verdict, ServerEvent::Heard { verdict: Verdict::Agreed, .. }) {
+                    events.retain(|e| !matches!(e, ServerEvent::Phrase { .. }));
+                }
+                Some(verdict)
             }
             other => {
                 unconfirmed.awaited.insert(key, other);

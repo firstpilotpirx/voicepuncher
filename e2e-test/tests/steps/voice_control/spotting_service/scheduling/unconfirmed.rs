@@ -24,17 +24,6 @@ fn verdict_named(name: &str) -> Result<Verdict> {
     })
 }
 
-/// Whether `event` reports `command` before any hearing confirmed it.
-fn reported_unconfirmed(event: &ServerEvent, command: &str) -> bool {
-    match event {
-        ServerEvent::Phrase { phrase, timing: None, .. } => phrase == command,
-        ServerEvent::Command { commands, timing: None, .. } => {
-            commands.iter().any(|c| c == command)
-        }
-        _ => false,
-    }
-}
-
 /// Whether `event` reports `command`, confirmed or not.
 fn reported_as(event: &ServerEvent, command: &str) -> bool {
     match event {
@@ -60,9 +49,10 @@ fn reported_then_verdict(world: &mut E2eWorld, command: String, verdict: String)
     let expected = verdict_named(&verdict)?;
     let run = run(world);
     let events = run.runs.concat();
-    let reported = events
-        .iter()
-        .position(|e| reported_unconfirmed(e, &command));
+    // The report comes before the verdict, confirmed or not: a short "enter" is often heard
+    // at half the pause, before the keyword spotter fires, and that hearing reports it
+    // without waiting; the spotter's phrase then only brings the verdict.
+    let reported = events.iter().position(|e| reported_as(e, &command));
     reported_once(&events, &command)?;
     let heard = events.iter().position(|e| {
         matches!(e, ServerEvent::Heard { commands, verdict, .. }
