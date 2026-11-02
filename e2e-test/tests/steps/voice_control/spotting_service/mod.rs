@@ -1,5 +1,5 @@
 //! The command spotting service's side of voice control: the protocol it speaks with the app,
-//! checked against the running service, and how it reads a confirmation's transcript.
+//! checked against the running service.
 //!
 //! What the service answered is kept in the world's `stdout`, as the output of the system
 //! under test.
@@ -11,14 +11,10 @@ use cucumber::{then, when};
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Message, WebSocket};
 
-use voicepuncher_command_spotting::matcher::PhraseMatcher;
 use voicepuncher_command_spotting::protocol::PROTOCOL_VERSION;
 
 use crate::steps::off_thread;
 use crate::E2eWorld;
-
-mod confirmations;
-pub(crate) mod scheduling;
 
 /// How long the service may take to close a connection it refuses.
 const CLOSED_WITHIN: Duration = Duration::from_secs(5);
@@ -117,28 +113,4 @@ fn says_malformed(world: &mut E2eWorld) -> Result<()> {
 #[then("the service closes the connection with a reason saying the frame holds partial samples")]
 fn says_partial(world: &mut E2eWorld) -> Result<()> {
     closed_with(world, "Invalid", &["5 bytes"])
-}
-
-#[when(
-    expr = "the speech recognition service for commands hears {string} in one utterance while no dictation runs"
-)]
-fn hears_in_standby(world: &mut E2eWorld, transcript: String) {
-    let phrases: Vec<String> = VoiceCommand::STANDBY
-        .iter()
-        .map(|c| c.phrase().to_owned())
-        .collect();
-    world.app.stdout = PhraseMatcher::new(&phrases)
-        .phrase_in(&transcript)
-        .unwrap_or_default();
-}
-
-#[then(expr = "the command spotting service reports {string} once")]
-fn reported_once(world: &mut E2eWorld, phrase: String) -> Result<()> {
-    if world.app.stdout != phrase {
-        bail!(
-            "the service took the utterance as {:?}, not {phrase:?} once",
-            world.app.stdout
-        );
-    }
-    Ok(())
 }

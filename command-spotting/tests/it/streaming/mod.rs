@@ -33,7 +33,7 @@ fn engine() -> MutexGuard<'static, StreamingEngine> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-fn load_engine() -> StreamingEngine {
+pub fn load_engine() -> StreamingEngine {
     let cfg = StreamingCfg {
         en_model_dir: required_env("VOICEPUNCHER_STREAMING_EN_MODEL_DIR").into(),
         ru_model_dir: required_env("VOICEPUNCHER_STREAMING_RU_MODEL_DIR").into(),
@@ -89,30 +89,35 @@ mod needs_streaming_models {
     use super::*;
 
     #[test]
-    fn should_report_a_synthesized_enter() {
-        let engine = engine();
-        // When
-        let commands = commands_in(&engine, &common::spoken_by(None, "enter"));
-        // Then
-        assert_eq!(commands, ["press enter"]);
-    }
-
-    #[test]
-    fn should_report_a_synthesized_doubled_enter_once() {
-        let engine = engine();
-        // When
-        let commands = commands_in(&engine, &common::spoken_by(None, "enter enter"));
-        // Then
-        assert_eq!(commands, ["press enter"]);
-    }
-
-    #[test]
     fn should_report_a_synthesized_paste() {
         let engine = engine();
         // When
         let commands = commands_in(&engine, &common::spoken_by(None, "paste"));
         // Then
         assert_eq!(commands, ["paste text"]);
+    }
+
+    #[test]
+    fn should_report_a_command_said_right_before_a_sync_before_answering_it() {
+        let engine = engine();
+        let mut session = engine.session_for(1).expect("a session");
+        let phrases = PHRASES.iter().map(|p| (*p).to_owned()).collect();
+        session
+            .select(&PhraseSelection { phrases, ..PhraseSelection::default() })
+            .expect("known phrases");
+        let pause = vec![0.0f32; saturating_usize(PAUSE_SECS * SAMPLE_RATE as f32)];
+        let audio = [pause.as_slice(), &common::spoken_by(None, "enter")].concat();
+        // When the app asks for a sync right after the speech, before any pause after it
+        let mut events: Vec<ServerEvent> = audio
+            .chunks(SAMPLE_RATE / 10)
+            .flat_map(|chunk| session.accept(chunk))
+            .collect();
+        events.extend(session.sync(7));
+        // Then
+        let at = |wanted: fn(&ServerEvent) -> bool| events.iter().position(wanted);
+        let command = at(|e| matches!(e, ServerEvent::Command { .. })).expect("the command");
+        let synced = at(|e| matches!(e, ServerEvent::Synced { id: 7 })).expect("the sync");
+        assert!(command < synced, "{events:?}");
     }
 
     #[test]
@@ -123,27 +128,6 @@ mod needs_streaming_models {
         let commands = commands_in(&engine, &quiet);
         // Then
         assert_eq!(commands, ["start dictation"]);
-    }
-
-    #[test]
-    fn should_report_nothing_in_a_sentence_without_a_command() {
-        let engine = engine();
-        // When
-        let commands = commands_in(
-            &engine,
-            &common::spoken_by(None, "the weather is nice today"),
-        );
-        // Then
-        assert_eq!(commands, Vec::<String>::new());
-    }
-
-    #[test]
-    fn should_report_nothing_for_stop_opening_a_sentence() {
-        let engine = engine();
-        // When
-        let commands = commands_in(&engine, &common::spoken_by(None, "stop the car"));
-        // Then
-        assert_eq!(commands, Vec::<String>::new());
     }
 
     mod needs_voice_samples {

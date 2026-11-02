@@ -95,21 +95,6 @@ impl HandsFree {
         self.events().iter().position(wanted)
     }
 
-    /// Says `words` again and again, frame by frame in real time, for `duration`.
-    pub(super) fn keep_saying(&self, words: &str, duration: Duration) -> Result<()> {
-        let speech = spoken_with_pauses(words)?;
-        let started = Instant::now();
-        let mut frame_due = started;
-        for frame in speech.chunks(FRAME_SAMPLES).cycle() {
-            if started.elapsed() >= duration {
-                return Ok(());
-            }
-            self.microphone.send(frame.to_vec())?;
-            frame_due = next_frame(frame_due);
-        }
-        Ok(())
-    }
-
     /// Silence in real time for `duration`, as a microphone hears between two utterances.
     pub(super) fn keep_quiet(&self, duration: Duration) -> Result<()> {
         let started = Instant::now();

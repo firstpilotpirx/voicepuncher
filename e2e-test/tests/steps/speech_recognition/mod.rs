@@ -13,7 +13,7 @@ use voicepuncher_e2e_test::speech::{
 use crate::steps::file_transcription::{
     env, sut_bin, write_silence_wav, NO_CONFIG, STARTUP_FAILURE_EXIT_CODE,
 };
-use crate::steps::local_services::{Role, ScenarioServices};
+use crate::steps::local_services::ScenarioServices;
 use crate::steps::off_thread;
 use crate::E2eWorld;
 

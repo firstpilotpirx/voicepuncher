@@ -64,7 +64,7 @@ impl Drop for BusyProcessor {
 }
 
 /// The transcript the service at `url` gives for `samples`, through the app's own client.
-pub(in super::super) fn transcribe(url: &str, samples: Vec<i16>) -> Result<String> {
+pub(crate) fn transcribe(url: &str, samples: Vec<i16>) -> Result<String> {
     transcribe_within(url, samples, None)
 }
 

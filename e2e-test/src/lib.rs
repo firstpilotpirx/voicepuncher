@@ -7,7 +7,6 @@ pub mod machine_load;
 pub mod scenario_filter;
 pub mod speech;
 pub use voicepuncher_test_steps::speech_cache;
-pub mod stalled_copies;
 pub mod unanswered_copies;
 pub mod voice_commands;
 pub mod wer;

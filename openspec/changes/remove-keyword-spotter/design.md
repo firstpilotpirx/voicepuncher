@@ -30,7 +30,7 @@ Fixed along the way, each with its Red test: a recognizer that heard only the en
 
 **D6. The service for commands leaves the app.** `ServiceKind::Commands`, its catalog branch, `ggml-small.bin` and the keyword spotting model in the model catalog, the settings switch and its hint, the `confirm=` stage of the voice start timing and the `Stalled` handling in the supervisor go. Scenarios that used the service for commands as their example (adopted, hung, quit, menu) use the dictation service or the command spotting service instead.
 
-**D7. Tests are deleted by the audit's lists.** Group 1 (keyword spotter, confirmation, service for commands, their copies) and group 3 (duplicates) of the audit are deleted; the nextest group `command-spotting-engine`, the filters `engine::`/`placed_commands::`, the test needs `needs_command_stt` and `needs_kws_models` and the `e2e-test` helpers `stalled_copies`, `unanswered_copies`, `spotting_service/` and `tests/it/confirmation_time.rs` go with them. The `@cues` checks lose their warm-copies and cut-short reporting, which only the confirmation needed.
+**D7. Tests are deleted by the audit's lists.** Group 1 (keyword spotter, confirmation, service for commands, their copies) and group 3 (duplicates) of the audit are deleted; the nextest group `command-spotting-engine`, the filters `engine::`/`placed_commands::`, the test needs `needs_command_stt` and `needs_kws_models` and the `e2e-test` helpers `stalled_copies`, `spotting_service/` and `tests/it/confirmation_time.rs` go with them. The `@cues` checks lose their warm-copies and cut-short reporting, which only the confirmation needed.
 
 ## Test levels
 

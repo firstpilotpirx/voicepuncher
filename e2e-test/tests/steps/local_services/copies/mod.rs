@@ -20,7 +20,8 @@ use crate::E2eWorld;
 mod shared;
 
 use shared::{ensure_all_answered, unanswered_at_once, BusyProcessor};
-pub(super) use shared::{short_speech, transcribe};
+pub(super) use shared::short_speech;
+pub(crate) use shared::transcribe;
 
 mod restart;
 mod start_failure;

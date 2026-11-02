@@ -6,26 +6,26 @@ use regex::Regex;
 use voicepuncher::test_doubles::prelude::*;
 
 use super::copies::{REQUEST_LOG_LINE, WARM_UP_FILE};
-use super::{services, ScenarioServices, COMMAND_SPEECH_RECOGNITION, SPEECH_RECOGNITION};
+use super::{services, ScenarioServices, SPEECH_RECOGNITION};
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
-/// How the service scripts name the service for commands in their output.
-const COMMANDS_LABEL: &str = "speech recognition service for commands";
+/// How the service scripts name the service for dictation in their output.
+const DICTATION_LABEL: &str = "speech recognition service for dictation";
 
 impl ScenarioServices {
-    /// The ready line the service scripts printed for each copy of the service for commands,
+    /// The ready line the service scripts printed for each copy of the service for dictation,
     /// by the copy's port: the time of its first transcription, if the line names one.
-    fn command_copies_ready(&self) -> Result<Vec<(u16, Option<u64>)>> {
+    fn dictation_copies_ready(&self) -> Result<Vec<(u16, Option<u64>)>> {
         let (_, output) = self
             .run
             .starts
             .iter()
-            .find(|(name, _)| name == COMMAND_SPEECH_RECOGNITION)
-            .context("the speech recognition service for commands was never started")?;
+            .find(|(name, _)| name == SPEECH_RECOGNITION)
+            .context("the speech recognition service for dictation was never started")?;
         let printed = String::from_utf8_lossy(&output.stdout);
         let ready = Regex::new(&format!(
-            r"{COMMANDS_LABEL}: copy \d+ of \d+ ready on port (\d+)(?:, first transcription (\d+) ms)?"
+            r"{DICTATION_LABEL}: copy \d+ of \d+ ready on port (\d+)(?:, first transcription (\d+) ms)?"
         ))?;
         ready
             .captures_iter(&printed)
@@ -38,10 +38,10 @@ impl ScenarioServices {
     }
 }
 
-#[when("the service scripts start the speech recognition service for commands")]
-async fn start_command_service(world: &mut E2eWorld) -> Result<()> {
+#[when("the service scripts start the speech recognition service for dictation")]
+async fn start_dictation_service(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
-        services(world)?.start_each(&[COMMAND_SPEECH_RECOGNITION])
+        services(world)?.start_each(&[SPEECH_RECOGNITION])
     })
     .await
 }
@@ -50,12 +50,12 @@ async fn start_command_service(world: &mut E2eWorld) -> Result<()> {
 async fn copies_ready_after_transcription(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let services = services(world)?;
-        let ports = services.copy_ports_of(services.command_stt_port);
+        let ports = services.copy_ports_of(services.stt_port);
         ensure!(
             !ports.is_empty(),
-            "the service scripts started no copies for commands"
+            "the service scripts started no copies for dictation"
         );
-        let ready = services.command_copies_ready()?;
+        let ready = services.dictation_copies_ready()?;
         ports
             .iter()
             .try_for_each(|port| services.check_warmed(*port, &ready))

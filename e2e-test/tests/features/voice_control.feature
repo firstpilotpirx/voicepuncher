@@ -69,7 +69,7 @@ Feature: voice-control
         | 0.7   |
         | 0.8   |
 
-    # @serial: each quiet command waits for its confirmation, and five rows at once queue past its budget
+    # @serial: five quiet rows at once would decode past the streaming recognizers' budget
     @serial
     Scenario Outline: A command said in a quiet voice is recognized
       Given the command spotting service is running
@@ -133,12 +133,6 @@ Feature: voice-control
       Then the "press enter" command takes effect
 
   Rule: "paste text" pastes the clipboard
-
-    @smoke
-    Scenario: Saying paste pastes the clipboard at the cursor
-      Given the command spotting service is running
-      When the user says "paste" with a pause before and after it
-      Then the "paste text" command takes effect
 
     @smoke
     Scenario: A paste phrase inside a sentence is ignored
@@ -332,52 +326,11 @@ Feature: voice-control
       When someone says "fine start start" and a sentence without a pause
       Then the start cue comes within 0.6 s of the end of "start start", while the sentence is still being said
 
-  Rule: Commands can run without the Whisper confirmation
-
-    # Timed like the start cues: @cues runs it with the machine otherwise idle.
-    @serial @cues
-    Scenario: Start start without confirmation starts at once
-      Given the command spotting service is running
-      And the confirmation of commands is off
-      And listening is on for a whole session
-      When someone says "start start" and stays silent
-      Then the start cue comes within 0.3 s of the end of "start start"
-
-    @smoke
-    Scenario: A command inside a sentence still waits for confirmation
-      Given the command spotting service listens for the commands of a dictation
-      And the confirmation of commands is off
-      When the user says "we meet at ten stop" to the command spotting service as it is spoken
-      Then "stop dictation" is reported only once its hearing confirmed it
-
-    @smoke
-    Scenario: Confirmation is on by default
-      Given the command spotting service listens for the commands of standby
-      When the user says "start" to the command spotting service as it is spoken
-      Then "start dictation" is reported only once its hearing confirmed it
-
-  Rule: A command carried out without confirmation records whether Whisper agreed
-
-    @smoke
-    Scenario: A command without confirmation records whether Whisper agreed
-      Given the command spotting service listens for the commands of standby and keeps a command history
-      And the confirmation of commands is off
-      When the user says "enter" to the command spotting service as it is spoken
-      Then "press enter" is reported once, before its hearing, and Whisper's verdict on it, "agreed", follows in the log and the command history
-
-    @smoke
-    Scenario: A false spotting without confirmation is recorded
-      Given the command spotting service listens for the commands of standby and keeps a command history
-      And the speech recognition service for commands hears every utterance as "good morning"
-      And the confirmation of commands is off
-      When the user says "enter" to the command spotting service as it is spoken
-      Then "press enter" is reported once, before its hearing, and Whisper's verdict on it, "none", follows in the log and the command history
-
   # Real-time sessions timed from the end of the command's words; @cues runs them in
   # full-check's e2e-cues stage with the machine otherwise idle, @serial keeps the other
   # scenarios' requests from queuing ahead of them.
   @serial @cues
-  Rule: A voice start gives its start cue within 0.7 s of its words
+  Rule: A voice start gives its start cue within 0.7 s of the end of its words
 
     Scenario: Start start followed by the dictation at once gives its cue at once
       Given the command spotting service is running
@@ -419,6 +372,10 @@ Feature: voice-control
       And listening is on for a whole session
       When each of the user's recorded starts is played, on its own and followed at once by a sentence
       Then at least 5 of 6 of them give the start cue within its bound of the end of the command's words
+
+  # Proved by the e2e lock of dev-tools (the cue stage runs with the machine alone) and the
+  # failure report of e2e-test/tests/steps/voice_control/session/start_cue.rs.
+  Rule: The start cue is timed on an idle machine
 
   Rule: A doubled short form counts anywhere
 
@@ -545,19 +502,6 @@ Feature: voice-control
       When the hands-free session is spoken with the user's recorded commands and long pauses
       Then the app does everything the session said, in order
 
-  Rule: Confirmations are not steered by a prompt
-
-    @smoke
-    Scenario Outline: Speech that is no command is not turned into a command
-      Given the command spotting service is running
-      When someone says <speech>, each on its own with a pause around it
-      Then no command takes effect
-
-      Examples:
-        | speech                 |
-        | short Russian phrases  |
-        | Russian counting words |
-
   Rule: Voice control needs the command spotting service to start
 
     @smoke
@@ -568,22 +512,14 @@ Feature: voice-control
       When the app starts
       Then the app exits with an error that names the command spotting service and how to start it
 
-  @serial @resilience
-  Rule: A slow command spotting service does not stop listening
-
-    Scenario: A confirmation that takes longer than 10 seconds keeps listening on
-      Given the speech recognition service for commands and the command spotting service run on ports of their own
-      And listening is on with them and a dictation runs
-      And the speech recognition service for commands holds one confirmation of the command spotting service for longer than the service waits for a confirmation
-      When the user keeps dictating through that hold and then says "stop"
-      Then listening is still on and no error about the command spotting service is logged
-      And the dictation ends and its text is pasted
+  # Proved by the adapter tests of app/tests/it/commandspotting_websocket/ (integration).
+  Rule: A command spotting service that answers late does not stop listening
 
   @serial @resilience
   Rule: Listening comes back when the command spotting service is back
 
     Scenario: Commands work again after the command spotting service restarts
-      Given the speech recognition service for commands and the command spotting service run on ports of their own
+      Given the command spotting service runs on ports of its own
       And listening is on with them
       And the command spotting service went away and was started again
       When the user says "enter" 5 seconds after the service answers again
@@ -594,7 +530,7 @@ Feature: voice-control
   Rule: The overlay shows that voice commands do not work while the service stays away
 
     Scenario: A long outage in standby shows the sign until the service is back
-      Given the speech recognition service for commands and the command spotting service run on ports of their own
+      Given the command spotting service runs on ports of its own
       And listening is on with them
       And the overlay is hidden
       When the command spotting service stays away for longer than 5 seconds
@@ -605,7 +541,7 @@ Feature: voice-control
   Rule: A dictation keeps recording while the command spotting service is away
 
     Scenario: "stop" ends a dictation after the service is back
-      Given the speech recognition service for commands and the command spotting service run on ports of their own
+      Given the command spotting service runs on ports of its own
       And listening is on with them and a dictation runs
       And the command spotting service went away during it and is back
       When the user says "stop" once the service is back
@@ -615,19 +551,11 @@ Feature: voice-control
   Rule: Listening moves to another copy of the command spotting service
 
     Scenario: The command spotting copy the app listens with is killed
-      Given the app started the command spotting service and the speech recognition service for commands as two copies each, and listening is on
+      Given the app started the command spotting service as two copies, and listening is on
       When the copy of the command spotting service the app listens with is killed and the user says "enter" a moment later
       Then the Return key is pressed in the focused app
       And the overlay did not show that voice commands do not work
       And the killed copy answers again within 30 seconds
-
-  @serial @resilience
-  Rule: A confirmation refused by its copy goes to another copy
-
-    Scenario: A copy for commands is killed while voice control runs
-      Given the app started the command spotting service and the speech recognition service for commands as two copies each, and listening is on
-      When one copy of the speech recognition service for commands is killed and the user says "enter" right away
-      Then the Return key is pressed in the focused app
 
   Rule: The app and the command spotting service agree on a protocol version
 
@@ -649,159 +577,33 @@ Feature: voice-control
       When a client connected with the right protocol version sends an audio frame whose length is not a whole number of samples
       Then the service closes the connection with a reason saying the frame holds partial samples
 
-  Rule: A command said twice in one utterance counts once
-
-    @smoke
-    Scenario: A repeated enter presses Return once
-      When the speech recognition service for commands hears "Enter. Enter." in one utterance while no dictation runs
-      Then the command spotting service reports "press enter" once
-
-  Rule: A confirmation never waits past its deadline for a copy
-
-    @smoke
-    Scenario: Every copy for commands is busy past the deadline
-      Given every copy of the speech recognition service for commands is busy for longer than a confirmation's deadline
-      When the user says "enter" and the command spotting service asks for its confirmation
-      Then the confirmation is logged as given up and ends without waiting much past its deadline, and no copy receives it
-
-    @smoke
-    Scenario: A copy frees before the deadline
-      Given every copy of the speech recognition service for commands is busy for one more second
-      When the user says "enter" and the command spotting service asks for its confirmation
-      Then the confirmation is sent to the copy once it frees, and "press enter" is reported
-
-  Rule: A confirmation whose copy stalls goes to another copy
-
-    @smoke
-    Scenario: One copy for commands stalls mid-command
-      Given the speech recognition service for commands runs as two copies and the copy a confirmation reaches first stops answering
-      When the user says "enter" and the command spotting service asks for its confirmation
-      Then the other copy confirms it within the confirmation's deadline and "press enter" is reported
-
-    @smoke
-    Scenario: Every copy for commands stalls
-      Given every copy of the speech recognition service for commands stops answering
-      When the user says "enter" and the command spotting service asks for its confirmation
-      Then it ends as given up, not as speech heard without a command
-
-  Rule: A command is carried out once however fast its confirmation comes back
-
-    @smoke
-    Scenario: A command is carried out once while confirmations come back slowly
-      Given the command spotting service listens for the commands of a dictation
-      And every confirmation of a command comes back 2 seconds late
-      When the user says "We moved the weekly meeting to Friday restart restart and the notes begin here with a few more words for everyone" to the command spotting service as it is spoken
-      Then "restart dictation" is carried out exactly once
-
-    @smoke
-    Scenario: A chain is carried out the same at any confirmation speed
-      Given the command spotting service listens for the commands of a dictation and for "start dictation"
-      When the user says "We moved the weekly meeting stop enter start and the notes begin here" once while confirmations come back at once and once while each takes 2 seconds
-      Then every run carries out "stop dictation, press enter, start dictation", in that order and each once
-
-  Rule: Every check due for a spotted "start" is asked
-
-    @smoke
-    Scenario: A second check does not replace a check still waiting
-      Given a check of a spotted "start" waits its turn
-      When the first check of an earlier spotted "start" finds no command
-      Then both the waiting check and the second check of the earlier phrase are asked
-
-  Rule: A command confirmed slowly under load is still carried out
-
-    @smoke
-    Scenario: A stop right after dictated speech under load
-      Given the command spotting service listens for the commands of a dictation
-      And every confirmation of a command takes over a second, as under machine load
-      When the user says "We meet on Friday at ten stop" to the command spotting service as it is spoken
-      Then every run carries out "stop dictation", in that order and each once
-
-    @smoke
-    Scenario: A chain of commands under load
-      Given the command spotting service listens for the commands of a dictation and for "start dictation"
-      And every confirmation of a command takes over a second, as under machine load
-      When the user says "We moved the weekly meeting stop enter start and the notes begin here" to the command spotting service as it is spoken
-      Then every run carries out "stop dictation, press enter, start dictation", in that order and each once
-
-  Rule: Every event of audio accepted before a sync is out before the sync is answered
-
-    @smoke
-    Scenario: A command whose first hearing is empty under load is reported before the sync is answered
-      Given the command spotting service listens for the commands of standby
-      And the first hearing of the speech comes back empty and late, as under machine load, and the next one right
-      When the user says "clear" alone and the app asks for a sync right after the speech
-      Then the command spotting service reports "clear all text" before it answers the sync
-
-    @smoke
-    Scenario: A command whose half-pause hearing is misheard is reported before the sync is answered
-      Given the command spotting service listens for the commands of standby
-      And the hearing asked before the pause after the speech ends hears "clear" as "near", and the hearing of the whole speech hears it right
-      When the user says "okay clear" alone and the app asks for a sync right after the speech
-      Then the command spotting service reports "clear all text" before it answers the sync
-
-  Rule: Every utterance with a command heard is kept in the command history
-
-    @smoke
-    Scenario: A command both models heard is kept as agreed
-      Given the command spotting service listens for the commands of standby and keeps a command history
-      When the user says "enter" to the command spotting service as it is spoken
-      Then the command history holds one entry with playable audio and a transcript
-      And the entry's spotted phrases are "press enter", the commands heard in it "press enter" and its outcome "agreed"
-
-    @smoke
-    Scenario: A command only the speech recognition service heard is kept as missed
-      Given the command spotting service listens for the commands of standby and keeps a command history
-      And the speech recognition service for commands hears every utterance as "enter"
-      When the user says "good morning" to the command spotting service as it is spoken
-      Then the command history holds one entry with playable audio and a transcript
-      And the entry's spotted phrases are "none", the commands heard in it "press enter" and its outcome "missed"
-
-    @smoke
-    Scenario: A spotted phrase the speech recognition service does not hear is kept as rejected
-      Given the command spotting service listens for the commands of standby and keeps a command history
-      And the speech recognition service for commands hears every utterance as "good morning"
-      When the user says "enter" to the command spotting service as it is spoken
-      Then the command history holds one entry with playable audio and a transcript
-      And the entry's spotted phrases are "press enter", the commands heard in it "none" and its outcome "rejected"
-
-    @smoke
-    Scenario: A spotted phrase heard as another command is kept as corrected
-      Given the command spotting service listens for the commands of standby and keeps a command history
-      And the speech recognition service for commands hears every utterance as "paste"
-      When the user says "enter" to the command spotting service as it is spoken
-      Then the command history holds one entry with playable audio and a transcript
-      And the entry's spotted phrases are "press enter", the commands heard in it "paste text" and its outcome "corrected"
-
-    @smoke
-    Scenario: Ordinary speech leaves no entry
-      Given the command spotting service listens for the commands of standby and keeps a command history
-      When the user says "we meet on friday at ten" to the command spotting service as it is spoken
-      Then the command history holds no entry
+  # Proved by command-spotting/tests/it/streaming/ (integration).
+  Rule: Every command in audio accepted before a sync is out before the sync is answered
 
   Rule: The command history is on for the app's own services and off elsewhere
 
     @smoke
     Scenario: A service given no folder writes no entry
-      Given the command spotting service listens for the commands of standby and is given no command history folder
-      When the user says "enter" to the command spotting service as it is spoken
-      Then the command spotting service reports "press enter" and the command history holds no entry
+      Given the command spotting service runs with the streaming recognizer and is given no command history folder
+      When an app streams "enter" followed by silence
+      Then the streaming recognizer reports "press enter" and the command history holds no entry
 
   Rule: The command history stays within its size limit
 
     @smoke
     Scenario: The oldest command history entries go first
-      Given the command spotting service listens for the commands of standby and keeps a command history
+      Given the command spotting service runs with the streaming recognizer and keeps a command history
       And the command history's entries already fill its size limit
-      When the user says "enter" to the command spotting service as it is spoken
+      When an app streams "enter" followed by silence
       Then the oldest entries are removed until the command history fits, and the newest entries, the new one included, stay
 
   Rule: Keeping the command history never costs a command
 
     @smoke
     Scenario: The command history folder cannot be written
-      Given the command spotting service listens for the commands of standby and keeps a command history in a folder it cannot write to
-      When the user says "enter" to the command spotting service as it is spoken
-      Then the command spotting service reports "press enter" and its log warns that the utterance was not kept
+      Given the command spotting service runs with the streaming recognizer and keeps a command history in a folder it cannot write to
+      When an app streams "enter" followed by silence
+      Then the streaming recognizer reports "press enter" and its log warns that the utterance was not kept
 
   # The streaming recognizer runs in this process on the real streaming models, as the
   # service runs it: the voice gate, the English and the Russian recognizer.

@@ -207,20 +207,6 @@ Feature: settings-window
       Then the recording comes from the system default device
       And the log names the missing device
 
-  Rule: Voice control has a switch for the Whisper confirmation
-
-    Scenario: The switch is on by default
-      Given the configuration file does not set the confirmation of commands
-      When the user opens the settings
-      Then the switch "Confirm commands with Whisper" is on
-
-    Scenario: Switching it off applies to the next command
-      Given the app runs from its configuration file with the first hotkey and the first start sound
-      And the user opens the settings
-      When the user switches "Confirm commands with Whisper" off and saves
-      Then the configuration file has commands carried out without the Whisper confirmation
-      And the settings say the settings are applied
-
   Rule: The language choice offers Russian, English and automatic detection
 
     Scenario: The language choice offers three entries

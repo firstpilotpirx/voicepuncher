@@ -11,7 +11,7 @@
 
 ## 2. Delete the tests of the keyword spotter and the duplicates
 
-- [ ] 2.1 Delete the E2E scenarios, steps and helpers of audit group 1 (`voice_control.feature`, `local_services.feature`, `speech_recognition.feature`, `spotting_service/`, `stalled_copies`, `unanswered_copies`, `tests/it/confirmation_time.rs`), and the `.feature` rules of the requirements the delta specs remove or replace
+- [ ] 2.1 Delete the E2E scenarios, steps and helpers of audit group 1 (`voice_control.feature`, `local_services.feature`, `speech_recognition.feature`, `spotting_service/`, `stalled_copies`, `tests/it/confirmation_time.rs`), and the `.feature` rules of the requirements the delta specs remove or replace
 - [ ] 2.2 Delete the `command-spotting/tests/it` modules of group 1 (`engine/`, `placed_commands/`, `early_start/`, `stall.rs`, `mishearings/`, the confirmation test of `server.rs`, `kws_models.rs`, `scripted_hearing/`, `stream_clock/`) and move the protocol tests of `server.rs` to the streaming service
 - [ ] 2.3 Delete the app and dev-tools tests and component scenarios of group 1 (confirmation switch, keyword spotter choice and models, failed confirmation, stalled service, pause rule over spotted phrases) and rewrite the catalog tests' `keyword_spotting()` helper to the streaming recognizer
 - [ ] 2.4 Delete the duplicates of audit group 3 (four `command-spotting/tests/it/streaming` tests, the paste scenario that repeats the short-form row, the four `commandspotting_websocket` tests the E2E outlines repeat)

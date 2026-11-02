@@ -11,7 +11,6 @@ use crate::{steps::off_thread, E2eWorld};
 
 mod adopted;
 mod app;
-mod confirmations;
 mod copies;
 mod hangs;
 mod managed;
@@ -23,7 +22,7 @@ mod warm_up;
 pub use managed::{
     capture_log, connected_copy, kill_copy, log_mark, logged_since, ManagedRun, Needed,
 };
-pub use models::Role;
+pub(crate) use copies::transcribe;
 pub use owned::OwnedServices;
 
 mod processes;
@@ -32,8 +31,6 @@ mod service_steps;
 use service_steps::services;
 
 const SPEECH_RECOGNITION: &str = "whisper-server";
-/// The speech recognition service for commands, by its name in the service scripts.
-const COMMAND_SPEECH_RECOGNITION: &str = "whisper-server-commands";
 const COMMAND_SPOTTING: &str = "voicepuncher-command-spotting";
 /// How long a health check may take before it counts as failed.
 const HEALTH_CHECK_WAIT: Duration = Duration::from_secs(1);
@@ -109,8 +106,6 @@ struct Watched {
     paused: Vec<u32>,
     /// The command spotting service process a step made hang or watched.
     hung: Option<u32>,
-    /// How long the command spotting service's log was before a step streamed speech.
-    log_before_speech: Option<u64>,
 }
 
 impl ScenarioServices {
@@ -142,26 +137,22 @@ impl ScenarioServices {
         })
     }
 
-    /// Services on free ports, the speech recognition service for commands as one copy, for
-    /// the voice control scenarios that make them fail: a paused copy then stalls every
-    /// confirmation, as no other copy routes around it.
     /// Makes the scripts check every `secs` seconds that a service still answers, when they
     /// start it next.
     pub fn check_health_every(&mut self, secs: u32) {
         self.options.health_check_secs = Some(secs);
     }
 
+    /// Services on free ports, for the voice control scenarios that make them fail.
     pub fn for_outages() -> Result<Self> {
-        let mut services = Self::on_free_ports()?;
-        services.options.command_copies = Some(1);
-        Ok(services)
+        Self::on_free_ports()
     }
 
-    /// The speech recognition service for commands started by the service scripts as one
+    /// The speech recognition service for dictation started by the service scripts as one
     /// copy, on free ports.
-    pub fn with_command_service() -> Result<Self> {
-        let mut services = Self::for_outages()?;
-        services.start(&[COMMAND_SPEECH_RECOGNITION])?;
+    pub fn with_dictation_service() -> Result<Self> {
+        let mut services = Self::on_free_ports()?;
+        services.start(&[SPEECH_RECOGNITION])?;
         Ok(services)
     }
 
@@ -211,11 +202,6 @@ impl ScenarioServices {
         .ok()
     }
 
-    /// The speech recognition service for commands, run as one copy: its process itself.
-    pub fn command_speech_recognition_process(&self) -> Option<u32> {
-        service_process(self.command_stt_port)
-    }
-
     pub fn command_spotting_log(&self) -> PathBuf {
         self.dir("logs")
             .join(format!("{COMMAND_SPOTTING}-{}.log", self.kws_port))
@@ -244,11 +230,6 @@ impl ScenarioServices {
 
     pub fn transcription_url(&self) -> String {
         format!("http://127.0.0.1:{}/v1", self.stt_port)
-    }
-
-    /// The address of the speech recognition service for commands.
-    pub fn command_transcription_url(&self) -> String {
-        format!("http://127.0.0.1:{}/v1", self.command_stt_port)
     }
 
     fn just(&self, args: &[&str]) -> Result<Output> {

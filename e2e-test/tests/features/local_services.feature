@@ -7,25 +7,15 @@ Feature: local-services
     Scenario: Only the speech recognition service is started
       Given no local service runs on the chosen ports
       When the user starts only the speech recognition service for dictation with the service scripts
-      Then the speech recognition service for dictation answers and nothing answers on the ports of the speech recognition service for commands and the command spotting service
+      Then the speech recognition service for dictation answers and nothing answers on the port of the command spotting service
 
   @smoke @serial
   Rule: A copy of a speech recognition service is ready once it has transcribed speech
 
     Scenario: The service scripts report a copy ready after its first transcription
       Given no local service runs on the chosen ports
-      When the service scripts start the speech recognition service for commands
+      When the service scripts start the speech recognition service for dictation
       Then each copy is reported ready with the time of its first transcription, and the copy's log shows that transcription before the report
-
-  @smoke @serial
-  Rule: Voice commands are confirmed by a speech recognition service of their own
-
-    Scenario: A command is confirmed by the speech recognition service for commands
-      Given the models that the service scripts download are on disk
-      And the user started all services with the service scripts
-      When an app streams "enter" to the command spotting service
-      Then the command spotting service reports "press enter"
-      And the speech recognition service for commands answered its confirmation with the small model, and the speech recognition service for dictation got no request
 
   @smoke @serial
   Rule: A service that stops is started again
@@ -132,7 +122,7 @@ Feature: local-services
 
     Scenario: A busy service is not restarted
       Given the service scripts started the command spotting service
-      When an app streams speech to it through several of the scripts' checks while the speech recognition service for commands answers its confirmations slowly
+      When an app streams speech to it through several of the scripts' checks while every core of the machine is busy
       Then the service is not restarted
 
   @serial @resilience
@@ -149,20 +139,6 @@ Feature: local-services
       And a third request waits and its client gives up
       When the copies become free
       Then the abandoned request is not sent to any copy
-
-
-  @serial @resilience
-  Rule: Speech that is no command is confirmed quickly
-
-    Scenario: Russian speech that makes speech recognition repeat itself
-      Given voice control runs and the speech recognition service for commands is otherwise idle
-      When the user says Russian counting and filler words
-      Then every confirmation of that speech is answered in under 2 seconds
-
-    Scenario: A command right after such speech is carried out
-      Given voice control runs and the speech recognition service for commands is otherwise idle
-      When the user says Russian counting and filler words and then "enter"
-      Then the command spotting service reports "press enter"
 
   @smoke @serial
   Rule: The app starts the services it needs
@@ -198,29 +174,3 @@ Feature: local-services
       When one copy stops answering without exiting
       Then within 30 seconds the app has killed that copy and started it again, and it answers on its port
       And the other copies were never restarted
-
-  @serial @resilience
-  Rule: The command spotting service answers while its confirmations are slow
-
-    Scenario: Commands are spotted after a hung confirmation
-      Given the service scripts started the command spotting service
-      And the speech recognition service for commands never answers one confirmation
-      When an app streams speech that is no command and then "enter" to the command spotting service
-      Then the command spotting service reports "press enter"
-      And the connection answered the app throughout, and the hung confirmation is logged as given up
-
-  @smoke
-  Rule: The command spotting service does not pile up confirmations
-
-    Scenario: A command said alone is confirmed by the second attempt
-      Given the speech recognition service for commands does not answer the first confirmation in time and answers the second
-      When the confirmation of "enter" said alone is asked
-      Then the command spotting service reports "press enter"
-
-  @smoke
-  Rule: Confirmations waiting in the command spotting service are bounded
-
-    Scenario: A slow confirmation thread keeps every confirmation
-      Given the speech recognition service for commands answers every confirmation, late
-      When more confirmations than the bound are asked on one thread at once
-      Then every one of them is answered with what was heard
