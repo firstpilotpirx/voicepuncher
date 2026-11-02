@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use voicepuncher_command_spotting::protocol::{PhraseSelection, ServerEvent};
 use voicepuncher_command_spotting::streaming::engine::StreamingEngine;
 
-use super::{SAMPLE_RATE, PHRASES};
+use super::{PHRASES, SAMPLE_RATE};
 
 /// 20 ms: a real microphone delivers audio about this often.
 const MICROPHONE_FRAME: usize = SAMPLE_RATE / 50;

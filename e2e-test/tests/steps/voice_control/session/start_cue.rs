@@ -226,9 +226,11 @@ impl HandsFreeSession {
     }
 }
 
-/// `said` in a synthesized voice, cut after its last sound.
+/// `said` in the system's synthesized voice, cut after its last sound: the streaming models
+/// mishear Eddy's "start" ("стюарт", "Start" only after the pause), a test of the voice rather
+/// than of the cue.
 pub(super) fn synthesized_command(said: &str) -> Result<Vec<f32>> {
-    Ok(without_trailing_silence(spoken_by(ENGLISH_VOICE, said)?))
+    Ok(without_trailing_silence(spoken_with_pauses(said)?))
 }
 
 pub(super) fn sentence_at_once() -> Result<Vec<f32>> {

@@ -156,7 +156,7 @@ mod needs_streaming_models {
         let delay = latency::report_delay(
             &engine,
             &pause,
-            &common::spoken_by(None, "start start"),
+            &common::spoken_by(Some("Eddy"), "start start"),
             &[],
         );
         // Then

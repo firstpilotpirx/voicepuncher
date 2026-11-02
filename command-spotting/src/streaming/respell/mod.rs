@@ -34,9 +34,11 @@ const SOUNDS: &[(&str, &[&[Letter]])] = &[
     (
         "start",
         &[
+            // A synthesized "start" is often heard as the name "стюарт".
             &[
                 ("с", Maybe),
                 ("т", Once),
+                ("ю", Maybe),
                 ("а", Once),
                 ("р", Once),
                 ("тд", Maybe),
