@@ -118,3 +118,12 @@ stage = "e2e-cues"
 beside = "load average 12 from other sessions; KWS reports the second start ~0.28 s after its end, 0.3 s bound"
 branch = "feat/speed-up-command-recognizers"
 
+
+[[frozen]]
+test = "scenario: The pinned engines are staged"
+frozen = "2026-11-02"
+recipe = "full-check"
+stage = "bundle"
+beside = "a just stage-times run of an audit agent in the same worktree"
+branch = "feat/remove-long-command-forms"
+
