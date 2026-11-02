@@ -3116,7 +3116,6 @@ dependencies = [
  "tempfile",
  "tungstenite",
  "ureq",
- "voicepuncher-copy-pool",
  "voicepuncher-entry-folders",
  "voicepuncher-log-line",
  "voicepuncher-test-steps",

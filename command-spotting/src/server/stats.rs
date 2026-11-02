@@ -30,12 +30,12 @@ impl Stats {
         }
     }
 
-    pub(super) fn maybe_log(&mut self, conn: u64, pending: usize) {
+    pub(super) fn maybe_log(&mut self, conn: u64) {
         if self.since.elapsed() < STATS_EVERY {
             return;
         }
         log::info!(
-            "stats conn={conn} messages={} worst_lag={}ms confirmations_pending={pending}",
+            "stats conn={conn} messages={} worst_lag={}ms",
             self.messages,
             self.worst_lag.as_millis()
         );

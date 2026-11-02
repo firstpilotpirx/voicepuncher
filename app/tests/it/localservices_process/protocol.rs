@@ -34,7 +34,7 @@ fn should_name_the_version_of_a_copy_that_refuses_the_hello() {
     // When
     let other = HttpProbe::new().other_protocol(ServiceKind::CommandSpotting, port);
     // Then
-    assert_eq!(other, Some(OtherProtocol { service: 2, app: 3 }));
+    assert_eq!(other, Some(OtherProtocol { service: 2, app: 4 }));
 }
 
 #[test]

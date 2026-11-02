@@ -4,15 +4,14 @@
 //! recognizer, and closes after a pause and half a second more audio.
 
 use std::collections::VecDeque;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use crate::audio::SAMPLE_RATE;
 use crate::conversions::saturating_usize;
 use crate::history::CommandHistory;
-use crate::keywords::UnknownPhrases;
 use crate::matcher::PhraseMatcher;
-use crate::protocol::{PhraseSelection, ServerEvent};
-use crate::worker::Wake;
+use crate::protocol::{PhraseSelection, ServerEvent, UnknownPhrases};
+use crate::streaming::Wake;
 
 use super::ports::{SpeechGate, StreamingModel, GATE_WINDOW};
 
@@ -127,14 +126,6 @@ impl<'a> Session<'a> {
     }
 
     /// No confirmation runs, so none stalls.
-    pub fn stalled(&self) -> Option<Duration> {
-        None
-    }
-
-    pub fn pending_confirmations(&self) -> usize {
-        0
-    }
-
     fn frame(&mut self, frame: &[f32]) -> Vec<ServerEvent> {
         let speech = self.gate_hears(frame);
         let mut events = Vec::new();

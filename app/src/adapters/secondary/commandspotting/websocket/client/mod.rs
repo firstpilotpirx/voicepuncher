@@ -38,7 +38,7 @@ const PING_EVERY: Duration = Duration::from_secs(1);
 const SILENCE_LIMIT: Duration = Duration::from_secs(5);
 const SAMPLE_BYTES: usize = 4;
 /// The version of the command spotting protocol the client speaks, said in its `hello`.
-pub const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 4;
 
 pub struct SpottingClient {
     socket: WebSocket<MaybeTlsStream<TcpStream>>,

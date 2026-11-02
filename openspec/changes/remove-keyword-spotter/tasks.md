@@ -21,10 +21,10 @@
 
 ## 3. Delete the keyword spotter from the command spotting service
 
-- [ ] 3.1 Delete `engine/`, `confirm/`, `worker/` (moving `Wake` if streaming uses it), `outbox/`, `orderer/`, `keywords/` (keeping `UnknownPhrases`) and `keywords.txt`; move `TimedWord` to `streaming`
-- [ ] 3.2 `main.rs` keeps only the streaming arguments (design D3); `listening` serves only the streaming engine
-- [ ] 3.3 The protocol drops `Phrase`, `Heard`, `ConfirmationFailed`, `Stalled`, `Timing`, `Verdict` and `confirm_commands`, and moves to version 4 (design D4); `command-spotting` drops its copy-pool dependency
-- [ ] 3.4 Commit: `refactor: delete the keyword spotter`
+- [x] 3.1 Delete `engine/`, `confirm/`, `worker/` (moving `Wake` if streaming uses it), `outbox/`, `orderer/`, `keywords/` (keeping `UnknownPhrases`) and `keywords.txt`; move `TimedWord` to `streaming`
+- [x] 3.2 `main.rs` keeps only the streaming arguments (design D3); `listening` goes and the server serves the streaming engine directly
+- [x] 3.3 The protocol drops `Phrase`, `Heard`, `ConfirmationFailed`, `Stalled`, `Timing`, `Verdict` and `confirm_commands`, and moves to version 4 (design D4); `command-spotting` drops its copy-pool dependency
+- [x] 3.4 Commit: `refactor: delete the keyword spotter`
 
 ## 4. Delete the keyword spotter and the service for commands from the app
 

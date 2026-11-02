@@ -2,9 +2,9 @@
 
 use super::{
     answered, anyhow, client_requests, ensure, given, long_speech, off_thread, services,
-    services_dir, short_speech, then, transcribe, when, AudioBuffer16k, Context, CopyPool,
-    E2eWorld, Finish, Ran, Result, ABANDONED_SPEECH_REPEATS, BUSY_REQUESTS, BUSY_WITHIN,
-    GIVES_UP_AFTER, SPEECH_RECOGNITION,
+    services_dir, short_speech, then, transcribe, when, Context, CopyPool, E2eWorld, Finish, Ran,
+    Result, ABANDONED_SPEECH_REPEATS, BUSY_REQUESTS, BUSY_WITHIN, GIVES_UP_AFTER,
+    SPEECH_RECOGNITION,
 };
 
 #[given("a client gave up on a request that one copy is still transcribing")]
@@ -69,15 +69,8 @@ pub(super) fn other_copy_answered(world: &mut E2eWorld) -> Result<()> {
 pub(super) async fn third_request_gives_up(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let services = services(world)?;
-        let short: Vec<f32> = short_speech()?
-            .into_iter()
-            .map(|s| f32::from(s) / f32::from(i16::MAX))
-            .collect();
-        let gave_up = voicepuncher_command_spotting::confirm::UtteranceTranscriber::new(
-            &services.transcription_url(),
-        )?
-        .transcribe(&short, AudioBuffer16k::SAMPLE_RATE_HZ, GIVES_UP_AFTER)
-        .is_err();
+        let pool = CopyPool::shared(&services.transcription_url()).map_err(|e| anyhow!("{e}"))?;
+        let gave_up = pool.lease(GIVES_UP_AFTER).is_err();
         ensure!(
             gave_up,
             "the third request was answered although both copies were busy"

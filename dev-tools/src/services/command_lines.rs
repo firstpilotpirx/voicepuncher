@@ -57,8 +57,6 @@ pub fn streaming_args(
     owned(&[
         "--port",
         port,
-        "--recognizer",
-        "streaming",
         "--en-model-dir",
         en_model_dir,
         "--ru-model-dir",

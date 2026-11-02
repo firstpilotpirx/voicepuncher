@@ -4,7 +4,7 @@
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
-use crate::worker::Wake;
+use crate::streaming::Wake;
 
 use super::super::ports::{Decoded, RecognizerStream};
 

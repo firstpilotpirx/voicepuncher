@@ -1,10 +1,10 @@
 //! One utterance in every recognizer: its streams, its audio, the pause after it and what
 //! each recognizer heard and reported of it.
 
-use crate::confirm::TimedWord;
 use crate::matcher::PhraseMatcher;
 use crate::protocol::ServerEvent;
-use crate::worker::Wake;
+use crate::streaming::words::TimedWord;
+use crate::streaming::Wake;
 
 use super::super::decide::{decide, doubles, Finding, Moment};
 use super::super::ports::{Decoded, StreamingModel};
@@ -274,6 +274,5 @@ fn command(found: Finding) -> ServerEvent {
         start: found.start,
         end: found.end,
         placement: found.placement,
-        timing: None,
     }
 }

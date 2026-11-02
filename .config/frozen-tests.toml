@@ -156,15 +156,6 @@ branch = "feat/remove-long-command-forms"
 
 
 [[frozen]]
-test = "scenario: Commands are spotted after a hung confirmation"
-frozen = "2026-11-02"
-recipe = "full-check"
-stage = "e2e-resilience"
-beside = "full-check alone; tests the Whisper confirmation of the keyword spotter, which the app (streaming recognizer) does not use; deleted by remove-keyword-spotter"
-branch = "feat/remove-long-command-forms"
-
-
-[[frozen]]
 test = "scenario: A long dictation is transcribed while it goes on"
 frozen = "2026-11-02"
 recipe = "test"

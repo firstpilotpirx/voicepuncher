@@ -9,3 +9,9 @@ pub mod session;
 pub mod sherpa;
 pub mod trace;
 pub mod words;
+
+use std::sync::Arc;
+
+/// Called on a recognizer's thread right after it decoded, so the session takes its result
+/// at once instead of at its next poll.
+pub type Wake = Arc<dyn Fn() + Send + Sync>;

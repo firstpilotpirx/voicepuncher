@@ -52,29 +52,6 @@ fn should_forget_a_closed_connection() {
 }
 
 #[test]
-fn should_count_a_connection_whose_confirmation_stalled_as_stuck() {
-    // Given
-    let health = Health::default();
-    let beat = health.register(4);
-    // When
-    beat.stalled(true);
-    // Then
-    assert_eq!(health.stuck_at(Instant::now()), Some(4));
-}
-
-#[test]
-fn should_count_a_connection_healthy_again_once_its_stalled_confirmation_ended() {
-    // Given
-    let health = Health::default();
-    let beat = health.register(4);
-    beat.stalled(true);
-    // When
-    beat.stalled(false);
-    // Then
-    assert_eq!(health.stuck_at(Instant::now()), None);
-}
-
-#[test]
 fn should_take_audio_sent_faster_than_real_time_while_processing_keeps_up() {
     // Given 30 s of audio arriving at once, as a replay or a test feeds it
     let beat = Health::default().register(4);

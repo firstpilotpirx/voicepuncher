@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 
 use crate::history::{CommandHistory, HistoryCfg};
-use crate::worker::Wake;
+use crate::streaming::Wake;
 
 use super::ports::StreamingModel;
 use super::session::{Session, SessionCfg};

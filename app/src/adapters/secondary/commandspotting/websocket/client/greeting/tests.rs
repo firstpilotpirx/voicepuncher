@@ -5,7 +5,7 @@ use tungstenite::protocol::CloseFrame;
 
 use super::*;
 
-const REFUSAL_OF_VERSION_2: &str = "the app speaks protocol version 3, the service version 2";
+const REFUSAL_OF_VERSION_2: &str = "the app speaks protocol version 4, the service version 2";
 
 /// A service on a free loopback port that answers every connection with `answer`.
 fn service(answer: fn(&mut WebSocket<TcpStream>)) -> String {

@@ -9,7 +9,6 @@ use tungstenite::protocol::frame::coding::CloseCode;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Message, WebSocket};
 
-use voicepuncher_command_spotting::listening::Service;
 use voicepuncher_command_spotting::protocol::PROTOCOL_VERSION;
 use voicepuncher_command_spotting::server;
 
@@ -25,7 +24,7 @@ const CLOSE_LIMIT: Duration = Duration::from_secs(5);
 fn service_port() -> u16 {
     static PORT: OnceLock<u16> = OnceLock::new();
     *PORT.get_or_init(|| {
-        let service = Arc::new(Service::Streaming(load_engine()));
+        let service = Arc::new(load_engine());
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         std::thread::spawn(move || server::serve(&listener, &service));

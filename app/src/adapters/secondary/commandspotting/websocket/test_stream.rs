@@ -54,7 +54,7 @@ pub fn refuse_as_version_2<S: std::io::Read + std::io::Write>(
 ) {
     use tungstenite::protocol::{frame::coding::CloseCode, CloseFrame};
     let _ = socket.read();
-    let reason = "the app speaks protocol version 3, the service version 2".into();
+    let reason = "the app speaks protocol version 4, the service version 2".into();
     let _ = socket.close(Some(CloseFrame { code: CloseCode::Policy, reason }));
     while socket.read().is_ok() {}
 }

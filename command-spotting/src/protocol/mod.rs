@@ -12,22 +12,10 @@ pub struct PhraseSelection {
     /// an app that does not say it gets it when "start dictation" is among its phrases.
     #[serde(default)]
     pub early_start: Option<bool>,
-    /// Whether the speech recognition service confirms a command before it is reported; off,
-    /// a command the keyword spotter heard alone goes out at once and the service's hearing
-    /// follows as `heard`. An app that does not say it gets confirmation.
-    #[serde(default)]
-    pub confirm: Option<bool>,
-}
-
-impl PhraseSelection {
-    /// Whether commands are confirmed before they are reported.
-    pub fn confirms(&self) -> bool {
-        self.confirm.unwrap_or(true)
-    }
 }
 
 /// The version of this protocol: the app says it in its first message, `hello`.
-pub const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 4;
 
 /// A text frame from the app.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -54,14 +42,6 @@ pub enum ServerEvent {
     SpeechEnd {
         t: f32,
     },
-    Phrase {
-        phrase: String,
-        start: f32,
-        end: f32,
-        /// Present when a confirmation heard the phrase.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        timing: Option<Timing>,
-    },
     /// Commands said without a pause around them, to carry out in order without the
     /// app's pause rule: `start..end` spans their words.
     Command {
@@ -69,27 +49,6 @@ pub enum ServerEvent {
         start: f32,
         end: f32,
         placement: Placement,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        timing: Option<Timing>,
-    },
-    /// What the speech recognition service heard of `commands`, reported at `start..end`
-    /// without confirmation: the verdict is logged and kept, the command is not undone.
-    Heard {
-        commands: Vec<String>,
-        start: f32,
-        end: f32,
-        verdict: Verdict,
-    },
-    /// The speech segment `start..end` got no answer from the speech recognition service:
-    /// a command said in it is lost.
-    ConfirmationFailed {
-        start: f32,
-        end: f32,
-    },
-    /// A confirmation has run for `waited_ms`, past its attempts: the service hangs, and
-    /// the app is to move to another copy.
-    Stalled {
-        waited_ms: u64,
     },
     /// `samples` of audio did not fit the backlog and were dropped: the stream's clock is
     /// broken, and the app is to connect again.
@@ -102,25 +61,17 @@ pub enum ServerEvent {
     },
 }
 
-/// The confirmation that heard a phrase or command: how far the stream had come when it was
-/// asked, in seconds, and how long the speech recognition service took to answer it.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
-pub struct Timing {
-    pub asked_at: f32,
-    pub took_ms: u64,
+/// Phrases a selection named that this service does not know.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownPhrases(pub Vec<String>);
+
+impl std::fmt::Display for UnknownPhrases {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown phrases: {}", self.0.join(", "))
+    }
 }
 
-/// What the speech recognition service made of a command reported without confirmation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Verdict {
-    /// It heard the same command.
-    Agreed,
-    /// It heard another command.
-    Other,
-    /// It heard no command, or gave no answer.
-    None,
-}
+impl std::error::Error for UnknownPhrases {}
 
 const SAMPLE_BYTES: usize = 4;
 

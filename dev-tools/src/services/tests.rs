@@ -74,7 +74,7 @@ fn should_start_whisper_with_the_arguments_of_both_speech_recognition_services()
 fn should_start_command_spotting_with_the_streaming_recognizers_arguments() {
     assert_eq!(
         streaming_args("8082", "en", "ru", "vad.onnx").join(" "),
-        "--port 8082 --recognizer streaming --en-model-dir en --ru-model-dir ru --vad-model vad.onnx"
+        "--port 8082 --en-model-dir en --ru-model-dir ru --vad-model vad.onnx"
     );
 }
 

@@ -5,7 +5,7 @@ use std::fs;
 use super::super::*;
 
 /// The command spotting service with the streaming recognizers, compared as a service of its own.
-const STREAMING: &str = "voicepuncher-command-spotting --recognizer streaming";
+const STREAMING: &str = "voicepuncher-command-spotting";
 
 /// The service scripts' command lines: one literal list per service.
 fn scripts() -> String {

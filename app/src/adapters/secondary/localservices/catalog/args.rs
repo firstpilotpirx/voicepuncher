@@ -77,8 +77,6 @@ pub fn streaming_args(
     let mut args: Vec<String> = [
         "--port",
         &port,
-        "--recognizer",
-        "streaming",
         "--en-model-dir",
         en_model_dir,
         "--ru-model-dir",

@@ -1,7 +1,7 @@
 //! Whether the words a streaming recognizer heard so far say a command to report now.
 
-use crate::confirm::TimedWord;
 use crate::matcher::{Found, PhraseMatcher, Placement};
+use crate::streaming::words::TimedWord;
 
 /// What a decision is asked at.
 #[derive(Debug, Clone, Copy, PartialEq)]

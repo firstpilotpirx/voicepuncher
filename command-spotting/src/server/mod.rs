@@ -1,8 +1,5 @@
 //! Serves each WebSocket connection with two threads: one owns the socket, takes the app's
 //! audio and answers its pings at once; the other spots commands in that audio.
-//!
-//! The confirmations by the speech recognition service run on a third (see `worker`), so a slow one
-//! never keeps the connection from answering.
 
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -14,14 +11,15 @@ use anyhow::{anyhow, Result};
 use tungstenite::{Message, WebSocket};
 
 use crate::health::{Beat, Health};
-use crate::listening::{Listening, Service};
 use crate::protocol::{samples_from_bytes, AppMessage, PhraseSelection, ServerEvent};
-use crate::worker::Wake;
+use crate::streaming::engine::StreamingEngine;
+use crate::streaming::session::Session;
+use crate::streaming::Wake;
 
 /// How long a read on the socket waits before the I/O thread sends what is ready.
 const READ_WAIT: Duration = Duration::from_millis(2);
-/// How long the processing thread waits for input before it applies the answers that came;
-/// an answer wakes it at once (`Input::Answered`), so this only backs that up.
+/// How long the processing thread waits for input before it polls the recognizers; a decode
+/// wakes it at once (`Input::Decoded`), so this only backs that up.
 const POLL_WAIT: Duration = Duration::from_millis(20);
 
 mod probe;
@@ -39,8 +37,8 @@ enum Input {
     Audio(Vec<f32>, Instant),
     Select(PhraseSelection),
     Sync(u64),
-    /// A confirmation was answered.
-    Answered,
+    /// A recognizer decoded.
+    Decoded,
     /// The I/O thread ended.
     End,
 }
@@ -50,17 +48,17 @@ enum Output {
     Refuse(String),
 }
 
-pub fn serve(listener: &TcpListener, service: &Arc<Service>) -> Result<()> {
+pub fn serve(listener: &TcpListener, engine: &Arc<StreamingEngine>) -> Result<()> {
     let health = Health::default();
     for stream in listener.incoming() {
         let stream = stream?;
         let conn = NEXT_CONN.fetch_add(1, Ordering::Relaxed);
-        let service = Arc::clone(service);
+        let engine = Arc::clone(engine);
         let health = health.clone();
         std::thread::Builder::new()
             .name(format!("conn-{conn}-io"))
             .spawn(move || {
-                if let Err(e) = serve_connection(stream, &service, conn, &health) {
+                if let Err(e) = serve_connection(stream, &engine, conn, &health) {
                     log::warn!("conn={conn} ended: {e:#}");
                 }
             })?;
@@ -70,7 +68,7 @@ pub fn serve(listener: &TcpListener, service: &Arc<Service>) -> Result<()> {
 
 fn serve_connection(
     stream: TcpStream,
-    service: &Service,
+    engine: &StreamingEngine,
     conn: u64,
     health: &Health,
 ) -> Result<()> {
@@ -86,11 +84,11 @@ fn serve_connection(
     };
     socket.get_ref().set_read_timeout(Some(READ_WAIT))?;
     let (inputs, input_rx) = mpsc::channel();
-    let answered = inputs.clone();
+    let decoded = inputs.clone();
     let wake: Wake = Arc::new(move || {
-        let _ = answered.send(Input::Answered);
+        let _ = decoded.send(Input::Decoded);
     });
-    let session = service.session_waking(conn, Some(wake))?;
+    let session = engine.session_waking(conn, Some(wake))?;
     let beat = health.register(conn);
     log::info!("conn={conn} app connected");
     let (output_tx, outputs) = mpsc::channel();
@@ -217,16 +215,15 @@ fn text_input(text: &str, greeted: bool) -> Result<Input> {
 
 /// The processing thread: spots and detects speech in the audio, in the order it came.
 fn process(
-    mut session: Listening<'_>,
+    mut session: Session<'_>,
     inputs: &Receiver<Input>,
     outputs: &Sender<Output>,
     conn: u64,
     beat: &Beat,
 ) {
     let mut stats = Stats::new();
-    let mut reported = false;
     loop {
-        let mut events = match inputs.recv_timeout(POLL_WAIT) {
+        let events = match inputs.recv_timeout(POLL_WAIT) {
             Ok(Input::End) | Err(RecvTimeoutError::Disconnected) => return,
             Ok(input) => match handle(&mut session, input, &mut stats, conn, beat) {
                 Ok(events) => events,
@@ -238,17 +235,16 @@ fn process(
             Err(RecvTimeoutError::Timeout) => session.poll(),
         };
         beat.alive();
-        events.extend(watch_stall(session.stalled(), beat, conn, &mut reported));
         if !send_events(outputs, &events) {
             return;
         }
-        stats.maybe_log(conn, session.pending_confirmations());
+        stats.maybe_log(conn);
     }
 }
 
 /// The events `input` gives; the refusal's reason for a selection of unknown phrases.
 fn handle(
-    session: &mut Listening<'_>,
+    session: &mut Session<'_>,
     input: Input,
     stats: &mut Stats,
     conn: u64,
@@ -261,7 +257,7 @@ fn handle(
             beat.processed();
             Ok(events)
         }
-        Input::Answered => Ok(session.poll()),
+        Input::Decoded => Ok(session.poll()),
         Input::Hello(_) | Input::End => Ok(Vec::new()),
         Input::Select(selection) => {
             session
@@ -283,26 +279,6 @@ fn send_events(outputs: &Sender<Output>, events: &[ServerEvent]) -> bool {
         .iter()
         .filter_map(|event| serde_json::to_string(event).ok())
         .all(|json| outputs.send(Output::Event(json)).is_ok())
-}
-
-/// Keeps the connection's health current with its confirmations, and tells the app once when
-/// one runs past its attempts.
-fn watch_stall(
-    stalled: Option<Duration>,
-    beat: &Beat,
-    conn: u64,
-    reported: &mut bool,
-) -> Option<ServerEvent> {
-    beat.stalled(stalled.is_some());
-    let first = stalled.filter(|_| !*reported);
-    *reported = stalled.is_some();
-    let waited = first?;
-    log::warn!(
-        "conn={conn} a confirmation has run {}ms, past its attempts: stalled",
-        waited.as_millis()
-    );
-    let waited_ms = u64::try_from(waited.as_millis()).unwrap_or(u64::MAX);
-    Some(ServerEvent::Stalled { waited_ms })
 }
 
 /// Drops audio that does not fit the backlog, and tells the app.
