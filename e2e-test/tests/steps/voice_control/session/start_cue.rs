@@ -10,7 +10,7 @@ use cucumber::{given, then, when};
 use voicepuncher_e2e_test::machine_load;
 use voicepuncher_e2e_test::stalled_copies::{self, Watch};
 use voicepuncher_e2e_test::voice_commands::{
-    from_first_sound, silence, spoken_by, without_trailing_silence,
+    from_first_sound, silence, spoken_by, spoken_with_pauses, without_trailing_silence,
 };
 
 use super::speech_after_start::{BEFORE_RESTART, SENTENCE};
@@ -21,11 +21,11 @@ use crate::E2eWorld;
 const REAL_TIME_FRAME_SAMPLES: usize = 320;
 /// Longest a start cue is waited for: one this late fails the scenario anyway.
 const CUE_WAIT: Duration = Duration::from_secs(5);
-/// The voices "cancel cancel" is said in, one per try, before the scenario gives up: a lone
-/// synthesized "cancel" is often heard as "Capsule", the doubled form is not.
+/// The voices "cancel cancel" is said in, one per try, before the scenario gives up: the
+/// default voice first, as Eddy's "cancel" is heard as "Capsule", alone or doubled.
 /// WHY: decoding is deterministic, so the same audio misheard once is misheard the same way
 /// again; another voice is a new chance.
-const CANCEL_VOICES: [&str; 2] = [ENGLISH_VOICE, "Samantha"];
+const CANCEL_VOICES: [Option<&str>; 2] = [None, Some("Samantha")];
 /// How long a dictation runs before the "restart" said on its own.
 /// Said during the dictation before a restart, one after another.
 const DICTATED: [&str; 3] = [
@@ -192,7 +192,11 @@ impl HandsFreeSession {
         for voice in CANCEL_VOICES {
             let seen = self.events().len();
             self.hear_timed(room, room.len())?;
-            self.hear(&spoken_by(voice, "cancel cancel")?)?;
+            let cancel = match voice {
+                Some(voice) => spoken_by(voice, "cancel cancel")?,
+                None => spoken_with_pauses("cancel cancel")?,
+            };
+            self.hear(&cancel)?;
             if self.reacted(seen, &Expected::Cancelled, &silence(0.1))? {
                 return Ok(());
             }
