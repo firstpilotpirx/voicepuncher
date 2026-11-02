@@ -268,3 +268,28 @@ fn should_wait_for_the_pause_when_the_gate_heard_speech_go_on_after_a_one_word_f
     // Then
     assert_eq!(found, None);
 }
+
+#[test]
+fn should_take_each_command_of_an_utterance_said_with_a_pause_between_them() {
+    // Given "press enter", a 0.75 s pause the gate missed, and "press enter" again
+    let words = [said(1.0, "press enter"), said(2.3, "press enter")].concat();
+    // When
+    let first = decide(&standby(), &words, Moment::Closing, 0.0).expect("the first");
+    let second = decide(&standby(), &words, Moment::Closing, first.end).expect("the second");
+    // Then
+    assert_eq!(first.end, 1.55);
+    assert_eq!(second.end, 2.85);
+}
+
+#[test]
+fn should_take_no_command_followed_by_speech_without_a_pause() {
+    // When
+    let found = decide(
+        &standby(),
+        &said(1.0, "press enter the door"),
+        Moment::Closing,
+        0.0,
+    );
+    // Then
+    assert_eq!(found, None);
+}

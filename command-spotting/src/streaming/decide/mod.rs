@@ -34,6 +34,10 @@ const SETTLE_SECS: f32 = 0.2;
 /// "stop the car" 0.66 s after "stop".
 const SPEECH_AFTER_SECS: f32 = 0.35;
 
+/// A silence between two words this long is a pause the gate missed: the words before it are
+/// said alone. As long as a doubled command's gap.
+const WORD_PAUSE_SECS: f32 = DOUBLE_GAP_SECS;
+
 /// How soon after a report the same command again is its doubled form ("enter enter"), not
 /// a new command: the first word may settle before the recognizer decoded the second.
 const DOUBLE_GAP_SECS: f32 = 0.6;
@@ -70,17 +74,28 @@ pub fn decide(
 ) -> Option<Finding> {
     let fresh: Vec<&TimedWord> = words.iter().filter(|w| w.start >= reported_until).collect();
     let texts: Vec<&str> = fresh.iter().map(|w| w.text.as_str()).collect();
+    if let Some(found) = before_a_pause(matcher, &fresh) {
+        return Some(found);
+    }
     if let Some(found) = placed(matcher, &texts) {
         return Some(finding(&fresh, &found));
     }
-    alone(matcher, &fresh, moment).or_else(|| {
-        ended(moment)
-            .then(|| matcher.at_end(&texts))
-            .flatten()
-            .map(|found| finding(&fresh, &found))
-            .filter(|found| decoded_past(moment, found.end))
-            .filter(|_| moment == Moment::Closing || !ends_a_longer_word(matcher, &texts))
-    })
+    alone(matcher, &fresh, moment).or_else(|| ending(matcher, &fresh, &texts, moment))
+}
+
+/// A command ending the words heard, once nothing more is said for now.
+fn ending(
+    matcher: &PhraseMatcher,
+    fresh: &[&TimedWord],
+    texts: &[&str],
+    moment: Moment,
+) -> Option<Finding> {
+    ended(moment)
+        .then(|| matcher.at_end(texts))
+        .flatten()
+        .map(|found| finding(fresh, &found))
+        .filter(|found| decoded_past(moment, found.end))
+        .filter(|_| moment == Moment::Closing || !ends_a_longer_word(matcher, texts))
 }
 
 /// A command found anywhere in `texts` or opening them, reported as soon as it is heard.
@@ -94,6 +109,17 @@ fn placed(matcher: &PhraseMatcher, texts: &[&str]) -> Option<Found> {
                 .flatten()
         })
         .or_else(|| matcher.start_at_head(texts))
+}
+
+/// The command the words of `fresh` before a pause between them say, as if the utterance
+/// closed there: the gate misses a pause in a noisy room, and "press enter … press enter" is
+/// two commands.
+fn before_a_pause(matcher: &PhraseMatcher, fresh: &[&TimedWord]) -> Option<Finding> {
+    let cut = fresh
+        .windows(2)
+        .position(|pair| pair[1].start - pair[0].end >= WORD_PAUSE_SECS)?;
+    let before: Vec<TimedWord> = fresh[..=cut].iter().map(|w| (*w).clone()).collect();
+    decide(matcher, &before, Moment::Closing, 0.0)
 }
 
 /// The command the whole of `fresh` says once settled, so "stop the" of "stop the car" waits
