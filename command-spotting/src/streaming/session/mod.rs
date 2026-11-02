@@ -192,6 +192,10 @@ impl<'a> Session<'a> {
         let Some(utterance) = self.utterance.take() else {
             return Vec::new();
         };
+        // WHY: the next utterance's replay must not start with this one's last words; the
+        // models hear a quiet "restart" after "…broken" as "let's start".
+        let over = self.replay.len().saturating_sub(utterance.quiet());
+        self.replay.drain(..over);
         let closed = utterance.close(&self.matcher, now);
         log::info!("conn={} {}", self.conn, closed.trace.log_line());
         if let Some(history) = self.history {

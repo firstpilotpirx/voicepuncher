@@ -28,3 +28,24 @@ fn should_start_a_command_after_other_words_at_its_own_time() {
     let start = command_start(&events).expect("a command");
     assert!((start - 1.4).abs() < 1e-3, "{start}");
 }
+
+#[test]
+fn should_replay_none_of_the_last_utterances_speech_into_the_next() {
+    // Given an utterance closed after 0.4 s of quiet, and speech right after it
+    let en = Scripted::new("en", &[]);
+    let mut session = session(&[&en], None);
+    // When
+    let audio = [
+        silence(1.0),
+        speech(0.6),
+        silence(0.4),
+        speech(0.3),
+        silence(1.0),
+    ]
+    .concat();
+    session.accept(&audio);
+    session.sync(0);
+    // Then the next utterance hears only the quiet before it
+    assert_eq!(en.streams.load(Ordering::SeqCst), 2);
+    assert!(en.first_accept.load(Ordering::SeqCst) <= RATE * 2 / 5);
+}
