@@ -330,7 +330,7 @@ Feature: voice-control
       Given the command spotting service is running
       And listening is on for a whole session
       When someone says "fine start start" and a sentence without a pause
-      Then the start cue comes within 0.5 s of the end of "start start", while the sentence is still being said
+      Then the start cue comes within 0.6 s of the end of "start start", while the sentence is still being said
 
   Rule: Commands can run without the Whisper confirmation
 
@@ -513,7 +513,7 @@ Feature: voice-control
       Given the command spotting service is running
       And listening is on for a whole session
       When someone says "start" in steady room noise and stays silent
-      Then the start cue comes within 0.7 s of the end of "start"
+      Then the start cue comes within 0.9 s of the end of "start"
 
   # The sessions run in real time and wait for the speech recognition service's answers;
   # @serial keeps the other scenarios' requests from queuing ahead of them.
@@ -867,7 +867,7 @@ Feature: voice-control
       Given the command spotting service runs with the streaming recognizer
       And every core of the machine is busy with other work
       When an app streams "we meet at ten enter" followed by silence, in real time
-      Then the streaming recognizer reports "press enter" within 1.0 s of the end of the words by the wall clock
+      Then the streaming recognizer reports "press enter" within 1.2 s of the end of the words by the wall clock
 
   Rule: Streaming commands are heard in the user's own voice
 

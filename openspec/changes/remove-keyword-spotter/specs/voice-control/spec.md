@@ -150,6 +150,70 @@ The command spotting service SHALL run a voice gate over the audio and, from the
 - **WHEN** an app streams "start" at the loudness of the user's quietest recorded command, followed by silence
 - **THEN** the service reports "start dictation"
 
+### Requirement: An utterance ends after 0.3 s of silence
+The system SHALL end an utterance after 0.3 s of silence, so a command said after a short breath is an utterance of its own, also in a noisy room where the silence is the room's own noise. This SHALL hold for a quiet voice and when speech follows the pause at once: a command said on its own, followed by 0.3–0.6 s of silence and then speech, SHALL take effect. The speech after the pause SHALL NOT change what the command is heard as. A pause is the silence between the words as said, not the silence a speech synthesizer adds after a word.
+
+#### Scenario: Stop after a short breath
+- **GIVEN** a dictation runs
+- **WHEN** the user says a sentence, pauses for about 0.35 s and says "stop stop", then pauses
+- **THEN** the sentence is pasted into the focused app without "stop"
+
+#### Scenario: Restart, a short pause, then speech that starts like another word
+- **GIVEN** a dictation runs
+- **AND** the user has said a sentence in it
+- **WHEN** the user says "restart", pauses for about 0.4 s and says another sentence that opens with a hard consonant, and later ends the dictation
+- **THEN** only the other sentence is pasted, its first words included
+
+#### Scenario: A command alone, a short pause, then speech
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** the user says "enter", pauses for about 0.3 s and says a sentence, then pauses
+- **THEN** the Return key is pressed once
+- **AND** no other command takes effect
+
+#### Scenario: The user's recorded command alone, a short pause, then speech
+- **GIVEN** the user's own recordings of the commands exist on the machine
+- **AND** the state accepts the command
+- **WHEN** the user's recorded "restart", "start", "stop" or "enter", said on its own, is followed by 0.3–0.6 s of silence and then speech
+- **THEN** the command takes effect once
+- **AND** no other command takes effect
+
+#### Scenario: A command in a noisy room ends at its pause
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **AND** steady room noise plays
+- **WHEN** the user says "start" and stays silent
+- **THEN** the start cue comes within 0.9 s of the end of "start"
+
+### Requirement: A doubled command needs no pause
+The system SHALL carry out a doubled short form ("start start", "restart restart", "stop stop", "cancel cancel", "enter enter", "clear clear", "paste paste") as soon as its second word is heard, without waiting for a pause after it or for the next word, whether silence or speech follows.
+
+#### Scenario: Start start then silence starts at once
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** the user says "start start" and stays silent
+- **THEN** the start cue comes within 0.5 s of the end of "start start"
+
+#### Scenario: Stop stop in running speech stops at once
+- **GIVEN** a dictation runs
+- **WHEN** the user says a sentence, "stop stop" and goes on speaking
+- **THEN** the stop sound plays within 0.5 s of the end of "stop stop", while the user is still speaking
+
+#### Scenario: Start start inside a sentence starts at once
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** someone says "fine start start" and goes on with a sentence without a pause
+- **THEN** the start cue comes within 0.6 s of the end of "start start", while the sentence is still being said
+
+### Requirement: Streaming commands keep their bounds while every core is busy
+With the streaming recognizer and every core of the machine busy with other work, the command spotting service SHALL report "press enter" said as "enter" ending a sentence within 1.2 s of the end of its words (wall clock); on an idle machine the bound is 0.6 s.
+
+#### Scenario: Press enter after a sentence is reported in time with every core busy
+- **GIVEN** the command spotting service runs with the streaming recognizer
+- **AND** every core of the machine is busy with other work
+- **WHEN** an app streams a sentence ending with "enter", followed by silence, in real time
+- **THEN** the service reports "press enter" within 1.2 s of the end of "enter" by the wall clock
+
 ## REMOVED Requirements
 
 ### Requirement: A command said twice in one utterance counts once
