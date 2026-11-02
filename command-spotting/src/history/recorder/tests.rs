@@ -109,3 +109,24 @@ fn should_keep_what_whisper_heard_of_a_command_reported_without_confirmation() {
     assert_eq!(entry.reported[0].whisper, Some(Verdict::Agreed));
     assert_eq!(entry.outcome, Outcome::Agreed);
 }
+
+#[test]
+fn should_keep_whisper_s_verdict_on_a_command_its_hearing_reported_first_without_confirmation() {
+    let mut recorder = Recorder::new(1);
+    recorder.spotted("press enter", "▁EN TER", 1.2, 1.9);
+    let verdict = ServerEvent::Heard {
+        commands: vec!["press enter".to_owned()],
+        start: 1.2,
+        end: 1.9,
+        verdict: Verdict::Agreed,
+    };
+    let reported = heard("press enter", 1.0, 1.6);
+    recorder.went_out(&[segment(1.0, 2.0), vec![reported, verdict]].concat());
+
+    let entries = recorder.due(3.0, false, &audio());
+
+    let [entry] = entries.as_slice() else {
+        panic!("one entry: {entries:?}")
+    };
+    assert_eq!(entry.reported[0].whisper, Some(Verdict::Agreed));
+}
