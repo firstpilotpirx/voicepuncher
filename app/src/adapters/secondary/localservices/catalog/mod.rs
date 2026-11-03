@@ -9,7 +9,7 @@ use voicepuncher_copy_pool::ServiceAddress;
 use crate::adapters::secondary::logging::file::logs_dir;
 use crate::config::Config;
 use crate::core::application::{ProbeAnswer, ServiceProbe};
-use crate::core::domain::{CommandRecognizer, ServiceKind, ServiceSpec};
+use crate::core::domain::{ServiceKind, ServiceSpec};
 
 mod engines;
 pub use engines::*;
@@ -17,17 +17,14 @@ mod args;
 pub use args::*;
 mod command_spotting;
 mod found;
-mod keyword_spotting;
 mod streaming;
 use found::{existing, file_name_starts, first_problem, newest, shown};
 
 const WHISPER: &str = "whisper-server";
 const COMMAND_SPOTTING: &str = "voicepuncher-command-spotting";
 const DICTATION_MODEL: &str = "ggml-large-v3-turbo-q5_0.bin";
-const COMMAND_MODEL: &str = "ggml-small.bin";
 const WHISPER_VAD_PREFIX: &str = "ggml-silero-";
 const KWS_VAD_MODEL: &str = "silero_vad.onnx";
-const KWS_MODEL_DIR_PREFIX: &str = "sherpa-onnx-kws-";
 const RUN_SCRIPTS_HINT: &str = "run 'just models'";
 /// The folder of the bundle's engines, next to the app's program (`Contents/MacOS/engines`).
 const ENGINES_DIR: &str = "engines";
@@ -41,7 +38,7 @@ impl Needs {
 }
 
 /// Every service process the configuration needs, in start order: the speech recognition
-/// service for commands before the command spotting service, which asks it.
+/// service, then the command spotting service.
 ///
 /// A speech recognition service that already runs as other copies than configured is taken as it
 /// runs.
@@ -53,7 +50,6 @@ pub fn needed(
 ) -> Vec<ServiceSpec> {
     let lookup = Lookup::new(cfg, machine);
     let mut specs = lookup.whisper(
-        ServiceKind::Dictation,
         &cfg.transcription.base_url,
         cfg.services.dictation_copies,
         probe,
@@ -61,23 +57,8 @@ pub fn needed(
     if !needs.voice_control {
         return specs;
     }
-    if cfg.voice_control.recognizer == CommandRecognizer::Streaming {
-        specs.extend(lookup.streaming(
-            &cfg.voice_control.url,
-            cfg.services.command_spotting_copies,
-            probe,
-        ));
-        return specs;
-    }
-    specs.extend(lookup.whisper(
-        ServiceKind::Commands,
-        &cfg.services.commands_url,
-        cfg.services.command_copies,
-        probe,
-    ));
-    specs.extend(lookup.command_spotting(
+    specs.extend(lookup.streaming(
         &cfg.voice_control.url,
-        &cfg.services.commands_url,
         cfg.services.command_spotting_copies,
         probe,
     ));
@@ -147,28 +128,19 @@ impl<'a> Lookup<'a> {
         Self { machine, model_dirs, command_history }
     }
 
-    fn whisper(
-        &self,
-        kind: ServiceKind,
-        url: &str,
-        copies: u32,
-        probe: &dyn ServiceProbe,
-    ) -> Vec<ServiceSpec> {
+    fn whisper(&self, url: &str, copies: u32, probe: &dyn ServiceProbe) -> Vec<ServiceSpec> {
         let Ok(address) = ServiceAddress::parse(url) else {
             return Vec::new();
-        };
-        let (model_var, model_file) = match kind {
-            ServiceKind::Commands => ("VOICEPUNCHER_COMMAND_WHISPER_MODEL", COMMAND_MODEL),
-            _ => ("VOICEPUNCHER_WHISPER_MODEL", DICTATION_MODEL),
         };
         let program = self.engine(
             WHISPER,
             "VOICEPUNCHER_WHISPER_BINARY",
             "brew install whisper-cpp",
         );
-        let model = self.model(model_var, model_file);
+        let model = self.model("VOICEPUNCHER_WHISPER_MODEL", DICTATION_MODEL);
         let vad = self.newest_vad();
         let problem = first_problem([&program, &model, &vad]);
+        let kind = ServiceKind::Dictation;
         let service = Service { kind, binary: WHISPER, program, problem, copies };
         let cores = self.machine.cores;
         self.copies(&service, &address, probe, |port, count| {

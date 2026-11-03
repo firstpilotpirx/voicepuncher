@@ -39,12 +39,12 @@ fn warnings_naming(port: u16) -> Vec<String> {
         .collect()
 }
 
-#[given("the app adopted a copy of the speech recognition service for commands")]
-fn commands_copy_adopted(world: &mut IntegrationWorld) -> Result<()> {
+#[given("the app adopted a copy of the speech recognition service for dictation")]
+fn dictation_copy_adopted(world: &mut IntegrationWorld) -> Result<()> {
     pipeline_log();
     let run = supervised(world)?;
     let port = free_port();
-    let spec = run.spec(ServiceKind::Commands, port, RUNS)?;
+    let spec = run.spec(ServiceKind::Dictation, port, RUNS)?;
     run.hung = Some(SilentListener::on(
         port,
         &spec.program.display().to_string(),
@@ -100,7 +100,7 @@ fn hung_copy_logged(world: &mut IntegrationWorld) -> Result<()> {
     let run = supervised(world)?;
     let port = copy_port(run)?;
     let pid = run.hung.as_ref().context("no copy hung")?.pid();
-    let stopped = format!("speech recognition service for commands {port} at port {port} stopped answering — stopped it (pid {pid})");
+    let stopped = format!("speech recognition service for dictation {port} at port {port} stopped answering — stopped it (pid {pid})");
     let lines = warnings_naming(port);
     ensure!(
         lines.iter().filter(|line| line.contains(&stopped)).count() == 1,

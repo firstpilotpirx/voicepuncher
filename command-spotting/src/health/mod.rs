@@ -2,12 +2,10 @@
 //! no progress for a while is stuck, and the service scripts restart a stuck service.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// How long a connection with audio waiting may make no progress before it counts as stuck;
-/// well above the longest a confirmation holds anything, since none holds the audio.
+/// How long a connection with audio waiting may make no progress before it counts as stuck.
 const STUCK_AFTER: Duration = Duration::from_secs(10);
 /// The longest audio may wait for the processing thread: past it, the service no longer
 /// keeps up. Audio sent faster than real time (a replay) waits only while it is processed.
@@ -18,17 +16,11 @@ pub struct Beat {
     last_progress: Mutex<Instant>,
     /// When each audio frame waiting for the processing thread arrived, oldest first.
     waiting: Mutex<VecDeque<Instant>>,
-    /// A confirmation of the connection runs past its attempts: its thread hangs.
-    stalled: AtomicBool,
 }
 
 impl Beat {
     fn new() -> Self {
-        Self {
-            last_progress: Mutex::new(Instant::now()),
-            waiting: Mutex::default(),
-            stalled: AtomicBool::new(false),
-        }
+        Self { last_progress: Mutex::new(Instant::now()), waiting: Mutex::default() }
     }
 
     /// Whether an audio frame arriving now may wait for the processing thread, counting it
@@ -57,11 +49,6 @@ impl Beat {
         }
     }
 
-    /// Whether a confirmation of the connection runs past its attempts.
-    pub fn stalled(&self, stalled: bool) {
-        self.stalled.store(stalled, Ordering::Relaxed);
-    }
-
     /// The processing thread went round its loop.
     pub fn alive(&self) {
         if let Ok(mut last) = self.last_progress.lock() {
@@ -76,7 +63,7 @@ impl Beat {
             .map(|last| now.saturating_duration_since(*last))
             .unwrap_or_default();
         let waiting = self.waiting.lock().is_ok_and(|waiting| !waiting.is_empty());
-        self.stalled.load(Ordering::Relaxed) || waiting && idle > after
+        waiting && idle > after
     }
 }
 

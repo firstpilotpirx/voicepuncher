@@ -14,8 +14,8 @@ const PROGRAM: &str = "/opt/engines/whisper-server-test";
 
 fn spec_on(port: u16) -> ServiceSpec {
     ServiceSpec {
-        kind: ServiceKind::Commands,
-        label: "commands copy".into(),
+        kind: ServiceKind::Dictation,
+        label: "dictation copy".into(),
         program: PathBuf::from(PROGRAM),
         args: Vec::new(),
         port,

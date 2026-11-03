@@ -4,16 +4,13 @@ set dotenv-load
 
 # Models: env var wins; else the file `just models` downloads, found by name in ~/.voicepuncher or its models/ (empty when not on disk: the start and _require-models then fail with "Run 'just models' or set it in .env")
 dictation_model_file := "ggml-large-v3-turbo-q5_0.bin"
-command_model_file := "ggml-small.bin"
 find_model := 'find ~/.voicepuncher -maxdepth 2 -name "$1" 2>/dev/null | head -1'
 find_model_dir := 'find ~/.voicepuncher -maxdepth 2 -type d -name "$1" -exec ls -td {} + 2>/dev/null | head -1'
-# Speech recognition services for dictation (what the app uses) and for commands (the command spotting service's confirmations)
+# The speech recognition service for dictation
 export VOICEPUNCHER_WHISPER_MODEL := env_var_or_default("VOICEPUNCHER_WHISPER_MODEL", shell(find_model, dictation_model_file))
-export VOICEPUNCHER_COMMAND_WHISPER_MODEL := env_var_or_default("VOICEPUNCHER_COMMAND_WHISPER_MODEL", shell(find_model, command_model_file))
 # Voice activity detection model of the speech recognition service: the newest Silero model found
 export VOICEPUNCHER_VAD_MODEL := env_var_or_default("VOICEPUNCHER_VAD_MODEL", `find ~/.voicepuncher -maxdepth 2 -name 'ggml-silero-*.bin' -exec ls -t {} + 2>/dev/null | head -1`)
-# Command spotting service (voice control): sherpa-onnx keyword spotting model, its Silero VAD, the streaming models
-export VOICEPUNCHER_KWS_MODEL_DIR := env_var_or_default("VOICEPUNCHER_KWS_MODEL_DIR", shell(find_model_dir, 'sherpa-onnx-kws-*'))
+# Command spotting service (voice control): the streaming models and their Silero VAD
 export VOICEPUNCHER_STREAMING_EN_MODEL_DIR := env_var_or_default("VOICEPUNCHER_STREAMING_EN_MODEL_DIR", shell(find_model_dir, 'sherpa-onnx-nemotron-speech-streaming-en-*'))
 export VOICEPUNCHER_STREAMING_RU_MODEL_DIR := env_var_or_default("VOICEPUNCHER_STREAMING_RU_MODEL_DIR", shell(find_model_dir, 'sherpa-onnx-streaming-zipformer-small-ru-*'))
 # The user's own recorded voice commands (never committed): tests run on them when they exist
@@ -26,7 +23,6 @@ export VOICEPUNCHER_BENCH_CORPUS := env_var_or_default("VOICEPUNCHER_BENCH_CORPU
 # The services' ports (dev-tools reads the same variables): their URLs are the app's defaults, and the E2E recipes
 # point the tests at them; each speech recognition service runs as copies on the ports 10000 above its own
 stt_url := "http://127.0.0.1:" + env_var_or_default("VOICEPUNCHER_STT_PORT", "8081") + "/v1"
-command_stt_url := "http://127.0.0.1:" + env_var_or_default("VOICEPUNCHER_COMMAND_STT_PORT", "8085") + "/v1"
 kws_url := "ws://127.0.0.1:" + env_var_or_default("VOICEPUNCHER_KWS_PORT", "8082")
 
 # The cargo selections the model stages build, shared by their recipes and `_build-e2e`, which builds them
@@ -41,7 +37,7 @@ check_model_stages := "e2e-smoke-voice e2e-smoke-speech e2e-quick e2e-smoke-serv
 full_check_model_stages := "e2e-smoke-voice e2e-regression e2e-resilience e2e-bundle e2e-smoke-speech accuracy e2e-smoke-services e2e-seams it-real e2e-cues"
 # The test modules of the voice control smoke part, the most failing first (each member's tests/it/<module>.rs
 # build into its one `it` binary); placed_commands is the command spotting service's, the others the app's
-voice_smoke_modules := "placed_commands voice_forms mishearings voice_samples commandspotting_websocket"
+voice_smoke_modules := "voice_forms voice_samples commandspotting_websocket"
 # Every test binary of the smoke parts in one cargo selection: each part's one nextest call builds exactly what
 # _build-e2e built before the machine lock, and picks its own modules with a filter (dev-tools filter smoke)
 smoke_parts_tests := "-p voicepuncher -p voicepuncher-command-spotting -p voicepuncher-e2e-test --test it --test cucumber_e2e"
@@ -70,7 +66,7 @@ export MACHINE_LOCK_WAIT := env_var_or_default("MACHINE_LOCK_WAIT", "21600")
 # lock (agent-kit `with-machine-lock`, MACHINE_LOCK; none with VOICEPUNCHER_NO_MACHINE_LOCK=1, the hosted CI) is
 # its business: a run without it fails naming the install command (_require-machine-lock)
 dev_tools := "DEV_TOOLS_JUST=" + quote(just_executable()) + " DEV_TOOLS_JUSTFILE=" + quote(justfile()) + " " + quote(env_var_or_default("CARGO_TARGET_DIR", justfile_directory() / "target") / "debug/dev-tools")
-# A recipe run on its own under the machine lock exclusively, on the test ports (28081, 28085, 28080, 28082 unless
+# A recipe run on its own under the machine lock exclusively, on the test ports (28081, 28080, 28082 unless
 # VOICEPUNCHER_TEST_*_PORT moves them): every check, build, E2E, benchmark and real-keyboard recipe runs its private
 # `_<name>` body so, except `test` and `release`, which use no shared service, port or GPU
 locked := dev_tools + " locked"
@@ -369,7 +365,6 @@ _e2e-smoke-part profile modules="": _require-nextest _require-models _build _dev
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
-    export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
     filter=$({{dev_tools}} filter smoke "{{modules}}")
     cargo nextest run --profile {{profile}} {{smoke_parts_tests}} -E "$filter" ${VOICEPUNCHER_RERUN_FILTER:+--no-tests=pass} {{fail_fast}}
 
@@ -385,7 +380,6 @@ _e2e-regression: _require-nextest _require-models _build
     trap '{{just_executable()}} _stop-model-servers-for-e2e' EXIT
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
-    export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
     cargo nextest run --profile e2e-regression {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
 # WER accuracy on 10 samples (5 per language) — fails if mean WER is worse than the accepted baseline (e2e-test/accuracy_baseline.json) by more than the margin, and no command in 10 recordings of ordinary speech (~1 min)
@@ -447,7 +441,6 @@ _e2e-cues: _require-nextest _require-models _build
     {{just_executable()}} _start-model-servers-for-e2e
     # The command spotting services for the voice start timing scenarios (@cues)
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}"
-    export VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL="{{command_stt_url}}"
     cargo nextest run --profile e2e-cues {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
 # WER accuracy on a fixed sample of 100 recordings (50 per language), two at a time — fails if mean WER is worse than the accepted baseline (e2e-test/accuracy_baseline.json) by more than the margin, and no command in 20 recordings of ordinary speech (~3 min)
@@ -699,17 +692,17 @@ _start-model-servers-for-e2e: _dev-tools
 _stop-model-servers-for-e2e: _dev-tools
     @{{dev_tools}} model-servers-for-e2e stop
 
-# Start the speech recognition services for dictation (whisper-server) and for commands (whisper-server-commands) and command spotting (voicepuncher-command-spotting), or only the named ones; one that already answers on its port is skipped
+# Start the speech recognition service for dictation (whisper-server) and the command spotting service (voicepuncher-command-spotting), or only the named one; one that already answers on its port is skipped
 start-model-servers *services: _dev-tools
     @{{dev_tools}} start-model-servers {{services}}
 
-# Stop the services that start-model-servers launched (all, or the named ones: whisper-server, whisper-server-commands, voicepuncher-command-spotting); services started by hand keep running
+# Stop the services that start-model-servers launched (all, or the named ones: whisper-server, voicepuncher-command-spotting); services started by hand keep running
 stop-model-servers *services: _dev-tools
     @{{dev_tools}} stop-model-servers {{services}}
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
-# Download default models into ~/.voicepuncher/models (whisper large-v3-turbo q5_0 ~550 MB for dictation, whisper small ~460 MB for commands, Silero VAD ~1 MB, keyword spotting ~20 MB, Silero VAD for sherpa-onnx ~1 MB)
+# Download default models into ~/.voicepuncher/models (whisper large-v3-turbo q5_0 ~550 MB for dictation, Silero VAD ~1 MB, the English and Russian streaming models, Silero VAD for sherpa-onnx ~1 MB)
 models:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -748,16 +741,13 @@ _streaming-bench *args:
 _require-models:
     #!/usr/bin/env bash
     set -euo pipefail
-    # Defaults are found by exact file name (see the settings at the top); a default that is not on disk is empty
-    for entry in VOICEPUNCHER_WHISPER_MODEL={{dictation_model_file}} VOICEPUNCHER_COMMAND_WHISPER_MODEL={{command_model_file}}; do
-        var=${entry%%=*} path="${!var:-}"
-        if [[ -z "$path" || ! -f "$path" ]]; then
-            echo "✗ $var: no model file (got '${path}', default ${entry#*=} in ~/.voicepuncher or ~/.voicepuncher/models). Run 'just models' or set it in .env" >&2
-            exit 1
-        fi
-    done
+    # The default is found by exact file name (see the settings at the top); a default that is not on disk is empty
+    path="${VOICEPUNCHER_WHISPER_MODEL:-}"
+    if [[ -z "$path" || ! -f "$path" ]]; then
+        echo "✗ VOICEPUNCHER_WHISPER_MODEL: no model file (got '${path}', default {{dictation_model_file}} in ~/.voicepuncher or ~/.voicepuncher/models). Run 'just models' or set it in .env" >&2
+        exit 1
+    fi
     echo "whisper (dictation): $VOICEPUNCHER_WHISPER_MODEL"
-    echo "whisper (commands):  $VOICEPUNCHER_COMMAND_WHISPER_MODEL"
 
 # The test runner every test recipe uses, pinned like .config/nextest.toml's nextest-version; installs nothing
 _require-nextest:

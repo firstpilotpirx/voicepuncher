@@ -38,10 +38,6 @@ fn copy_ports_worked_out(world: &mut IntegrationWorld) -> Result<()> {
             SPEECH_RECOGNITION_COPY_OFFSET,
         ),
         (
-            run.config.services.commands_url.clone(),
-            SPEECH_RECOGNITION_COPY_OFFSET,
-        ),
-        (
             run.config.voice_control.url.clone(),
             COMMAND_SPOTTING_COPY_OFFSET,
         ),

@@ -19,6 +19,9 @@ fn should_respell_each_command_word_heard_in_cyrillic() {
         ("кансл", "cancel"),
         ("пейст", "paste"),
         ("пэст", "paste"),
+        ("эйст", "paste"),
+        ("ейст", "paste"),
+        ("хейст", "paste"),
     ];
     for (cyrillic, english) in heard {
         // When
@@ -26,6 +29,14 @@ fn should_respell_each_command_word_heard_in_cyrillic() {
         // Then
         assert_eq!(respelled, Some(vec![english]), "{cyrillic}");
     }
+}
+
+#[test]
+fn should_keep_the_russian_word_for_eats() {
+    // When "ест" is heard: "paste" without its "п" is respelled only with its "й"
+    let respelled = respell_word("ест");
+    // Then
+    assert_eq!(respelled, None);
 }
 
 #[test]

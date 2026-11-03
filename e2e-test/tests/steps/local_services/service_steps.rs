@@ -81,7 +81,7 @@ pub(super) async fn user_stops_service(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
-#[then("the speech recognition service for dictation answers and nothing answers on the ports of the speech recognition service for commands and the command spotting service")]
+#[then("the speech recognition service for dictation answers and nothing answers on the port of the command spotting service")]
 pub(super) fn only_speech_recognition_answers(world: &mut E2eWorld) -> Result<()> {
     let services = services(world)?;
     let started = services.started()?;
@@ -94,10 +94,6 @@ pub(super) fn only_speech_recognition_answers(world: &mut E2eWorld) -> Result<()
     ensure!(
         answers(services.stt_port),
         "the speech recognition service for dictation does not answer"
-    );
-    ensure!(
-        !answers(services.command_stt_port),
-        "a speech recognition service for commands was started too"
     );
     ensure!(
         !answers(services.kws_port),

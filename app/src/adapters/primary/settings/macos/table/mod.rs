@@ -72,20 +72,6 @@ pub const FIELDS: &[Field] = &[
     ),
     field(
         "voice_control",
-        "recognizer",
-        Tab::General,
-        "Command recognizer",
-        Control::Radio(Choices::CommandRecognizers),
-    ),
-    field(
-        "voice_control",
-        "confirm_commands",
-        Tab::General,
-        "Confirm commands with Whisper",
-        Control::Switch,
-    ),
-    field(
-        "voice_control",
         "url",
         Tab::General,
         "Voice control service",
@@ -108,13 +94,6 @@ pub const FIELDS: &[Field] = &[
     ),
     field(
         "services",
-        "command_copies",
-        Tab::Services,
-        "Command service copies",
-        number(1, 4, ""),
-    ),
-    field(
-        "services",
         "command_spotting_copies",
         Tab::Services,
         "Command spotting service copies",
@@ -127,14 +106,6 @@ pub const FIELDS: &[Field] = &[
         "Models folder",
         Control::Folder,
     ),
-    field(
-        "services",
-        "commands_url",
-        Tab::Services,
-        "Command speech recognition service",
-        Control::Address(Scheme::Http),
-    )
-    .advanced(),
     field(
         "transcription",
         "language",

@@ -256,14 +256,6 @@ The system SHALL send a recording to the speech recognition service on a connect
 - **WHEN** the user finishes the next recording
 - **THEN** its transcript is passed on for pasting, and no dropped attempt is logged
 
-### Requirement: Audio without speech never stops the speech recognition service
-The speech recognition service SHALL answer a request whose audio holds no speech with an empty transcript and SHALL keep answering later requests, in every answer format the system asks for, including the detailed format the command spotting service uses to confirm commands.
-
-#### Scenario: Command confirmation of an utterance without speech
-- **GIVEN** the service scripts started the speech recognition service for commands
-- **WHEN** the command spotting service asks it to confirm an utterance that holds no speech
-- **THEN** no words are heard and the service answers the next request
-
 ### Requirement: A request that times out or gets an error answer is retried
 The system SHALL send a recording or chunk again, up to 2 more times, when the speech recognition service does not answer it in time or answers with an error, and SHALL log each failed attempt with how long it took; an attempt after one the app gave up on SHALL go to another copy than the one still working on the abandoned attempt, or wait for a free copy, never queue behind the abandoned attempt.
 
@@ -332,7 +324,6 @@ The service scripts SHALL start the speech recognition service for dictation —
 - **GIVEN** the models that the service scripts download are on disk
 - **WHEN** the user starts the services with the service scripts and names another speech recognition model for dictation
 - **THEN** the speech recognition service for dictation recognizes speech with the named model
-- **AND** the speech recognition service for commands keeps the small model
 
 ### Requirement: The same dictation audio gives the same text
 The system SHALL ask the speech recognition service for one deterministic transcription of dictation audio, without falling back to random sampling when the service is unsure, so the same audio always yields the same text.
@@ -455,3 +446,11 @@ When the configuration names no chunk threshold, the chunk threshold SHALL be 10
 - **GIVEN** the configuration names no chunk threshold
 - **WHEN** the user dictates for 8 seconds and stops
 - **THEN** the dictation is handed on for transcription as one chunk after the stop
+
+### Requirement: Audio without speech never stops the speech recognition service for dictation
+The speech recognition service SHALL answer a request whose audio holds no speech with an empty transcript and SHALL keep answering later requests, in every answer format the system asks for.
+
+#### Scenario: Dictation of a chunk without speech
+- **GIVEN** the service scripts started the speech recognition service for dictation
+- **WHEN** a chunk that holds no speech is sent to it
+- **THEN** no words are heard and the service answers the next request

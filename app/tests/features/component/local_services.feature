@@ -35,13 +35,13 @@ Feature: local-services
   Rule: An adopted service that hangs is replaced by the app's own
 
     Scenario: A hung adopted copy is killed and replaced
-      Given the app adopted a copy of the speech recognition service for commands
+      Given the app adopted a copy of the speech recognition service for dictation
       When the adopted copy stops answering without ending
       Then within 30 seconds the app has stopped that copy's process and started its own copy on that port, and it answers
       And the log names the service, the copy, the port and the process id it stopped
 
     Scenario: Another program on the port is not killed
-      Given the app adopted a copy of the speech recognition service for commands
+      Given the app adopted a copy of the speech recognition service for dictation
       When another program that is not that service takes its port and does not answer
       Then after three failed checks the other program keeps running and the log names it with its process id
 
@@ -68,10 +68,10 @@ Feature: local-services
   Rule: Quit stops every owned service
 
     Scenario: Quit with owned and adopted services
-      Given the app started the speech recognition service for dictation and adopted the speech recognition service for commands
+      Given the app started the speech recognition service for dictation and adopted the command spotting service
       When the user quits the app with its services
       Then no process of the speech recognition service for dictation is left
-      And the speech recognition service for commands still runs
+      And the command spotting service still runs
 
     Scenario: A service that ignores the request to end is killed
       Given the app started a service that does not end when asked
@@ -122,33 +122,11 @@ Feature: local-services
       When the services it needs are looked up
       Then the speech recognition service is named as running whisper-server 1.9.5 from $PATH
 
-  Rule: A missing service program or model is named
+  # Proved by the unit tests of the app's catalog (catalog/tests/engines.rs) and supervision (supervision_tests.rs).
+  Rule: A service whose program or model is missing is named
 
-    Scenario: The command model is not on disk
-      Given the variable for the speech recognition model for commands names a file that is not on disk
-      When the services it needs are looked up and supervised
-      Then the speech recognition service for commands is Failed with a reason naming the model file it looked for
-      And the app started no service
-
-  Rule: The command recognizer is chosen in the configuration
-
-    Scenario: Voice control starts the streaming recognizer by default
-      Given no local service runs, voice control is on and the user never chose a command recognizer
-      When the services it needs are looked up
-      Then the command spotting service is started with the streaming models
-      And the speech recognition service for commands is not started
-
-    Scenario: The keyword spotter can still be chosen
-      Given no local service runs, voice control is on and the keyword spotter is chosen as the command recognizer
-      When the services it needs are looked up
-      Then the speech recognition service for commands and the command spotting service with the keyword spotting model are started
-
-  Rule: The app and the service scripts start a service alike
-
-    Scenario: Of two keyword spotting models the newest is used
-      Given two keyword spotting model folders in the models folder, the older one first by name
-      When the services it needs are looked up
-      Then the command spotting service is started with the newer folder
+  # Proved by the service tests of dev-tools/src/services/tests.rs and the app's catalog tests (integration).
+  Rule: The app and the service scripts start each service alike
 
   Rule: The app runs the command spotting service as copies
 
@@ -204,13 +182,6 @@ Feature: local-services
       Given the speech recognition service for dictation runs as three idle copies, and two processes whose process ids pick different copies
       When each process sends a request
       Then the requests go to two different copies
-
-  Rule: A hung confirmation makes the command spotting service unhealthy
-
-    Scenario: The app leaves a stalled service
-      Given the app listens through a command spotting service
-      When the command spotting service reports that it stalled
-      Then the stalled service is counted as lost and the app connects to it again
 
   Rule: Another program on a speech recognition port is named in the log
 

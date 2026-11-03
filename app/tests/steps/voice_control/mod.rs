@@ -44,8 +44,6 @@ const COMMAND_LENGTH: Duration = Duration::from_millis(500);
 /// How late the service places a command's start: a cut this late keeps the first command
 /// word in the recording, so the text must lose it.
 const LATE_CUT: Duration = Duration::from_millis(50);
-/// The name the service reports for the command the user starts by saying "stop".
-const STOP_PHRASE: &str = "stop dictation";
 /// Longest a pipeline reaction may take in these scenarios.
 const REACTION: Duration = Duration::from_secs(2);
 /// How long a scenario watches for something that must not happen.

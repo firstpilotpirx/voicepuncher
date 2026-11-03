@@ -8,13 +8,12 @@ use voicepuncher::test_doubles::prelude::*;
 use cucumber::{given, then, when};
 
 use voicepuncher_e2e_test::machine_load;
-use voicepuncher_e2e_test::stalled_copies::{self, Watch};
 use voicepuncher_e2e_test::voice_commands::{
     from_first_sound, silence, spoken_by, spoken_with_pauses, without_trailing_silence,
 };
 
 use super::speech_after_start::{BEFORE_RESTART, SENTENCE};
-use super::{env, session_of, Cues, Expected, HandsFreeSession, ENGLISH_VOICE, SAMPLE_RATE_HZ};
+use super::{session_of, Cues, Expected, HandsFreeSession, ENGLISH_VOICE, SAMPLE_RATE_HZ};
 use crate::E2eWorld;
 
 /// 20 ms per message: a real microphone delivers audio about this often.
@@ -47,13 +46,11 @@ pub(super) struct MeasuredStart {
     /// When the sample that ends the command's words was fed.
     words_ended: Instant,
     /// Where the command's words end in the stream the command spotting service heard, in
-    /// seconds: its log places each confirmation there.
+    /// seconds.
     words_end_in_stream: f32,
     /// When the last sample of the speech after the command was fed, if speech followed.
     speech_ended: Option<Instant>,
     pub(super) cue: Option<Instant>,
-    /// The confirmations the command spotting service cut short while the cue was awaited.
-    cut_short: Vec<String>,
 }
 
 impl MeasuredStart {
@@ -87,10 +84,8 @@ impl MeasuredStart {
                 self.words_end_in_stream
             ),
             None => format!(
-                "{}: no start cue (words end at {:.2} s of the stream); {}",
-                self.label,
-                self.words_end_in_stream,
-                stalled_copies::report(&self.cut_short)
+                "{}: no start cue (words end at {:.2} s of the stream)",
+                self.label, self.words_end_in_stream
             ),
         }
     }
@@ -138,8 +133,6 @@ impl HandsFreeSession {
     ) -> Result<MeasuredStart> {
         let cues_before = cues.lock().unwrap().len();
         let heard_before = self.microphone.captured.lock().unwrap().len();
-        let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-        let watch = env("VOICEPUNCHER_COMMAND_SPOTTING_URL").map(|url| Watch::start(&url, &home));
         let (words_ended, fed) = self.hear_timed(audio, words_end)?;
         let cue = self.next_cue(cues, cues_before, room, fed)?;
         let measured = MeasuredStart {
@@ -148,7 +141,6 @@ impl HandsFreeSession {
             words_end_in_stream: (heard_before + words_end) as f32 / SAMPLE_RATE_HZ,
             speech_ended: (audio.len() > words_end).then_some(fed),
             cue,
-            cut_short: watch.map(|watch| watch.cut_short()).unwrap_or_default(),
         };
         // The numbers of design.md § Measurements come from these lines.
         println!("start cue | {}", measured.report());
@@ -226,9 +218,11 @@ impl HandsFreeSession {
     }
 }
 
-/// `said` in a synthesized voice, cut after its last sound.
+/// `said` in the system's synthesized voice, cut after its last sound: the streaming models
+/// mishear Eddy's "start" ("стюарт", "Start" only after the pause), a test of the voice rather
+/// than of the cue.
 pub(super) fn synthesized_command(said: &str) -> Result<Vec<f32>> {
-    Ok(without_trailing_silence(spoken_by(ENGLISH_VOICE, said)?))
+    Ok(without_trailing_silence(spoken_with_pauses(said)?))
 }
 
 pub(super) fn sentence_at_once() -> Result<Vec<f32>> {
@@ -236,7 +230,7 @@ pub(super) fn sentence_at_once() -> Result<Vec<f32>> {
 }
 
 /// A cue over its bound fails naming what ran beside it: the spec bounds the cue on an
-/// idle machine, so the load at the failure tells a slow confirmation from a loaded machine.
+/// idle machine, so the load at the failure tells a slow recognizer from a loaded machine.
 fn check_within(start: &MeasuredStart, bound_secs: f32) -> Result<()> {
     if !start.within(Duration::from_secs_f32(bound_secs)) {
         bail!(

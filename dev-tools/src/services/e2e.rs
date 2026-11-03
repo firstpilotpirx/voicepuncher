@@ -94,18 +94,14 @@ pub fn watched_ports(settings: &Settings, prefix: &str) -> Vec<Watched> {
         variable: format!("{prefix}_{variable}"),
     };
     let mut ports = Vec::new();
-    for (speech, variable) in [
-        (&settings.dictation, "STT_PORT"),
-        (&settings.commands, "COMMAND_STT_PORT"),
-    ] {
-        ports.push(watched(speech.port, speech.name, variable));
-        let copy = format!("{} copy", speech.name);
-        ports.extend(
-            copies(speech)
-                .into_iter()
-                .map(|port| watched(port, &copy, variable)),
-        );
-    }
+    let speech = &settings.dictation;
+    ports.push(watched(speech.port, speech.name, "STT_PORT"));
+    let copy = format!("{} copy", speech.name);
+    ports.extend(
+        copies(speech)
+            .into_iter()
+            .map(|port| watched(port, &copy, "STT_PORT")),
+    );
     ports.push(watched(
         settings.kws_port,
         "voicepuncher-command-spotting",
@@ -139,12 +135,9 @@ fn holder(watched: &Watched) -> Option<String> {
 
 /// What this run tests: one line per service, its port, model and the PIDs of what it started.
 pub fn testing_lines(settings: &Settings) -> Vec<String> {
-    let mut lines: Vec<String> = [&settings.dictation, &settings.commands]
-        .into_iter()
-        .map(|speech| testing_copies(settings, speech))
-        .collect();
+    let mut lines = vec![testing_copies(settings, &settings.dictation)];
     let (port, binary) = (settings.kws_port, "voicepuncher-command-spotting");
-    let model = basename(&std::env::var("VOICEPUNCHER_KWS_MODEL_DIR").unwrap_or_default());
+    let model = basename(&std::env::var("VOICEPUNCHER_STREAMING_EN_MODEL_DIR").unwrap_or_default());
     let pid = pid_of(settings, binary, port);
     lines.push(format!(
         "● testing {binary} on port {port}: {model}, pid {pid}"

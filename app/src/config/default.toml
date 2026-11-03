@@ -75,12 +75,6 @@ restart_sound = "Hero"
 enabled = false
 # Address of the command spotting service; it must be on this Mac.
 url = "ws://127.0.0.1:8082"
-# Confirm each command with Whisper before it is carried out. Off is faster: the keyword
-# spotter alone decides, and the log and command history record whether Whisper agreed.
-confirm_commands = true
-# What hears the commands: "streaming" (an English and a Russian streaming recognizer) or
-# "keyword_spotting" (the keyword spotter, confirmed by Whisper).
-recognizer = "streaming"
 
 [archive]
 # Keep every dictation's audio and texts.
@@ -89,7 +83,7 @@ enabled = true
 dir = "~/.voicepuncher/history"
 # The oldest dictations are removed once the folder holds more megabytes than this.
 max_size_mb = 2048
-# Keep every voice command's audio and what both models heard in
+# Keep every voice command's audio and what the recognizers heard in
 # ~/.voicepuncher/command-history, within the same size limit.
 keep_commands = true
 
@@ -103,14 +97,10 @@ level = "info"
 manage = true
 # Copies of the speech recognition service for dictation, 1 to 4.
 dictation_copies = 3
-# Copies of the speech recognition service for commands, 1 to 4.
-command_copies = 3
 # Copies of the command spotting service, 1 to 4.
 command_spotting_copies = 2
 # The folder the models are downloaded to.
 models_dir = "~/.voicepuncher/models"
-# Address of the speech recognition service for commands; it must be on this Mac.
-commands_url = "http://127.0.0.1:8085/v1"
 
 [app]
 # Set by the app once it asked whether to start at login; it asks only once.

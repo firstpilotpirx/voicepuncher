@@ -65,7 +65,6 @@ fn as_reported(trace: &Trace, report: &ReportTrace) -> Reported {
         start: report.start - trace.start,
         end: report.end - trace.start,
         heard: false,
-        whisper: None,
     }
 }
 

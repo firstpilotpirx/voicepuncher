@@ -1,7 +1,7 @@
 //! The needs of the tests: a service, a model, recordings or the desktop.
 //!
 //! A test that needs one lives in a module named after the need
-//! (`needs_stt`, `needs_kws_models`, …); the gates of `dev-tools` leave it out, and count it, when the need is
+//! (`needs_stt`, `needs_streaming_models`, …); the gates of `dev-tools` leave it out, and count it, when the need is
 //! missing. A test that runs anyway fails here, naming what it needs.
 
 /// The value of `variable`, which the recipe that runs the test sets.
@@ -21,7 +21,9 @@ pub fn required_env(variable: &str) -> String {
 /// The recipe that sets `variable` for the tests that need it.
 fn recipe_setting(variable: &str) -> &'static str {
     match variable.trim_start_matches("VOICEPUNCHER_") {
-        "KWS_MODEL_DIR" | "KWS_VAD_MODEL" => "`just check` after `just models`",
+        "STREAMING_EN_MODEL_DIR" | "STREAMING_RU_MODEL_DIR" | "KWS_VAD_MODEL" => {
+            "`just check` after `just models`"
+        }
         "VOICE_SAMPLES" => "`just e2e-smoke` with recordings in ~/.voicepuncher/voice-samples",
         "BENCH_CORPUS" => "`just check` after `just corpus`",
         "DESKTOP_IT" => "`just it-real`",

@@ -4,7 +4,7 @@ use super::{
     bail, given, run, when, CommandPlacement, Context, Instant, IntegrationWorld, PipelineInput,
     PttSignal, Result, SpottingEvent, VoiceCommand, VoiceRun, COMMAND_AFTER, COMMAND_LENGTH,
     LATE_CUT, MORE_WORDS, OTHER_SENTENCE, PHRASE_LEAD, PHRASE_LENGTH, SEGMENT_TAIL, SENTENCE,
-    SETTLE, STOP_PHRASE,
+    SETTLE,
 };
 use voicepuncher::test_doubles::StartedOnDemand;
 
@@ -166,7 +166,7 @@ pub(super) fn doubled(said: &str) -> Option<Vec<VoiceCommand>> {
 pub(super) fn says_in_sentence(world: &mut IntegrationWorld, sentence: String) -> Result<()> {
     let run = run(world);
     run.start_when();
-    run.say_in_sentence(&sentence, STOP_PHRASE)
+    run.say_in_sentence(&sentence)
 }
 
 #[when("the command spotting service stops answering")]

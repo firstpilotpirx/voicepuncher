@@ -6,7 +6,7 @@
 use cucumber::{then, when};
 use voicepuncher::test_doubles::prelude::*;
 
-use voicepuncher::core::domain::{CommandPlacement, ConfirmationTiming, ReportTiming};
+use voicepuncher::core::domain::{CommandPlacement, ReportTiming};
 
 use super::{
     chain, doubled, one_command, run, Event, VoiceRun, COMMAND_LENGTH, OTHER_SENTENCE, PHRASE_LEAD,
@@ -20,10 +20,6 @@ const NO_PAUSE: Duration = Duration::from_millis(50);
 const SHORT_PAUSE: Duration = Duration::from_millis(500);
 /// How long after the next words began the service reports the command.
 const REPORTED_AFTER: Duration = Duration::from_millis(300);
-/// How long after the next words began the service asks the check that hears the command.
-const CHECK_ASKED_AFTER: Duration = Duration::from_millis(100);
-/// How long the speech recognition service takes to confirm a command.
-pub(super) const CONFIRMATION_TIME: Duration = Duration::from_millis(150);
 
 /// The sentence a step names: "a sentence" or "another sentence".
 fn sentence_named(which: &str) -> Result<&'static str> {
@@ -40,7 +36,7 @@ pub(super) fn sleep_until(moment: Instant) {
 
 impl VoiceRun {
     /// Says the command `said` and, without a pause, the sentence named `which`; the
-    /// service reports the command, confirmed by a check, once the sentence has begun.
+    /// service reports the command once the sentence has begun.
     pub(super) fn say_command_then_sentence(&mut self, said: &str, which: &str) -> Result<()> {
         let (commands, placement) = match (doubled(said), chain(said).context("no command")?) {
             (Some(once), _) => (once, CommandPlacement::Anywhere),
@@ -53,21 +49,13 @@ impl VoiceRun {
         self.speak(said, start);
         self.speak(sentence_named(which)?, end + NO_PAUSE);
         self.send(PipelineInput::Spotting(SpottingEvent::SpeechStarted(start)))?;
-        let check_asked = end + NO_PAUSE + CHECK_ASKED_AFTER;
         sleep_until(end + NO_PAUSE + REPORTED_AFTER);
         self.send(PipelineInput::Spotting(SpottingEvent::CommandsSaid {
             commands,
             start,
             end,
             placement,
-            timing: Some(ReportTiming {
-                words_ended: end,
-                confirmation: Some(ConfirmationTiming {
-                    asked_at: check_asked,
-                    took: CONFIRMATION_TIME,
-                }),
-                arrived_at: Instant::now(),
-            }),
+            timing: Some(ReportTiming { words_ended: end, arrived_at: Instant::now() }),
         }))
     }
 

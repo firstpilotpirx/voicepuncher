@@ -40,12 +40,12 @@ The service scripts SHALL start only the services the user names, and all of the
 #### Scenario: Only the speech recognition service is started
 - **GIVEN** no local service runs on the chosen ports
 - **WHEN** the user starts only the speech recognition service for dictation with the service scripts
-- **THEN** the speech recognition service for dictation answers and nothing answers on the ports of the speech recognition service for commands and the command spotting service
+- **THEN** the speech recognition service for dictation answers and nothing answers on the port of the command spotting service
 
 #### Scenario: The scripts know no text refinement service
 - **GIVEN** no local service runs on the chosen ports
 - **WHEN** the user starts every service with the service scripts
-- **THEN** the speech recognition services for dictation and for commands and the command spotting service answer
+- **THEN** the speech recognition service for dictation and the command spotting service answer
 - **AND** no text refinement service is started and nothing answers on its former port 8080
 
 ### Requirement: The speech recognition service runs as several copies found from its address
@@ -110,36 +110,8 @@ The service scripts SHALL check every few seconds that each service they keep ru
 
 #### Scenario: A busy service is not restarted
 - **GIVEN** the service scripts started the command spotting service
-- **WHEN** an app streams speech to it through several of the scripts' checks while the speech recognition service for commands answers its confirmations slowly
+- **WHEN** an app streams speech to it through several of the scripts' checks while every core of the machine is busy
 - **THEN** the service is not restarted
-
-### Requirement: The command spotting service answers while its confirmations are slow
-The command spotting service SHALL keep taking in audio, spotting commands and answering on its connection while a confirmation by the speech recognition service for commands is slow, failed or hung; a confirmation that is not answered within a few seconds SHALL be given up and logged, never ending the connection. How long the service waits for a confirmation SHALL be settable when it starts, so a test proves the give-up without waiting the default.
-
-#### Scenario: One confirmation hangs
-- **GIVEN** an app streams speech to the command spotting service
-- **AND** the speech recognition service for commands never answers one confirmation
-- **WHEN** the app keeps streaming past the wait for that confirmation
-- **THEN** the connection stays open and answers the app throughout, and the hung confirmation is logged as given up
-
-#### Scenario: Commands are spotted after a hung confirmation
-- **GIVEN** an app streams speech to the command spotting service
-- **AND** the speech recognition service for commands never answered one confirmation
-- **WHEN** the app streams the command "enter" after it
-- **THEN** the service reports "press enter"
-
-### Requirement: The command spotting service does not pile up confirmations
-While a confirmation of a running utterance waits for the speech recognition service for commands, the command spotting service SHALL skip the next check of that utterance instead of queueing it, and SHALL try once more the confirmation that decides whether a whole utterance is a command when its first attempt is not answered in time.
-
-#### Scenario: Checks of a long utterance are skipped while the service is slow
-- **GIVEN** the speech recognition service for commands takes 4 seconds to answer every confirmation
-- **WHEN** an app streams one utterance of 10 seconds
-- **THEN** at most one check of that utterance waits at any time, and the checks that fall due meanwhile are skipped
-
-#### Scenario: A command said alone is confirmed by the second attempt
-- **GIVEN** the speech recognition service for commands does not answer the first confirmation in time and answers the second
-- **WHEN** an app streams "enter" said alone
-- **THEN** the service reports "press enter"
 
 ### Requirement: A request given up by its client does not hold a copy
 A client that gives up on a request SHALL leave its copy alone until the copy answers that request: the copy SHALL get no new request meanwhile, and the client's next request SHALL go to another copy or wait, so an abandoned request never delays the request after it on the same copy.
@@ -155,54 +127,6 @@ A client that gives up on a request SHALL leave its copy alone until the copy an
 - **AND** a third request waits and its client gives up
 - **WHEN** the copies become free
 - **THEN** the abandoned request is not sent to any copy
-
-### Requirement: Speech that is no command is confirmed quickly
-The speech recognition service for commands SHALL answer the command spotting service's confirmation of any utterance up to 2.5 seconds in under 2 seconds when it is otherwise idle, also for speech in another language that makes speech recognition repeat itself, so a confirmation never waits out its deadline and never holds up the commands said after it. A confirmation the speech recognition service has not answered within its decoding budget SHALL be cut short: the command spotting service takes its utterance as no command, does not send it again, and the copy that held it takes the next confirmation at once. The decoding budget SHALL follow the pace of the service's recent answers to ordinary speech: 1 second when they came back quickly, longer when the last few took long, as under machine load, and never past the confirmation's deadline, so speech that decodes slowly because the machine is busy is heard in full while speech that decodes long because speech recognition repeats itself is still cut short. A confirmation cut short SHALL lengthen the budget to 1.5 seconds and no further, however many are cut short and whatever budget they were cut at, and an answer of speech recognition stuck repeating SHALL NOT lengthen the budget, so speech stuck repeating never raises the budget past the time a confirmation of it may take.
-
-#### Scenario: Russian speech that makes speech recognition repeat itself
-- **GIVEN** voice control runs and the speech recognition service for commands is otherwise idle
-- **WHEN** the user says Russian counting or filler words ("раз, два, три, четыре", "да, да, да, вот так") that the command spotting service sends for confirmation
-- **THEN** every confirmation of that speech is answered in under 2 seconds
-
-#### Scenario: A command right after such speech is carried out
-- **GIVEN** voice control runs and the speech recognition service for commands is otherwise idle
-- **WHEN** the user says that Russian speech and then "enter"
-- **THEN** the command spotting service reports "press enter"
-
-#### Scenario: A confirmation still decoding after 1 second is cut short
-- **GIVEN** the speech recognition service for commands runs as one copy, which answered its recent confirmations quickly and keeps decoding an utterance for 1.5 seconds before it answers
-- **WHEN** the command spotting service sends that utterance for confirmation
-- **THEN** the confirmation ends in about 1 second with nothing heard, the utterance is not sent again, and the next confirmation is sent to that copy at once
-
-#### Scenario: A confirmation decoding slowly under load is heard in full
-- **GIVEN** the speech recognition service for commands runs as one copy, which took close to a second for each of its recent confirmations, as under machine load, and keeps decoding "enter" for 1.5 seconds before it answers
-- **WHEN** the command spotting service sends that utterance for confirmation
-- **THEN** the confirmation is answered with "enter", not cut short
-
-#### Scenario: The budget never passes the deadline
-- **GIVEN** the speech recognition service for commands runs as one copy, which took longer than half the confirmation deadline for each of its recent confirmations
-- **WHEN** the command spotting service sends an utterance the copy keeps decoding past the deadline
-- **THEN** the confirmation ends at the deadline as a failed confirmation, not later and never as an utterance heard as no command
-
-#### Scenario: Speech cut short does not lengthen the budget past 1.5 seconds
-- **GIVEN** the speech recognition service for commands runs as one copy, which answered its recent confirmations quickly, and the last confirmation was cut short after 1 second
-- **WHEN** the command spotting service sends two more utterances the copy keeps decoding for 2.5 seconds each
-- **THEN** each of them is cut short after about 1.5 seconds
-
-#### Scenario: An answer stuck repeating does not lengthen the budget
-- **GIVEN** the speech recognition service for commands runs as one copy, which took close to a second for each of its recent confirmations, as under machine load, and then answered one confirmation after 1.6 seconds with speech recognition stuck repeating one word
-- **WHEN** the command spotting service sends an utterance the copy keeps decoding for 2.5 seconds
-- **THEN** that confirmation is cut short after about 2 seconds, the budget the ordinary answers give, not at the deadline
-
-### Requirement: Voice commands are confirmed by a speech recognition service of their own
-The service scripts SHALL start, beside the speech recognition service for dictation, a speech recognition service for commands that recognizes speech with the Whisper small model, and the command spotting service they start SHALL send every confirmation to it, so that the larger dictation model never slows down the confirmation of a voice command.
-
-#### Scenario: A command is confirmed by the speech recognition service for commands
-- **GIVEN** the models that the service scripts download are on disk
-- **AND** the user started all services with the service scripts
-- **WHEN** an app streams "enter" to the command spotting service
-- **THEN** the command spotting service reports "press enter"
-- **AND** the speech recognition service for commands answered its confirmation with the small model, and the speech recognition service for dictation got no request
 
 ### Requirement: Copies of a speech recognition service are found from its address
 A client of a speech recognition service SHALL find the copies of the service from the service's address alone: when the service's own port answers as a speech recognition service it is the one copy; otherwise every port among the four that follow its port plus ten thousand (minus ten thousand when those would pass the last port) that answers as a speech recognition service is a copy. A port answers as a speech recognition service when it answers the request for its start page (`GET /`) with a page that names it a whisper-server; a program that accepts connections on a port but does not answer so SHALL never receive a transcription request, whether it holds the service's own port or a copy's. A copy SHALL leave at its first refused connection to a request, and at a probe only when two attempts in a row get no connection, so one probe that is slow under machine load does not drop a copy that accepts connections; a copy SHALL join, again or anew, within a second of answering as a speech recognition service.
@@ -290,14 +214,15 @@ When the app runs from the hotkey and manages its services, it SHALL start at la
 - **GIVEN** no local service runs and voice control is off
 - **WHEN** the app launches
 - **THEN** the speech recognition service for dictation is started as its copies
-- **AND** the speech recognition service for commands and the command spotting service are not started
+- **AND** the command spotting service is not started
 - **AND** no text refinement service is started
 - **AND** dictation starts once every started service answers
 
 #### Scenario: Voice control needs the command services
-- **GIVEN** no local service runs, voice control is on and the keyword spotter is the command recognizer
+- **GIVEN** no local service runs, voice control is on
 - **WHEN** the app launches
-- **THEN** the speech recognition service for commands is started as its copies and the command spotting service is started besides the others
+- **THEN** the command spotting service is started as its copies besides the others
+- **AND** no speech recognition service for commands is started
 
 #### Scenario: A real launch leaves no service behind at quit
 - **GIVEN** no local service runs on the chosen ports and the models are on disk
@@ -357,10 +282,10 @@ After five starts in a row of one service that each ended before the service ans
 When the app quits or is told to end — Quit in its menu, a quit from the system (logout, shutdown, Activity Monitor's Quit, any quit Apple Event), a termination or an interrupt signal — it SHALL log the quit, naming a quit from the system or the signal it got, and SHALL stop every service it started — the command spotting service first, then the speech recognition copies — by asking it to end and killing it after 5 seconds, and SHALL leave every adopted service running.
 
 #### Scenario: Quit with owned and adopted services
-- **GIVEN** the app started the speech recognition service for dictation and adopted the speech recognition service for commands
+- **GIVEN** the app started the speech recognition service for dictation and adopted the command spotting service
 - **WHEN** the user quits the app
 - **THEN** no copy of the speech recognition service for dictation is left
-- **AND** the speech recognition service for commands still answers
+- **AND** the command spotting service still answers
 
 #### Scenario: A service that ignores the request to end is killed
 - **GIVEN** the app started a service that does not end when asked
@@ -421,33 +346,6 @@ At every launch that manages services, the app SHALL log for each service the en
 - **WHEN** the app launches and looks up its services
 - **THEN** its log says the speech recognition service runs whisper-server 1.9.5 from `$PATH`
 
-### Requirement: A hung confirmation makes the command spotting service unhealthy
-The command spotting service SHALL count a confirmation that runs longer than its attempts may take, and at least 10 seconds, as hung: its health check SHALL answer unavailable naming the connection, and it SHALL tell the app on that connection, which counts the service as lost and reaches for another copy.
-
-#### Scenario: A confirmation thread that hangs is seen
-- **GIVEN** an app streams speech to the command spotting service
-- **AND** one confirmation hangs inside the service past its attempts
-- **WHEN** the health of the service is checked
-- **THEN** it answers unavailable naming the connection, and the app was told the service stalled
-
-#### Scenario: The app leaves a stalled service
-- **GIVEN** listening is on
-- **WHEN** the command spotting service reports that it stalled
-- **THEN** the service is counted as lost and the app reaches for it again
-
-### Requirement: Confirmations waiting in the command spotting service are bounded
-The command spotting service SHALL keep at most a few confirmations waiting per confirmation thread of a connection while the confirmation that thread runs is stalled; a confirmation asked past that SHALL fail at once and be logged, never queue without bound. A thread that keeps answering, however slowly, SHALL queue every confirmation asked of it.
-
-#### Scenario: A confirmation past the bound fails at once
-- **GIVEN** the speech recognition service for commands answers nothing, the confirmation a thread runs has run past its attempts, and the thread already holds its bound of waiting confirmations
-- **WHEN** one more confirmation is asked on that thread
-- **THEN** it fails at once and the failure is logged
-
-#### Scenario: A slow confirmation thread keeps every confirmation
-- **GIVEN** the speech recognition service for commands answers every confirmation, late
-- **WHEN** more confirmations than the bound are asked on one thread at once
-- **THEN** every one of them is answered with what was heard
-
 ### Requirement: A client of the copies starts without waiting for their discovery
 Creating a client of a service's copies SHALL return at once; the copies SHALL be probed in the background, and the client's first request SHALL wait for the first probe to finish, so it never takes a copy that answers for one that does not.
 
@@ -456,35 +354,12 @@ Creating a client of a service's copies SHALL return at once; the copies SHALL b
 - **WHEN** a client of those copies is created
 - **THEN** it returns at once, and its first request goes to a copy that answers
 
-### Requirement: The app and the service scripts start a service alike
-The app SHALL start each local service with the same arguments as the service scripts, and SHALL pick a model the same way the service scripts do: of several matching model files or folders, the newest. A difference between the two SHALL fail the tests.
-
-#### Scenario: The app and the scripts start the speech recognition service with the same arguments
-- **GIVEN** the service scripts and the app's own list of service command lines
-- **WHEN** the arguments of the speech recognition services and the command spotting service are compared
-- **THEN** each service gets the same arguments in the same order from both
-
-#### Scenario: The app and the scripts start the streaming recognizer with the same arguments
-- **GIVEN** the service scripts told to use the streaming recognizer and the app's own list of service command lines
-- **WHEN** the arguments of the command spotting service with the streaming recognizer are compared
-- **THEN** it gets the same arguments in the same order from both
-
-#### Scenario: A changed argument in only one place is caught
-- **GIVEN** a service argument that the service scripts set and the app does not
-- **WHEN** the tests run
-- **THEN** they fail, naming the service whose arguments differ
-
-#### Scenario: Of two keyword spotting models the newest is used
-- **GIVEN** two keyword spotting model folders in the models folder, the older one first by name
-- **WHEN** the services the configuration needs are looked up
-- **THEN** the command spotting service is started with the newer folder
-
 ### Requirement: A copy of a speech recognition service is ready once it has transcribed speech
 The service scripts and the app SHALL count a copy of a speech recognition service they start as ready only after it answered the transcription of a short utterance, and SHALL report the copy ready together with how long that first transcription took, so the first request a client sends a copy never waits for the copy's first decode. A copy the app starts again after it stopped SHALL be warmed the same way before it counts ready; a copy the scripts' supervisor starts again after a crash is warmed by its first request instead. The checks of a running copy SHALL send it no speech.
 
 #### Scenario: The service scripts report a copy ready after its first transcription
 - **GIVEN** no local service runs on the chosen ports
-- **WHEN** the service scripts start the speech recognition service for commands
+- **WHEN** the service scripts start the speech recognition service for dictation
 - **THEN** each copy is reported ready with the time of its first transcription, and the copy's log shows that transcription before the report
 
 #### Scenario: The app counts a started copy ready after its first transcription
@@ -501,14 +376,6 @@ The service scripts and the app SHALL count a copy of a speech recognition servi
 - **GIVEN** a copy the app started is ready
 - **WHEN** the app checks the copy while it runs
 - **THEN** the check asks only whether the copy answers, and sends it no speech to transcribe
-
-### Requirement: A missing service program or model is named
-A service whose program, or a model file named by its variable, cannot be found SHALL be Failed at once, without a start, with a reason naming what was looked for and where. A model of the catalog missing from the models folder does not reach the services: the runtime waits for models first.
-
-#### Scenario: The command model is not on disk
-- **GIVEN** the variable for the speech recognition model for commands names a file that is not on disk
-- **WHEN** the services the configuration needs are looked up
-- **THEN** the speech recognition service for commands is Failed with a reason naming the model file it looked for
 
 ### Requirement: The app runs the command spotting service as copies
 When the app manages its services, it SHALL start the command spotting service as the configured number of copies, 1 to 4, 2 by default, found from the service's address as the copies of a speech recognition service are, on copy ports apart from those of every other service. A service already answering on its own port or its copy ports SHALL be adopted as it runs.
@@ -566,7 +433,7 @@ When an adopted service, or an adopted copy, stops answering three checks in a r
 When an adopted service, or an adopted copy, that answered its checks takes connections but fails three checks in a row, the app SHALL stop the program that listens on its port when that program is the service's own program, log it in one line naming the service, the copy, the port and the process id, and replace it as a stopped adopted service; another program on the port SHALL be left running and named in the log.
 
 #### Scenario: A hung adopted copy is killed and replaced
-- **GIVEN** the app adopted the copies of the speech recognition service for commands
+- **GIVEN** the app adopted the copies of the speech recognition service for dictation
 - **WHEN** one copy stops answering without ending
 - **THEN** within 30 seconds the app has stopped that copy's process and started its own copy on that port, and it answers
 - **AND** the log names the service, the copy, the port and the process id it stopped
@@ -621,16 +488,28 @@ When voice control connects to the command spotting service and a copy refuses i
 - **WHEN** voice control connects
 - **THEN** it is served by the second copy and a spoken command is carried out
 
-### Requirement: The command recognizer is chosen in the configuration
-The configuration SHALL name the command recognizer: the streaming recognizer (the default) or the keyword spotter confirmed by Whisper. With the streaming recognizer the app SHALL start the command spotting service with the streaming models and no speech recognition service for commands; with the keyword spotter, both as before. The service scripts SHALL use the keyword spotter unless told otherwise.
+### Requirement: The app and the service scripts start each service alike
+The app SHALL start each local service with the same arguments as the service scripts, and SHALL pick a model the same way the service scripts do: of several matching model files or folders, the newest. A difference between the two SHALL fail the tests.
 
-#### Scenario: Voice control starts the streaming recognizer by default
-- **GIVEN** no local service runs, voice control is on and the user never chose a command recognizer
-- **WHEN** the app launches
-- **THEN** the command spotting service is started with the streaming models
-- **AND** the speech recognition service for commands is not started
+#### Scenario: The app and the scripts start the speech recognition service with the same arguments
+- **GIVEN** the service scripts and the app's own list of service command lines
+- **WHEN** the arguments of the speech recognition service for dictation and the command spotting service are compared
+- **THEN** each service gets the same arguments in the same order from both
 
-#### Scenario: The keyword spotter can still be chosen
-- **GIVEN** no local service runs, voice control is on and the keyword spotter is chosen as the command recognizer
-- **WHEN** the app launches
-- **THEN** the speech recognition service for commands and the command spotting service with the keyword spotting model are started
+#### Scenario: The app and the scripts start the streaming recognizer with the same arguments
+- **GIVEN** the service scripts and the app's own list of service command lines
+- **WHEN** the arguments of the command spotting service are compared
+- **THEN** it gets the same arguments in the same order from both
+
+#### Scenario: A changed argument in only one place is caught
+- **GIVEN** a service argument that the service scripts set and the app does not
+- **WHEN** the tests run
+- **THEN** they fail, naming the service whose arguments differ
+
+### Requirement: A service whose program or model is missing is named
+A service whose program, or a model file named by its variable, cannot be found SHALL be Failed at once, without a start, with a reason naming what was looked for and where. A model of the catalog missing from the models folder does not reach the services: the runtime waits for models first.
+
+#### Scenario: The dictation model is not on disk
+- **GIVEN** the variable for the speech recognition model for dictation names a file that is not on disk
+- **WHEN** the services the configuration needs are looked up
+- **THEN** the speech recognition service for dictation is Failed with a reason naming the model file it looked for

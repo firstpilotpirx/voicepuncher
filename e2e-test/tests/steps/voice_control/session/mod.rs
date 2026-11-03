@@ -153,7 +153,6 @@ impl HandsFreeSession {
         let (inputs_tx, inputs_rx) = mpsc::channel();
         let transcriber = detecting_transcriber(transcription_url)?;
         let mut spotter = StreamingSpotter::new(service.url, inputs_tx, &events);
-        spotter.confirm_commands = service.confirm_commands;
         spotter.heard = Some(heard);
         spotter.keeps_heard = true;
         let heard_by = Arc::clone(&microphone);

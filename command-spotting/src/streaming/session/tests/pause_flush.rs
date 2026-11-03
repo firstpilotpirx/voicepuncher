@@ -4,14 +4,6 @@
 use super::super::utterance::FLUSH_SECS;
 use super::*;
 
-/// The start of the first command in `events`.
-fn command_start(events: &[ServerEvent]) -> Option<f32> {
-    events.iter().find_map(|e| match e {
-        ServerEvent::Command { start, .. } => Some(*start),
-        _ => None,
-    })
-}
-
 #[test]
 fn should_report_a_lone_stop_at_the_pause_from_a_recognizer_that_emits_it_late() {
     // Given "стоп" said at 1.1 s to a recognizer that emits a word 0.6 s of audio after it

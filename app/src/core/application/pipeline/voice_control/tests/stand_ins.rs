@@ -230,13 +230,24 @@ pub(super) fn say(pipeline: &mut Pipeline, phrase: &str) -> Instant {
     say_at(pipeline, phrase, Instant::now())
 }
 
+/// The service's report of `phrase` said on its own from `start` to `end`.
+pub(super) fn said_alone(phrase: &str, start: Instant, end: Instant) -> SpottingEvent {
+    SpottingEvent::CommandsSaid {
+        commands: VoiceCommand::from_phrase(phrase).into_iter().collect(),
+        start,
+        end,
+        placement: CommandPlacement::Alone,
+        timing: None,
+    }
+}
+
 /// Says `phrase` on its own in a segment starting at `segment_start`.
 pub(super) fn say_at(pipeline: &mut Pipeline, phrase: &str, segment_start: Instant) -> Instant {
     let start = segment_start + PHRASE_LEAD;
     let end = start + PHRASE_LENGTH;
     let events = [
         SpottingEvent::SpeechStarted(segment_start),
-        SpottingEvent::PhraseSpotted { phrase: phrase.to_owned(), start, end, timing: None },
+        said_alone(phrase, start, end),
         SpottingEvent::SpeechEnded(end + PHRASE_LEAD),
     ];
     for event in events {

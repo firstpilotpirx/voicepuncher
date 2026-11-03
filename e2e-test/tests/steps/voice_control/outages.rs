@@ -1,6 +1,6 @@
 //! Voice control through outages of the real services, started by the service scripts on
-//! ports of the scenario's own: a speech recognition service for commands that stops
-//! answering for a while, a command spotting service that is killed and started again by the scripts.
+//! ports of the scenario's own: a command spotting service that is killed and started again
+//! by the scripts.
 
 use voicepuncher::test_doubles::prelude::*;
 
@@ -11,11 +11,6 @@ use crate::steps::local_services::{healthy, ScenarioServices};
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
-/// Just past the 10 s the scenario names, and longer than the app's silence limit and the
-/// service's deadline for a confirmation.
-const STALL: Duration = Duration::from_secs(11);
-/// Dictating goes on a little past the stall, so the last confirmation is answered.
-const DICTATE_PAST_STALL: Duration = Duration::from_secs(2);
 const BACK_WITHIN: Duration = Duration::from_secs(30);
 /// How long after the service answers again the user speaks.
 const SPEAKS_AFTER_RETURN: Duration = Duration::from_secs(5);
@@ -40,11 +35,11 @@ fn scenario_services(world: &mut E2eWorld) -> Result<&mut ScenarioServices> {
         .context("the services were not started")
 }
 
-#[given("the speech recognition service for commands and the command spotting service run on ports of their own")]
+#[given("the command spotting service runs on ports of its own")]
 async fn own_services(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let mut services = ScenarioServices::for_outages()?;
-        services.start(&["whisper-server-commands", "voicepuncher-command-spotting"])?;
+        services.start(&["voicepuncher-command-spotting"])?;
         world.services.local_services = Some(services);
         Ok(())
     })
@@ -72,24 +67,6 @@ async fn dictation_on_own_services(world: &mut E2eWorld) -> Result<()> {
         Ok(())
     })
     .await
-}
-
-/// Pauses the one copy of the speech recognition service for commands for the stall (11 seconds), so the
-/// confirmation it holds is answered only then.
-#[given("the speech recognition service for commands holds one confirmation of the command spotting service for longer than the service waits for a confirmation")]
-fn speech_recognition_stalls(world: &mut E2eWorld) -> Result<()> {
-    let services = scenario_services(world)?;
-    let pid = services
-        .command_speech_recognition_process()
-        .context("no process of the speech recognition service for commands was found")?;
-    services.pause(pid)?;
-    std::thread::spawn(move || {
-        std::thread::sleep(STALL);
-        let _ = Command::new("kill")
-            .args(["-CONT", &pid.to_string()])
-            .status();
-    });
-    Ok(())
 }
 
 #[given("the command spotting service went away and was started again")]
@@ -195,18 +172,6 @@ fn wait_for(limit: Duration, condition: impl Fn() -> bool) -> bool {
     condition()
 }
 
-#[when("the user keeps dictating through that hold and then says \"stop\"")]
-async fn dictate_through_stall(world: &mut E2eWorld) -> Result<()> {
-    off_thread(world, |world| {
-        let hands_free = hands_free(world)?;
-        hands_free.keep_saying(SENTENCE, STALL + DICTATE_PAST_STALL)?;
-        hands_free.say("stop")?;
-        hands_free.saw(|e| matches!(e, Event::Pasted(_)));
-        Ok(())
-    })
-    .await
-}
-
 #[when("the user says \"enter\" 5 seconds after the service answers again")]
 async fn press_enter_after_return(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
@@ -228,16 +193,6 @@ async fn stop_after_return(world: &mut E2eWorld) -> Result<()> {
         Ok(())
     })
     .await
-}
-
-#[then("listening is still on and no error about the command spotting service is logged")]
-fn listening_kept(world: &mut E2eWorld) -> Result<()> {
-    let events = hands_free(world)?.events();
-    ensure!(
-        !events.contains(&Event::SpottingLost),
-        "the app took the command spotting service for gone: {events:?}"
-    );
-    Ok(())
 }
 
 #[then("the dictation ends and its text is pasted")]

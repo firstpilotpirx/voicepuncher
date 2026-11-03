@@ -5,7 +5,7 @@ use std::fs;
 use super::super::*;
 
 /// The command spotting service with the streaming recognizers, compared as a service of its own.
-const STREAMING: &str = "voicepuncher-command-spotting --recognizer streaming";
+const STREAMING: &str = "voicepuncher-command-spotting";
 
 /// The service scripts' command lines: one literal list per service.
 fn scripts() -> String {
@@ -42,8 +42,7 @@ fn list_of(text: &str, function: &str) -> Vec<String> {
 fn script_args(service: &str, text: &str) -> Vec<String> {
     let function = match service {
         WHISPER => "whisper_args",
-        STREAMING => "streaming_args",
-        _ => "command_spotting_args",
+        _ => "streaming_args",
     };
     list_of(text, function)
         .into_iter()
@@ -56,19 +55,17 @@ fn script_args(service: &str, text: &str) -> Vec<String> {
 
 /// The catalog's arguments of `service`, with the scripts' parameter names, port 0 and 0 threads.
 fn catalog_args(service: &str) -> Vec<String> {
-    match service {
-        WHISPER => whisper_args("model", 0, 0, "vad"),
-        STREAMING => {
-            let models = ["en_model_dir", "ru_model_dir", "vad"].map(String::from);
-            streaming_args(0, &models, None)
-        }
-        _ => command_spotting_args(0, "model_dir", "vad", "commands_url", None),
+    if service == WHISPER {
+        whisper_args("model", 0, 0, "vad")
+    } else {
+        let models = ["en_model_dir", "ru_model_dir", "vad"].map(String::from);
+        streaming_args(0, &models, None)
     }
 }
 
 /// The services whose arguments differ between the service scripts in `text` and the catalog.
 fn drifted(text: &str) -> Vec<&'static str> {
-    [WHISPER, COMMAND_SPOTTING, STREAMING]
+    [WHISPER, STREAMING]
         .into_iter()
         .filter(|service| script_args(service, text) != catalog_args(service))
         .collect()
@@ -115,7 +112,8 @@ fn should_pass_the_archive_size_limit_to_the_command_history() {
     let home = std::path::Path::new("/Users/someone");
     // When
     let kept = CommandHistoryArgs::of(&archive, home);
-    let args = command_spotting_args(0, "model_dir", "vad", "commands_url", kept.as_ref());
+    let models = ["en_model_dir", "ru_model_dir", "vad"].map(String::from);
+    let args = streaming_args(0, &models, kept.as_ref());
     // Then
     let tail = &args[args.len() - 4..];
     let expected = [

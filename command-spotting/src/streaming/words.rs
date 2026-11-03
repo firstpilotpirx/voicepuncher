@@ -1,9 +1,15 @@
 //! The words a streaming recognizer heard so far, each with its times, from the tokens it
 //! decoded and the time it decoded each.
 
-use crate::confirm::TimedWord;
-
 use super::respell::respell_word;
+
+/// A word heard, with its times in the audio.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TimedWord {
+    pub text: String,
+    pub start: f32,
+    pub end: f32,
+}
 
 /// How long the last token of a word lasts after the time it was decoded at.
 const TOKEN_SECS: f32 = 0.1;

@@ -4,15 +4,14 @@
 //! recognizer, and closes after a pause and half a second more audio.
 
 use std::collections::VecDeque;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use crate::audio::SAMPLE_RATE;
 use crate::conversions::saturating_usize;
 use crate::history::CommandHistory;
-use crate::keywords::UnknownPhrases;
 use crate::matcher::PhraseMatcher;
-use crate::protocol::{PhraseSelection, ServerEvent};
-use crate::worker::Wake;
+use crate::protocol::{PhraseSelection, ServerEvent, UnknownPhrases};
+use crate::streaming::Wake;
 
 use super::ports::{SpeechGate, StreamingModel, GATE_WINDOW};
 
@@ -83,8 +82,17 @@ impl<'a> Session<'a> {
         }
     }
 
-    /// Listens for the phrases of `selection` from now on.
+    /// Listens for the phrases of `selection` from now on; refuses a phrase that is no command.
     pub fn select(&mut self, selection: &PhraseSelection) -> Result<(), UnknownPhrases> {
+        let unknown: Vec<String> = selection
+            .phrases
+            .iter()
+            .filter(|p| !voicepuncher_voice_commands::COMMANDS.contains(&p.as_str()))
+            .cloned()
+            .collect();
+        if !unknown.is_empty() {
+            return Err(UnknownPhrases(unknown));
+        }
         self.matcher =
             PhraseMatcher::new(&selection.phrases).with_early_start(selection.early_start);
         Ok(())
@@ -115,15 +123,6 @@ impl<'a> Session<'a> {
         self.utterance
             .as_mut()
             .map_or_else(Vec::new, |u| u.collect(&self.matcher, now, wait))
-    }
-
-    /// No confirmation runs, so none stalls.
-    pub fn stalled(&self) -> Option<Duration> {
-        None
-    }
-
-    pub fn pending_confirmations(&self) -> usize {
-        0
     }
 
     fn frame(&mut self, frame: &[f32]) -> Vec<ServerEvent> {
@@ -192,6 +191,10 @@ impl<'a> Session<'a> {
         let Some(utterance) = self.utterance.take() else {
             return Vec::new();
         };
+        // WHY: the next utterance's replay must not start with this one's last words; the
+        // models hear a quiet "restart" after "…broken" as "let's start".
+        let over = self.replay.len().saturating_sub(utterance.quiet());
+        self.replay.drain(..over);
         let closed = utterance.close(&self.matcher, now);
         log::info!("conn={} {}", self.conn, closed.trace.log_line());
         if let Some(history) = self.history {

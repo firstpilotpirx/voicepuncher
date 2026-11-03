@@ -7,8 +7,8 @@ The repository is a Cargo workspace of ten crates; [project-architecture.html](p
 | Crate | Role |
 |---|---|
 | `app/` | The application: hexagonal architecture, one process, the menu bar item and its windows |
-| `command-spotting/` | The command spotting service: sherpa-onnx keyword spotting on the microphone stream, each hit confirmed by the speech recognition service for commands, events to the app over a loopback WebSocket |
-| `copy-pool/` | The copy pool library: finds the copies of a speech recognition service from its address (10000 above its port) and leases one per request; used by `app/` and `command-spotting/` |
+| `command-spotting/` | The command spotting service: a Silero voice gate and two sherpa-onnx streaming recognizers (English, Russian) on the microphone stream, events to the app over a loopback WebSocket |
+| `copy-pool/` | The copy pool library: finds the copies of a speech recognition service from its address (10000 above its port) and leases one per request; used by `app/` |
 | `entry-folders/` | The entry folders of the dictation archive and the command history; used by `app/` and `command-spotting/` |
 | `log-line/` | The form of one log line; used by `app/` and `command-spotting/` |
 | `voice-commands/` | The voice commands declared once (phrases, forms, mishearings); used by `command-spotting/`, checked by the `app/` tests |
@@ -26,7 +26,7 @@ flowchart TB
     subgraph external["External actors"]
         USER["User\n(hotkey, voice, menu bar, windows)"]
         MACOS["macOS\n(TCC, CoreAudio, AppKit,\nCGEventPost, afplay)"]
-        SERVICES[("Local services\nwhisper-server :8081 · whisper-server-commands :8085\ncommand spotting :8082")]
+        SERVICES[("Local services\nwhisper-server :8081\ncommand spotting :8082")]
         FS["File system\n(config, models, logs,\ndictation archive, WAV)"]
     end
 
@@ -111,7 +111,7 @@ Signals received while the pipeline is in any non-Idle state other than `Recordi
 | Hotkey capture | `core-graphics` `CGEventTap` | Listen-only global key tap without a visible window; reads key codes and flags only, so no input-source call runs off the main thread |
 | Audio recording | `cpal` | Cross-platform abstraction; picks CoreAudio on macOS; the capture callback is realtime-safe |
 | Speech-to-text | local `whisper-server` (whisper.cpp) over the OpenAI Audio Transcriptions API, via `ureq` | The engine runs outside the app (Metal, any `ggml-*.bin` model); the app stays engine-agnostic and builds without C++. The service runs as copies on the ports 10000 above its own; `copy-pool` finds them from the address and gives each request a free copy |
-| Voice control | the command spotting service `voicepuncher-command-spotting` (sherpa-onnx keyword spotting + confirmation by `whisper-server-commands`) over a loopback WebSocket | Keyword spotting is cheap enough to run on the whole microphone stream; the confirmation by a small Whisper model keeps false starts out; a separate process keeps the native library out of the app |
+| Voice control | the command spotting service `voicepuncher-command-spotting` (a Silero voice gate + English and Russian sherpa-onnx streaming recognizers) over a loopback WebSocket | The voice gate wakes the recognizers only at the onset of speech, and the first recognizer to hear a command reports it at once; a separate process keeps the native library out of the app |
 | Clipboard paste, key presses | `arboard` + `CGEventPost` | `arboard` writes to NSPasteboard; `CGEventPost` sends Cmd+V, Enter and Cmd+A |
 | Text input focus | AppKit accessibility (`AXUIElement`) | A command that types waits for a text field to have the focus |
 | Audio playback | `afplay` (a child process per cue) | Start and stop cues without an audio framework in the process |

@@ -18,7 +18,7 @@ pub struct BusyCores {
 }
 
 impl BusyCores {
-    fn start() -> Self {
+    pub(crate) fn start() -> Self {
         let cores = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
         let stop = Arc::new(AtomicBool::new(false));
         let threads = (0..cores)

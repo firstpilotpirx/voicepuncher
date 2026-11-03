@@ -218,7 +218,15 @@ pub fn said_alone(
     let end = start + std::time::Duration::from_millis(800);
     [
         SpottingEvent::SpeechStarted(segment_start),
-        SpottingEvent::PhraseSpotted { phrase: phrase.to_owned(), start, end, timing: None },
+        SpottingEvent::CommandsSaid {
+            commands: crate::core::domain::VoiceCommand::from_phrase(phrase)
+                .into_iter()
+                .collect(),
+            start,
+            end,
+            placement: crate::core::domain::CommandPlacement::Alone,
+            timing: None,
+        },
         SpottingEvent::SpeechEnded(end + std::time::Duration::from_millis(100)),
     ]
 }

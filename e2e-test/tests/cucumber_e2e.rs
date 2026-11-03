@@ -1,9 +1,5 @@
 //! Harness entry point for the E2E `.feature` files: World and `main()` only.
 
-/// The scripted hearing of the command spotting service's tests, shared with the steps that
-/// drive its confirmations; at the root, where its scripted copy looks for it.
-#[path = "../../command-spotting/tests/it/scripted_hearing/mod.rs"]
-mod scripted_hearing;
 #[allow(
     clippy::needless_pass_by_ref_mut,
     clippy::needless_pass_by_value,
@@ -62,8 +58,6 @@ pub struct VoiceRun {
     pub listened_before_secs: f32,
     pub hands_free: Option<steps::voice_control::HandsFree>,
     pub session: Option<steps::voice_control::HandsFreeSession>,
-    /// The confirmation of commands is off for the scenario's session.
-    pub unconfirmed_commands: bool,
     /// The streaming recognizer a scenario drives in this process.
     pub streaming: steps::voice_control::streaming::StreamingRun,
 }

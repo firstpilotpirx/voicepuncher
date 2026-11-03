@@ -1,48 +1,37 @@
-//! Steps of the services' models: a silent utterance and the models each service runs.
+//! Steps of the dictation service's model: a chunk without speech and the model it runs.
 
-use super::{
-    bail, given, off_thread, then, when, Context, E2eWorld, Result, Role, ScenarioServices,
-};
+use super::{bail, given, off_thread, then, when, Context, E2eWorld, Result, ScenarioServices};
+use crate::steps::local_services::transcribe;
 
-/// 2.3 s at 16 kHz: a command-length utterance, and the length that crashed whisper-server
-/// 1.9.5 when it computed language probabilities for audio without speech.
-pub(super) const SILENT_UTTERANCE_SAMPLES: usize = 36_800;
+/// 2.3 s at 16 kHz: a command-length chunk, and the length that crashed whisper-server 1.9.5
+/// when it computed language probabilities for audio without speech.
+const SILENT_CHUNK_SAMPLES: usize = 36_800;
 
-pub(super) const UTTERANCE_SAMPLE_RATE: u32 = 16_000;
-
-/// As long as the command spotting service waited for a confirmation before it had a deadline.
-pub(super) const UTTERANCE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
-
-pub(super) fn confirm_silence(url: &str) -> std::result::Result<usize, String> {
-    voicepuncher_command_spotting::confirm::UtteranceTranscriber::new(url)
-        .map_err(|e| e.to_string())?
-        .transcribe(
-            &vec![0.0; SILENT_UTTERANCE_SAMPLES],
-            UTTERANCE_SAMPLE_RATE,
-            UTTERANCE_DEADLINE,
-        )
-        .map(|heard| heard.words.len())
+/// The words the service hears in a chunk without speech, or why it gave no answer.
+fn transcribe_silence(url: &str) -> std::result::Result<usize, String> {
+    transcribe(url, vec![0; SILENT_CHUNK_SAMPLES])
+        .map(|text| text.split_whitespace().count())
         .map_err(|e| format!("{e:#}"))
 }
 
-#[given("the service scripts started the speech recognition service for commands")]
-pub(super) async fn command_speech_recognition_started(world: &mut E2eWorld) -> Result<()> {
+#[given("the service scripts started the speech recognition service for dictation")]
+pub(super) async fn dictation_service_started(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
-        world.services.local_services = Some(ScenarioServices::with_command_service()?);
+        world.services.local_services = Some(ScenarioServices::with_dictation_service()?);
         Ok(())
     })
     .await
 }
 
-#[when("the command spotting service asks it to confirm an utterance that holds no speech")]
-pub(super) async fn confirm_utterance_without_speech(world: &mut E2eWorld) -> Result<()> {
+#[when("a chunk that holds no speech is sent to it")]
+pub(super) async fn chunk_without_speech(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let services = world
             .services
             .local_services
             .as_mut()
             .context("the speech recognition service was not started by a Given step")?;
-        services.heard_words = Some(confirm_silence(&services.command_transcription_url()));
+        services.heard_words = Some(transcribe_silence(&services.transcription_url()));
         Ok(())
     })
     .await
@@ -56,16 +45,12 @@ pub(super) async fn no_words_and_service_answers(world: &mut E2eWorld) -> Result
             .local_services
             .as_ref()
             .context("the speech recognition service was not started by a Given step")?;
-        match services
-            .heard_words
-            .as_ref()
-            .context("nothing was confirmed")?
-        {
+        match services.heard_words.as_ref().context("no chunk was sent")? {
             Ok(0) => {}
-            Ok(words) => bail!("{words} words were heard in an utterance without speech"),
-            Err(e) => bail!("the confirmation of an utterance without speech failed: {e}"),
+            Ok(words) => bail!("{words} words were heard in a chunk without speech"),
+            Err(e) => bail!("the transcription of a chunk without speech failed: {e}"),
         }
-        if let Err(e) = confirm_silence(&services.command_transcription_url()) {
+        if let Err(e) = transcribe_silence(&services.transcription_url()) {
             bail!("the service does not answer the next request: {e}");
         }
         Ok(())
@@ -102,7 +87,7 @@ pub(super) async fn start_naming_a_dictation_model(world: &mut E2eWorld) -> Resu
 )]
 pub(super) async fn dictation_on_turbo(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
-        scenario_services(world)?.check_runs_default_model(Role::Dictation)
+        scenario_services(world)?.check_runs_default_model()
     })
     .await
 }
@@ -111,14 +96,6 @@ pub(super) async fn dictation_on_turbo(world: &mut E2eWorld) -> Result<()> {
 pub(super) async fn dictation_on_named_model(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         scenario_services(world)?.check_runs_named_dictation_model()
-    })
-    .await
-}
-
-#[then("the speech recognition service for commands keeps the small model")]
-pub(super) async fn commands_on_small(world: &mut E2eWorld) -> Result<()> {
-    off_thread(world, |world| {
-        scenario_services(world)?.check_runs_default_model(Role::Commands)
     })
     .await
 }

@@ -1,5 +1,5 @@
 //! The user's own recorded voice commands, heard as one continuous stream through the real
-//! command spotting service and the app's `command_recognizer`, the phrase set switched before each
+//! command spotting service and the app's reading of its events, the phrase set switched before each
 //! utterance as the app switches it with its state. The recordings stay on the machine
 //! (`~/.voicepuncher/voice-samples/<session>.wav` and `<session>/manifest.jsonl`); the justfile
 //! sets `VOICEPUNCHER_VOICE_SAMPLES` when they exist and `VOICEPUNCHER_COMMAND_SPOTTING_URL`
@@ -11,7 +11,7 @@ use serde::Deserialize;
 
 use voicepuncher::adapters::secondary::commandspotting::websocket::client::SpottingClient;
 use voicepuncher::core::domain::conversions::saturating_usize;
-use voicepuncher::core::domain::{SpokenCommand, VoiceCommand, VoiceCommandRecognizer};
+use voicepuncher::core::domain::{SpokenCommand, VoiceCommand};
 use voicepuncher_e2e_test::concurrency::map_concurrently;
 use voicepuncher_e2e_test::voice_commands::SYNC_ANSWER_LIMIT;
 
@@ -60,7 +60,6 @@ fn sample_at(secs: f32) -> usize {
 fn recognized_in(url: &str, session: &Session) -> Vec<(f32, VoiceCommand)> {
     let audio_start = Instant::now();
     let mut client = SpottingClient::connect(url, audio_start).unwrap();
-    let mut command_recognizer = VoiceCommandRecognizer::new();
     let mut recognized = Vec::new();
     let mut sent = 0;
     for (i, utterance) in session.labels.iter().enumerate() {
@@ -75,7 +74,7 @@ fn recognized_in(url: &str, session: &Session) -> Vec<(f32, VoiceCommand)> {
                 client.send_audio(frame).unwrap();
             }
             for event in client.events_for_sent_audio(SYNC_ANSWER_LIMIT).unwrap() {
-                recognized.extend(command_recognizer.feed(event));
+                recognized.extend(event.into_commands());
             }
         }
         sent = until.max(sent);

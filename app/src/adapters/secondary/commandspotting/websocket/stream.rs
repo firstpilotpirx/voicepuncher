@@ -95,26 +95,18 @@ impl Stream {
     /// captured: they fall behind the clock once audio was lost. Its own times stay, as the
     /// lead-in is taken by them.
     fn to_capture_times(&self, event: &mut SpottingEvent) {
-        let (SpottingEvent::PhraseSpotted { timing: Some(report), .. }
-        | SpottingEvent::CommandsSaid { timing: Some(report), .. }) = event
-        else {
+        let SpottingEvent::CommandsSaid { timing: Some(report), .. } = event else {
             return;
         };
         let Ok(heard) = self.heard.lock() else {
             return;
         };
         report.words_ended = heard.captured_at(report.words_ended);
-        if let Some(confirmation) = report.confirmation.as_mut() {
-            confirmation.asked_at = heard.captured_at(confirmation.asked_at);
-        }
     }
 
     fn note_command_end(&mut self, event: &SpottingEvent) {
-        let end = match event {
-            SpottingEvent::PhraseSpotted { end, .. } | SpottingEvent::CommandsSaid { end, .. } => {
-                *end
-            }
-            _ => return,
+        let SpottingEvent::CommandsSaid { end, .. } = *event else {
+            return;
         };
         self.last_command_end = Some(self.last_command_end.map_or(end, |last| last.max(end)));
     }
@@ -194,8 +186,7 @@ impl Stream {
         );
         let refused = |port| self.service.refused.report(port);
         let mut client =
-            SpottingClient::connect_reporting(&self.service.url, audio_start, &refused)?
-                .confirming(self.service.confirm_commands);
+            SpottingClient::connect_reporting(&self.service.url, audio_start, &refused)?;
         client.listen_for(&self.commands)?;
         if !samples.is_empty() {
             client.send_audio(&samples)?;

@@ -63,7 +63,7 @@ const RUSSIAN_COUNTING_WORDS: [&str; 10] = [
 ];
 
 /// Said after a command and a short pause; it opens with a hard consonant, whose first sound
-/// a confirmation clip running past the pause would take in.
+/// a command's words running past the pause would take in.
 const SENTENCE_AFTER_PAUSE: &str = "Coffee machine on the third floor is broken";
 const ENGLISH_VOICE: &str = "Eddy";
 
@@ -151,7 +151,7 @@ pub(crate) async fn app_starts(world: &mut E2eWorld) -> Result<()> {
         std::fs::write(
             &config,
             format!(
-                "[voice_control]\nenabled = {}\nurl = \"{url}\"\nrecognizer = \"keyword_spotting\"\n\n[services]\nmanage = {}\n",
+                "[voice_control]\nenabled = {}\nurl = \"{url}\"\n\n[services]\nmanage = {}\n",
                 world.voice.voice_control, world.services.manage_services
             ),
         )?;

@@ -5,10 +5,10 @@
 use cucumber::{given, then, when};
 use voicepuncher::test_doubles::prelude::*;
 
-use voicepuncher::core::domain::{ConfirmationTiming, ReportTiming};
+use voicepuncher::core::domain::{CommandPlacement, ReportTiming};
 
 use super::doubles::VOICE_START_LINE;
-use super::speech_after_start::{sleep_until, CONFIRMATION_TIME};
+use super::speech_after_start::sleep_until;
 use super::{
     one_command, pipeline_log, run, Event, VoiceRun, COMMAND_LENGTH, PHRASE_LEAD, REACTION,
     SEGMENT_TAIL, SETTLE,
@@ -24,7 +24,7 @@ const TOTAL_TOLERANCE: Duration = Duration::from_millis(100);
 /// How soon after the start cue the overlay's recording sign must show.
 const OVERLAY_AFTER_CUE: Duration = Duration::from_millis(50);
 /// The stages of the timing line, after its total.
-const STAGES: [&str; 5] = ["hear", "confirm", "deliver", "cue", "overlay"];
+const STAGES: [&str; 3] = ["hear", "cue", "overlay"];
 
 impl VoiceRun {
     /// The timing lines the scenario's pipeline logged.
@@ -72,8 +72,8 @@ impl VoiceRun {
     }
 
     /// Says `said` on its own and stays silent; the service reports it once its segment
-    /// ended, `confirmed` or not, dated by a stream that lags the clock by the audio lost.
-    fn say_alone_and_stay_silent(&mut self, said: &str, confirmed: bool) -> Result<()> {
+    /// ended, dated by a stream that lags the clock by the audio lost.
+    fn say_alone_and_stay_silent(&mut self, said: &str) -> Result<()> {
         let command = one_command(said)?;
         let segment_start = Instant::now();
         let start = segment_start + PHRASE_LEAD;
@@ -82,18 +82,14 @@ impl VoiceRun {
         self.command_end = Some(end);
         sleep_until(segment_end + REPORTED_AFTER_SEGMENT);
         let in_stream = |moment: Instant| moment.checked_sub(self.audio_lost).unwrap();
-        let report = ReportTiming {
-            words_ended: end,
-            confirmation: confirmed
-                .then_some(ConfirmationTiming { asked_at: segment_end, took: CONFIRMATION_TIME }),
-            arrived_at: Instant::now(),
-        };
+        let report = ReportTiming { words_ended: end, arrived_at: Instant::now() };
         let events = [
             SpottingEvent::SpeechStarted(in_stream(segment_start)),
-            SpottingEvent::PhraseSpotted {
-                phrase: command.phrase().to_owned(),
+            SpottingEvent::CommandsSaid {
+                commands: vec![command],
                 start: in_stream(start),
                 end: in_stream(end),
+                placement: CommandPlacement::Alone,
                 timing: Some(report),
             },
             SpottingEvent::SpeechEnded(in_stream(segment_end)),
@@ -160,28 +156,7 @@ fn audio_lost(world: &mut IntegrationWorld) {
 fn says_alone_and_stays_silent(world: &mut IntegrationWorld, said: String) -> Result<()> {
     let run = run(world);
     run.start_when();
-    run.say_alone_and_stay_silent(&said, true)
-}
-
-#[when(
-    expr = "the user says {string}, reported without the Whisper confirmation, and stays silent"
-)]
-fn says_alone_unconfirmed(world: &mut IntegrationWorld, said: String) -> Result<()> {
-    let run = run(world);
-    run.start_when();
-    run.say_alone_and_stay_silent(&said, false)
-}
-
-#[then("the timing line of that start shows that it was not confirmed")]
-fn timing_line_unconfirmed(world: &mut IntegrationWorld) -> Result<()> {
-    let (line, _) = run(world).first_voice_start_line()?;
-    if !line
-        .split_whitespace()
-        .any(|field| field == "confirm=unconfirmed")
-    {
-        bail!("the timing line does not say the start was not confirmed: {line:?}");
-    }
-    Ok(())
+    run.say_alone_and_stay_silent(&said)
 }
 
 #[then(

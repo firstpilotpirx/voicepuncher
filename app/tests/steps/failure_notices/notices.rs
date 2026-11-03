@@ -81,15 +81,6 @@ pub(super) fn part_lost(world: &mut IntegrationWorld) -> Result<()> {
     )
 }
 
-#[then("the overlay shows no failure notice")]
-pub(super) fn no_notice(world: &mut IntegrationWorld) -> Result<()> {
-    let events = run(world).wait_until_over()?;
-    if !notices(&events).is_empty() {
-        bail!("a failure notice was shown: {events:?}");
-    }
-    Ok(())
-}
-
 #[then("the overlay shows a failure notice that the text was not pasted")]
 pub(super) fn not_pasted(world: &mut IntegrationWorld) -> Result<()> {
     let notice = shown_notice(run(world))?;

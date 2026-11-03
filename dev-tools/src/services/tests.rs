@@ -1,4 +1,4 @@
-use super::command_lines::{command_spotting_args, streaming_args, whisper_args};
+use super::command_lines::{streaming_args, whisper_args};
 use super::e2e::{unlisted, watched_ports, Watched};
 use super::launch::{last_lines, supervisor_args, Service};
 use super::ready::{note, port_open, Ready};
@@ -23,13 +23,6 @@ fn settings() -> Settings {
         run_dir: PathBuf::from("/home/.voicepuncher/run"),
         log_dir: PathBuf::from("/home/.voicepuncher/logs"),
         dictation: speech(28081, "3"),
-        commands: Speech {
-            name: "whisper-server-commands",
-            copies: "1".into(),
-            model_var: "VOICEPUNCHER_COMMAND_WHISPER_MODEL",
-            label: "speech recognition service for commands",
-            port: 28085,
-        },
         kws_port: 28082,
     }
 }
@@ -60,7 +53,7 @@ fn should_accept_1_to_4_copies_only() {
 }
 
 #[test]
-fn should_start_whisper_with_the_arguments_of_both_speech_recognition_services() {
+fn should_start_whisper_with_the_arguments_of_the_speech_recognition_service() {
     let args = whisper_args("m.bin", "18082", "4", "vad.bin");
     assert_eq!(
         args[..6],
@@ -71,18 +64,10 @@ fn should_start_whisper_with_the_arguments_of_both_speech_recognition_services()
 }
 
 #[test]
-fn should_start_command_spotting_with_its_arguments() {
-    assert_eq!(
-        command_spotting_args("8082", "kws", "vad.onnx", "http://127.0.0.1:8085/v1").join(" "),
-        "--port 8082 --model-dir kws --vad-model vad.onnx --transcription-url http://127.0.0.1:8085/v1"
-    );
-}
-
-#[test]
 fn should_start_command_spotting_with_the_streaming_recognizers_arguments() {
     assert_eq!(
         streaming_args("8082", "en", "ru", "vad.onnx").join(" "),
-        "--port 8082 --recognizer streaming --en-model-dir en --ru-model-dir ru --vad-model vad.onnx"
+        "--port 8082 --en-model-dir en --ru-model-dir ru --vad-model vad.onnx"
     );
 }
 
@@ -110,7 +95,6 @@ fn should_name_the_pid_log_and_copy_files_by_binary_and_port() {
 #[test]
 fn should_give_the_urls_of_the_services() {
     let settings = settings();
-    assert_eq!(settings.command_stt_url(), "http://127.0.0.1:28085/v1");
     assert_eq!(settings.kws_url(), "ws://127.0.0.1:28082");
 }
 
@@ -118,8 +102,8 @@ fn should_give_the_urls_of_the_services() {
 fn should_select_every_service_in_start_order_when_none_is_named() {
     assert_eq!(selected(&[]), SERVICES.map(String::from).to_vec());
     assert_eq!(
-        selected(&["whisper-server-commands".into()]),
-        vec!["whisper-server-commands".to_string()]
+        selected(&["voicepuncher-command-spotting".into()]),
+        vec!["voicepuncher-command-spotting".to_string()]
     );
 }
 
@@ -130,8 +114,7 @@ fn should_name_the_known_services_for_an_unknown_one() {
     };
     assert_eq!(
         message,
-        "unknown service 'whisper' — use whisper-server, whisper-server-commands or \
-         voicepuncher-command-spotting"
+        "unknown service 'whisper' — use whisper-server or voicepuncher-command-spotting"
     );
 }
 
@@ -139,7 +122,7 @@ fn should_name_the_known_services_for_an_unknown_one() {
 fn should_watch_every_test_port_with_the_variable_that_moves_it() {
     let watched = watched_ports(&settings(), "VOICEPUNCHER_TEST");
     let ports: Vec<u32> = watched.iter().map(|w| w.port).collect();
-    assert_eq!(ports, vec![28081, 38082, 38083, 38084, 28085, 28082]);
+    assert_eq!(ports, vec![28081, 38082, 38083, 38084, 28082]);
     assert_eq!(
         watched[1],
         Watched {
@@ -148,7 +131,7 @@ fn should_watch_every_test_port_with_the_variable_that_moves_it() {
             variable: "VOICEPUNCHER_TEST_STT_PORT".into()
         }
     );
-    assert_eq!(watched[4].variable, "VOICEPUNCHER_TEST_COMMAND_STT_PORT");
+    assert_eq!(watched[4].variable, "VOICEPUNCHER_TEST_KWS_PORT");
 }
 
 #[test]
@@ -247,8 +230,14 @@ fn should_install_only_on_y() {
 
 #[test]
 fn should_print_a_model_path_as_basename_does() {
-    assert_eq!(basename("/m/ggml-small.bin"), "ggml-small.bin");
-    assert_eq!(basename("/m/sherpa-onnx-kws/"), "sherpa-onnx-kws");
+    assert_eq!(
+        basename("/m/ggml-large-v3-turbo-q5_0.bin"),
+        "ggml-large-v3-turbo-q5_0.bin"
+    );
+    assert_eq!(
+        basename("/m/sherpa-onnx-streaming-en/"),
+        "sherpa-onnx-streaming-en"
+    );
     assert_eq!(basename(""), "");
 }
 

@@ -103,14 +103,18 @@ impl VoiceRun {
         )
     }
 
-    /// Says `sentence`, which holds a command phrase, without pausing around the phrase.
-    pub(crate) fn say_in_sentence(&mut self, sentence: &str, phrase: &str) -> Result<()> {
+    /// Says `sentence`, which holds a command word, without pausing around the word: the
+    /// service reports the speech and no command.
+    pub(crate) fn say_in_sentence(&mut self, sentence: &str) -> Result<()> {
         let segment_start = Instant::now();
-        let phrase_start = segment_start + SENTENCE_AROUND_PHRASE;
-        let phrase_end = phrase_start + PHRASE_LENGTH;
         self.speak(sentence, segment_start);
-        let segment_end = phrase_end + SENTENCE_AROUND_PHRASE;
-        self.send_segment(phrase, segment_start..segment_end, phrase_start..phrase_end)
+        let segment_end = segment_start + SENTENCE_AROUND_PHRASE * 2 + PHRASE_LENGTH;
+        self.send(PipelineInput::Spotting(SpottingEvent::SpeechStarted(
+            segment_start,
+        )))?;
+        self.send(PipelineInput::Spotting(SpottingEvent::SpeechEnded(
+            segment_end,
+        )))
     }
 
     /// Reports `commands` said without a pause at `start..end`, as the service does.
@@ -146,11 +150,11 @@ impl VoiceRun {
             segment.start,
         )))?;
         if self.listened_for(phrase) {
-            let phrase = phrase.to_owned();
-            self.send(PipelineInput::Spotting(SpottingEvent::PhraseSpotted {
-                phrase,
+            self.send(PipelineInput::Spotting(SpottingEvent::CommandsSaid {
+                commands: VoiceCommand::from_phrase(phrase).into_iter().collect(),
                 start: spoken.start,
                 end: spoken.end,
+                placement: CommandPlacement::Alone,
                 timing: None,
             }))?;
         }

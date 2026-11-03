@@ -1,4 +1,4 @@
-//! What both recognizers of the command spotting service share: its address and its program.
+//! The command spotting service's address and its program.
 
 use voicepuncher_copy_pool::{ServiceAddress, COMMAND_SPOTTING_COPY_OFFSET};
 

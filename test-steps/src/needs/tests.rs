@@ -28,10 +28,10 @@ fn should_fail_naming_the_variable_and_the_gates_when_it_is_unset() {
 #[test]
 fn should_name_the_recipe_that_provides_the_missing_models() {
     // Given
-    std::env::remove_var("VOICEPUNCHER_KWS_MODEL_DIR");
+    std::env::remove_var("VOICEPUNCHER_STREAMING_EN_MODEL_DIR");
     // When
-    let failure =
-        std::panic::catch_unwind(|| required_env("VOICEPUNCHER_KWS_MODEL_DIR")).unwrap_err();
+    let failure = std::panic::catch_unwind(|| required_env("VOICEPUNCHER_STREAMING_EN_MODEL_DIR"))
+        .unwrap_err();
     // Then
     let message = failure.downcast_ref::<String>().unwrap();
     assert!(message.contains("just models"), "{message}");

@@ -3,8 +3,8 @@
 # key, and the needs a test can state. Text tables, one entry per line.
 
 # The paths whose change makes full-check run the accuracy stage on 100 recordings: what the two @accuracy
-# scenarios run — file mode, transcription and chunking; command spotting (keywords.txt is
-# compiled in) and voice-command matching; the WER and corpus test code; the justfile whole and the services' code (models, service
+# scenarios run — file mode, transcription and chunking; command spotting and voice-command
+# matching; the WER and corpus test code; the justfile whole and the services' code (models, service
 # settings); the Cargo files when a line other than `version = "…"` changed. One glob per line, matched with
 # a glob (`*` spans `/`). A branch that adds a file on this path adds it here
 recognition_paths = '''
@@ -26,11 +26,10 @@ recognition_paths = '''
     app/src/core/domain/filler_sounds.rs
     app/src/core/domain/command_words/*
     command-spotting/src/*
-    command-spotting/keywords.txt
     voice-commands/src/*
     app/src/adapters/secondary/commandspotting/websocket/client/*
     app/src/core/domain/voice_command.rs
-    app/src/core/domain/voice_command_recognizer/mod.rs
+    app/src/core/domain/spotting_event.rs
     e2e-test/src/corpus.rs
     e2e-test/src/wer.rs
     e2e-test/src/accuracy_gate.rs
@@ -146,9 +145,7 @@ stage_inputs = '''
 # condition fails is closed: dev-tools leaves its tests out and counts them
 test_needs = '''
     needs_stt            VOICEPUNCHER_TRANSCRIPTION_URL                          no speech recognition service (the model stages start one)
-    needs_command_stt    VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL                  no speech recognition service for commands (the model stages start one)
     needs_kws            VOICEPUNCHER_COMMAND_SPOTTING_URL                       no command spotting service (the model stages start one)
-    needs_kws_models     VOICEPUNCHER_KWS_MODEL_DIR+VOICEPUNCHER_KWS_VAD_MODEL   no command spotting models (just models)
     needs_streaming_models VOICEPUNCHER_STREAMING_EN_MODEL_DIR+VOICEPUNCHER_STREAMING_RU_MODEL_DIR+VOICEPUNCHER_KWS_VAD_MODEL   no streaming command models (just models)
     needs_voice_samples  VOICEPUNCHER_VOICE_SAMPLES                              no recordings of the user's voice (~/.voicepuncher/voice-samples)
     needs_corpus         file:$VOICEPUNCHER_BENCH_CORPUS/manifest.jsonl          no corpus (just corpus, or VOICEPUNCHER_BENCH_CORPUS)

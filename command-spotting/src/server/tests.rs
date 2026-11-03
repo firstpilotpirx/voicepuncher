@@ -59,38 +59,3 @@ fn should_not_take_a_websocket_handshake_for_a_health_probe() {
     let (stream, _) = listener.accept().unwrap();
     assert!(!is_health_probe(&stream));
 }
-
-#[test]
-fn should_tell_the_app_once_and_answer_unavailable_while_a_confirmation_stalls() {
-    // Given
-    let health = Health::default();
-    let beat = health.register(4);
-    let mut reported = false;
-    let stalled = Some(Duration::from_secs(12));
-    // When
-    let first = watch_stall(stalled, &beat, 4, &mut reported);
-    let again = watch_stall(stalled, &beat, 4, &mut reported);
-    let answer = health_answer(&health);
-    // Then
-    assert_eq!(first, Some(ServerEvent::Stalled { waited_ms: 12_000 }));
-    assert_eq!(again, None);
-    assert!(answer.starts_with("HTTP/1.1 503"), "{answer}");
-    assert!(answer.contains("conn=4"), "{answer}");
-}
-
-#[test]
-fn should_answer_ok_again_and_tell_a_new_stall_once_a_stall_ended() {
-    // Given
-    let health = Health::default();
-    let beat = health.register(4);
-    let mut reported = false;
-    watch_stall(Some(Duration::from_secs(12)), &beat, 4, &mut reported);
-    // When
-    let ended = watch_stall(None, &beat, 4, &mut reported);
-    let answer = health_answer(&health);
-    let next = watch_stall(Some(Duration::from_secs(11)), &beat, 4, &mut reported);
-    // Then
-    assert_eq!(ended, None);
-    assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
-    assert_eq!(next, Some(ServerEvent::Stalled { waited_ms: 11_000 }));
-}

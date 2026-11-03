@@ -1,6 +1,5 @@
-//! Voice control while copies of its services die: the app's own supervisor starts the
-//! command spotting service and the speech recognition service for commands as two copies
-//! each, and a step kills the copy the app listens with or one copy for commands.
+//! Voice control while a copy of the command spotting service dies: the app's own supervisor
+//! starts it as two copies, and a step kills the copy the app listens with.
 
 use cucumber::{given, then, when};
 use voicepuncher::test_doubles::prelude::*;
@@ -32,7 +31,7 @@ fn run(world: &mut E2eWorld) -> Result<&mut ManagedRun> {
     world.services.owned_services.run()
 }
 
-#[given("the app started the command spotting service and the speech recognition service for commands as two copies each, and listening is on")]
+#[given("the app started the command spotting service as two copies, and listening is on")]
 async fn copies_listening(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         let run = ManagedRun::start(Needed { dictation_copies: 1, voice_control: true })?;
@@ -58,23 +57,6 @@ async fn listening_copy_killed(world: &mut E2eWorld) -> Result<()> {
         world.services.owned_services.stopped = Some((port, pid));
         let hands_free = hands_free(world)?;
         hands_free.keep_quiet(QUIET_AFTER_KILL)?;
-        hands_free.say(COMMAND)?;
-        hands_free.saw(|e| *e == Event::ReturnPressed);
-        Ok(())
-    })
-    .await
-}
-
-#[when("one copy of the speech recognition service for commands is killed and the user says \"enter\" right away")]
-async fn commands_copy_killed(world: &mut E2eWorld) -> Result<()> {
-    off_thread(world, |world| {
-        let run = run(world)?;
-        let ports = run.ports(ServiceKind::Commands);
-        let port = *ports
-            .first()
-            .context("no copy of the speech recognition service for commands runs")?;
-        kill_copy(port)?;
-        let hands_free = hands_free(world)?;
         hands_free.say(COMMAND)?;
         hands_free.saw(|e| *e == Event::ReturnPressed);
         Ok(())

@@ -8,7 +8,7 @@ use cucumber::{given, then, when};
 use tempfile::TempDir;
 
 use voicepuncher::config::Config;
-use voicepuncher::core::domain::{CommandRecognizer, ModelFile, ModelKind, CATALOG};
+use voicepuncher::core::domain::{ModelFile, ModelKind, CATALOG};
 use voicepuncher::runtime::models::MIRROR_VARIABLE;
 use voicepuncher::runtime::{CatalogModels, ModelsGate};
 
@@ -26,7 +26,7 @@ pub struct ModelFilesRun {
     missing: Option<Vec<&'static str>>,
     output: Option<Output>,
     /// The recognizer voice control is on with; off when none.
-    pub(super) voice_control: Option<CommandRecognizer>,
+    pub(super) voice_control: bool,
 }
 
 impl Default for ModelFilesRun {
@@ -36,7 +36,7 @@ impl Default for ModelFilesRun {
             env: HashMap::new(),
             missing: None,
             output: None,
-            voice_control: None,
+            voice_control: false,
         }
     }
 }
@@ -128,10 +128,7 @@ fn app_checks_models(world: &mut IntegrationWorld) {
     let run = files(world);
     let mut config = Config::default();
     config.services.models_dir = run.folder();
-    if let Some(recognizer) = run.voice_control {
-        config.voice_control.enabled = true;
-        config.voice_control.recognizer = recognizer;
-    }
+    config.voice_control.enabled = run.voice_control;
     let gate = CatalogModels::new(run.home.path(), run.env.clone());
     run.missing = Some(gate.missing(&config));
 }

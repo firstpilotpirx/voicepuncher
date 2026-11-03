@@ -3,7 +3,7 @@ use std::time::Instant;
 use crate::core::application::{CommandSpotter, KeyPresser, PipelineInput};
 use crate::core::domain::{
     AudioBuffer16k, CommandPlacement, FailureNotice, SpokenCommand, SpottingEvent, VoiceCommand,
-    VoiceCommandRecognizer, VoiceStartTiming,
+    VoiceStartTiming,
 };
 
 use super::failure_notices::{command_failed, RecordingNotStarted};
@@ -19,7 +19,6 @@ pub(super) enum Voice {
 pub(super) struct VoiceControl {
     spotter: Box<dyn CommandSpotter>,
     key_presser: Box<dyn KeyPresser>,
-    recognizer: VoiceCommandRecognizer,
     listening: bool,
     /// The command spotting service is away: listening resumes once it is back.
     away: bool,
@@ -86,7 +85,6 @@ impl Pipeline {
         self.voice = Voice::On(VoiceControl {
             spotter,
             key_presser,
-            recognizer: VoiceCommandRecognizer::new(),
             listening: false,
             away: false,
             unavailable_shown: false,
@@ -99,12 +97,6 @@ impl Pipeline {
     pub(super) fn handle_with_voice_control(&mut self, input: PipelineInput) {
         self.log_received(&input);
         match input {
-            PipelineInput::Spotting(SpottingEvent::ConfirmationFailed { .. })
-                if self.voice.listening() =>
-            {
-                // A command said in the segment is lost: say so, as when the service is away.
-                self.show_failure_at_once(&FailureNotice::VoiceCommandsUnavailable);
-            }
             PipelineInput::Spotting(event) => {
                 for spoken in self.recognize(event) {
                     self.carry_out_or_log(spoken);
@@ -133,7 +125,6 @@ impl Pipeline {
             return;
         };
         log::info!("voice control: turning listening on…");
-        voice.recognizer = VoiceCommandRecognizer::new();
         if let Err(e) = voice.spotter.start_listening(&VoiceCommand::STANDBY) {
             log::error!("voice control: cannot listen, command spotting service: {e:#}");
             self.show_failure_at_once(&FailureNotice::VoiceCommandsUnavailable);
@@ -144,10 +135,11 @@ impl Pipeline {
         log::info!("voice control: listening");
     }
 
-    fn recognize(&mut self, event: SpottingEvent) -> Vec<SpokenCommand> {
-        match self.voice.listening_mut() {
-            Some(voice) => voice.recognizer.feed(event),
-            None => Vec::new(),
+    fn recognize(&self, event: SpottingEvent) -> Vec<SpokenCommand> {
+        if self.voice.listening() {
+            event.into_commands()
+        } else {
+            Vec::new()
         }
     }
 
@@ -335,7 +327,6 @@ impl Pipeline {
             return;
         }
         voice.away = false;
-        voice.recognizer = VoiceCommandRecognizer::new();
         let unavailable_shown = std::mem::take(&mut voice.unavailable_shown);
         self.voice.follow_dictation(recording);
         if unavailable_shown {

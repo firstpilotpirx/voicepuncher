@@ -90,7 +90,6 @@ Feature: speech-recognition
       Given the models that the service scripts download are on disk
       When the user starts the services with the service scripts and names another speech recognition model for dictation
       Then the speech recognition service for dictation recognizes speech with the named model
-      And the speech recognition service for commands keeps the small model
 
   Rule: Long recordings are transcribed in chunks
 
@@ -176,12 +175,12 @@ Feature: speech-recognition
         | 0.7     |
         | 1.4     |
 
-  Rule: Audio without speech never stops the speech recognition service
+  Rule: Audio without speech never stops the speech recognition service for dictation
 
     @smoke
-    Scenario: Command confirmation of an utterance without speech
-      Given the service scripts started the speech recognition service for commands
-      When the command spotting service asks it to confirm an utterance that holds no speech
+    Scenario: Dictation of a chunk without speech
+      Given the service scripts started the speech recognition service for dictation
+      When a chunk that holds no speech is sent to it
       Then no words are heard and the service answers the next request
 
   Rule: The configured prompt steers recognition

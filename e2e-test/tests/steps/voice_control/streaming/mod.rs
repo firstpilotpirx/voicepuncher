@@ -17,13 +17,12 @@ use voicepuncher_e2e_test::voice_commands::{
 };
 use voicepuncher_test_steps::required_env;
 
-use super::spotting_service::scheduling::ENGINE_RUNS;
 use super::RUSSIAN_VOICE;
 use crate::steps::local_services::{log_mark, logged_since};
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
-mod busy;
+pub(crate) mod busy;
 mod history;
 mod recorded;
 mod timed;
@@ -36,6 +35,9 @@ const FRAME_SAMPLES: usize = 1_600;
 static SHARED: OnceLock<StreamingEngine> = OnceLock::new();
 /// Each run's connection number, so its log lines are its own among the other scenarios'.
 static CONNECTIONS: AtomicU64 = AtomicU64::new(9_000);
+
+/// ONNX Runtime aborts when models load or run on several threads at once.
+pub(crate) static ENGINE_RUNS: Mutex<()> = Mutex::new(());
 
 /// A scenario's streaming run: what it fed and what came back.
 #[derive(Debug, Default)]

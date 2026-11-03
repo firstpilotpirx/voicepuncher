@@ -2,8 +2,8 @@
 
 use super::{
     push, Arc, BTreeMap, Config, Event, Events, LocalServices, Mutex, PathBuf, ServiceKind,
-    ServiceState, ServiceStatus, ServicesProgress, COMMANDS, COMMAND_SPOTTING, DICTATION,
-    LOOKS_TO_ANSWER, SECOND_COPY,
+    ServiceState, ServiceStatus, ServicesProgress, COMMAND_SPOTTING, DICTATION, LOOKS_TO_ANSWER,
+    SECOND_COPY,
 };
 
 #[derive(Default)]
@@ -75,7 +75,6 @@ impl FakeServices {
 fn status(port: u16) -> ServiceStatus {
     let kind = match port {
         DICTATION | SECOND_COPY => ServiceKind::Dictation,
-        COMMANDS => ServiceKind::Commands,
         _ => ServiceKind::CommandSpotting,
     };
     ServiceStatus {
@@ -92,7 +91,7 @@ impl LocalServices for FakeServices {
     fn require(&mut self, config: &Config) {
         let mut needed = vec![DICTATION, SECOND_COPY];
         if config.voice_control.enabled {
-            needed.extend([COMMANDS, COMMAND_SPOTTING]);
+            needed.push(COMMAND_SPOTTING);
         }
         let mut inner = self.inner.lock().unwrap();
         for port in &needed {

@@ -30,9 +30,8 @@ fn every_need_open(scratch: &Scratch) -> Vec<(&'static str, String)> {
     let set = |name| (name, "1".to_string());
     vec![
         set("VOICEPUNCHER_TRANSCRIPTION_URL"),
-        set("VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL"),
         set("VOICEPUNCHER_COMMAND_SPOTTING_URL"),
-        set("VOICEPUNCHER_KWS_MODEL_DIR"),
+        set("VOICEPUNCHER_STREAMING_EN_MODEL_DIR"),
         set("VOICEPUNCHER_KWS_VAD_MODEL"),
         set("VOICEPUNCHER_VOICE_SAMPLES"),
         ("VOICEPUNCHER_BENCH_CORPUS", corpus),
@@ -64,7 +63,7 @@ fn scratch_with_needs(world: &mut WorkflowWorld) {
 /// A test that states no need, as `cargo nextest list` names it.
 const PLAIN_TEST: &str = "voicepuncher::it cli::should_parse";
 /// The variable of the command spotting models a test reads with `required_env`.
-const MODELS_VARIABLE: &str = "VOICEPUNCHER_KWS_MODEL_DIR";
+const MODELS_VARIABLE: &str = "VOICEPUNCHER_STREAMING_EN_MODEL_DIR";
 
 /// A test in the module of `need`, as `cargo nextest list` names it.
 fn needing(need: &str, test: &str) -> String {
@@ -122,7 +121,8 @@ fn gated_without_models(world: &mut WorkflowWorld) {
     gate(
         world,
         &[
-            ("VOICEPUNCHER_KWS_MODEL_DIR", ""),
+            ("VOICEPUNCHER_STREAMING_EN_MODEL_DIR", ""),
+            ("VOICEPUNCHER_STREAMING_RU_MODEL_DIR", ""),
             ("VOICEPUNCHER_KWS_VAD_MODEL", ""),
         ],
     );
@@ -132,7 +132,6 @@ fn gated_without_models(world: &mut WorkflowWorld) {
 fn gated_without_services(world: &mut WorkflowWorld) {
     let urls = [
         "VOICEPUNCHER_TRANSCRIPTION_URL",
-        "VOICEPUNCHER_COMMAND_TRANSCRIPTION_URL",
         "VOICEPUNCHER_COMMAND_SPOTTING_URL",
     ];
     gate(world, &urls.map(|url| (url, "")));

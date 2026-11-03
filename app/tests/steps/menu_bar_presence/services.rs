@@ -14,7 +14,6 @@ use super::run;
 use crate::IntegrationWorld;
 
 const DICTATION_COPIES: [u16; 3] = [18082, 18083, 18084];
-const COMMANDS: u16 = 8085;
 const COMMAND_SPOTTING: u16 = 8082;
 
 /// The services the scenario sets and the restarts the menu asked for.
@@ -87,10 +86,8 @@ fn services_starting(world: &mut IntegrationWorld, ready: usize, total: usize) {
         .state_changed(&RuntimeState::StartingServices { ready, total });
 }
 
-#[given(
-    "the app started the speech recognition service for dictation and adopted the one for commands"
-)]
-fn dictation_started_commands_adopted(world: &mut IntegrationWorld) {
+#[given("the app started the dictation copies and adopted the command spotting service")]
+fn dictation_started_command_spotting_adopted(world: &mut IntegrationWorld) {
     let mut statuses: Vec<ServiceStatus> = DICTATION_COPIES
         .iter()
         .enumerate()
@@ -106,9 +103,9 @@ fn dictation_started_commands_adopted(world: &mut IntegrationWorld) {
         })
         .collect();
     statuses.push(status(
-        ServiceKind::Commands,
-        "commands".into(),
-        COMMANDS,
+        ServiceKind::CommandSpotting,
+        "command spotting".into(),
+        COMMAND_SPOTTING,
         ServiceState::Adopted,
         false,
     ));
@@ -154,7 +151,7 @@ fn user_restarts(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("it lists the dictation copies as Ready and the speech recognition service for commands as Adopted")]
+#[then("it lists the dictation copies as Ready and the command spotting service as Adopted")]
 fn lists_states(world: &mut IntegrationWorld) -> Result<()> {
     let menu = service_menu(world)?;
     let ready = menu
@@ -167,7 +164,7 @@ fn lists_states(world: &mut IntegrationWorld) -> Result<()> {
         .count();
     let adopted = menu
         .iter()
-        .any(|(port, line, _)| *port == COMMANDS && line == "Commands — Adopted");
+        .any(|(port, line, _)| *port == COMMAND_SPOTTING && line == "Command spotting — Adopted");
     if ready != DICTATION_COPIES.len() || !adopted {
         bail!("the Services submenu lists {menu:?}");
     }

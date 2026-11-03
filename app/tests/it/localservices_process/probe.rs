@@ -82,7 +82,7 @@ fn should_take_a_whisper_server_as_a_speech_recognition_service() {
 fn should_not_take_another_healthy_program_as_a_speech_recognition_service() {
     let port = server(|_| (200, "{\"status\":\"ok\"}"));
     assert_eq!(
-        HttpProbe::new().answer(ServiceKind::Commands, port),
+        HttpProbe::new().answer(ServiceKind::Dictation, port),
         ProbeAnswer::Busy
     );
 }
@@ -139,7 +139,7 @@ fn should_post_the_warm_up_utterance_to_the_transcription_path_of_a_speech_recog
     // Given
     let (port, received) = stub(200);
     // When
-    let warmed = HttpProbe::new().warm_up(ServiceKind::Commands, port);
+    let warmed = HttpProbe::new().warm_up(ServiceKind::Dictation, port);
     // Then
     assert!(warmed.is_some_and(|took| !took.is_zero()), "{warmed:?}");
     let request = received.recv_timeout(Duration::from_secs(5)).unwrap();

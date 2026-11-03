@@ -32,7 +32,7 @@ pub(super) const NOT_REFUSED: &str =
 /// How long the events of one utterance may keep coming after the speech was sent.
 pub(super) const UTTERANCE_EVENTS_LIMIT: Duration = Duration::from_secs(30);
 
-pub(super) const HELLO: &str = r#"{"type":"hello","version":3}"#;
+pub(super) const HELLO: &str = r#"{"type":"hello","version":4}"#;
 
 /// A raw WebSocket to the service: connecting and the handshake are each given up after the
 /// handshake limit, and every read after the refusal limit.
@@ -81,7 +81,6 @@ pub(super) fn listened_for(command: VoiceCommand) -> &'static [VoiceCommand] {
 
 /// What the app recognizes from the events of `inputs` until the service goes quiet.
 fn recognized_until_quiet(inputs: &mpsc::Receiver<PipelineInput>) -> Vec<VoiceCommand> {
-    let mut command_recognizer = VoiceCommandRecognizer::new();
     let mut recognized = Vec::new();
     let deadline = Instant::now() + UTTERANCE_EVENTS_LIMIT;
     let wait = |recognized: &[VoiceCommand]| {
@@ -100,8 +99,8 @@ fn recognized_until_quiet(inputs: &mpsc::Receiver<PipelineInput>) -> Vec<VoiceCo
             panic!("unexpected input {input:?}");
         };
         recognized.extend(
-            command_recognizer
-                .feed(event)
+            event
+                .into_commands()
                 .into_iter()
                 .map(|spoken| spoken.command),
         );
@@ -163,10 +162,6 @@ pub(super) fn each_at_once<C: Copy + Send, R: Send>(
         .collect()
 }
 
-pub(super) const LONG_LISTENING_SECS: f32 = 30.0;
-
-pub(super) const BETWEEN_COMMANDS_SECS: f32 = 5.0;
-
 /// Longest the service may take to report a command after its audio reached it.
 pub(super) const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -175,69 +170,33 @@ pub(super) fn microphone_silence(secs: f32) -> Vec<f32> {
 }
 
 /// One listening session as the app runs it: a single connection, audio sent buffer by
-/// buffer, the `command_recognizer` fed every event.
+/// buffer, the commands taken from every event.
 pub(super) struct Listening {
     pub(crate) audio: mpsc::Sender<Vec<f32>>,
     inputs: mpsc::Receiver<PipelineInput>,
-    command_recognizer: VoiceCommandRecognizer,
     pub(crate) stream: AudioStream,
-    /// Audio handed to the stream since the last wait for a command.
-    unheard: Duration,
 }
 
 impl Listening {
     pub(crate) fn start(url: &str, commands: &[VoiceCommand]) -> Self {
         let OpenStream { stream, audio, inputs } = open_stream(url, commands).unwrap();
-        Self {
-            audio,
-            inputs,
-            command_recognizer: VoiceCommandRecognizer::new(),
-            stream,
-            unheard: Duration::ZERO,
-        }
-    }
-
-    fn hear(&mut self, samples: &[f32]) {
-        self.unheard += Duration::from_secs_f32(samples.len() as f32 / MIC_RATE_HZ as f32);
-        for buffer in samples.chunks(MIC_BUFFER) {
-            self.audio.send(buffer.to_vec()).unwrap();
-        }
-    }
-
-    pub(crate) fn say_after(&mut self, pause_secs: f32, words: &str) {
-        self.hear(&microphone_silence(pause_secs));
-        self.hear(&at_microphone_rate(&spoken_with_pauses(words).unwrap()));
+        Self { audio, inputs, stream }
     }
 
     /// The next command the app recognizes, as the pipeline would get it.
-    /// WHY: the stream hands the audio to the service at its own pace, so under load 30 s of
-    /// listening can take 10 s to arrive; the wait covers that audio too.
-    pub(crate) fn next_command(&mut self) -> Option<VoiceCommand> {
-        let deadline = Instant::now() + std::mem::take(&mut self.unheard) + COMMAND_TIMEOUT;
+    pub(crate) fn next_command(&self) -> Option<VoiceCommand> {
+        let deadline = Instant::now() + COMMAND_TIMEOUT;
         let inputs = &self.inputs;
-        let command_recognizer = &mut self.command_recognizer;
         std::iter::from_fn(|| {
             inputs
                 .recv_timeout(deadline.checked_duration_since(Instant::now())?)
                 .ok()
         })
         .find_map(|input| match input {
-            PipelineInput::Spotting(event) => {
-                command_recognizer.feed(event).first().map(|s| s.command)
-            }
+            PipelineInput::Spotting(event) => event.into_commands().first().map(|s| s.command),
             other => panic!("unexpected input {other:?}"),
         })
     }
-}
-
-/// The first command recognized when `sentence` is said after a pause in standby, each on a
-/// listening session of its own.
-pub(super) fn heard_after_a_pause(url: &str, sentence: &str) -> Option<VoiceCommand> {
-    let mut listening = Listening::start(url, &VoiceCommand::STANDBY);
-    listening.say_after(BETWEEN_COMMANDS_SECS, sentence);
-    let heard = listening.next_command();
-    listening.stream.stop();
-    heard
 }
 
 /// The pause a quick user leaves between two commands.

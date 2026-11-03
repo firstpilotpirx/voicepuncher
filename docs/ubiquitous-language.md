@@ -152,7 +152,7 @@
 - **Type:** Domain concept (overlay signal)
 - **Definition:** The overlay naming a voice command with no visible effect of its own — "⏎ ENTER", "⌫ CLEAR", "↻ RESTART" — for about a second after it was carried out, then showing again what it showed before: hidden in standby, the recording during a dictation. Any later signal (the recording a chain starts, the next command's sign) replaces it at once. "start", "stop" and "cancel dictation" have none: the overlay already shows them.
 - **Code:** `VisualIndicator::show_command_sign`
-- **Synonyms to AVOID:** "toast", "notification", "badge", "confirmation" (alone — also names the second hearing of a command)
+- **Synonyms to AVOID:** "toast", "notification", "badge", "confirmation"
 
 ### Commands-unavailable sign
 - **Type:** Domain concept (overlay signal)
@@ -176,7 +176,7 @@
 - **Type:** Domain concept (overlay signal)
 - **Definition:** The overlay confirming that a dictation's text was pasted: a green check, "Pasted" and the pasted text in the text window for about half a second, then hidden. It follows a paste at once or after the focus wait; any later signal (a command sign, the next recording) replaces it at once. A dictation that pastes nothing — no speech, cancelled, failed, or left in the clipboard — ends without it, and a pending `Failure notice` shows instead of it.
 - **Code:** `VisualIndicator::show_pasted`
-- **Synonyms to AVOID:** "success toast", "done sign", "confirmation" (alone — also names the second hearing of a command)
+- **Synonyms to AVOID:** "success toast", "done sign", "confirmation"
 
 ### Status item
 - **Type:** Adapter concept (primary adapter, the macOS menu bar)
@@ -234,7 +234,7 @@
 
 ### Model catalog
 - **Type:** Value (domain data)
-- **Definition:** The five model files the local services load — the dictation and commands Whisper models, the Whisper voice activity model, the voice control voice activity model and the keyword spotting archive — each with its pinned download address, sha256, size, purpose and the part of the app that needs it (dictation always, voice control). The one source of the files `just models` and the *Download window* fetch.
+- **Definition:** The five model files the local services load — the dictation Whisper model, the Whisper voice activity model, the voice control voice activity model and the English and Russian streaming recognizer archives — each with its pinned download address, sha256, size, purpose and the part of the app that needs it (dictation always, voice control). The one source of the files `just models` and the *Download window* fetch.
 - **Code:** `app/src/core/domain/model_catalog.rs` (`CATALOG`, `ModelFile`, `ModelNeeds`)
 - **Synonyms to AVOID:** "model list", "manifest"
 
@@ -282,7 +282,7 @@
 
 ### Speech recognition service
 - **Type:** External system (outside the app process)
-- **Definition:** A process on the same machine that turns audio into a `RawTranscript` over the OpenAI Audio Transcriptions API — whisper.cpp `whisper-server` is the supported one. The service scripts run two: the *speech recognition service for dictation* and the *speech recognition service for commands*. The *service runtime* starts them in hotkey mode, or the user with `just start-model-servers`; the app connects to the one for dictation, checks it is reachable at startup, and rejects any address that is not loopback.
+- **Definition:** A process on the same machine that turns audio into a `RawTranscript` over the OpenAI Audio Transcriptions API — whisper.cpp `whisper-server` is the supported one. The service scripts run one: the *speech recognition service for dictation*. The *service runtime* starts it in hotkey mode, or the user with `just start-model-servers`; the app connects to it, checks it is reachable at startup, and rejects any address that is not loopback.
 - **Code:** `app/src/adapters/secondary/transcription/openai/` — `OpenAiTranscriber`; config section `[transcription]` (`app/src/config/transcription/mod.rs`)
 - **Synonyms to AVOID:** "STT server", "Whisper server" (names one implementation), "backend", "engine"
 
@@ -291,11 +291,6 @@
 - **Definition:** The *speech recognition service* the app sends dictations and recording files to (`[transcription].base_url`, port 8081 by default). The service scripts start it as `whisper-server` (three *copies* found from its address) with the Whisper large-v3-turbo model, 5-bit quantized (`ggml-large-v3-turbo-q5_0.bin`), unless the user names another model in `VOICEPUNCHER_WHISPER_MODEL`.
 - **Synonyms to AVOID:** "turbo server", "main whisper", "dictation whisper"
 
-### Speech recognition service for commands
-- **Type:** External system (a *speech recognition service*)
-- **Definition:** The *speech recognition service* the *command spotting service* confirms utterances with (port 8085 by default, `VOICEPUNCHER_COMMAND_STT_PORT`). The service scripts start it as `whisper-server-commands` (three *copies* found from its address) with the Whisper small model (`ggml-small.bin`), unless the user names another model in `VOICEPUNCHER_COMMAND_WHISPER_MODEL`. The app never talks to it.
-- **Synonyms to AVOID:** "command whisper", "confirmation server", "second whisper", "small server"
-
 ### Copy
 - **Type:** External system (one process of a local service)
 - **Definition:** One process of a local service — a `whisper-server` of a *speech recognition service* or a `voicepuncher-command-spotting` of the *command spotting service*; a speech recognition copy answers one request at a time, a command spotting copy serves one connection's listening. With several copies, copy *n* listens on the service's port + its copy offset + *n* — 10000 for a speech recognition service, 41000 for command spotting (8082 → 49083–49086); − the offset when that would pass the last port; at most 4 copies — and nothing the app starts listens on the service's own port; a single copy listens on the service's own port. A client finds the copies from the service's address alone: the own port when it answers, else the copy ports; a speech recognition port counts as a copy only once it answers as a whisper-server (its `GET /` page names whisper), so a *foreign program* on it is passed over.
@@ -303,7 +298,7 @@
 - **Synonyms to AVOID:** "instance", "backend", "replica", "worker"
 
 ### Copy pool
-- **Type:** Shared library (`copy-pool/`, used by the app's transcription adapter, its command spotting client and the command spotting service)
+- **Type:** Library (`copy-pool/`, used by the app: its transcription adapter, and its command spotting client for the copies' addresses)
 - **Definition:** The *copies* of one local service as one client process sees them: which accept connections (probed every second), which are held, and the requests waiting for one, first come first served. A request whose copy refuses the connection or drops it goes to another copy; when no copy accepts connections, the client waits for one to come back (30 s) before it fails. One pool per process per service address and copy offset. A speech recognition pool asks each port once, when it starts accepting connections, whether it is a whisper-server; a *foreign program* found there is logged once and gets no request.
 - **Code:** `copy-pool/src/pool.rs` — `CopyPool`
 - **Synonyms to AVOID:** "load balancer", "proxy", "router"
@@ -399,33 +394,21 @@
 
 ### Command history
 - **Type:** Folder written by the command spotting service (`CommandHistory`, `Recorder`)
-- **Definition:** The local folder (`~/.voicepuncher/command-history/`, `[archive] keep_commands`, on by default) where the command spotting services the app starts keep a *command history entry* for every utterance in which the keyword spotter spotted a selected phrase or the speech recognition service for commands heard a command, and for every utterance the *streaming recognizer*'s *voice gate* opened; with the keyword spotter, ordinary speech leaves none. Kept within the *dictation archive*'s size limit by removing the oldest entries; a service given no folder (the service scripts, tests, benchmarks) keeps nothing; never sent anywhere.
+- **Definition:** The local folder (`~/.voicepuncher/command-history/`, `[archive] keep_commands`, on by default) where the command spotting services the app starts keep a *command history entry* for every utterance the *streaming recognizer*'s *voice gate* opened. Kept within the *dictation archive*'s size limit by removing the oldest entries; a service given no folder (the service scripts, tests, benchmarks) keeps nothing; never sent anywhere.
 - **Code:** `command-spotting/src/history/`; `app/src/adapters/secondary/localservices/catalog/args.rs` — `CommandHistoryArgs`
 - **Synonyms to AVOID:** "history" (alone — the dictation archive's folder), "command log", "recordings"
 
 ### Command history entry
 - **Type:** Value Object (`Entry` in `command-spotting/src/history/`)
-- **Definition:** What the *command history* keeps of one speech segment, in a folder of its own named by its start: the audio as the microphone gave it (at most its last 10 s), every phrase the keyword spotter spotted in it with its tokens (the spotter gives no score), every hearing of the speech recognition service for commands with its kind, span and text, the transcript, the commands reported to the app with whether that service heard them, and the *command history outcome*.
+- **Definition:** What the *command history* keeps of one speech segment, in a folder of its own named by its start: the audio as the microphone gave it (at most its last 10 s), every command a recognizer's final text holds with that recognizer's name and text and its span, the transcript, the commands reported to the app, the *command history outcome*, and the *streaming recognizer*'s texts, reports and stage times.
 - **Code:** `command-spotting/src/history/entry.rs`
 - **Synonyms to AVOID:** "archive entry" (a dictation's), "sample", "log entry"
 
 ### Command history outcome
 - **Type:** Value Object (`Outcome`: `agreed`, `corrected`, `rejected`, `missed`, `none`)
-- **Definition:** How the two models of voice control compared on one utterance: **agreed** — the speech recognition service heard only commands the keyword spotter spotted; **corrected** — it heard another command; **rejected** — the spotter spotted a phrase and the speech recognition service heard no command (the spotter's phrase may still have been reported); **missed** — the speech recognition service heard a command the spotter did not spot; **none** — an utterance of the *streaming recognizer* in which no recognizer's final text holds a command and none was reported, kept so a missed command can be found (the keyword spotter keeps no such utterance).
+- **Definition:** How the commands reported on one utterance compare with the commands the recognizers' final texts hold: **agreed** — every command reported is in a final text; **corrected** — a command was reported that no final text holds, beside ones that are; **rejected** — a final text holds a command and none was reported; **missed** — a command was reported and no final text holds one; **none** — no final text holds a command and none was reported, kept so a missed command can be found.
 - **Code:** `command-spotting/src/history/outcome.rs`
 - **Synonyms to AVOID:** "result", "status", "verdict"
-
-### Unconfirmed command
-- **Type:** Behavior of voice control (`[voice_control] confirm_commands = false`, the Settings switch "Confirm commands with Whisper"; `confirm: false` in the `select` message)
-- **Definition:** A command the keyword spotter heard said on its own or doubled, reported to the app at once, without waiting for the speech recognition service for commands; that service still hears it afterwards and gives a *Whisper verdict*. A command inside a sentence, opening or ending one, still waits for its confirmation. The start line logs it as `confirm=unconfirmed`.
-- **Code:** `Unconfirmed` in `command-spotting/src/engine/confirming/unconfirmed.rs`; `PhraseSelection::confirm` in `command-spotting/src/protocol/mod.rs`; `VoiceControlCfg::confirm_commands` in `app/src/config/mod.rs`
-- **Synonyms to AVOID:** "unchecked", "fast mode", "KWS only"
-
-### Whisper verdict
-- **Type:** Value Object (`Verdict`: `agreed`, `other`, `none`; service event `heard`)
-- **Definition:** What the speech recognition service for commands heard in an *unconfirmed command*'s speech: **agreed** — the same command; **other** — another command; **none** — no command. It never changes what was carried out: the app logs it (`whisper on unconfirmed [...]: <verdict>`) and the *command history entry* keeps it with the reported command (`whisper`), for statistics; such a command counts as heard in the *command history outcome* only when the verdict is `agreed`.
-- **Code:** `ServerEvent::Heard`, `Verdict` in `command-spotting/src/protocol/mod.rs`; `verdict_line` in `app/src/adapters/secondary/commandspotting/websocket/client/events.rs`
-- **Synonyms to AVOID:** "outcome" (the *command history outcome*), "confirmation" (it comes after the command)
 
 ### Log file
 - **Type:** Adapter output (no port: logging goes through the `log` facade)
@@ -522,18 +505,6 @@
 - **Code:** `PipelineInput::SpottingLost`; `lose_spotting` in `app/src/core/application/pipeline/voice_control/mod.rs`
 - **Synonyms to AVOID:** "dead", "offline", "disconnected" (alone: the connection may be up while the service is slow)
 
-### Confirmation failed
-- **Type:** Boundary signal (service event `confirmation_failed`)
-- **Definition:** The *command spotting service* got no answer for a closed speech segment from any copy of the *speech recognition service for commands*, within both attempts of its *confirmation deadline*: a command said in it is lost. A copy that sends nothing within its decoding budget and does not answer its health check counts as stalled, and the confirmation goes to another copy first. The app shows the *failure notice* that voice commands are unavailable at once; the recognizer ignores the event.
-- **Code:** `ServerEvent::ConfirmationFailed` in `command-spotting/src/protocol/mod.rs`; `SpottingEvent::ConfirmationFailed` in `app/src/core/domain/voice_command_recognizer/mod.rs`
-- **Synonyms to AVOID:** "timeout" (a copy may time out and another still answer), "no command" (nothing heard is an answer)
-
-### Stalled (command spotting service)
-- **Type:** State of a connection of the command spotting service (service event `stalled`)
-- **Definition:** A confirmation of the connection has run past every attempt it has (at least 10 s): its thread hangs, since every request is given up at its deadline. The service's `/health` answers 503, and it tells the app once; the app takes it as a loss and *reconnects*.
-- **Code:** `ConfirmationWorker::stalled_at` in `command-spotting/src/worker/mod.rs`; `Beat::stalled` in `health.rs`
-- **Synonyms to AVOID:** "slow" (a slow copy keeps answering within its deadlines), "stuck" (alone: audio waiting with no progress)
-
 ### Dropped audio
 - **Type:** Behavior of the command spotting service (service event `dropped`)
 - **Definition:** Audio arriving while the oldest audio waiting for a connection's processing has waited past 10 s is dropped on arrival (a burst the service keeps up with, such as a replay, is kept), and the service tells the app how many samples; the stream's clock no longer matches the app's, so the app takes it as a loss, *reconnects* and sends the *speech captured while the service was away*.
@@ -542,7 +513,7 @@
 
 ### Protocol version (command spotting)
 - **Type:** Concept
-- **Definition:** The version of the messages between the app and the *command spotting service*, now 3: every connection opens with the app's `hello` naming it, and each message names its `type` (`hello`, `select`, `sync`); version 3 added the `select` field `confirm` and the `heard` event. The service closes a connection of another version, or one without a `hello` first, naming both versions; a message it cannot read and an audio frame of partial samples close the connection with the reason.
+- **Definition:** The version of the messages between the app and the *command spotting service*, now 4: every connection opens with the app's `hello` naming it, and each message names its `type` (`hello`, `select`, `sync`). The service closes a connection of another version, or one without a `hello` first, naming both versions; a message it cannot read and an audio frame of partial samples close the connection with the reason.
 - **Code:** `PROTOCOL_VERSION`, `AppMessage` in `command-spotting/src/protocol/mod.rs`; `command-spotting/src/server/refusal.rs`; `SpottingClient::connect`
 - **Synonyms to AVOID:** "API version"
 
@@ -554,33 +525,13 @@
 
 ### Back (command spotting service)
 - **Type:** Boundary signal
-- **Definition:** A *reconnect* succeeded: the new connection was told the commands of the current state and sent the *speech captured while the service was away*. The core resets the recognizer, plays the listening-on sound and listens again.
+- **Definition:** A *reconnect* succeeded: the new connection was told the commands of the current state and sent the *speech captured while the service was away*. The core plays the listening-on sound and listens again.
 - **Code:** `PipelineInput::SpottingBack`; `regain_spotting` in `app/src/core/application/pipeline/voice_control/mod.rs`
 
 ### Speech captured while the service was away
 - **Type:** Concept
 - **Definition:** The audio from 5 s before the loss (never earlier than the end of the last command reported) to the return, at most the last 10 s held by the adapter, sent to the service that is *back* so a command said in that time is carried out late rather than lost. A command that ends before the last one carried out is not carried out twice.
 - **Code:** `HeardAudio::replay_from` in `app/src/adapters/secondary/commandspotting/websocket/heard.rs`, `replay_start` in `link.rs`
-
-### Confirmation deadline
-- **Type:** Rule of the *command spotting service*
-- **Definition:** How long one confirmation by the *speech recognition service for commands* may take before the service gives it up (3 s, `--confirmation-deadline-secs`). The confirmation of a closed utterance is tried twice; a check of a running utterance is skipped while another one waits. Confirmations run off the audio path, so a slow one delays only its own check.
-- **Code:** `command-spotting/src/worker/mod.rs`
-
-### Near miss
-- **Type:** Rule of the *command spotting service*
-- **Definition:** What the *speech recognition service* hears in place of a command's short form, listed per command: "Start." or "Let's start." (at most three words ending in "start") while "restart dictation" is selected, since the user's quiet "restart" comes out so. A near miss is no command; it only asks for a *second hearing*.
-- **Code:** `NEAR_MISSES`, `PhraseMatcher::near_miss` in `command-spotting/src/matcher/mod.rs`
-
-### Second hearing
-- **Type:** Rule of the *command spotting service*
-- **Definition:** When the confirmation of a short utterance hears no command but a *near miss*, the utterance is heard once more through its *steady clip*, and counts as the near-missed command only when that hearing says it as a whole. Its events wait for the second answer.
-- **Code:** `JobKind::Rehear`, `hear_again` in `command-spotting/src/engine/confirming/rehear.rs`
-
-### Steady clip
-- **Type:** Value of the *command spotting service*
-- **Definition:** An utterance cut 0.25 s before its first sound (the first 10 ms louder than 0.4 of its loudest, padded with silence when the audio starts later) and raised toward a loudest 10 ms of 0.1 when quieter, by at most 10 times: the same words sound alike to the speech recognition service whatever sound came before them. Only the *second hearing* sends it.
-- **Code:** `steady_clip` in `command-spotting/src/engine/clip.rs`
 
 ### Health check
 - **Type:** Rule of the service scripts
@@ -590,16 +541,16 @@
 
 ### VoiceCommand
 - **Type:** Value Object (enum)
-- **Definition:** A spoken English command. `SpokenCommand` pairs it with when its words were said and its *command placement*: the whole utterance (the pause rule), the end of an utterance, "start" at its head, or a doubled form or *command chain* anywhere.
-- **Code:** `app/src/core/domain/voice_command.rs`, recognition (pause rule) in `app/src/core/domain/voice_command_recognizer/mod.rs`
+- **Definition:** A spoken English command. `SpokenCommand` pairs it with when its words were said and its *command placement*: the whole utterance, the end of an utterance, "start" at its head, or a doubled form or *command chain* anywhere.
+- **Code:** `app/src/core/domain/voice_command.rs`
 - **Variants:** `StartDictation` ("start dictation"), `StopDictation` ("stop dictation"), `CancelDictation` ("cancel dictation"), `RestartDictation` ("restart dictation"), `PressEnter` ("press enter"), `ClearAllText` ("clear all text"), `PasteText` ("paste text"); the names in parentheses are the command's identifiers in the protocol, the code and the logs, never what the user says (*command word*)
 - **Synonyms to AVOID:** "keyword", "hotword", "wake word", "voice shortcut"
 
 ### SpottingEvent
 - **Type:** Boundary signal
-- **Definition:** What the *command spotting service* reports about the audio it hears: speech started, speech ended, a phrase spotted with its start and end. Fed to the `VoiceCommandRecognizer`.
-- **Code:** `app/src/core/domain/voice_command_recognizer/mod.rs`
-- **Variants:** `SpeechStarted`, `SpeechEnded`, `PhraseSpotted`, `CommandsSaid` (one to three commands said without a pause around them, carried out at once without the pause rule)
+- **Definition:** What the *command spotting service* reports about the audio it hears: speech started, speech ended, commands said. `SpottingEvent::into_commands` turns it into the commands to carry out.
+- **Code:** `app/src/core/domain/spotting_event.rs`
+- **Variants:** `SpeechStarted`, `SpeechEnded`, `CommandsSaid` (one to three commands said without a pause around them, carried out at once and in order)
 
 ### Command word
 - **Type:** Concept
@@ -614,7 +565,7 @@
 
 ### Start cue
 - **Type:** Concept
-- **Definition:** What tells the user a dictation started: the start sound (the restart sound for "restart dictation"), the overlay's recording sign and the recording running. A voice start gives it as soon as its *voice command* is confirmed and logs `voice start: total=… hear=… confirm=… deliver=… cue=…` (ms from the capture time of the command's end).
+- **Definition:** What tells the user a dictation started: the start sound (the restart sound for "restart dictation"), the overlay's recording sign and the recording running. A voice start gives it as soon as its *voice command* is reported and logs `voice start: total=… hear=… cue=… overlay=…` (ms from the capture time of the command's end).
 - **Code:** `app/src/core/application/pipeline/voice_control/mod.rs`
 - **Synonyms to AVOID:** "start signal", "beep"
 
@@ -625,17 +576,12 @@
 
 ### Command spotting service
 - **Type:** Local service (separate process, loopback WebSocket)
-- **Definition:** The `voicepuncher-command-spotting` program in `command-spotting/`. It turns streamed microphone audio into *spotting events* with its *command recognizer*: by default the *streaming recognizer*, or the *keyword spotter*, whose short utterances the *speech recognition service for commands* confirms (the whole transcript must be a command phrase). It opens no microphone itself.
+- **Definition:** The `voicepuncher-command-spotting` program in `command-spotting/`. It turns streamed microphone audio into *spotting events* with its *streaming recognizer*. It opens no microphone itself.
 - **Synonyms to AVOID:** "KWS server", "wake word engine"
 
-### Command recognizer
-- **Type:** Configuration value (`[voice_control] recognizer`, `CommandRecognizer`)
-- **Definition:** How the *command spotting service* hears commands: `streaming` (the default, the *streaming recognizer*) or `keyword_spotting` (the *keyword spotter* with Whisper confirmation). It decides which services and models voice control needs: the streaming recognizer needs no *speech recognition service for commands*.
-- **Synonyms to AVOID:** "engine", "backend"
-
 ### Streaming recognizer
-- **Type:** Command recognizer of the *command spotting service*
-- **Definition:** An English and a Russian sherpa-onnx streaming speech recognizer, woken by the *voice gate* at the onset of speech and fed the speech with the half second before it. The first of them to hear a command reports it at once, without a Whisper confirmation; the Russian one's Cyrillic command words ("стоп", "энтер") are respelled as the English words they sound like. Each recognizer decodes on a thread of its own (4 model threads by default), so a slow one holds back neither the other nor the gate; at the gate's pause every recognizer gets 0.6 s of silence ahead of the stream (the *pause flush*), so a word's last sound comes out at once. Each utterance's texts, reports and stage times go to the log and the *command history*.
+- **Type:** Part of the *command spotting service*
+- **Definition:** An English and a Russian sherpa-onnx streaming speech recognizer, woken by the *voice gate* at the onset of speech and fed the speech with the half second before it. The first of them to hear a command reports it at once; the Russian one's Cyrillic command words ("стоп", "энтер") are respelled as the English words they sound like. Each recognizer decodes on a thread of its own (4 model threads by default), so a slow one holds back neither the other nor the gate; at the gate's pause every recognizer gets 0.6 s of silence ahead of the stream (the *pause flush*), so a word's last sound comes out at once. Each utterance's texts, reports and stage times go to the log and the *command history*.
 - **Synonyms to AVOID:** "online ASR", "the two models"
 
 ### Pause flush
@@ -648,11 +594,6 @@
 - **Type:** Part of the *streaming recognizer*
 - **Definition:** The Silero voice activity detector that hears whether a window of audio holds speech; without speech no streaming recognizer runs.
 - **Synonyms to AVOID:** "VAD" in prose, "wake word"
-
-### Keyword spotter
-- **Type:** Command recognizer of the *command spotting service*
-- **Definition:** sherpa-onnx keyword spotting with the English `zipformer-gigaspeech-3.3M` model, each spotted utterance confirmed by the *speech recognition service for commands*; chosen with `recognizer = "keyword_spotting"`.
-- **Synonyms to AVOID:** "KWS" in prose
 
 ### Key press
 - **Type:** Effect of a *voice command*

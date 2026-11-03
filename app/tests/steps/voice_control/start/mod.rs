@@ -5,6 +5,5 @@ use super::{
     OTHER_SENTENCE, PHRASE_LEAD, REACTION, SEGMENT_TAIL, SENTENCE, SETTLE,
 };
 
-mod failed_confirmation;
 mod speech_after_start;
 mod start_timing;

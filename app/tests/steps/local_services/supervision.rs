@@ -11,7 +11,6 @@ use voicepuncher::core::domain::{ServiceKind, ServiceSpec, ServiceState, Service
 use super::{alive, fake_program, Answering, StepClock};
 
 pub(super) const DICTATION: u16 = 18082;
-pub(super) const COMMANDS: u16 = 18086;
 pub(super) const COMMAND_SPOTTING: u16 = 49083;
 /// How long the steps drive the runtime before they give up on what they wait for.
 const DRIVE_LIMIT: Duration = Duration::from_secs(10);

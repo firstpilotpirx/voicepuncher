@@ -422,13 +422,6 @@ Feature: voice-control
       Then the overlay still shows that voice commands do not work after the paste
       And once the service is back, the overlay hides
 
-  Rule: A command whose confirmation fails is reported
-
-    Scenario: The app shows a failed confirmation
-      Given listening is on
-      When the command spotting service reports a failed confirmation
-      Then the overlay shows the failure notice that voice commands are unavailable
-
   Rule: A dictation keeps recording while the command spotting service is away
 
     Scenario: The hotkey ends a dictation while the service is away
@@ -457,7 +450,7 @@ Feature: voice-control
       Then the sentence is pasted into the focused app
       And the pasted text does not contain "stop"
 
-  Rule: A voice start gives its start cue within 0.7 s of its words
+  Rule: A voice start gives its start cue within 0.7 s of the end of its words
 
     Scenario: The overlay shows with the start cue
       Given listening is on
@@ -465,19 +458,13 @@ Feature: voice-control
       When the user says "start start" and stays silent
       Then the overlay's recording sign shows within 0.05 s of the start cue
 
-  Rule: Every voice start logs how long its start cue took
+  Rule: Every voice start logs the time of its start cue
 
     Scenario: A voice start logs its timing
       Given listening is on
       And no dictation runs
       When the user says "start start" and a sentence without a pause
       Then the log shows one timing line for that start, with its total and the time of each stage, the cue sound and the overlay included
-
-    Scenario: A start without confirmation logs that it was not confirmed
-      Given listening is on
-      And no dictation runs
-      When the user says "start start", reported without the Whisper confirmation, and stays silent
-      Then the timing line of that start shows that it was not confirmed
 
     Scenario: The timing stays right after microphone audio was lost
       Given listening is on

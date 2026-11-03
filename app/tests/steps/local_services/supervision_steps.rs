@@ -8,7 +8,7 @@ use voicepuncher::config::Config;
 use voicepuncher::core::domain::{ServiceKind, ServiceState};
 
 use super::home::{FakeHome, COMMAND_SPOTTING as COMMAND_SPOTTING_PROGRAM};
-use super::supervision::{Supervised, COMMANDS, COMMAND_SPOTTING, DICTATION};
+use super::supervision::{Supervised, COMMAND_SPOTTING, DICTATION};
 use super::{alive, local, wait_for_file, Answering};
 use crate::IntegrationWorld;
 
@@ -62,14 +62,6 @@ fn outside_service_outlives_quit(world: &mut IntegrationWorld) -> Result<()> {
         "the quit stopped the adopted service"
     );
     Ok(())
-}
-
-#[given("the app adopted the speech recognition service for dictation")]
-fn dictation_adopted_given(world: &mut IntegrationWorld) -> Result<()> {
-    scripts_run_dictation(world)?;
-    let run = supervised(world)?;
-    run.supervise_planned()?;
-    run.drive_until(DICTATION, |state| *state == ServiceState::Adopted)
 }
 
 #[given("the command spotting service exits at every start")]
@@ -130,15 +122,15 @@ fn spotting_ready(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
-#[given("the app started the speech recognition service for dictation and adopted the speech recognition service for commands")]
+#[given("the app started the speech recognition service for dictation and adopted the command spotting service")]
 fn owned_and_adopted(world: &mut IntegrationWorld) -> Result<()> {
     let run = supervised(world)?;
     let dictation = run.spec(ServiceKind::Dictation, DICTATION, RUNS)?;
     run.start_owned(dictation)?;
-    run.run_outside(COMMANDS)?;
-    let commands = run.spec(ServiceKind::Commands, COMMANDS, RUNS)?;
-    run.supervise(commands)?;
-    run.drive_until(COMMANDS, |state| *state == ServiceState::Adopted)
+    run.run_outside(COMMAND_SPOTTING)?;
+    let spotting = run.spec(ServiceKind::CommandSpotting, COMMAND_SPOTTING, RUNS)?;
+    run.supervise(spotting)?;
+    run.drive_until(COMMAND_SPOTTING, |state| *state == ServiceState::Adopted)
 }
 
 #[given("the app started a service that does not end when asked")]
@@ -170,10 +162,10 @@ fn no_dictation_left(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
-#[then("the speech recognition service for commands still runs")]
-fn commands_still_runs(world: &mut IntegrationWorld) -> Result<()> {
+#[then("the command spotting service still runs")]
+fn command_spotting_still_runs(world: &mut IntegrationWorld) -> Result<()> {
     ensure!(
-        supervised(world)?.outside_runs(COMMANDS)?,
+        supervised(world)?.outside_runs(COMMAND_SPOTTING)?,
         "the adopted service was stopped"
     );
     Ok(())

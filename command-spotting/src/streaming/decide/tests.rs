@@ -172,6 +172,25 @@ fn should_take_the_same_command_right_after_a_report_for_its_double() {
     assert!(!doubles(None, &found_at(1.64, 1.98)));
 }
 
+#[test]
+fn should_take_a_start_timed_late_after_a_restart_for_its_end() {
+    // Given "restart" reported at 3.84–4.46 s and "start" timed by the other recognizer at 5.1 s
+    let restart = Finding {
+        commands: vec!["restart dictation".into()],
+        start: 3.84,
+        end: 4.46,
+        placement: Placement::Tail,
+    };
+    let start = Finding {
+        commands: vec!["start dictation".into()],
+        start: 5.1,
+        end: 5.1,
+        placement: Placement::Head,
+    };
+    // When / Then
+    assert!(doubles(Some(&restart), &start));
+}
+
 fn paused_at(now: f32, pause: f32) -> Moment {
     Moment::Decoding { now, pause: Some(pause) }
 }
@@ -238,4 +257,39 @@ fn should_wait_longer_for_a_one_word_form_when_the_gate_heard_speech_go_on_after
     let early = decide(&dictating(), &words, paused_at(1.55, 1.91), 0.0);
     // Then
     assert_eq!(early, None);
+}
+
+#[test]
+fn should_wait_for_the_pause_when_the_gate_heard_speech_go_on_after_a_one_word_form() {
+    // Given "stop" ending at 1.25 s, decoded to 1.75 s, the gate's pause beginning at 2.1 s
+    let words = said(1.0, "stop");
+    // When
+    let found = decide(&dictating(), &words, paused_at(1.75, 2.1), 0.0);
+    // Then
+    assert_eq!(found, None);
+}
+
+#[test]
+fn should_take_each_command_of_an_utterance_said_with_a_pause_between_them() {
+    // Given "press enter", a 0.75 s pause the gate missed, and "press enter" again
+    let words = [said(1.0, "press enter"), said(2.3, "press enter")].concat();
+    // When
+    let first = decide(&standby(), &words, Moment::Closing, 0.0).expect("the first");
+    let second = decide(&standby(), &words, Moment::Closing, first.end).expect("the second");
+    // Then
+    assert!((first.end - 1.55).abs() < 1e-6, "{}", first.end);
+    assert!((second.end - 2.85).abs() < 1e-6, "{}", second.end);
+}
+
+#[test]
+fn should_take_no_command_followed_by_speech_without_a_pause() {
+    // When
+    let found = decide(
+        &standby(),
+        &said(1.0, "press enter the door"),
+        Moment::Closing,
+        0.0,
+    );
+    // Then
+    assert_eq!(found, None);
 }

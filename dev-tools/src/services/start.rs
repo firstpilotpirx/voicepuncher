@@ -2,7 +2,7 @@
 //! commands and the command spotting service, or only the named ones; one that
 //! already answers on its port is skipped.
 
-use super::command_lines::{command_spotting_args, streaming_args, whisper_args};
+use super::command_lines::{streaming_args, whisper_args};
 use super::launch::{self, Service};
 use super::ready::{port_open, Ready};
 use super::{copy_ports, outcome, selected, unknown, Settings, Speech, Step, Stop, MAX_COPIES};
@@ -29,7 +29,6 @@ pub fn start(settings: &Settings, services: &[String]) -> Step {
     for service in selected(services) {
         match service.as_str() {
             "whisper-server" => start_whisper(settings, &settings.dictation)?,
-            "whisper-server-commands" => start_whisper(settings, &settings.commands)?,
             "voicepuncher-command-spotting" => start_command_spotting(settings)?,
             _ => return Err(unknown(&service)),
         }
@@ -177,23 +176,13 @@ fn start_command_spotting(settings: &Settings) -> Step {
     launch::start(settings, &service)
 }
 
-/// The command spotting service's arguments: the streaming recognizers when
-/// `VOICEPUNCHER_COMMAND_RECOGNIZER` is `streaming`, else the keyword spotter.
+/// The command spotting service's arguments: the streaming recognizers behind the voice gate.
 fn command_spotting_line(settings: &Settings) -> Result<Vec<String>, Stop> {
     let port = settings.kws_port.to_string();
     let vad = require_model("VOICEPUNCHER_KWS_VAD_MODEL")?;
-    if var("VOICEPUNCHER_COMMAND_RECOGNIZER").as_deref() == Some("streaming") {
-        let en = require_model_dir("VOICEPUNCHER_STREAMING_EN_MODEL_DIR")?;
-        let ru = require_model_dir("VOICEPUNCHER_STREAMING_RU_MODEL_DIR")?;
-        return Ok(streaming_args(&port, &en, &ru, &vad));
-    }
-    let model_dir = require_model_dir("VOICEPUNCHER_KWS_MODEL_DIR")?;
-    Ok(command_spotting_args(
-        &port,
-        &model_dir,
-        &vad,
-        &settings.command_stt_url(),
-    ))
+    let en = require_model_dir("VOICEPUNCHER_STREAMING_EN_MODEL_DIR")?;
+    let ru = require_model_dir("VOICEPUNCHER_STREAMING_RU_MODEL_DIR")?;
+    Ok(streaming_args(&port, &en, &ru, &vad))
 }
 
 /// Builds the command spotting service without the variables cargo sets for a test it runs, because the

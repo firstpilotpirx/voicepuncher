@@ -26,14 +26,6 @@ pub fn stop(settings: &Settings, services: &[String], out: &mut dyn Write) -> St
                 settings.dictation.label,
                 out,
             ),
-            "whisper-server-commands" => {
-                stop_speech_recognition(
-                    settings,
-                    settings.commands.port,
-                    settings.commands.label,
-                    out,
-                );
-            }
             "voicepuncher-command-spotting" => stop_service(
                 settings,
                 ["voicepuncher-command-spotting", "command spotting service"],

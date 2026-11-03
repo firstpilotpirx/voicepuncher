@@ -97,6 +97,15 @@ const SOUNDS: &[(&str, &[&[Letter]])] = &[
                 ("с", Once),
                 ("т", Once),
             ],
+            // A short synthesized "paste" loses its "п" ("эйст", "хейст" from a 48 kHz
+            // microphone); the "й" keeps "ест" apart.
+            &[
+                ("х", Maybe),
+                ("эе", Once),
+                ("й", Once),
+                ("с", Once),
+                ("т", Once),
+            ],
         ],
     ),
 ];

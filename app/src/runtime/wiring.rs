@@ -157,8 +157,7 @@ fn connect_command_spotter(
     let spotter = WebSocketCommandSpotter::new(config.voice_control.url.clone(), inputs)
         .with_input_device(&config.audio.input_device)
         .with_tap(tap)
-        .reporting_refused(refused)
-        .confirming(config.voice_control.confirm_commands);
+        .reporting_refused(refused);
     spotter.probe()?;
     Ok(spotter)
 }

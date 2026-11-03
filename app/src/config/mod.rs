@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 
-use crate::core::domain::{CommandRecognizer, HotKey, RecordingMode};
+use crate::core::domain::{HotKey, RecordingMode};
 
 pub mod document;
 mod loopback;
@@ -128,11 +128,12 @@ impl Default for SoundsCfg {
 pub struct VoiceControlCfg {
     pub enabled: bool,
     pub url: String,
-    /// Whether the speech recognition service for commands confirms a command before it is
-    /// carried out; off, the keyword spotter alone decides and Whisper's verdict is logged.
-    pub confirm_commands: bool,
-    /// What hears the commands: the streaming recognizers, or the keyword spotter.
-    pub recognizer: CommandRecognizer,
+    /// Retired with the keyword spotter: still accepted, and ignored, so old configs load.
+    #[serde(skip_serializing)]
+    confirm_commands: IgnoredAny,
+    /// Retired with the keyword spotter: still accepted, and ignored, so old configs load.
+    #[serde(skip_serializing)]
+    recognizer: IgnoredAny,
 }
 
 impl Default for VoiceControlCfg {
@@ -140,8 +141,8 @@ impl Default for VoiceControlCfg {
         Self {
             enabled: false,
             url: "ws://127.0.0.1:8082".into(),
-            confirm_commands: true,
-            recognizer: CommandRecognizer::default(),
+            confirm_commands: IgnoredAny,
+            recognizer: IgnoredAny,
         }
     }
 }
@@ -214,17 +215,22 @@ impl Default for LoggingCfg {
 pub struct ServicesCfg {
     pub manage: bool,
     pub dictation_copies: u32,
-    pub command_copies: u32,
+    /// Retired with the speech recognition service for commands: still accepted, and
+    /// ignored, so old configs load.
+    #[serde(skip_serializing)]
+    command_copies: IgnoredAny,
     pub command_spotting_copies: u32,
     pub models_dir: PathBuf,
-    /// The speech recognition service for commands, which the command spotting service asks.
-    pub commands_url: String,
+    /// Retired with the speech recognition service for commands: still accepted, and
+    /// ignored, so old configs load.
+    #[serde(skip_serializing)]
+    commands_url: IgnoredAny,
 }
 
 /// The most copies of a service: its clients look on four ports.
 pub const MAX_SERVICE_COPIES: u32 = 4;
 const DEFAULT_MODELS_DIR: &str = "~/.voicepuncher/models";
-/// Copies of a speech recognition service.
+/// Copies of the speech recognition service.
 const DEFAULT_COPIES: u32 = 3;
 /// Two copies of a service that answers one request at a time: one takes over while the
 /// other is restarted.
@@ -245,10 +251,10 @@ impl Default for ServicesCfg {
         Self {
             manage: true,
             dictation_copies: DEFAULT_COPIES,
-            command_copies: DEFAULT_COPIES,
+            command_copies: IgnoredAny,
             command_spotting_copies: DEFAULT_SERVICE_COPIES,
             models_dir: PathBuf::from(DEFAULT_MODELS_DIR),
-            commands_url: "http://127.0.0.1:8085/v1".into(),
+            commands_url: IgnoredAny,
         }
     }
 }
@@ -335,9 +341,7 @@ fn explain(raw: &str, error: toml::de::Error, origin: &str) -> anyhow::Error {
 pub fn validate(cfg: &Config) -> Result<()> {
     ensure_loopback("transcription.base_url", &cfg.transcription.base_url)?;
     ensure_loopback_websocket("voice_control.url", &cfg.voice_control.url)?;
-    ensure_loopback("services.commands_url", &cfg.services.commands_url)?;
     ensure_copies("services.dictation_copies", cfg.services.dictation_copies)?;
-    ensure_copies("services.command_copies", cfg.services.command_copies)?;
     ensure_copies(
         "services.command_spotting_copies",
         cfg.services.command_spotting_copies,

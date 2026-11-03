@@ -102,24 +102,6 @@ branch = "feat/faster-stop-to-paste"
 
 
 [[frozen]]
-test = "scenario: Start start followed by the dictation at once"
-frozen = "2026-11-01"
-recipe = "full-check"
-stage = "e2e-smoke-voice"
-beside = "the command STT copies stopped answering (15 of 28 confirmations cut short) while the installed app’s command spotting service used 2.6 cores"
-branch = "feat/speed-up-command-recognizers"
-
-
-[[frozen]]
-test = "scenario: Start start without confirmation starts at once"
-frozen = "2026-11-02"
-recipe = "e2e-cues"
-stage = "e2e-cues"
-beside = "load average 12 from other sessions; KWS reports the second start ~0.28 s after its end, 0.3 s bound"
-branch = "feat/speed-up-command-recognizers"
-
-
-[[frozen]]
 test = "scenario: The pinned engines are staged"
 frozen = "2026-11-02"
 recipe = "full-check"
@@ -156,12 +138,20 @@ branch = "feat/remove-long-command-forms"
 
 
 [[frozen]]
-test = "scenario: Commands are spotted after a hung confirmation"
+test = "scenario: A long dictation is transcribed while it goes on"
 frozen = "2026-11-02"
+recipe = "test"
+stage = "test"
+beside = "the whole test stage beside the cargo builds of other sessions; a branch touching no dictation chunking (remove-keyword-spotter)"
+branch = "feat/remove-keyword-spotter"
+
+[[frozen]]
+test = "scenario: A hands-free session with the user's recorded commands"
+frozen = "2026-11-03"
 recipe = "full-check"
-stage = "e2e-resilience"
-beside = "full-check alone; tests the Whisper confirmation of the keyword spotter, which the app (streaming recognizer) does not use; deleted by remove-keyword-spotter"
-branch = "feat/remove-long-command-forms"
+stage = "e2e-smoke-voice"
+beside = "user approved freezing: the voice gate missed the recorded enter/stop after a Russian dictation under service lag 3.7 s; offline the same audio is recognized"
+branch = "feat/remove-keyword-spotter"
 
 
 [[frozen]]

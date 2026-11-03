@@ -1,10 +1,10 @@
 //! One utterance in every recognizer: its streams, its audio, the pause after it and what
 //! each recognizer heard and reported of it.
 
-use crate::confirm::TimedWord;
 use crate::matcher::PhraseMatcher;
 use crate::protocol::ServerEvent;
-use crate::worker::Wake;
+use crate::streaming::words::TimedWord;
+use crate::streaming::Wake;
 
 use super::super::decide::{decide, doubles, Finding, Moment};
 use super::super::ports::{Decoded, StreamingModel};
@@ -17,6 +17,11 @@ use super::{samples_in, seconds};
 const MAX_AUDIO_SECS: f32 = 30.0;
 /// The silence fed to every recognizer at the gate's pause, ahead of the stream.
 pub const FLUSH_SECS: f32 = 0.6;
+/// The silence fed to every recognizer ahead of the replay, so the first sound of an utterance
+/// is not the first sound of its stream.
+pub const LEAD_SECS: f32 = 0.3;
+/// How much later than the gate's onset a recognizer may time the first word of an utterance.
+const OPENING_SLACK_SECS: f32 = 0.5;
 
 pub struct Utterance {
     /// Where its audio starts, in seconds of the stream.
@@ -82,6 +87,7 @@ impl Utterance {
             last_report: None,
             trace: Trace::new(start, onset, &names),
         };
+        utterance.silence(LEAD_SECS);
         utterance.feed(replay);
         Ok(utterance)
     }
@@ -118,7 +124,12 @@ impl Utterance {
     /// Feeds silence ahead of the stream at the gate's pause, so a recognizer that emits a
     /// word's last sound only once more audio came emits it now.
     fn flush(&mut self) {
-        let silence = vec![0.0; samples_in(FLUSH_SECS)];
+        self.silence(FLUSH_SECS);
+    }
+
+    /// Feeds `secs` of silence to every recognizer, left out of the times they give.
+    fn silence(&mut self, secs: f32) {
+        let silence = vec![0.0; samples_in(secs)];
         self.flushes.push((self.streamed, silence.len()));
         self.stream(&silence);
     }
@@ -141,17 +152,35 @@ impl Utterance {
 
     /// Reports what the recognizers decoded since the last call, at `now` in the stream.
     pub fn collect(&mut self, matcher: &PhraseMatcher, now: f32, wait: Wait) -> Vec<ServerEvent> {
+        let mut arrived: Vec<(usize, Vec<Update>)> = (0..self.decoders.len())
+            .map(|r| {
+                let updates = match wait {
+                    Wait::No => self.decoders[r].arrived(),
+                    Wait::CaughtUp => self.decoders[r].caught_up(),
+                };
+                (r, updates)
+            })
+            .collect();
+        // WHY: a recognizer that heard only the end of a command word ("start" of a quiet
+        // "restart") must not speak first when the other heard all of it.
+        arrived.sort_by_key(|(r, updates)| self.ends_a_longer_word(matcher, *r, updates));
         let mut events = Vec::new();
-        for r in 0..self.decoders.len() {
-            let updates = match wait {
-                Wait::No => self.decoders[r].arrived(),
-                Wait::CaughtUp => self.decoders[r].caught_up(),
-            };
+        for (r, updates) in arrived {
             for update in updates {
                 events.extend(self.heard(matcher, r, update, now));
             }
         }
         events
+    }
+
+    /// Whether the last word recognizer `r` holds after `updates` may be the end of a longer
+    /// command word.
+    fn ends_a_longer_word(&self, matcher: &PhraseMatcher, r: usize, updates: &[Update]) -> bool {
+        updates.last().is_some_and(|update| {
+            self.words(r, &update.decoded)
+                .last()
+                .is_some_and(|word| matcher.ends_a_longer_word(&word.text))
+        })
     }
 
     /// Recognizer `r` decoded `update`: what it says is reported at `now`.
@@ -175,7 +204,19 @@ impl Utterance {
             }
         };
         let found = decide(matcher, &words, moment, self.reported_until)?;
+        let found = self.started_at_onset(found, &words);
         self.report(r, found, now)
+    }
+
+    /// `found` starting at the gate's onset when it opens the utterance: a recognizer times a
+    /// first word later than it is said, and the dictation it ends would keep its first sounds.
+    fn started_at_onset(&self, mut found: Finding, words: &[TimedWord]) -> Finding {
+        let onset = self.trace.onset;
+        let opens = words.first().is_some_and(|w| w.start >= found.start);
+        if opens && found.start - onset <= OPENING_SLACK_SECS {
+            found.start = found.start.min(onset);
+        }
+        found
     }
 
     /// Reports `found`, heard by recognizer `r` at `now`, unless it doubles the last report.
@@ -233,6 +274,5 @@ fn command(found: Finding) -> ServerEvent {
         start: found.start,
         end: found.end,
         placement: found.placement,
-        timing: None,
     }
 }
