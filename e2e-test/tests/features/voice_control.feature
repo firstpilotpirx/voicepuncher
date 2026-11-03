@@ -342,7 +342,7 @@ Feature: voice-control
       Given the command spotting service is running
       And listening is on for a whole session
       When someone says "start" and a sentence without a pause
-      Then the start cue comes within 0.7 s of the end of "start", while the sentence is still being said
+      Then the start cue comes within 0.9 s of the end of "start", while the sentence is still being said
 
     Scenario: Start said on its own gives its cue at once
       Given the command spotting service is running

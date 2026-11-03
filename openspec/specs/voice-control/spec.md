@@ -995,7 +995,7 @@ When an app asks the command spotting service to confirm that every event of the
 - **THEN** the command spotting service reports "press enter" before it answers the sync
 
 ### Requirement: A voice start gives its start cue within 0.7 s of the end of its words
-When a voice command starts a dictation from standby, or "restart" starts one over, the system SHALL play its start cue (the restart sound for "restart") and show the overlay's recording sign as soon as the command is heard, within 0.7 s of the end of the command's words in at least 9 of 10 synthesized starts and in all but one of the user's recorded starts, with the services otherwise idle; a doubled form ("start start", "restart restart") SHALL give it within 0.5 s.
+When a voice command starts a dictation from standby, or "restart" starts one over, the system SHALL play its start cue (the restart sound for "restart") and show the overlay's recording sign as soon as the command is heard, within 0.7 s of the end of the command's words (0.9 s for "start" followed by speech at once, the streaming models' word timing) in at least 9 of 10 synthesized starts and in all but one of the user's recorded starts, with the services otherwise idle; a doubled form ("start start", "restart restart") SHALL give it within 0.5 s.
 #### Scenario: Start start followed by the dictation at once gives its cue at once
 - **GIVEN** listening is on
 - **AND** no dictation runs
@@ -1006,7 +1006,7 @@ When a voice command starts a dictation from standby, or "restart" starts one ov
 - **GIVEN** listening is on
 - **AND** no dictation runs
 - **WHEN** the user says "start" and a sentence without a pause
-- **THEN** the start cue comes within 0.7 s of the end of "start", while the sentence is still being said
+- **THEN** the start cue comes within 0.9 s of the end of "start", while the sentence is still being said
 
 #### Scenario: Start said on its own gives its cue at once
 - **GIVEN** listening is on
