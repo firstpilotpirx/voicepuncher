@@ -24,6 +24,8 @@ pub struct Clip {
     pub listening: Vec<String>,
     /// Where, in seconds of the clip, the words of its only command end.
     pub word_end: Option<f32>,
+    /// The words said, as the recording's label writes them; empty when unknown.
+    pub words: String,
 }
 
 /// A line of `dataset.jsonl`, as the research bench of `streaming-command-recognition` wrote it.
@@ -74,7 +76,7 @@ fn clip(line: Line) -> Result<Clip> {
         .iter()
         .map(|p| (*p).to_owned())
         .collect();
-    Ok(Clip { id: line.id, audio, label: line.label, listening, word_end })
+    Ok(Clip { id: line.id, audio, label: line.label, listening, word_end, words: String::new() })
 }
 
 /// The command word a reported phrase counts as in a label: `press enter` → `enter`.

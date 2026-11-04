@@ -654,6 +654,14 @@ Feature: voice-control
       When an app streams "we meet at ten enter" followed by silence, in real time
       Then the streaming recognizer reports "press enter" within 0.6 s of the end of the words by the wall clock
 
+    # The English recognizer hears the first word as "stop"; the gate still hears the sentence.
+    @smoke @voice_samples
+    Scenario: A Russian sentence heard as opening with stop is no command
+      Given the command spotting service runs with the streaming recognizer
+      And the user's own recordings of the commands exist on the machine
+      When the user's recorded "чтобы зайти в гетлаб" said while dictating is streamed to the service in real time
+      Then none of the recordings is reported as a command
+
     # Minutes in real time: run by hand with `just streaming-bench --recorded`, never in a check.
     @wip @voice_samples
     Scenario: The user's recorded commands are reported within their bound

@@ -57,6 +57,8 @@ pub struct Span {
     pub listening: Vec<String>,
     /// Where, in seconds of the clip, the words of its only command end.
     pub word_end: Option<f32>,
+    /// The words said.
+    pub words: String,
 }
 
 /// The spans of a session's `rows`, sorted by time; unclear rows and commands closed by
@@ -83,6 +85,7 @@ pub fn spans(rows: &[Row]) -> Vec<(usize, Span)> {
                 label,
                 listening: listening(row.state.as_deref(), &row.said()),
                 word_end,
+                words: row.words.clone(),
             };
             (n, span)
         })
@@ -116,6 +119,7 @@ pub fn recorded_clips(voice_samples: &Path) -> Result<Vec<Clip>> {
             label: span.label,
             listening: span.listening,
             word_end: span.word_end,
+            words: span.words,
         }));
     }
     Ok(clips)

@@ -84,6 +84,42 @@ async fn misheard_clear(world: &mut E2eWorld) -> Result<()> {
     .await
 }
 
+#[when(
+    expr = "the user's recorded {string} said while dictating is streamed to the service in real time"
+)]
+async fn recorded_speech_while_dictating(world: &mut E2eWorld, words: String) -> Result<()> {
+    off_thread(world, move |world| {
+        let speech: Vec<Clip> = recorded()?
+            .into_iter()
+            .filter(|c| c.words == words && c.listening.iter().any(|p| p == "stop dictation"))
+            .collect();
+        ensure!(
+            !speech.is_empty(),
+            "no recording of {words:?} said while dictating"
+        );
+        run(world).recorded = streamed(&speech, Pace::RealTime)?;
+        Ok(())
+    })
+    .await
+}
+
+#[then("none of the recordings is reported as a command")]
+fn none_reported(world: &mut E2eWorld) -> Result<()> {
+    let outcomes = &run(world).recorded;
+    ensure!(!outcomes.is_empty(), "no recording was streamed");
+    let heard: Vec<Outcome> = outcomes
+        .iter()
+        .filter(|o| !o.heard.is_empty())
+        .cloned()
+        .collect();
+    ensure!(
+        heard.is_empty(),
+        "reported as a command: {:#?}",
+        listed(&heard)
+    );
+    Ok(())
+}
+
 #[then(expr = "at least {int} of 100 commands are reported as the command said")]
 fn heard_of_100(world: &mut E2eWorld, bar: usize) -> Result<()> {
     let outcomes = &run(world).recorded;

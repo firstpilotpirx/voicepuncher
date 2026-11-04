@@ -11,7 +11,7 @@ Two losses inside the command spotting service, reproduced from the command hist
 
 **D1. A lone one-word command settles at the gate's pause.** In `settled`, `Moment::Decoding { pause: None, .. }` never settles a one-word command; with `pause: Some(p)` it settles when `p − end ≤ SPEECH_AFTER_SECS` and `now − end ≥ SETTLE_SECS`. `ended` and `Closing` stay. Kept out: a longer `SETTLE_SECS`, which delays every lone command and still fires inside a slow sentence. The pause begins about 0.1 s after the word, within the 0.2 s already waited for, so the 0.3 s bound holds.
 
-**D2. A tail of silence before the final decode.** `Utterance::close` feeds `CLOSE_SILENCE_SECS` of silence through `silence()` (left out of the word times) before `Decoder::finish`: 1.0 s to start, tuned down to the smallest value at which both quiet starts of session 6 decode. Cost: the close decodes the tail too (Russian about 20 ms, English up to 0.6 s); only a command settled at the close is delayed; `e2e-cues` and the bound scenarios measure it. Refuted or kept out: a gate reset at the close (tried: a fresh detector hears the same windows); a longer `min_silence` (changes "an utterance ends after 0.3 s of silence"); a second flush (live the gate did not hear the word's burst).
+**D2. A tail of silence before the final decode.** `Utterance::close` feeds `CLOSE_SILENCE_SECS` of silence through `silence()` (left out of the word times) before `Decoder::finish`: 1.0 s: 0.5 s loses one of the two quiet starts of session 6, 0.8 s decodes both, and 1.0 s keeps a margin. Cost: the close decodes the tail too (Russian about 20 ms, English up to 0.6 s); only a command settled at the close is delayed; `e2e-cues` and the bound scenarios measure it. Refuted or kept out: a gate reset at the close (tried: a fresh detector hears the same windows); a longer `min_silence` (changes "an utterance ends after 0.3 s of silence"); a second flush (live the gate did not hear the word's burst).
 
 **D3. The reproduction of D2 replays the gate's hearing, not the gate.** The live gate stopped hearing at 0.97 s where the offline gate hears the clip to its end (window alignment and detector state differ), so a replay through the real gate does not reproduce the loss. `StreamingEngine::session_with_gate(conn, gate)` builds a session on the engine's models with a scripted gate that hears speech until the entry's `speech_end`. The test (`command-spotting/tests/it/streaming/`, `needs_streaming_models::needs_voice_samples`) feeds the session-6 stretch in 10 ms frames as the app does.
 
@@ -20,7 +20,7 @@ Two losses inside the command spotting service, reproduced from the command hist
 | entry | said | state | commands |
 |---|---|---|---|
 | `2026-11-04T13-58-55.846Z-86346-30006-684` | чтобы зайти в гетлаб | dictating | none |
-| `2026-11-04T13-58-55.846Z-86346-30006-687` | чтобы зайти в гетлаб | dictating | none |
+| `2026-11-04T13-59-03.762Z-86346-30006-687` | чтобы зайти в гетлаб | dictating | none |
 | `2026-11-03T11-12-03.340Z-865-4-685` | старт | standby | start dictation |
 | `2026-11-02T11-07-47.633Z-45180-7594-910` | старт | standby | start dictation |
 
@@ -40,4 +40,4 @@ The gate's hearing of 685 and 910 (speech end 0.97 s and 1.05 s, close 1.37 s an
 ## Risks
 
 - D2's tail may not decode 910 at any length: then its row gets a note, the D3 test covers 685 alone, and the report says so.
-- `recognize-glued-enter-mishearings` targets 0.46.1 too: `kit version-check` takes the next version above `main`.
+- `recognize-glued-enter-mishearings` released 0.46.1 while this change ran: the target moved to 0.46.2 (`kit version-check`).

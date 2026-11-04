@@ -31,9 +31,9 @@ Out of scope: the other voice commands, new command phrases or forms, changes to
 
 ## Open points
 
-All settled by the explore of 2026-11-04 (above): the stage is the command spotting service (the decision stage and the final decode at the close), the app and delivery are excluded by the evidence, and the live misses in the command history replace a new recording session. The target version 0.46.1 is a PATCH bump; the chat names no version.
+All settled by the explore of 2026-11-04 (above): the stage is the command spotting service (the decision stage and the final decode at the close), the app and delivery are excluded by the evidence, and the live misses in the command history replace a new recording session. The target version 0.46.2 is a PATCH bump (0.46.1 was released by recognize-glued-enter-mishearings meanwhile); the chat names no version.
 
 ## Release
 
 SemVer: PATCH — a bug fix in an existing capability, no new command or behavior.
-Target version: 0.46.1.
+Target version: 0.46.2.
