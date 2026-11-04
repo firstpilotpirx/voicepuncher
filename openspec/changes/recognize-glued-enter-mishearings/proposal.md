@@ -18,6 +18,7 @@ Ordinary words that hold the same letters and must stay plain speech: интер
 - The mangled singles above count as "enter", under the same placement rules as "enter" itself (on its own, or at the end of an utterance).
 - The forms the command sounds do not already read are an explicit list of rows in the mishearings table, never a prefix or partial-word rule, so the ordinary words listed above keep doing nothing; the forms the sounds already read (интерентер, энтерентор, интерендер, интеринтер, энтор, энтар) get no row and are pinned by tests.
 - A hyphen inside a word the Russian recognizer writes ("энтер-энтер") is dropped before its sounds are read, so the word reads as the two words it is.
+- Related work met in apply: the `trufflehog` pin of the `justfile` follows the installed 3.99.8 (Homebrew moved past 3.99.6, and `_require-tools` refused every `just test`); `speed-up-check-runtime` makes the same bump.
 
 Current stage: PoC. Target stage: PoC.
 Scope: Russian-recognizer mishearings of "enter", glued doubled and tripled forms included, as voice commands.

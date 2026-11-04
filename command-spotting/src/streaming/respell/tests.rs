@@ -127,7 +127,16 @@ fn should_read_each_glued_or_mangled_enter_from_the_history() {
         "энтер-энтер",
         "энтеренторендрента",
     ];
-    let singles = ["нтр", "энтро", "рентор", "энтор", "энтар", "нтэр", "тентер", "рентра"];
+    let singles = [
+        "нтр",
+        "энтро",
+        "рентор",
+        "энтор",
+        "энтар",
+        "нтэр",
+        "тентер",
+        "рентра",
+    ];
     for word in doubles {
         // When
         let respelled = respell_word(word);
