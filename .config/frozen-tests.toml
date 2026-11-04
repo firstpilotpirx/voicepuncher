@@ -199,3 +199,12 @@ stage = "e2e-quick"
 beside = "a peer's just static (clippy build, 369 s) and Go builds and tests of another project beside the e2e phase; the command spotting service lagged 9 s on 99 s of corpus audio"
 branch = "chore/speed-up-check-runtime"
 
+
+[[frozen]]
+test = "scenario: Benchmark corpus is transcribed within the accuracy bar"
+frozen = "2026-11-04"
+recipe = "check"
+stage = "e2e-quick"
+beside = "mean WER 0.055 over 10 recordings vs baseline 0.031 (5ee5fbd): main's 100-sample WER rose 0.0471 → 0.0523 on 2026-11-01 (feat/faster-stop-to-paste) within its margin; the 10-sample stage had not run since 2026-10-28; this branch touches no recognition path"
+branch = "chore/speed-up-check-runtime"
+
