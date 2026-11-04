@@ -19,6 +19,7 @@ Ordinary words that hold the same letters and must stay plain speech: интер
 - The forms the command sounds do not already read are an explicit list of rows in the mishearings table, never a prefix or partial-word rule, so the ordinary words listed above keep doing nothing; the forms the sounds already read (интерентер, энтерентор, интерендер, интеринтер, энтор, энтар) get no row and are pinned by tests.
 - A hyphen inside a word the Russian recognizer writes ("энтер-энтер") is dropped before its sounds are read, so the word reads as the two words it is.
 - Related work met in apply: the `trufflehog` pin of the `justfile` follows the installed 3.99.8 (Homebrew moved past 3.99.6, and `_require-tools` refused every `just test`); `speed-up-check-runtime` makes the same bump.
+- Related work met in full-check: Homebrew had upgraded `ggml` to 0.28.0 and `libomp` to 23.1.4 and dropped the pinned versions, so `just engines` refused to stage; `app/packaging/engines.lock` and README § Engines now pin the installed versions with their checksums, and the three formulae are pinned with `brew pin` (`e2e-bundle` proves the engines still run on Metal).
 
 Current stage: PoC. Target stage: PoC.
 Scope: Russian-recognizer mishearings of "enter", glued doubled and tripled forms included, as voice commands.

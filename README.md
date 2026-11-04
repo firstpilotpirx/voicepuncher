@@ -270,7 +270,7 @@ The bundle carries the engines `app/packaging/engines.lock` pins, by version and
 
 | Engine | Source | Folder in the bundle |
 |---|---|---|
-| speech recognition (`whisper-server`) | Homebrew `whisper.cpp` 1.9.5 with `ggml` 0.27.0 and `libomp` 23.1.3 | `Contents/MacOS/engines/whisper/` |
+| speech recognition (`whisper-server`) | Homebrew `whisper.cpp` 1.9.5 with `ggml` 0.28.0 and `libomp` 23.1.4 | `Contents/MacOS/engines/whisper/` |
 | command spotting (`voicepuncher-command-spotting`) | this workspace, `cargo build --release` | `Contents/MacOS/engines/command-spotting/` |
 
 Each folder holds the program, every library it loads and a `VERSION` file. `just engines` refuses a Homebrew version or a checksum other than the lock's, naming what it found, and writes nothing then; keep the formulae with `brew pin whisper.cpp ggml libomp`. It relocates every file (each Homebrew path becomes `@rpath`, `@loader_path` the only search path, ggml's compiled-in backend folder blanked so the Metal and CPU backends load from the engine's own folder), signs it ad-hoc, and runs each engine with nothing but `/usr/bin:/bin` on `$PATH`; `just bundle` signs every file again with the signing identity, before the app. Whisper is staged again only when the lock changed.
