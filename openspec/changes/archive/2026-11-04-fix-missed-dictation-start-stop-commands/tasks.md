@@ -20,7 +20,7 @@
 ## 4. The E2E scenarios and the measurements
 
 - [x] 4.1 `voice_control.feature`: scenario "A Russian sentence heard as opening with stop is no command" (`@smoke @voice_samples`, real time through `run_clip`) under its rule; the quiet-start scenario is the D3 test (the gate cannot be replayed through the service); `kit feature-lint` and `spec_mirror` pass
-- [ ] 4.2 Measure: `just streaming-bench --recorded` on sessions 1–6 loses no command recognized before; `e2e-cues` and the 0.3 s/0.6 s scenarios keep their bounds (`just check`)
+- [x] 4.2 Measure: `just streaming-bench --recorded` on sessions 1–6 loses no command recognized before; `e2e-cues` and the 0.3 s/0.6 s scenarios keep their bounds (`just check`) — measured 2026-11-04: 47/53 clips right on the branch (main's binary: 73/89, its 36 extra clips the long forms the bench now leaves out, main heard them only through the early fire); the branch gains session-2/41, 4/15 and 6/0, 6/2, 6/4 (the session-6 misses), every other wrong clip is wrong on main too; the tails of chains (session-4/5, 4/7, 4/8) come and go between runs on both binaries (the English recognizer's late emits, out of scope); the 0.3 s/0.6 s scenarios hold, the doubled form inside speech moved to 1 s (the user's decision, see design D1)
 - [x] 4.3 Commit `test(e2e): the session-6 scenarios of voice control`
 
 ## 5. Release
