@@ -602,7 +602,7 @@ Feature: change-workflow
     Scenario: A rule with several scenarios runs one in the check
       Given the feature files of the local-services and speech-recognition capabilities
       When the smoke scenarios of each rule are counted
-      Then every rule with several scenarios has one smoke scenario
+      Then every rule with several scenarios has at most one smoke scenario and the rest in the full check
 
   Rule: The lint stage scans secrets over the branch's own commits
 
@@ -611,12 +611,14 @@ Feature: change-workflow
       And the repository is a clone on the branch "feat/scan" ahead of main
       When the secret scan asks its range
       Then the range is "origin/main..HEAD"
+      And the lint stage hands the range to gitleaks and trufflehog
 
     Scenario: Main scans the whole history
       Given a scratch repository with a stand-in task runner
       And the repository is a clone on main
       When the secret scan asks its range
       Then the range is "--all"
+      And the lint stage hands the range to gitleaks and trufflehog
 
   Rule: A failed workflow rule is named and rerun alone
 
@@ -638,6 +640,7 @@ Feature: change-workflow
       Then the journal holds the run under the recipe "streaming-bench"
       And the run's arguments are "--recorded --pace fast"
       And the journal records the stage "streaming-bench" as "passed"
+      And the run is journaled as passed with its time
 
     Scenario: A bench run is never a pass
       Given a scratch repository with a stand-in task runner
@@ -663,6 +666,8 @@ Feature: change-workflow
       When the developer runs the area recipe with a path inside one crate
       Then only that crate's tests run
       And the run prints the area's stages and bench options
+      And the journal holds the run under the recipe "test-area"
+      And no pass was recorded
 
     Scenario: An area that exists nowhere fails the unit run
       Given the map names an area whose path is not in the workspace

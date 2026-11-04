@@ -1,5 +1,6 @@
-//! The smoke set of the services and speech capabilities: at most one `@smoke` scenario per rule, the rest
-//! `@regression`, so the check runs each rule once and `full-check` the whole set.
+//! The smoke set of the services and speech capabilities: at most one `@smoke` scenario per rule with
+//! several, the rest in a set of the full check (`@regression`, or a stage of their own: `@seams`,
+//! `@resilience`, `@cues`), so the check runs each rule at most once and `full-check` the whole set.
 
 use cucumber::{given, then, when};
 
@@ -36,39 +37,72 @@ fn classify(line: &str) -> Line<'_> {
     }
 }
 
-/// The scenarios of each rule and how many of them are in the smoke set.
+/// The tags of the sets only the full check runs.
+const FULL_CHECK_TAGS: [&str; 4] = ["regression", "seams", "resilience", "cues"];
+
+/// The scenarios of one rule: how many, how many in the smoke set and how many in a set of the full check.
+struct Rule {
+    name: String,
+    scenarios: usize,
+    smoke: usize,
+    full: usize,
+}
+
+/// The sets a tag line puts a scenario, rule or feature into.
+#[derive(Default, Clone, Copy)]
+struct Sets {
+    smoke: bool,
+    full: bool,
+}
+
+/// The scenarios of each rule and how many of them are in the smoke set and in a set of the full check.
 #[derive(Default)]
 struct Counter {
-    rules: Vec<(String, usize, usize)>,
-    pending: bool,
-    feature: bool,
-    rule: bool,
+    rules: Vec<Rule>,
+    pending: Sets,
+    feature: Sets,
+    rule: Sets,
 }
 
 impl Counter {
     fn tags(&mut self, tags: &str) {
-        self.pending |= tags.split_whitespace().any(|tag| tag == "smoke");
+        for tag in tags
+            .split_whitespace()
+            .map(|tag| tag.trim_start_matches('@'))
+        {
+            self.pending.smoke |= tag == "smoke";
+            self.pending.full |= FULL_CHECK_TAGS.contains(&tag);
+        }
     }
 
     fn rule(&mut self, file: &str, name: &str) {
         self.rule = std::mem::take(&mut self.pending);
-        self.rules.push((format!("{file}: {name}"), 0, 0));
+        self.rules
+            .push(Rule { name: format!("{file}: {name}"), scenarios: 0, smoke: 0, full: 0 });
     }
 
-    /// A scenario is in the smoke set when it, its rule or its feature carries `@smoke`.
+    /// A scenario is in a set when it, its rule or its feature carries the set's tag.
     fn scenario(&mut self) {
-        let smoke = self.feature || self.rule || std::mem::take(&mut self.pending);
+        let own = std::mem::take(&mut self.pending);
+        let smoke = self.feature.smoke || self.rule.smoke || own.smoke;
+        let full = self.feature.full || self.rule.full || own.full;
         if let Some(last) = self.rules.last_mut() {
-            last.1 += 1;
-            last.2 += usize::from(smoke);
+            last.scenarios += 1;
+            last.smoke += usize::from(smoke);
+            last.full += usize::from(full);
         }
     }
 
-    /// `<file>: <rule>: <smoke> of <scenarios>` per rule.
+    /// `<file>: <rule>: <smoke> smoke, <full> full of <scenarios>` per rule.
     fn lines(self) -> Vec<String> {
         self.rules
             .into_iter()
-            .map(|(rule, scenarios, smoke)| format!("{rule}: {smoke} of {scenarios}"))
+            .map(|rule| {
+                format!(
+                    "{}: {} smoke, {} full of {}",
+                    rule.name, rule.smoke, rule.full, rule.scenarios
+                )
+            })
             .collect()
     }
 }
@@ -82,17 +116,27 @@ fn rules_of(file: &str, text: &str) -> Vec<String> {
             Line::Rule(name) => counter.rule(file, name),
             Line::Scenario => counter.scenario(),
             Line::Comment => {}
-            Line::Other => counter.pending = false,
+            Line::Other => counter.pending = Sets::default(),
         }
     }
     counter.lines()
 }
 
-/// Whether a counted rule has several scenarios and more than one of them in the smoke set.
+/// Whether a counted rule has several scenarios and more than one in the smoke set, or one in no
+/// set at all.
 fn over(line: &str) -> bool {
+    let count = |text: &str, what: &str| -> usize {
+        text.trim()
+            .parse()
+            .unwrap_or_else(|_| panic!("{what} in {line}"))
+    };
     let (head, scenarios) = line.rsplit_once(" of ").expect("a scenario count");
+    let (head, full) = head.rsplit_once(", ").expect("a full check count");
     let (_, smoke) = head.rsplit_once(": ").expect("a smoke count");
-    scenarios.parse::<usize>().expect("scenarios") > 1 && smoke.parse::<usize>().expect("smoke") > 1
+    let smoke = count(smoke.trim_end_matches(" smoke"), "smoke");
+    let full = count(full.trim_end_matches(" full"), "full");
+    let scenarios = count(scenarios, "scenarios");
+    scenarios > 1 && (smoke > 1 || smoke + full != scenarios)
 }
 
 #[given("the feature files of the local-services and speech-recognition capabilities")]
@@ -110,12 +154,14 @@ fn count_smoke(world: &mut WorkflowWorld) {
     world.text = counted.join("\n");
 }
 
-#[then("every rule with several scenarios has one smoke scenario")]
+#[then(
+    "every rule with several scenarios has at most one smoke scenario and the rest in the full check"
+)]
 fn one_smoke_per_rule(world: &mut WorkflowWorld) {
     let over: Vec<&str> = world.text.lines().filter(|line| over(line)).collect();
     assert!(
         over.is_empty(),
-        "rules with several smoke scenarios:\n{}",
+        "rules with several smoke scenarios or a scenario in no set:\n{}",
         over.join("\n")
     );
 }

@@ -2,7 +2,7 @@
 
 use cucumber::{given, then, when};
 
-use crate::steps::{ran, scratch, Ran};
+use crate::steps::{ran, recipe_body, repo_file, scratch, Ran};
 use crate::WorkflowWorld;
 
 #[given(expr = "the repository is a clone on the branch {string} ahead of main")]
@@ -32,4 +32,29 @@ fn range_is(world: &mut WorkflowWorld, range: String) {
     let ran = ran(world);
     assert_eq!(ran.code, 0, "{}", ran.both());
     assert_eq!(ran.stdout.trim(), range, "{}", ran.both());
+}
+
+/// The lint recipe runs the scanners on the range `scan-range` printed: gitleaks over its log
+/// options, trufflehog since `origin/main` on a branch and over everything on `--all`.
+#[then("the lint stage hands the range to gitleaks and trufflehog")]
+fn lint_hands_the_range(world: &mut WorkflowWorld) {
+    let range = ran(world).stdout.trim().to_owned();
+    let body = recipe_body(&repo_file("justfile"), "_lint:");
+    let line_with = |tool: &str, text: &str| {
+        body.lines()
+            .any(|line| line.contains(tool) && line.contains(text))
+    };
+    assert!(
+        body.contains("range=$(") && body.contains(" scan-range)"),
+        "{body}"
+    );
+    assert!(line_with("gitleaks", "--log-opts=\"$range\""), "{body}");
+    let since_main = "--since-commit \"$(git rev-parse origin/main)\"";
+    let whole_history = body.contains("[[ $range == --all ]]");
+    let picked = if range == "--all" {
+        whole_history && !line_with("trufflehog --", since_main)
+    } else {
+        line_with("trufflehog", since_main)
+    };
+    assert!(picked, "{range}: {body}");
 }

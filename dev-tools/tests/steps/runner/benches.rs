@@ -51,6 +51,13 @@ fn run_args(world: &mut WorkflowWorld, args: String) {
     assert_eq!(run["args"].as_str(), Some(args.as_str()), "{run}");
 }
 
+#[then("the run is journaled as passed with its time")]
+fn run_passed_with_time(world: &mut WorkflowWorld) {
+    let run = last_run(world);
+    assert_eq!(run["result"].as_str(), Some("passed"), "{run}");
+    assert!(run["seconds"].as_f64().is_some_and(|s| s >= 0.0), "{run}");
+}
+
 #[then(expr = "the branch's row shows {string} in checks and {string} in benches")]
 fn branch_row(world: &mut WorkflowWorld, checks: String, benches: String) {
     let ran = ran(world);

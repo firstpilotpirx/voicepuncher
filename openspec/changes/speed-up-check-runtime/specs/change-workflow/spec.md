@@ -38,7 +38,7 @@ A voice control smoke scenario that does not measure a latency SHALL feed its au
 
 ### Requirement: The smoke set keeps one scenario per rule of the services and speech capabilities
 
-For the local services and speech recognition capabilities, each rule SHALL have at most one scenario in the smoke set of `just check`; the other scenarios of the rule SHALL run in the full check's regression set. Voice control keeps two or three synthesized smoke scenarios per command.
+For the local services and speech recognition capabilities, each rule SHALL have at most one scenario in the smoke set of `just check`; the other scenarios of the rule SHALL run in the full check: in its regression set, or in a stage of their own (the seams, the outages, the start cues). Voice control keeps two or three synthesized smoke scenarios per command.
 
 #### Scenario: A rule with several scenarios runs one in the check
 
@@ -125,9 +125,9 @@ The harness of the change workflow scenarios SHALL report one test per rule of i
 
 #### Scenario: A failed rule is reported by its name
 
-- **GIVEN** a workflow rule whose one scenario fails
-- **WHEN** the unit run ends
-- **THEN** the failed test carries the rule's name, not the whole harness
+- **GIVEN** the change workflow harness is asked to list its tests
+- **WHEN** it answers nextest
+- **THEN** it names one test per rule, each after its rule, so a failed scenario is reported under its rule's name, not the whole harness
 
 #### Scenario: A rerun covers only the failed rule's scenarios
 

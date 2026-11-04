@@ -10,4 +10,5 @@ Feature: change-workflow
       Given the command spotting service is running
       And listening is on for a whole session
       When a synthesized voice goes through the hands-free session
-      Then the session ended in less than a tenth of the time its audio lasts
+      Then the app does everything the session said, in order
+      And the session ended in less than a tenth of the time its audio lasts
