@@ -41,3 +41,23 @@ fn should_hear_one_word_for_each_command_of_an_after_command_row() {
         assert_eq!(row.heard.len(), row.means.len(), "{:?}", row.heard);
     }
 }
+
+#[test]
+fn should_hear_one_word_for_one_command_once_or_twice_in_an_alias_row() {
+    for row in MISHEARINGS
+        .iter()
+        .filter(|m| m.kind == MishearingKind::Alias)
+    {
+        assert!(
+            row.heard.len() == 1 && !row.heard[0].contains(' '),
+            "{:?} is not one word",
+            row.heard
+        );
+        assert!(
+            (1..=2).contains(&row.means.len()) && row.means.iter().all(|&p| p == row.means[0]),
+            "{:?} means {:?}, not one command once or twice",
+            row.heard,
+            row.means
+        );
+    }
+}

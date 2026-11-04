@@ -58,6 +58,10 @@ pub enum MishearingKind {
     NearMiss,
     /// The words close a chain of commands after another command.
     AfterCommand,
+    /// One word the Russian recognizer writes for a command said once or twice, glued or
+    /// mangled ("интернтер" for "enter enter"); it reads as the command's short form said
+    /// that many times, wherever it sits.
+    Alias,
 }
 
 /// The user's recording that produced a mishearing: a session of
