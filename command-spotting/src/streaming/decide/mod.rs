@@ -7,8 +7,9 @@ use crate::streaming::words::TimedWord;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Moment {
     /// While the utterance runs, with the audio decoded up to `now` seconds; `pause` is when
-    /// the gate's current silence began, none while it hears speech.
-    Decoding { now: f32, pause: Option<f32> },
+    /// the gate's current silence began, none while it hears speech; `synced` while the app's
+    /// sync at `now` is answered: the words before it are said, whatever the gate hears.
+    Decoding { now: f32, pause: Option<f32>, synced: bool },
     /// When the utterance ends: nothing more will be said in it.
     Closing,
 }
@@ -141,13 +142,14 @@ fn alone(matcher: &PhraseMatcher, fresh: &[&TimedWord], moment: Moment) -> Optio
 /// Whether a one-word command ending at `end` is said alone at `moment`: the utterance
 /// ended, the recognizer decoded up to the gate's pause, or the gate's pause began right after
 /// the word and nothing came for a while after it. While the gate still hears speech the word
-/// is not alone yet, however much is decoded past it: the next word may come out late.
+/// is not alone yet, however much is decoded past it: the next word may come out late. At the
+/// app's sync it is, once a while is decoded past it: the sync stands for the pause.
 fn settled(moment: Moment, end: f32) -> bool {
     match moment {
         Moment::Closing => true,
-        Moment::Decoding { now, pause } => {
+        Moment::Decoding { now, pause, synced } => {
             let paused_after = pause.is_some_and(|p| p - end <= SPEECH_AFTER_SECS);
-            (paused_after && now - end >= SETTLE_SECS) || ended(moment)
+            ((paused_after || synced) && now - end >= SETTLE_SECS) || ended(moment)
         }
     }
 }
@@ -170,10 +172,11 @@ fn ends_a_longer_word(matcher: &PhraseMatcher, texts: &[&str]) -> bool {
 
 /// Whether nothing more is said for now at `moment`: the utterance ended, or the gate heard a
 /// pause and the recognizer decoded up to it, so a command ending the words ends a sentence.
+/// A sync is no pause here: the app asks for one inside a sentence too.
 fn ended(moment: Moment) -> bool {
     match moment {
         Moment::Closing => true,
-        Moment::Decoding { now, pause } => pause.is_some_and(|p| now >= p),
+        Moment::Decoding { now, pause, .. } => pause.is_some_and(|p| now >= p),
     }
 }
 

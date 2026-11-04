@@ -83,7 +83,7 @@ The system SHALL carry out commands in the order they were spoken. A command spo
 - **AND** the Return key is pressed after it
 
 ### Requirement: The user's own way of saying the commands is recognized
-The system SHALL recognize the commands as the user says them, including small slips of pronunciation or of the speech recognition service ("and restart" for a quick "enter start" closing a chain). A command said on its own SHALL be recognized whatever the length of the pause before it, and in a quiet voice, as quiet as the user's quietest recorded commands, as well as at a normal level. Every command the user said in a recording kept for testing SHALL be recognized exactly once, apart from recordings marked unclear; repeats said without a pause of 0.3 s are one command. A short Russian phrase SHALL NOT be taken for a command; "стоп" is left out of this rule, since the speech recognition service may hear it as the short form "stop".
+The system SHALL recognize the commands as the user says them, including small slips of pronunciation or of the speech recognition service ("and restart" for a quick "enter start" closing a chain). A command said on its own SHALL be recognized whatever the length of the pause before it, and in a quiet voice, as quiet as the user's quietest recorded commands, as well as at a normal level. A quiet command word the voice gate stops hearing before the recognizers have decoded it SHALL still be decoded at the end of its utterance: the service gives every recognizer the pause after the word before their final decode. Every command the user said in a recording kept for testing SHALL be recognized exactly once, apart from recordings marked unclear; repeats said without a pause of 0.3 s are one command. A short Russian phrase SHALL NOT be taken for a command; "стоп" is left out of this rule, since the speech recognition service may hear it as the short form "stop".
 
 #### Scenario: Every recorded command of the user is recognized
 - **GIVEN** the user's recordings of the commands, each labelled with the command said
@@ -119,6 +119,12 @@ The system SHALL recognize the commands as the user says them, including small s
 - **AND** no dictation runs
 - **WHEN** the user says "clear" on its own, as quiet as the user's quietest recorded commands, with a pause before and after it
 - **THEN** the focused text is selected and deleted once
+
+#### Scenario: The user's quiet start cut short by the gate is recognized
+- **GIVEN** the user's own recordings of the commands exist on the machine, among them a quiet "старт" said after a breath, and the moments the service's voice gate heard it at the time: its last speech 0.4 s before the end of the utterance, before the word's last sound
+- **AND** no dictation runs
+- **WHEN** the recording is heard with the gate hearing it as it did at the time
+- **THEN** a dictation starts once, at the "старт"
 
 ### Requirement: A whole hands-free session runs as said
 The system SHALL carry out a long hands-free session — dictations ended by "stop" or "cancel", Return presses and clears, in any order — exactly as said: each stopped dictation pasted with its own words and without the command phrase, each cancelled one dropped, each key press done once, in order.
@@ -924,7 +930,7 @@ With the streaming recognizer and a command history, the service SHALL keep ever
 - **AND** the entry names no command
 
 ### Requirement: Streaming commands are reported within 0.3 s of their words
-With the streaming recognizer on an idle machine, the command spotting service SHALL report "start" and "stop" within 0.3 s of the end of their words (wall clock) for at least half of them and within 0.6 s for 9 of 10; a command said alone or ending a sentence SHALL count at the pause the gate hears after it, without waiting for the utterance to close, unless its last word is also the end of a longer command word the state listens for ("start" in "restart"), which counts at the close.
+With the streaming recognizer on an idle machine, the command spotting service SHALL report "start" and "stop" within 0.3 s of the end of their words (wall clock) for at least half of them and within 0.6 s for 9 of 10; a command said alone or ending a sentence SHALL count at the pause the gate hears after it, without waiting for the utterance to close, unless its last word is also the end of a longer command word the state listens for ("start" in "restart"), which counts at the close. A one-word command a recognizer heard while the gate still hears the speech going on SHALL NOT count yet, however much audio the recognizer decoded past it: it counts once the gate hears a pause begin right after it, at a sync the app asks for after it (for a command said alone the sync stands for the pause, so the command is reported before the sync is answered; a command word ending the words heard so far does not count at a sync, which the app asks for inside a sentence too), or at the close of the utterance; a Russian word a recognizer hears as "stop" at the head of a sentence that goes on is no command.
 
 #### Scenario: Start said alone is reported within its bound
 - **GIVEN** the command spotting service runs with the streaming recognizer on an otherwise idle machine
@@ -939,6 +945,12 @@ With the streaming recognizer on an idle machine, the command spotting service S
 #### Scenario: Stop opening a sentence is still no command
 - **GIVEN** the command spotting service runs with the streaming recognizer
 - **WHEN** an app streams "stop the car" without a pause
+- **THEN** the service reports no command
+
+#### Scenario: A Russian sentence heard as opening with stop is no command
+- **GIVEN** the command spotting service runs with the streaming recognizer
+- **AND** the user's own recordings exist on the machine, among them "чтобы зайти в гетлаб" said while dictating, whose first word the recognizer hears as "stop"
+- **WHEN** an app streams that recording in real time, listening for the commands of a dictation
 - **THEN** the service reports no command
 
 #### Scenario: Press enter after a sentence is reported soon after the pause

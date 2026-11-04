@@ -42,9 +42,9 @@ pub struct Utterance {
     flushes: Vec<(usize, usize)>,
     /// Samples since the gate last heard speech.
     quiet: usize,
-    /// Where the app's sync stands in the stream while it is answered: the words before it
-    /// are said, whatever the gate hears.
-    synced_at: Option<f32>,
+    /// While the app's sync is answered: the words before it are said, whatever the gate
+    /// hears.
+    synced: bool,
     /// Commands ending before this are reported already, by whichever recognizer.
     reported_until: f32,
     last_report: Option<Finding>,
@@ -91,7 +91,7 @@ impl Utterance {
             streamed: 0,
             flushes: Vec::new(),
             quiet: 0,
-            synced_at: None,
+            synced: false,
             reported_until: 0.0,
             last_report: None,
             trace: Trace::new(start, onset, &names),
@@ -162,9 +162,9 @@ impl Utterance {
     /// Reports what the recognizers decoded up to the app's sync at `now` in the stream: a
     /// command said right before it counts as said, the gate's pause or not.
     pub fn sync(&mut self, matcher: &PhraseMatcher, now: f32) -> Vec<ServerEvent> {
-        self.synced_at = Some(now);
+        self.synced = true;
         let events = self.collect(matcher, now, Wait::CaughtUp);
-        self.synced_at = None;
+        self.synced = false;
         events
     }
 
@@ -218,9 +218,8 @@ impl Utterance {
         } else {
             Moment::Decoding {
                 now: self.unflushed(self.start + seconds(update.fed)),
-                pause: (self.quiet > 0)
-                    .then_some(self.trace.speech_end)
-                    .or(self.synced_at),
+                pause: (self.quiet > 0).then_some(self.trace.speech_end),
+                synced: self.synced,
             }
         };
         let found = decide(matcher, &words, moment, self.reported_until)?;

@@ -29,7 +29,7 @@ fn said(from: f32, text: &str) -> Vec<TimedWord> {
 }
 
 fn decoding(now: f32) -> Moment {
-    Moment::Decoding { now, pause: None }
+    Moment::Decoding { now, pause: None, synced: false }
 }
 
 #[test]
@@ -50,7 +50,7 @@ fn should_wait_for_a_one_word_form_to_settle() {
     // When decoded 0.05 s past it, and when decoded 0.25 s past it with the gate's pause
     // begun right after it
     let early = decide(&dictating(), &words, decoding(1.3), 0.0);
-    let paused = Moment::Decoding { now: 1.5, pause: Some(1.28) };
+    let paused = Moment::Decoding { now: 1.5, pause: Some(1.28), synced: false };
     let settled = decide(&dictating(), &words, paused, 0.0);
     // Then
     assert_eq!(early, None);
@@ -66,8 +66,8 @@ fn should_not_settle_a_lone_word_while_the_gate_hears_speech() {
     // past it
     let words = vec![TimedWord { text: "stop".into(), start: 0.818, end: 0.918 }];
     // When the gate still hears speech, and when its pause began right after the word
-    let speech_goes_on = Moment::Decoding { now: 1.118, pause: None };
-    let paused = Moment::Decoding { now: 1.118, pause: Some(1.0) };
+    let speech_goes_on = Moment::Decoding { now: 1.118, pause: None, synced: false };
+    let paused = Moment::Decoding { now: 1.118, pause: Some(1.0), synced: false };
     let unsettled = decide(&dictating(), &words, speech_goes_on, 0.0);
     let settled = decide(&dictating(), &words, paused, 0.0);
     // Then
@@ -76,6 +76,20 @@ fn should_not_settle_a_lone_word_while_the_gate_hears_speech() {
         settled.expect("a settled stop").commands,
         ["stop dictation"]
     );
+}
+
+#[test]
+fn should_take_a_sync_for_a_pause_only_after_a_lone_word() {
+    // Given "we should stop" decoded up to the app's sync, 0.3 s past "stop", while the gate
+    // hears the sentence go on
+    let partial = said(1.0, "we should stop");
+    let synced = |now| Moment::Decoding { now, pause: None, synced: true };
+    // When
+    let in_a_sentence = decide(&dictating(), &partial, synced(2.15), 0.0);
+    let alone = decide(&dictating(), &said(1.0, "enter"), synced(1.55), 0.0);
+    // Then the sync settles the lone word, never a command ending the words so far
+    assert_eq!(in_a_sentence, None);
+    assert_eq!(alone.expect("a settled enter").commands, ["press enter"]);
 }
 
 #[test]
@@ -153,7 +167,7 @@ fn should_report_the_next_command_said_after_the_last_report() {
     // pause begun right after it
     let words = said(1.0, "press enter stop");
     // When
-    let paused = Moment::Decoding { now: 2.1, pause: Some(1.9) };
+    let paused = Moment::Decoding { now: 2.1, pause: Some(1.9), synced: false };
     let next = decide(&dictating(), &words, paused, 1.55);
     // Then
     assert_eq!(
@@ -214,7 +228,7 @@ fn should_take_a_start_timed_late_after_a_restart_for_its_end() {
 }
 
 fn paused_at(now: f32, pause: f32) -> Moment {
-    Moment::Decoding { now, pause: Some(pause) }
+    Moment::Decoding { now, pause: Some(pause), synced: false }
 }
 
 #[test]
