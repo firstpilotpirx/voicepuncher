@@ -24,7 +24,7 @@ Two losses inside the command spotting service, reproduced from the command hist
 | `2026-11-03T11-12-03.340Z-865-4-685` | старт | standby | start dictation |
 | `2026-11-02T11-07-47.633Z-45180-7594-910` | старт | standby | start dictation |
 
-The gate's hearing of 685 and 910 (speech end 0.97 s and 1.05 s, close 1.37 s and 1.46 s into the entry) goes into the D3 test as constants. Entry `…-37736-7` (RMS 0.001, inaudible) is left out.
+The gate's hearing of 685 and 910 (speech end 0.97 s and 1.05 s, close 1.37 s and 1.46 s into the entry) goes into the D3 test as constants. Entry `…-37736-7` (RMS 0.001, inaudible) is left out. The audio of entry 684 ends in the first 0.25 s of the user's real "стоп", cut by the close: that stretch (3.8–4.05 s of the session) is a row marked `unclear`, so no clip holds it and the clip of the sentence ends before it (through the real gate and the tail of silence, the fragment alone decodes as "stop").
 
 ## Test levels
 
