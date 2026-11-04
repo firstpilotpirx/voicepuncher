@@ -236,7 +236,8 @@ pub fn has_tag(feature: &Feature, rule: Option<&Rule>, scenario: &Scenario, tag:
     merged_tags(feature, rule, scenario).contains(&tag)
 }
 
-fn merged_tags<'a>(
+/// The tags of a scenario with its rule's and feature's.
+pub fn merged_tags<'a>(
     feature: &'a Feature,
     rule: Option<&'a Rule>,
     scenario: &'a Scenario,

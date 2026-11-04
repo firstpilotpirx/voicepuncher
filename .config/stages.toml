@@ -96,6 +96,8 @@ stage_inputs = '''
     app/tests/steps/*                                  code
     app/tests/it/*                                     code
     app/tests/main_thread/*                            code
+    dev-tools/tests/*                                  code
+    dev-tools/src/journal/*                            code
     app/tests/it/transcription_openai/*                e2e-smoke-speech
     app/tests/it/commandspotting_websocket/*           e2e-smoke-voice
     app/tests/it/voice_samples.rs                      e2e-smoke-voice
@@ -122,9 +124,9 @@ stage_inputs = '''
     e2e-test/tests/features/voice_control.feature      e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,accuracy
     e2e-test/tests/steps/voice_control/mod.rs              e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,accuracy
     e2e-test/tests/steps/voice_control/*               e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,accuracy
-    e2e-test/tests/features/speech_recognition.feature e2e-smoke-speech,e2e-seams,e2e-seams-sample
-    e2e-test/tests/steps/speech_recognition/mod.rs         e2e-smoke-speech,e2e-seams,e2e-seams-sample
-    e2e-test/tests/steps/speech_recognition/*          e2e-smoke-speech,e2e-seams,e2e-seams-sample
+    e2e-test/tests/features/speech_recognition.feature e2e-smoke-speech,e2e-seams,e2e-seams-sample,e2e-regression
+    e2e-test/tests/steps/speech_recognition/mod.rs         e2e-smoke-speech,e2e-seams,e2e-seams-sample,e2e-regression
+    e2e-test/tests/steps/speech_recognition/*          e2e-smoke-speech,e2e-seams,e2e-seams-sample,e2e-regression
     e2e-test/tests/features/file_transcription.feature e2e-smoke-speech,accuracy
     e2e-test/tests/steps/file_transcription.rs         e2e-smoke-speech,accuracy
     e2e-test/src/wer.rs                                accuracy
@@ -132,10 +134,12 @@ stage_inputs = '''
     e2e-test/accuracy_baseline.json                    accuracy
     e2e-test/src/corpus.rs                             accuracy
     e2e-test/scripts/*                                 accuracy
-    e2e-test/tests/features/local_services.feature     e2e-smoke-services,e2e-resilience
-    e2e-test/tests/steps/local_services/mod.rs             e2e-smoke-services,e2e-resilience
-    e2e-test/tests/steps/local_services/*              e2e-smoke-services,e2e-resilience
+    e2e-test/tests/features/local_services.feature     e2e-smoke-services,e2e-resilience,e2e-regression
+    e2e-test/tests/steps/local_services/mod.rs             e2e-smoke-services,e2e-resilience,e2e-regression
+    e2e-test/tests/steps/local_services/*              e2e-smoke-services,e2e-resilience,e2e-regression
     e2e-test/tests/features/dictation_archive.feature  e2e-smoke-speech
+    e2e-test/tests/features/change_workflow.feature    e2e-regression
+    e2e-test/tests/steps/change_workflow.rs            e2e-regression
     e2e-test/tests/steps/dictation_archive.rs          e2e-smoke-speech
 '''
 
@@ -153,4 +157,30 @@ test_needs = '''
     needs_real_keyboard  VOICEPUNCHER_REAL_KEYBOARD_IT                           key presses into the focused app run only in test-real-keyboard
     needs_hang_probe     VOICEPUNCHER_HANG_PROBE                                 the hang probe runs only when armed (VOICEPUNCHER_HANG_PROBE=1)
     needs_machine_lock   MACHINE_LOCK                                            no machine lock (VOICEPUNCHER_NO_MACHINE_LOCK=1, the hosted CI)
+'''
+
+# The bench options that exercise an area (just needed-tests, just test-area): `<glob> <recipe and options>` per
+# line, globs as above. A glob that matches no file of the workspace names an area that exists nowhere and fails
+# the test stage
+bench_areas = '''
+    command-spotting/*                              streaming-bench --fast
+    voice-commands/*                                streaming-bench --fast
+    app/src/adapters/secondary/commandspotting/*    streaming-bench --fast
+    app/src/core/domain/command_words/*             streaming-bench --fast
+    app/src/core/application/chunking/*             bench --limit 20
+    app/src/adapters/secondary/transcription/*      bench --limit 20
+    copy-pool/*                                     bench --limit 20
+'''
+
+# The time budget of each model stage of `just check` and of its unit test stage: `<stage> <seconds>` per line.
+# A model stage past its budget fails the run, naming its five slowest scenarios and the busiest processes
+# beside it; `test` past its budget only warns, as it runs beside other sessions' builds. Values: the stage's
+# time in the check of 2026-11-04 (speed-up-check-runtime) plus 20 % — e2e-quick from the longest pass of the
+# stage journal (81.6 s, 2026-10-24), as both its scenarios were frozen when the others were measured
+stage_budgets = '''
+    test                 60
+    e2e-smoke-voice     167
+    e2e-smoke-speech     35
+    e2e-quick            98
+    e2e-smoke-services   89
 '''

@@ -36,6 +36,8 @@ pub struct Run {
     pub worktree: PathBuf,
     pub recipe: Option<String>,
     pub accuracy: Option<String>,
+    /// The arguments of a bench run (`VOICEPUNCHER_BENCH_ARGS`); `None` for every other run.
+    pub args: Option<String>,
 }
 
 /// The journal line of a run, its keys in the order the former runner wrote them.
@@ -53,7 +55,8 @@ pub fn line(run: &Run, report: &Report, zone: &TimeZone) -> String {
         Value::Null,
         |(sample, mean)| json!({"sample": sample, "mean": mean}),
     );
-    let pairs: [(&str, Value); 15] = [
+    let args = run.args.clone().map_or(Value::Null, Value::from);
+    let pairs: [(&str, Value); 16] = [
         ("started", json!(clock::iso(run.started, zone))),
         ("seconds", number(round1(run.ended - run.started))),
         ("worktree", json!(run.worktree.to_string_lossy())),
@@ -72,6 +75,7 @@ pub fn line(run: &Run, report: &Report, zone: &TimeZone) -> String {
             json!(failed::tests(&run.log, run.interrupted)),
         ),
         ("wer", wer),
+        ("args", args),
     ];
     let body: Vec<String> = pairs
         .iter()

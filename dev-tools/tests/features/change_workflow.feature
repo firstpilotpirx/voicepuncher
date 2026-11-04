@@ -151,6 +151,12 @@ Feature: change-workflow
       When the full check computes its stage keys on the branch
       Then every model stage runs
 
+    Scenario: A change to the stage runner's tests reuses every model stage
+      Given main passed the full check
+      And a branch that changes only a test of the stage runner
+      When the full check computes its stage keys on the branch
+      Then no model stage runs
+
   Rule: The chunk seams stage runs a sample unless the chunking code changed
 
     Scenario: A branch outside the chunking code runs the seam sample
@@ -565,3 +571,115 @@ Feature: change-workflow
       And a local commit the remote main does not have
       When the user updates the checkout for the app
       Then the update fails with one line naming "local commit"
+
+  Rule: Each model stage of the check has a time budget
+
+    Scenario: A stage within its budget passes
+      Given a scratch repository with a stand-in task runner
+      And the stage "e2e-smoke-voice" has a budget of 2 seconds
+      When the stage runner runs the stages "e2e-smoke-voice" with the stage taking 1 second
+      Then the run passes
+      And the stage table shows "e2e-smoke-voice" against its budget of 2 seconds
+
+    Scenario: A stage past its budget fails naming the slowest scenarios
+      Given a scratch repository with a stand-in task runner
+      And the stage "e2e-smoke-voice" has a budget of 1 second
+      And the stage "e2e-smoke-voice" reports the scenario times "A slow one 5.5, A quick one 0.2, Another slow one 4.0, B 1.0, C 2.0, D 3.0"
+      When the stage runner runs the stages "e2e-smoke-voice" with the stage taking 2 seconds
+      Then the run fails
+      And the failure names "e2e-smoke-voice" past its budget of 1 second with the slowest scenarios "A slow one 5.5, Another slow one 4.0, D 3.0, C 2.0, B 1.0"
+      And the failure names the busiest processes
+
+    Scenario: The unit stage past its budget warns and passes
+      Given a scratch repository with a stand-in task runner
+      And the stage "test" has a budget of 1 second
+      When the stage runner runs the stages "test" with the stage taking 2 seconds
+      Then the run passes
+      And the run warns that "test" ran past its budget of 1 second
+
+  Rule: The smoke set keeps one scenario per rule of the services and speech capabilities
+
+    Scenario: A rule with several scenarios runs one in the check
+      Given the feature files of the local-services and speech-recognition capabilities
+      When the smoke scenarios of each rule are counted
+      Then every rule with several scenarios has at most one smoke scenario and the rest in the full check
+
+  Rule: The lint stage scans secrets over the branch's own commits
+
+    Scenario: A branch scans the commits since main
+      Given a scratch repository with a stand-in task runner
+      And the repository is a clone on the branch "feat/scan" ahead of main
+      When the secret scan asks its range
+      Then the range is "origin/main..HEAD"
+      And the lint stage hands the range to gitleaks and trufflehog
+
+    Scenario: Main scans the whole history
+      Given a scratch repository with a stand-in task runner
+      And the repository is a clone on main
+      When the secret scan asks its range
+      Then the range is "--all"
+      And the lint stage hands the range to gitleaks and trufflehog
+
+  Rule: A failed workflow rule is named and rerun alone
+
+    Scenario: A failed rule is reported by its name
+      Given the workflow harness is asked to list its tests
+      When the harness answers
+      Then it names one test per rule of the change workflow feature, each after its rule
+
+    Scenario: A rerun covers only the failed rule's scenarios
+      Given the workflow harness is asked to run the test of the rule "A missing machine lock names its install command"
+      When the harness answers
+      Then only that rule's scenarios ran
+
+  Rule: Benches are journaled
+
+    Scenario: A streaming bench run is journaled with its arguments
+      Given a scratch repository with a stand-in task runner
+      When the stage runner runs the streaming bench with "--recorded --pace fast"
+      Then the journal holds the run under the recipe "streaming-bench"
+      And the run's arguments are "--recorded --pace fast"
+      And the journal records the stage "streaming-bench" as "passed"
+      And the run is journaled as passed with its time
+
+    Scenario: A bench run is never a pass
+      Given a scratch repository with a stand-in task runner
+      And a bench run that passed
+      When the stage runner runs the stages "bench"
+      Then the journal records the stage "bench" as "passed"
+      And no pass was recorded
+
+    Scenario: The summary shows check and bench time per branch apart
+      Given a journal with 2 checks and 1 bench on one branch
+      When the user summarizes the stage journal
+      Then the branch's row shows "20.0s" in checks and "5.0s" in benches
+
+  Rule: An agent runs only the tests of the area it optimizes
+
+    Scenario: The map names the tests of an area
+      Given a workspace with a command spotting crate and its bench
+      When the developer prints the needed-tests map
+      Then the crate's row names its unit and integration tests, the stages its files feed and the bench options that exercise it
+
+    Scenario: A run over one area runs only its tests
+      Given a workspace with several crates
+      When the developer runs the area recipe with a path inside one crate
+      Then only that crate's tests run
+      And the run prints the area's stages and bench options
+      And the journal holds the run under the recipe "test-area"
+      And no pass was recorded
+
+    Scenario: An area that exists nowhere fails the unit run
+      Given the map names an area whose path is not in the workspace
+      When the test stage runs
+      Then it fails naming the area
+
+    Scenario: A full suite on an open task group that is not the last warns
+      Given a branch of a change whose first of three task groups is still open
+      When the full unit suite starts
+      Then it prints a warning that names the open group and the area recipe, and runs
+
+    Scenario: A full suite on the last task group runs without a warning
+      Given a branch of a change whose last task group is the only open one
+      When the full unit suite starts
+      Then it prints no warning

@@ -4,7 +4,7 @@
 use cucumber::{given, then, when};
 
 use super::scratch::{frozen_entry, Scratch};
-use super::{ran, scratch, Ran};
+use crate::steps::{ran, scratch, Ran};
 use crate::WorkflowWorld;
 
 /// The day the scratch runs take as today.

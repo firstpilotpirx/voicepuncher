@@ -4,7 +4,7 @@
 use cucumber::{given, then, when};
 
 use super::static_check::run_static;
-use crate::steps::scratch::Scratch;
+use crate::steps::runner::scratch::Scratch;
 use crate::steps::{ran, scratch};
 use crate::WorkflowWorld;
 

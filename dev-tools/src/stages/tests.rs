@@ -1,7 +1,7 @@
 //! The stage table, the model phase's skipped stages, the desktop tests' guard and the order of the checks'
 //! stages (former `_test-stage-skip`, `_test-stage-order`).
 
-use super::{is_model, it_real, model, table, test};
+use super::{is_model, it_real, model, table};
 use crate::context::{table as justfile_table, Context};
 use crate::journal::report::{Report, Row};
 use crate::process::Interrupt;
@@ -63,7 +63,13 @@ fn should_show_a_lock_never_taken_and_one_the_caller_held() {
 
 #[test]
 fn should_lock_every_stage_from_the_first_model_stage_on() {
-    for stage in ["e2e-smoke-voice", "e2e-cues", "it-real"] {
+    for stage in [
+        "e2e-smoke-voice",
+        "e2e-cues",
+        "it-real",
+        "bench",
+        "streaming-bench",
+    ] {
         assert!(is_model(stage), "{stage}");
     }
     for stage in [
@@ -154,7 +160,7 @@ fn should_read_a_member_package_name() {
     )
     .unwrap();
     assert_eq!(
-        test::package_name(&dir.path().join("Cargo.toml")),
+        crate::keys::members::package_name(&dir.path().join("Cargo.toml")),
         "voicepuncher-x"
     );
 }
