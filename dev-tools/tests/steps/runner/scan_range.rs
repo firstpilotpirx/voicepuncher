@@ -35,7 +35,7 @@ fn range_is(world: &mut WorkflowWorld, range: String) {
 }
 
 /// The lint recipe runs the scanners on the range `scan-range` printed: gitleaks over its log
-/// options, trufflehog since `origin/main` on a branch and over everything on `--all`.
+/// options, trufflehog since `origin/main` on a branch and without a commit (everything) on `--all`.
 #[then("the lint stage hands the range to gitleaks and trufflehog")]
 fn lint_hands_the_range(world: &mut WorkflowWorld) {
     let range = ran(world).stdout.trim().to_owned();
@@ -50,11 +50,14 @@ fn lint_hands_the_range(world: &mut WorkflowWorld) {
     );
     assert!(line_with("gitleaks", "--log-opts=\"$range\""), "{body}");
     let since_main = "--since-commit \"$(git rev-parse origin/main)\"";
-    let whole_history = body.contains("[[ $range == --all ]]");
+    let trufflehog = |since: bool| {
+        body.lines()
+            .any(|line| line.contains("trufflehog git") && line.contains(since_main) == since)
+    };
     let picked = if range == "--all" {
-        whole_history && !line_with("trufflehog --", since_main)
+        body.contains("[[ $range == --all ]]") && trufflehog(false)
     } else {
-        line_with("trufflehog", since_main)
+        trufflehog(true)
     };
     assert!(picked, "{range}: {body}");
 }
