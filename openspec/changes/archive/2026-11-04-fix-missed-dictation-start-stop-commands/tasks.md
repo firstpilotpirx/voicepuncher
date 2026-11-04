@@ -23,6 +23,7 @@
 - [x] 4.2 Measure: `just streaming-bench --recorded` on sessions 1–6 loses no command recognized before; `e2e-cues` and the 0.3 s/0.6 s scenarios keep their bounds (`just check`) — measured 2026-11-04: 47/53 clips right on the branch (main's binary: 73/89, its 36 extra clips the long forms the bench now leaves out, main heard them only through the early fire); the branch gains session-2/41, 4/15 and 6/0, 6/2, 6/4 (the session-6 misses), every other wrong clip is wrong on main too; the tails of chains (session-4/5, 4/7, 4/8) come and go between runs on both binaries (the English recognizer's late emits, out of scope); the 0.3 s/0.6 s scenarios hold, the doubled form inside speech moved to 1 s (the user's decision, see design D1)
 - [x] 4.3 Commit `test(e2e): the session-6 scenarios of voice control`
 - [x] 4.4 A doubled one-word form ends with its first word (`decide::finding`, test `should_report_a_doubled_command_at_once_ending_at_its_first_word`): the first `kit verify` lost "Coffee" of the sentence after the user's recorded "restart restart" (design D1)
+- [x] 4.5 The close waits for no decode (`Session::closing`, `Utterance::begin_close`, test `should_close_without_waiting_for_the_tail_of_silence_to_be_decoded`): the second `kit verify` failed `e2e-cues`, "press enter" after a sentence 1.44 s after the words with every core busy (design D2a)
 
 ## 5. Release
 

@@ -17,8 +17,12 @@ fn should_report_a_glued_enter_enter_the_russian_recognizer_writes_once() {
     // recognizer hears
     let en = Scripted::new("en", &[]);
     let ru = Scripted::new("ru", &[("забей", 0.6), ("интернтер", 0.9)]);
-    // When
-    let events = utterance_events(&[&en, &ru], 0.8);
+    let mut session = session(&[&en, &ru], None);
+    // When the app syncs right after the words, before the pause that closes the utterance
+    let mut events = session.accept(&[silence(1.0), speech(0.8)].concat());
+    events.extend(session.sync(0));
+    events.extend(session.accept(&silence(1.0)));
+    events.extend(session.sync(1));
     // Then the doubled command is reported once, as soon as its word is heard
     assert_eq!(commands(&events), [["press enter"]]);
     assert!(reported_before_speech_end(&events), "{events:?}");

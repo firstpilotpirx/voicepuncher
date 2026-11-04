@@ -45,15 +45,16 @@ pub struct Utterance {
     /// While the app's sync is answered: the words before it are said, whatever the gate
     /// hears.
     synced: bool,
-    /// Commands ending before this are reported already, by whichever recognizer.
-    reported_until: f32,
+    /// The last report, by whichever recognizer: commands ending before its end are reported.
     last_report: Option<Finding>,
+    /// Finished updates held back at the close: a recognizer that heard only the end of a
+    /// command word ("start" of a quiet "restart") waits for the other to finish.
+    held: Vec<(usize, Update)>,
     trace: Trace,
 }
 
-/// What an utterance left once it closed.
+/// What an utterance left once every recognizer finished it.
 pub struct Closed {
-    pub events: Vec<ServerEvent>,
     pub trace: Trace,
     /// What each recognizer's final text says, for the command history.
     pub heard: Vec<(usize, Finding)>,
@@ -92,8 +93,8 @@ impl Utterance {
             flushes: Vec::new(),
             quiet: 0,
             synced: false,
-            reported_until: 0.0,
             last_report: None,
+            held: Vec::new(),
             trace: Trace::new(start, onset, &names),
         };
         utterance.silence(LEAD_SECS);
@@ -179,6 +180,11 @@ impl Utterance {
                 (r, updates)
             })
             .collect();
+        if wait == Wait::No && !self.finished() {
+            self.hold_ends_of_longer_words(matcher, &mut arrived);
+        } else {
+            arrived.extend(self.held.drain(..).map(|(r, update)| (r, vec![update])));
+        }
         // WHY: a recognizer that heard only the end of a command word ("start" of a quiet
         // "restart") must not speak first when the other heard all of it.
         arrived.sort_by_key(|(r, updates)| self.ends_a_longer_word(matcher, *r, updates));
@@ -189,6 +195,23 @@ impl Utterance {
             }
         }
         events
+    }
+
+    /// Holds back a finished update of `arrived` whose last word may be the end of a longer
+    /// command word until every recognizer finished: the other may have heard the whole word,
+    /// and only the sorted reports of both keep the longer one first.
+    fn hold_ends_of_longer_words(
+        &mut self,
+        matcher: &PhraseMatcher,
+        arrived: &mut [(usize, Vec<Update>)],
+    ) {
+        for (r, updates) in arrived.iter_mut() {
+            let holds = updates.last().is_some_and(|u| u.finished)
+                && self.ends_a_longer_word(matcher, *r, updates);
+            if let Some(update) = holds.then(|| updates.pop()).flatten() {
+                self.held.push((*r, update));
+            }
+        }
     }
 
     /// Whether the last word recognizer `r` holds after `updates` may be the end of a longer
@@ -222,7 +245,7 @@ impl Utterance {
                 synced: self.synced,
             }
         };
-        let found = decide(matcher, &words, moment, self.reported_until)?;
+        let found = decide(matcher, &words, moment, self.reported_until())?;
         let found = self.started_at_onset(found, &words);
         self.report(r, found, now)
     }
@@ -238,9 +261,13 @@ impl Utterance {
         found
     }
 
+    /// The end of the last report: commands ending before it are reported already.
+    fn reported_until(&self) -> f32 {
+        self.last_report.as_ref().map_or(0.0, |found| found.end)
+    }
+
     /// Reports `found`, heard by recognizer `r` at `now`, unless it doubles the last report.
     fn report(&mut self, r: usize, found: Finding, now: f32) -> Option<ServerEvent> {
-        self.reported_until = found.end;
         let doubled = doubles(self.last_report.as_ref(), &found);
         self.last_report = Some(found.clone());
         (!doubled).then(|| {
@@ -249,23 +276,32 @@ impl Utterance {
         })
     }
 
-    /// Ends every stream, waits for what is left to be decoded and reports it; the speech end
-    /// follows.
-    pub fn close(mut self, matcher: &PhraseMatcher, now: f32) -> Closed {
+    /// Ends every stream at `now`, the silence after the words fed first: the speech end goes
+    /// out at once, and what the recognizers still decode is reported by the later collects,
+    /// as a decode of that silence under load takes longer than a command may wait.
+    pub fn begin_close(&mut self, now: f32) -> ServerEvent {
         self.silence(CLOSE_SILENCE_SECS);
         for decoder in &mut self.decoders {
             decoder.finish();
         }
-        let mut events = self.collect(matcher, now, Wait::CaughtUp);
-        events.push(ServerEvent::SpeechEnd { t: self.trace.speech_end });
         self.trace.closed = now;
+        ServerEvent::SpeechEnd { t: self.trace.speech_end }
+    }
+
+    /// Whether every recognizer decoded all of it, the close's silence included.
+    pub fn finished(&self) -> bool {
+        self.decoders.iter().all(Decoder::finished)
+    }
+
+    /// What it left, once every recognizer finished it.
+    pub fn into_closed(self, matcher: &PhraseMatcher) -> Closed {
         let heard = (0..self.last.len())
             .filter_map(|r| {
                 let words = self.words(r, &self.last[r]);
                 decide(matcher, &words, Moment::Closing, 0.0).map(|found| (r, found))
             })
             .collect();
-        Closed { events, trace: self.trace, heard, audio: self.audio }
+        Closed { trace: self.trace, heard, audio: self.audio }
     }
 
     fn words(&self, r: usize, decoded: &Decoded) -> Vec<TimedWord> {
