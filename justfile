@@ -201,9 +201,14 @@ _lint: _require-tools
     analyzer semver cargo +stable semver-checks --package voicepuncher-copy-pool --baseline-rev origin/main
     analyzer typos typos
     analyzer recipes {{analyzers}} recipes
-    # Secrets in any commit of any ref: the history, not only the tree, is what a push publishes
-    analyzer gitleaks gitleaks git --no-banner --redact --log-opts=--all .
-    analyzer trufflehog trufflehog git file://. --no-update --results=verified,unknown --fail
+    # Secrets in the branch's own commits (every commit of every ref on main): what a push publishes
+    range=$({{dev_tools}} scan-range)
+    analyzer gitleaks gitleaks git --no-banner --redact --log-opts="$range" .
+    if [[ $range == --all ]]; then
+        analyzer trufflehog trufflehog git file://. --no-update --results=verified,unknown --fail
+    else
+        analyzer trufflehog trufflehog git file://. --no-update --results=verified,unknown --fail --since-commit "$(git rev-parse origin/main)"
+    fi
     if (( ${#failed[@]} > 0 )); then
         echo "✗ lint: ${failed[*]} failed — baselines in .config/analyzers/, rewritten by 'just analyzers-baseline'" >&2
         exit 1

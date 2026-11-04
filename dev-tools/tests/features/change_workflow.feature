@@ -151,6 +151,12 @@ Feature: change-workflow
       When the full check computes its stage keys on the branch
       Then every model stage runs
 
+    Scenario: A change to the stage runner's tests reuses every model stage
+      Given main passed the full check
+      And a branch that changes only a test of the stage runner
+      When the full check computes its stage keys on the branch
+      Then no model stage runs
+
   Rule: The chunk seams stage runs a sample unless the chunking code changed
 
     Scenario: A branch outside the chunking code runs the seam sample
@@ -583,3 +589,24 @@ Feature: change-workflow
       When the stage runner runs the stages "test" with the stage taking 2 seconds
       Then the run passes
       And the run warns that "test" ran past its budget of 1 second
+
+  Rule: The smoke set keeps one scenario per rule of the services and speech capabilities
+
+    Scenario: A rule with several scenarios runs one in the check
+      Given the feature files of the local-services and speech-recognition capabilities
+      When the smoke scenarios of each rule are counted
+      Then every rule with several scenarios has one smoke scenario
+
+  Rule: The lint stage scans secrets over the branch's own commits
+
+    Scenario: A branch scans the commits since main
+      Given a scratch repository with a stand-in task runner
+      And the repository is a clone on the branch "feat/scan" ahead of main
+      When the secret scan asks its range
+      Then the range is "origin/main..HEAD"
+
+    Scenario: Main scans the whole history
+      Given a scratch repository with a stand-in task runner
+      And the repository is a clone on main
+      When the secret scan asks its range
+      Then the range is "--all"

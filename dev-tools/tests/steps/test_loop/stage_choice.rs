@@ -83,6 +83,14 @@ fn unnamed_file_branch(world: &mut WorkflowWorld) {
     );
 }
 
+#[given("a branch that changes only a test of the stage runner")]
+fn runner_test_branch(world: &mut WorkflowWorld) {
+    scratch(world).write(
+        "repo/dev-tools/tests/steps/runner/budgets.rs",
+        "fn should_budget() {}\n",
+    );
+}
+
 #[when("the full check computes its stage keys on the branch")]
 fn branch_keys(world: &mut WorkflowWorld) {
     let stdout = stage_keys(scratch(world));
@@ -113,6 +121,11 @@ fn seams_outages_cues_reused(world: &mut WorkflowWorld) {
 fn seams_runs(world: &mut WorkflowWorld) {
     let running = running(world);
     assert!(running.iter().any(|s| s == "e2e-seams"), "{running:?}");
+}
+
+#[then("no model stage runs")]
+fn no_stage_runs(world: &mut WorkflowWorld) {
+    assert_eq!(running(world), Vec::<String>::new());
 }
 
 #[then("every model stage runs")]

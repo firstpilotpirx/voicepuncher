@@ -7,6 +7,7 @@ pub mod architecture_page;
 pub mod hosted;
 pub mod landing;
 pub mod runner;
+pub mod smoke_set;
 pub mod test_loop;
 pub mod test_rules;
 

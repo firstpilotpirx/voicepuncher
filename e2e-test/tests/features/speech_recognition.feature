@@ -34,7 +34,7 @@ Feature: speech-recognition
       When the user starts the app
       Then the app exits with a message saying the model is now chosen when starting the service and naming the service address setting
 
-    @smoke
+    @regression
     Scenario: Config still sets a fixed silence level
       Given the configuration sets a fixed silence level for chunking
       When the user starts the app
@@ -49,14 +49,14 @@ Feature: speech-recognition
       When the user transcribes the recording file
       Then the printed text is the phrase in Russian, with no Korean characters
 
-    @smoke @serial
+    @regression @serial
     Scenario: English speech stays English with automatic detection
       Given the service detects the spoken language automatically and the user's languages are Russian and English
       And a recording file of a short English phrase
       When the user transcribes the recording file
       Then the printed text holds the English words of the phrase, in Latin letters
 
-    @smoke @serial
+    @regression @serial
     Scenario: English speech stays English with the default language
       Given the configuration names no spoken language
       And a recording file of a short English phrase
@@ -78,14 +78,16 @@ Feature: speech-recognition
         | 10      |
         | 60      |
 
-  @smoke @serial
+  @serial
   Rule: Dictation is recognized with the large-v3-turbo model
 
+    @smoke
     Scenario: Dictation is recognized with the large-v3-turbo model by default
       Given the models that the service scripts download are on disk
       When the user starts the services with the service scripts without naming a model
       Then the speech recognition service for dictation recognizes speech with the large-v3-turbo model
 
+    @regression
     Scenario: Dictation is recognized with the model the user names
       Given the models that the service scripts download are on disk
       When the user starts the services with the service scripts and names another speech recognition model for dictation
@@ -192,7 +194,7 @@ Feature: speech-recognition
       When the user transcribes the recording file
       Then the printed text holds the term as written in the prompt
 
-    @smoke @serial
+    @regression @serial
     Scenario: The prompt holds in every window of a long chunk
       Given the configured prompt names a domain term that speech recognition misses without it
       And a recording is transcribed as one chunk however long it is

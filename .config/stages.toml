@@ -96,6 +96,8 @@ stage_inputs = '''
     app/tests/steps/*                                  code
     app/tests/it/*                                     code
     app/tests/main_thread/*                            code
+    dev-tools/tests/*                                  code
+    dev-tools/src/journal/*                            code
     app/tests/it/transcription_openai/*                e2e-smoke-speech
     app/tests/it/commandspotting_websocket/*           e2e-smoke-voice
     app/tests/it/voice_samples.rs                      e2e-smoke-voice
@@ -122,9 +124,9 @@ stage_inputs = '''
     e2e-test/tests/features/voice_control.feature      e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,accuracy
     e2e-test/tests/steps/voice_control/mod.rs              e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,accuracy
     e2e-test/tests/steps/voice_control/*               e2e-smoke-voice,e2e-regression,e2e-resilience,e2e-seams,e2e-seams-sample,e2e-cues,accuracy
-    e2e-test/tests/features/speech_recognition.feature e2e-smoke-speech,e2e-seams,e2e-seams-sample
-    e2e-test/tests/steps/speech_recognition/mod.rs         e2e-smoke-speech,e2e-seams,e2e-seams-sample
-    e2e-test/tests/steps/speech_recognition/*          e2e-smoke-speech,e2e-seams,e2e-seams-sample
+    e2e-test/tests/features/speech_recognition.feature e2e-smoke-speech,e2e-seams,e2e-seams-sample,e2e-regression
+    e2e-test/tests/steps/speech_recognition/mod.rs         e2e-smoke-speech,e2e-seams,e2e-seams-sample,e2e-regression
+    e2e-test/tests/steps/speech_recognition/*          e2e-smoke-speech,e2e-seams,e2e-seams-sample,e2e-regression
     e2e-test/tests/features/file_transcription.feature e2e-smoke-speech,accuracy
     e2e-test/tests/steps/file_transcription.rs         e2e-smoke-speech,accuracy
     e2e-test/src/wer.rs                                accuracy
@@ -132,9 +134,9 @@ stage_inputs = '''
     e2e-test/accuracy_baseline.json                    accuracy
     e2e-test/src/corpus.rs                             accuracy
     e2e-test/scripts/*                                 accuracy
-    e2e-test/tests/features/local_services.feature     e2e-smoke-services,e2e-resilience
-    e2e-test/tests/steps/local_services/mod.rs             e2e-smoke-services,e2e-resilience
-    e2e-test/tests/steps/local_services/*              e2e-smoke-services,e2e-resilience
+    e2e-test/tests/features/local_services.feature     e2e-smoke-services,e2e-resilience,e2e-regression
+    e2e-test/tests/steps/local_services/mod.rs             e2e-smoke-services,e2e-resilience,e2e-regression
+    e2e-test/tests/steps/local_services/*              e2e-smoke-services,e2e-resilience,e2e-regression
     e2e-test/tests/features/dictation_archive.feature  e2e-smoke-speech
     e2e-test/tests/features/change_workflow.feature    e2e-regression
     e2e-test/tests/steps/change_workflow.rs            e2e-regression

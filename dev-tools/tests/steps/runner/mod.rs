@@ -8,4 +8,5 @@ pub mod journal;
 pub mod locks;
 pub mod named;
 pub mod needs;
+pub mod scan_range;
 pub mod scratch;

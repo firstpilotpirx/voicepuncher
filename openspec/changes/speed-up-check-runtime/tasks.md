@@ -10,13 +10,13 @@
 
 - [x] 2.1 Red: "A hands-free session not under timing ends before its audio would" in `e2e-test/tests/features/change_workflow.feature` (`@change_workflow @e2e @regression`), steps in `e2e-test/tests/steps/change_workflow.rs` timing the hands-free session against its audio length; `just test-one scenario:` fails (real time)
 - [x] 2.2 Green: `Pace` chosen from the scenario tags in the E2E `before` hook (`E2eWorld.voice.pace`); `keep_quiet` and the session's silence in `e2e-test/tests/steps/voice_control/hands_free/mod.rs` and `session/` send a frame every 10 ms at the fast pace; `just e2e-smoke` passes
-- [ ] 2.3 Red: "A rule with several scenarios runs one in the check" in `change_workflow.feature`, step counting `@smoke` per rule of `local_services.feature` and `speech_recognition.feature` in `dev-tools/tests/steps/runner/smoke_set.rs`; fails
-- [ ] 2.4 Green: retag the other scenarios of each rule `@regression` in `e2e-test/tests/features/local_services.feature` and `speech_recognition.feature`
-- [ ] 2.5 Red: the two scan-range scenarios in `change_workflow.feature`, steps in `dev-tools/tests/steps/scan_range.rs`; fails
+- [x] 2.3 Red: "A rule with several scenarios runs one in the check" in `change_workflow.feature`, step counting `@smoke` per rule of `local_services.feature` and `speech_recognition.feature` in `dev-tools/tests/steps/runner/smoke_set.rs`; fails
+- [x] 2.4 Green: retag the other scenarios of each rule `@regression` in `e2e-test/tests/features/local_services.feature` and `speech_recognition.feature`
+- [x] 2.5 Red: the two scan-range scenarios in `change_workflow.feature`, steps in `dev-tools/tests/steps/scan_range.rs`; fails
 - [x] 2.6 Green: `dev-tools scan-range` (`dev-tools/src/scan_range.rs`); `_lint` in `justfile` passes its output to gitleaks and trufflehog; `trufflehog_version` 3.99.8
-- [ ] 2.7 Red: "A change to the stage runner's tests reuses every model stage" in `change_workflow.feature`, steps beside the existing key scenarios; fails
-- [ ] 2.8 Green: `dev-tools/tests/* code` and `dev-tools/src/journal/* code` in `stage_inputs` of `.config/stages.toml`
-- [ ] 2.9 `just static`, `just test`; commit `feat(e2e): a faster smoke set and a branch-scoped secret scan`
+- [x] 2.7 Red: "A change to the stage runner's tests reuses every model stage" in `change_workflow.feature`, steps beside the existing key scenarios; fails
+- [x] 2.8 Green: `dev-tools/tests/* code` and `dev-tools/src/journal/* code` in `stage_inputs` of `.config/stages.toml`
+- [x] 2.9 `just static`, `just test`; commit `feat(e2e): a faster smoke set and a branch-scoped secret scan`
 
 ## 3. A faster unit run
 
