@@ -40,6 +40,6 @@
 
 ## 6. Budget values and the check
 
-- [ ] 6.1 `VOICEPUNCHER_REUSE_STAGES=0 just check` on an idle machine; `stage_budgets` in `.config/stages.toml` = each model stage's time plus 20 %, `test` 60; `just stage-times 1d` shows the run
-- [ ] 6.2 `just static`, `just test`, `just check` (`kit verify`); commit `chore: set the stage budgets`
-- [ ] 6.3 No version bump: tooling and tests only; manual checks: none
+- [x] 6.1 `VOICEPUNCHER_REUSE_STAGES=0 just check` on an idle machine; `stage_budgets` in `.config/stages.toml` = each model stage's time plus 20 %, `test` 60; `just stage-times 1d` shows the run
+- [x] 6.2 `just static`, `just test`, `just check` (`kit verify`); commit `chore: set the stage budgets`
+- [x] 6.3 No version bump: tooling and tests only; manual checks: none

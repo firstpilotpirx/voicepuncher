@@ -171,3 +171,16 @@ bench_areas = '''
     app/src/adapters/secondary/transcription/*      bench --limit 20
     copy-pool/*                                     bench --limit 20
 '''
+
+# The time budget of each model stage of `just check` and of its unit test stage: `<stage> <seconds>` per line.
+# A model stage past its budget fails the run, naming its five slowest scenarios and the busiest processes
+# beside it; `test` past its budget only warns, as it runs beside other sessions' builds. Values: the stage's
+# time in the check of 2026-11-04 (speed-up-check-runtime) plus 20 % — e2e-quick from the longest pass of the
+# stage journal (81.6 s, 2026-10-24), as both its scenarios were frozen when the others were measured
+stage_budgets = '''
+    test                 60
+    e2e-smoke-voice     167
+    e2e-smoke-speech     35
+    e2e-quick            98
+    e2e-smoke-services   89
+'''
