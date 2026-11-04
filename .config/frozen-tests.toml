@@ -172,3 +172,12 @@ stage = "e2e-cues"
 beside = "nothing else: e2e-cues alone on the machine, 907 ms against the 0.9 s bound; the branch adds a whole-word alias lookup before the respell sounds (microseconds per Russian word), no start-cue path; the same scenario failed 7 times on 2026-11-02 on feat/remove-keyword-spotter"
 branch = "fix/recognize-glued-enter-mishearings"
 
+
+[[frozen]]
+test = "scenario: A paste phrase inside a sentence is ignored"
+frozen = "2026-11-04"
+recipe = "full-check"
+stage = "e2e-smoke-voice"
+beside = "the smoke scenarios of voice control in parallel on one service (conn 61–67 decoding at once: the English recognizer gave its first text 0.8 s after the onset instead of 0.3 s); the recorded streaming bench of this worktree waiting on the lock; passes 5 of 5 alone through the bench"
+branch = "fix/fix-missed-dictation-start-stop-commands"
+
