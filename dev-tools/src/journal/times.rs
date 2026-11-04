@@ -105,7 +105,10 @@ struct StageRow {
 struct BranchRow {
     runs: usize,
     failed: usize,
+    /// The time in checks and the other runs that are no bench.
     seconds: f64,
+    /// The time in benches.
+    benches: f64,
 }
 
 /// One run's e2e lock hold: from, to, the run's branch and start.
@@ -169,7 +172,11 @@ impl Totals {
         let row = self.branches.entry(branch).or_default();
         row.runs += 1;
         row.failed += usize::from(result == "failed");
-        row.seconds += seconds(run, "seconds");
+        if crate::benches::is_bench(&recipe) {
+            row.benches += seconds(run, "seconds");
+        } else {
+            row.seconds += seconds(run, "seconds");
+        }
     }
 
     fn add_stage(&mut self, recipe: &str, stage: &Value) {

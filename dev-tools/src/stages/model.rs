@@ -12,8 +12,15 @@ use crate::journal::report;
 use crate::process::{code, status, Interrupt};
 use std::path::{Path, PathBuf};
 
-/// The stages that start services of their own on ports of their own (or need none): alone, they need these not.
-const OWN_SERVICES: [&str; 3] = ["e2e-resilience", "e2e-bundle", "it-real"];
+/// The stages that start services of their own on ports of their own (or need none, as the benches): alone,
+/// they need these not.
+const OWN_SERVICES: [&str; 5] = [
+    "e2e-resilience",
+    "e2e-bundle",
+    "it-real",
+    "bench",
+    "streaming-bench",
+];
 
 const HELD: &str = "VOICEPUNCHER_E2E_SERVICES_HELD";
 

@@ -8,7 +8,7 @@
 //! A stage that passed before on the same inputs (its key has a pass record) is reused (↺) and does not run;
 //! build and build-e2e run whenever a model stage runs, as they fill this worktree's `target/`; with every model
 //! stage reused no lock is requested. A rerun of failed tests (`VOICEPUNCHER_RERUN_FILTER`, `…_SCENARIOS`)
-//! neither reuses nor records. The run ends with one table (each stage's time, the lock wait and hold), the pass
+//! neither reuses nor records, and a bench (`bench`, `streaming-bench`) has no key, pass or reuse. The run ends with one table (each stage's time, the lock wait and hold), the pass
 //! records of the stages that passed while their key held, and one line in the stage journal; every stage's
 //! output is also copied to a log of the run, where the journal finds the failed tests.
 
@@ -16,6 +16,7 @@ pub mod budgets;
 pub mod child;
 mod environment;
 pub mod it_real;
+mod kinds;
 pub mod model;
 mod table;
 pub mod test;
@@ -28,7 +29,8 @@ use crate::journal::{self, report::Report};
 use crate::locks::{command_on_test_ports, Lock};
 use crate::process::{code, Interrupt};
 use crate::{keys, passes, Outcome};
-use environment::{export_run, reuses_passes};
+use environment::{export_run, passed, reuses_passes};
+pub use kinds::{is_bench, is_model};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::io::Write;
@@ -36,11 +38,6 @@ use std::path::{Path, PathBuf};
 
 /// The stages that run at the utility quality of service clamp, so they yield the CPU to another run's model stages.
 const CLAMPED: [&str; 5] = ["fmt", "lint", "build", "bundle", "build-e2e"];
-
-/// Whether a stage is a model stage: it and every stage after it run under the e2e lock.
-pub fn is_model(stage: &str) -> bool {
-    stage.starts_with("e2e") || stage == "it-real"
-}
 
 /// Appends a line to the run's report.
 pub fn note(report: Option<&Path>, line: &str) {
@@ -92,7 +89,12 @@ impl Runner {
         let (report, log) = (temp()?, temp()?);
         let context = Context::from_env();
         let caller = export_run(&context, &lock, report.path());
-        let keys = keys::of_this_run(&context, &stages).unwrap_or_else(|error| {
+        let keyed: Vec<String> = stages
+            .iter()
+            .filter(|stage| !is_bench(stage))
+            .cloned()
+            .collect();
+        let keys = keys::of_this_run(&context, &keyed).unwrap_or_else(|error| {
             eprintln!("✗ the stage keys could not be computed ({error}): every stage runs and no pass is recorded");
             Vec::new()
         });
@@ -282,7 +284,11 @@ impl Runner {
 
     /// The pass records of the stages that passed and whose key held through the run.
     fn record_passes(&self, report: &Report) -> Result<(), String> {
-        let passed = report.passed();
+        let passed: Vec<String> = report
+            .passed()
+            .into_iter()
+            .filter(|stage| !is_bench(stage))
+            .collect();
         if passed.is_empty() || self.keys.is_empty() || self.rerun {
             return Ok(());
         }
@@ -315,20 +321,16 @@ impl Runner {
             worktree: self.context.root.clone(),
             recipe: var("VOICEPUNCHER_STAGES_RECIPE"),
             accuracy: var("VOICEPUNCHER_STAGES_ACCURACY"),
+            args: self
+                .stages
+                .iter()
+                .any(|stage| is_bench(stage))
+                .then(|| var("VOICEPUNCHER_BENCH_ARGS"))
+                .flatten(),
         };
         journal::append(
             &journal::path(),
             &journal::line(&run, report, &crate::clock::local_zone()),
         )
     }
-}
-
-/// The pass record of each stage whose key has one.
-fn passed(keys: &[(String, String)]) -> BTreeMap<String, PathBuf> {
-    let folder = passes::folder();
-    keys.iter()
-        .filter_map(|(stage, key)| {
-            passes::found(&folder, stage, key).map(|record| (stage.clone(), record))
-        })
-        .collect()
 }

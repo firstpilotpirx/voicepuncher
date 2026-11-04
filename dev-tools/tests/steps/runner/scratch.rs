@@ -122,6 +122,14 @@ impl Scratch {
     }
 
     /// Runs git in a folder of the scratch; fails the step when git fails.
+    /// Makes the scratch repository a git repository on main with everything committed.
+    pub fn commit_all_on_main(&self) {
+        let root = self.root();
+        self.git(&root, &["init", "-q", "-b", "main"]);
+        self.git(&root, &["add", "."]);
+        self.git(&root, &["commit", "-q", "-m", "main"]);
+    }
+
     pub fn git(&self, folder: &Path, args: &[&str]) {
         let mut command = Command::new("git");
         command.arg("-C").arg(folder).args(args).env_clear();

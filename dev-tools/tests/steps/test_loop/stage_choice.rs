@@ -57,10 +57,7 @@ fn main_passed(world: &mut WorkflowWorld) {
     scratch.with_project_tables();
     scratch.write(OVERLAY, "pub fn draw() {}\n");
     scratch.write(CHUNKING, "pub fn split() {}\n");
-    let root = scratch.root();
-    scratch.git(&root, &["init", "-q", "-b", "main"]);
-    scratch.git(&root, &["add", "."]);
-    scratch.git(&root, &["commit", "-q", "-m", "main"]);
+    scratch.commit_all_on_main();
     world.text = stage_keys(&scratch);
     world.scratch = Some(scratch);
 }

@@ -14,7 +14,7 @@ use crate::WorkflowWorld;
 const FORMER_LINE: &str = r#"{"started":"2026-10-23T10:00:00+00:00","seconds":120.2,"worktree":"/nonexistent/worktree","branch":null,"commit":null,"recipe":"check","result":"failed","exit":1,"stages":[{"name":"fmt","result":"passed","seconds":12.3},{"name":"e2e-smoke-voice","result":"failed","seconds":61.75}],"lock_wait":5.2,"lock_held":94.8,"locks":[{"class":"e2e","held":94.8,"locked":"2026-10-23T10:00:15+00:00","wait":5.2}],"accuracy":null,"failed_tests":["voicepuncher::it slow::should_hang"],"wer":null}"#;
 
 /// The fields of a journal line, in the order the former runner wrote them.
-const FIELDS: [&str; 15] = [
+const FIELDS: [&str; 16] = [
     "started",
     "seconds",
     "worktree",
@@ -30,10 +30,11 @@ const FIELDS: [&str; 15] = [
     "accuracy",
     "failed_tests",
     "wer",
+    "args",
 ];
 
 /// The last line of the scratch journal.
-fn last_run(world: &WorkflowWorld) -> Value {
+pub(super) fn last_run(world: &WorkflowWorld) -> Value {
     let journal = scratch(world).journal();
     let line = journal
         .lines()

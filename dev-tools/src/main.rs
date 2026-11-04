@@ -4,6 +4,7 @@
 
 mod accuracy;
 mod accuracy_baseline;
+mod benches;
 mod checkout;
 mod clock;
 mod context;

@@ -622,3 +622,24 @@ Feature: change-workflow
       Given the workflow harness is asked to run the test of the rule "A missing machine lock names its install command"
       When the harness answers
       Then only that rule's scenarios ran
+
+  Rule: Benches are journaled
+
+    Scenario: A streaming bench run is journaled with its arguments
+      Given a scratch repository with a stand-in task runner
+      When the stage runner runs the streaming bench with "--recorded --pace fast"
+      Then the journal holds the run under the recipe "streaming-bench"
+      And the run's arguments are "--recorded --pace fast"
+      And the journal records the stage "streaming-bench" as "passed"
+
+    Scenario: A bench run is never a pass
+      Given a scratch repository with a stand-in task runner
+      And a bench run that passed
+      When the stage runner runs the stages "bench"
+      Then the journal records the stage "bench" as "passed"
+      And no pass was recorded
+
+    Scenario: The summary shows check and bench time per branch apart
+      Given a journal with 2 checks and 1 bench on one branch
+      When the user summarizes the stage journal
+      Then the branch's row shows "20.0s" in checks and "5.0s" in benches

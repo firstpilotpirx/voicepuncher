@@ -39,3 +39,15 @@ fn export_frozen(context: &Context) {
         println!("{line}");
     }
 }
+
+/// The pass record of each stage whose key has one.
+pub(super) fn passed(
+    keys: &[(String, String)],
+) -> std::collections::BTreeMap<String, std::path::PathBuf> {
+    let folder = crate::passes::folder();
+    keys.iter()
+        .filter_map(|(stage, key)| {
+            crate::passes::found(&folder, stage, key).map(|record| (stage.clone(), record))
+        })
+        .collect()
+}

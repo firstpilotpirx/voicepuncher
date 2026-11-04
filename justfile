@@ -726,20 +726,21 @@ corpus max_samples="50":
 
 # ── Model comparison ── not a gate; only when changing a model, decoding params or the prompt
 
-# Benchmark — every Whisper model on the full corpus; `just bench --limit 10` for a quick one (~2 min)
+# Benchmark — every Whisper model on the full corpus; `just bench --limit 10` for a quick one (~2 min).
+# A model stage of its own (journaled with its arguments, never a pass), run under the e2e lock without services
 bench *args: _dev-tools
-    @MACHINE_LOCK_TIMEOUT=14400 {{locked}} _bench {{args}}
+    @MACHINE_LOCK_TIMEOUT=14400 VOICEPUNCHER_BENCH_ARGS="{{args}}" VOICEPUNCHER_STAGES_RECIPE=bench {{just_executable()}} _stages bench
 
-_bench *args:
+_bench:
     uv run --python 3.11 --with "datasets<3.0.0" --with soundfile --with numpy --with librosa \
-        python3 e2e-test/scripts/bench.py {{args}}
+        python3 e2e-test/scripts/bench.py {{env_var_or_default("VOICEPUNCHER_BENCH_ARGS", "")}}
 
-# Streaming command bench — the user's labelled clips through the streaming recognizer, in real time
+# Streaming command bench — the user's labelled clips through the streaming recognizer, in real time; a stage like `bench`
 streaming-bench *args: _dev-tools
-    @{{locked}} _streaming-bench {{args}}
+    @VOICEPUNCHER_BENCH_ARGS="{{args}}" VOICEPUNCHER_STAGES_RECIPE=streaming-bench {{just_executable()}} _stages streaming-bench
 
-_streaming-bench *args:
-    cargo run --release --quiet -p voicepuncher-command-spotting --bin streaming-bench -- {{args}}
+_streaming-bench:
+    cargo run --release --quiet -p voicepuncher-command-spotting --bin streaming-bench -- {{env_var_or_default("VOICEPUNCHER_BENCH_ARGS", "")}}
 
 # ── Guards ── fail fast instead of letting E2E tests skip silently (GATED) ────
 

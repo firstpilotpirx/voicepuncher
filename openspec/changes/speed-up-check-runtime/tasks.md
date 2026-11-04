@@ -26,9 +26,9 @@
 
 ## 4. Benches in the journal
 
-- [ ] 4.1 Red: the three bench scenarios under `Rule: Benches are journaled` in `change_workflow.feature`, steps in `dev-tools/tests/steps/benches.rs`; the journal format scenario expects the 16th field `args`; fails
-- [ ] 4.2 Green: `bench` and `streaming-bench` in `justfile` run `_stages bench` / `_stages streaming-bench` with `VOICEPUNCHER_BENCH_ARGS`; `dev-tools/src/stages/mod.rs` treats them as model stages without key, pass or reuse; `dev-tools/src/journal/mod.rs` writes `args`; `dev-tools/src/journal/times/` shows the bench time per branch
-- [ ] 4.3 `just static`, `just test`; commit `feat(dev-tools): journal the benches`
+- [x] 4.1 Red: the three bench scenarios under `Rule: Benches are journaled` in `change_workflow.feature`, steps in `dev-tools/tests/steps/runner/benches.rs`; the journal format scenario expects the 16th field `args`; fails
+- [x] 4.2 Green: `bench` and `streaming-bench` in `justfile` run `_stages bench` / `_stages streaming-bench` with `VOICEPUNCHER_BENCH_ARGS`; `dev-tools/src/stages/mod.rs` treats them as model stages without key, pass or reuse; `dev-tools/src/journal/mod.rs` writes `args`; `dev-tools/src/journal/times/` shows the bench time per branch
+- [x] 4.3 `just static`, `just test`; commit `feat(dev-tools): journal the benches`
 
 ## 5. The needed-tests map and the task-group warning
 

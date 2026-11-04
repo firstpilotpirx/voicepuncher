@@ -63,7 +63,13 @@ fn should_show_a_lock_never_taken_and_one_the_caller_held() {
 
 #[test]
 fn should_lock_every_stage_from_the_first_model_stage_on() {
-    for stage in ["e2e-smoke-voice", "e2e-cues", "it-real"] {
+    for stage in [
+        "e2e-smoke-voice",
+        "e2e-cues",
+        "it-real",
+        "bench",
+        "streaming-bench",
+    ] {
         assert!(is_model(stage), "{stage}");
     }
     for stage in [
