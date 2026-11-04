@@ -2,6 +2,10 @@
 //!
 //! They are respelled in English so the phrase matcher reads them like the English
 //! recognizer's. The patterns are those of the bench (`research/bench/common.py`, `RU_CMD`).
+//! A word the patterns do not read whole is looked up first in the alias rows of the voice
+//! commands' mishearings ("интернтер" for "enter enter").
+
+use voicepuncher_voice_commands::{MishearingKind, FORMS, MISHEARINGS};
 
 /// How often a letter of a pattern is said.
 #[derive(Clone, Copy)]
@@ -141,9 +145,40 @@ fn is_cyrillic(c: char) -> bool {
 }
 
 /// The English words a Cyrillic word sounds like; none when part of it is no command sound.
+/// A hyphen or any other mark inside the word is dropped ("энтер-энтер" is "энтерэнтер").
 pub fn respell_word(word: &str) -> Option<Vec<&'static str>> {
-    let letters: Vec<char> = word.to_lowercase().replace('ё', "е").chars().collect();
-    (!letters.is_empty()).then(|| split(&letters)).flatten()
+    let letters: Vec<char> = word
+        .to_lowercase()
+        .replace('ё', "е")
+        .chars()
+        .filter(|c| c.is_alphabetic())
+        .collect();
+    if letters.is_empty() {
+        return None;
+    }
+    alias(&letters.iter().collect::<String>()).or_else(|| split(&letters))
+}
+
+/// The short forms the alias row for `word` reads it as: a word the Russian recognizer writes
+/// for a command said once or twice, listed whole in the voice commands' mishearings.
+fn alias(word: &str) -> Option<Vec<&'static str>> {
+    let row = MISHEARINGS
+        .iter()
+        .filter(|m| m.kind == MishearingKind::Alias)
+        .find(|m| m.heard.len() == 1 && m.heard[0] == word)?;
+    let short_form = |phrase: &str| {
+        FORMS
+            .iter()
+            .filter(move |form| form.phrase == phrase)
+            .flat_map(|form| form.words.iter().copied())
+            .collect::<Vec<_>>()
+    };
+    Some(
+        row.means
+            .iter()
+            .flat_map(|phrase| short_form(phrase))
+            .collect(),
+    )
 }
 
 /// `letters` read as command sounds one after another; a sound that leaves letters no other

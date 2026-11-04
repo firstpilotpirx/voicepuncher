@@ -13,8 +13,8 @@ version = "1.9.5"
 
 [whisper.formulae]
 "whisper.cpp" = "1.9.5"
-ggml = "0.27.0"
-libomp = "23.1.3"
+ggml = "0.28.0"
+libomp = "23.1.4"
 
 [whisper.from]
 "whisper-server" = "whisper.cpp/bin/whisper-server"
@@ -31,13 +31,13 @@ libomp = "23.1.3"
 [whisper.sha256]
 "whisper-server" = "9d3bf58513018556ed0131af5519b1a13153a16eea6115dfa094b320559d8020"
 "libwhisper.1.dylib" = "5dfcabff79cf16304469bd2a66baeb150dabf1b143954045107412c33f6238e5"
-"libggml.0.dylib" = "2aa7468139eb0342b181d6385df537a7d3bded44f23da111b45b155cdb841bcb"
-"libggml-base.0.dylib" = "1afa353df329c3deef52c08818e65e42c6773c9db7159244322cc2cb6cf63da6"
-"libggml-blas.so" = "5af6f25b468109dab33da18517cb90cb29d4d87c46048f8efde5bc19dc5e4127"
-"libggml-cpu-apple_m1.so" = "6ad9d81a9c6de9935c4f268724c10ac4a11873a6ff4af121dab583713844ac71"
-"libggml-cpu-apple_m2_m3.so" = "a816fbe68d2195037441c4bcf5d9874930e5cdf0e12e6629e9b44fe19ff2bb37"
-"libggml-cpu-apple_m4.so" = "5bb732bfb80cb7db4094781e7976036a0e99e85cc5d67c99ba15b195ab8c298d"
-"libggml-metal.so" = "5725e308a8d6b1b58ba714d469ffd3a5de768677f9f9cbe3cfc29850cd3d12fb"
+"libggml.0.dylib" = "763df1ebc30acb93e3a3b91fd1a3475faa9f36dbab022dbc8f77d06d68d3c61a"
+"libggml-base.0.dylib" = "41dbe75ee54291efdcd60bdcba8bc367158cbccff8655c5b7953c3ef24887257"
+"libggml-blas.so" = "818dc15ce0b1236a66936b91361dd2291011a45a96fe8513ca930d816dd67a91"
+"libggml-cpu-apple_m1.so" = "5485b5d561361c535322d9d2b9d0a0a4517b9a4dfa2855bd4f39306e8314417d"
+"libggml-cpu-apple_m2_m3.so" = "b83ad85b7ae6faaf1e5508124957a12376194830bcb002b85663d301f0ea955e"
+"libggml-cpu-apple_m4.so" = "0595d9138379c7995faee2b48cf8d2629e1e1cdaeb54114f7be9c857bfb29a93"
+"libggml-metal.so" = "ce682082092386ec47af6807c9453c49c1d477df67b965b1c2b031149acf49a4"
 "libomp.dylib" = "cb679440b0af57131274b6c0bcc11b8c18ef7ad45e2a6625ef57e90379fc2ae4"
 
 # This workspace's command spotting service, from its release build, with the shared sherpa-onnx and
