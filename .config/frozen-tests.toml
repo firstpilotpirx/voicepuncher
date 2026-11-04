@@ -171,3 +171,12 @@ stage = "e2e-smoke-voice"
 beside = "user approved freezing: the voice gate missed the recorded enter/stop after a Russian dictation under service lag 3.7 s; offline the same audio is recognized"
 branch = "feat/remove-keyword-spotter"
 
+
+[[frozen]]
+test = "scenario: A clean tree passes the static check in seconds"
+frozen = "2026-11-04"
+recipe = "test"
+stage = "test"
+beside = "other sessions' checks (3 peer changes' just check / full-check and their builds) and this worktree's dev-tools harness"
+branch = "chore/speed-up-check-runtime"
+
