@@ -20,9 +20,9 @@
 
 ## 3. A faster unit run
 
-- [ ] 3.1 Red: the two per-rule scenarios under `Rule: A failed workflow rule is named and rerun alone` in `change_workflow.feature`, steps in `dev-tools/tests/steps/harness.rs` listing the harness's tests; fails
-- [ ] 3.2 Green: `rule_tests`, `read_rule_harness_call`, `rule_command_line` moved to `test-steps/src/rule_harness.rs` (re-exported by `e2e-test/src/harness_args.rs`); `dev-tools/tests/cucumber_workflow.rs` lists one test per `Rule:`; `just rerun-failed` names the rule
-- [ ] 3.3 `just static`, `just test`; commit `feat(dev-tools): one nextest test per rule of the workflow harness`
+- [x] 3.1 Red: the two per-rule scenarios under `Rule: A failed workflow rule is named and rerun alone` in `change_workflow.feature`, steps in `dev-tools/tests/steps/harness.rs` listing the harness's tests; fails
+- [x] 3.2 Green: `rule_tests`, `read_rule_harness_call`, `rule_command_line` moved to `test-steps/src/rule_harness.rs` (re-exported by `e2e-test/src/harness_args.rs`); `dev-tools/tests/cucumber_workflow.rs` lists one test per `Rule:`; `just rerun-failed` names the rule
+- [x] 3.3 `just static`, `just test`; commit `feat(dev-tools): one nextest test per rule of the workflow harness`
 
 ## 4. Benches in the journal
 

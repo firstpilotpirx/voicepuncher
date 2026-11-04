@@ -610,3 +610,15 @@ Feature: change-workflow
       And the repository is a clone on main
       When the secret scan asks its range
       Then the range is "--all"
+
+  Rule: A failed workflow rule is named and rerun alone
+
+    Scenario: A failed rule is reported by its name
+      Given the workflow harness is asked to list its tests
+      When the harness answers
+      Then it names one test per rule of the change workflow feature, each after its rule
+
+    Scenario: A rerun covers only the failed rule's scenarios
+      Given the workflow harness is asked to run the test of the rule "A missing machine lock names its install command"
+      When the harness answers
+      Then only that rule's scenarios ran

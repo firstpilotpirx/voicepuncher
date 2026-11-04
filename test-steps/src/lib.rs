@@ -4,6 +4,7 @@
 pub mod log_lines;
 pub mod loopback;
 pub mod needs;
+pub mod rule_harness;
 pub mod shared_steps;
 pub mod speech_cache;
 
