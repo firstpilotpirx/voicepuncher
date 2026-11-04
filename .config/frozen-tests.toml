@@ -163,3 +163,12 @@ stage = "e2e-smoke-voice"
 beside = "user approved freezing: the voice gate missed the recorded enter/stop after a Russian dictation under service lag 3.7 s; offline the same audio is recognized"
 branch = "feat/remove-keyword-spotter"
 
+
+[[frozen]]
+test = "scenario: A command in a noisy room ends at its pause"
+frozen = "2026-11-04"
+recipe = "full-check"
+stage = "e2e-cues"
+beside = "nothing else: e2e-cues alone on the machine, 907 ms against the 0.9 s bound; the branch adds a whole-word alias lookup before the respell sounds (microseconds per Russian word), no start-cue path; the same scenario failed 7 times on 2026-11-02 on feat/remove-keyword-spotter"
+branch = "fix/recognize-glued-enter-mishearings"
+
