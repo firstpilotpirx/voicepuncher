@@ -1,5 +1,6 @@
-//! `dev-tools it-real`: the `it-real` stage — the desktop tests (`needs_desktop`) on the real microphone, the
-//! Accessibility API and windows on screen, never the ones that press keys in the focused app. Without a
+//! `dev-tools it-real`: the `it-real` stage — the desktop tests (the `needs_desktop` modules and the component
+//! rules tagged `@needs_desktop`) on the real microphone, the Accessibility API and windows on screen, never the
+//! ones that press keys in the focused app. Without a
 //! permission the tests need (Microphone, Accessibility, Input Monitoring) for the app running them, it names
 //! each one missing, counts the tests it leaves out and skips (exit 77). `VOICEPUNCHER_TCC_PROBE` replaces the
 //! probe.
@@ -11,15 +12,19 @@ use crate::Outcome;
 use std::path::PathBuf;
 use std::process::Command;
 
-const TARGETS: [&str; 6] = [
+const TARGETS: [&str; 8] = [
     "-p",
     "voicepuncher",
     "--test",
     "it",
     "--test",
     "main_thread",
+    "--test",
+    "cucumber_integration",
 ];
-pub const FILTER: &str = "test(/::needs_desktop::/) & not test(/::needs_real_keyboard::/)";
+/// The desktop tests by name: a Rust test in a `needs_desktop` module or a rule test the harness
+/// named with the tag, never one that also needs the real keyboard.
+pub const FILTER: &str = "test(/needs_desktop::/) & not test(/needs_real_keyboard::/)";
 /// The exit code of a stage that skipped itself.
 pub const SKIPPED: u8 = 77;
 

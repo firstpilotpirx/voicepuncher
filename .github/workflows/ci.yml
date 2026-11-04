@@ -33,6 +33,10 @@ jobs:
         with:
           cache-bin: "false"
           cache-on-failure: "true"
+      # The cache keeps the sherpa-onnx build script's output but prunes the library it downloaded into target/, so
+      # the link would fail: without the library, the output goes too and the script downloads it again
+      - name: Drop the sherpa-onnx build output when its library is missing
+        run: if [[ ! -d target/sherpa-onnx-prebuilt ]]; then rm -rf target/*/build/sherpa-onnx-sys-*; fi
 
       - uses: taiki-e/install-action@v2.87.30
         with:
@@ -55,14 +59,29 @@ jobs:
             ~/.cargo/bin/cargo-semver-checks
             ~/.cargo/bin/typos
             ~/.cargo/bin/rust-code-analysis-cli
+            ~/.cargo/bin/shellcheck
+            ~/.cargo/bin/gitleaks
+            ~/.cargo/bin/trufflehog
             ~/.npm-global
             ~/perl5
+      # shellcheck, gitleaks and trufflehog come from their GitHub releases at the justfile's pins: Homebrew installs
+      # whatever is current, which `_require-tools` refuses
       - name: Install the analyzers
         id: install
         run: |
           rustup toolchain install stable --profile minimal
-          brew install shellcheck gitleaks trufflehog
-          if [[ "${{ steps.tools.outputs.cache-hit }}" != true ]]; then just tools; fi
+          if [[ "${{ steps.tools.outputs.cache-hit }}" == true ]]; then exit 0; fi
+          just tools
+          release() { # <name> <url> <path in the archive>: the binary of a GitHub release into ~/.cargo/bin
+            curl -sSfL "$2" | tar -xz -C "$RUNNER_TEMP" "$3"
+            install -m 755 "$RUNNER_TEMP/$3" "$HOME/.cargo/bin/$1"
+          }
+          shellcheck=$(just --evaluate shellcheck_version)
+          gitleaks=$(just --evaluate gitleaks_version)
+          trufflehog=$(just --evaluate trufflehog_version)
+          release shellcheck "https://github.com/koalaman/shellcheck/releases/download/v$shellcheck/shellcheck-v$shellcheck.darwin.aarch64.tar.gz" "shellcheck-v$shellcheck/shellcheck"
+          release gitleaks "https://github.com/gitleaks/gitleaks/releases/download/v$gitleaks/gitleaks_${gitleaks}_darwin_arm64.tar.gz" gitleaks
+          release trufflehog "https://github.com/trufflesecurity/trufflehog/releases/download/v$trufflehog/trufflehog_${trufflehog}_darwin_arm64.tar.gz" trufflehog
       # Saved at once, so a failing check later in the run still keeps the analyzers for the next one
       - uses: actions/cache/save@v6.1.0
         if: steps.tools.outputs.cache-hit != 'true'
@@ -74,6 +93,9 @@ jobs:
             ~/.cargo/bin/cargo-semver-checks
             ~/.cargo/bin/typos
             ~/.cargo/bin/rust-code-analysis-cli
+            ~/.cargo/bin/shellcheck
+            ~/.cargo/bin/gitleaks
+            ~/.cargo/bin/trufflehog
             ~/.npm-global
             ~/perl5
 
