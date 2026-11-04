@@ -84,38 +84,41 @@ The change took 8–10 hours of wall clock. Its journaled checks were only 0.6 h
 
 ## What Changes
 
-- `just check` runs in ≤ 4 min of its own work on an idle machine.
-- A time budget per model stage of `check`: the stage fails, naming its slowest scenarios, when it grows past the budget, so long scenarios go to `@regression` (run by `full-check` only).
-- Voice control smoke scenarios whose latency is not under test stream their clips faster than real time.
-- `test` gets faster: profile the slowest test binaries and tests (`cargo nextest` timings), split or move the slow ones behind a need, cut rebuilds between `static`, `test` and `lint` (shared target, no feature or profile flips).
-- `full-check` costs less: fewer failed runs (freeze or fix the most-failing tests above), more reuse of model stages (finer stage keys so an edit outside a stage's inputs reuses it), the long stages (`e2e-seams`, `e2e-bench`) only when their inputs changed.
-- Benches go through the stage journal (`streaming-bench` and `bench` record their time and result), so `just stage-times` shows them.
-- A "needed tests" map for agents: for each area (crate, module, capability), which `test-one` names, bench options (`--only`, `--sample`) and recipes cover it; while tuning or optimizing an agent runs only those, and the full suites and full benches once, when the feature is done (`AGENTS.md` § How to verify a change).
-- Scoped runs while optimizing one part: when a change optimizes a specific part (one crate, module or recognizer), every run before the feature is done covers only that part — a recipe (e.g. `just test-area <area>`) runs the unit, integration and scenario tests of that area and the bench clips that exercise it, nothing else; `just test`, `just check`, `full-check` and full real-time benches run once, when the feature is done. The user asked for this repeatedly on 2026-10-31 ("не гонять всё, когда оптимизируешь конкретную часть"): speed-up-streaming-commands ran full suites and ~20 min full benches after small fixes and took 8–10 h. The agent rules (`AGENTS.md`, `/proceed-change` apply stage) state it, and `kit run` warns when a full suite starts on a branch whose open task group is not the last.
-- `just stage-times` reports, per branch, the time in checks and benches, so the next audit measures the gain.
+- `just check` runs in ≤ 4 min of its own work on an idle machine; `just test` in ≤ 1 min.
+- A time budget per model stage of `check` (`stage_budgets` in `.config/stages.toml`: the measured time after the speed-up plus 20 %): a model stage past its budget fails the run naming its five slowest scenarios (the E2E harness prints every scenario's time at its end) and the busiest processes beside it; `test` past its budget prints a warning only, as it runs beside other sessions' builds.
+- Voice control smoke scenarios whose latency is not under test (not `@cues`, no wall-clock bound in their steps) stream their audio as fast as the service answers; a scenario that fails at that pace stays in real time and is named in the design.
+- `@smoke` keeps one scenario per `Rule:` of `local_services` and `speech_recognition`; the other example scenarios of a rule go to `@regression`.
+- `test` gets faster: the `change-workflow` harness runs one nextest test per `Rule:` (as the slice/component harness does) and the in-process streaming model tests run two at a time; the slowest tests are profiled with nextest's timings.
+- `lint` scans secrets over the commits since `origin/main` on a branch, the whole history on `main`.
+- Finer stage keys: the stage runner's own tests and journal code feed only the code stages.
+- `streaming-bench` and `bench` run through the stage runner as journaled runs (recipe, arguments, time, result; never a pass, never reused), so `just stage-times` shows them.
+- A needed-tests map for agents: `just needed-tests` prints, per area (crate, module, capability), the tests, scenarios, stages and bench options that cover it; `just test-area <path>` runs the tests of the area that owns the path and prints its stages and bench options; the map's areas are checked by `just test`.
+- The stage runner warns when `test`, `check` or `full-check` starts on a branch whose change has an open task group that is not the last: while optimizing one part, run `just test-area`. `AGENTS.md` § How to verify a change states the rule.
+- `just stage-times` reports, per branch, the time in checks and in benches apart.
+- The pinned `trufflehog` version follows the installed one (3.99.8): the lint guard refuses every run on this machine otherwise.
 
 Current stage: PoC. Target stage: PoC.
-Scope: the `check`, `full-check` and `test` stages, their E2E scenarios and tags, the stage runner (budgets, keys, journal of benches), the bench recipes, the agent workflow text in `AGENTS.md`.
+Scope: the `check`, `full-check` and `test` stages, their E2E scenarios and tags, the stage runner (budgets, keys, journal of benches, the needed-tests map, the warning), the bench recipes, the agent workflow text in `AGENTS.md`.
 Acceptance bar: on an idle machine with nothing reused (`VOICEPUNCHER_REUSE_STAGES=0`) `just check` ≤ 4 min and `just test` ≤ 1 min, as `just stage-times` records; a scenario that pushes a `check` model stage past its budget fails `just check` naming the slowest scenarios; `streaming-bench` runs appear in the stage journal; over the two weeks after the merge, the median check-and-bench time per branch in `just stage-times` is at most half of the 2026-10-17..31 baseline above.
-Out of scope: model or recognizer changes, the hosted CI, the release recipe.
+Out of scope: model or recognizer changes, the hosted CI, the release recipe, the flaky tests the journal names (they are frozen when they fail a check of this branch, as the flake rule says, never fixed here), one E2E nextest test per scenario (`just rerun-failed` already reruns only the failed scenarios, and one process per rule would split the shared services and the `@serial` order), a warning in `kit run` (agent-kit is another repository: the stage runner warns instead).
 
 ## Capabilities
 
 ### Modified Capabilities
 
-- `change-workflow`: stage budgets, bench journaling, the needed-tests map, faster `check` and `test`.
+- `change-workflow`: stage budgets, bench journaling, the needed-tests map, the task-group warning, faster `check` and `test`.
 
 ## Impact
 
-- `justfile`, `dev-tools/` (stage runner, budgets, keys, journal), `.config/stages.toml`, `.config/nextest.toml`, `e2e-test/tests/features/*.feature` tags and steps, `command-spotting/src/bin/streaming_bench.rs`, `AGENTS.md`.
+- `justfile`, `dev-tools/` (stage runner, budgets, keys, journal, needed-tests map, warning), `.config/stages.toml`, `.config/nextest.toml`, `e2e-test/tests/features/*.feature` tags, `e2e-test/tests/steps/voice_control/` pacing, `e2e-test/tests/cucumber_e2e.rs` (scenario times), `dev-tools/tests/cucumber_workflow.rs` (per-rule tests), `test-steps/` (the per-rule harness helper shared by both harnesses), `AGENTS.md`.
 
-## Open points
+## Decisions on the open points
 
-- Budget values — proposed: per model stage of `check`, the measured time after the speed-up plus 20 %; `test` 1 min.
-- Which voice control smoke scenarios may stream faster than real time — proposed: every one not tagged `@cues` and not asserting a wall-clock bound.
-- Whether `e2e-smoke-services` and `e2e-smoke-voice` can share one service start — proposed: measure first, decide in design.
-- Whether the E2E harness should report each scenario as its own nextest test so a failure reruns only it — proposed: yes, as the slice/component harness already does per `Rule:`.
-- How the needed-tests map is kept current — proposed: generated from `stage_inputs` and the test layout, checked by `just test`.
+- Budget values: the measured time after the speed-up plus 20 %; `test` 1 min, warning only.
+- Faster than real time: every voice control scenario not tagged `@cues` and without a wall-clock bound.
+- `e2e-smoke-services` and `e2e-smoke-voice` keep their own service starts: the services scenarios test starts and stops, so sharing would test nothing; the budget trims the smoke set instead.
+- No E2E nextest test per scenario (out of scope above).
+- The needed-tests map is generated from `stage_inputs`, the workspace members and a `bench_areas` table in `.config/stages.toml`, checked by `just test`.
 
 ## Release
 
