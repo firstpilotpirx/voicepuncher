@@ -47,6 +47,20 @@ fn should_report_a_doubled_command_at_once_ending_at_its_first_word() {
 }
 
 #[test]
+fn should_end_a_doubled_command_written_with_a_capital_and_a_comma_at_its_first_word() {
+    // Given "Restart, restart" as the English recognizer writes it, the first word ending at
+    // 1.25 s and the second at 1.55 s
+    let words = said(1.0, "Restart, restart");
+    let matcher = PhraseMatcher::new(&["restart dictation".into(), "stop dictation".into()]);
+    // When
+    let found = decide(&matcher, &words, decoding(1.6), 0.0);
+    // Then the words count as the same word, whatever their case and punctuation
+    let found = found.expect("a doubled restart");
+    assert_eq!(found.commands, ["restart dictation"]);
+    assert!((found.end - 1.25).abs() < 1e-4, "{}", found.end);
+}
+
+#[test]
 fn should_wait_for_a_one_word_form_to_settle() {
     // Given "stop" just heard, ending at 1.25 s
     let words = said(1.0, "stop");

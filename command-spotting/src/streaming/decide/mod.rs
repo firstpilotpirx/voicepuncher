@@ -1,6 +1,6 @@
 //! Whether the words a streaming recognizer heard so far say a command to report now.
 
-use crate::matcher::{Found, PhraseMatcher, Placement};
+use crate::matcher::{words, Found, PhraseMatcher, Placement};
 use crate::streaming::words::TimedWord;
 
 /// What a decision is asked at.
@@ -185,8 +185,10 @@ fn ended(moment: Moment) -> bool {
 /// a doubled start begins would lose its first word; the app removes the second word from
 /// the text.
 fn finding(fresh: &[&TimedWord], found: &Found) -> Finding {
-    let doubled_one_word =
-        found.last == found.first + 1 && fresh[found.first].text == fresh[found.last].text;
+    // WHY: the recognizers write "Restart, restart": the words are compared as the matcher
+    // reads them, lowercase letters only.
+    let doubled_one_word = found.last == found.first + 1
+        && words(&fresh[found.first].text) == words(&fresh[found.last].text);
     let last = if doubled_one_word {
         found.first
     } else {

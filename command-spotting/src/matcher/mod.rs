@@ -135,7 +135,7 @@ impl PhraseMatcher {
 }
 
 /// Lowercase words of letters only, in any script.
-fn words(transcript: &str) -> Vec<String> {
+pub(crate) fn words(transcript: &str) -> Vec<String> {
     transcript
         .to_lowercase()
         .split(|c: char| !c.is_alphabetic())
