@@ -45,12 +45,22 @@ pub struct Utterance {
     /// While the app's sync is answered: the words before it are said, whatever the gate
     /// hears.
     synced: bool,
-    /// The last report, by whichever recognizer: commands ending before its end are reported.
-    last_report: Option<Finding>,
-    /// Finished updates held back at the close: a recognizer that heard only the end of a
-    /// command word ("start" of a quiet "restart") waits for the other to finish.
-    held: Vec<(usize, Update)>,
+    reports: Reports,
     trace: Trace,
+}
+
+/// What an utterance reports: its last report, what waits to be decided and what it leaves to
+/// the next utterance.
+#[derive(Default)]
+struct Reports {
+    /// The last report, by whichever recognizer: commands ending before its end are reported.
+    last: Option<Finding>,
+    /// Finished updates held back at the close: a recognizer that heard only the end of a
+    /// command word ("start" of a quiet "restart") waits for the other to finish, and every
+    /// one waits a frame for the next utterance to open over this one's tail.
+    held: Vec<(usize, Update)>,
+    /// Where the next utterance's audio starts: the words from there on are its to report.
+    handover: Option<f32>,
 }
 
 /// What an utterance left once every recognizer finished it.
@@ -93,8 +103,7 @@ impl Utterance {
             flushes: Vec::new(),
             quiet: 0,
             synced: false,
-            last_report: None,
-            held: Vec::new(),
+            reports: Reports::default(),
             trace: Trace::new(start, onset, &names),
         };
         utterance.silence(LEAD_SECS);
@@ -180,11 +189,7 @@ impl Utterance {
                 (r, updates)
             })
             .collect();
-        if wait == Wait::No && !self.finished() {
-            self.hold_ends_of_longer_words(matcher, &mut arrived);
-        } else {
-            arrived.extend(self.held.drain(..).map(|(r, update)| (r, vec![update])));
-        }
+        self.hold_or_release(matcher, &mut arrived, now, wait);
         // WHY: a recognizer that heard only the end of a command word ("start" of a quiet
         // "restart") must not speak first when the other heard all of it.
         arrived.sort_by_key(|(r, updates)| self.ends_a_longer_word(matcher, *r, updates));
@@ -195,6 +200,46 @@ impl Utterance {
             }
         }
         events
+    }
+
+    /// Holds back what is not decided yet at `now`, or adds what was held to `arrived`.
+    fn hold_or_release(
+        &mut self,
+        matcher: &PhraseMatcher,
+        arrived: &mut Vec<(usize, Vec<Update>)>,
+        now: f32,
+        wait: Wait,
+    ) {
+        if wait == Wait::No && now <= self.trace.closed {
+            // WHY: the next utterance opens over this one's tail only in the frame after the
+            // close; its words are reported once, by the utterance that hears them whole.
+            self.hold_finished(arrived);
+        } else if wait == Wait::No && !self.decoded_all() {
+            self.hold_ends_of_longer_words(matcher, arrived);
+        } else {
+            arrived.extend(
+                self.reports
+                    .held
+                    .drain(..)
+                    .map(|(r, update)| (r, vec![update])),
+            );
+        }
+    }
+
+    /// Holds back every finished update of `arrived`.
+    fn hold_finished(&mut self, arrived: &mut [(usize, Vec<Update>)]) {
+        for (r, updates) in arrived.iter_mut() {
+            let finished = updates.last().is_some_and(|u| u.finished);
+            if let Some(update) = finished.then(|| updates.pop()).flatten() {
+                self.reports.held.push((*r, update));
+            }
+        }
+    }
+
+    /// The next utterance opened with its audio from `start` on: the words from there on
+    /// are its to report, as the gate heard their first sound late, in this one's tail.
+    pub fn hands_over_from(&mut self, start: f32) {
+        self.reports.handover = Some(start);
     }
 
     /// Holds back a finished update of `arrived` whose last word may be the end of a longer
@@ -209,7 +254,7 @@ impl Utterance {
             let holds = updates.last().is_some_and(|u| u.finished)
                 && self.ends_a_longer_word(matcher, *r, updates);
             if let Some(update) = holds.then(|| updates.pop()).flatten() {
-                self.held.push((*r, update));
+                self.reports.held.push((*r, update));
             }
         }
     }
@@ -246,6 +291,13 @@ impl Utterance {
             }
         };
         let found = decide(matcher, &words, moment, self.reported_until())?;
+        if self
+            .reports
+            .handover
+            .is_some_and(|from| found.start >= from)
+        {
+            return None;
+        }
         let found = self.started_at_onset(found, &words);
         self.report(r, found, now)
     }
@@ -263,13 +315,13 @@ impl Utterance {
 
     /// The end of the last report: commands ending before it are reported already.
     fn reported_until(&self) -> f32 {
-        self.last_report.as_ref().map_or(0.0, |found| found.end)
+        self.reports.last.as_ref().map_or(0.0, |found| found.end)
     }
 
     /// Reports `found`, heard by recognizer `r` at `now`, unless it doubles the last report.
     fn report(&mut self, r: usize, found: Finding, now: f32) -> Option<ServerEvent> {
-        let doubled = doubles(self.last_report.as_ref(), &found);
-        self.last_report = Some(found.clone());
+        let doubled = doubles(self.reports.last.as_ref(), &found);
+        self.reports.last = Some(found.clone());
         (!doubled).then(|| {
             self.trace.reported(r, &found, now);
             command(found)
@@ -289,8 +341,13 @@ impl Utterance {
     }
 
     /// Whether every recognizer decoded all of it, the close's silence included.
-    pub fn finished(&self) -> bool {
+    fn decoded_all(&self) -> bool {
         self.decoders.iter().all(Decoder::finished)
+    }
+
+    /// Whether every recognizer decoded all of it and everything decoded is reported.
+    pub fn finished(&self) -> bool {
+        self.decoded_all() && self.reports.held.is_empty()
     }
 
     /// What it left, once every recognizer finished it.

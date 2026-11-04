@@ -7,6 +7,7 @@ use crate::history::HistoryCfg;
 use crate::streaming::ports::{Decoded, RecognizerStream};
 
 mod close_order;
+mod handover;
 mod history;
 mod opening;
 mod pause_flush;

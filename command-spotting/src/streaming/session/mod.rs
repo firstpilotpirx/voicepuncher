@@ -200,11 +200,15 @@ impl<'a> Session<'a> {
         self.replay.drain(..over);
     }
 
-    /// Opens an utterance at the frame about to be heard, the replay before it.
+    /// Opens an utterance at the frame about to be heard, the replay before it; the words a
+    /// closing utterance decodes from the replay on are the new one's to report.
     fn open(&mut self) -> ServerEvent {
         let start = self.seen - self.replay.len();
         let replay: Vec<f32> = self.replay.iter().copied().collect();
         let (start, onset) = (seconds(start), seconds(self.seen));
+        for closing in &mut self.closing {
+            closing.hands_over_from(start);
+        }
         match Utterance::open(
             &self.recognizers.models,
             start,
@@ -226,11 +230,12 @@ impl<'a> Session<'a> {
     /// starts the next utterance afresh.
     fn close(&mut self, now: f32) -> Option<ServerEvent> {
         let mut utterance = self.utterance.take()?;
-        self.gate.forgets();
         // WHY: the next utterance's replay must not start with this one's last words; the
         // models hear a quiet "restart" after "…broken" as "let's start".
         let over = self.replay.len().saturating_sub(utterance.quiet());
         self.replay.drain(..over);
+        let quiet: Vec<f32> = self.replay.iter().copied().collect();
+        self.gate.forgets(&quiet);
         let end = utterance.begin_close(now);
         self.closing.push(utterance);
         Some(end)

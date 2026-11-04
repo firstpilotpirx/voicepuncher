@@ -140,8 +140,11 @@ impl SpeechGate for SileroGate {
         self.vad.detected()
     }
 
-    fn forgets(&mut self) {
+    fn forgets(&mut self, quiet: &[f32]) {
         self.vad.reset();
+        for window in quiet.chunks_exact(GATE_WINDOW) {
+            self.hears(window);
+        }
     }
 }
 
