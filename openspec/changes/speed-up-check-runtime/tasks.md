@@ -32,11 +32,11 @@
 
 ## 5. The needed-tests map and the task-group warning
 
-- [ ] 5.1 Red: the five map scenarios under `Rule: An agent runs only the tests of the area it optimizes` in `change_workflow.feature`, steps in `dev-tools/tests/steps/areas.rs`; unit test in `dev-tools/src/areas/mod.rs` over the real `bench_areas` table; fails
-- [ ] 5.2 Green: `dev-tools needed-tests [path]` and `dev-tools test-area <path>` (`dev-tools/src/areas/`), `bench_areas` in `.config/stages.toml`, `VOICEPUNCHER_TEST_PARTS` in `dev-tools/src/stages/test.rs`, recipes `needed-tests` and `test-area` in `justfile`
-- [ ] 5.3 Green: the task-group warning in `dev-tools/src/stages/task_groups.rs`, printed by `Runner::start` for `test`, `check` and `full-check`
-- [ ] 5.4 `AGENTS.md` § TDD and § How to verify a change, README § Tests: `just test-area`, `just needed-tests`, the warning, the budgets, the journaled benches
-- [ ] 5.5 `just static`, `just test`; commit `feat(dev-tools): the needed-tests map and the task-group warning`
+- [x] 5.1 Red: the five map scenarios under `Rule: An agent runs only the tests of the area it optimizes` in `change_workflow.feature`, steps in `dev-tools/tests/steps/areas.rs`; unit test in `dev-tools/src/areas/mod.rs` over the real `bench_areas` table; fails
+- [x] 5.2 Green: `dev-tools needed-tests [path]` and `dev-tools test-area <path>` (`dev-tools/src/areas/`), `bench_areas` in `.config/stages.toml`, `VOICEPUNCHER_TEST_PARTS` in `dev-tools/src/stages/test.rs`, recipes `needed-tests` and `test-area` in `justfile`
+- [x] 5.3 Green: the task-group warning in `dev-tools/src/stages/task_groups.rs`, printed by `Runner::start` for `test`, `check` and `full-check`
+- [x] 5.4 `AGENTS.md` § TDD and § How to verify a change, README § Tests: `just test-area`, `just needed-tests`, the warning, the budgets, the journaled benches
+- [x] 5.5 `just static`, `just test`; commit `feat(dev-tools): the needed-tests map and the task-group warning`
 
 ## 6. Budget values and the check
 

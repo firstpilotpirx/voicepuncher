@@ -4,6 +4,7 @@
 
 pub mod analyzers;
 pub mod architecture_page;
+pub mod areas;
 pub mod harness;
 pub mod hosted;
 pub mod landing;

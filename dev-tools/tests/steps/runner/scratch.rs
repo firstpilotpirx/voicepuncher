@@ -8,10 +8,10 @@ use std::process::Command;
 
 use crate::steps::Ran;
 
-/// The stand-in task runner: logs the recipe with the selection it was given (tab-separated), skips the desktop stage when told
+/// The stand-in task runner: logs the recipe with the selection and the test parts it was given (tab-separated), skips the desktop stage when told
 /// to (exit 77), reports the accuracy stage's rate when one is set, takes the seconds `sleep-<recipe>` holds and prints
 /// the scenario times `scenario-times-<recipe>` holds.
-const JUST: &str = r#"printf 'just %s\trecipe=%s\tfilter=%s\tscenarios=%s\n' "$*" "$VOICEPUNCHER_STAGES_RECIPE" "$VOICEPUNCHER_RERUN_FILTER" "$VOICEPUNCHER_RERUN_SCENARIOS" >> "$SCRATCH/calls"
+const JUST: &str = r#"printf 'just %s\trecipe=%s\tfilter=%s\tscenarios=%s\tparts=%s\n' "$*" "$VOICEPUNCHER_STAGES_RECIPE" "$VOICEPUNCHER_RERUN_FILTER" "$VOICEPUNCHER_RERUN_SCENARIOS" "$VOICEPUNCHER_TEST_PARTS" >> "$SCRATCH/calls"
 if [ -f "$SCRATCH/sleep-$3" ]; then sleep "$(cat "$SCRATCH/sleep-$3")"; fi
 if [ -f "$SCRATCH/scenario-times-$3" ]; then cat "$SCRATCH/scenario-times-$3"; fi
 case "$3" in

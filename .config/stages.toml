@@ -158,3 +158,16 @@ test_needs = '''
     needs_hang_probe     VOICEPUNCHER_HANG_PROBE                                 the hang probe runs only when armed (VOICEPUNCHER_HANG_PROBE=1)
     needs_machine_lock   MACHINE_LOCK                                            no machine lock (VOICEPUNCHER_NO_MACHINE_LOCK=1, the hosted CI)
 '''
+
+# The bench options that exercise an area (just needed-tests, just test-area): `<glob> <recipe and options>` per
+# line, globs as above. A glob that matches no file of the workspace names an area that exists nowhere and fails
+# the test stage
+bench_areas = '''
+    command-spotting/*                              streaming-bench --fast
+    voice-commands/*                                streaming-bench --fast
+    app/src/adapters/secondary/commandspotting/*    streaming-bench --fast
+    app/src/core/domain/command_words/*             streaming-bench --fast
+    app/src/core/application/chunking/*             bench --limit 20
+    app/src/adapters/secondary/transcription/*      bench --limit 20
+    copy-pool/*                                     bench --limit 20
+'''

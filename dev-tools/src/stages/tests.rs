@@ -1,7 +1,7 @@
 //! The stage table, the model phase's skipped stages, the desktop tests' guard and the order of the checks'
 //! stages (former `_test-stage-skip`, `_test-stage-order`).
 
-use super::{is_model, it_real, model, table, test};
+use super::{is_model, it_real, model, table};
 use crate::context::{table as justfile_table, Context};
 use crate::journal::report::{Report, Row};
 use crate::process::Interrupt;
@@ -160,7 +160,7 @@ fn should_read_a_member_package_name() {
     )
     .unwrap();
     assert_eq!(
-        test::package_name(&dir.path().join("Cargo.toml")),
+        crate::keys::members::package_name(&dir.path().join("Cargo.toml")),
         "voicepuncher-x"
     );
 }

@@ -149,9 +149,8 @@ accuracy-baseline: _dev-tools
 _stages +stages: _dev-tools
     @{{dev_tools}} stages {{stages}}
 
-# Builds what the model stages run — the command spotting service and their test binaries — so nothing
-# compiles under the machine lock; warm, five no-op cargo calls. The test binaries are built as the E2E
-# recipes' nextest runs build them
+# Builds what the model stages run — the command spotting service and their test binaries — so nothing compiles
+# under the machine lock; warm, five no-op cargo calls. The test binaries are built as the E2E recipes' nextest runs build them
 _build-e2e: _require-nextest
     cargo build --release {{command_spotting_build}}
     cargo nextest run {{smoke_parts_tests}} --no-run
@@ -282,9 +281,8 @@ _require-tools:
 size-baseline:
     {{analyzers}} size --write-baseline
 
-# Runs without the machine-wide lock, as an unlocked stage of _stages: it uses no shared service, port, GPU or
-# exclusive device; the quiet lock in the shared mode gives it the time limit and keeps it out of another run's
-# model stages (dev-tools stages)
+# Runs without the machine-wide lock, as an unlocked stage of _stages: it uses no shared service, port, GPU or exclusive
+# device; the quiet lock in the shared mode gives it the time limit and keeps it out of another run's model stages (dev-tools stages)
 # Every test of the app, the command spotting service and the E2E harness under cargo-nextest, each within its time limit, without the machine lock (~1 min)
 test:
     @VOICEPUNCHER_STAGES_RECIPE='test' {{just_executable()}} _stages static test metrics
@@ -297,6 +295,17 @@ test:
 [positional-arguments]
 test-one +names: _dev-tools
     @{{dev_tools}} named-run test-one test "$@"
+
+# The needed-tests map (dev-tools needed-tests): per area (a workspace member) its tests, the model stages its files feed and the bench options that exercise it (`bench_areas` in .config/stages.toml); with a path, the owning area
+# Which tests, stages and benches cover an area: the map per crate, or of the crate owning a path
+needed-tests *path: _dev-tools
+    @{{dev_tools}} needed-tests {{path}}
+
+# The `test` stage with only the tests of the area owning the path (VOICEPUNCHER_TEST_PARTS), its stages and bench
+# options printed first; journaled as `test-area`, never reused and never a pass (AGENTS.md § TDD)
+# Only the tests of the crate owning a path (e.g. `just test-area command-spotting/src/lib.rs`), while optimizing it
+test-area path: _dev-tools
+    @{{dev_tools}} test-area {{path}}
 
 # Reruns this worktree's last run in the stage journal that ran a stage: its failed stage with its failed tests
 # (or the names given, in the journal's form) alone, with that stage's build, services, lock, test ports and time
@@ -460,10 +469,9 @@ _e2e-bench: _require-nextest _require-models _require-corpus _build
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" \
         cargo nextest run --profile e2e-bench {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
-# The desktop tests (`needs_desktop`): the real microphone, the Accessibility API and windows on screen, alone on
-# the machine like a model stage (full-check runs it before e2e-cues); without Microphone or Accessibility for the
-# app running it, it names the missing permission, counts the tests it leaves out and skips (exit 77). Key presses
-# into the focused app stay in test-real-keyboard
+# The desktop tests (`needs_desktop`): the real microphone, the Accessibility API and windows on screen, alone on the
+# machine like a model stage (full-check runs it before e2e-cues); without Microphone or Accessibility for the app running
+# it, it names the missing permission, counts the tests it leaves out and skips (exit 77). Key presses into the focused app stay in test-real-keyboard
 it-real:
     @VOICEPUNCHER_STAGES_RECIPE=it-real {{just_executable()}} _stages it-real
 
@@ -551,8 +559,7 @@ bundle: _require-signing-identity engines
     {{just_executable()}} --justfile {{quote(justfile())}} _sign "$app"
     echo "✓ bundle $app"
 
-# Update this checkout to origin/main (waiting out another program updating it), quit the running app, rebuild
-# dist/voicepuncher.app and launch it from there
+# Update this checkout to origin/main (waiting out another program updating it), quit the running app, rebuild dist/voicepuncher.app and launch it from there
 update-app: _dev-tools
     {{dev_tools}} update-checkout
     if pgrep -f {{quote(app_bundle / "Contents/MacOS/voicepuncher")}} >/dev/null; then osascript -e 'quit app "voicepuncher"'; while pgrep -f {{quote(app_bundle / "Contents/MacOS/voicepuncher")}} >/dev/null; do sleep 0.5; done; fi
@@ -577,10 +584,9 @@ dmg: _require-create-dmg bundle
     rm -rf "$stage"
     echo "✓ dmg $dist/$name.dmg"
 
-# Sign a bundle with the signing identity, or ad-hoc with a notice when none is named — every engine file first,
-# then the app (inside-out) — then verify it strictly and print its designated requirement (what the permission
-# panes identify the app by). No hardened runtime: it needs a Developer ID and entitlements, and without them it
-# blocks the microphone and the key listener
+# Sign a bundle with the signing identity, or ad-hoc with a notice when none is named — every engine file first, then
+# the app (inside-out) — then verify it strictly and print its designated requirement (what the permission panes identify
+# the app by). No hardened runtime: it needs a Developer ID and entitlements, and without them it blocks the microphone and the key listener
 _sign path:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -658,9 +664,8 @@ _require-create-dmg:
     fi
 
 # The `bundle` stage of full-check: the DMG built, the bundle and the DMG checked (dev-tools check-bundle), then the
-# app-distribution scenarios (@bundle) on them: the bundle's information, its signature, the DMG as an
-# installer and the signing guards. No shared service, port or GPU: it runs before the model stages, outside
-# the machine lock
+# app-distribution scenarios (@bundle) on them: the bundle's information, its signature, the DMG as an installer and the
+# signing guards. No shared service, port or GPU: it runs before the model stages, outside the machine lock
 _bundle: _require-nextest _require-create-dmg _dev-tools
     #!/usr/bin/env bash
     set -euo pipefail

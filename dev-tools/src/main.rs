@@ -4,6 +4,7 @@
 
 mod accuracy;
 mod accuracy_baseline;
+mod areas;
 mod benches;
 mod checkout;
 mod clock;
@@ -34,7 +35,7 @@ pub type Outcome = Result<u8, String>;
 type Command = fn(&[String]) -> Outcome;
 
 /// Every command, by the name a recipe calls it with.
-const COMMANDS: [(&str, Command); 28] = [
+const COMMANDS: [(&str, Command); 30] = [
     ("stages", stages::command),
     ("model-stages", |stages| Ok(stages::model::command(stages))),
     ("test-stage", stages::test::command),
@@ -62,6 +63,8 @@ const COMMANDS: [(&str, Command); 28] = [
     ("supervise", services::supervise_command),
     ("update-checkout", checkout::command),
     ("scan-range", scan_range::command),
+    ("needed-tests", areas::command),
+    ("test-area", stages::test::area_command),
     ("help", |_| {
         usage();
         Ok(0)

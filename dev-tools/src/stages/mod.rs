@@ -8,7 +8,7 @@
 //! A stage that passed before on the same inputs (its key has a pass record) is reused (↺) and does not run;
 //! build and build-e2e run whenever a model stage runs, as they fill this worktree's `target/`; with every model
 //! stage reused no lock is requested. A rerun of failed tests (`VOICEPUNCHER_RERUN_FILTER`, `…_SCENARIOS`)
-//! neither reuses nor records, and a bench (`bench`, `streaming-bench`) has no key, pass or reuse. The run ends with one table (each stage's time, the lock wait and hold), the pass
+//! neither reuses nor records, as a run over one area's part (`VOICEPUNCHER_TEST_PARTS`) does not, and a bench (`bench`, `streaming-bench`) has no key, pass or reuse. The run ends with one table (each stage's time, the lock wait and hold), the pass
 //! records of the stages that passed while their key held, and one line in the stage journal; every stage's
 //! output is also copied to a log of the run, where the journal finds the failed tests.
 
@@ -19,6 +19,7 @@ pub mod it_real;
 mod kinds;
 pub mod model;
 mod table;
+mod task_groups;
 pub mod test;
 #[cfg(test)]
 mod tests;
@@ -98,8 +99,10 @@ impl Runner {
             eprintln!("✗ the stage keys could not be computed ({error}): every stage runs and no pass is recorded");
             Vec::new()
         });
+        task_groups::warn(&context);
         let rerun = var("VOICEPUNCHER_RERUN_FILTER").is_some()
-            || var("VOICEPUNCHER_RERUN_SCENARIOS").is_some();
+            || var("VOICEPUNCHER_RERUN_SCENARIOS").is_some()
+            || var("VOICEPUNCHER_TEST_PARTS").is_some();
         let reuse = if reuses_passes(rerun) {
             passed(&keys)
         } else {

@@ -643,3 +643,31 @@ Feature: change-workflow
       Given a journal with 2 checks and 1 bench on one branch
       When the user summarizes the stage journal
       Then the branch's row shows "20.0s" in checks and "5.0s" in benches
+
+  Rule: An agent runs only the tests of the area it optimizes
+
+    Scenario: The map names the tests of an area
+      Given a workspace with a command spotting crate and its bench
+      When the developer prints the needed-tests map
+      Then the crate's row names its unit and integration tests, the stages its files feed and the bench options that exercise it
+
+    Scenario: A run over one area runs only its tests
+      Given a workspace with several crates
+      When the developer runs the area recipe with a path inside one crate
+      Then only that crate's tests run
+      And the run prints the area's stages and bench options
+
+    Scenario: An area that exists nowhere fails the unit run
+      Given the map names an area whose path is not in the workspace
+      When the test stage runs
+      Then it fails naming the area
+
+    Scenario: A full suite on an open task group that is not the last warns
+      Given a branch of a change whose first of three task groups is still open
+      When the full unit suite starts
+      Then it prints a warning that names the open group and the area recipe, and runs
+
+    Scenario: A full suite on the last task group runs without a warning
+      Given a branch of a change whose last task group is the only open one
+      When the full unit suite starts
+      Then it prints no warning
