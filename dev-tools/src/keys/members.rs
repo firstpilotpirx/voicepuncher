@@ -105,6 +105,21 @@ impl Workspace {
     }
 }
 
+/// The first `name = "…"` of a manifest.
+pub fn package_name(manifest: &Path) -> String {
+    let text = std::fs::read_to_string(manifest).unwrap_or_default();
+    text.lines()
+        .filter_map(|line| line.trim_start().strip_prefix("name"))
+        .filter_map(|rest| rest.trim_start().strip_prefix('='))
+        .find_map(|rest| {
+            rest.trim()
+                .strip_prefix('"')
+                .and_then(|rest| rest.split('"').next())
+        })
+        .unwrap_or_default()
+        .to_string()
+}
+
 fn manifest(text: &str, members: &[String]) -> Manifest {
     let mut found = Manifest::default();
     let mut section = String::new();

@@ -1,4 +1,5 @@
 pub mod app_distribution;
+pub mod change_workflow;
 pub mod dictation_archive;
 pub mod file_transcription;
 pub mod local_services;

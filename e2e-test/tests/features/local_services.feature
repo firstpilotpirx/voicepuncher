@@ -25,14 +25,16 @@ Feature: local-services
       When its process exits on its own
       Then the service answers on its port again within 30 seconds, and its log keeps the output of the run that ended followed by a note of the restart
 
-  @smoke @serial
+  @serial
   Rule: A stopped service stays stopped
 
+    @smoke
     Scenario: The user stops the speech recognition service
       Given the service scripts started the speech recognition service
       When the user stops it with the service scripts
       Then nothing answers on its port, still 5 seconds later, and no process of it is left
 
+    @regression
     Scenario: The user stops a single speech recognition service after copies were left listed
       Given a list of copies is left from an earlier start, and the service scripts started the speech recognition service as one copy
       When the user stops it with the service scripts
@@ -46,42 +48,49 @@ Feature: local-services
       When the service scripts start the speech recognition service
       Then the start fails within 15 seconds naming the service and its log, and no process of it is left
 
-  @smoke @serial
+  @serial
   Rule: The speech recognition service runs as several copies found from its address
 
+    @smoke
     Scenario: Requests that arrive at once are shared by the copies
       Given the service scripts started the speech recognition service for dictation without a number of copies
       When several transcription requests arrive at once
       Then every request gets its transcript, and each of the three copies transcribed some of them
 
+    @regression
     Scenario: Requests that arrive at once are shared by the copies while the machine is busy
       Given the service scripts started the speech recognition service for dictation without a number of copies, and another run keeps the machine's processor busy
       When several transcription requests arrive at once
       Then every request gets its transcript within the time the queued transcriptions take on the busy machine, and each of the three copies transcribed some of them
 
+    @regression
     Scenario: A request without a transcript names the machine's load
       Given the service scripts started the speech recognition service for dictation without a number of copies
       When several transcription requests arrive at once and one of them gets no transcript in time
       Then the failure names that request, the copies it waited on and the busiest processes on the machine
 
+    @regression
     Scenario: Requests wait their turn when every copy is busy
       Given the speech recognition service for dictation runs as two copies, both busy with long speech
       When two more requests arrive one after another
       Then each starts on the first copy that frees, in the order they arrived, and no copy transcribes two requests at once
 
-  @smoke @serial
+  @serial
   Rule: Copies of a speech recognition service are found from its address
 
+    @smoke
     Scenario: Three copies are found from the service address
       Given the service scripts started the speech recognition service for dictation as three copies
       When a client connects to the service by its address
       Then the client sends its requests to the three copies, and nothing listens on the service's own port
 
+    @regression
     Scenario: A single copy on the service's own port is found
       Given the service scripts started the speech recognition service for dictation as one copy
       When a client connects to the service by its address
       Then the client sends its requests to that copy on the service's own port
 
+    @regression
     Scenario: Another program on the service's own port is passed over
       Given the service scripts started the speech recognition service for dictation as three copies
       And another program that is no speech recognition service listens on the service's own port
@@ -140,15 +149,17 @@ Feature: local-services
       When the copies become free
       Then the abandoned request is not sent to any copy
 
-  @smoke @serial
+  @serial
   Rule: The app starts the services it needs
 
+    @smoke
     Scenario: A real launch leaves no service behind at quit
       Given no local service runs on the chosen ports and the models are on disk
       When the app launches, its services become ready and the app is told to end
       Then each started service answered on its port while the app ran
       And no process of them is left after the app ended
 
+    @regression
     Scenario: A quit from the system stops the owned services
       Given no local service runs on the chosen ports and the models are on disk
       When the app launches, its services become ready and the system tells the app to quit

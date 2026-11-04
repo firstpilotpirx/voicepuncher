@@ -149,9 +149,8 @@ accuracy-baseline: _dev-tools
 _stages +stages: _dev-tools
     @{{dev_tools}} stages {{stages}}
 
-# Builds what the model stages run — the command spotting service and their test binaries — so nothing
-# compiles under the machine lock; warm, five no-op cargo calls. The test binaries are built as the E2E
-# recipes' nextest runs build them
+# Builds what the model stages run — the command spotting service and their test binaries — so nothing compiles
+# under the machine lock; warm, five no-op cargo calls. The test binaries are built as the E2E recipes' nextest runs build them
 _build-e2e: _require-nextest
     cargo build --release {{command_spotting_build}}
     cargo nextest run {{smoke_parts_tests}} --no-run
@@ -201,9 +200,14 @@ _lint: _require-tools
     analyzer semver cargo +stable semver-checks --package voicepuncher-copy-pool --baseline-rev origin/main
     analyzer typos typos
     analyzer recipes {{analyzers}} recipes
-    # Secrets in any commit of any ref: the history, not only the tree, is what a push publishes
-    analyzer gitleaks gitleaks git --no-banner --redact --log-opts=--all .
-    analyzer trufflehog trufflehog git file://. --no-update --results=verified,unknown --fail
+    # Secrets in the branch's own commits (every commit of every ref on main): what a push publishes
+    range=$({{dev_tools}} scan-range)
+    analyzer gitleaks gitleaks git --no-banner --redact --log-opts="$range" .
+    if [[ $range == --all ]]; then
+        analyzer trufflehog trufflehog git file://. --no-update --results=verified,unknown --fail
+    else
+        analyzer trufflehog trufflehog git file://. --no-update --results=verified,unknown --fail --since-commit "$(git rev-parse origin/main)"
+    fi
     if (( ${#failed[@]} > 0 )); then
         echo "✗ lint: ${failed[*]} failed — baselines in .config/analyzers/, rewritten by 'just analyzers-baseline'" >&2
         exit 1
@@ -277,9 +281,8 @@ _require-tools:
 size-baseline:
     {{analyzers}} size --write-baseline
 
-# Runs without the machine-wide lock, as an unlocked stage of _stages: it uses no shared service, port, GPU or
-# exclusive device; the quiet lock in the shared mode gives it the time limit and keeps it out of another run's
-# model stages (dev-tools stages)
+# Runs without the machine-wide lock, as an unlocked stage of _stages: it uses no shared service, port, GPU or exclusive
+# device; the quiet lock in the shared mode gives it the time limit and keeps it out of another run's model stages (dev-tools stages)
 # Every test of the app, the command spotting service and the E2E harness under cargo-nextest, each within its time limit, without the machine lock (~1 min)
 test:
     @VOICEPUNCHER_STAGES_RECIPE='test' {{just_executable()}} _stages static test metrics
@@ -292,6 +295,17 @@ test:
 [positional-arguments]
 test-one +names: _dev-tools
     @{{dev_tools}} named-run test-one test "$@"
+
+# The needed-tests map (dev-tools needed-tests): per area (a workspace member) its tests, the model stages its files feed and the bench options that exercise it (`bench_areas` in .config/stages.toml); with a path, the owning area
+# Which tests, stages and benches cover an area: the map per crate, or of the crate owning a path
+needed-tests *path: _dev-tools
+    @{{dev_tools}} needed-tests {{path}}
+
+# The `test` stage with only the tests of the area owning the path (VOICEPUNCHER_TEST_PARTS), its stages and bench
+# options printed first; journaled as `test-area`, never reused and never a pass (AGENTS.md § TDD)
+# Only the tests of the crate owning a path (e.g. `just test-area command-spotting/src/lib.rs`), while optimizing it
+test-area path: _dev-tools
+    @{{dev_tools}} test-area {{path}}
 
 # Reruns this worktree's last run in the stage journal that ran a stage: its failed stage with its failed tests
 # (or the names given, in the journal's form) alone, with that stage's build, services, lock, test ports and time
@@ -455,11 +469,9 @@ _e2e-bench: _require-nextest _require-models _require-corpus _build
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" \
         cargo nextest run --profile e2e-bench {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
-# The desktop tests (the `needs_desktop` modules and the component rules tagged `@needs_desktop`): the real
-# microphone, the Accessibility API and windows on screen, alone on
-# the machine like a model stage (full-check runs it before e2e-cues); without Microphone or Accessibility for the
-# app running it, it names the missing permission, counts the tests it leaves out and skips (exit 77). Key presses
-# into the focused app stay in test-real-keyboard
+# The desktop tests (the `needs_desktop` modules and the component rules tagged `@needs_desktop`): the real microphone,
+# the Accessibility API and windows on screen, alone on the machine like a model stage (full-check runs it before e2e-cues);
+# without Microphone or Accessibility for the app running it, it names the missing permission, counts the tests it leaves out and skips (exit 77). Key presses into the focused app stay in test-real-keyboard
 it-real:
     @VOICEPUNCHER_STAGES_RECIPE=it-real {{just_executable()}} _stages it-real
 
@@ -547,8 +559,7 @@ bundle: _require-signing-identity engines
     {{just_executable()}} --justfile {{quote(justfile())}} _sign "$app"
     echo "✓ bundle $app"
 
-# Update this checkout to origin/main (waiting out another program updating it), quit the running app, rebuild
-# dist/voicepuncher.app and launch it from there
+# Update this checkout to origin/main (waiting out another program updating it), quit the running app, rebuild dist/voicepuncher.app and launch it from there
 update-app: _dev-tools
     {{dev_tools}} update-checkout
     if pgrep -f {{quote(app_bundle / "Contents/MacOS/voicepuncher")}} >/dev/null; then osascript -e 'quit app "voicepuncher"'; while pgrep -f {{quote(app_bundle / "Contents/MacOS/voicepuncher")}} >/dev/null; do sleep 0.5; done; fi
@@ -573,10 +584,9 @@ dmg: _require-create-dmg bundle
     rm -rf "$stage"
     echo "✓ dmg $dist/$name.dmg"
 
-# Sign a bundle with the signing identity, or ad-hoc with a notice when none is named — every engine file first,
-# then the app (inside-out) — then verify it strictly and print its designated requirement (what the permission
-# panes identify the app by). No hardened runtime: it needs a Developer ID and entitlements, and without them it
-# blocks the microphone and the key listener
+# Sign a bundle with the signing identity, or ad-hoc with a notice when none is named — every engine file first, then
+# the app (inside-out) — then verify it strictly and print its designated requirement (what the permission panes identify
+# the app by). No hardened runtime: it needs a Developer ID and entitlements, and without them it blocks the microphone and the key listener
 _sign path:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -654,9 +664,8 @@ _require-create-dmg:
     fi
 
 # The `bundle` stage of full-check: the DMG built, the bundle and the DMG checked (dev-tools check-bundle), then the
-# app-distribution scenarios (@bundle) on them: the bundle's information, its signature, the DMG as an
-# installer and the signing guards. No shared service, port or GPU: it runs before the model stages, outside
-# the machine lock
+# app-distribution scenarios (@bundle) on them: the bundle's information, its signature, the DMG as an installer and the
+# signing guards. No shared service, port or GPU: it runs before the model stages, outside the machine lock
 _bundle: _require-nextest _require-create-dmg _dev-tools
     #!/usr/bin/env bash
     set -euo pipefail
@@ -722,20 +731,21 @@ corpus max_samples="50":
 
 # ── Model comparison ── not a gate; only when changing a model, decoding params or the prompt
 
-# Benchmark — every Whisper model on the full corpus; `just bench --limit 10` for a quick one (~2 min)
+# Benchmark — every Whisper model on the full corpus; `just bench --limit 10` for a quick one (~2 min).
+# A model stage of its own (journaled with its arguments, never a pass), run under the e2e lock without services
 bench *args: _dev-tools
-    @MACHINE_LOCK_TIMEOUT=14400 {{locked}} _bench {{args}}
+    @MACHINE_LOCK_TIMEOUT=14400 VOICEPUNCHER_BENCH_ARGS="{{args}}" VOICEPUNCHER_STAGES_RECIPE=bench {{just_executable()}} _stages bench
 
-_bench *args:
+_bench:
     uv run --python 3.11 --with "datasets<3.0.0" --with soundfile --with numpy --with librosa \
-        python3 e2e-test/scripts/bench.py {{args}}
+        python3 e2e-test/scripts/bench.py {{env_var_or_default("VOICEPUNCHER_BENCH_ARGS", "")}}
 
-# Streaming command bench — the user's labelled clips through the streaming recognizer, in real time
+# Streaming command bench — the user's labelled clips through the streaming recognizer, in real time; a stage like `bench`
 streaming-bench *args: _dev-tools
-    @{{locked}} _streaming-bench {{args}}
+    @VOICEPUNCHER_BENCH_ARGS="{{args}}" VOICEPUNCHER_STAGES_RECIPE=streaming-bench {{just_executable()}} _stages streaming-bench
 
-_streaming-bench *args:
-    cargo run --release --quiet -p voicepuncher-command-spotting --bin streaming-bench -- {{args}}
+_streaming-bench:
+    cargo run --release --quiet -p voicepuncher-command-spotting --bin streaming-bench -- {{env_var_or_default("VOICEPUNCHER_BENCH_ARGS", "")}}
 
 # ── Guards ── fail fast instead of letting E2E tests skip silently (GATED) ────
 

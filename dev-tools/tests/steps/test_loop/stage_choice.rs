@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use cucumber::{given, then, when};
 
-use crate::steps::scratch::Scratch;
+use crate::steps::runner::scratch::Scratch;
 use crate::steps::{ran, scratch};
 use crate::WorkflowWorld;
 
@@ -57,10 +57,7 @@ fn main_passed(world: &mut WorkflowWorld) {
     scratch.with_project_tables();
     scratch.write(OVERLAY, "pub fn draw() {}\n");
     scratch.write(CHUNKING, "pub fn split() {}\n");
-    let root = scratch.root();
-    scratch.git(&root, &["init", "-q", "-b", "main"]);
-    scratch.git(&root, &["add", "."]);
-    scratch.git(&root, &["commit", "-q", "-m", "main"]);
+    scratch.commit_all_on_main();
     world.text = stage_keys(&scratch);
     world.scratch = Some(scratch);
 }
@@ -80,6 +77,14 @@ fn unnamed_file_branch(world: &mut WorkflowWorld) {
     scratch(world).write(
         "repo/app/src/core/application/new_port.rs",
         "pub trait NewPort {}\n",
+    );
+}
+
+#[given("a branch that changes only a test of the stage runner")]
+fn runner_test_branch(world: &mut WorkflowWorld) {
+    scratch(world).write(
+        "repo/dev-tools/tests/steps/runner/budgets.rs",
+        "fn should_budget() {}\n",
     );
 }
 
@@ -113,6 +118,11 @@ fn seams_outages_cues_reused(world: &mut WorkflowWorld) {
 fn seams_runs(world: &mut WorkflowWorld) {
     let running = running(world);
     assert!(running.iter().any(|s| s == "e2e-seams"), "{running:?}");
+}
+
+#[then("no model stage runs")]
+fn no_stage_runs(world: &mut WorkflowWorld) {
+    assert_eq!(running(world), Vec::<String>::new());
 }
 
 #[then("every model stage runs")]

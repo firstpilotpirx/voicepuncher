@@ -7,9 +7,9 @@
 //! parts `test@<member>` cover the code inputs but the files of the members its tests do not build
 //! (`test@members` names one per member). `VOICEPUNCHER_STAGE_ROOT` names another repository.
 
-mod files;
+pub mod files;
 mod inputs;
-mod members;
+pub mod members;
 pub mod rules;
 #[cfg(test)]
 mod tests;

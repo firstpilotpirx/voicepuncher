@@ -7,7 +7,7 @@ use std::time::Duration;
 use cucumber::{given, then, when};
 
 use super::scratch::Scratch;
-use super::{ran, scratch, Ran};
+use crate::steps::{ran, scratch, Ran};
 use crate::WorkflowWorld;
 
 /// How long the other program holds the checkout before it moves it itself.

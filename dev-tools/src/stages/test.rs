@@ -3,17 +3,23 @@
 //! record run; the others are reused (↺), and each part that ran gets its record when what it reads held
 //! through the run (`VOICEPUNCHER_REUSE_STAGES=0` runs every part). The build runs at the utility quality of service clamp; the
 //! tests keep the default quality of service (clamped timers fire late under load). A rerun (`VOICEPUNCHER_RERUN_FILTER`) runs
-//! only the tests of that selection over the workspace, reusing and recording nothing. With the machine lock on,
+//! only the tests of that selection over the workspace, reusing and recording nothing; a run over named parts
+//! (`VOICEPUNCHER_TEST_PARTS`, `just test-area`) runs them all, reusing and recording nothing. A bench area that
+//! exists nowhere (`bench_areas`) fails the stage first. With the machine lock on,
 //! `MACHINE_LOCK` names its wrapper, for the tests of the lock itself (`needs_machine_lock`).
 
 use crate::clock::{clock_time, now};
 use crate::context::{var, Context};
 use crate::filters::{gates, Selection};
+use crate::keys::members::package_name;
 use crate::locks::Lock;
 use crate::process::status;
 use crate::{keys, passes, Outcome};
 use std::path::Path;
 use std::process::Command;
+
+/// A test part with its key.
+type Part = (String, String);
 
 const NOT_E2E: &str = "not binary_id(voicepuncher-e2e-test::cucumber_e2e)";
 
@@ -52,6 +58,7 @@ fn build_and_run(selection: &[String], filter: &str) -> i32 {
 
 pub fn command(_: &[String]) -> Outcome {
     let context = Context::from_env();
+    crate::areas::check(&context)?;
     let frozen = var("VOICEPUNCHER_FROZEN_FILTER");
     if let Some(rerun) = var("VOICEPUNCHER_RERUN_FILTER") {
         let filter = gates::gated(
@@ -62,11 +69,8 @@ pub fn command(_: &[String]) -> Outcome {
         let selection = ["--workspace".to_string(), "--no-tests=pass".into()];
         return Ok(crate::process::code(build_and_run(&selection, &filter)));
     }
-    let keys = keys::of_this_run(&context, &["test@members".to_string()]).unwrap_or_else(|error| {
-        eprintln!("✗ the part keys could not be computed ({error}): every package runs and no part pass is recorded");
-        Vec::new()
-    });
-    let parts = parts_to_run(&keys);
+    let named = var("VOICEPUNCHER_TEST_PARTS");
+    let (keys, parts) = selection(&context, named.as_deref());
     let packages = packages(&context.root, &keys, &parts);
     let started = now();
     if packages.is_empty() {
@@ -82,8 +86,34 @@ pub fn command(_: &[String]) -> Outcome {
             return Ok(crate::process::code(outcome));
         }
     }
-    record(&context, &keys, &parts, now() - started)?;
+    if named.is_none() {
+        record(&context, &keys, &parts, now() - started)?;
+    }
     Ok(0)
+}
+
+/// The part keys and the parts to run: every part named (reused never), else one per member without a pass.
+fn selection(context: &Context, named: Option<&str>) -> (Vec<Part>, Vec<Part>) {
+    let wanted: Vec<String> = named.map_or_else(
+        || vec!["test@members".to_string()],
+        |parts| {
+            parts
+                .split([',', ' '])
+                .filter(|part| !part.is_empty())
+                .map(String::from)
+                .collect()
+        },
+    );
+    let keys = keys::of_this_run(context, &wanted).unwrap_or_else(|error| {
+        eprintln!("✗ the part keys could not be computed ({error}): every package runs and no part pass is recorded");
+        Vec::new()
+    });
+    let parts = if named.is_some() {
+        keys.clone()
+    } else {
+        parts_to_run(&keys)
+    };
+    (keys, parts)
 }
 
 /// The parts without a pass record (every one with `VOICEPUNCHER_REUSE_STAGES=0`); says which are reused.
@@ -123,21 +153,6 @@ fn packages(root: &Path, keys: &[(String, String)], parts: &[(String, String)]) 
         .collect()
 }
 
-/// The first `name = "…"` of a manifest.
-pub fn package_name(manifest: &Path) -> String {
-    let text = std::fs::read_to_string(manifest).unwrap_or_default();
-    text.lines()
-        .filter_map(|line| line.trim_start().strip_prefix("name"))
-        .filter_map(|rest| rest.trim_start().strip_prefix('='))
-        .find_map(|rest| {
-            rest.trim()
-                .strip_prefix('"')
-                .and_then(|rest| rest.split('"').next())
-        })
-        .unwrap_or_default()
-        .to_string()
-}
-
 /// The pass records of the parts that ran, when what they read held through the run.
 fn record(
     context: &Context,
@@ -159,4 +174,19 @@ fn record(
         }
     }
     Ok(())
+}
+
+/// `dev-tools test-area <path>`: the area's rows, then the `test` stage over its part alone.
+pub fn area_command(args: &[String]) -> Outcome {
+    let path = args.first().ok_or("test-area: name a path of the area")?;
+    let context = Context::from_env();
+    let map = crate::areas::Map::read(&context)?;
+    let area = map
+        .owner(path)
+        .ok_or_else(|| format!("no area of the workspace owns {path}"))?;
+    print!("{}", area.text());
+    // Single-threaded here: the stage inherits them
+    std::env::set_var("VOICEPUNCHER_STAGES_RECIPE", "test-area");
+    std::env::set_var("VOICEPUNCHER_TEST_PARTS", format!("test@{}", area.member));
+    super::command(&["test".to_string()])
 }

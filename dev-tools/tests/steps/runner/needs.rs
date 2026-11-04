@@ -5,7 +5,7 @@
 use cucumber::{given, then, when};
 
 use super::scratch::Scratch;
-use super::{ran, repo_file, scratch, Ran};
+use crate::steps::{ran, repo_file, scratch, Ran};
 use crate::WorkflowWorld;
 
 /// The argument that makes this harness call `required_env` instead of running its scenarios.

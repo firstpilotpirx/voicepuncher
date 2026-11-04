@@ -4,6 +4,7 @@
 //! the start or a stage is interrupted; appends its rows to the run's report. A stage that exits 77 skipped
 //! itself (it-real without a permission): the run goes on, no pass is recorded.
 
+use super::budgets::{self, Budgets};
 use super::{child, note};
 use crate::clock::{clock_time, now, tenths};
 use crate::context::{var, Context};
@@ -11,8 +12,15 @@ use crate::journal::report;
 use crate::process::{code, status, Interrupt};
 use std::path::{Path, PathBuf};
 
-/// The stages that start services of their own on ports of their own (or need none): alone, they need these not.
-const OWN_SERVICES: [&str; 3] = ["e2e-resilience", "e2e-bundle", "it-real"];
+/// The stages that start services of their own on ports of their own (or need none, as the benches): alone,
+/// they need these not.
+const OWN_SERVICES: [&str; 5] = [
+    "e2e-resilience",
+    "e2e-bundle",
+    "it-real",
+    "bench",
+    "streaming-bench",
+];
 
 const HELD: &str = "VOICEPUNCHER_E2E_SERVICES_HELD";
 
@@ -76,11 +84,21 @@ pub(super) fn run(
     report: Option<&Path>,
     interrupt: &Interrupt,
 ) -> i32 {
+    let budgets = Budgets::read(context);
     for stage in stages {
         let begun = now();
-        let mut outcome = child::run(context.just().arg(format!("_{stage}")), interrupt, None);
+        let log = tempfile::NamedTempFile::new().ok();
+        let mut outcome = child::run(
+            context.just().arg(format!("_{stage}")),
+            interrupt,
+            log.as_ref().map(tempfile::NamedTempFile::path),
+        );
         if outcome == 0 && interrupt.raised() {
             outcome = 143;
+        }
+        let taken = now() - begun;
+        if outcome == 0 && past_budget(&budgets, stage, taken, log.as_ref()) {
+            outcome = 1;
         }
         let mark = match outcome {
             0 => "✓",
@@ -89,11 +107,35 @@ pub(super) fn run(
         };
         note(
             report,
-            &format!("stage {mark} {stage} {}", tenths(now() - begun)),
+            &format!(
+                "stage {mark} {stage} {}{}",
+                tenths(taken),
+                budgets.note(stage)
+            ),
         );
         if mark == "✗" {
             return outcome;
         }
     }
     0
+}
+
+/// Whether the stage ran past its budget; then its failure is printed, naming the slowest scenarios of its
+/// output and the busiest processes.
+fn past_budget(
+    budgets: &Budgets,
+    stage: &str,
+    taken: f64,
+    log: Option<&tempfile::NamedTempFile>,
+) -> bool {
+    let Some(past) = budgets.past(stage, taken) else {
+        return false;
+    };
+    let output = log
+        .and_then(|log| std::fs::read_to_string(log.path()).ok())
+        .unwrap_or_default();
+    for line in budgets::failure(&past, &output) {
+        println!("{line}");
+    }
+    true
 }

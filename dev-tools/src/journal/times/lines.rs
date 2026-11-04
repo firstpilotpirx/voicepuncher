@@ -130,10 +130,11 @@ pub(super) fn test_and_branch_lines(totals: &Totals, out: &mut String) {
         let row = &totals.branches[branch];
         let _ = writeln!(
             out,
-            "  {branch:<40} {:>4} runs {:>4} failed {:>10}",
+            "  {branch:<40} {:>4} runs {:>4} failed {:>10} checks {:>10} benches",
             row.runs,
             row.failed,
-            span(row.seconds)
+            span(row.seconds),
+            span(row.benches)
         );
     }
 }
