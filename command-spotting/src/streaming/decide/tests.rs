@@ -47,11 +47,31 @@ fn should_report_a_doubled_command_at_once() {
 fn should_wait_for_a_one_word_form_to_settle() {
     // Given "stop" just heard, ending at 1.25 s
     let words = said(1.0, "stop");
-    // When
+    // When decoded 0.05 s past it, and when decoded 0.25 s past it with the gate's pause
+    // begun right after it
     let early = decide(&dictating(), &words, decoding(1.3), 0.0);
-    let settled = decide(&dictating(), &words, decoding(1.5), 0.0);
+    let paused = Moment::Decoding { now: 1.5, pause: Some(1.28) };
+    let settled = decide(&dictating(), &words, paused, 0.0);
     // Then
     assert_eq!(early, None);
+    assert_eq!(
+        settled.expect("a settled stop").commands,
+        ["stop dictation"]
+    );
+}
+
+#[test]
+fn should_not_settle_a_lone_word_while_the_gate_hears_speech() {
+    // Given "stop" (the user's "чтобы" of history entry 684) ending at 0.918 s, decoded 0.2 s
+    // past it
+    let words = vec![TimedWord { text: "stop".into(), start: 0.818, end: 0.918 }];
+    // When the gate still hears speech, and when its pause began right after the word
+    let speech_goes_on = Moment::Decoding { now: 1.118, pause: None };
+    let paused = Moment::Decoding { now: 1.118, pause: Some(1.0) };
+    let unsettled = decide(&dictating(), &words, speech_goes_on, 0.0);
+    let settled = decide(&dictating(), &words, paused, 0.0);
+    // Then
+    assert_eq!(unsettled, None);
     assert_eq!(
         settled.expect("a settled stop").commands,
         ["stop dictation"]
