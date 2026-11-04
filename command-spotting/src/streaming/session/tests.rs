@@ -7,6 +7,7 @@ use crate::history::HistoryCfg;
 use crate::streaming::ports::{Decoded, RecognizerStream};
 
 mod close_order;
+mod history;
 mod opening;
 mod pause_flush;
 mod russian_forms;
@@ -342,23 +343,4 @@ fn should_answer_a_sync_at_once_without_speech() {
     let events = session.sync(7);
     // Then
     assert_eq!(events, [ServerEvent::Synced { id: 7 }]);
-}
-
-#[test]
-fn should_keep_an_utterance_with_a_reported_command_in_the_history() {
-    // Given
-    let dir = tempfile::tempdir().expect("a temporary folder");
-    let cfg = HistoryCfg { dir: dir.path().to_owned(), max_size_bytes: 1 << 30 };
-    let history = CommandHistory::start(cfg).expect("a history");
-    let en = Scripted::new("en", &[("press", 0.6), ("enter", 0.9)]);
-    let mut session = session(&[&en], Some(&history));
-    // When
-    session.accept(&[silence(1.0), speech(0.8), silence(1.0)].concat());
-    session.sync(0);
-    history.flush();
-    // Then
-    let kept = std::fs::read_dir(dir.path())
-        .expect("the history folder")
-        .count();
-    assert_eq!(kept, 1);
 }

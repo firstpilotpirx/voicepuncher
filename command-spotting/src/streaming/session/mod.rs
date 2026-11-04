@@ -232,6 +232,14 @@ impl<'a> Session<'a> {
     }
 }
 
+/// The connection ended: an utterance whose recognizers still decode the silence after it
+/// is waited for, so its log line and its entry of the history are not lost.
+impl Drop for Session<'_> {
+    fn drop(&mut self) {
+        self.collect_closing(Wait::CaughtUp);
+    }
+}
+
 impl Keeper<'_> {
     fn keep(&mut self, closed: Closed) {
         log::info!("conn={} {}", self.conn, closed.trace.log_line());

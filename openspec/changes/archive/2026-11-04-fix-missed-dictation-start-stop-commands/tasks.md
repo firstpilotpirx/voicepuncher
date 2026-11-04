@@ -24,7 +24,7 @@
 - [x] 4.3 Commit `test(e2e): the session-6 scenarios of voice control`
 - [x] 4.4 A doubled one-word form ends with its first word (`decide::finding`, test `should_report_a_doubled_command_at_once_ending_at_its_first_word`): the first `kit verify` lost "Coffee" of the sentence after the user's recorded "restart restart" (design D1)
 - [x] 4.4a The doubled words are compared as the matcher reads them (`matcher::words`, test `should_end_a_doubled_command_written_with_a_capital_and_a_comma_at_its_first_word`): the seventh `kit verify` lost "Coffee" again, the English recognizer writing "Restart restart" with a capital
-- [x] 4.5 The close waits for no decode (`Session::closing`, `Utterance::begin_close`, test `should_close_without_waiting_for_the_tail_of_silence_to_be_decoded`): the second `kit verify` failed `e2e-cues`, "press enter" after a sentence 1.44 s after the words with every core busy (design D2a)
+- [x] 4.5 The close waits for no decode (`Session::closing`, `Utterance::begin_close`, test `should_close_without_waiting_for_the_tail_of_silence_to_be_decoded`): the second `kit verify` failed `e2e-cues`, "press enter" after a sentence 1.44 s after the words with every core busy (design D2a); a session dropped while an utterance still decodes waits for it (`Drop for Session`, test `should_keep_an_utterance_still_decoding_when_the_session_ends`)
 
 ## 5. Release
 
