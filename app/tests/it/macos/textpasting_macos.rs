@@ -216,10 +216,10 @@ mod needs_desktop {
 
     #[test]
     fn should_not_overwrite_a_copy_made_after_the_paste() {
-        required_env("VOICEPUNCHER_DESKTOP_IT");
-        // Given
         const SLOW_RESTORE_DELAY_MS: u64 = 300;
         const AFTER_RESTORE_WINDOW: Duration = Duration::from_millis(3 * SLOW_RESTORE_DELAY_MS);
+        required_env("VOICEPUNCHER_DESKTOP_IT");
+        // Given
         let pasteboard = OwnPasteboard::new();
         write_items(&pasteboard, &plain_text(b"copied before the paste"));
         let _paster = paste_without_keystroke(&pasteboard, SLOW_RESTORE_DELAY_MS);

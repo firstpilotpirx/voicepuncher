@@ -116,19 +116,22 @@ pub fn rule_slug(rule: &str) -> String {
         .join("_")
 }
 
-/// The needs of a tag line as a test name prefix: `@needs_desktop @serial` → `needs_desktop::`,
-/// so the recipes' needs filter (`test(/needs_<need>::/)`) leaves the rule out like a Rust test
+/// The needs of a tag line as a test name prefix: `@needs_desktop @serial` → `needs_desktop::`.
+///
+/// So the recipes' needs filter (`test(/needs_<need>::/)`) leaves the rule out like a Rust test
 /// in a `needs_<need>` module.
 fn needs_prefix(tags: &str) -> String {
     tags.split_whitespace()
         .filter_map(|tag| tag.strip_prefix('@'))
         .filter(|tag| tag.starts_with("needs_"))
-        .map(|need| format!("{need}::"))
+        .flat_map(|need| [need, "::"])
         .collect()
 }
 
-/// What a scan of a feature file's lines found so far: the rules with their needs prefix, whether
-/// a scenario stands outside any rule, and the needs of the last tag line.
+/// What a scan of a feature file's lines found so far.
+///
+/// The rules with their needs prefix, whether a scenario stands outside any rule, and the needs
+/// of the last tag line.
 #[derive(Default)]
 struct Scan {
     rules: Vec<(String, String)>,
@@ -156,9 +159,11 @@ fn opens_scenario(line: &str) -> bool {
         .any(|keyword| line.starts_with(keyword))
 }
 
-/// The tests of the feature file `feature` whose text is `text`: one per rule, named with the
-/// needs of the tag line above the rule, plus one named by the file for the scenarios outside
-/// any rule when it has any (every scenario of a file without rules).
+/// The tests of the feature file `feature` whose text is `text`: one per rule, plus one for the
+/// scenarios outside any rule.
+///
+/// A rule's test is named with the needs of the tag line above the rule; the file's test exists
+/// when it has scenarios outside any rule (every scenario of a file without rules).
 pub fn rule_tests(feature: &str, text: &str) -> Vec<RuleTest> {
     let mut scan = Scan::default();
     for line in text.lines().map(str::trim_start) {
