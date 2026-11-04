@@ -9,7 +9,7 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuleTest {
     /// The test's name: the feature file's path below the features folder without `.feature`,
-    /// then `/` and the rule's [`rule_slug`] for a rule.
+    /// then `/`, the rule's needs ([`needs_prefix`]) and its [`rule_slug`] for a rule.
     pub name: String,
     /// The feature file's path below the features folder without `.feature`.
     pub feature: String,
@@ -35,32 +35,68 @@ pub fn rule_slug(rule: &str) -> String {
         .join("_")
 }
 
-/// The tests of the feature file `feature` whose text is `text`: one per rule, plus one named
-/// by the file for the scenarios outside any rule when it has any (every scenario of a file
-/// without rules).
-pub fn rule_tests(feature: &str, text: &str) -> Vec<RuleTest> {
-    let mut rules: Vec<String> = Vec::new();
-    let mut outside = false;
-    for line in text.lines().map(str::trim_start) {
-        if let Some(rule) = line.strip_prefix("Rule:") {
-            rules.push(rule.trim().to_string());
-        } else if rules.is_empty()
-            && SCENARIO_KEYWORDS
-                .iter()
-                .any(|keyword| line.starts_with(keyword))
-        {
-            outside = true;
+/// The needs of a tag line as a test name prefix: `@needs_desktop @serial` → `needs_desktop::`.
+///
+/// So the recipes' needs filter (`test(/needs_<need>::/)`) leaves the rule out like a Rust test
+/// in a `needs_<need>` module.
+fn needs_prefix(tags: &str) -> String {
+    tags.split_whitespace()
+        .filter_map(|tag| tag.strip_prefix('@'))
+        .filter(|tag| tag.starts_with("needs_"))
+        .flat_map(|need| [need, "::"])
+        .collect()
+}
+
+/// What a scan of a feature file's lines found so far.
+///
+/// The rules with their needs prefix, whether a scenario stands outside any rule, and the needs
+/// of the last tag line.
+#[derive(Default)]
+struct Scan {
+    rules: Vec<(String, String)>,
+    outside: bool,
+    needs: String,
+}
+
+impl Scan {
+    fn line(&mut self, line: &str) {
+        if line.starts_with('@') {
+            self.needs = needs_prefix(line);
+        } else if let Some(rule) = line.strip_prefix("Rule:") {
+            self.rules
+                .push((std::mem::take(&mut self.needs), rule.trim().to_string()));
+        } else if !line.is_empty() && !line.starts_with('#') {
+            self.needs.clear();
+            self.outside |= self.rules.is_empty() && opens_scenario(line);
         }
     }
-    let file_test = (outside || rules.is_empty()).then(|| RuleTest {
+}
+
+fn opens_scenario(line: &str) -> bool {
+    SCENARIO_KEYWORDS
+        .iter()
+        .any(|keyword| line.starts_with(keyword))
+}
+
+/// The tests of the feature file `feature` whose text is `text`: one per rule, plus one for the
+/// scenarios outside any rule.
+///
+/// A rule's test is named with the needs of the tag line above the rule; the file's test exists
+/// when it has scenarios outside any rule (every scenario of a file without rules).
+pub fn rule_tests(feature: &str, text: &str) -> Vec<RuleTest> {
+    let mut scan = Scan::default();
+    for line in text.lines().map(str::trim_start) {
+        scan.line(line);
+    }
+    let file_test = (scan.outside || scan.rules.is_empty()).then(|| RuleTest {
         name: feature.to_string(),
         feature: feature.to_string(),
         rule: None,
     });
     file_test
         .into_iter()
-        .chain(rules.into_iter().map(|rule| RuleTest {
-            name: format!("{feature}/{}", rule_slug(&rule)),
+        .chain(scan.rules.into_iter().map(|(needs, rule)| RuleTest {
+            name: format!("{feature}/{needs}{}", rule_slug(&rule)),
             feature: feature.to_string(),
             rule: Some(rule),
         }))
@@ -269,6 +305,22 @@ mod tests {
                     "component/voice_control/each_state_accepts_its_own_commands",
                     "component/voice_control",
                     Some("Each state accepts its own commands"),
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn should_put_the_need_of_a_tagged_rule_into_its_test_name() {
+        let text = "Feature: f\n\n  Rule: Plain\n\n    Scenario: a\n      Given x\n\n  # the real pointer\n  @needs_desktop @serial\n  Rule: Beside the pointer\n\n    Scenario: b\n      Given x\n";
+        assert_eq!(
+            rule_tests("component/f", text),
+            vec![
+                rule_test("component/f/plain", "component/f", Some("Plain")),
+                rule_test(
+                    "component/f/needs_desktop::beside_the_pointer",
+                    "component/f",
+                    Some("Beside the pointer"),
                 ),
             ]
         );

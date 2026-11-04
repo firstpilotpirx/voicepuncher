@@ -1,4 +1,6 @@
 //! A process that takes connections on a loopback port and never answers them: a hung service.
+//! It accepts every connection and keeps it open: a listener that never accepts fills its backlog,
+//! after which macOS resets further connects and a probe would see the port closed, not hung.
 
 use std::net::{TcpListener, TcpStream};
 use std::process::{Child, Command};
@@ -11,8 +13,8 @@ pub struct SilentListener {
     pub port: u16,
 }
 
-/// Listens on the port it is given, accepts nothing and sleeps.
-const LISTEN: &str = "my $socket = IO::Socket::INET->new(LocalAddr => '127.0.0.1', LocalPort => $ARGV[0], Listen => 5, ReuseAddr => 1) or die $!; sleep 600";
+/// Listens on the port it is given, accepts every connection and keeps it open unanswered.
+const LISTEN: &str = "my $socket = IO::Socket::INET->new(LocalAddr => '127.0.0.1', LocalPort => $ARGV[0], Listen => 5, ReuseAddr => 1) or die $!; my @kept; while (my $client = $socket->accept) { push @kept, $client }";
 /// Listens on the port it is given and closes every WebSocket client's connection as a
 /// command spotting service of protocol version 2 refuses the app's hello.
 const REFUSE_PROTOCOL: &str = r#"use Digest::SHA qw(sha1_base64);

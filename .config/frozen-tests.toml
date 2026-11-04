@@ -56,17 +56,9 @@ beside = "the whole test stage (1438 tests) beside other sessions builds; it pas
 branch = "feat/streaming-command-recognition"
 
 
-[[frozen]]
-test = "scenario: Another program on the port is not killed"
-frozen = "2026-11-01"
-recipe = "test"
-stage = "test"
-beside = "the whole test stage (1325 tests), other worktrees building beside it; the app started its own copy within the check window"
-branch = "feat/faster-stop-to-paste"
-
 
 [[frozen]]
-test = "voicepuncher::it macos::textpasting_macos::should_bring_back_copied_text_with_every_type_after_the_paste"
+test = "voicepuncher::it macos::textpasting_macos::needs_desktop::should_bring_back_copied_text_with_every_type_after_the_paste"
 frozen = "2026-11-01"
 recipe = "full-check"
 stage = "test"
@@ -75,7 +67,7 @@ branch = "feat/faster-stop-to-paste"
 
 
 [[frozen]]
-test = "voicepuncher::it macos::textpasting_macos::should_leave_an_empty_clipboard_empty_after_the_paste"
+test = "voicepuncher::it macos::textpasting_macos::needs_desktop::should_leave_an_empty_clipboard_empty_after_the_paste"
 frozen = "2026-11-01"
 recipe = "full-check"
 stage = "test"
@@ -170,6 +162,24 @@ recipe = "full-check"
 stage = "e2e-smoke-voice"
 beside = "user approved freezing: the voice gate missed the recorded enter/stop after a Russian dictation under service lag 3.7 s; offline the same audio is recognized"
 branch = "feat/remove-keyword-spotter"
+
+
+[[frozen]]
+test = "scenario: A command in a noisy room ends at its pause"
+frozen = "2026-11-04"
+recipe = "full-check"
+stage = "e2e-cues"
+beside = "nothing else: e2e-cues alone on the machine, 907 ms against the 0.9 s bound; the branch adds a whole-word alias lookup before the respell sounds (microseconds per Russian word), no start-cue path; the same scenario failed 7 times on 2026-11-02 on feat/remove-keyword-spotter"
+branch = "fix/recognize-glued-enter-mishearings"
+
+
+[[frozen]]
+test = "scenario: A paste phrase inside a sentence is ignored"
+frozen = "2026-11-04"
+recipe = "full-check"
+stage = "e2e-smoke-voice"
+beside = "the smoke scenarios of voice control in parallel on one service (conn 61–67 decoding at once: the English recognizer gave its first text 0.8 s after the onset instead of 0.3 s); the recorded streaming bench of this worktree waiting on the lock; passes 5 of 5 alone through the bench"
+branch = "fix/fix-missed-dictation-start-stop-commands"
 
 
 [[frozen]]

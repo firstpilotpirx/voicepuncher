@@ -164,6 +164,8 @@ pub fn run_static(world: &mut WorkflowWorld, ci: Option<&str>) {
         .env("SCRATCH", scratch.path(""))
         .env("CARGO_TARGET_DIR", scratch.path("target"))
         .env("VOICEPUNCHER_STAGES_RECIPE", "static")
+        // the step reads the compiler's message as text; the hosted workflow sets colors on
+        .env("CARGO_TERM_COLOR", "never")
         .env_remove("CI");
     if let Some(ci) = ci {
         command.env("CI", ci);

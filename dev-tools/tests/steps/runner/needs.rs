@@ -79,6 +79,14 @@ fn listed_need_and_plain(world: &mut WorkflowWorld, need: String) {
     list(world, &[needing(&need, "should_work"), PLAIN_TEST.into()]);
 }
 
+#[given(expr = "the listed tests are a business rule that needs {string} and a plain one")]
+fn listed_rule_and_plain(world: &mut WorkflowWorld, need: String) {
+    let rule = format!(
+        "voicepuncher::cucumber_integration component/dictation_pointer/{need}::the_sign_follows_the_pointer"
+    );
+    list(world, &[rule, PLAIN_TEST.into()]);
+}
+
 #[given(expr = "the listed tests are one that needs {string} and one that needs {string}")]
 fn listed_two_needs(world: &mut WorkflowWorld, first: String, second: String) {
     list(
@@ -215,7 +223,9 @@ fn ran_desktop(world: &mut WorkflowWorld) {
         .find(|line| line.starts_with("cargo nextest run "));
     let run = run.unwrap_or_else(|| panic!("no test run: {calls}"));
     assert!(
-        run.contains("-E test(/::needs_desktop::/)") && run.ends_with(" desktop=1"),
+        run.contains("--test cucumber_integration")
+            && run.contains("-E test(/needs_desktop::/)")
+            && run.ends_with(" desktop=1"),
         "{run}"
     );
 }
@@ -223,10 +233,7 @@ fn ran_desktop(world: &mut WorkflowWorld) {
 #[then(expr = "the test runner left out the tests of {string}")]
 fn runner_left_out(world: &mut WorkflowWorld, need: String) {
     let calls = scratch(world).calls();
-    assert!(
-        calls.contains(&format!("not test(/::{need}::/)")),
-        "{calls}"
-    );
+    assert!(calls.contains(&format!("not test(/{need}::/)")), "{calls}");
 }
 
 #[then(expr = "the justfile's full check runs the stage {string}")]

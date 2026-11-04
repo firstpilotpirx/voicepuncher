@@ -108,3 +108,52 @@ fn should_leave_latin_text_untouched() {
     // Then
     assert_eq!(respelled, "Press enter.");
 }
+
+#[test]
+fn should_read_each_glued_or_mangled_enter_from_the_history() {
+    // Given the words the Russian recognizer wrote for "enter" and "enter enter" in the
+    // user's command history: glued doubles, a glued triple and mangled singles
+    let doubles = [
+        "интернтер",
+        "интерентер",
+        "энтерентор",
+        "энтеррентор",
+        "интернетор",
+        "интеррентор",
+        "интерендер",
+        "интеррендер",
+        "энтернтер",
+        "интеринтер",
+        "энтер-энтер",
+        "энтеренторендрента",
+    ];
+    let singles = [
+        "нтр",
+        "энтро",
+        "рентор",
+        "энтор",
+        "энтар",
+        "нтэр",
+        "тентер",
+        "рентра",
+    ];
+    for word in doubles {
+        // When
+        let respelled = respell_word(word);
+        // Then
+        assert_eq!(respelled, Some(vec!["enter", "enter"]), "{word}");
+    }
+    for word in singles {
+        assert_eq!(respell_word(word), Some(vec!["enter"]), "{word}");
+    }
+}
+
+#[test]
+fn should_leave_ordinary_words_with_the_letters_of_enter() {
+    // Given ordinary Russian words that hold the letters of "enter"
+    let text = "интересно интересная интерфейса интервью центр контракт контроллер линтры интернет";
+    // When
+    let respelled = respell(text);
+    // Then
+    assert_eq!(respelled, text);
+}
