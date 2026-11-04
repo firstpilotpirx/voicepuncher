@@ -1,44 +1,42 @@
 ## Why
 
-Hosted CI (GitHub Actions macOS runner, `.github/workflows/ci.yml`, `just test`) has never passed. While the repository was private, every run died in about 3 seconds before any test ran; after the repository went public on 2026-10-28, run 40763356102 of firstpilotpirx/voicepuncher reached the tests and failed 6 of 1710. All 6 pass on the developer's machine, so they depend on what the runner lacks (a desktop session, a usable pasteboard, a pointer) or on timing a loaded runner cannot keep. As long as CI is red, it is no floor for pull requests opened from another machine.
+Hosted CI (GitHub Actions macOS runner, `.github/workflows/ci.yml`: `just fmt`, `just lint`, `just test`) has never passed. Run 40763356102 reached the tests and failed 6 of 1710; every later run died earlier: `just lint` refuses Homebrew's trufflehog 3.99.7 against the `justfile` pin 3.99.6, and `just test` cannot link `command-spotting` because the Rust cache keeps the build script's output but drops the sherpa-onnx library it downloaded. All 6 tests pass on the developer's machine; the log shows each runner-only cause:
 
-Failures in that run:
+1. and 2. `macos::textpasting_macos`: the runner's session has no usable pasteboard.
+3. `recording_cpal::synthetic` (stream gone silent): the audio is fed at real time, and a loaded runner stretches the feed past the watchdog's silence limit.
+4. `component/dictation_pointer` (the sign follows the pointer): a real window beside the real pointer.
+5. `component/local_services` (a hung adopted service): the fake hung program never accepts connections, so once its listen backlog is full macOS resets the probe's connects and the app sees the port closed.
+6. `change-workflow` "fails naming the compile error": the runner's `CARGO_TERM_COLOR=always` puts color codes into the message.
 
-1. `voicepuncher::it` `macos::textpasting_macos::should_not_overwrite_a_copy_made_after_the_paste`: `pasteboard.writeObjects(...)` returns false (`app/tests/it/macos/textpasting_macos.rs:74`).
-2. `voicepuncher::it` `macos::textpasting_macos::should_leave_the_general_pasteboard_alone_when_pasting_through_another`: "the paste must put its text on the pasteboard" (`textpasting_macos.rs:91`).
-3. `voicepuncher::it` `recording_cpal::synthetic::should_report_a_stream_gone_silent_for_a_second_as_a_recording_failure`: `failures.recv_timeout(Duration::from_millis(900)).is_err()` fails (`app/tests/it/recording_cpal/synthetic.rs:256`): a timing bound on a slow runner.
-4. `voicepuncher::cucumber_integration` `component/dictation_pointer/the_dictation_sign_follows_the_pointer_without_getting_in_the_way`: step "Then it stands right of and below the pointer".
-5. `voicepuncher::cucumber_integration` `component/local_services/an_adopted_service_that_hangs_is_replaced_by_the_app_s_own`: step "Then after three failed checks the other program keeps running and the log names it with its process id" (38 s).
-6. `voicepuncher-dev-tools::cucumber_workflow` `scenarios`: step "Then it fails naming the compile error".
+A red CI is no floor for pull requests opened from another machine.
 
 ## What Changes
 
-- Hosted CI runs `just test` green on the GitHub macOS runner.
-- Tests that need a desktop session, the real pasteboard or the pointer move under the matching need module (`needs_desktop`), so CI leaves them out and the recipes print them as skipped; they still run where the desktop is there (`it-real`, `full-check`).
-- Timing tests get bounds that hold on a loaded runner without loosening what they prove.
-- The compile-error scenario of the change workflow is fixed so it holds with the runner's toolchain.
+- The workflow installs shellcheck, gitleaks and trufflehog from their GitHub releases at the `justfile` pins (trufflehog bumped to 3.99.8) into the cached tools folder, and drops the sherpa-onnx build output when its library is missing.
+- The paste tests (1, 2) move under `needs_desktop`; a `@needs_desktop` tag on a `Rule:` (4) puts the need into its test name, so `just test` leaves it out and `it-real` runs it.
+- The watchdog tests (3, and its sibling on a device error) push their audio in one call.
+- The fake hung program (5) accepts every connection and leaves it unanswered.
+- The compile-error scenario (6) runs its static check with colors off.
 
 Current stage: PoC. Target stage: PoC.
-Scope: the 6 tests above and whatever the runner needs to run them or leave them out; `.github/workflows/ci.yml` when a setting there is the cause.
-Acceptance bar: a hosted CI run on `main` passes, and the 6 tests still pass locally in the recipes that run them.
-Out of scope: any product behavior; other tests; making CI run model, service or E2E stages.
+Scope: the 6 tests, the two runner-only workflow failures, the recipes that run the desktop tests.
+Acceptance bar: the pull request's hosted CI run passes; the moved tests still pass locally in `it-real` and `test-real-keyboard`.
+Out of scope: product behavior; other tests; model, service or E2E stages in CI.
 
 ## Capabilities
 
 ### Modified Capabilities
 
-- none: test placement and test bounds only; no requirement changes.
+- `change-workflow`: the desktop tests include the Gherkin rules tagged `@needs_desktop`.
 
 ## Impact
 
-- `app/tests/it/macos/textpasting_macos.rs`, `app/tests/it/recording_cpal/synthetic.rs`, the steps of `dictation_pointer` and `local_services` in `app/tests/steps/`, the `change-workflow` steps in `dev-tools/tests/`, possibly `.config/stages.toml` (`test_needs`) and `.github/workflows/ci.yml`.
+- `.github/workflows/ci.yml`, `justfile`, `AGENTS.md`, `README.md`; `app/tests/it/macos/textpasting_macos.rs`, `app/tests/it/recording_cpal/synthetic.rs`, `app/tests/features/component/dictation_pointer.feature`, `app/tests/steps/visual_feedback/pointer.rs`; `e2e-test/src/harness_args.rs`, `dev-tools/src/stages/it_real.rs`, `test-steps/src/loopback/silent_listener.rs`, `dev-tools/tests/steps/test_loop/static_check.rs`.
 
 ## Open points
 
-- Whether failures 4 and 5 lack a desktop or a timing margin is not known from the log; proposed: read the failing assertion first, then move it under `needs_desktop` (4) and give 5 a bound from the runner's measured time.
-- Why "fails naming the compile error" breaks on the runner is not known; proposed: compare the runner's compiler message with what the step expects.
+- Whether the other lint analyzers pass on the runner once the tools are found: the pull request's CI run shows it; a runner-only failure there is fixed here.
 
 ## Release
 
-SemVer: no release — test-only change, no behavior change.
-Target version: 0.41.5.
+SemVer: no release — tests and tooling only. Target version: unchanged.
