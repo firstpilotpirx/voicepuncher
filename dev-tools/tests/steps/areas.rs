@@ -2,6 +2,7 @@
 //! warning of a full suite, in a scratch workspace of two crates with the stand-in task runner.
 
 use cucumber::{given, then, when};
+use std::fmt::Write;
 
 use crate::steps::runner::locks::run_stages;
 use crate::steps::runner::scratch::Scratch;
@@ -49,16 +50,17 @@ fn change_branch(open: [bool; 3]) -> Scratch {
     let groups: String = open
         .iter()
         .enumerate()
-        .map(|(n, open)| {
+        .fold(String::new(), |mut groups, (n, open)| {
             let mark = if *open { " " } else { "x" };
-            format!(
+            let _ = write!(
+                groups,
                 "## {}. Group {}\n\n- [{mark}] {}.1 A task\n\n",
                 n + 1,
                 n + 1,
                 n + 1
-            )
-        })
-        .collect();
+            );
+            groups
+        });
     scratch.write("repo/openspec/changes/x/tasks.md", &groups);
     scratch.git(&scratch.root(), &["switch", "-q", "-c", "feat/x"]);
     scratch

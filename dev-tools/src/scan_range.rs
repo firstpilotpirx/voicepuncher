@@ -6,19 +6,24 @@ use crate::Outcome;
 use std::process::Command;
 
 pub fn command(_args: &[String]) -> Outcome {
-    let branch = git(&["rev-parse", "--abbrev-ref", "HEAD"]);
-    let origin_main = git(&["rev-parse", "--verify", "-q", "origin/main"]).is_some();
-    println!("{}", range(branch.as_deref(), origin_main));
+    let branch = git(&["rev-parse", "--abbrev-ref", "HEAD"])?;
+    let origin_main = git(&["rev-parse", "--verify", "-q", "origin/main"]).is_ok();
+    println!("{}", range(Some(&branch), origin_main));
     Ok(0)
 }
 
-/// The trimmed output of a git command that succeeded.
-fn git(args: &[&str]) -> Option<String> {
-    let output = Command::new("git").args(args).output().ok()?;
+/// The trimmed output of a git command; the command line when it failed.
+fn git(args: &[&str]) -> Result<String, String> {
+    let failed = || format!("git {} failed", args.join(" "));
+    let output = Command::new("git")
+        .args(args)
+        .output()
+        .map_err(|_| failed())?;
     output
         .status
         .success()
         .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+        .ok_or_else(failed)
 }
 
 pub fn range(branch: Option<&str>, origin_main: bool) -> &'static str {

@@ -60,7 +60,7 @@ impl Budgets {
 /// A budget as a whole number of seconds, or with tenths when it has them.
 fn whole(seconds: f64) -> String {
     if seconds.fract() == 0.0 {
-        format!("{}", seconds as i64)
+        format!("{seconds:.0}")
     } else {
         tenths(seconds)
     }

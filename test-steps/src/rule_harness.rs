@@ -1,6 +1,8 @@
-//! The harness that shows nextest one test per rule of a feature file, shared by the slice and component
-//! harness of `app/` and the change workflow harness of `dev-tools/`: nextest then runs the rules in parallel
-//! processes, a failure names the rule and a rerun of the failed tests runs only that rule's scenarios.
+//! The harness that shows nextest one test per rule of a feature file.
+//!
+//! Shared by the slice and component harness of `app/` and the change workflow harness of `dev-tools/`:
+//! nextest then runs the rules in parallel processes, a failure names the rule and a rerun of the failed
+//! tests runs only that rule's scenarios.
 
 /// One test the slice and component harness shows nextest: the scenarios of one rule of a
 /// feature file, or the scenarios outside any rule.

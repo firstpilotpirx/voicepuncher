@@ -1,5 +1,7 @@
-//! The time of every scenario of a harness run: `scenario time: <secs> <name>` printed as each ends and the
-//! five slowest printed after the run, which the stage runner names when a stage runs past its budget.
+//! The time of every scenario of a harness run.
+//!
+//! `scenario time: <secs> <name>` is printed as each ends and the five slowest after the run, which the
+//! stage runner names when a stage runs past its budget.
 
 use std::collections::HashMap;
 use std::sync::Mutex;

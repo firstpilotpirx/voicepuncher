@@ -1,6 +1,7 @@
-//! How fast a scenario feeds the room between its utterances: a scenario under timing (`@cues`) in real
-//! time, every other ten times faster, so the check waits on the app, not on the clock. Speech is fed at
-//! once either way.
+//! How fast a scenario feeds the room between its utterances.
+//!
+//! A scenario under timing (`@cues`) runs in real time, every other ten times faster, so the check waits
+//! on the app, not on the clock. Speech is fed at once either way.
 
 use std::time::Duration;
 

@@ -35,7 +35,7 @@ fn rules() -> Vec<String> {
 
 #[given("the workflow harness is asked to list its tests")]
 fn list_tests(world: &mut WorkflowWorld) {
-    world.text = "--list --format terse".to_owned();
+    "--list --format terse".clone_into(&mut world.text);
 }
 
 #[given(expr = "the workflow harness is asked to run the test of the rule {string}")]

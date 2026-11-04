@@ -2,6 +2,7 @@
 //! as long as told and prints the scenario times it is given.
 
 use cucumber::{given, then, when};
+use std::fmt::Write;
 
 use super::locks::run_stages;
 use crate::steps::{ran, scratch};
@@ -32,11 +33,14 @@ fn stage_budget(world: &mut WorkflowWorld, stage: String, seconds: u32) {
 
 #[given(expr = "the stage {string} reports the scenario times {string}")]
 fn scenario_times(world: &mut WorkflowWorld, stage: String, times: String) {
-    let lines: String = times
-        .split(", ")
-        .map(name_and_secs)
-        .map(|(name, secs)| format!("scenario time: {secs} {name}\n"))
-        .collect();
+    let lines: String =
+        times
+            .split(", ")
+            .map(name_and_secs)
+            .fold(String::new(), |mut lines, (name, secs)| {
+                let _ = writeln!(lines, "scenario time: {secs} {name}");
+                lines
+            });
     scratch(world).write(&format!("scenario-times-_{stage}"), &lines);
 }
 
