@@ -19,7 +19,7 @@ See proposal.md § Why. The stage runner (`dev-tools`) runs, keys, journals and 
 - **Benches are stages:** `bench` and `streaming-bench` run `_stages bench` / `_stages streaming-bench` with their arguments in `VOICEPUNCHER_BENCH_ARGS`; model stages (the e2e lock) that start no service, with no key, pass or reuse. The journal line gets a 16th field `args` (null elsewhere); the per-branch row a bench column.
 - **The needed-tests map is computed:** areas are the workspace members; a row holds the member's `test` part, the stages its paths feed (`stage_inputs`) and the bench options of a `bench_areas` table (`<glob> <recipe and options>`). `just test-area <path>` runs the `test` stage as recipe `test-area` with only the owning member's part (`VOICEPUNCHER_TEST_PARTS`), never a pass. A unit test over the real tables fails on a glob matching nothing.
 - **The task-group warning reads `tasks.md` of the branch's change** (`<type>/<name>`; groups are `##` headings, open means an unchecked task) for `test`, `check` and `full-check`.
-- **The secret scanners' range comes from `dev-tools scan-range`:** `origin/main..HEAD` on a branch, `--all` on `main` (trufflehog: `--since-commit`).
+- **The secret scanners' range comes from `dev-tools scan-range`:** `origin/main..HEAD` on a branch, `--all` on `main`, on a detached HEAD and on a branch whose repository has no `origin/main` (a scan with no base scans everything) (trufflehog: `--since-commit`).
 - **The per-rule harness helper moves to `test-steps`** (`rule_tests`, `read_rule_harness_call`, `rule_command_line`), used by the app and the workflow harnesses; the E2E harness keeps its one test.
 
 ## Risks / Trade-offs
