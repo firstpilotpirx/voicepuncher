@@ -139,6 +139,10 @@ impl SpeechGate for SileroGate {
         self.vad.clear();
         self.vad.detected()
     }
+
+    fn forgets(&mut self) {
+        self.vad.reset();
+    }
 }
 
 /// The file in `dir` whose name starts with `part`, its int8 form first.

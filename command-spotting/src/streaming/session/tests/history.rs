@@ -1,5 +1,5 @@
 //! A closed utterance goes into the command history, also when the connection ends while
-//! its recognizers still decode the silence after it.
+//! its recognizers still decode the silence after it, or while it is still open.
 
 use super::*;
 
@@ -36,6 +36,21 @@ fn should_keep_an_utterance_still_decoding_when_the_session_ends() {
     let mut session = session(&[&en], Some(&history));
     // When the connection ends right after the utterance closed, its tail still decoding
     session.accept(&[silence(1.0), speech(0.3), silence(1.0)].concat());
+    drop(session);
+    history.flush();
+    // Then
+    assert_eq!(entries_in(dir.path()), 1);
+}
+
+#[test]
+fn should_keep_an_utterance_still_open_when_the_session_ends() {
+    // Given a history and an English recognizer
+    let dir = tempfile::tempdir().expect("a temporary folder");
+    let history = history_in(dir.path());
+    let en = Scripted::new("en", &[("stop", 0.6)]);
+    let mut session = session(&[&en], Some(&history));
+    // When the connection ends while the utterance is still open, no pause after it yet
+    session.accept(&[silence(1.0), speech(0.3)].concat());
     drop(session);
     history.flush();
     // Then

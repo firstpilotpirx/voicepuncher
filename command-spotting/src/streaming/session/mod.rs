@@ -1,8 +1,11 @@
 //! One connection's audio in the streaming recognizer.
 //!
-//! The gate hears speech window by window, an utterance opens at its onset with the half second before it replayed into every
-//! recognizer, and closes after a pause and half a second more audio; its recognizers finish
-//! the silence after it on their own, so a close never waits for a decode.
+//! The gate hears speech window by window, an utterance opens at its onset with the half
+//! second before it replayed into every recognizer, and closes after a pause and half a
+//! second more audio; its recognizers finish the silence after it on their own, so a close
+//! never waits for a decode, and the gate forgets the speech so far at every close: a gate
+//! that kept the state of a long dictation hears the pause after a lone word half a second
+//! late.
 
 use std::collections::VecDeque;
 use std::time::SystemTime;
@@ -218,10 +221,12 @@ impl<'a> Session<'a> {
         ServerEvent::SpeechStart { t: onset }
     }
 
-    /// Closes the utterance at `now`: its speech end goes out now, and what its recognizers
-    /// still decode of the silence after it comes with the later collects.
+    /// Closes the utterance at `now`: its speech end goes out now, what its recognizers
+    /// still decode of the silence after it comes with the later collects, and the gate
+    /// starts the next utterance afresh.
     fn close(&mut self, now: f32) -> Option<ServerEvent> {
         let mut utterance = self.utterance.take()?;
+        self.gate.forgets();
         // WHY: the next utterance's replay must not start with this one's last words; the
         // models hear a quiet "restart" after "…broken" as "let's start".
         let over = self.replay.len().saturating_sub(utterance.quiet());
@@ -232,10 +237,13 @@ impl<'a> Session<'a> {
     }
 }
 
-/// The connection ended: an utterance whose recognizers still decode the silence after it
-/// is waited for, so its log line and its entry of the history are not lost.
+/// The connection ended: an utterance still open is closed now, and one whose recognizers
+/// still decode the silence after it is waited for, so its log line and its entry of the
+/// history are not lost.
 impl Drop for Session<'_> {
     fn drop(&mut self) {
+        let now = seconds(self.seen);
+        self.close(now);
         self.collect_closing(Wait::CaughtUp);
     }
 }

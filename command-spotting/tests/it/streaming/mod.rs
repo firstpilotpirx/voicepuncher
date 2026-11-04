@@ -10,6 +10,7 @@ use voicepuncher_test_steps::required_env;
 
 use crate::common;
 
+mod long_dictation;
 mod quiet_start;
 
 const SAMPLE_RATE: usize = 16_000;
