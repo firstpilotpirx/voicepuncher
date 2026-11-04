@@ -101,7 +101,12 @@ fn commands_in(engine: &StreamingEngine, audio: &[f32]) -> Vec<String> {
 /// The commands a session listening for `phrases` reports in `audio`.
 fn commands_heard(engine: &StreamingEngine, phrases: &[&str], audio: &[f32]) -> Vec<String> {
     // WHY: the recognizers decode on threads of their own; a sync waits for what is left.
-    events_with_sync(engine, phrases, &paused(audio), 0)
+    commands_of(events_with_sync(engine, phrases, &paused(audio), 0))
+}
+
+/// The commands reported in `events`, in order.
+fn commands_of(events: Vec<ServerEvent>) -> Vec<String> {
+    events
         .into_iter()
         .filter_map(|event| match event {
             ServerEvent::Command { commands, .. } => Some(commands),

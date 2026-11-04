@@ -17,6 +17,11 @@ use super::{samples_in, seconds};
 const MAX_AUDIO_SECS: f32 = 30.0;
 /// The silence fed to every recognizer at the gate's pause, ahead of the stream.
 pub const FLUSH_SECS: f32 = 0.6;
+/// The silence fed to every recognizer at the close, before its final decode: a quiet word
+/// the gate stopped hearing before its last sound is decoded only once the pause after it
+/// is heard, and the flush at the gate's pause came before that sound. 0.5 s loses one of
+/// the user's two quiet starts of session 6, 0.8 s decodes both; 1 s keeps a margin.
+pub const CLOSE_SILENCE_SECS: f32 = 1.0;
 /// The silence fed to every recognizer ahead of the replay, so the first sound of an utterance
 /// is not the first sound of its stream.
 pub const LEAD_SECS: f32 = 0.3;
@@ -248,6 +253,7 @@ impl Utterance {
     /// Ends every stream, waits for what is left to be decoded and reports it; the speech end
     /// follows.
     pub fn close(mut self, matcher: &PhraseMatcher, now: f32) -> Closed {
+        self.silence(CLOSE_SILENCE_SECS);
         for decoder in &mut self.decoders {
             decoder.finish();
         }

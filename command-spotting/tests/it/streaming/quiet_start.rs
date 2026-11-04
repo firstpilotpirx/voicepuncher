@@ -6,7 +6,7 @@ use voicepuncher_command_spotting::protocol::{PhraseSelection, ServerEvent};
 use voicepuncher_command_spotting::streaming::ports::SpeechGate;
 use voicepuncher_test_steps::required_env;
 
-use super::{engine, SAMPLE_RATE, STANDBY};
+use super::{commands_of, engine, SAMPLE_RATE, STANDBY};
 use crate::common;
 
 /// 10 ms: the frames the app sends.
@@ -46,7 +46,7 @@ fn at(secs: f32) -> usize {
 fn commands_for_quiet_start(recording: &[f32], start: f32, heard: f32) -> Vec<String> {
     let engine = engine();
     let from = at(start - REPLAY_SECS);
-    let audio = &recording[from..at(start + heard + AFTER_SECS)];
+    let audio = &recording[from..at(start + heard + AFTER_SECS).min(recording.len())];
     let gate = Replayed { from: at(REPLAY_SECS), until: at(REPLAY_SECS + heard), seen: 0 };
     let mut session = engine.session_with_gate(1, Box::new(gate));
     let phrases = STANDBY.iter().map(|p| (*p).to_owned()).collect();
@@ -59,14 +59,7 @@ fn commands_for_quiet_start(recording: &[f32], start: f32, heard: f32) -> Vec<St
         events.extend(session.poll());
     }
     events.extend(session.sync(0));
-    events
-        .into_iter()
-        .filter_map(|event| match event {
-            ServerEvent::Command { commands, .. } => Some(commands),
-            _ => None,
-        })
-        .flatten()
-        .collect()
+    commands_of(events)
 }
 
 mod needs_streaming_models {
