@@ -123,6 +123,8 @@ pub struct HandsFreeSession {
     to_spotter: Sender<Vec<f32>>,
     /// The voice starts the scenario measured, in order.
     starts: Mutex<Vec<start_cue::MeasuredStart>>,
+    /// How long the session's run took.
+    ran_for: Mutex<Option<Duration>>,
 }
 
 impl std::fmt::Debug for HandsFreeSession {
@@ -143,6 +145,35 @@ fn detecting_transcriber(url: String) -> Result<OpenAiTranscriber> {
     })
 }
 
+/// The pipeline's parts: the real transcriber, the microphone recorder and stand-ins that record what
+/// they were asked to do.
+fn stand_in_parts(
+    microphone: &Arc<Microphone>,
+    events: &Events,
+    cues: &Cues,
+    stops: &Cues,
+    transcriber: OpenAiTranscriber,
+) -> PipelineParts {
+    let recorder = MicrophoneRecorder {
+        microphone: Arc::clone(microphone),
+        events: Arc::clone(events),
+        start: 0,
+        cut: None,
+        lead_in: Vec::new(),
+    };
+    PipelineParts {
+        recorder: Box::new(recorder),
+        transcriber: Box::new(transcriber),
+        paster: Box::new(RecordingPaster::new(events, Event::Pasted)),
+        sound_player: Box::new(RecordingSounds(
+            Arc::clone(events),
+            Arc::clone(cues),
+            Arc::clone(stops),
+        )),
+        visual_indicator: Box::new(NoOverlay),
+    }
+}
+
 impl HandsFreeSession {
     fn start(service: SpottingService, transcription_url: String) -> Result<Self> {
         let events = Events::default();
@@ -161,26 +192,17 @@ impl HandsFreeSession {
             *heard_by.started_at.lock().unwrap() = Some(started_at);
             (saturating_u32(SAMPLE_RATE_HZ), started_at)
         });
-        let recorder = MicrophoneRecorder {
-            microphone: Arc::clone(&microphone),
-            events: Arc::clone(&events),
-            start: 0,
-            cut: None,
-            lead_in: Vec::new(),
-        };
-        let parts = PipelineParts {
-            recorder: Box::new(recorder),
-            transcriber: Box::new(transcriber),
-            paster: Box::new(RecordingPaster::new(&events, Event::Pasted)),
-            sound_player: Box::new(RecordingSounds(
-                Arc::clone(&events),
-                Arc::clone(&cues),
-                Arc::clone(&stops),
-            )),
-            visual_indicator: Box::new(NoOverlay),
-        };
+        let parts = stand_in_parts(&microphone, &events, &cues, &stops, transcriber);
         run_with_voice_control(parts, spotter, &events, inputs_rx);
-        Ok(Self { events, cues, stops, microphone, to_spotter, starts: Mutex::default() })
+        Ok(Self {
+            events,
+            cues,
+            stops,
+            microphone,
+            to_spotter,
+            starts: Mutex::default(),
+            ran_for: Mutex::default(),
+        })
     }
 
     fn events(&self) -> Vec<Event> {
@@ -222,7 +244,23 @@ impl HandsFreeSession {
         Ok(false)
     }
 
+    /// How long the last run took, and how much audio the microphone captured in all.
+    pub(crate) fn ran_for(&self) -> Option<Duration> {
+        *self.ran_for.lock().unwrap()
+    }
+
+    pub(crate) fn audio_secs(&self) -> f32 {
+        self.microphone.captured.lock().unwrap().len() as f32 / SAMPLE_RATE_HZ
+    }
+
     fn run(&self, voice: CommandVoice) -> Result<()> {
+        let started = Instant::now();
+        let ran = self.run_steps(voice);
+        *self.ran_for.lock().unwrap() = Some(started.elapsed());
+        ran
+    }
+
+    fn run_steps(&self, voice: CommandVoice) -> Result<()> {
         let room = match voice {
             CommandVoice::Synthesized => vec![0.0; FRAME_SAMPLES],
             CommandVoice::Recorded { .. } => room_noise(COMMAND_PAUSE_SECS)?,
