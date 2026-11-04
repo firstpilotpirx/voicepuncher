@@ -139,14 +139,15 @@ fn alone(matcher: &PhraseMatcher, fresh: &[&TimedWord], moment: Moment) -> Optio
 }
 
 /// Whether a one-word command ending at `end` is said alone at `moment`: the utterance
-/// ended, the gate heard the pause after it, or nothing came for a while after it unless the
-/// gate heard speech go on after it.
+/// ended, the recognizer decoded up to the gate's pause, or the gate's pause began right after
+/// the word and nothing came for a while after it. While the gate still hears speech the word
+/// is not alone yet, however much is decoded past it: the next word may come out late.
 fn settled(moment: Moment, end: f32) -> bool {
     match moment {
         Moment::Closing => true,
         Moment::Decoding { now, pause } => {
-            let speech_after = pause.is_some_and(|p| p - end > SPEECH_AFTER_SECS);
-            (!speech_after && now - end >= SETTLE_SECS) || ended(moment)
+            let paused_after = pause.is_some_and(|p| p - end <= SPEECH_AFTER_SECS);
+            (paused_after && now - end >= SETTLE_SECS) || ended(moment)
         }
     }
 }

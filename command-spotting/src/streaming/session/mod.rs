@@ -106,9 +106,14 @@ impl<'a> Session<'a> {
             .collect()
     }
 
-    /// Answers once every recognizer decoded the audio before it, its events first.
+    /// Answers once every recognizer decoded the audio before it, its events first: a command
+    /// said right before the sync is reported before the answer.
     pub fn sync(&mut self, id: u64) -> Vec<ServerEvent> {
-        let mut events = self.collect(Wait::CaughtUp);
+        let now = seconds(self.seen);
+        let mut events = self
+            .utterance
+            .as_mut()
+            .map_or_else(Vec::new, |u| u.sync(&self.matcher, now));
         events.push(ServerEvent::Synced { id });
         events
     }

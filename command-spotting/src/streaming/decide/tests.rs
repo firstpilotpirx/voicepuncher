@@ -149,10 +149,12 @@ fn should_skip_words_said_before_the_last_report() {
 
 #[test]
 fn should_report_the_next_command_said_after_the_last_report() {
-    // Given "press enter" reported up to 1.55 s, then "stop"
+    // Given "press enter" reported up to 1.55 s, then "stop" ending at 1.85 s, the gate's
+    // pause begun right after it
     let words = said(1.0, "press enter stop");
     // When
-    let next = decide(&dictating(), &words, decoding(2.1), 1.55);
+    let paused = Moment::Decoding { now: 2.1, pause: Some(1.9) };
+    let next = decide(&dictating(), &words, paused, 1.55);
     // Then
     assert_eq!(
         next.expect("the stop after it").commands,
