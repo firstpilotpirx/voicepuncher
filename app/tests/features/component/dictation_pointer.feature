@@ -63,7 +63,8 @@ Feature: dictation-pointer
       When the command spotting service stays away for longer than 5 seconds
       Then the overlay shows the commands-unavailable sign and no dictation sign shows
 
-  # The real dictation sign on the main thread, against the real pointer.
+  # The real dictation sign on the main thread, against the real pointer: a desktop test (it-real), out of just test.
+  @needs_desktop
   Rule: The dictation sign follows the pointer without getting in the way
 
     Scenario: The dictation sign stands next to the pointer and lets clicks through

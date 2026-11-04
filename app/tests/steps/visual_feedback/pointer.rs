@@ -9,6 +9,7 @@ use objc2::MainThreadMarker;
 use objc2_app_kit::NSEvent;
 use objc2_foundation::NSPoint;
 use voicepuncher::test_doubles::prelude::*;
+use voicepuncher_test_steps::required_env;
 
 use voicepuncher::adapters::secondary::visualfeedback::macos::MacosPointerSign;
 use voicepuncher::adapters::secondary::visualfeedback::pointer_sign::{
@@ -68,6 +69,7 @@ fn sign(world: &mut IntegrationWorld) -> Result<&MacosPointerSign> {
 
 #[when("the dictation sign shows for a recording")]
 fn shows_for_recording(world: &mut IntegrationWorld) -> Result<()> {
+    required_env("VOICEPUNCHER_DESKTOP_IT");
     let mtm = MainThreadMarker::new().context("the harness runs its steps on the main thread")?;
     let sign = MacosPointerSign::initialize(mtm);
     sign.show(DictationSignState::Recording);

@@ -12,6 +12,7 @@ use objc2_foundation::{NSArray, NSString};
 use voicepuncher::adapters::secondary::textpasting::macos::MacOsTextPaster;
 use voicepuncher::core::application::TextPaster;
 use voicepuncher::core::domain::CleanedText;
+use voicepuncher_test_steps::required_env;
 
 const RESTORE_DELAY_MS: u64 = 50;
 const RESTORE_DEADLINE: Duration = Duration::from_secs(2);
@@ -116,36 +117,6 @@ fn wait_until_restored(pasteboard: &OwnPasteboard, copied: &[PasteboardItemTypes
     }
 }
 
-#[test]
-fn should_bring_back_a_copied_screenshot_after_the_paste() {
-    // Given
-    let pasteboard = OwnPasteboard::new();
-    let screenshot: Vec<PasteboardItemTypes> =
-        vec![vec![(PNG_TYPE.to_owned(), SCREENSHOT_BYTES.to_vec())]];
-    write_items(&pasteboard, &screenshot);
-    // When
-    let _paster = paste_without_keystroke(&pasteboard, RESTORE_DELAY_MS);
-    wait_until_restored(&pasteboard, &screenshot);
-    // Then
-    assert_every_type_is_back(&pasteboard, &screenshot);
-}
-
-#[test]
-fn should_bring_back_copied_text_with_every_type_after_the_paste() {
-    // Given
-    let pasteboard = OwnPasteboard::new();
-    let rich_text: Vec<PasteboardItemTypes> = vec![vec![
-        (PLAIN_TEXT_TYPE.to_owned(), b"copied text".to_vec()),
-        (RICH_TEXT_TYPE.to_owned(), RICH_TEXT_BYTES.to_vec()),
-    ]];
-    write_items(&pasteboard, &rich_text);
-    // When
-    let _paster = paste_without_keystroke(&pasteboard, RESTORE_DELAY_MS);
-    wait_until_restored(&pasteboard, &rich_text);
-    // Then
-    assert_every_type_is_back(&pasteboard, &rich_text);
-}
-
 /// Each copied item is back with each of its types' data; macOS may add types it converts the text to.
 fn assert_every_type_is_back(pasteboard: &OwnPasteboard, copied: &[PasteboardItemTypes]) {
     let restored: Vec<PasteboardItemTypes> = read_items(pasteboard);
@@ -167,74 +138,118 @@ fn every_type_is_back(copied: &[PasteboardItemTypes], restored: &[PasteboardItem
             })
 }
 
-#[test]
-fn should_leave_an_empty_clipboard_empty_after_the_paste() {
-    // Given
-    let pasteboard = OwnPasteboard::new();
-    write_items(&pasteboard, &[]);
-    // When
-    let _paster = paste_without_keystroke(&pasteboard, RESTORE_DELAY_MS);
-    wait_until_pasted_text_is_gone(&pasteboard);
-    // Then
-    assert_eq!(read_items(&pasteboard), Vec::<PasteboardItemTypes>::new());
-}
+// The pasteboard server is one per login session, shared with the user and every other worktree's tests: a
+// write can fail or a restore come late while another run uses it, and the runner's session has no usable
+// pasteboard at all. So the tests that write a pasteboard are desktop tests (it-real, alone on the machine).
+mod needs_desktop {
+    use super::*;
 
-#[test]
-fn should_not_overwrite_a_copy_made_after_the_paste() {
-    // Given
-    const SLOW_RESTORE_DELAY_MS: u64 = 300;
-    const AFTER_RESTORE_WINDOW: Duration = Duration::from_millis(3 * SLOW_RESTORE_DELAY_MS);
-    let pasteboard = OwnPasteboard::new();
-    write_items(&pasteboard, &plain_text(b"copied before the paste"));
-    let _paster = paste_without_keystroke(&pasteboard, SLOW_RESTORE_DELAY_MS);
-    // When
-    let copied_after = plain_text(b"copied after the paste");
-    write_items(&pasteboard, &copied_after);
-    std::thread::sleep(AFTER_RESTORE_WINDOW);
-    // Then
-    assert_eq!(read_items(&pasteboard), copied_after);
-}
+    #[test]
+    fn should_not_overwrite_a_copy_made_after_the_paste() {
+        const SLOW_RESTORE_DELAY_MS: u64 = 300;
+        const AFTER_RESTORE_WINDOW: Duration = Duration::from_millis(3 * SLOW_RESTORE_DELAY_MS);
+        required_env("VOICEPUNCHER_DESKTOP_IT");
+        // Given
+        let pasteboard = OwnPasteboard::new();
+        write_items(&pasteboard, &plain_text(b"copied before the paste"));
+        let _paster = paste_without_keystroke(&pasteboard, SLOW_RESTORE_DELAY_MS);
+        // When
+        let copied_after = plain_text(b"copied after the paste");
+        write_items(&pasteboard, &copied_after);
+        std::thread::sleep(AFTER_RESTORE_WINDOW);
+        // Then
+        assert_eq!(read_items(&pasteboard), copied_after);
+    }
 
-#[test]
-fn should_restore_the_clipboard_at_once_when_the_app_quits_before_the_delay() {
-    // Given — a paste whose restore waits far longer than the test
-    let pasteboard = OwnPasteboard::new();
-    let copied = plain_text(b"copied before quit");
-    write_items(&pasteboard, &copied);
-    let paster = paste_without_keystroke(&pasteboard, 60_000);
-    // When — the stopping runtime drops its pipeline's paster
-    drop(paster);
-    // Then
-    assert_every_type_is_back(&pasteboard, &copied);
-}
+    #[test]
+    fn should_leave_the_general_pasteboard_alone_when_pasting_through_another() {
+        required_env("VOICEPUNCHER_DESKTOP_IT");
+        // Given
+        let pasteboard = OwnPasteboard::new();
+        let general_before = NSPasteboard::generalPasteboard().changeCount();
+        // When
+        let paster = paste_without_keystroke(&pasteboard, 60_000);
+        drop(paster);
+        // Then
+        assert_eq!(
+            NSPasteboard::generalPasteboard().changeCount(),
+            general_before
+        );
+    }
 
-#[test]
-fn should_restore_the_users_clipboard_when_a_second_paste_comes_within_the_delay() {
-    // Given — a paste whose restore is still pending
-    let pasteboard = OwnPasteboard::new();
-    let copied = plain_text(b"copied before both pastes");
-    write_items(&pasteboard, &copied);
-    let mut paster = paste_without_keystroke(&pasteboard, 60_000);
-    // When — the next dictation pastes, then the app quits
-    paster
-        .paste(&CleanedText::new(PASTED_TEXT).unwrap())
-        .unwrap();
-    drop(paster);
-    // Then — the user's copy is back, not the first dictation
-    assert_every_type_is_back(&pasteboard, &copied);
-}
+    #[test]
+    fn should_bring_back_a_copied_screenshot_after_the_paste() {
+        required_env("VOICEPUNCHER_DESKTOP_IT");
+        // Given
+        let pasteboard = OwnPasteboard::new();
+        let screenshot: Vec<PasteboardItemTypes> =
+            vec![vec![(PNG_TYPE.to_owned(), SCREENSHOT_BYTES.to_vec())]];
+        write_items(&pasteboard, &screenshot);
+        // When
+        let _paster = paste_without_keystroke(&pasteboard, RESTORE_DELAY_MS);
+        wait_until_restored(&pasteboard, &screenshot);
+        // Then
+        assert_every_type_is_back(&pasteboard, &screenshot);
+    }
 
-#[test]
-fn should_leave_the_general_pasteboard_alone_when_pasting_through_another() {
-    // Given
-    let pasteboard = OwnPasteboard::new();
-    let general_before = NSPasteboard::generalPasteboard().changeCount();
-    // When
-    let paster = paste_without_keystroke(&pasteboard, 60_000);
-    drop(paster);
-    // Then
-    assert_eq!(
-        NSPasteboard::generalPasteboard().changeCount(),
-        general_before
-    );
+    #[test]
+    fn should_bring_back_copied_text_with_every_type_after_the_paste() {
+        required_env("VOICEPUNCHER_DESKTOP_IT");
+        // Given
+        let pasteboard = OwnPasteboard::new();
+        let rich_text: Vec<PasteboardItemTypes> = vec![vec![
+            (PLAIN_TEXT_TYPE.to_owned(), b"copied text".to_vec()),
+            (RICH_TEXT_TYPE.to_owned(), RICH_TEXT_BYTES.to_vec()),
+        ]];
+        write_items(&pasteboard, &rich_text);
+        // When
+        let _paster = paste_without_keystroke(&pasteboard, RESTORE_DELAY_MS);
+        wait_until_restored(&pasteboard, &rich_text);
+        // Then
+        assert_every_type_is_back(&pasteboard, &rich_text);
+    }
+
+    #[test]
+    fn should_leave_an_empty_clipboard_empty_after_the_paste() {
+        required_env("VOICEPUNCHER_DESKTOP_IT");
+        // Given
+        let pasteboard = OwnPasteboard::new();
+        write_items(&pasteboard, &[]);
+        // When
+        let _paster = paste_without_keystroke(&pasteboard, RESTORE_DELAY_MS);
+        wait_until_pasted_text_is_gone(&pasteboard);
+        // Then
+        assert_eq!(read_items(&pasteboard), Vec::<PasteboardItemTypes>::new());
+    }
+
+    #[test]
+    fn should_restore_the_clipboard_at_once_when_the_app_quits_before_the_delay() {
+        required_env("VOICEPUNCHER_DESKTOP_IT");
+        // Given — a paste whose restore waits far longer than the test
+        let pasteboard = OwnPasteboard::new();
+        let copied = plain_text(b"copied before quit");
+        write_items(&pasteboard, &copied);
+        let paster = paste_without_keystroke(&pasteboard, 60_000);
+        // When — the stopping runtime drops its pipeline's paster
+        drop(paster);
+        // Then
+        assert_every_type_is_back(&pasteboard, &copied);
+    }
+
+    #[test]
+    fn should_restore_the_users_clipboard_when_a_second_paste_comes_within_the_delay() {
+        required_env("VOICEPUNCHER_DESKTOP_IT");
+        // Given — a paste whose restore is still pending
+        let pasteboard = OwnPasteboard::new();
+        let copied = plain_text(b"copied before both pastes");
+        write_items(&pasteboard, &copied);
+        let mut paster = paste_without_keystroke(&pasteboard, 60_000);
+        // When — the next dictation pastes, then the app quits
+        paster
+            .paste(&CleanedText::new(PASTED_TEXT).unwrap())
+            .unwrap();
+        drop(paster);
+        // Then — the user's copy is back, not the first dictation
+        assert_every_type_is_back(&pasteboard, &copied);
+    }
 }

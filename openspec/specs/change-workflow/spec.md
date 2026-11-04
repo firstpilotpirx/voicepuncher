@@ -504,7 +504,7 @@ A test that needs a service, a model, recordings or the desktop SHALL never pass
 
 ### Requirement: The desktop tests run in the full check when the permissions allow
 
-The tests that use the real microphone, the Accessibility API and windows on the screen SHALL run as a stage of the full check, alone on the machine. When the process lacks a permission they need, the stage SHALL run none of them, name the missing permission, print how many tests it left out, show the stage as skipped rather than passed, and never record it as a pass; the user's manual run then runs them. Tests that press keys in the focused app SHALL never run in the full check.
+The tests that use the real microphone, the Accessibility API and windows on the screen SHALL run as a stage of the full check, alone on the machine. A business scenario that needs the desktop SHALL be marked as such on its rule, so the unit run leaves it out and counts it with the other desktop tests and the stage runs it. When the process lacks a permission they need, the stage SHALL run none of them, name the missing permission, print how many tests it left out, show the stage as skipped rather than passed, and never record it as a pass; the user's manual run then runs them. Tests that press keys in the focused app SHALL never run in the full check.
 
 #### Scenario: The full check runs the desktop tests with the permissions granted
 
@@ -525,6 +525,13 @@ The tests that use the real microphone, the Accessibility API and windows on the
 - **GIVEN** the full check runs while the user works in another app
 - **WHEN** the desktop stage runs
 - **THEN** no test presses a key in the focused app
+
+#### Scenario: A business rule marked for the desktop is a desktop test
+
+- **GIVEN** a feature file whose rule is marked as needing the desktop
+- **WHEN** the unit and integration tests run on a machine without the desktop
+- **THEN** the scenarios of that rule do not run and are counted among the desktop tests left out
+- **AND** the desktop stage runs them
 
 ### Requirement: Every test asserts something that can fail
 

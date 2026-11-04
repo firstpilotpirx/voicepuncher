@@ -455,7 +455,8 @@ _e2e-bench: _require-nextest _require-models _require-corpus _build
     VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}" VOICEPUNCHER_COMMAND_SPOTTING_URL="{{kws_url}}" \
         cargo nextest run --profile e2e-bench {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
-# The desktop tests (`needs_desktop`): the real microphone, the Accessibility API and windows on screen, alone on
+# The desktop tests (the `needs_desktop` modules and the component rules tagged `@needs_desktop`): the real
+# microphone, the Accessibility API and windows on screen, alone on
 # the machine like a model stage (full-check runs it before e2e-cues); without Microphone or Accessibility for the
 # app running it, it names the missing permission, counts the tests it leaves out and skips (exit 77). Key presses
 # into the focused app stay in test-real-keyboard
@@ -470,7 +471,7 @@ test-real-keyboard: _dev-tools
     @{{locked}} _test-real-keyboard
 
 _test-real-keyboard: _require-nextest
-    VOICEPUNCHER_REAL_KEYBOARD_IT=1 cargo nextest run --profile real-keyboard -p voicepuncher --test cucumber_integration --test it \
+    VOICEPUNCHER_REAL_KEYBOARD_IT=1 VOICEPUNCHER_DESKTOP_IT=1 cargo nextest run --profile real-keyboard -p voicepuncher --test cucumber_integration --test it \
         -E 'binary(cucumber_integration) | test(/::needs_real_keyboard::/)' --no-capture
 
 # ── Release ── after the merge, on a clean checkout of origin/main ──────────

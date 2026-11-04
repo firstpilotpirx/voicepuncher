@@ -81,6 +81,15 @@ fn ramp(samples: usize, top: f32) -> Vec<f32> {
 }
 
 /// Feeds `audio` frame by frame, `speed` times faster than real time; returns when the last frame went in.
+/// Pushes `audio` frame by frame without pacing, so no wall-clock feed is measured on a loaded
+/// machine; returns when the last frame was pushed, which the watchdog's timers start from.
+fn feed_at_once(feeder: &mut Feeder, audio: &[f32]) -> Instant {
+    for frame in audio.chunks(FRAME) {
+        feeder.push(frame);
+    }
+    Instant::now()
+}
+
 fn feed(feeder: &mut Feeder, audio: &[f32], speed: u32) -> Instant {
     let pace = Duration::from_millis(10) / speed;
     let mut last_frame = Instant::now();
@@ -236,7 +245,7 @@ fn should_lay_live_chunks_end_to_end_into_the_whole_recording() {
 fn should_report_the_device_error_as_a_recording_failure_once() {
     let (mut recorder, mut feeder, failures) = failing_stand_in();
     recorder.start().unwrap();
-    feed(&mut feeder, &ramp(NATIVE_RATE as usize / 10, 0.5), 1);
+    feed_at_once(&mut feeder, &ramp(NATIVE_RATE as usize / 10, 0.5));
     feeder.health.note_error();
     let reason = failure_reason(failures.recv_timeout(Duration::from_secs(1)).unwrap());
     assert!(reason.contains("error"), "{reason}");
@@ -251,8 +260,8 @@ fn should_report_the_device_error_as_a_recording_failure_once() {
 fn should_report_a_stream_gone_silent_for_a_second_as_a_recording_failure() {
     let (mut recorder, mut feeder, failures) = failing_stand_in();
     recorder.start().unwrap();
-    // timed from the last frame itself, not after the pace that follows it, which stretches under load
-    let last_audio = feed(&mut feeder, &ramp(NATIVE_RATE as usize / 5, 0.5), 1);
+    // pushed without pacing: a paced feed stretches past the silence limit on a loaded machine
+    let last_audio = feed_at_once(&mut feeder, &ramp(NATIVE_RATE as usize / 5, 0.5));
     assert!(failures.recv_timeout(Duration::from_millis(900)).is_err());
     let reason = failure_reason(failures.recv_timeout(Duration::from_secs(2)).unwrap());
     assert!(last_audio.elapsed() >= Duration::from_millis(980));
