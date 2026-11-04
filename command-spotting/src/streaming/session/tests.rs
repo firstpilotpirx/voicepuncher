@@ -9,6 +9,7 @@ use crate::streaming::ports::{Decoded, RecognizerStream};
 mod close_order;
 mod opening;
 mod pause_flush;
+mod russian_forms;
 
 const RATE: usize = 16_000;
 

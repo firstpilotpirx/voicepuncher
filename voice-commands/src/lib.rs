@@ -58,6 +58,10 @@ pub enum MishearingKind {
     NearMiss,
     /// The words close a chain of commands after another command.
     AfterCommand,
+    /// One word the Russian recognizer writes for a command said once or twice, glued or
+    /// mangled ("интернтер" for "enter enter"); it reads as the command's short form said
+    /// that many times, wherever it sits.
+    Alias,
 }
 
 /// The user's recording that produced a mishearing: a session of
@@ -101,6 +105,27 @@ pub const MISHEARINGS: &[Mishearing] = &[
         &[ENTER, START],
         MishearingKind::AfterCommand,
     ),
+    // "enter enter" the Russian recognizer writes as one glued word its command sounds do not
+    // read: a second half without its vowel, or a "р" opening it (the command history since
+    // 2026-10-29). A doubled command is reported once, so the glued triple means it twice too.
+    mishearing(&["интернтер"], &[ENTER, ENTER], MishearingKind::Alias),
+    mishearing(&["интернетор"], &[ENTER, ENTER], MishearingKind::Alias),
+    mishearing(&["энтеррентор"], &[ENTER, ENTER], MishearingKind::Alias),
+    mishearing(&["интеррентор"], &[ENTER, ENTER], MishearingKind::Alias),
+    mishearing(&["интеррендер"], &[ENTER, ENTER], MishearingKind::Alias),
+    mishearing(&["энтернтер"], &[ENTER, ENTER], MishearingKind::Alias),
+    mishearing(
+        &["энтеренторендрента"],
+        &[ENTER, ENTER],
+        MishearingKind::Alias,
+    ),
+    // One "enter" the Russian recognizer mangles past its command sounds.
+    mishearing(&["нтр"], &[ENTER], MishearingKind::Alias),
+    mishearing(&["энтро"], &[ENTER], MishearingKind::Alias),
+    mishearing(&["рентор"], &[ENTER], MishearingKind::Alias),
+    mishearing(&["нтэр"], &[ENTER], MishearingKind::Alias),
+    mishearing(&["тентер"], &[ENTER], MishearingKind::Alias),
+    mishearing(&["рентра"], &[ENTER], MishearingKind::Alias),
 ];
 
 #[cfg(test)]
