@@ -7,6 +7,8 @@ use crate::history::HistoryCfg;
 use crate::streaming::ports::{Decoded, RecognizerStream};
 
 mod close_order;
+mod handover;
+mod history;
 mod opening;
 mod pause_flush;
 mod russian_forms;
@@ -144,9 +146,13 @@ fn session<'a>(models: &[&'a Scripted], history: Option<&'a CommandHistory>) -> 
     session
 }
 
-/// The events of an utterance of `secs` heard by `models`, from 1 s into the stream.
+/// The events of an utterance of `secs` heard by `models`, from 1 s into the stream, up to
+/// the sync after it.
 fn utterance_events(models: &[&Scripted], secs: f32) -> Vec<ServerEvent> {
-    session(models, None).accept(&[silence(1.0), speech(secs), silence(1.0)].concat())
+    let mut session = session(models, None);
+    let mut events = session.accept(&[silence(1.0), speech(secs), silence(1.0)].concat());
+    events.extend(session.sync(0));
+    events
 }
 
 fn commands(events: &[ServerEvent]) -> Vec<Vec<String>> {
@@ -303,6 +309,23 @@ fn should_report_a_command_one_recognizer_heard_while_the_other_still_decodes() 
 }
 
 #[test]
+fn should_close_without_waiting_for_the_tail_of_silence_to_be_decoded() {
+    // Given an English recognizer that takes 0.1 s per decode, and "stop" said at 1.1 s
+    let en = Scripted::new("en", &[("stop", 0.6)]).slow(Duration::from_millis(100));
+    let mut session = session(&[&en], None);
+    let began = Instant::now();
+    // When the audio streams in, the pause after it long enough to close the utterance
+    let mut events = session.accept(&[silence(1.0), speech(0.3), silence(0.6)].concat());
+    let accepted = began.elapsed();
+    while commands(&events).is_empty() && began.elapsed() < Duration::from_secs(10) {
+        events.extend(session.poll());
+    }
+    // Then the close waited for no decode, and the command came from a poll after it
+    assert_eq!(commands(&events), [["stop dictation"]]);
+    assert!(accepted < Duration::from_millis(500), "{accepted:?}");
+}
+
+#[test]
 fn should_report_no_command_for_speech_without_one() {
     // Given
     let en = Scripted::new("en", &[("stop", 0.6), ("the", 0.75), ("car", 0.9)]);
@@ -321,22 +344,4 @@ fn should_answer_a_sync_at_once_without_speech() {
     let events = session.sync(7);
     // Then
     assert_eq!(events, [ServerEvent::Synced { id: 7 }]);
-}
-
-#[test]
-fn should_keep_an_utterance_with_a_reported_command_in_the_history() {
-    // Given
-    let dir = tempfile::tempdir().expect("a temporary folder");
-    let cfg = HistoryCfg { dir: dir.path().to_owned(), max_size_bytes: 1 << 30 };
-    let history = CommandHistory::start(cfg).expect("a history");
-    let en = Scripted::new("en", &[("press", 0.6), ("enter", 0.9)]);
-    let mut session = session(&[&en], Some(&history));
-    // When
-    session.accept(&[silence(1.0), speech(0.8), silence(1.0)].concat());
-    history.flush();
-    // Then
-    let kept = std::fs::read_dir(dir.path())
-        .expect("the history folder")
-        .count();
-    assert_eq!(kept, 1);
 }

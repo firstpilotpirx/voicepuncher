@@ -83,6 +83,11 @@ impl Decoder {
         self.decoded_to >= self.fed && self.finished == self.finishing
     }
 
+    /// Whether the stream ended and everything in it is decoded.
+    pub const fn finished(&self) -> bool {
+        self.finished
+    }
+
     fn note(&mut self, update: &Update) {
         self.decoded_to = update.fed;
         self.finished |= update.finished;
@@ -114,11 +119,14 @@ fn run(
         stream.decode();
         let took = began.elapsed();
         let update = Update { decoded: stream.decoded(), fed, took, finished };
-        if updates.send(update).is_err() || finished {
+        if updates.send(update).is_err() {
             return;
         }
         if let Some(wake) = wake {
             wake();
+        }
+        if finished {
+            return;
         }
     }
 }

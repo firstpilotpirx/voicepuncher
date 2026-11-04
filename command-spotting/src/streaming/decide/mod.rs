@@ -1,14 +1,15 @@
 //! Whether the words a streaming recognizer heard so far say a command to report now.
 
-use crate::matcher::{Found, PhraseMatcher, Placement};
+use crate::matcher::{words, Found, PhraseMatcher, Placement};
 use crate::streaming::words::TimedWord;
 
 /// What a decision is asked at.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Moment {
     /// While the utterance runs, with the audio decoded up to `now` seconds; `pause` is when
-    /// the gate's current silence began, none while it hears speech.
-    Decoding { now: f32, pause: Option<f32> },
+    /// the gate's current silence began, none while it hears speech; `synced` while the app's
+    /// sync at `now` is answered: the words before it are said, whatever the gate hears.
+    Decoding { now: f32, pause: Option<f32>, synced: bool },
     /// When the utterance ends: nothing more will be said in it.
     Closing,
 }
@@ -139,14 +140,16 @@ fn alone(matcher: &PhraseMatcher, fresh: &[&TimedWord], moment: Moment) -> Optio
 }
 
 /// Whether a one-word command ending at `end` is said alone at `moment`: the utterance
-/// ended, the gate heard the pause after it, or nothing came for a while after it unless the
-/// gate heard speech go on after it.
+/// ended, the recognizer decoded up to the gate's pause, or the gate's pause began right after
+/// the word and nothing came for a while after it. While the gate still hears speech the word
+/// is not alone yet, however much is decoded past it: the next word may come out late. At the
+/// app's sync it is, once a while is decoded past it: the sync stands for the pause.
 fn settled(moment: Moment, end: f32) -> bool {
     match moment {
         Moment::Closing => true,
-        Moment::Decoding { now, pause } => {
-            let speech_after = pause.is_some_and(|p| p - end > SPEECH_AFTER_SECS);
-            (!speech_after && now - end >= SETTLE_SECS) || ended(moment)
+        Moment::Decoding { now, pause, synced } => {
+            let paused_after = pause.is_some_and(|p| p - end <= SPEECH_AFTER_SECS);
+            ((paused_after || synced) && now - end >= SETTLE_SECS) || ended(moment)
         }
     }
 }
@@ -169,18 +172,32 @@ fn ends_a_longer_word(matcher: &PhraseMatcher, texts: &[&str]) -> bool {
 
 /// Whether nothing more is said for now at `moment`: the utterance ended, or the gate heard a
 /// pause and the recognizer decoded up to it, so a command ending the words ends a sentence.
+/// A sync is no pause here: the app asks for one inside a sentence too.
 fn ended(moment: Moment) -> bool {
     match moment {
         Moment::Closing => true,
-        Moment::Decoding { now, pause } => pause.is_some_and(|p| now >= p),
+        Moment::Decoding { now, pause, .. } => pause.is_some_and(|p| now >= p),
     }
 }
 
+/// `found` as a finding: a doubled one-word form ends with its first word, as a recognizer
+/// that emits late times the second word inside the speech said after it, and the dictation
+/// a doubled start begins would lose its first word; the app removes the second word from
+/// the text.
 fn finding(fresh: &[&TimedWord], found: &Found) -> Finding {
+    // WHY: the recognizers write "Restart, restart": the words are compared as the matcher
+    // reads them, lowercase letters only.
+    let doubled_one_word = found.last == found.first + 1
+        && words(&fresh[found.first].text) == words(&fresh[found.last].text);
+    let last = if doubled_one_word {
+        found.first
+    } else {
+        found.last
+    };
     Finding {
         commands: found.commands.clone(),
         start: fresh[found.first].start,
-        end: fresh[found.last].end,
+        end: fresh[last].end,
         placement: found.placement,
     }
 }

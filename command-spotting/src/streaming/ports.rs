@@ -5,6 +5,9 @@
 pub trait SpeechGate: Send {
     /// Whether `window`, [`GATE_WINDOW`] samples at the microphone's level, holds speech.
     fn hears(&mut self, window: &[f32]) -> bool;
+    /// Forgets the speech heard so far: an utterance closed, and the next starts afresh,
+    /// the gate settled on `quiet`, the room heard since the speech ended.
+    fn forgets(&mut self, _quiet: &[f32]) {}
 }
 
 /// Samples per window the gate hears: Silero's window at 16 kHz.

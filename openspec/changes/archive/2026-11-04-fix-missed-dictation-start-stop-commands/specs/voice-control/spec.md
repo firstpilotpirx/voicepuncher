@@ -45,7 +45,7 @@ The system SHALL recognize the commands as the user says them, including small s
 - **THEN** a dictation starts once, at the "старт"
 
 ### Requirement: Streaming commands are reported within 0.3 s of their words
-With the streaming recognizer on an idle machine, the command spotting service SHALL report "start" and "stop" within 0.3 s of the end of their words (wall clock) for at least half of them and within 0.6 s for 9 of 10; a command said alone or ending a sentence SHALL count at the pause the gate hears after it, without waiting for the utterance to close, unless its last word is also the end of a longer command word the state listens for ("start" in "restart"), which counts at the close. A one-word command a recognizer heard while the gate still hears the speech going on SHALL NOT count yet, however much audio the recognizer decoded past it: it counts once the gate hears a pause begin right after it, or at the close of the utterance; a Russian word a recognizer hears as "stop" at the head of a sentence that goes on is no command.
+With the streaming recognizer on an idle machine, the command spotting service SHALL report "start" and "stop" within 0.3 s of the end of their words (wall clock) for at least half of them and within 0.6 s for 9 of 10; a command said alone or ending a sentence SHALL count at the pause the gate hears after it, without waiting for the utterance to close, unless its last word is also the end of a longer command word the state listens for ("start" in "restart"), which counts at the close. A one-word command a recognizer heard while the gate still hears the speech going on SHALL NOT count yet, however much audio the recognizer decoded past it: it counts once the gate hears a pause begin right after it, at a sync the app asks for after it (for a command said alone the sync stands for the pause, so the command is reported before the sync is answered; a command word ending the words heard so far does not count at a sync, which the app asks for inside a sentence too), or at the close of the utterance; a Russian word a recognizer hears as "stop" at the head of a sentence that goes on is no command.
 
 #### Scenario: Start said alone is reported within its bound
 - **GIVEN** the command spotting service runs with the streaming recognizer on an otherwise idle machine
@@ -77,3 +77,23 @@ With the streaming recognizer on an idle machine, the command spotting service S
 - **GIVEN** the user's own recordings of the commands exist on the machine
 - **WHEN** each recorded "start" and "stop" is streamed to the service in real time
 - **THEN** at least half are reported within 0.3 s and at least 9 of 10 within 0.6 s of the end of their words
+
+### Requirement: A doubled command needs no pause
+The system SHALL carry out a doubled short form ("start start", "restart restart", "stop stop", "cancel cancel", "enter enter", "clear clear", "paste paste") as soon as its second word is heard, without waiting for a pause after it or for the next word, whether silence or speech follows. Inside running speech the second word is heard once the recognizer emits it, which takes the speech past it (the first word alone fires nothing while the gate hears speech): a doubled form said inside a sentence SHALL take effect within 1 s of its end, before the sentence ends. A doubled one-word form SHALL end with its first word: a recognizer that emits late times the second word inside the speech said after it, so the dictation a doubled start or restart begins runs from the end of the first word and the second word is removed from its text.
+
+#### Scenario: Start start then silence starts at once
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** the user says "start start" and stays silent
+- **THEN** the start cue comes within 0.5 s of the end of "start start"
+
+#### Scenario: Stop stop in running speech stops at once
+- **GIVEN** a dictation runs
+- **WHEN** the user says a sentence, "stop stop" and goes on speaking
+- **THEN** the stop sound plays within 1 s of the end of "stop stop", while the user is still speaking
+
+#### Scenario: Start start inside a sentence starts at once
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** someone says "fine start start" and goes on with a sentence without a pause
+- **THEN** the start cue comes within 1 s of the end of "start start", while the sentence is still being said

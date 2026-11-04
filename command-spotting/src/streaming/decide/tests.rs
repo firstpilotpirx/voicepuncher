@@ -29,33 +29,84 @@ fn said(from: f32, text: &str) -> Vec<TimedWord> {
 }
 
 fn decoding(now: f32) -> Moment {
-    Moment::Decoding { now, pause: None }
+    Moment::Decoding { now, pause: None, synced: false }
 }
 
 #[test]
-fn should_report_a_doubled_command_at_once() {
+fn should_report_a_doubled_command_at_once_ending_at_its_first_word() {
+    // Given "stop stop", the first word ending at 1.25 s and the second at 1.55 s
+    let words = said(1.0, "stop stop");
     // When
-    let found = decide(&dictating(), &said(1.0, "stop stop"), decoding(1.6), 0.0);
-    // Then
+    let found = decide(&dictating(), &words, decoding(1.6), 0.0);
+    // Then the command ends with its first word: a recognizer that emits late times the
+    // second word inside the speech after it
     let found = found.expect("a doubled stop");
     assert_eq!(found.commands, ["stop dictation"]);
     assert_eq!(found.placement, Placement::Anywhere);
-    assert!((found.end - 1.55).abs() < 1e-4, "{}", found.end);
+    assert!((found.end - 1.25).abs() < 1e-4, "{}", found.end);
+}
+
+#[test]
+fn should_end_a_doubled_command_written_with_a_capital_and_a_comma_at_its_first_word() {
+    // Given "Restart, restart" as the English recognizer writes it, the first word ending at
+    // 1.25 s and the second at 1.55 s
+    let words = said(1.0, "Restart, restart");
+    let matcher = PhraseMatcher::new(&["restart dictation".into(), "stop dictation".into()]);
+    // When
+    let found = decide(&matcher, &words, decoding(1.6), 0.0);
+    // Then the words count as the same word, whatever their case and punctuation
+    let found = found.expect("a doubled restart");
+    assert_eq!(found.commands, ["restart dictation"]);
+    assert!((found.end - 1.25).abs() < 1e-4, "{}", found.end);
 }
 
 #[test]
 fn should_wait_for_a_one_word_form_to_settle() {
     // Given "stop" just heard, ending at 1.25 s
     let words = said(1.0, "stop");
-    // When
+    // When decoded 0.05 s past it, and when decoded 0.25 s past it with the gate's pause
+    // begun right after it
     let early = decide(&dictating(), &words, decoding(1.3), 0.0);
-    let settled = decide(&dictating(), &words, decoding(1.5), 0.0);
+    let paused = Moment::Decoding { now: 1.5, pause: Some(1.28), synced: false };
+    let settled = decide(&dictating(), &words, paused, 0.0);
     // Then
     assert_eq!(early, None);
     assert_eq!(
         settled.expect("a settled stop").commands,
         ["stop dictation"]
     );
+}
+
+#[test]
+fn should_not_settle_a_lone_word_while_the_gate_hears_speech() {
+    // Given "stop" (the user's "чтобы" of history entry 684) ending at 0.918 s, decoded 0.2 s
+    // past it
+    let words = vec![TimedWord { text: "stop".into(), start: 0.818, end: 0.918 }];
+    // When the gate still hears speech, and when its pause began right after the word
+    let speech_goes_on = Moment::Decoding { now: 1.118, pause: None, synced: false };
+    let paused = Moment::Decoding { now: 1.118, pause: Some(1.0), synced: false };
+    let unsettled = decide(&dictating(), &words, speech_goes_on, 0.0);
+    let settled = decide(&dictating(), &words, paused, 0.0);
+    // Then
+    assert_eq!(unsettled, None);
+    assert_eq!(
+        settled.expect("a settled stop").commands,
+        ["stop dictation"]
+    );
+}
+
+#[test]
+fn should_take_a_sync_for_a_pause_only_after_a_lone_word() {
+    // Given "we should stop" decoded up to the app's sync, 0.3 s past "stop", while the gate
+    // hears the sentence go on
+    let partial = said(1.0, "we should stop");
+    let synced = |now| Moment::Decoding { now, pause: None, synced: true };
+    // When
+    let in_a_sentence = decide(&dictating(), &partial, synced(2.15), 0.0);
+    let alone = decide(&dictating(), &said(1.0, "enter"), synced(1.55), 0.0);
+    // Then the sync settles the lone word, never a command ending the words so far
+    assert_eq!(in_a_sentence, None);
+    assert_eq!(alone.expect("a settled enter").commands, ["press enter"]);
 }
 
 #[test]
@@ -129,10 +180,12 @@ fn should_skip_words_said_before_the_last_report() {
 
 #[test]
 fn should_report_the_next_command_said_after_the_last_report() {
-    // Given "press enter" reported up to 1.55 s, then "stop"
+    // Given "press enter" reported up to 1.55 s, then "stop" ending at 1.85 s, the gate's
+    // pause begun right after it
     let words = said(1.0, "press enter stop");
     // When
-    let next = decide(&dictating(), &words, decoding(2.1), 1.55);
+    let paused = Moment::Decoding { now: 2.1, pause: Some(1.9), synced: false };
+    let next = decide(&dictating(), &words, paused, 1.55);
     // Then
     assert_eq!(
         next.expect("the stop after it").commands,
@@ -192,7 +245,7 @@ fn should_take_a_start_timed_late_after_a_restart_for_its_end() {
 }
 
 fn paused_at(now: f32, pause: f32) -> Moment {
-    Moment::Decoding { now, pause: Some(pause) }
+    Moment::Decoding { now, pause: Some(pause), synced: false }
 }
 
 #[test]

@@ -6,7 +6,9 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
-use voicepuncher_voice_commands::{DICTATING, STANDBY};
+use voicepuncher_voice_commands::{DICTATING, FORMS, STANDBY};
+
+use crate::streaming::respell::respell_word;
 
 use super::{cut, label_word, read_wav, Clip};
 
@@ -41,11 +43,27 @@ impl Row {
         self.command.iter().chain(&self.commands).cloned().collect()
     }
 
-    /// A command closed by "please": the recordings hold such forms, which voice control no
-    /// longer has.
-    fn is_please_form(&self) -> bool {
-        !self.said().is_empty() && self.words.split_whitespace().last() == Some("please")
+    /// A command said in a form voice control no longer has: closed by "please", or its long
+    /// form ("stop dictation", "clear text"), ordinary speech now. A form ending in a command
+    /// word ("press enter", "стоп") counts by that word.
+    fn is_form_gone(&self) -> bool {
+        !self.said().is_empty()
+            && self
+                .words
+                .split_whitespace()
+                .last()
+                .is_some_and(|last| !ends_in_a_command_word(last))
     }
+}
+
+/// Whether `word`, as said or as the Russian recognizer writes it, is a command's one word.
+fn ends_in_a_command_word(word: &str) -> bool {
+    let word = word.to_lowercase();
+    let last = respell_word(&word).map_or(word, |english| english.join(" "));
+    FORMS
+        .iter()
+        .flat_map(|form| form.words.iter())
+        .any(|command| last.ends_with(command))
 }
 
 /// Where a row is cut from its session and what it says.
@@ -57,15 +75,17 @@ pub struct Span {
     pub listening: Vec<String>,
     /// Where, in seconds of the clip, the words of its only command end.
     pub word_end: Option<f32>,
+    /// The words said.
+    pub words: String,
 }
 
-/// The spans of a session's `rows`, sorted by time; unclear rows and commands closed by
-/// "please" are left out.
+/// The spans of a session's `rows`, sorted by time; unclear rows and commands said in a form
+/// voice control no longer has ("please", the long forms) are left out.
 pub fn spans(rows: &[Row]) -> Vec<(usize, Span)> {
     let mut sorted: Vec<(usize, &Row)> = rows.iter().enumerate().collect();
     sorted.sort_by(|a, b| a.1.start.total_cmp(&b.1.start));
     (0..sorted.len())
-        .filter(|&i| !sorted[i].1.unclear && !sorted[i].1.is_please_form())
+        .filter(|&i| !sorted[i].1.unclear && !sorted[i].1.is_form_gone())
         .map(|i| {
             let (n, row) = sorted[i];
             let before = i.checked_sub(1).map_or(0.0, |p| sorted[p].1.end);
@@ -83,6 +103,7 @@ pub fn spans(rows: &[Row]) -> Vec<(usize, Span)> {
                 label,
                 listening: listening(row.state.as_deref(), &row.said()),
                 word_end,
+                words: row.words.clone(),
             };
             (n, span)
         })
@@ -116,6 +137,7 @@ pub fn recorded_clips(voice_samples: &Path) -> Result<Vec<Clip>> {
             label: span.label,
             listening: span.listening,
             word_end: span.word_end,
+            words: span.words,
         }));
     }
     Ok(clips)

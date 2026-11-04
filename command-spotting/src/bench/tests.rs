@@ -91,6 +91,11 @@ fn row(json: &str) -> Row {
     serde_json::from_str(json).expect("a row")
 }
 
+/// The indexes of the `rows` the spans keep.
+fn kept_rows(rows: &[Row]) -> Vec<usize> {
+    spans(rows).iter().map(|(n, _)| *n).collect()
+}
+
 #[test]
 fn should_cut_each_recorded_row_between_its_neighbours() {
     // Given three rows of a session, the second said in standby, the last unclear
@@ -138,6 +143,25 @@ fn should_read_session_ones_manifest_row() {
 }
 
 #[test]
+fn should_leave_out_a_command_said_in_its_long_form() {
+    // Given a recorded "stop dictation" and "clear text", ordinary speech since the long forms
+    // went, among a "stop", a Cyrillic "стоп" and a "press enter", which end in a command word
+    let rows = [
+        row(r#"{"start": 1.0, "end": 1.4, "said": "stop", "commands": ["stop dictation"]}"#),
+        row(
+            r#"{"start": 3.0, "end": 3.8, "said": "stop dictation", "commands": ["stop dictation"]}"#,
+        ),
+        row(r#"{"start": 5.0, "end": 5.4, "said": "стоп", "commands": ["stop dictation"]}"#),
+        row(r#"{"start": 7.0, "end": 7.6, "said": "press enter", "commands": ["press enter"]}"#),
+        row(r#"{"start": 9.0, "end": 9.6, "said": "clear text", "commands": ["clear all text"]}"#),
+    ];
+    // When
+    let kept = kept_rows(&rows);
+    // Then
+    assert_eq!(kept, [0, 2, 3]);
+}
+
+#[test]
 fn should_leave_out_a_command_closed_by_please() {
     // Given a recorded start closed by "please" between two plain ones
     let rows = [
@@ -148,8 +172,7 @@ fn should_leave_out_a_command_closed_by_please() {
         row(r#"{"start": 5.0, "end": 5.4, "said": "start", "commands": ["start dictation"]}"#),
     ];
     // When
-    let spans = spans(&rows);
+    let kept = kept_rows(&rows);
     // Then
-    let kept: Vec<usize> = spans.iter().map(|(n, _)| *n).collect();
     assert_eq!(kept, [0, 2]);
 }

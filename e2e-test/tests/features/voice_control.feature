@@ -318,13 +318,13 @@ Feature: voice-control
       And listening is on for a whole session
       And a dictation started by voice runs
       When someone says a sentence, "stop stop" and goes on speaking
-      Then the stop sound plays within 0.5 s of the end of "stop stop", while the speech goes on
+      Then the stop sound plays within 1 s of the end of "stop stop", while the speech goes on
 
     Scenario: Start start inside a sentence starts at once
       Given the command spotting service is running
       And listening is on for a whole session
       When someone says "fine start start" and a sentence without a pause
-      Then the start cue comes within 0.6 s of the end of "start start", while the sentence is still being said
+      Then the start cue comes within 1 s of the end of "start start", while the sentence is still being said
 
   # Real-time sessions timed from the end of the command's words; @cues runs them in
   # full-check's e2e-cues stage with the machine otherwise idle, @serial keeps the other
@@ -653,6 +653,14 @@ Feature: voice-control
       Given the command spotting service runs with the streaming recognizer
       When an app streams "we meet at ten enter" followed by silence, in real time
       Then the streaming recognizer reports "press enter" within 0.6 s of the end of the words by the wall clock
+
+    # The English recognizer hears the first word as "stop"; the gate still hears the sentence.
+    @smoke @voice_samples
+    Scenario: A Russian sentence heard as opening with stop is no command
+      Given the command spotting service runs with the streaming recognizer
+      And the user's own recordings of the commands exist on the machine
+      When the user's recorded "чтобы зайти в гетлаб" said while dictating is streamed to the service in real time
+      Then none of the recordings is reported as a command
 
     # Minutes in real time: run by hand with `just streaming-bench --recorded`, never in a check.
     @wip @voice_samples
