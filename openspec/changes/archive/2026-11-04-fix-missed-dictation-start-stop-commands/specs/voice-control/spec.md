@@ -79,7 +79,7 @@ With the streaming recognizer on an idle machine, the command spotting service S
 - **THEN** at least half are reported within 0.3 s and at least 9 of 10 within 0.6 s of the end of their words
 
 ### Requirement: A doubled command needs no pause
-The system SHALL carry out a doubled short form ("start start", "restart restart", "stop stop", "cancel cancel", "enter enter", "clear clear", "paste paste") as soon as its second word is heard, without waiting for a pause after it or for the next word, whether silence or speech follows. Inside running speech the second word is heard once the recognizer emits it, which takes the speech past it (the first word alone fires nothing while the gate hears speech): a doubled form said inside a sentence SHALL take effect within 1 s of its end, before the sentence ends.
+The system SHALL carry out a doubled short form ("start start", "restart restart", "stop stop", "cancel cancel", "enter enter", "clear clear", "paste paste") as soon as its second word is heard, without waiting for a pause after it or for the next word, whether silence or speech follows. Inside running speech the second word is heard once the recognizer emits it, which takes the speech past it (the first word alone fires nothing while the gate hears speech): a doubled form said inside a sentence SHALL take effect within 1 s of its end, before the sentence ends. A doubled one-word form SHALL end with its first word: a recognizer that emits late times the second word inside the speech said after it, so the dictation a doubled start or restart begins runs from the end of the first word and the second word is removed from its text.
 
 #### Scenario: Start start then silence starts at once
 - **GIVEN** listening is on

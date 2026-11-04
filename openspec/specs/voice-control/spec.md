@@ -777,7 +777,7 @@ The command spotting service SHALL report every command as it does with the comm
 - **THEN** Return is pressed as usual and the service log warns that the utterance was not kept
 
 ### Requirement: A doubled command needs no pause
-The system SHALL carry out a doubled short form ("start start", "restart restart", "stop stop", "cancel cancel", "enter enter", "clear clear", "paste paste") as soon as its second word is heard, without waiting for a pause after it or for the next word, whether silence or speech follows. Inside running speech the second word is heard once the recognizer emits it, which takes the speech past it (the first word alone fires nothing while the gate hears speech): a doubled form said inside a sentence SHALL take effect within 1 s of its end, before the sentence ends.
+The system SHALL carry out a doubled short form ("start start", "restart restart", "stop stop", "cancel cancel", "enter enter", "clear clear", "paste paste") as soon as its second word is heard, without waiting for a pause after it or for the next word, whether silence or speech follows. Inside running speech the second word is heard once the recognizer emits it, which takes the speech past it (the first word alone fires nothing while the gate hears speech): a doubled form said inside a sentence SHALL take effect within 1 s of its end, before the sentence ends. A doubled one-word form SHALL end with its first word: a recognizer that emits late times the second word inside the speech said after it, so the dictation a doubled start or restart begins runs from the end of the first word and the second word is removed from its text.
 
 #### Scenario: Start start then silence starts at once
 - **GIVEN** listening is on

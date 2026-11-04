@@ -180,11 +180,22 @@ fn ended(moment: Moment) -> bool {
     }
 }
 
+/// `found` as a finding: a doubled one-word form ends with its first word, as a recognizer
+/// that emits late times the second word inside the speech said after it, and the dictation
+/// a doubled start begins would lose its first word; the app removes the second word from
+/// the text.
 fn finding(fresh: &[&TimedWord], found: &Found) -> Finding {
+    let doubled_one_word =
+        found.last == found.first + 1 && fresh[found.first].text == fresh[found.last].text;
+    let last = if doubled_one_word {
+        found.first
+    } else {
+        found.last
+    };
     Finding {
         commands: found.commands.clone(),
         start: fresh[found.first].start,
-        end: fresh[found.last].end,
+        end: fresh[last].end,
         placement: found.placement,
     }
 }

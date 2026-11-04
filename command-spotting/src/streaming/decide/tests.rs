@@ -33,14 +33,17 @@ fn decoding(now: f32) -> Moment {
 }
 
 #[test]
-fn should_report_a_doubled_command_at_once() {
+fn should_report_a_doubled_command_at_once_ending_at_its_first_word() {
+    // Given "stop stop", the first word ending at 1.25 s and the second at 1.55 s
+    let words = said(1.0, "stop stop");
     // When
-    let found = decide(&dictating(), &said(1.0, "stop stop"), decoding(1.6), 0.0);
-    // Then
+    let found = decide(&dictating(), &words, decoding(1.6), 0.0);
+    // Then the command ends with its first word: a recognizer that emits late times the
+    // second word inside the speech after it
     let found = found.expect("a doubled stop");
     assert_eq!(found.commands, ["stop dictation"]);
     assert_eq!(found.placement, Placement::Anywhere);
-    assert!((found.end - 1.55).abs() < 1e-4, "{}", found.end);
+    assert!((found.end - 1.25).abs() < 1e-4, "{}", found.end);
 }
 
 #[test]
