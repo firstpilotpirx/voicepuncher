@@ -10,6 +10,8 @@ use voicepuncher_test_steps::required_env;
 
 use crate::common;
 
+mod quiet_start;
+
 const SAMPLE_RATE: usize = 16_000;
 const PAUSE_SECS: f32 = 1.0;
 

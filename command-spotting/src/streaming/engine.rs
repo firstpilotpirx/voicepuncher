@@ -8,7 +8,7 @@ use anyhow::Result;
 use crate::history::{CommandHistory, HistoryCfg};
 use crate::streaming::Wake;
 
-use super::ports::StreamingModel;
+use super::ports::{SpeechGate, StreamingModel};
 use super::session::{Session, SessionCfg};
 use super::sherpa::{SherpaModel, SileroGate};
 
@@ -57,19 +57,38 @@ impl StreamingEngine {
 
     /// The session of connection `conn`; `wake` is called when a recognizer decoded more.
     pub fn session_waking(&self, conn: u64, wake: Option<Wake>) -> Result<Session<'_>> {
+        let gate = Box::new(SileroGate::load(&self.vad_model)?);
+        Ok(self.session_hearing_with(conn, gate, wake))
+    }
+
+    /// The session of connection `conn` with `gate` in place of the voice gate: a test replays
+    /// what the gate heard at the time.
+    pub fn session_with_gate<'a>(
+        &'a self,
+        conn: u64,
+        gate: Box<dyn SpeechGate + 'a>,
+    ) -> Session<'a> {
+        self.session_hearing_with(conn, gate, None)
+    }
+
+    fn session_hearing_with<'a>(
+        &'a self,
+        conn: u64,
+        gate: Box<dyn SpeechGate + 'a>,
+        wake: Option<Wake>,
+    ) -> Session<'a> {
         let models = self
             .models
             .iter()
             .map(|m| m as &dyn StreamingModel)
             .collect();
-        let gate = Box::new(SileroGate::load(&self.vad_model)?);
         let cfg = SessionCfg {
             conn,
             min_silence_secs: self.min_silence_secs,
             history: self.history.as_ref(),
             wake,
         };
-        Ok(Session::new(models, gate, &cfg))
+        Session::new(models, gate, &cfg)
     }
 
     /// Waits until every command history entry closed so far is written or given up.
