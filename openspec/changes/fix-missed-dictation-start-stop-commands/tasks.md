@@ -25,5 +25,5 @@
 
 ## 5. Release
 
-- [ ] 5.1 Bump `version` in `app/Cargo.toml` to the target version (`kit version-check`); `just test` passes
-- [ ] 5.2 Commit `chore(release): bump version`
+- [x] 5.1 Bump `version` in `app/Cargo.toml` to the target version (`kit version-check`); `just test` passes
+- [x] 5.2 Commit `chore(release): bump version`
