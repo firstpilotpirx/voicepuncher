@@ -5,6 +5,7 @@ pub mod corpus;
 pub mod harness_args;
 pub mod machine_load;
 pub mod scenario_filter;
+pub mod scenario_times;
 pub mod speech;
 pub use voicepuncher_test_steps::speech_cache;
 pub mod unanswered_copies;

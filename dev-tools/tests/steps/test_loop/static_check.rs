@@ -5,7 +5,7 @@ use std::process::Command;
 
 use cucumber::{given, then, when};
 
-use crate::steps::scratch::Scratch;
+use crate::steps::runner::scratch::Scratch;
 use crate::steps::{ran, recipe_body, repo_file, scratch, workspace, Ran};
 use crate::WorkflowWorld;
 
@@ -203,7 +203,7 @@ fn test_recipe_stages(world: &mut WorkflowWorld) {
         || panic!("test runs no _stages:\n{line}"),
         |(_, stages)| stages.trim().to_owned(),
     );
-    crate::steps::locks::run_stages(world, &stages, &[]);
+    crate::steps::runner::locks::run_stages(world, &stages, &[]);
 }
 
 #[then("the run fails in its static stage")]

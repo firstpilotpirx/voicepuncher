@@ -558,3 +558,28 @@ Feature: change-workflow
       And a local commit the remote main does not have
       When the user updates the checkout for the app
       Then the update fails with one line naming "local commit"
+
+  Rule: Each model stage of the check has a time budget
+
+    Scenario: A stage within its budget passes
+      Given a scratch repository with a stand-in task runner
+      And the stage "e2e-smoke-voice" has a budget of 2 seconds
+      When the stage runner runs the stages "e2e-smoke-voice" with the stage taking 1 second
+      Then the run passes
+      And the stage table shows "e2e-smoke-voice" against its budget of 2 seconds
+
+    Scenario: A stage past its budget fails naming the slowest scenarios
+      Given a scratch repository with a stand-in task runner
+      And the stage "e2e-smoke-voice" has a budget of 1 second
+      And the stage "e2e-smoke-voice" reports the scenario times "A slow one 5.5, A quick one 0.2, Another slow one 4.0, B 1.0, C 2.0, D 3.0"
+      When the stage runner runs the stages "e2e-smoke-voice" with the stage taking 2 seconds
+      Then the run fails
+      And the failure names "e2e-smoke-voice" past its budget of 1 second with the slowest scenarios "A slow one 5.5, Another slow one 4.0, D 3.0, C 2.0, B 1.0"
+      And the failure names the busiest processes
+
+    Scenario: The unit stage past its budget warns and passes
+      Given a scratch repository with a stand-in task runner
+      And the stage "test" has a budget of 1 second
+      When the stage runner runs the stages "test" with the stage taking 2 seconds
+      Then the run passes
+      And the run warns that "test" ran past its budget of 1 second

@@ -4,7 +4,7 @@
 use cucumber::{given, then, when};
 
 use super::scratch::Scratch;
-use super::{ran, scratch, Ran};
+use crate::steps::{ran, scratch, Ran};
 use crate::WorkflowWorld;
 
 /// The recipes the stand-in task runner ran, each with what it was given after a tab.

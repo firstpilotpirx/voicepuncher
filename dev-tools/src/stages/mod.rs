@@ -12,6 +12,7 @@
 //! records of the stages that passed while their key held, and one line in the stage journal; every stage's
 //! output is also copied to a log of the run, where the journal finds the failed tests.
 
+pub mod budgets;
 pub mod child;
 mod environment;
 pub mod it_real;
@@ -203,7 +204,17 @@ impl Runner {
         } else {
             "✗"
         };
-        self.note(&format!("stage {mark} {stage} {}", tenths(now() - begun)));
+        let taken = now() - begun;
+        let budgets = budgets::Budgets::read(&self.context);
+        // An unlocked stage runs beside other sessions' builds: past its budget it warns, never fails
+        if let Some(past) = budgets.past(stage, taken) {
+            println!("● {past}");
+        }
+        self.note(&format!(
+            "stage {mark} {stage} {}{}",
+            tenths(taken),
+            budgets.note(stage)
+        ));
         status
     }
 

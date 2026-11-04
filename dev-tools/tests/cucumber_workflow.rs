@@ -23,7 +23,7 @@ pub struct WorkflowWorld {
     /// The repository file or fixture text a scenario checks.
     pub text: String,
     /// A scratch repository with stand-ins for the task runner, the lock and the test runner.
-    pub scratch: Option<steps::scratch::Scratch>,
+    pub scratch: Option<steps::runner::scratch::Scratch>,
     /// What the last command printed and how it ended.
     pub ran: Option<steps::Ran>,
     /// The sizes of the landing groups, or the launchable changes.
@@ -63,7 +63,7 @@ fn names(variable: &str) -> Vec<String> {
 }
 
 fn main() {
-    if let Some(variable) = steps::needs::required_env_call() {
+    if let Some(variable) = steps::runner::needs::required_env_call() {
         voicepuncher_test_steps::required_env(&variable);
         return;
     }

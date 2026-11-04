@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use cucumber::{given, then, when};
 
-use crate::steps::scratch::Scratch;
+use crate::steps::runner::scratch::Scratch;
 use crate::steps::{ran, scratch};
 use crate::WorkflowWorld;
 

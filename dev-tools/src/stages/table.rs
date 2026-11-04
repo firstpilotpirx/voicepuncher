@@ -20,9 +20,11 @@ pub fn lines(text: &str, caller: bool, now: f64) -> Vec<String> {
         .lines()
         .filter_map(
             |line| match line.split_whitespace().collect::<Vec<_>>().as_slice() {
-                ["stage", mark, stage, taken, ..] => {
-                    Some(row(mark, stage, &format!("{taken:>7}s")))
-                }
+                ["stage", mark, stage, taken, rest @ ..] => Some(row(
+                    mark,
+                    stage,
+                    &format!("{taken:>7}s{}", budget_text(rest)),
+                )),
                 ["reused", stage, record, ..] => Some(row(
                     "↺",
                     stage,
@@ -38,6 +40,14 @@ pub fn lines(text: &str, caller: bool, now: f64) -> Vec<String> {
         lines.push(lock_row(class, marks, caller, now));
     }
     lines
+}
+
+/// `  (budget 120 s)` after a stage row that carries `budget=120`.
+fn budget_text(rest: &[&str]) -> String {
+    rest.iter()
+        .find_map(|word| word.strip_prefix("budget="))
+        .map(|budget| format!("  (budget {budget} s)"))
+        .unwrap_or_default()
 }
 
 fn lock_row(class: &str, marks: Marks, caller: bool, now: f64) -> String {

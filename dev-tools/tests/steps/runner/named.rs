@@ -5,7 +5,7 @@
 use cucumber::{given, then, when};
 
 use super::locks::recipes_run;
-use super::{ran, repo_file, scratch, Ran};
+use crate::steps::{ran, repo_file, scratch, Ran};
 use crate::WorkflowWorld;
 
 /// The fields the stand-in task runner logged for the `_stages test` call, by name.

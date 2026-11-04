@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use super::locks::run_stages;
 use super::scratch::Scratch;
-use super::{ran, scratch, Ran};
+use crate::steps::{ran, scratch, Ran};
 use crate::WorkflowWorld;
 
 /// A journal line as the former runner wrote it, for a check that failed in a model stage.

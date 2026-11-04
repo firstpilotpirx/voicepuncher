@@ -4,15 +4,9 @@
 
 pub mod analyzers;
 pub mod architecture_page;
-pub mod checkout;
-pub mod frozen;
 pub mod hosted;
-pub mod journal;
 pub mod landing;
-pub mod locks;
-pub mod named;
-pub mod needs;
-pub mod scratch;
+pub mod runner;
 pub mod test_loop;
 pub mod test_rules;
 
@@ -60,7 +54,7 @@ pub fn ran(world: &crate::WorkflowWorld) -> &Ran {
 }
 
 /// The world's scratch repository, which a `Given` step made.
-pub fn scratch(world: &crate::WorkflowWorld) -> &scratch::Scratch {
+pub fn scratch(world: &crate::WorkflowWorld) -> &runner::scratch::Scratch {
     world
         .scratch
         .as_ref()

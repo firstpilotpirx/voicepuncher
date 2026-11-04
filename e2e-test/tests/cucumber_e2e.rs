@@ -12,9 +12,11 @@ use std::process::ExitStatus;
 use std::time::Duration;
 
 use cucumber::cli::{Empty, Opts, Parser as _};
+use cucumber::writer::Stats;
 use cucumber::{ScenarioType, World};
 use voicepuncher_e2e_test::harness_args;
 use voicepuncher_e2e_test::scenario_filter::{self, has_tag, Gate};
+use voicepuncher_e2e_test::scenario_times;
 
 /// Tags of scenarios that run alone: the accuracy benchmarks load the services on purpose
 /// (the corpus sample is transcribed two at a time), and a scenario beside them would wait
@@ -149,27 +151,62 @@ fn main() {
     // The scenario probe for the suite limit (fail-hung-tests-fast, D10): armed, every scenario
     // blocks forever before its first step, so the suite's nextest limit must stop the harness.
     let hang_probe = std::env::var("VOICEPUNCHER_HANG_PROBE").as_deref() == Ok("1");
-    futures::executor::block_on(
+    let writer = futures::executor::block_on(
         E2eWorld::cucumber()
             .max_concurrent_scenarios(concurrent_scenarios)
             .which_scenario(scenario_type)
-            .before(move |_feature, _rule, scenario, _world| {
-                Box::pin(async move {
-                    if hang_probe {
-                        eprintln!(
-                            "hang probe armed: holding scenario '{}' forever",
-                            scenario.name
-                        );
-                        futures::future::pending::<()>().await;
-                    }
-                })
+            .before(move |feature, _rule, scenario, _world| {
+                scenario_times::begin(scenario_key(feature, scenario));
+                Box::pin(hold_when_armed(hang_probe, scenario.name.clone()))
             })
+            .after(scenario_ended)
             .fail_on_skipped()
             .with_cli(opts)
-            .filter_run_and_exit("tests/features", move |feature, rule, scenario| {
+            .filter_run("tests/features", move |feature, rule, scenario| {
                 filter.runs(feature, rule, scenario)
             }),
     );
+    finish(&writer);
+}
+
+/// The scenario probe: armed, the scenario blocks forever before its first step.
+async fn hold_when_armed(hang_probe: bool, scenario: String) {
+    if hang_probe {
+        eprintln!("hang probe armed: holding scenario '{scenario}' forever");
+        futures::future::pending::<()>().await;
+    }
+}
+
+/// Every scenario's time, for the stage runner's budget failure.
+fn scenario_ended<'a>(
+    feature: &'a cucumber::gherkin::Feature,
+    _rule: Option<&'a cucumber::gherkin::Rule>,
+    scenario: &'a cucumber::gherkin::Scenario,
+    _finished: &'a cucumber::event::ScenarioFinished,
+    _world: Option<&'a mut E2eWorld>,
+) -> futures::future::LocalBoxFuture<'a, ()> {
+    if let Some(line) = scenario_times::end(&scenario_key(feature, scenario), &scenario.name) {
+        println!("{line}");
+    }
+    Box::pin(async {})
+}
+
+/// The five slowest scenarios, then the exit cucumber's `filter_run_and_exit` gives a failed run.
+fn finish(writer: &impl Stats<E2eWorld>) {
+    for line in scenario_times::summary() {
+        println!("{line}");
+    }
+    if writer.execution_has_failed() {
+        eprintln!("{} step(s) failed", writer.failed_steps());
+        std::process::exit(1);
+    }
+}
+
+fn scenario_key(
+    feature: &cucumber::gherkin::Feature,
+    scenario: &cucumber::gherkin::Scenario,
+) -> String {
+    scenario_times::key(&feature.name, scenario.position.line, &scenario.name)
 }
 
 /// The gates of the run. The user's recorded commands stay on the machine; scenarios that

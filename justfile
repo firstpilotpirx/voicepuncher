@@ -167,7 +167,7 @@ rca_version := "0.0.25"
 jscpd_version := "4.0.5"
 shellcheck_version := "0.11.0"
 gitleaks_version := "8.30.1"
-trufflehog_version := "3.99.6"
+trufflehog_version := "3.99.8"
 # The ratcheted analyzers (analyzers/), run from the workspace root
 analyzers := "cargo run --quiet --package voicepuncher-analyzers --"
 
