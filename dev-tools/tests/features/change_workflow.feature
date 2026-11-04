@@ -433,6 +433,13 @@ Feature: change-workflow
       Then the test runner ran the desktop tests
       And the justfile's full check runs the stage "it-real"
 
+    Scenario: A business rule marked for the desktop is a desktop test
+      Given a scratch repository with the project's test needs
+      And the listed tests are a business rule that needs "needs_desktop" and a plain one
+      When the test selection is gated with every service started
+      Then the selection leaves out the tests of "needs_desktop"
+      And the run says it skipped 1 test for "needs_desktop"
+
     Scenario: A missing permission skips the desktop stage and names it
       Given a scratch repository with the project's test needs
       And the listed tests are two that need "needs_desktop"

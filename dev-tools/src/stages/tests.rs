@@ -138,7 +138,7 @@ fn should_name_a_missing_permission_and_leave_out_the_tests_that_press_keys() {
         it_real::missing_lines("Accessibility not granted to Terminal\n"),
         ["⊘ Accessibility not granted to Terminal: the desktop tests are skipped (grant it in System Settings › Privacy & Security, or run just it-real by hand)"]
     );
-    assert!(it_real::FILTER.contains("not test(/::needs_real_keyboard::/)"));
+    assert!(it_real::FILTER.contains("not test(/needs_real_keyboard::/)"));
     assert_eq!(
         it_real::filter(Some("test(=a)"), Some("f")),
         format!("{} & (test(=a)) & not (f)", it_real::FILTER)

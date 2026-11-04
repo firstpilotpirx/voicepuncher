@@ -12,6 +12,7 @@ use objc2_foundation::{NSArray, NSString};
 use voicepuncher::adapters::secondary::textpasting::macos::MacOsTextPaster;
 use voicepuncher::core::application::TextPaster;
 use voicepuncher::core::domain::CleanedText;
+use voicepuncher_test_steps::required_env;
 
 const RESTORE_DELAY_MS: u64 = 50;
 const RESTORE_DEADLINE: Duration = Duration::from_secs(2);
@@ -180,22 +181,6 @@ fn should_leave_an_empty_clipboard_empty_after_the_paste() {
 }
 
 #[test]
-fn should_not_overwrite_a_copy_made_after_the_paste() {
-    // Given
-    const SLOW_RESTORE_DELAY_MS: u64 = 300;
-    const AFTER_RESTORE_WINDOW: Duration = Duration::from_millis(3 * SLOW_RESTORE_DELAY_MS);
-    let pasteboard = OwnPasteboard::new();
-    write_items(&pasteboard, &plain_text(b"copied before the paste"));
-    let _paster = paste_without_keystroke(&pasteboard, SLOW_RESTORE_DELAY_MS);
-    // When
-    let copied_after = plain_text(b"copied after the paste");
-    write_items(&pasteboard, &copied_after);
-    std::thread::sleep(AFTER_RESTORE_WINDOW);
-    // Then
-    assert_eq!(read_items(&pasteboard), copied_after);
-}
-
-#[test]
 fn should_restore_the_clipboard_at_once_when_the_app_quits_before_the_delay() {
     // Given — a paste whose restore waits far longer than the test
     let pasteboard = OwnPasteboard::new();
@@ -224,17 +209,41 @@ fn should_restore_the_users_clipboard_when_a_second_paste_comes_within_the_delay
     assert_every_type_is_back(&pasteboard, &copied);
 }
 
-#[test]
-fn should_leave_the_general_pasteboard_alone_when_pasting_through_another() {
-    // Given
-    let pasteboard = OwnPasteboard::new();
-    let general_before = NSPasteboard::generalPasteboard().changeCount();
-    // When
-    let paster = paste_without_keystroke(&pasteboard, 60_000);
-    drop(paster);
-    // Then
-    assert_eq!(
-        NSPasteboard::generalPasteboard().changeCount(),
-        general_before
-    );
+// The runner's session has no usable pasteboard: a copy written after the paste, and the general pasteboard
+// itself, are desktop tests (it-real).
+mod needs_desktop {
+    use super::*;
+
+    #[test]
+    fn should_not_overwrite_a_copy_made_after_the_paste() {
+        required_env("VOICEPUNCHER_DESKTOP_IT");
+        // Given
+        const SLOW_RESTORE_DELAY_MS: u64 = 300;
+        const AFTER_RESTORE_WINDOW: Duration = Duration::from_millis(3 * SLOW_RESTORE_DELAY_MS);
+        let pasteboard = OwnPasteboard::new();
+        write_items(&pasteboard, &plain_text(b"copied before the paste"));
+        let _paster = paste_without_keystroke(&pasteboard, SLOW_RESTORE_DELAY_MS);
+        // When
+        let copied_after = plain_text(b"copied after the paste");
+        write_items(&pasteboard, &copied_after);
+        std::thread::sleep(AFTER_RESTORE_WINDOW);
+        // Then
+        assert_eq!(read_items(&pasteboard), copied_after);
+    }
+
+    #[test]
+    fn should_leave_the_general_pasteboard_alone_when_pasting_through_another() {
+        required_env("VOICEPUNCHER_DESKTOP_IT");
+        // Given
+        let pasteboard = OwnPasteboard::new();
+        let general_before = NSPasteboard::generalPasteboard().changeCount();
+        // When
+        let paster = paste_without_keystroke(&pasteboard, 60_000);
+        drop(paster);
+        // Then
+        assert_eq!(
+            NSPasteboard::generalPasteboard().changeCount(),
+            general_before
+        );
+    }
 }

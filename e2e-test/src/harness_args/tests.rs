@@ -175,6 +175,22 @@ fn should_show_one_test_per_rule_of_a_feature_file() {
 }
 
 #[test]
+fn should_put_the_need_of_a_tagged_rule_into_its_test_name() {
+    let text = "Feature: f\n\n  Rule: Plain\n\n    Scenario: a\n      Given x\n\n  # the real pointer\n  @needs_desktop @serial\n  Rule: Beside the pointer\n\n    Scenario: b\n      Given x\n";
+    assert_eq!(
+        rule_tests("component/f", text),
+        vec![
+            rule_test("component/f/plain", "component/f", Some("Plain")),
+            rule_test(
+                "component/f/needs_desktop::beside_the_pointer",
+                "component/f",
+                Some("Beside the pointer"),
+            ),
+        ]
+    );
+}
+
+#[test]
 fn should_keep_the_scenarios_outside_any_rule_under_the_file_name() {
     let text = "Feature: f\n\n  Scenario: outside\n    Given x\n\n  Rule: A rule\n\n    Example: inside\n      Given x\n";
     assert_eq!(
