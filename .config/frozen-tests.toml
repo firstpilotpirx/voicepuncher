@@ -190,3 +190,12 @@ stage = "test"
 beside = "other sessions' checks (3 peer changes' just check / full-check and their builds) and this worktree's dev-tools harness"
 branch = "chore/speed-up-check-runtime"
 
+
+[[frozen]]
+test = "scenario: Ordinary speech triggers no command"
+frozen = "2026-11-04"
+recipe = "check"
+stage = "e2e-quick"
+beside = "a peer's just static (clippy build, 369 s) and Go builds and tests of another project beside the e2e phase; the command spotting service lagged 9 s on 99 s of corpus audio"
+branch = "chore/speed-up-check-runtime"
+
