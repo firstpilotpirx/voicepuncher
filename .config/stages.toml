@@ -136,6 +136,8 @@ stage_inputs = '''
     e2e-test/tests/steps/local_services/mod.rs             e2e-smoke-services,e2e-resilience
     e2e-test/tests/steps/local_services/*              e2e-smoke-services,e2e-resilience
     e2e-test/tests/features/dictation_archive.feature  e2e-smoke-speech
+    e2e-test/tests/features/change_workflow.feature    e2e-regression
+    e2e-test/tests/steps/change_workflow.rs            e2e-regression
     e2e-test/tests/steps/dictation_archive.rs          e2e-smoke-speech
 '''
 

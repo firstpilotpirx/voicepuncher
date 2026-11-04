@@ -14,7 +14,8 @@ pub(super) fn start_session(world: &mut E2eWorld) -> Result<()> {
         .clone()
         .context("the command spotting service is not set up")?;
     let service = SpottingService::from(&url);
-    let session = HandsFreeSession::start(service, env("VOICEPUNCHER_TRANSCRIPTION_URL")?)?;
+    let pace = world.voice.pace;
+    let session = HandsFreeSession::start(service, env("VOICEPUNCHER_TRANSCRIPTION_URL")?, pace)?;
     let deadline = Instant::now() + REACTION;
     while !session.events().contains(&Event::Listening) {
         if Instant::now() >= deadline {

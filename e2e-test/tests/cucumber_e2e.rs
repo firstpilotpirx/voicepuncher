@@ -15,6 +15,7 @@ use cucumber::cli::{Empty, Opts, Parser as _};
 use cucumber::writer::Stats;
 use cucumber::{ScenarioType, World};
 use voicepuncher_e2e_test::harness_args;
+use voicepuncher_e2e_test::pace::Pace;
 use voicepuncher_e2e_test::scenario_filter::{self, has_tag, Gate};
 use voicepuncher_e2e_test::scenario_times;
 
@@ -62,6 +63,8 @@ pub struct VoiceRun {
     pub session: Option<steps::voice_control::HandsFreeSession>,
     /// The streaming recognizer a scenario drives in this process.
     pub streaming: steps::voice_control::streaming::StreamingRun,
+    /// How fast the room between a session's utterances is fed: real time only under timing.
+    pub pace: Pace,
 }
 
 /// The corpus sample of an accuracy scenario and its word error rates.
@@ -155,7 +158,9 @@ fn main() {
         E2eWorld::cucumber()
             .max_concurrent_scenarios(concurrent_scenarios)
             .which_scenario(scenario_type)
-            .before(move |feature, _rule, scenario, _world| {
+            .before(move |feature, rule, scenario, world| {
+                world.voice.pace =
+                    Pace::of_tags(scenario_filter::merged_tags(feature, rule, scenario));
                 scenario_times::begin(scenario_key(feature, scenario));
                 Box::pin(hold_when_armed(hang_probe, scenario.name.clone()))
             })

@@ -13,6 +13,7 @@ use voicepuncher::adapters::secondary::commandspotting::websocket::{
 };
 use voicepuncher::adapters::secondary::transcription::openai::OpenAiTranscriber;
 use voicepuncher::config::TranscriptionCfg;
+use voicepuncher_e2e_test::pace::Pace;
 use voicepuncher_e2e_test::speech::read_wav;
 use voicepuncher_e2e_test::voice_commands::{spoken_by, spoken_with_pauses};
 
@@ -125,6 +126,8 @@ pub struct HandsFreeSession {
     starts: Mutex<Vec<start_cue::MeasuredStart>>,
     /// How long the session's run took.
     ran_for: Mutex<Option<Duration>>,
+    /// How fast the room between the steps is fed.
+    pace: Pace,
 }
 
 impl std::fmt::Debug for HandsFreeSession {
@@ -175,7 +178,7 @@ fn stand_in_parts(
 }
 
 impl HandsFreeSession {
-    fn start(service: SpottingService, transcription_url: String) -> Result<Self> {
+    fn start(service: SpottingService, transcription_url: String, pace: Pace) -> Result<Self> {
         let events = Events::default();
         let cues = Cues::default();
         let stops = Cues::default();
@@ -202,6 +205,7 @@ impl HandsFreeSession {
             to_spotter,
             starts: Mutex::default(),
             ran_for: Mutex::default(),
+            pace,
         })
     }
 
@@ -237,8 +241,9 @@ impl HandsFreeSession {
                 return Ok(false);
             }
             self.hear(frame)?;
-            // WHY: on a fixed schedule, so a slow send does not stretch the room's sound.
-            frame_due += FRAME_TIME;
+            // WHY: on a fixed schedule, so a slow send does not stretch the room's sound; ten
+            // times faster than real time unless the scenario is timed (Pace).
+            frame_due += self.pace.frame_interval(FRAME_TIME);
             std::thread::sleep(frame_due.saturating_duration_since(Instant::now()));
         }
         Ok(false)

@@ -4,6 +4,7 @@ pub mod conversions;
 pub mod corpus;
 pub mod harness_args;
 pub mod machine_load;
+pub mod pace;
 pub mod scenario_filter;
 pub mod scenario_times;
 pub mod speech;
