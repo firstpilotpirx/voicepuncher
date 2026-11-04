@@ -318,13 +318,13 @@ Feature: voice-control
       And listening is on for a whole session
       And a dictation started by voice runs
       When someone says a sentence, "stop stop" and goes on speaking
-      Then the stop sound plays within 0.5 s of the end of "stop stop", while the speech goes on
+      Then the stop sound plays within 1 s of the end of "stop stop", while the speech goes on
 
     Scenario: Start start inside a sentence starts at once
       Given the command spotting service is running
       And listening is on for a whole session
       When someone says "fine start start" and a sentence without a pause
-      Then the start cue comes within 0.6 s of the end of "start start", while the sentence is still being said
+      Then the start cue comes within 1 s of the end of "start start", while the sentence is still being said
 
   # Real-time sessions timed from the end of the command's words; @cues runs them in
   # full-check's e2e-cues stage with the machine otherwise idle, @serial keeps the other

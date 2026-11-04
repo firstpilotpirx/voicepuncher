@@ -777,7 +777,7 @@ The command spotting service SHALL report every command as it does with the comm
 - **THEN** Return is pressed as usual and the service log warns that the utterance was not kept
 
 ### Requirement: A doubled command needs no pause
-The system SHALL carry out a doubled short form ("start start", "restart restart", "stop stop", "cancel cancel", "enter enter", "clear clear", "paste paste") as soon as its second word is heard, without waiting for a pause after it or for the next word, whether silence or speech follows.
+The system SHALL carry out a doubled short form ("start start", "restart restart", "stop stop", "cancel cancel", "enter enter", "clear clear", "paste paste") as soon as its second word is heard, without waiting for a pause after it or for the next word, whether silence or speech follows. Inside running speech the second word is heard once the recognizer emits it, which takes the speech past it (the first word alone fires nothing while the gate hears speech): a doubled form said inside a sentence SHALL take effect within 1 s of its end, before the sentence ends.
 
 #### Scenario: Start start then silence starts at once
 - **GIVEN** listening is on
@@ -788,13 +788,13 @@ The system SHALL carry out a doubled short form ("start start", "restart restart
 #### Scenario: Stop stop in running speech stops at once
 - **GIVEN** a dictation runs
 - **WHEN** the user says a sentence, "stop stop" and goes on speaking
-- **THEN** the stop sound plays within 0.5 s of the end of "stop stop", while the user is still speaking
+- **THEN** the stop sound plays within 1 s of the end of "stop stop", while the user is still speaking
 
 #### Scenario: Start start inside a sentence starts at once
 - **GIVEN** listening is on
 - **AND** no dictation runs
 - **WHEN** someone says "fine start start" and goes on with a sentence without a pause
-- **THEN** the start cue comes within 0.6 s of the end of "start start", while the sentence is still being said
+- **THEN** the start cue comes within 1 s of the end of "start start", while the sentence is still being said
 
 ### Requirement: Each state accepts its own commands, paste in both
 The system SHALL accept "start dictation" and "clear all text" only with no dictation running, "stop dictation", "cancel dictation" and "restart dictation" only during a dictation, and "press enter" and "paste text" in both. A command spoken in a state that does not accept it SHALL have no effect. "start" said during a dictation, however and wherever said, SHALL neither be taken for "restart" nor end the dictation.
