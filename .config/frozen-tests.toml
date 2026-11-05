@@ -216,3 +216,12 @@ stage = "e2e-quick"
 beside = "mean WER 0.055 over 10 recordings vs baseline 0.031 (5ee5fbd): main's 100-sample WER rose 0.0471 → 0.0523 on 2026-11-01 (feat/faster-stop-to-paste) within its margin; the 10-sample stage had not run since 2026-10-28; this branch touches no recognition path"
 branch = "chore/speed-up-check-runtime"
 
+
+[[frozen]]
+test = "voicepuncher-command-spotting streaming::session::tests::opening::should_replay_none_of_the_last_utterances_speech_into_the_next"
+frozen = "2026-11-05"
+recipe = "test"
+stage = "test"
+beside = "another worktree (laughing-hermann-7fadc2) ran the build stages of its full-check beside it"
+branch = "fix/settle-chain-tail-at-the-close"
+
