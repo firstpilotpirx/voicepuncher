@@ -4,6 +4,8 @@ use std::fmt;
 
 use crate::conversions::saturating_usize;
 
+use super::Pace;
+
 /// What the session reported for one clip.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Outcome {
@@ -80,6 +82,15 @@ pub fn processing_per_second(outcomes: &[Outcome]) -> Option<f64> {
     let audio: f64 = outcomes.iter().map(|o| o.audio_secs).sum();
     let processing: f64 = outcomes.iter().map(|o| o.processing_secs).sum();
     (audio > 0.0).then(|| processing / audio)
+}
+
+/// The lines a report ends with: in the fast pace what its delays replay of the service's
+/// timing and what they leave out; none in real time, whose delays are the wall clock's.
+pub const fn report_tail(pace: Pace) -> Option<&'static str> {
+    match pace {
+        Pace::RealTime => None,
+        Pace::Fast => Some(not_replayed()),
+    }
 }
 
 /// What the fast pace's delays replay of the service's timing, and what they leave out.

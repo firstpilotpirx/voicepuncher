@@ -202,10 +202,24 @@ mod paces {
         for named in [
             "a load other than the bench's own",
             "the service's poll and wake",
-            "the app's audio path",
+            "the app's audio path and its syncs",
             "time within a 20 ms frame",
         ] {
             assert!(notes.contains(named), "{notes}");
         }
+    }
+
+    #[test]
+    fn should_end_only_the_fast_report_with_what_is_not_replayed() {
+        // Then the fast report's last line names what is not replayed; the real-time report ends
+        // with its summaries
+        let tail = report_tail(Pace::Fast).expect("a tail in the fast pace");
+        assert!(
+            tail.lines()
+                .last()
+                .is_some_and(|l| l.starts_with("not replayed:")),
+            "{tail}"
+        );
+        assert_eq!(report_tail(Pace::RealTime), None);
     }
 }
