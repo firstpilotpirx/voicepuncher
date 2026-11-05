@@ -25,7 +25,7 @@ pub(crate) mod spotting_service;
 mod stand_ins;
 pub(crate) mod streaming;
 
-pub use session::HandsFreeSession;
+pub use session::{HandsFreeSession, RecordedChain};
 
 use session::{recorded_form, until_last_sound, users_quiet_restart};
 

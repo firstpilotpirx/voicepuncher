@@ -49,5 +49,5 @@ The system SHALL carry out a chain of two or three different commands said one r
 
 #### Scenario: The user's recorded chains keep their last command
 - **GIVEN** a dictation runs
-- **WHEN** each of the user's recorded chains whose last command counts only after the one before it ("start" or "clear" while dictating) is played in real time
+- **WHEN** each of the user's recorded chains whose last command counts only after the one before it ("start" or "clear" while dictating) is played
 - **THEN** every command of the chain is carried out, in the order said, each once

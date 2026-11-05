@@ -61,6 +61,8 @@ pub struct VoiceRun {
     pub listened_before_secs: f32,
     pub hands_free: Option<steps::voice_control::HandsFree>,
     pub session: Option<steps::voice_control::HandsFreeSession>,
+    /// The user's recorded chains a scenario played through the app, with what it carried out.
+    pub recorded_chains: Vec<steps::voice_control::RecordedChain>,
     /// The streaming recognizer a scenario drives in this process.
     pub streaming: steps::voice_control::streaming::StreamingRun,
     /// How fast the room between a session's utterances is fed: real time only under timing.

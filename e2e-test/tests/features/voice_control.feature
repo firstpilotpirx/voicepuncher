@@ -418,6 +418,13 @@ Feature: voice-control
         | Okay, paste, enter              | no dictation runs | paste text, press enter                      |
         | Okay, enter, clear              | no dictation runs | press enter, clear all text                  |
 
+    @smoke @voice_samples
+    Scenario: The user's recorded chains keep their last command
+      Given the command spotting service is running
+      And the user's own recordings of the commands exist on the machine
+      When each of the user's recorded chains whose last command counts only after the one before it is played while dictating
+      Then every command of each chain takes effect in order, each once
+
   Rule: An utterance ends after 0.3 s of silence
 
     @smoke @serial
