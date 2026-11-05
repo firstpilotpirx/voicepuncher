@@ -22,4 +22,4 @@
 
 ## 4. Version and manual checks
 
-- [x] 4.1 `version` in `app/Cargo.toml` stays 0.46.2 (no release); manual checks: none
+- [x] 4.1 `version` in `app/Cargo.toml` stays 0.46.3 (no release); manual checks: none
