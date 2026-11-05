@@ -21,6 +21,7 @@ use super::ports::{SpeechGate, StreamingModel, GATE_WINDOW};
 
 mod decoder;
 mod kept;
+mod reports;
 mod utterance;
 use kept::Kept;
 use utterance::{Closed, Utterance, Wait};
