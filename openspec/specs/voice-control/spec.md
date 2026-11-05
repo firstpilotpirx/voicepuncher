@@ -902,7 +902,7 @@ With the streaming recognizer, a command word the Russian recognizer hears in Cy
 - **THEN** each stays the word it is and is no command
 
 ### Requirement: The first recognizer to hear a command reports it once
-With the streaming recognizer, a command SHALL be reported by whichever recognizer hears it first; the same command heard by the other recognizer in the same utterance SHALL NOT be reported again, and a doubled command ("stop stop") SHALL count once.
+With the streaming recognizer, a command SHALL be reported by whichever recognizer hears it first; the same command heard by the other recognizer in the same utterance SHALL NOT be reported again, however far apart the two recognizers time it: the n-th time one recognizer hears a command in an utterance is the utterance's n-th, whatever its stamps. A doubled command ("stop stop") SHALL count once, and the same command said again after a pause in the utterance SHALL count again.
 
 #### Scenario: A command both recognizers hear is reported once
 - **GIVEN** the command spotting service runs with the streaming recognizer
@@ -913,6 +913,18 @@ With the streaming recognizer, a command SHALL be reported by whichever recogniz
 - **GIVEN** the command spotting service runs with the streaming recognizer
 - **WHEN** an app streams "enter enter" followed by silence
 - **THEN** the service reports "press enter" exactly once
+
+#### Scenario: A command the recognizers time a second apart is reported once
+- **GIVEN** the command spotting service runs with the streaming recognizer
+- **AND** the English recognizer times the words it hears about a second later than the Russian one
+- **WHEN** an app streams "enter" followed by silence, so the Russian recognizer reports it at the pause and the English one only near the close
+- **THEN** the service reports "press enter" exactly once
+
+#### Scenario: A command said twice with a pause between is reported twice by both recognizers
+- **GIVEN** the command spotting service runs with the streaming recognizer
+- **AND** the English recognizer times the words it hears about a second later than the Russian one
+- **WHEN** an app streams "enter", a pause the gate misses, and "enter" again, both heard by both recognizers
+- **THEN** the service reports "press enter" exactly twice
 
 ### Requirement: Each streaming utterance is kept with its texts and stage times
 With the streaming recognizer and a command history, the service SHALL keep every utterance the voice gate opened: its audio from the replayed half second on, each recognizer's texts with their stream times, the command and the recognizer that heard it when one was reported, the times of onset, first text, report and end of speech, and each recognizer's decode time; and SHALL log one line per utterance with those times. An utterance in which no command was reported SHALL be kept as such, so a missed command can be found in the history.

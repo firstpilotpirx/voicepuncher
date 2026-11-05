@@ -8,6 +8,7 @@ use crate::streaming::ports::{Decoded, RecognizerStream};
 
 mod chain_tail;
 mod close_order;
+mod doubled_reports;
 mod handover;
 mod history;
 mod opening;

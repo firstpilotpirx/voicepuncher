@@ -22,7 +22,7 @@ Interface: none.
 
 ## Impact
 
-- `command-spotting/src/streaming/decide/mod.rs`, `command-spotting/src/streaming/session/utterance.rs`, `command-spotting/src/streaming/session/tests/`.
+- `command-spotting/src/streaming/decide/mod.rs`, `command-spotting/src/streaming/session/utterance.rs`, `command-spotting/src/streaming/session/reports.rs` (new), `command-spotting/src/streaming/session/tests/`.
 
 ## Open points
 
