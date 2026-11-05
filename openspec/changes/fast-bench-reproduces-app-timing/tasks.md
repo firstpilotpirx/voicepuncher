@@ -9,9 +9,9 @@
 
 ## 2. The fast pace's delay and footer
 
-- [ ] 2.1 Red: bench unit tests `should_count_the_fast_delay_from_the_stream_position` and `should_name_what_the_fast_pace_does_not_replay` in `command-spotting/src/bench/`; `just test-one` fails
-- [ ] 2.2 Green: `run_clip` opens a replaying session in the fast pace, stamps each report with the stream position and counts its delay from the clip's word end; `not_replayed()` text in `bench/summary.rs`; `streaming_bench.rs` prints it after the summaries in `--fast` and its `--fast` help says the delays are replayed; `just test-one` passes
-- [ ] 2.3 `just static`, `just test`, commit
+- [x] 2.1 Red: bench unit tests `should_count_the_fast_delay_from_the_stream_position` and `should_name_what_the_fast_pace_does_not_replay` in `command-spotting/src/bench/`; `just test-one` fails
+- [x] 2.2 Green: `run_clip` opens a replaying session in the fast pace, stamps each report with the stream position and counts its delay from the clip's word end; `not_replayed()` text in `bench/summary.rs`; `streaming_bench.rs` prints it after the summaries in `--fast` and its `--fast` help says the delays are replayed; `just test-one` passes
+- [x] 2.3 `just static`, `just test`, commit
 
 ## 3. The paces agree
 
