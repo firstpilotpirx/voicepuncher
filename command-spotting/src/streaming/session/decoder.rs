@@ -120,10 +120,7 @@ impl Decoder {
     /// those whose decode would have ended by `now`, once the thread decoded everything fed.
     pub fn arrived(&mut self, now: f32) -> Vec<Update> {
         match self.delivery {
-            Delivery::AsDecoded => {
-                let updates: Vec<Update> = self.updates.try_iter().collect();
-                updates.into_iter().for_each(|u| self.queue(u));
-            }
+            Delivery::AsDecoded => self.receive_arrived(),
             Delivery::Replayed => self.receive_all(),
         }
         self.release_by(now)
@@ -136,13 +133,16 @@ impl Decoder {
         self.release_by(f32::INFINITY)
     }
 
+    /// Takes the updates the thread sent so far.
+    fn receive_arrived(&mut self) {
+        while let Ok(update) = self.updates.try_recv() {
+            self.queue(update);
+        }
+    }
+
     /// Takes updates from the thread until it decoded everything fed.
     fn receive_all(&mut self) {
-        self.updates
-            .try_iter()
-            .collect::<Vec<Update>>()
-            .into_iter()
-            .for_each(|u| self.queue(u));
+        self.receive_arrived();
         while !self.received_all() {
             let Ok(update) = self.updates.recv() else {
                 break;
