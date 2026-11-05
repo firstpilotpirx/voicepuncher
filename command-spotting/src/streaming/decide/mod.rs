@@ -1,6 +1,6 @@
 //! Whether the words a streaming recognizer heard so far say a command to report now.
 
-use crate::matcher::{words, Found, PhraseMatcher, Placement};
+use crate::matcher::{commands_said, words, Found, PhraseMatcher, Placement, Said};
 use crate::streaming::words::TimedWord;
 
 /// What a decision is asked at.
@@ -67,15 +67,32 @@ fn ends_its_word(last: &Finding, found: &Finding) -> bool {
     }
 }
 
+/// What the utterance reported so far: the end of its last report, and the commands of every
+/// report in order.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Reported {
+    pub until: f32,
+    pub commands: Vec<String>,
+}
+
 /// The commands to report of `words`, heard so far in the utterance, at `moment`; only the
-/// words said after `reported_until`, the end of the last report, count.
+/// words said after what the utterance reported count: after the reported commands where
+/// the recognizer's text holds them, and after `reported.until`, the end of the last report.
 pub fn decide(
     matcher: &PhraseMatcher,
     words: &[TimedWord],
     moment: Moment,
-    reported_until: f32,
+    reported: &Reported,
 ) -> Option<Finding> {
-    let fresh: Vec<&TimedWord> = words.iter().filter(|w| w.start >= reported_until).collect();
+    let all: Vec<&str> = words.iter().map(|w| w.text.as_str()).collect();
+    let from = after_reported(&commands_said(&all), &reported.commands);
+    if let Some(found) = chain_tail(matcher, words, from) {
+        return Some(found);
+    }
+    let fresh: Vec<&TimedWord> = words[from..]
+        .iter()
+        .filter(|w| w.start >= reported.until)
+        .collect();
     let texts: Vec<&str> = fresh.iter().map(|w| w.text.as_str()).collect();
     if let Some(found) = before_a_pause(matcher, &fresh) {
         return Some(found);
@@ -83,28 +100,44 @@ pub fn decide(
     if let Some(found) = placed(matcher, &texts) {
         return Some(finding(&fresh, &found));
     }
-    if let Some(found) = chain_tail(matcher, words, reported_until) {
-        return Some(found);
-    }
     alone(matcher, &fresh, moment).or_else(|| ending(matcher, &fresh, &texts, moment))
 }
 
-/// The commands of a chain said after the last report, the chain matched over every word of
+/// The index of the first word after the reported commands in `said`, the commands the
+/// recognizer's text holds: the longest end of `reported` said in order; 0 when it holds
+/// none. The commands, never the stamps, tell what is reported: the other recognizer stamps
+/// the same words up to a second apart, and the app may have switched state since, so the
+/// matcher no longer accepts the chain's first command.
+fn after_reported(said: &[Said], reported: &[String]) -> usize {
+    (1..=reported.len())
+        .rev()
+        .find_map(|n| {
+            let mut left = reported[reported.len() - n..].iter();
+            let mut next = left.next();
+            let mut after = 0;
+            for command in said {
+                if next.is_some_and(|c| c == command.phrase) {
+                    after = command.last + 1;
+                    next = left.next();
+                }
+            }
+            next.is_none().then_some(after)
+        })
+        .unwrap_or(0)
+}
+
+/// The commands of a chain after its reported ones, the chain matched over every word of
 /// the utterance: a recognizer that emits late decodes the chain's last command a decode
 /// after the ones before it were reported, and alone among the fresh words it is no command
-/// ("start" while dictating counts only after "stop"). The commands whose first word starts
-/// before `reported_until` are reported already; nothing when none is, or every one.
-fn chain_tail(
-    matcher: &PhraseMatcher,
-    words: &[TimedWord],
-    reported_until: f32,
-) -> Option<Finding> {
+/// ("start" while dictating counts only after "stop"). The commands whose first word comes
+/// before `from` are reported; nothing when none is, or every one.
+fn chain_tail(matcher: &PhraseMatcher, words: &[TimedWord], from: usize) -> Option<Finding> {
     let texts: Vec<&str> = words.iter().map(|w| w.text.as_str()).collect();
     let found = matcher.anywhere(&texts)?;
     let reported = found
         .spans
         .iter()
-        .take_while(|(first, _)| words[*first].start < reported_until)
+        .take_while(|(first, _)| *first < from)
         .count();
     if reported == 0 || reported == found.commands.len() {
         return None;
@@ -154,7 +187,7 @@ fn before_a_pause(matcher: &PhraseMatcher, fresh: &[&TimedWord]) -> Option<Findi
         .windows(2)
         .position(|pair| pair[1].start - pair[0].end >= WORD_PAUSE_SECS)?;
     let before: Vec<TimedWord> = fresh[..=cut].iter().map(|w| (*w).clone()).collect();
-    decide(matcher, &before, Moment::Closing, 0.0)
+    decide(matcher, &before, Moment::Closing, &Reported::default())
 }
 
 /// The command the whole of `fresh` says once settled, so "stop the" of "stop the car" waits

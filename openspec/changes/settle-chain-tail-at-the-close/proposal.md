@@ -4,12 +4,12 @@ A chain of commands said in one breath ("that is all stop enter start") is one u
 
 ## What Changes
 
-- A command said right after a reported chain continues it: the service matches the chain over every word of the utterance and reports the commands said after the last report, so the tail is reported once, by the first recognizer to decode it, in the order said, with "start" last accepted as the chain's end as today.
+- A command said right after a reported chain continues it: the service matches the chain over every word of the utterance and reports the commands beyond those the utterance already reported, so the tail is reported once, by the first recognizer to decode it, in the order said, with "start" last accepted as the chain's end as today; the other recognizer's words of a reported chain, however it stamps them, are not reported again.
 - The loss is measured before and after on the user's recorded chains (`just streaming-bench --recorded`, sessions 1–6, session 4 three times in real time), in the design.
 - A session test with scripted recognizers where the English one emits the chain's last word only after the commands before it were reported expects the last command reported.
 
 Current stage: PoC. Target stage: PoC.
-Scope: the decision of `command-spotting/src/streaming/decide/mod.rs` and its call in `command-spotting/src/streaming/session/utterance.rs`; the decide unit tests, the session tests of `command-spotting/src/streaming/session/tests/`, and an E2E scenario over the user's recorded chains in `e2e-test/tests/features/voice_control.feature`.
+Scope: the decision of `command-spotting/src/streaming/decide/mod.rs`, its call in `command-spotting/src/streaming/session/utterance.rs` and what `command-spotting/src/streaming/session/reports.rs` lets out, with the commands said found by `command-spotting/src/matcher/`; the decide unit tests, the session tests of `command-spotting/src/streaming/session/tests/`, and an E2E scenario over the user's recorded chains in `e2e-test/tests/features/voice_control.feature`.
 Acceptance bar: no chain tail lost on the user's recorded chains in three real-time bench runs of session 4, nor on sessions 1–6; the new tests pass and the existing chain, close-order and voice-sample tests stay green; `just check` passes; `full-check` with the voice control regression scenarios passes.
 Out of scope: single commands, the gate, the bench itself and its `--fast` mode (`fast-bench-reproduces-app-timing`), a command both recognizers report doubled with different timings (`dedupe-close-reports-across-recognizers`), a new E2E timing bound for chains (none exists; the bench's delay per clip is the measure).
 Interface: none.
@@ -22,14 +22,14 @@ Interface: none.
 
 ## Impact
 
-- `command-spotting/src/streaming/decide/mod.rs`, `command-spotting/src/streaming/decide/tests.rs`, `command-spotting/src/streaming/session/utterance.rs`, `command-spotting/src/streaming/session/tests/`, `e2e-test/tests/features/voice_control.feature`, `e2e-test/tests/steps/voice_control/`.
+- `command-spotting/src/matcher/placed/mod.rs`, `command-spotting/src/streaming/decide/mod.rs`, `command-spotting/src/streaming/decide/tests.rs`, `command-spotting/src/streaming/session/utterance.rs`, `command-spotting/src/streaming/session/reports.rs`, `command-spotting/src/streaming/session/tests/`, `e2e-test/tests/features/voice_control.feature`, `e2e-test/tests/steps/voice_control/`.
 
 ## Open points
 
 - How the tail is matched: proposed the chain matched over every word of the utterance, the commands whose span ended by the last report dropped from the finding; the alternative, accepting a lone fresh word after the last reported command, needs the matcher to learn the report.
-- Target version: the next PATCH above `main` when the change runs (`kit version-check`).
+- Target version: 0.46.4, the next PATCH above `main` (0.46.3 went to `dedupe-close-reports-across-recognizers`).
 
 ## Release
 
 SemVer: PATCH — a bug fix: a command said is not carried out.
-Target version: 0.46.3.
+Target version: 0.46.4.

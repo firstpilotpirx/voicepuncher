@@ -2,7 +2,7 @@
 
 mod placed;
 
-pub use placed::{Found, Placement};
+pub use placed::{commands_said, Found, Placement, Said};
 
 use voicepuncher_voice_commands::{MishearingKind, FORMS, MISHEARINGS};
 
