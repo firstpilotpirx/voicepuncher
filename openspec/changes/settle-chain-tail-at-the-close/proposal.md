@@ -26,7 +26,7 @@ Interface: none.
 
 ## Open points
 
-- How the tail is matched: proposed the chain matched over every word of the utterance, the commands whose span ended by the last report dropped from the finding; the alternative, accepting a lone fresh word after the last reported command, needs the matcher to learn the report.
+- How the tail is matched: settled as the chain matched over every word of the utterance, the commands the utterance already reported dropped from the finding by their text (the recognizer's words, never their stamps: design D1); the alternative, accepting a lone fresh word after the last reported command, needs the matcher to learn the report.
 - Target version: 0.46.4, the next PATCH above `main` (0.46.3 went to `dedupe-close-reports-across-recognizers`).
 
 ## Release

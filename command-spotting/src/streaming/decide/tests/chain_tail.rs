@@ -36,6 +36,19 @@ fn should_report_the_tail_of_a_chain_said_after_the_last_report() {
 }
 
 #[test]
+fn should_report_the_tail_of_a_chain_decoded_only_at_the_close() {
+    // Given "stop enter" reported up to 3.06 s while the user spoke, and "start" decoded
+    // only once the utterance ends
+    let words = that_is_all_stop_enter_start();
+    // When
+    let reported = reported(3.06, &["stop dictation", "press enter"]);
+    let found = decide(&dictating(), &words, Moment::Closing, &reported);
+    // Then the chain's last command is reported alone
+    let found = found.expect("the tail of the chain at the close");
+    assert_eq!(found.commands, ["start dictation"]);
+}
+
+#[test]
 fn should_report_nothing_of_a_chain_reported_whole() {
     // Given the whole chain reported up to the end of "start"
     let words = that_is_all_stop_enter_start();
