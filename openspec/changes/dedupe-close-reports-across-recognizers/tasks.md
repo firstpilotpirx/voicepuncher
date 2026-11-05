@@ -10,6 +10,7 @@
 
 ## 2. The user's voice and the version
 
-- [ ] 2.1 `just streaming-bench --recorded` on sessions 1–6: one report per label, no clip lost against the numbers of `fix-missed-dictation-start-stop-commands` task 4.2 (47/53 on its branch); note the result in this file
+- [x] 2.1 `just streaming-bench --recorded` on sessions 1–6: one report per label, no clip lost against the numbers of `fix-missed-dictation-start-stop-commands` task 4.2 (47/53 on its branch); note the result in this file
+  Result (2026-11-05, `just streaming-bench --recorded ~/.voicepuncher/voice-samples --verbose`): all right 47/53 (88.7 %), false alarms 4/9, delay median 418 ms p90 911 ms — the same 47/53 as before the change, no clip lost; the 6 wrong clips are the known ones (chain tails, a `cancel` heard before `restart`), none a doubled report.
 - [ ] 2.2 Bump `version` in `app/Cargo.toml` to the version `kit version-check dedupe-close-reports-across-recognizers` names (0.46.3 unless the base moved); `just test`; `just check` once; commit (`chore: release 0.46.3`)
-- [ ] 2.3 Manual checks by the user: none (the decision path of the command spotting service; no hotkey, recording, overlay, paste or permission changed)
+- [x] 2.3 Manual checks by the user: none (the decision path of the command spotting service; no hotkey, recording, overlay, paste or permission changed)
