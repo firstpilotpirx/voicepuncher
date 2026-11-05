@@ -1,24 +1,24 @@
 ## Why
 
-In the command spotting service, every utterance is decoded by two recognizers, English and Russian, and each reports the command it hears. At the close of an utterance both finish with a final decode. When both hear the same command but time it differently — their findings overlap only partly, the Russian word ending before the English one starts or the other way round — `doubles` in `command-spotting/src/streaming/decide/mod.rs` (the same commands and a gap under `DOUBLE_GAP_SECS`) lets both reports through, and the app carries the command out twice. This showed in the service log of the user's session 1 while `fix-missed-dictation-start-stop-commands` was being fixed (released as v0.46.2): one labelled "start dictation", two reports from the two recognizers of one utterance. The handover fix of that change removed the case seen then, but the rule itself still allows it.
+In the command spotting service, every utterance is decoded by two recognizers, English and Russian, and each reports the command it hears. When both hear the same command but time it apart, `doubles` in `command-spotting/src/streaming/decide/mod.rs` (the same commands and a gap under `DOUBLE_GAP_SECS`, 0.6 s) lets both reports through, and the app carries the command out twice. The service log of 2026-11-03/04 shows it in short utterances of one "enter": the Russian recognizer reports it at the gate's pause, and the English one, which stamps a word 0.65–1.1 s later than the Russian one, reports it again near or at the close (eleven such utterances in two days). The handover fix of `fix-missed-dictation-start-stop-commands` (released as v0.46.2) removed a case between utterances; inside one utterance the rule still allows it.
 
 ## What Changes
 
-- The final reports of one utterance are deduped across its recognizers: a command one recognizer reported at the close is not reported again by the other when their findings overlap in time or lie within the double gap, whichever recognizer finished first.
+- A command one recognizer already reported in an utterance is not reported again by the other, however far apart the two stamp it: a recognizer's n-th finding of a command is a repeat when the utterance already holds n reports of it (both hear the same speech, so the n-th occurrence in one is the n-th in the other). The gap rule stays for a recognizer's own second word of a doubled form, and the recognizer that heard the whole word still speaks first.
 - The log line of the utterance still shows what each recognizer heard, so the dedupe is visible.
-- A session test with two scripted recognizers that finish the same command at partly overlapping times expects one report.
+- A session test with two scripted recognizers, the English one stamping the same "enter" about a second after the Russian one, expects one report; the same command said twice with a pause between, heard by both, still gives two.
 
 Current stage: PoC. Target stage: PoC.
-Scope: `doubles` and the report of the close in `command-spotting/src/streaming/session/utterance.rs` and `decide/mod.rs`.
-Acceptance bar: the new session test passes; the existing session, close-order and voice-sample tests stay green; `just check` passes; the user's sessions 1–6 give one report per label.
-Out of scope: reports during the utterance (before the close), the handover between utterances (done in v0.46.2).
+Scope: the report of `command-spotting/src/streaming/session/utterance.rs` and `doubles` in `decide/mod.rs`.
+Acceptance bar: the new session tests pass; the existing session, close-order and voice-sample tests stay green; `just check` passes; the user's sessions 1–6 give one report per label.
+Out of scope: the handover between utterances (done in v0.46.2); two recognizers reporting different commands of one chain (`settle-chain-tail-at-the-close`).
 Interface: none.
 
 ## Capabilities
 
 ### Modified Capabilities
 
-- `voice-control`: one utterance reports a command once, whichever recognizers heard it.
+- `voice-control`: one utterance reports a command once, whichever recognizers heard it and however they time it.
 
 ## Impact
 
@@ -26,9 +26,7 @@ Interface: none.
 
 ## Open points
 
-- The overlap rule: proposed "the same commands and the findings overlap in time, or their gap is under `DOUBLE_GAP_SECS`", applied to the final reports only.
-- Whether the dedupe prefers the recognizer that heard the whole word (the close-order rule) or the first to finish: proposed the close-order rule, as today.
-- Target version: the next PATCH above `main` when the change runs (`kit version-check`).
+Settled by the explore of 2026-11-05: the rule counts occurrences instead of comparing times, as the English recognizer's stamps lie beyond any gap that still separates two commands of one recognizer; it applies to every report of the utterance, not only the final ones, as the log shows the second report before the close as well as at it; the close-order rule stays. Target version: the next PATCH above `main` when the change runs (`kit version-check`).
 
 ## Release
 
