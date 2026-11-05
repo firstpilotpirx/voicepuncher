@@ -83,7 +83,39 @@ pub fn decide(
     if let Some(found) = placed(matcher, &texts) {
         return Some(finding(&fresh, &found));
     }
+    if let Some(found) = chain_tail(matcher, words, reported_until) {
+        return Some(found);
+    }
     alone(matcher, &fresh, moment).or_else(|| ending(matcher, &fresh, &texts, moment))
+}
+
+/// The commands of a chain said after the last report, the chain matched over every word of
+/// the utterance: a recognizer that emits late decodes the chain's last command a decode
+/// after the ones before it were reported, and alone among the fresh words it is no command
+/// ("start" while dictating counts only after "stop"). The commands whose first word starts
+/// before `reported_until` are reported already; nothing when none is, or every one.
+fn chain_tail(
+    matcher: &PhraseMatcher,
+    words: &[TimedWord],
+    reported_until: f32,
+) -> Option<Finding> {
+    let texts: Vec<&str> = words.iter().map(|w| w.text.as_str()).collect();
+    let found = matcher.anywhere(&texts)?;
+    let reported = found
+        .spans
+        .iter()
+        .take_while(|(first, _)| words[*first].start < reported_until)
+        .count();
+    if reported == 0 || reported == found.commands.len() {
+        return None;
+    }
+    let (first, _) = found.spans[reported];
+    Some(Finding {
+        commands: found.commands[reported..].to_vec(),
+        start: words[first].start,
+        end: words[found.last].end,
+        placement: Placement::Anywhere,
+    })
 }
 
 /// A command ending the words heard, once nothing more is said for now.

@@ -1,5 +1,7 @@
 use super::*;
 
+mod chain_tail;
+
 fn standby() -> PhraseMatcher {
     PhraseMatcher::new(&[
         "start dictation".into(),
