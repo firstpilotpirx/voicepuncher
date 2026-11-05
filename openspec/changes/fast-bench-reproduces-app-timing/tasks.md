@@ -15,10 +15,10 @@
 
 ## 3. The paces agree
 
-- [ ] 3.1 Red: `Rule: The fast streaming bench reproduces the service's timing` in `e2e-test/tests/features/voice_control.feature` with the scenarios "A lone restart gives the same delay in both paces" (`@regression`) and "The user's recordings give the same delays in both paces" (`@voice_samples @regression`), steps in `e2e-test/tests/steps/voice_control/streaming/paces.rs` (the lone-restart clip built from synthesized speech, a sample of 3 recorded clips with a command); the E2E recipe runs them red
-- [ ] 3.2 Green: the steps run both paces through `run_clip` and compare each delay within 0.1 s; `just e2e-regression` on the new rule passes
-- [ ] 3.3 Measure by hand: `just streaming-bench --recorded --word start` and `--word stop` in real time and `--fast`, the lone restart in both paces; write median, p90 and the largest per-clip difference into `design.md` § Measurements, and the margin in the spec when the measurement contradicts 0.1 s
-- [ ] 3.4 `docs/ubiquitous-language.md` § Streaming bench: the fast pace replays the service's clock; `just static`, `just test`, `just check`, commit
+- [x] 3.1 Red: `Rule: The fast streaming bench reproduces the service's timing` in `e2e-test/tests/features/voice_control.feature` with the scenarios "A lone restart gives the same delay in both paces" (`@regression`) and "The user's recordings give the same delays in both paces" (`@voice_samples @regression`), steps in `e2e-test/tests/steps/voice_control/streaming/paces.rs` (the lone-restart clip built from synthesized speech, a sample of 3 recorded clips with a command); the E2E recipe runs them red
+- [x] 3.2 Green: the steps run both paces through `run_clip` and compare each delay within 0.1 s; `just e2e-regression` on the new rule passes
+- [x] 3.3 Measure by hand: `just streaming-bench --recorded --word start` and `--word stop` in real time and `--fast`, the lone restart in both paces; write median, p90 and the largest per-clip difference into `design.md` § Measurements, and the margin in the spec when the measurement contradicts 0.1 s
+- [x] 3.4 `docs/ubiquitous-language.md` § Streaming bench: the fast pace replays the service's clock; `just static`, `just test`, `just check`, commit
 
 ## 4. Version and manual checks
 

@@ -72,14 +72,14 @@ slow-timeout = { period = "60s", terminate-after = 4 }
 
 # @regression, the voice control scenarios beyond the smoke set, 47 of them 2–4 s each one after
 # the other, plus the two paces of the streaming bench in real time (a 20 s dictation and a sample
-# of the user's recordings), about 150 s measured: 5 min
+# of the user's recordings), 161 s measured: 6 min
 [profile.e2e-regression]
 success-output = "immediate"
 
 [[profile.e2e-regression.overrides]]
 filter = 'binary(cucumber_e2e)'
 run-extra-args = ["--tags", "@regression and not @wip"]
-slow-timeout = { period = "60s", terminate-after = 5 }
+slow-timeout = { period = "60s", terminate-after = 6 }
 
 # @accuracy on 10 recordings, 62 s measured: 3 min
 [profile.e2e-quick]
