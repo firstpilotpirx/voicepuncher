@@ -225,3 +225,12 @@ stage = "test"
 beside = "another worktree (laughing-hermann-7fadc2) ran the build stages of its full-check beside it"
 branch = "fix/settle-chain-tail-at-the-close"
 
+
+[[frozen]]
+test = "voicepuncher-command-spotting streaming::session::tests::handover::should_leave_a_word_after_its_speech_end_to_the_utterance_opened_over_it"
+frozen = "2026-11-05"
+recipe = "full-check"
+stage = "test"
+beside = "the test stage of full-check under load (136 s against its 60 s budget) beside other worktrees' builds and checks (fix/settle-chain-tail-at-the-close, laughing-hermann); passes alone in 23 s; the same test failed on its own branch fix/fix-missed-dictation-start-stop-commands on 2026-11-04, before this change; this branch's decoder keeps the as-decoded delivery the service uses"
+branch = "chore/fast-bench-reproduces-app-timing"
+
