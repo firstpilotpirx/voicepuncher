@@ -6,7 +6,7 @@
 - [x] 1.2 Commit the red test alone (`test: reproduce …`, intentionally red)
 - [x] 1.3 Green: hearings per recognizer and reports per command set in `Reports`, the repeat check in `Utterance::report` beside `doubles` (`command-spotting/src/streaming/session/utterance.rs`); `just test-one` on 1.1 passes; `just static`
 - [x] 1.4 Guard: session test `should_report_a_command_said_twice_with_a_pause_between_twice` in `doubled_reports.rs` (both recognizers hear both, the English one a second late); prove it fails with the count replaced by "any earlier report of the command", then restore; `just test-one` on it passes
-- [ ] 1.5 `just test`; commit (`fix: dedupe-close-reports-across-recognizers`)
+- [x] 1.5 `just test`; commit (`fix: dedupe-close-reports-across-recognizers`)
 
 ## 2. The user's voice and the version
 
