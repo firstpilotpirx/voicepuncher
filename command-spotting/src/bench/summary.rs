@@ -11,7 +11,8 @@ pub struct Outcome {
     pub label: Vec<String>,
     /// The command words reported, in order, a doubled one once.
     pub heard: Vec<String>,
-    /// From the end of the command's words to its report, by the wall clock.
+    /// From the end of the command's words to its report: by the wall clock in real time, by
+    /// the stream position in the fast pace.
     pub delay_ms: Option<f64>,
     /// Seconds the session spent taking the clip's audio and answering, and the audio's
     /// seconds.
@@ -79,6 +80,14 @@ pub fn processing_per_second(outcomes: &[Outcome]) -> Option<f64> {
     let audio: f64 = outcomes.iter().map(|o| o.audio_secs).sum();
     let processing: f64 = outcomes.iter().map(|o| o.processing_secs).sum();
     (audio > 0.0).then(|| processing / audio)
+}
+
+/// What the fast pace's delays replay of the service's timing, and what they leave out.
+pub const fn not_replayed() -> &'static str {
+    "replayed clock: decode times measured on this machine; the frames, gate, flush and close \
+     as in real time\n\
+     not replayed: a load other than the bench's own, the service's poll and wake, the app's \
+     audio path and its syncs, time within a 20 ms frame"
 }
 
 fn share(part: usize, whole: usize) -> f64 {

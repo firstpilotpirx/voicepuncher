@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use clap::Parser;
 use voicepuncher_command_spotting::bench::{
-    load_dataset, processing_per_second, recorded_clips, run_clip, Clip, Outcome, Pace, Summary,
+    load_dataset, not_replayed, processing_per_second, recorded_clips, run_clip, Clip, Outcome,
+    Pace, Summary,
 };
 use voicepuncher_command_spotting::streaming::engine::{StreamingCfg, StreamingEngine};
 
@@ -32,7 +33,7 @@ struct Args {
     threads: i32,
     #[arg(long, default_value_t = 0.3)]
     min_silence_secs: f32,
-    /// Hand the audio over as fast as it decodes: accuracy only, no delays.
+    /// Hand the audio over as fast as it decodes; the delays replay the service's clock.
     #[arg(long)]
     fast: bool,
     /// Only the clips whose id holds this text.
@@ -73,6 +74,9 @@ fn main() -> Result<()> {
     }
     if let Some(per_second) = processing_per_second(&outcomes) {
         println!("processing {per_second:.3} s per second of audio");
+    }
+    if args.fast {
+        println!("{}", not_replayed());
     }
     Ok(())
 }

@@ -2,10 +2,10 @@
 
 ## 1. Replayed delivery in the decoder
 
-- [ ] 1.1 Red: session unit test `should_see_a_decode_when_it_would_have_ended` in `command-spotting/src/streaming/session/tests/paces.rs` (a scripted recognizer taking 30 ms per decode, replayed delivery); `just test-one` fails
-- [ ] 1.2 Green: `Delivery` (as decoded, replayed) in `decoder.rs`: jobs stamped with the stream time fed, updates with their visible time, `arrived(now)` releasing only the visible ones after the thread caught up, `caught_up` releasing all; `Utterance::feed` and `silence` pass `now`; `SessionCfg.delivery`; `StreamingEngine::session_replaying`; `just test-one` passes
-- [ ] 1.3 Red: session unit test `should_keep_delivering_as_decoded_by_default` in `tests/paces.rs` (the default delivery reports a scripted decode in the frame it arrived); `just test-one` fails, then passes
-- [ ] 1.4 `just static`, `just test`, commit
+- [x] 1.1 Red: session unit test `should_see_a_decode_when_it_would_have_ended` in `command-spotting/src/streaming/session/tests/paces.rs` (a scripted recognizer taking 30 ms per decode, replayed delivery); `just test-one` fails
+- [x] 1.2 Green: `Delivery` (as decoded, replayed) in `decoder.rs`: jobs stamped with the stream time fed, updates with their visible time, `arrived(now)` releasing only the visible ones after the thread caught up, `caught_up` releasing all; `Utterance::feed` and `silence` pass `now`; `SessionCfg.delivery`; `StreamingEngine::session_replaying`; `just test-one` passes
+- [x] 1.3 Red: session unit test `should_keep_delivering_as_decoded_by_default` in `tests/paces.rs` (the default delivery reports a scripted decode in the frame it arrived); `just test-one` fails, then passes
+- [x] 1.4 `just static`, `just test`, commit
 
 ## 2. The fast pace's delay and footer
 
