@@ -75,9 +75,11 @@ pub struct Reported {
     pub commands: Vec<String>,
 }
 
-/// The commands to report of `words`, heard so far in the utterance, at `moment`; only the
-/// words said after what the utterance reported count: after the reported commands where
-/// the recognizer's text holds them, and after `reported.until`, the end of the last report.
+/// The commands to report of `words`, heard so far in the utterance, at `moment`.
+///
+/// Only the words said after what the utterance reported count: after the reported commands
+/// where the recognizer's text holds them, and after `reported.until`, the end of the last
+/// report.
 pub fn decide(
     matcher: &PhraseMatcher,
     words: &[TimedWord],
@@ -104,8 +106,9 @@ pub fn decide(
 }
 
 /// The index of the first word after the reported commands in `said`, the commands the
-/// recognizer's text holds: the longest end of `reported` said in order; 0 when it holds
-/// none. The commands, never the stamps, tell what is reported: the other recognizer stamps
+/// recognizer's text holds: the longest end of `reported` said in order; 0 when it holds none.
+///
+/// The commands, never the stamps, tell what is reported: the other recognizer stamps
 /// the same words up to a second apart, and the app may have switched state since, so the
 /// matcher no longer accepts the chain's first command.
 fn after_reported(said: &[Said], reported: &[String]) -> usize {
