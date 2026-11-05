@@ -9,7 +9,7 @@ use crate::history::{CommandHistory, HistoryCfg};
 use crate::streaming::Wake;
 
 use super::ports::{SpeechGate, StreamingModel};
-use super::session::{Session, SessionCfg};
+use super::session::{Decoding, Delivery, Session, SessionCfg};
 use super::sherpa::{SherpaModel, SileroGate};
 
 pub struct StreamingCfg {
@@ -58,7 +58,16 @@ impl StreamingEngine {
     /// The session of connection `conn`; `wake` is called when a recognizer decoded more.
     pub fn session_waking(&self, conn: u64, wake: Option<Wake>) -> Result<Session<'_>> {
         let gate = Box::new(SileroGate::load(&self.vad_model)?);
-        Ok(self.session_hearing_with(conn, gate, wake))
+        let decoding = Decoding { wake, delivery: Delivery::AsDecoded };
+        Ok(self.session_hearing_with(conn, gate, decoding))
+    }
+
+    /// The session of connection `conn` that sees each decode at the stream time it would
+    /// have ended when fed in real time: the fast bench.
+    pub fn session_replaying(&self, conn: u64) -> Result<Session<'_>> {
+        let gate = Box::new(SileroGate::load(&self.vad_model)?);
+        let decoding = Decoding { wake: None, delivery: Delivery::Replayed };
+        Ok(self.session_hearing_with(conn, gate, decoding))
     }
 
     /// The session of connection `conn` with `gate` in place of the voice gate: a test replays
@@ -68,14 +77,14 @@ impl StreamingEngine {
         conn: u64,
         gate: Box<dyn SpeechGate + 'a>,
     ) -> Session<'a> {
-        self.session_hearing_with(conn, gate, None)
+        self.session_hearing_with(conn, gate, Decoding::default())
     }
 
     fn session_hearing_with<'a>(
         &'a self,
         conn: u64,
         gate: Box<dyn SpeechGate + 'a>,
-        wake: Option<Wake>,
+        decoding: Decoding,
     ) -> Session<'a> {
         let models = self
             .models
@@ -86,7 +95,8 @@ impl StreamingEngine {
             conn,
             min_silence_secs: self.min_silence_secs,
             history: self.history.as_ref(),
-            wake,
+            wake: decoding.wake,
+            delivery: decoding.delivery,
         };
         Session::new(models, gate, &cfg)
     }

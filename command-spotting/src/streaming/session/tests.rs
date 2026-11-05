@@ -10,6 +10,7 @@ mod close_order;
 mod handover;
 mod history;
 mod opening;
+mod paces;
 mod pause_flush;
 mod russian_forms;
 
@@ -136,14 +137,33 @@ fn speech(secs: f32) -> Vec<f32> {
     vec![0.5; saturating_usize(secs * RATE as f32)]
 }
 
-fn session<'a>(models: &[&'a Scripted], history: Option<&'a CommandHistory>) -> Session<'a> {
+fn cfg(history: Option<&CommandHistory>) -> SessionCfg<'_> {
+    SessionCfg {
+        conn: 1,
+        min_silence_secs: 0.3,
+        history,
+        wake: None,
+        delivery: Delivery::AsDecoded,
+    }
+}
+
+/// A session over `models` set up as `cfg` says, listening for `phrases`.
+fn session_listening<'a>(
+    models: &[&'a Scripted],
+    cfg: &SessionCfg<'a>,
+    phrases: &[&str],
+) -> Session<'a> {
     let models = models.iter().map(|m| *m as &dyn StreamingModel).collect();
-    let cfg = SessionCfg { conn: 1, min_silence_secs: 0.3, history, wake: None };
-    let mut session = Session::new(models, Box::new(LoudGate), &cfg);
-    let phrases = ["stop dictation", "cancel dictation", "press enter"].map(String::from);
-    let selection = PhraseSelection { phrases: phrases.to_vec(), ..PhraseSelection::default() };
+    let mut session = Session::new(models, Box::new(LoudGate), cfg);
+    let phrases = phrases.iter().map(|p| (*p).to_owned()).collect();
+    let selection = PhraseSelection { phrases, ..PhraseSelection::default() };
     session.select(&selection).expect("known phrases");
     session
+}
+
+fn session<'a>(models: &[&'a Scripted], history: Option<&'a CommandHistory>) -> Session<'a> {
+    let phrases = ["stop dictation", "cancel dictation", "press enter"];
+    session_listening(models, &cfg(history), &phrases)
 }
 
 /// The events of an utterance of `secs` heard by `models`, from 1 s into the stream, up to

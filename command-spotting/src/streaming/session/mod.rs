@@ -22,6 +22,7 @@ use super::ports::{SpeechGate, StreamingModel, GATE_WINDOW};
 mod decoder;
 mod kept;
 mod utterance;
+pub use decoder::{Decoding, Delivery};
 use kept::Kept;
 use utterance::{Closed, Utterance, Wait};
 
@@ -40,12 +41,14 @@ pub struct SessionCfg<'a> {
     pub history: Option<&'a CommandHistory>,
     /// Called when a recognizer decoded more, so its events go out without waiting for audio.
     pub wake: Option<Wake>,
+    /// When the session sees a decode.
+    pub delivery: Delivery,
 }
 
-/// The recognizers an utterance opens in, and whom their decodes wake.
+/// The recognizers an utterance opens in, and how their threads decode.
 struct Recognizers<'a> {
     models: Vec<&'a dyn StreamingModel>,
-    wake: Option<Wake>,
+    decoding: Decoding,
 }
 
 /// Where a closed utterance goes: the connection's log line and the command history.
@@ -78,7 +81,10 @@ impl<'a> Session<'a> {
         cfg: &SessionCfg<'a>,
     ) -> Self {
         Self {
-            recognizers: Recognizers { models, wake: cfg.wake.clone() },
+            recognizers: Recognizers {
+                models,
+                decoding: Decoding { wake: cfg.wake.clone(), delivery: cfg.delivery },
+            },
             gate,
             keeper: Keeper {
                 history: cfg.history,
@@ -169,7 +175,7 @@ impl<'a> Session<'a> {
         self.seen += frame.len();
         let now = seconds(self.seen);
         if let Some(utterance) = self.utterance.as_mut() {
-            utterance.feed(frame);
+            utterance.feed(frame, now);
             utterance.listen(speech, frame.len(), self.seen);
             if utterance.quiet() < self.closing_quiet {
                 events.extend(utterance.collect(&self.matcher, now, Wait::No));
@@ -214,7 +220,7 @@ impl<'a> Session<'a> {
             start,
             onset,
             &replay,
-            self.recognizers.wake.as_ref(),
+            &self.recognizers.decoding,
         ) {
             Ok(utterance) => self.utterance = Some(utterance),
             Err(e) => log::error!(
