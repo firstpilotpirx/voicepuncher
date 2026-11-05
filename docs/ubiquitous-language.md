@@ -607,7 +607,7 @@
 
 ### Streaming bench
 - **Type:** Measurement tool (`just streaming-bench`, binary `streaming-bench` of `command-spotting/`; not a gate)
-- **Definition:** Streams labelled clips — the user's voice samples, confident *command history entries* and utterances without a command — through the *streaming recognizer* in real time and prints how many commands it heard right, its false alarms and the delay from the end of a command's words to its report (median, p90). Its dataset stays on this machine and is never committed.
+- **Definition:** Streams labelled clips — the user's voice samples, confident *command history entries* and utterances without a command — through the *streaming recognizer* and prints how many commands it heard right, its false alarms and the delay from the end of a command's words to its report (median, p90). Its real-time pace feeds the audio as the microphone gives it and measures the delays by the wall clock; its fast pace (`--fast`) feeds it as fast as it decodes while the session *replays the service's clock*: each recognizer's decode becomes visible at the stream time it would have ended when fed in real time (its measured decode time, queued behind the decode before it), so the delays are measured by the stream position and match the real-time pace within 0.1 s, and the report ends by naming what the replay does not reproduce (a load other than the bench's own, the service's poll and wake, the app's audio path, time within a 20 ms frame). Its dataset stays on this machine and is never committed.
 - **Code:** `command-spotting/src/bench/`
 - **Synonyms to AVOID:** "benchmark" alone (the WER benchmark of the *corpus*)
 

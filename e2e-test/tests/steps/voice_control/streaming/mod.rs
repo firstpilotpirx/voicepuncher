@@ -24,6 +24,7 @@ use crate::E2eWorld;
 
 pub(crate) mod busy;
 mod history;
+mod paces;
 mod recorded;
 mod timed;
 
@@ -47,6 +48,11 @@ pub struct StreamingRun {
     busy: Option<busy::BusyCores>,
     timed: timed::Timed,
     recorded: Vec<voicepuncher_command_spotting::bench::Outcome>,
+    /// Each clip's outcome in real time and then as fast as it decodes.
+    paced: Vec<(
+        voicepuncher_command_spotting::bench::Outcome,
+        voicepuncher_command_spotting::bench::Outcome,
+    )>,
     events: Vec<ServerEvent>,
     conn: u64,
     log_from: usize,

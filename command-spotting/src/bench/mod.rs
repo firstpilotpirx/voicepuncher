@@ -11,7 +11,7 @@ mod run;
 mod summary;
 pub use recorded::{recorded_clips, spans, Row, Span};
 pub use run::{run_clip, Pace};
-pub use summary::{processing_per_second, Outcome, Summary};
+pub use summary::{not_replayed, processing_per_second, report_tail, Outcome, Summary};
 
 /// One labelled clip of the bench's dataset.
 #[derive(Debug, Clone)]
