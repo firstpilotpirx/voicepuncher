@@ -19,10 +19,12 @@ use voicepuncher_e2e_test::voice_commands::{spoken_by, spoken_with_pauses};
 
 mod doubled;
 mod noisy_room;
+mod recorded_chains;
 mod recorded_starts;
 pub(crate) mod speech_after_start;
 mod start_cue;
 
+pub use recorded_chains::RecordedChain;
 pub(super) use speech_after_start::{recorded_form, until_last_sound, users_quiet_restart};
 
 use super::RUSSIAN_VOICE;

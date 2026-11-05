@@ -47,7 +47,15 @@ The system SHALL carry out a chain of two or three different commands said one r
 - **THEN** "start dictation" is carried out once, after them
 - **AND** "stop dictation" and "press enter" are not carried out again
 
+#### Scenario: The other recognizer's words of a chain carried out are not carried out again
+- **GIVEN** a dictation runs
+- **AND** the user says "that is all stop enter start" in one breath
+- **AND** one recognizer hears "stop enter" and the system carries them out
+- **WHEN** the other recognizer hears its own "enter", stamped later than the first one's, before it hears "start", whether or not the app has switched state meanwhile
+- **THEN** "press enter" is not carried out again
+- **AND** "start dictation" is carried out once, after them, when a recognizer hears it
+
 #### Scenario: The user's recorded chains keep their last command
 - **GIVEN** a dictation runs
-- **WHEN** each of the user's recorded chains ending in "start" is played in real time
+- **WHEN** each of the user's recorded chains whose last command counts only after the one before it ("start" or "clear" while dictating) is played
 - **THEN** every command of the chain is carried out, in the order said, each once

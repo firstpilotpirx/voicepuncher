@@ -110,6 +110,19 @@ fn should_not_take_a_phrase_with_other_words_around_it() {
 }
 
 #[test]
+fn should_not_take_a_word_close_to_a_one_word_form() {
+    // Given a draft of a longer word, as a streaming recognizer decodes "station" of
+    // "Start station" in steps
+    for (matcher, transcript) in [
+        (standby(), "Stat"),
+        (standby(), "Enta"),
+        (dictating(), "Step"),
+    ] {
+        assert_eq!(matcher.phrase_in(transcript), None, "{transcript}");
+    }
+}
+
+#[test]
 fn should_take_the_short_forms() {
     for (transcript, phrase) in [
         ("Enter.", "press enter"),

@@ -5,7 +5,7 @@ use crate::matcher::PhraseMatcher;
 use crate::protocol::ServerEvent;
 use crate::streaming::words::TimedWord;
 
-use super::super::decide::{decide, Finding, Moment};
+use super::super::decide::{decide, Finding, Moment, Reported};
 use super::super::ports::{Decoded, StreamingModel};
 use super::super::trace::Trace;
 use super::super::words::timed_words;
@@ -277,7 +277,7 @@ impl Utterance {
                 synced: self.synced,
             }
         };
-        let found = decide(matcher, &words, moment, self.reported_until())?;
+        let found = decide(matcher, &words, moment, &self.reported())?;
         if self
             .reports
             .handover
@@ -300,14 +300,17 @@ impl Utterance {
         found
     }
 
-    /// The end of the last report: commands ending before it are reported already.
-    fn reported_until(&self) -> f32 {
-        self.reports.last.as_ref().map_or(0.0, |found| found.end)
+    /// What it reported so far: the end of the last report, and the commands sent in order.
+    fn reported(&self) -> Reported {
+        Reported {
+            until: self.reports.last.as_ref().map_or(0.0, |found| found.end),
+            commands: self.reports.sent.iter().flatten().cloned().collect(),
+        }
     }
 
     /// Reports `found`, heard by recognizer `r` at `now`, unless its report stays in.
     fn report(&mut self, r: usize, found: Finding, now: f32) -> Option<ServerEvent> {
-        self.reports.goes_out(r, &found).then(|| {
+        self.reports.goes_out(&found).then(|| {
             self.trace.reported(r, &found, now);
             command(found)
         })
@@ -340,7 +343,8 @@ impl Utterance {
         let heard = (0..self.last.len())
             .filter_map(|r| {
                 let words = self.words(r, &self.last[r]);
-                decide(matcher, &words, Moment::Closing, 0.0).map(|found| (r, found))
+                decide(matcher, &words, Moment::Closing, &Reported::default())
+                    .map(|found| (r, found))
             })
             .collect();
         Closed { trace: self.trace, heard, audio: self.audio }

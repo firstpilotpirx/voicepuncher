@@ -78,6 +78,37 @@ fn difference_from(tokens: &[Token], form: &Form) -> Option<f32> {
     Some(total)
 }
 
+/// A command said in the words given, whatever the state accepts: its phrase and the
+/// indices of its first and last word.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Said {
+    pub phrase: &'static str,
+    pub first: usize,
+    pub last: usize,
+}
+
+/// Every command said in `words` in order, whatever the state accepts: what a recognizer's
+/// text holds of the commands the utterance reported, once the app switched state.
+pub fn commands_said(words: &[&str]) -> Vec<Said> {
+    let tokens = tokens(words);
+    let mut said = Vec::new();
+    let mut from = 0;
+    while from < tokens.len() {
+        match command_at(&tokens, from) {
+            Some((phrase, used)) => {
+                said.push(Said {
+                    phrase,
+                    first: tokens[from].at,
+                    last: tokens[from + used - 1].at,
+                });
+                from += used;
+            }
+            None => from += 1,
+        }
+    }
+    said
+}
+
 /// The command said at `from`, and how many tokens it takes.
 fn command_at(tokens: &[Token], from: usize) -> Option<(&'static str, usize)> {
     let rest = tokens.get(from..)?;

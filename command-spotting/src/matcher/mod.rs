@@ -2,7 +2,7 @@
 
 mod placed;
 
-pub use placed::{Found, Placement};
+pub use placed::{commands_said, Found, Placement, Said};
 
 use voicepuncher_voice_commands::{MishearingKind, FORMS, MISHEARINGS};
 
@@ -163,14 +163,24 @@ fn once(words: &[String]) -> Vec<String> {
     }
 }
 
-/// As many words as the phrase, each close to the phrase's word in its place.
+/// As many words as the phrase, each close to the phrase's word in its place. A one-word
+/// form must be said exactly, as in `command_at`: "stat", a streaming recognizer's draft of
+/// "station", is no "start".
 fn close_word_by_word(said: &[String], form: &str) -> bool {
     let form: Vec<&str> = form.split(' ').collect();
+    let close = |word: &String, expected: &str| {
+        let difference = difference(word, expected);
+        if form.len() == 1 {
+            difference == 0.0
+        } else {
+            difference <= MAX_WORD_DIFFERENCE
+        }
+    };
     said.len() == form.len()
         && said
             .iter()
-            .zip(form)
-            .all(|(word, expected)| difference(word, expected) <= MAX_WORD_DIFFERENCE)
+            .zip(&form)
+            .all(|(word, expected)| close(word, expected))
 }
 
 /// Character edit distance between `a` and `b`, as a share of the longer one.

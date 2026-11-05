@@ -11,8 +11,6 @@ pub(super) struct Reports {
     pub(super) last: Option<Finding>,
     /// The commands of every report that went out.
     pub(super) sent: Vec<Vec<String>>,
-    /// The commands of every finding of each recognizer, reported or not.
-    pub(super) heard: Vec<(usize, Vec<String>)>,
     /// Finished updates held back at the close: a recognizer that heard only the end of a
     /// command word ("start" of a quiet "restart") waits for the other to finish, and every
     /// one waits a frame for the next utterance to open over this one's tail.
@@ -22,35 +20,17 @@ pub(super) struct Reports {
 }
 
 impl Reports {
-    /// Whether `found`, heard by recognizer `r`, goes out: it neither doubles the last finding
-    /// nor repeats a report by the other recognizer; a finding that stays in still ends what is
+    /// Whether `found` goes out: it does unless it doubles the last finding. A report by the
+    /// other recognizer is never found again: both hear the same speech, and the words of
+    /// the commands reported are found in each recognizer's text before it decides
+    /// (`decide`), however the two stamp them. A finding that stays in still ends what is
     /// decided, as the words before it were decided already.
-    pub(super) fn goes_out(&mut self, r: usize, found: &Finding) -> bool {
-        let repeated = self.repeats(r, found);
-        let doubled = doubles(self.last.as_ref(), found) || repeated;
+    pub(super) fn goes_out(&mut self, found: &Finding) -> bool {
+        let doubled = doubles(self.last.as_ref(), found);
         self.last = Some(found.clone());
         if !doubled {
             self.sent.push(found.commands.clone());
         }
         !doubled
-    }
-
-    /// Whether `found`, heard by recognizer `r`, repeats a report: both recognizers hear the
-    /// same speech, so the n-th time one hears a command is the utterance's n-th, however
-    /// the two stamp it, and it is reported once the utterance reported it fewer times than
-    /// `r` heard it, `found` counted.
-    fn repeats(&mut self, r: usize, found: &Finding) -> bool {
-        self.heard.push((r, found.commands.clone()));
-        let heard = self
-            .heard
-            .iter()
-            .filter(|(by, commands)| *by == r && *commands == found.commands)
-            .count();
-        let sent = self
-            .sent
-            .iter()
-            .filter(|commands| **commands == found.commands)
-            .count();
-        sent >= heard
     }
 }

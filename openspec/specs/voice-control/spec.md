@@ -367,7 +367,7 @@ The system SHALL carry out a command at once when its short form is said twice i
 - **THEN** no text is pasted
 
 ### Requirement: A chain of commands is carried out in order
-The system SHALL carry out a chain of two or three different commands said one right after the other — full phrases or short forms — in the order said, when each command is accepted in the state the one before it leads to and "start" comes last. A chain SHALL count anywhere in an utterance, with no pause around it.
+The system SHALL carry out a chain of two or three different commands said one right after the other — full phrases or short forms — in the order said, when each command is accepted in the state the one before it leads to and "start" comes last. A chain SHALL count anywhere in an utterance, with no pause around it. A command of the chain heard only after the commands before it were carried out SHALL still be carried out, once, after them, whichever recognizer hears it: the chain's tail is never lost.
 
 #### Scenario: Stop enter pastes and sends
 - **GIVEN** a dictation runs
@@ -402,6 +402,27 @@ The system SHALL carry out a chain of two or three different commands said one r
 - **WHEN** the utterance ends and the system hears all of it
 - **THEN** "start dictation" is carried out after them
 - **AND** "cancel dictation" and "press enter" are not carried out again
+
+#### Scenario: The last command of a chain decoded after the first ones were carried out still counts
+- **GIVEN** a dictation runs
+- **AND** the user says "that is all stop enter start" in one breath
+- **AND** a recognizer hears "stop enter" and the system carries them out before any recognizer has heard "start"
+- **WHEN** a recognizer hears the "start" said right after them, while the user still speaks or at the close
+- **THEN** "start dictation" is carried out once, after them
+- **AND** "stop dictation" and "press enter" are not carried out again
+
+#### Scenario: The other recognizer's words of a chain carried out are not carried out again
+- **GIVEN** a dictation runs
+- **AND** the user says "that is all stop enter start" in one breath
+- **AND** one recognizer hears "stop enter" and the system carries them out
+- **WHEN** the other recognizer hears its own "enter", stamped later than the first one's, before it hears "start", whether or not the app has switched state meanwhile
+- **THEN** "press enter" is not carried out again
+- **AND** "start dictation" is carried out once, after them, when a recognizer hears it
+
+#### Scenario: The user's recorded chains keep their last command
+- **GIVEN** a dictation runs
+- **WHEN** each of the user's recorded chains whose last command counts only after the one before it ("start" or "clear" while dictating) is played
+- **THEN** every command of the chain is carried out, in the order said, each once
 
 ### Requirement: Which chains exist
 Since "start dictation" leads to dictating and "stop dictation" or "cancel dictation" lead back to standby, the chains SHALL be exactly those where "start" comes last: during a dictation, "stop" or "cancel" followed by one or two of "enter", "clear", "paste", "start" (each once, "start" last), or "enter" followed by one or two of "clear", "paste", "start" ("enter" ends the dictation and pastes first); with no dictation, two or three of "enter", "clear", "paste", "start" (each once, "start" last).
