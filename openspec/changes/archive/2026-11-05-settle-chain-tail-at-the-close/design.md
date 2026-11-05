@@ -25,6 +25,8 @@ The service reports a chain as soon as one recognizer decoded it: `decide` in `c
 
 After (b7d19723, 2026-11-05): session 4 three times, 7 of 7 clips right each run, 4/5 "stop enter start" whole; every session once: the wrong clips left are the same 2 outside this change ("restart" heard with a "cancel" before it on 2/43 and 5/9) and the same 4 false alarms (a lone "stop", "clear", "cancel" or "start" heard in speech); the delays are unchanged (median 408 ms, p90 919 ms, before 405 / 915).
 
+**D5. A one-word form said alone must be said exactly.** The text boundary of D1 exposed a draft: the English recognizer's updates "Start" → "Start stat" → "Start station" of the user's clip 06 ("start dictation", a pause between the words) arrive in one collect; "start" goes out at its head, then the boundary cuts the reported "start" and leaves "stat", the draft of "station", alone among the fresh words, and `alone` took it for "start" through `phrase_in`, whose one-word forms were fuzzy (`MAX_WORD_DIFFERENCE`), so `full-check` carried "start dictation" out twice (`should_recognize_every_recorded_command_of_the_user`, 3 of 3 runs of the service on the clip). `phrase_in` now applies the rule of `command_at` (`difference_from`): a one-word form must be said exactly, a longer one may differ a little in each word. `phrase_in` has no other caller; "Start, start." and "ENTER!" still match, as `words` lowercases and strips punctuation. Red first: `should_not_take_a_word_close_to_a_one_word_form` ("Stat", "Enta", "Step") in the matcher tests and `should_report_nothing_of_a_draft_word_decoded_after_a_reported_start` in `decide/tests/reported.rs` (the clip's words and stamps, "start dictation" reported up to 1.1 s, the pause begun at 1.8 s, decoded to 2.4 s).
+
 ## Test levels
 
 | Spec scenario | Test |
@@ -35,6 +37,7 @@ After (b7d19723, 2026-11-05): session 4 three times, 7 of 7 clips right each run
 | The end of a chain heard only when the utterance ends still counts | `decide` unit test (D2, the fifth): the session-4/5 words decided at `Moment::Closing` with "stop dictation, press enter" reported, expecting "start dictation" alone; the session test of D2 decides the tail while the user still speaks, not at the close |
 | Stop enter start sends and starts the next dictation; Cancel clear discards and clears | existing E2E chain scenarios (`@smoke` and `@regression` rows), unchanged, rerun in `check` and `full-check` |
 | Stop enter pastes and sends | the existing component scenario of `app/tests/features/component/voice_control.feature` (paste, then Return), unchanged; the E2E `@regression` row "That is all, stop, enter, start" runs it as the head of a chain |
+| The user's own way of saying the commands is recognized (every recorded command once) | the `voice_samples` test `should_recognize_every_recorded_command_of_the_user` on the user's clips (`check`, `full-check`); D5's matcher and `decide` unit tests for the draft word after a reported command |
 | A chain the states do not allow is no command | the existing matcher unit tests of `command-spotting/src/matcher/placed/tests/chains.rs` ("enter stop" in standby, "start stop" at the head and so far match nothing), unchanged; no `.feature` row says "enter stop" |
 
 ## Risks

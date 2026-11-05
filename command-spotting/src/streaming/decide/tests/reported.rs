@@ -28,3 +28,19 @@ fn should_report_the_next_command_said_after_the_last_report() {
         ["stop dictation"]
     );
 }
+
+#[test]
+fn should_report_nothing_of_a_draft_word_decoded_after_a_reported_start() {
+    // Given "start" reported up to 1.1 s, then "stat", the recognizer's draft of "station",
+    // ending at 2.0 s, the gate's pause begun before it
+    let words = vec![
+        TimedWord { text: "Start".into(), start: 0.6, end: 1.1 },
+        TimedWord { text: "stat".into(), start: 1.9, end: 2.0 },
+    ];
+    // When
+    let paused = Moment::Decoding { now: 2.4, pause: Some(1.8), synced: false };
+    let reported = Reported { until: 1.1, commands: vec!["start dictation".into()] };
+    let again = decide(&standby(), &words, paused, &reported);
+    // Then the draft is no "start" said again
+    assert_eq!(again, None);
+}
