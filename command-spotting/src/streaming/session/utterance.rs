@@ -5,11 +5,12 @@ use crate::matcher::PhraseMatcher;
 use crate::protocol::ServerEvent;
 use crate::streaming::words::TimedWord;
 
-use super::super::decide::{decide, doubles, Finding, Moment};
+use super::super::decide::{decide, Finding, Moment};
 use super::super::ports::{Decoded, StreamingModel};
 use super::super::trace::Trace;
 use super::super::words::timed_words;
 use super::decoder::{Decoder, Decoding, Update};
+use super::reports::Reports;
 use super::{samples_in, seconds};
 
 /// The longest audio an entry of the command history keeps.
@@ -46,20 +47,6 @@ pub struct Utterance {
     synced: bool,
     reports: Reports,
     trace: Trace,
-}
-
-/// What an utterance reports: its last report, what waits to be decided and what it leaves to
-/// the next utterance.
-#[derive(Default)]
-struct Reports {
-    /// The last report, by whichever recognizer: commands ending before its end are reported.
-    last: Option<Finding>,
-    /// Finished updates held back at the close: a recognizer that heard only the end of a
-    /// command word ("start" of a quiet "restart") waits for the other to finish, and every
-    /// one waits a frame for the next utterance to open over this one's tail.
-    held: Vec<(usize, Update)>,
-    /// Where the next utterance's audio starts: the words from there on are its to report.
-    handover: Option<f32>,
 }
 
 /// What an utterance left once every recognizer finished it.
@@ -318,11 +305,9 @@ impl Utterance {
         self.reports.last.as_ref().map_or(0.0, |found| found.end)
     }
 
-    /// Reports `found`, heard by recognizer `r` at `now`, unless it doubles the last report.
+    /// Reports `found`, heard by recognizer `r` at `now`, unless its report stays in.
     fn report(&mut self, r: usize, found: Finding, now: f32) -> Option<ServerEvent> {
-        let doubled = doubles(self.reports.last.as_ref(), &found);
-        self.reports.last = Some(found.clone());
-        (!doubled).then(|| {
+        self.reports.goes_out(r, &found).then(|| {
             self.trace.reported(r, &found, now);
             command(found)
         })
