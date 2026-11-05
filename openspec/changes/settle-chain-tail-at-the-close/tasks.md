@@ -14,6 +14,6 @@
 
 ## 3. Measurement and version (D4)
 
-- [ ] 3.1 `just streaming-bench --recorded ~/.voicepuncher/voice-samples --only session-4` three times and every session once, after D1; fill the table of design.md D4
-- [ ] 3.2 `kit version-check settle-chain-tail-at-the-close`; bump `version` in `app/Cargo.toml` to the version it names (0.46.4: the peer took 0.46.3) and the proposal's target with it
-- [ ] 3.3 `just test`; `kit ship -m "chore(release): bump version to 0.46.4"`
+- [x] 3.1 `just streaming-bench --recorded ~/.voicepuncher/voice-samples --only session-4` three times and every session once, after D1; fill the table of design.md D4
+- [x] 3.2 `kit version-check settle-chain-tail-at-the-close`; bump `version` in `app/Cargo.toml` to the version it names (0.46.4: the peer took 0.46.3) and the proposal's target with it
+- [x] 3.3 `just test`; `kit ship -m "chore(release): bump version to 0.46.4"`

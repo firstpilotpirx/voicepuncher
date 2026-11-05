@@ -19,9 +19,11 @@ The service reports a chain as soon as one recognizer decoded it: `decide` in `c
 
 | run | before | after |
 |---|---|---|
-| session 4 ×3 real time, chain tails lost | 3 (all 4/5) | – |
-| sessions 1–6 real time, chain tails lost / chains | 3 / 9 (2/42, 4/5, 5/10) | – |
-| sessions 1–6 real time, clips right | 48 / 53 | – |
+| session 4 ×3 real time, chain tails lost | 3 (all 4/5) | 0 |
+| sessions 1–6 real time, chain tails lost / chains | 3 / 9 (2/42, 4/5, 5/10) | 0 / 9 |
+| sessions 1–6 real time, clips right | 48 / 53 | 51 / 53 |
+
+After (b7d19723, 2026-11-05): session 4 three times, 7 of 7 clips right each run, 4/5 "stop enter start" whole; every session once: the wrong clips left are the same 2 outside this change ("restart" heard with a "cancel" before it on 2/43 and 5/9) and the same 4 false alarms (a lone "stop", "clear", "cancel" or "start" heard in speech); the delays are unchanged (median 408 ms, p90 919 ms, before 405 / 915).
 
 ## Test levels
 
