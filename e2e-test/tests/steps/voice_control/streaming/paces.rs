@@ -58,10 +58,11 @@ fn in_both_paces(clips: &[Clip]) -> Result<Vec<(Outcome, Outcome)>> {
     clips
         .iter()
         .map(|clip| {
-            Ok((
-                run_clip(engine, clip, Pace::RealTime)?,
-                run_clip(engine, clip, Pace::Fast)?,
-            ))
+            let real = run_clip(engine, clip, Pace::RealTime)?;
+            let fast = run_clip(engine, clip, Pace::Fast)?;
+            // The numbers behind a pass, for the design's measurements
+            eprintln!("paces: {}", listed(&real, &fast));
+            Ok((real, fast))
         })
         .collect()
 }
