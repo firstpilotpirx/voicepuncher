@@ -695,6 +695,21 @@ Feature: voice-control
       When the user's recorded "clear" that the Russian recognizer mishears is streamed again
       Then the service reports the recorded "clear"
 
+  Rule: The fast streaming bench reproduces the service's timing
+
+    @regression
+    Scenario: A lone restart gives the same delay in both paces
+      Given the command spotting service runs with the streaming recognizer
+      When a lone "restart" after 20 s of dictation is streamed in real time and as fast as it decodes
+      Then both paces report "restart"
+      And the fast pace reports each command within 0.1 s of its real-time delay
+
+    @regression @voice_samples
+    Scenario: The user's recordings give the same delays in both paces
+      Given the user's own recordings of the commands exist on the machine
+      When a sample of the user's recorded commands is streamed in real time and as fast as it decodes
+      Then the fast pace reports each command within 0.1 s of its real-time delay
+
   Rule: A command said in Russian sounds counts as the command
 
     @smoke

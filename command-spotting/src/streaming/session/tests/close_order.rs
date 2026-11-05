@@ -4,13 +4,11 @@
 use super::*;
 
 fn restart_session<'a>(models: &[&'a Scripted]) -> Session<'a> {
-    let models = models.iter().map(|m| *m as &dyn StreamingModel).collect();
-    let cfg = SessionCfg { conn: 1, min_silence_secs: 0.3, history: None, wake: None };
-    let mut session = Session::new(models, Box::new(LoudGate), &cfg);
-    let phrases = ["start dictation", "restart dictation"].map(String::from);
-    let selection = PhraseSelection { phrases: phrases.to_vec(), ..PhraseSelection::default() };
-    session.select(&selection).expect("known phrases");
-    session
+    session_listening(
+        models,
+        &cfg(None),
+        &["start dictation", "restart dictation"],
+    )
 }
 
 #[test]

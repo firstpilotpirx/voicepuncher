@@ -16,7 +16,7 @@ use crate::E2eWorld;
 /// The user's "clear" that the Russian recognizer writes «клио»: session-2, 21.2–21.52 s.
 const CLEAR_HEARD_AS_KLIO: &str = "session-2/5";
 
-fn recorded() -> Result<Vec<Clip>> {
+pub(super) fn recorded() -> Result<Vec<Clip>> {
     recorded_clips(Path::new(&env("VOICEPUNCHER_VOICE_SAMPLES")?))
 }
 

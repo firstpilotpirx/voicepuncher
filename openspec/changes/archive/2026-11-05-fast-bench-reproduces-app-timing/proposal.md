@@ -1,6 +1,6 @@
 ## Why
 
-While fixing `fix-missed-dictation-start-stop-commands` (released as v0.46.2), the lone "restart" cue was measured three ways and the numbers disagreed: `just streaming-bench --fast`, the service fed in real time and the `e2e-cues` stage. The fast bench hands the audio over as fast as the session takes it, so each recognizer's decode reaches the session at an arbitrary point of the stream: the gate's pause and the decoded words meet at other moments than in the service, and the bench prints no delay at all in that pace. Twelve `kit verify` runs were needed where a trusted bench would have found the same by hand.
+While fixing `fix-missed-dictation-start-stop-commands` (released as v0.46.3), the lone "restart" cue was measured three ways and the numbers disagreed: `just streaming-bench --fast`, the service fed in real time and the `e2e-cues` stage. The fast bench hands the audio over as fast as the session takes it, so each recognizer's decode reaches the session at an arbitrary point of the stream: the gate's pause and the decoded words meet at other moments than in the service, and the bench prints no delay at all in that pace. Twelve `kit verify` runs were needed where a trusted bench would have found the same by hand.
 
 ## What Changes
 
@@ -33,4 +33,4 @@ Interface: CLI (the bench's output).
 ## Release
 
 SemVer: no release — a developer tool changes, no behavior the user sees.
-Target version: 0.46.2 (unchanged).
+Target version: 0.46.3 (unchanged).

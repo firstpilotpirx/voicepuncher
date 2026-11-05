@@ -176,3 +176,50 @@ fn should_leave_out_a_command_closed_by_please() {
     // Then
     assert_eq!(kept, [0, 2]);
 }
+
+mod paces {
+    use std::time::Instant;
+
+    use super::run::{delay_ms, Stamp};
+    use super::*;
+
+    #[test]
+    fn should_count_the_fast_delay_from_the_stream_position() {
+        // Given a command whose words end at 1.0 s, reported by the frame ending at 1.26 s
+        let began = Instant::now();
+        let reported = Stamp { wall: began, stream: 1.26 };
+        // When
+        let delay = delay_ms(Pace::Fast, Some(1.0), Some(&reported), began);
+        // Then
+        assert!((delay.expect("a delay") - 260.0).abs() < 1e-3, "{delay:?}");
+    }
+
+    #[test]
+    fn should_name_what_the_fast_pace_does_not_replay() {
+        // When
+        let notes = not_replayed();
+        // Then
+        for named in [
+            "a load other than the bench's own",
+            "the service's poll and wake",
+            "the app's audio path and its syncs",
+            "time within a 20 ms frame",
+        ] {
+            assert!(notes.contains(named), "{notes}");
+        }
+    }
+
+    #[test]
+    fn should_end_only_the_fast_report_with_what_is_not_replayed() {
+        // Then the fast report's last line names what is not replayed; the real-time report ends
+        // with its summaries
+        let tail = report_tail(Pace::Fast).expect("a tail in the fast pace");
+        assert!(
+            tail.lines()
+                .last()
+                .is_some_and(|l| l.starts_with("not replayed:")),
+            "{tail}"
+        );
+        assert_eq!(report_tail(Pace::RealTime), None);
+    }
+}

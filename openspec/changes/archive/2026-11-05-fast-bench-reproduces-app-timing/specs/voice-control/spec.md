@@ -6,7 +6,7 @@
 In its fast pace the streaming bench SHALL replay the service's clock: each recognizer's decode becomes visible to the session at the stream time it would have ended on this machine when fed in real time (its measured decode time, queued behind the decode before it), so a command's reported delay differs from the real-time pace's by at most 0.1 s. The real-time pace SHALL keep the delay measured on the wall clock. The fast pace SHALL end its report by naming what the replay does not reproduce.
 
 #### Scenario: A lone restart gives the same delay in both paces
-- **GIVEN** the audio of a voice start, 20 s of dictation and a lone "restart" cut at its last sound, followed by silence
+- **GIVEN** the audio of 20 s of dictation and a lone "restart" cut at its last sound, followed by silence
 - **WHEN** the bench runs it in the fast pace and in the real-time pace
 - **THEN** both paces report the "restart" command, and the delay from the end of its words to its report differs between the paces by at most 0.1 s
 

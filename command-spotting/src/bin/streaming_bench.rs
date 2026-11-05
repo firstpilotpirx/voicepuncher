@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use clap::Parser;
 use voicepuncher_command_spotting::bench::{
-    load_dataset, processing_per_second, recorded_clips, run_clip, Clip, Outcome, Pace, Summary,
+    load_dataset, processing_per_second, recorded_clips, report_tail, run_clip, Clip, Outcome,
+    Pace, Summary,
 };
 use voicepuncher_command_spotting::streaming::engine::{StreamingCfg, StreamingEngine};
 
@@ -32,7 +33,7 @@ struct Args {
     threads: i32,
     #[arg(long, default_value_t = 0.3)]
     min_silence_secs: f32,
-    /// Hand the audio over as fast as it decodes: accuracy only, no delays.
+    /// Hand the audio over as fast as it decodes; the delays replay the service's clock.
     #[arg(long)]
     fast: bool,
     /// Only the clips whose id holds this text.
@@ -74,15 +75,22 @@ fn main() -> Result<()> {
     if let Some(per_second) = processing_per_second(&outcomes) {
         println!("processing {per_second:.3} s per second of audio");
     }
+    if let Some(tail) = report_tail(pace(args.fast)) {
+        println!("{tail}");
+    }
     Ok(())
 }
 
-fn run_all(engine: &StreamingEngine, args: &Args, dataset: &Path) -> Result<Vec<Outcome>> {
-    let pace = if args.fast {
+fn pace(fast: bool) -> Pace {
+    if fast {
         Pace::Fast
     } else {
         Pace::RealTime
-    };
+    }
+}
+
+fn run_all(engine: &StreamingEngine, args: &Args, dataset: &Path) -> Result<Vec<Outcome>> {
+    let pace = pace(args.fast);
     let mut outcomes = Vec::new();
     let clips = clips(args, dataset)?
         .into_iter()

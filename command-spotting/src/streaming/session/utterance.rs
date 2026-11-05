@@ -4,13 +4,12 @@
 use crate::matcher::PhraseMatcher;
 use crate::protocol::ServerEvent;
 use crate::streaming::words::TimedWord;
-use crate::streaming::Wake;
 
 use super::super::decide::{decide, Finding, Moment};
 use super::super::ports::{Decoded, StreamingModel};
 use super::super::trace::Trace;
 use super::super::words::timed_words;
-use super::decoder::{Decoder, Update};
+use super::decoder::{Decoder, Decoding, Update};
 use super::reports::Reports;
 use super::{samples_in, seconds};
 
@@ -67,18 +66,18 @@ pub enum Wait {
 
 impl Utterance {
     /// Opens it at `onset`, its audio from `start` on, with `replay` fed to every recognizer,
-    /// each decoding on a thread of its own that calls `wake` when it decoded more.
+    /// each decoding on a thread of its own as `decoding` says.
     pub fn open(
         models: &[&dyn StreamingModel],
         start: f32,
         onset: f32,
         replay: &[f32],
-        wake: Option<&Wake>,
+        decoding: &Decoding,
     ) -> std::io::Result<Self> {
         let names: Vec<&str> = models.iter().map(|m| m.name()).collect();
         let decoders = models
             .iter()
-            .map(|m| Decoder::start(m.name(), m.stream(), wake.cloned()))
+            .map(|m| Decoder::start(m.name(), m.stream(), decoding))
             .collect::<std::io::Result<_>>()?;
         let mut utterance = Self {
             start,
@@ -93,22 +92,23 @@ impl Utterance {
             reports: Reports::default(),
             trace: Trace::new(start, onset, &names),
         };
-        utterance.silence(LEAD_SECS);
-        utterance.feed(replay);
+        utterance.silence(LEAD_SECS, onset);
+        utterance.feed(replay, onset);
         Ok(utterance)
     }
 
-    pub fn feed(&mut self, samples: &[f32]) {
+    /// Feeds `samples`, the stream at `now`.
+    pub fn feed(&mut self, samples: &[f32], now: f32) {
         if self.audio.len() < samples_in(MAX_AUDIO_SECS) {
             self.audio.extend_from_slice(samples);
         }
-        self.stream(samples);
+        self.stream(samples, now);
     }
 
-    fn stream(&mut self, samples: &[f32]) {
+    fn stream(&mut self, samples: &[f32], now: f32) {
         self.streamed += samples.len();
         for decoder in &mut self.decoders {
-            decoder.feed(samples);
+            decoder.feed(samples, now);
         }
     }
 
@@ -121,23 +121,23 @@ impl Utterance {
             self.trace.speech_end = seconds(seen);
         } else {
             if self.quiet == 0 {
-                self.flush();
+                self.flush(seconds(seen));
             }
             self.quiet += samples;
         }
     }
 
-    /// Feeds silence ahead of the stream at the gate's pause, so a recognizer that emits a
-    /// word's last sound only once more audio came emits it now.
-    fn flush(&mut self) {
-        self.silence(FLUSH_SECS);
+    /// Feeds silence ahead of the stream at the gate's pause at `now`, so a recognizer that
+    /// emits a word's last sound only once more audio came emits it now.
+    fn flush(&mut self, now: f32) {
+        self.silence(FLUSH_SECS, now);
     }
 
-    /// Feeds `secs` of silence to every recognizer, left out of the times they give.
-    fn silence(&mut self, secs: f32) {
+    /// Feeds `secs` of silence to every recognizer at `now`, left out of the times they give.
+    fn silence(&mut self, secs: f32, now: f32) {
         let silence = vec![0.0; samples_in(secs)];
         self.flushes.push((self.streamed, silence.len()));
-        self.stream(&silence);
+        self.stream(&silence, now);
     }
 
     /// The time in the stream of `at`, a time in the recognizers' stream, the flushed silence
@@ -170,7 +170,7 @@ impl Utterance {
         let mut arrived: Vec<(usize, Vec<Update>)> = (0..self.decoders.len())
             .map(|r| {
                 let updates = match wait {
-                    Wait::No => self.decoders[r].arrived(),
+                    Wait::No => self.decoders[r].arrived(now),
                     Wait::CaughtUp => self.decoders[r].caught_up(),
                 };
                 (r, updates)
@@ -317,9 +317,9 @@ impl Utterance {
     /// out at once, and what the recognizers still decode is reported by the later collects,
     /// as a decode of that silence under load takes longer than a command may wait.
     pub fn begin_close(&mut self, now: f32) -> ServerEvent {
-        self.silence(CLOSE_SILENCE_SECS);
+        self.silence(CLOSE_SILENCE_SECS, now);
         for decoder in &mut self.decoders {
-            decoder.finish();
+            decoder.finish(now);
         }
         self.trace.closed = now;
         ServerEvent::SpeechEnd { t: self.trace.speech_end }
