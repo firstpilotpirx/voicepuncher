@@ -2,7 +2,7 @@
 
 ## Context
 
-See proposal.md § Why. Each recognizer decodes on a thread of its own after every job fed to it; at each 20 ms frame the session collects the updates that arrived and the utterance holds or releases them against the gate's state at that frame. In real time the thread's timing is the service's; in the fast pace the feeder runs ahead of the threads, so an update meets the gate at an arbitrary frame and no delay is measured.
+See proposal.md § Why. Each recognizer decodes on a thread of its own after every job; at each 20 ms frame the session collects the updates that arrived and the utterance holds or releases them against the gate's state. In the fast pace the feeder runs ahead of the threads, so an update meets the gate at an arbitrary frame.
 
 ## Goals / Non-Goals
 
@@ -12,7 +12,7 @@ See proposal.md § Why. Each recognizer decodes on a thread of its own after eve
 
 ## Decisions
 
-**Replayed delivery in the decoder, chosen by the session's configuration.** The decoder gets a delivery mode: as decoded (today: the service and the real-time pace) or replayed (the fast pace). In the replayed mode every job carries the stream time it was fed at; the thread answers with that time and its decode time; the update becomes visible at `max(fed at, the previous update's visible time) + decode time`, the queue of a thread slower than the audio. At each frame the collect blocks until the thread decoded everything fed, then releases only the updates visible at the frame's end; the progress the utterance reads (decoded all, finished) follows the released updates. A sync releases everything, as the app's sync waits for the recognizers. Why in the decoder: the utterance's hold and release, handover and close see the same sequence of updates as in real time. Rejected: catching up at every frame and releasing at once (a decode ends in the frame it was fed, earlier than the service); a free-running feeder stamping the delay from the thread's clock (the gate's pause and the words still meet at other frames than in the service).
+**Replayed delivery in the decoder, chosen by the session's configuration.** The decoder gets a delivery mode: as decoded (today: the service and the real-time pace) or replayed (the fast pace). In the replayed mode every job carries the stream time it was fed at; the thread answers with that time and its decode time; the update becomes visible at `max(fed at, the previous update's visible time) + decode time`, the queue of a thread slower than the audio. At each frame the collect blocks until the thread decoded everything fed, then releases only the updates visible at the frame's end; the progress the utterance reads (decoded all, finished) follows the released updates. A sync releases everything, as the app's sync waits for the recognizers. In the decoder, so the utterance's hold and release, handover and close see the same updates as in real time. Rejected: catching up at every frame and releasing at once (a decode ends in the frame it was fed, earlier than the service); a free-running feeder stamping the delay from the thread's clock (the gate's pause and the words still meet at other frames).
 
 **The fast delay is the stream position.** In the fast pace a command's delay counts from the end of its words to the end of the frame whose collect reported it, in stream seconds, with 20 ms granularity; the real-time pace keeps the wall clock. Outcome and summary print both alike.
 
@@ -28,7 +28,7 @@ No new dependency, no protocol change.
 
 ## Measurements
 
-Filled at apply: `just streaming-bench --recorded --word start`, `--word stop` in real time and `--fast`, and the lone "restart" of the cues scenario, median and p90 of each, and the largest per-clip difference between the paces on sessions 1–6.
+Filled at apply: `just streaming-bench --recorded` by word in real time and `--fast`, the lone "restart" in both paces; median, p90 and the largest per-clip difference on sessions 1–6.
 
 ## Test levels
 
