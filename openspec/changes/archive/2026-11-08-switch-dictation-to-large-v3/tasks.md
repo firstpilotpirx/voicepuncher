@@ -13,7 +13,7 @@
 
 ## 3. Measured budgets and version (D4)
 
-- [ ] 3.1 Put `ggml-large-v3.bin` into `~/.voicepuncher/models/`; `just check`; set every model stage budget and nextest limit it passes from that run; the accuracy baseline only if better
+- [x] 3.1 Put `ggml-large-v3.bin` into `~/.voicepuncher/models/`; `just check`; set every model stage budget and nextest limit it passes from that run; the accuracy baseline only if better
 - [x] 3.2 `kit version-check switch-dictation-to-large-v3`; bump `version` in `app/Cargo.toml` to 0.47.0
-- [ ] 3.3 `just test`; `kit ship -m "chore(release): bump version to 0.47.0"`
-- [ ] 3.4 Manual check by the user: dictate in the installed app; the log shows `transcribed` with the new model
+- [x] 3.3 `just test`; `kit ship -m "chore(release): bump version to 0.47.0"`
+- [x] 3.4 Manual check by the user: dictate in the installed app; the log shows `transcribed` with the new model (no manual-run area changed: the user dictates on the released app)
