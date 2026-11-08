@@ -8,8 +8,8 @@
 
 ## 2. Documents (D3)
 
-- [ ] 2.1 `README.md` (services table, command line, model table, prompt notes, memory and disk), `AGENTS.md`, `docs/architecture/` and `docs/ubiquitous-language.md` name large-v3; the turbo benchmark rows stay as history
-- [ ] 2.2 `just test`; `kit ship -m "docs: dictation runs on whisper large-v3"`
+- [x] 2.1 `README.md` (services table, command line, model table, prompt notes, memory and disk), `AGENTS.md`, `docs/architecture/` and `docs/ubiquitous-language.md` name large-v3; the turbo benchmark rows stay as history
+- [x] 2.2 `just test`; `kit ship -m "docs: dictation runs on whisper large-v3"`
 
 ## 3. Measured budgets and version (D4)
 
