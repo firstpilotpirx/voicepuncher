@@ -31,7 +31,7 @@ pub(super) fn should_offer_download_models_right_under_permissions() {
 pub(super) fn waiting_for_models() -> RuntimeState {
     RuntimeState::WaitingForModels {
         folder: "/Users/me/Library/Application Support/voicepuncher/models".into(),
-        missing: vec!["ggml-large-v3-turbo-q5_0.bin"],
+        missing: vec!["ggml-large-v3.bin"],
     }
 }
 

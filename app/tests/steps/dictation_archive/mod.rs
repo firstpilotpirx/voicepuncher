@@ -28,7 +28,7 @@ const CHUNK_TEXTS: [&str; 3] = ["one two three", "four five six", "seven eight n
 const STITCHED_CHUNKS: &str = "one two three four five six seven eight nine";
 /// What speech recognition hears of "start", then "stop" said with nothing in between.
 const ONLY_COMMAND_WORDS: &str = "Start stop.";
-const DICTATION_MODEL: &str = "ggml-large-v3-turbo-q5_0.bin";
+const DICTATION_MODEL: &str = "ggml-large-v3.bin";
 const ARCHIVE_SIZE_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const ENTRY_FILE: &str = "entry.json";
 const AUDIO_FILE: &str = "audio.wav";

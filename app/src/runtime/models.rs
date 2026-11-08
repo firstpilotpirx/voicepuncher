@@ -180,10 +180,7 @@ mod tests {
         // When
         let missing = CatalogModels::new(home.path(), HashMap::new()).missing(&config);
         // Then
-        assert_eq!(
-            missing,
-            vec!["ggml-large-v3-turbo-q5_0.bin", "ggml-silero-v5.1.2.bin"]
-        );
+        assert_eq!(missing, vec!["ggml-large-v3.bin", "ggml-silero-v5.1.2.bin"]);
     }
 
     #[test]

@@ -5,7 +5,7 @@ use std::ffi::OsStr;
 use voicepuncher::test_doubles::prelude::*;
 
 /// The dictation model `just models` downloads.
-pub(super) const DICTATION_MODEL: &str = "ggml-large-v3-turbo-q5_0.bin";
+pub(super) const DICTATION_MODEL: &str = "ggml-large-v3.bin";
 const DICTATION_MODEL_VAR: &str = "VOICEPUNCHER_WHISPER_MODEL";
 /// A file named like a Whisper model, larger than every real one, that is no model: a rule
 /// that takes the largest model file would start a service on it, which then fails to load.

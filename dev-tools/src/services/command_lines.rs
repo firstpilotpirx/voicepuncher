@@ -4,7 +4,7 @@
 
 /// The `whisper-server` arguments of the speech recognition service.
 ///
-/// Greedy, non-speech tokens suppressed, no text context: text decoded in one 30 s window of a request does not
+/// Beam search of 5 candidates (deterministic, like greedy; `-bo` applies only to sampling), non-speech tokens suppressed, no text context: text decoded in one 30 s window of a request does not
 /// steer the next (requests never share text: whisper-server clears it before every request). No text context
 /// drops a request's prompt too, so a dictation request with a prompt sets its own context (`max_context` 224,
 /// `carry_initial_prompt`). No temperature fallback is ignored by whisper-server 1.9.5: dictation keeps the
@@ -27,6 +27,8 @@ pub fn whisper_args(model: &str, port: &str, threads: &str, vad: &str) -> Vec<St
         "auto",
         "-t",
         threads,
+        "-bs",
+        "5",
         "-bo",
         "1",
         "-nf",

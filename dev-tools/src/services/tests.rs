@@ -230,10 +230,7 @@ fn should_install_only_on_y() {
 
 #[test]
 fn should_print_a_model_path_as_basename_does() {
-    assert_eq!(
-        basename("/m/ggml-large-v3-turbo-q5_0.bin"),
-        "ggml-large-v3-turbo-q5_0.bin"
-    );
+    assert_eq!(basename("/m/ggml-large-v3.bin"), "ggml-large-v3.bin");
     assert_eq!(
         basename("/m/sherpa-onnx-streaming-en/"),
         "sherpa-onnx-streaming-en"

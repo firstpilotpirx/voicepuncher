@@ -1,4 +1,4 @@
-//! Chunk seams recorded from whisper-server (large-v3-turbo, greedy decoding): the last
+//! Chunk seams recorded from whisper-server (large-v3-turbo, greedy decoding, before the switch to large-v3): the last
 //! words of one chunk transcript, the first words of the next, and the merge after review.
 //! The speech is the Russian and English test paragraphs of `voicepuncher_e2e_test::speech`,
 //! spoken by macOS `say` under recording conditions and cut with the live chunk rule at

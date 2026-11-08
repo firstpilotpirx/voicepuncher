@@ -249,7 +249,7 @@ fn should_wait_for_models_without_requiring_a_service() {
     // Then
     assert_eq!(
         *seen.lock().unwrap(),
-        vec![waiting_for(&["ggml-large-v3-turbo-q5_0.bin"])]
+        vec![waiting_for(&["ggml-large-v3.bin"])]
     );
     assert_eq!(*services.0.lock().unwrap(), 0);
 }
@@ -268,7 +268,7 @@ fn should_start_the_services_and_the_pipeline_once_the_models_are_present() {
     assert_eq!(
         *seen.lock().unwrap(),
         vec![
-            waiting_for(&["ggml-large-v3-turbo-q5_0.bin"]),
+            waiting_for(&["ggml-large-v3.bin"]),
             RuntimeState::StartingServices { ready: 0, total: 1 },
             RuntimeState::Starting,
             ready(HotKey::F13),
@@ -289,15 +289,15 @@ fn should_end_the_pipeline_and_wait_when_a_reload_needs_missing_models() {
     wait_for_state(&seen, &ready(HotKey::F13));
     seen.lock().unwrap().clear();
     // When
-    models.missing_now(&["ggml-large-v3-turbo-q5_0.bin"]);
+    models.missing_now(&["ggml-large-v3.bin"]);
     runtime.reload(with_hotkey(HotKey::F19)).unwrap();
-    wait_for_state(&seen, &waiting_for(&["ggml-large-v3-turbo-q5_0.bin"]));
+    wait_for_state(&seen, &waiting_for(&["ggml-large-v3.bin"]));
     // Then
     assert_eq!(
         *seen.lock().unwrap(),
         vec![
             RuntimeState::Restarting,
-            waiting_for(&["ggml-large-v3-turbo-q5_0.bin"]),
+            waiting_for(&["ggml-large-v3.bin"]),
         ]
     );
 }
@@ -309,7 +309,7 @@ fn runtime_missing_the_dictation_model(
     services: &FakeServices,
 ) -> (Runtime, Arc<Mutex<Vec<RuntimeState>>>) {
     let seen = Arc::new(Mutex::new(Vec::new()));
-    models.missing_now(&["ggml-large-v3-turbo-q5_0.bin"]);
+    models.missing_now(&["ggml-large-v3.bin"]);
     let runtime = Runtime::new(Box::new(IdleAssembler), Box::new(listener()))
         .with_services(Box::new(services.clone()))
         .with_models(Box::new(models.clone()));

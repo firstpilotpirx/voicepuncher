@@ -14,7 +14,7 @@ use super::services::FakeServices;
 use super::{run, Event, RuntimeRun, SETTLE};
 use crate::IntegrationWorld;
 
-pub(crate) const DICTATION_MODEL: &str = "ggml-large-v3-turbo-q5_0.bin";
+pub(crate) const DICTATION_MODEL: &str = "ggml-large-v3.bin";
 
 /// A home with an empty models folder.
 pub(crate) struct ModelsFolder {
