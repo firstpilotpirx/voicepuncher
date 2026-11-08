@@ -64,6 +64,12 @@ fn should_start_whisper_with_the_arguments_of_the_speech_recognition_service() {
 }
 
 #[test]
+fn should_decode_dictation_with_a_beam_of_five_candidates() {
+    let args = whisper_args("m.bin", "18082", "4", "vad.bin");
+    assert!(args.windows(2).any(|pair| pair == ["-bs", "5"]));
+}
+
+#[test]
 fn should_start_command_spotting_with_the_streaming_recognizers_arguments() {
     assert_eq!(
         streaming_args("8082", "en", "ru", "vad.onnx").join(" "),

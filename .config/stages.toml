@@ -180,7 +180,7 @@ bench_areas = '''
 stage_budgets = '''
     test                 60
     e2e-smoke-voice     167
-    e2e-smoke-speech     35
+    e2e-smoke-speech     53
     e2e-quick            98
     e2e-smoke-services   89
 '''
