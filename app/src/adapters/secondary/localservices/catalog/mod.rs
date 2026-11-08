@@ -22,7 +22,7 @@ use found::{existing, file_name_starts, first_problem, newest, shown};
 
 const WHISPER: &str = "whisper-server";
 const COMMAND_SPOTTING: &str = "voicepuncher-command-spotting";
-const DICTATION_MODEL: &str = "ggml-large-v3-turbo-q5_0.bin";
+const DICTATION_MODEL: &str = "ggml-large-v3.bin";
 const WHISPER_VAD_PREFIX: &str = "ggml-silero-";
 const KWS_VAD_MODEL: &str = "silero_vad.onnx";
 const RUN_SCRIPTS_HINT: &str = "run 'just models'";

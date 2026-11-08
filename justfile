@@ -3,7 +3,7 @@ set dotenv-load
 # ── Settings ── override any of these via env or .env ─────────────────────────
 
 # Models: env var wins; else the file `just models` downloads, found by name in ~/.voicepuncher or its models/ (empty when not on disk: the start and _require-models then fail with "Run 'just models' or set it in .env")
-dictation_model_file := "ggml-large-v3-turbo-q5_0.bin"
+dictation_model_file := "ggml-large-v3.bin"
 find_model := 'find ~/.voicepuncher -maxdepth 2 -name "$1" 2>/dev/null | head -1'
 find_model_dir := 'find ~/.voicepuncher -maxdepth 2 -type d -name "$1" -exec ls -td {} + 2>/dev/null | head -1'
 # The speech recognition service for dictation
@@ -712,7 +712,7 @@ stop-model-servers *services: _dev-tools
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
-# Download default models into ~/.voicepuncher/models (whisper large-v3-turbo q5_0 ~550 MB for dictation, Silero VAD ~1 MB, the English and Russian streaming models, Silero VAD for sherpa-onnx ~1 MB)
+# Download default models into ~/.voicepuncher/models (whisper large-v3 ~3.1 GB for dictation, Silero VAD ~1 MB, the English and Russian streaming models, Silero VAD for sherpa-onnx ~1 MB)
 models:
     #!/usr/bin/env bash
     set -euo pipefail

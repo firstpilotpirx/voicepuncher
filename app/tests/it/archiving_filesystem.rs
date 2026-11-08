@@ -33,10 +33,8 @@ fn entry(started_at: SystemTime, samples: Vec<i16>) -> ArchiveEntry {
 }
 
 fn archive(dir: &Path, max_size_bytes: u64) -> FileSystemDictationArchive {
-    let setup = ArchiveSetup {
-        dictation_model: "ggml-large-v3-turbo-q5_0.bin".into(),
-        app_version: "0.21.0".into(),
-    };
+    let setup =
+        ArchiveSetup { dictation_model: "ggml-large-v3.bin".into(), app_version: "0.21.0".into() };
     FileSystemDictationArchive::new(dir.to_path_buf(), max_size_bytes, setup)
 }
 

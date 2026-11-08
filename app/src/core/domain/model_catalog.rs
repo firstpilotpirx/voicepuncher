@@ -49,10 +49,10 @@ impl ModelFile {
 /// Every model file, in download order.
 pub const CATALOG: [ModelFile; 5] = [
     ModelFile {
-        name: "ggml-large-v3-turbo-q5_0.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo-q5_0.bin",
-        sha256: "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
-        size_bytes: 574_041_195,
+        name: "ggml-large-v3.bin",
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3.bin",
+        sha256: "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
+        size_bytes: 3_095_033_483,
         purpose: "speech recognition — dictation",
         kind: ModelKind::File,
         used_by: ModelUse::Dictation,
@@ -177,8 +177,8 @@ mod tests {
             "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1";
         let sherpa = "https://github.com/k2-fsa/sherpa-onnx/releases/download";
         assert_eq!(
-            url("ggml-large-v3-turbo-q5_0.bin"),
-            format!("{whisper}/ggml-large-v3-turbo-q5_0.bin")
+            url("ggml-large-v3.bin"),
+            format!("{whisper}/ggml-large-v3.bin")
         );
         assert_eq!(
             url("ggml-silero-v5.1.2.bin"),
@@ -199,7 +199,7 @@ mod tests {
     #[test]
     fn should_keep_the_checksums_the_model_scripts_held() {
         let sha = |name| by_name(name).unwrap().sha256;
-        assert!(sha("ggml-large-v3-turbo-q5_0.bin").starts_with("394221709cd5"));
+        assert!(sha("ggml-large-v3.bin").starts_with("64d182b440b9"));
         assert!(sha("silero_vad.onnx").starts_with("9e2449e1"));
     }
 
@@ -210,7 +210,7 @@ mod tests {
         // Then
         assert_eq!(
             names(&files),
-            vec!["ggml-large-v3-turbo-q5_0.bin", "ggml-silero-v5.1.2.bin"]
+            vec!["ggml-large-v3.bin", "ggml-silero-v5.1.2.bin"]
         );
     }
 
@@ -227,7 +227,7 @@ mod tests {
         assert_eq!(
             names(&files),
             vec![
-                "ggml-large-v3-turbo-q5_0.bin",
+                "ggml-large-v3.bin",
                 "ggml-silero-v5.1.2.bin",
                 "silero_vad.onnx",
                 "sherpa-onnx-nemotron-speech-streaming-en-0.6b-160ms-int8-2026-04-25.tar.bz2",
@@ -250,6 +250,6 @@ mod tests {
 
     #[test]
     fn should_add_up_the_sizes() {
-        assert_eq!(total_bytes(&CATALOG), 1_129_168_569);
+        assert_eq!(total_bytes(&CATALOG), 3_650_160_857);
     }
 }

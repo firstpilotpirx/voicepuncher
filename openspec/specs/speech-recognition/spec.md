@@ -312,19 +312,6 @@ The system SHALL keep the text recognized for one request out of every other req
 - **WHEN** the user dictates an unrelated sentence
 - **THEN** the raw transcript of the second dictation contains none of the words of the first that were not spoken again
 
-### Requirement: Dictation is recognized with the large-v3-turbo model
-The service scripts SHALL start the speech recognition service for dictation — the one the app sends dictations and recording files to — with the Whisper large-v3-turbo model, 5-bit quantized, unless the user names another model when starting it, so that long speech under difficult recording conditions misses at most one spoken word in ten.
-
-#### Scenario: Dictation is recognized with the large-v3-turbo model by default
-- **GIVEN** the models that the service scripts download are on disk
-- **WHEN** the user starts the services with the service scripts without naming a model
-- **THEN** the speech recognition service for dictation recognizes speech with the large-v3-turbo model
-
-#### Scenario: Dictation is recognized with the model the user names
-- **GIVEN** the models that the service scripts download are on disk
-- **WHEN** the user starts the services with the service scripts and names another speech recognition model for dictation
-- **THEN** the speech recognition service for dictation recognizes speech with the named model
-
 ### Requirement: The same dictation audio gives the same text
 The system SHALL ask the speech recognition service for one deterministic transcription of dictation audio, without falling back to random sampling when the service is unsure, so the same audio always yields the same text.
 
@@ -454,3 +441,16 @@ The speech recognition service SHALL answer a request whose audio holds no speec
 - **GIVEN** the service scripts started the speech recognition service for dictation
 - **WHEN** a chunk that holds no speech is sent to it
 - **THEN** no words are heard and the service answers the next request
+
+### Requirement: Dictation is recognized with the large-v3 model
+The service scripts and the app SHALL start the speech recognition service for dictation with the full Whisper large-v3 model, 16-bit, searching five candidate transcriptions per window, unless the user names another model when starting it, so that fast or unclear Russian speech with English terms is misheard less often than with large-v3-turbo.
+
+#### Scenario: Dictation is recognized with the large-v3 model by default
+- **GIVEN** the models that the service scripts download are on disk
+- **WHEN** the user starts the services with the service scripts without naming a model
+- **THEN** the speech recognition service for dictation recognizes speech with the full large-v3 model
+
+#### Scenario: Dictation is recognized with the model the user names
+- **GIVEN** the models that the service scripts download are on disk
+- **WHEN** the user starts the services with the service scripts and names another speech recognition model for dictation
+- **THEN** the speech recognition service for dictation recognizes speech with the named model

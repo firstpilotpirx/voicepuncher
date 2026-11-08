@@ -288,7 +288,7 @@
 
 ### Speech recognition service for dictation
 - **Type:** External system (a *speech recognition service*)
-- **Definition:** The *speech recognition service* the app sends dictations and recording files to (`[transcription].base_url`, port 8081 by default). The service scripts start it as `whisper-server` (three *copies* found from its address) with the Whisper large-v3-turbo model, 5-bit quantized (`ggml-large-v3-turbo-q5_0.bin`), unless the user names another model in `VOICEPUNCHER_WHISPER_MODEL`.
+- **Definition:** The *speech recognition service* the app sends dictations and recording files to (`[transcription].base_url`, port 8081 by default). The service scripts start it as `whisper-server` (three *copies* found from its address) with the Whisper large-v3 model, 16-bit, decoding with beam search of 5 (`ggml-large-v3.bin`), unless the user names another model in `VOICEPUNCHER_WHISPER_MODEL`.
 - **Synonyms to AVOID:** "turbo server", "main whisper", "dictation whisper"
 
 ### Copy

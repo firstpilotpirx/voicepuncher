@@ -109,18 +109,18 @@ filter = 'binary(cucumber_e2e)'
 run-extra-args = ["--tags", "@resilience and not @wip"]
 slow-timeout = { period = "60s", terminate-after = 7 }
 
-# chunked_transcription, 120 s measured: 4 min; @seams, 88 s measured (the voice start timing moved to e2e-cues): 3 min
+# chunked_transcription, 326 s measured on large-v3: 11 min; @seams, 251 s measured on large-v3 (the voice start timing moved to e2e-cues): 9 min
 [profile.e2e-seams]
 success-output = "immediate"
 
 [[profile.e2e-seams.overrides]]
 filter = '(package(voicepuncher) & binary(it) & (test(/^chunked_transcription::/)))'
-slow-timeout = { period = "60s", terminate-after = 4 }
+slow-timeout = { period = "60s", terminate-after = 11 }
 
 [[profile.e2e-seams.overrides]]
 filter = 'binary(cucumber_e2e)'
 run-extra-args = ["--tags", "@seams and not @wip"]
-slow-timeout = { period = "60s", terminate-after = 3 }
+slow-timeout = { period = "60s", terminate-after = 9 }
 
 # The seam sample: a third of the sweep and 7 of the 27 @seams rows; the limits of e2e-seams
 [profile.e2e-seams-sample]
@@ -128,12 +128,12 @@ success-output = "immediate"
 
 [[profile.e2e-seams-sample.overrides]]
 filter = '(package(voicepuncher) & binary(it) & (test(/^chunked_transcription::/)))'
-slow-timeout = { period = "60s", terminate-after = 4 }
+slow-timeout = { period = "60s", terminate-after = 11 }
 
 [[profile.e2e-seams-sample.overrides]]
 filter = 'binary(cucumber_e2e)'
 run-extra-args = ["--tags", "@seams and @seams_sample and not @wip"]
-slow-timeout = { period = "60s", terminate-after = 3 }
+slow-timeout = { period = "60s", terminate-after = 9 }
 
 # @cues, the voice start timing on an idle machine, 135 s measured: 5 min
 [profile.e2e-cues]

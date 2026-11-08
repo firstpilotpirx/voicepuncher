@@ -20,7 +20,7 @@ impl FakeHome {
     pub(super) fn complete() -> Result<Self> {
         let home = Self { dir: tempfile::tempdir()? };
         for file in [
-            "ggml-large-v3-turbo-q5_0.bin",
+            "ggml-large-v3.bin",
             "silero_vad.onnx",
             "ggml-silero-v5.1.2.bin",
         ] {

@@ -21,6 +21,8 @@ pub fn whisper_args(model: &str, port: u16, threads: usize, vad: &str) -> Vec<St
         "auto",
         "-t",
         &threads,
+        "-bs",
+        "5",
         "-bo",
         "1",
         "-nf",

@@ -140,10 +140,7 @@ mod tests {
     }
 
     fn sample_setup() -> ArchiveSetup {
-        ArchiveSetup {
-            dictation_model: "ggml-large-v3-turbo-q5_0.bin".into(),
-            app_version: "0.11.0".into(),
-        }
+        ArchiveSetup { dictation_model: "ggml-large-v3.bin".into(), app_version: "0.11.0".into() }
     }
 
     #[test]
@@ -166,7 +163,7 @@ mod tests {
             "outcome": "left_in_clipboard",
             "lost_chunks": 1,
             "timings_ms": {"transcribe": 420, "paste": 90},
-            "dictation_model": "ggml-large-v3-turbo-q5_0.bin",
+            "dictation_model": "ggml-large-v3.bin",
             "app_version": "0.11.0",
         });
         assert_eq!(value, expected);

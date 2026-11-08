@@ -79,13 +79,13 @@ Feature: speech-recognition
         | 60      |
 
   @serial
-  Rule: Dictation is recognized with the large-v3-turbo model
+  Rule: Dictation is recognized with the large-v3 model
 
     @smoke
-    Scenario: Dictation is recognized with the large-v3-turbo model by default
+    Scenario: Dictation is recognized with the large-v3 model by default
       Given the models that the service scripts download are on disk
       When the user starts the services with the service scripts without naming a model
-      Then the speech recognition service for dictation recognizes speech with the large-v3-turbo model
+      Then the speech recognition service for dictation recognizes speech with the full large-v3 model
 
     @regression
     Scenario: Dictation is recognized with the model the user names

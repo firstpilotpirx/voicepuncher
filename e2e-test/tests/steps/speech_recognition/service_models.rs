@@ -83,9 +83,9 @@ pub(super) async fn start_naming_a_dictation_model(world: &mut E2eWorld) -> Resu
 }
 
 #[then(
-    "the speech recognition service for dictation recognizes speech with the large-v3-turbo model"
+    "the speech recognition service for dictation recognizes speech with the full large-v3 model"
 )]
-pub(super) async fn dictation_on_turbo(world: &mut E2eWorld) -> Result<()> {
+pub(super) async fn dictation_on_large_v3(world: &mut E2eWorld) -> Result<()> {
     off_thread(world, |world| {
         scenario_services(world)?.check_runs_default_model()
     })

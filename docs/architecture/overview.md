@@ -134,7 +134,7 @@ Signals received while the pipeline is in any non-Idle state other than `Recordi
 | Goal | Target | Notes |
 |---|---|---|
 | Fully offline | Zero network I/O at runtime | Every model runs locally through Metal; the only internet use is the model download the user starts |
-| Latency | < 3 s end-to-end (release → paste) | On Apple M-series with `large-v3-turbo-q5_0` |
+| Latency | < 3 s end-to-end (release → paste) | On Apple M-series with `large-v3` (16-bit, beam search 5) |
 | Multilingual | English + Russian validated | FLEURS en/ru corpus in the benchmark suite |
 | Accuracy (WER) | < 30 % mean WER on the mixed corpus | `just e2e-quick` on 10 samples in every `check`, `just e2e-bench` on 100 in `full-check` |
 | Voice control | Every command of the smoke set recognized from synthesized speech and from the user's recordings | `just e2e-smoke`, `voice_samples_it` |
