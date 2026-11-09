@@ -23,6 +23,9 @@ With the first word reported at once, the second word of a doubled form arrives 
 | Run (6 sessions, real time) | right | false alarms | delay median | p90 | start median | stop median |
 |---|---|---|---|---|---|---|
 | before (`main` at 3f2c0a2) | 51/53 | 4/9 | 485 ms | 5154 ms | 445 ms | 436 ms |
+| after (this branch at 62b2071) | 51/53 | 5/9 | 396 ms | 728 ms | 427 ms | 415 ms |
+
+Every recorded command is still recognized as before (the same two misses), the median delay is under 0.4 s and the p90 drops from 5.2 s to 0.7 s; one more false alarm in the sessions without commands ("start" in session 4), the risk the user accepted.
 
 ## Risks
 

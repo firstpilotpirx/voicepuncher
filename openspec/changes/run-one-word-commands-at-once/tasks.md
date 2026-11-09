@@ -26,11 +26,11 @@
 
 ## 5. Measure
 
-- [ ] 5.1 Run `just streaming-bench --recorded` on the branch in real time; record in design.md § D4 that every command is still recognized once and the delay median of commands after speech is at most 0.4 s
-- [ ] 5.2 Commit
+- [x] 5.1 Run `just streaming-bench --recorded` on the branch in real time; record in design.md § D4 that every command is still recognized once and the delay median of commands after speech is at most 0.4 s
+- [x] 5.2 Commit
 
 ## 6. Release
 
-- [ ] 6.1 Bump `version` in `app/Cargo.toml` to 0.48.0
+- [x] 6.1 Bump `version` in `app/Cargo.toml` to 0.48.0
 - [ ] 6.2 `just check`, commit
-- [ ] 6.3 Manual checks: none (the change is inside the command spotting service; hotkey, recording, overlay, paste and permissions are unchanged)
+- [x] 6.3 Manual checks: none (the change is inside the command spotting service; hotkey, recording, overlay, paste and permissions are unchanged)
