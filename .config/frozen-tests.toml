@@ -270,3 +270,12 @@ stage = "e2e-cues"
 beside = "e2e-cues on fix/show-overlay-on-every-space 2026-11-09: another project build (rustc) loading the machine"
 branch = "fix/show-overlay-on-every-space"
 
+
+[[frozen]]
+test = "scenario: Requests wait their turn when every copy is busy"
+frozen = "2026-11-09"
+recipe = "e2e-regression"
+stage = "e2e-regression"
+beside = "e2e-regression of fix/run-one-word-commands-at-once alone on the machine lock"
+branch = "fix/run-one-word-commands-at-once"
+
