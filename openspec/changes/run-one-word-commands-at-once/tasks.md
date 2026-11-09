@@ -19,10 +19,10 @@
 
 ## 4. Scenarios mirror the new requirements
 
-- [ ] 4.1 Rename the seven `Rule:` headings (the chain rule included) in `e2e-test/tests/features/voice_control.feature` and `app/tests/features/component/voice_control.feature` to the added requirements
-- [ ] 4.2 Red: flip the scenarios in those files — a command word inside a sentence counts while listening, a stop word inside a dictated sentence ends the dictation at once, Enter followed by speech presses Return, a paste word inside a sentence pastes at once, a long form counts by its command word, stop opening a sentence counts at once; add press enter after a sentence without waiting for the pause, enter enter presses Return once, a chain the states do not allow ("enter stop" presses Return only), stop after a long dictation without a pause; step definitions in `e2e-test/tests/steps/voice_control/` and `app/tests/steps/`
-- [ ] 4.3 Green: run them with `just test-one` (component) and `just e2e-smoke` (E2E); fix what fails
-- [ ] 4.4 `just test`, commit
+- [x] 4.1 Rename the seven `Rule:` headings (the chain rule included) in `e2e-test/tests/features/voice_control.feature` and `app/tests/features/component/voice_control.feature` to the added requirements
+- [x] 4.2 Red: flip the scenarios in those files — a command word inside a sentence counts while listening, a stop word inside a dictated sentence ends the dictation at once, Enter followed by speech presses Return, a paste word inside a sentence pastes at once, a long form counts by its command word, stop opening a sentence counts at once; add press enter after a sentence without waiting for the pause, enter enter presses Return once, a chain the states do not allow ("enter stop" presses Return only), stop after a long dictation without a pause; step definitions in `e2e-test/tests/steps/voice_control/` and `app/tests/steps/`
+- [x] 4.3 Green: run them with `just test-one` (component) and `just e2e-smoke` (E2E); fix what fails
+- [x] 4.4 `just test`, commit
 
 ## 5. Measure
 
