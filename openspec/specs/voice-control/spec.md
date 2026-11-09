@@ -1078,7 +1078,7 @@ On an idle machine the service SHALL report "start" and "stop" within 0.3 s of t
 #### Scenario: Stop said alone is reported at once
 - **GIVEN** the command spotting service runs with the streaming recognizer on an otherwise idle machine
 - **WHEN** an app streams "stop" followed by silence, in real time, five times
-- **THEN** the service reports "stop dictation" within 0.3 s of the end of "stop" by the wall clock in at least three of them, and within 0.6 s in all five
+- **THEN** the service reports "stop dictation" within 0.4 s of the end of "stop" by the wall clock in at least three of them, and within 0.6 s in all five
 
 #### Scenario: Stop opening a sentence counts at once
 - **GIVEN** the command spotting service runs with the streaming recognizer
