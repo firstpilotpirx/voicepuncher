@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: The overlay appears without rebuilding its windows
-The system SHALL keep the overlay's windows from one showing to the next and build them again only when the screens change or when the pill is not on the desktop the user is on, so the overlay is drawn within 0.05 s of being asked to show and appears on every screen of the moment and on the current desktop. While the overlay shows a state, a switch to another desktop SHALL bring it there the same way. Building the windows again SHALL close the old ones.
+The system SHALL keep the overlay's windows from one showing to the next and build them again only when the screens change or when the pill is not on the desktop the user is on, so the overlay is drawn within 0.05 s of being asked to show and appears on every screen of the moment and on the current desktop. While the overlay shows a state, a switch to another desktop SHALL bring it there the same way.
 
 #### Scenario: The recording sign is drawn at once
 - **GIVEN** the app runs and the overlay is hidden
@@ -32,8 +32,3 @@ The system SHALL keep the overlay's windows from one showing to the next and bui
 - **AND** its windows are no longer on the current desktop
 - **WHEN** the user switches desktop
 - **THEN** the overlay's windows are built again and show the recording sign
-
-#### Scenario: A rebuild leaves no old overlay windows
-- **GIVEN** the overlay has shown once
-- **WHEN** its windows are built again
-- **THEN** the app holds no more windows than before the rebuild

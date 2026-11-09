@@ -13,7 +13,7 @@ mod transcript_window;
 mod waveform;
 mod window_set;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -28,7 +28,7 @@ use crate::core::domain::{AudioLevel, FailureNotice, VoiceCommand};
 
 use crate::adapters::locking::lock;
 use crate::adapters::main_queue::{on_main, on_main_after, MainOnly};
-use crate::adapters::screen_watcher::ScreenWatcher;
+use crate::adapters::screen_watcher::{ScreenWatcher, WatchHandlers};
 use failure_notice::{show_notice, NoticeTimer};
 use live_text::LiveTranscriptText;
 use pill_content::{command_sign, state_after_sign};
@@ -47,7 +47,8 @@ use super::pointer_sign::{FAILURE_NOTICE_LIFETIME, PASTED_SIGN_MS};
 
 mod redraw;
 use redraw::{
-    build_windows, collect_topology, rebuild_if_screens_changed, screen_change_handler, Redraw,
+    build_windows, collect_topology, desktop_switch_handler, rebuild_if_screens_changed,
+    screen_change_handler, Redraw,
 };
 mod indicator;
 mod live_view;
@@ -99,6 +100,7 @@ impl MacosVisualIndicator {
         let main = MainState {
             windows: RefCell::new(build_windows(mtm)),
             topology: RefCell::new(collect_topology(mtm)),
+            off_desktop_pretended: Cell::new(false),
         };
         let main = MainOnly::new(mtm, main);
 
@@ -122,7 +124,10 @@ impl MacosVisualIndicator {
                 commands_unavailable: Arc::clone(&commands_unavailable),
             },
         };
-        let watcher = ScreenWatcher::install(screen_change_handler(redraw.clone()));
+        let watcher = ScreenWatcher::install(WatchHandlers {
+            screens: screen_change_handler(redraw.clone()),
+            desktop: desktop_switch_handler(redraw.clone()),
+        });
         Self {
             state,
             commands_unavailable,
@@ -195,6 +200,25 @@ impl MacosVisualIndicator {
         if let Some(main) = self.main.get(mtm) {
             main.topology.replace(ScreenTopology { frames: Vec::new() });
         }
+    }
+
+    /// Makes the next check of the pill against the current desktop find it off, as when the
+    /// window server dropped the overlay's windows from that desktop.
+    pub fn pretend_off_the_current_desktop(&self, mtm: MainThreadMarker) {
+        if let Some(main) = self.main.get(mtm) {
+            main.off_desktop_pretended.set(true);
+        }
+    }
+
+    /// What the overlay does when the user switched to another desktop.
+    pub fn desktop_switched(&self, mtm: MainThreadMarker) {
+        self.redraw().desktop_switched(mtm);
+    }
+
+    /// Whether the pill of the first screen shows on the desktop the user is on.
+    pub fn is_pill_on_the_current_desktop(&self) -> bool {
+        self.first_window()
+            .is_some_and(|ws| ws.window().isVisible() && ws.window().isOnActiveSpace())
     }
 
     /// The text the window under the pill of the first screen shows; `None` while it is hidden.
