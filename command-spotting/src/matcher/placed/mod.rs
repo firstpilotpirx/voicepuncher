@@ -122,6 +122,11 @@ fn command_at(tokens: &[Token], from: usize) -> Option<(&'static str, usize)> {
 
 impl PhraseMatcher {
     /// The phrases the current state accepts: the selected ones the matcher knows.
+    /// Whether it listens as during a dictation: "stop dictation" is selected.
+    pub fn listens_while_dictating(&self) -> bool {
+        self.selected().iter().any(|s| s == "stop dictation")
+    }
+
     fn accepted(&self) -> Vec<&'static str> {
         STANDBY
             .iter()

@@ -278,7 +278,8 @@ impl Utterance {
             }
         };
         let (found, at_once) = decide_how(matcher, &words, moment, &self.reported())?;
-        if at_once && self.doubted(r, &found, moment) {
+        // WHY: Russian dictation is what the English recognizer mishears as a command word.
+        if at_once && matcher.listens_while_dictating() && self.doubted(r, &found, moment) {
             return None;
         }
         if self
