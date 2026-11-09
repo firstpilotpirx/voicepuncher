@@ -223,6 +223,7 @@ Feature: voice-control
         | words                                    | state             | commands          |
         | We meet on Friday at ten, enter          | dictating         | press enter       |
         | Okay, start                              | no dictation runs | start dictation   |
+        | Okay, enter                              | no dictation runs | press enter       |
 
       @regression
       Examples:
@@ -644,12 +645,6 @@ Feature: voice-control
       When an app streams the sentence "the weather is nice today"
       Then the streaming recognizer reports no command
 
-    @smoke
-    Scenario: Stop opening a sentence counts at once
-      Given the command spotting service runs with the streaming recognizer
-      When an app streams the sentence "stop the car"
-      Then the streaming recognizer reports "stop dictation" exactly once
-
   # Real-time streams timed by the wall clock; @cues runs them with the machine otherwise idle.
   @serial @cues
   Rule: Streaming commands are reported as soon as their words are decoded
@@ -663,6 +658,12 @@ Feature: voice-control
       Given the command spotting service runs with the streaming recognizer
       When an app streams "stop" followed by silence, in real time
       Then the streaming recognizer reports "stop dictation" within 0.3 s of the end of the words by the wall clock
+
+    @smoke
+    Scenario: Stop opening a sentence counts at once
+      Given the command spotting service runs with the streaming recognizer
+      When an app streams the sentence "stop the car"
+      Then the streaming recognizer reports "stop dictation" exactly once
 
     Scenario: Press enter after a sentence is reported without waiting for the pause
       Given the command spotting service runs with the streaming recognizer

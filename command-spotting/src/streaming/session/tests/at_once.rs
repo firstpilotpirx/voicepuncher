@@ -60,3 +60,49 @@ fn should_take_an_english_stop_the_russian_recognizer_heard_as_a_word_at_the_pau
     // Then
     assert_eq!(commands(&events), [["stop dictation"]], "{events:?}");
 }
+
+/// A replayed session over `models` listening for `phrases`.
+fn replayed<'a>(models: &[&'a Scripted], phrases: &[&str]) -> Session<'a> {
+    let cfg = SessionCfg { delivery: Delivery::Replayed, ..cfg(None) };
+    session_listening(models, &cfg, phrases)
+}
+
+#[test]
+fn should_report_an_english_enter_over_another_russian_word_at_once_while_no_dictation_runs() {
+    // Given "enter" said before more speech while no dictation runs, the Russian recognizer
+    // hearing other words over it
+    let en = Scripted::new(
+        "en",
+        &[("enter", 0.6), ("the", 0.9), ("room", 1.2), ("now", 1.5)],
+    );
+    let ru = Scripted::new(
+        "ru",
+        &[("энтер", 0.6), ("зе", 0.9), ("рум", 1.2), ("нау", 1.5)],
+    );
+    let mut session = replayed(&[&en, &ru], &["press enter", "start dictation"]);
+    // When
+    let at = first_report(&mut session, &[silence(1.0), speech(2.5)].concat());
+    // Then it is reported before the speech ends, with no pause awaited
+    let at = at.expect("reported while the speech goes on");
+    assert!(at <= 1.6 + 0.6, "{at}");
+}
+
+#[test]
+fn should_report_a_doubled_english_stop_over_other_russian_words_at_once_during_a_dictation() {
+    // Given "stop stop" said in a dictation before more speech, the Russian recognizer
+    // hearing other words over it
+    let en = Scripted::new(
+        "en",
+        &[("stop", 0.6), ("stop", 0.9), ("the", 1.2), ("car", 1.5)],
+    );
+    let ru = Scripted::new(
+        "ru",
+        &[("стоп", 0.6), ("стопка", 0.9), ("зе", 1.2), ("кар", 1.5)],
+    );
+    let mut session = replayed(&[&en, &ru], &["stop dictation"]);
+    // When
+    let at = first_report(&mut session, &[silence(1.0), speech(2.5)].concat());
+    // Then it is reported before the speech ends, with no pause awaited
+    let at = at.expect("reported while the speech goes on");
+    assert!(at <= 1.9 + 0.6, "{at}");
+}

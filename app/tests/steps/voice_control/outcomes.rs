@@ -129,6 +129,15 @@ pub(crate) fn sentence_pasted(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
+#[then(expr = "the pasted text contains {string}")]
+pub(super) fn pasted_with(world: &mut IntegrationWorld, wanted: String) -> Result<()> {
+    let pasted = run(world).pasted()?;
+    if !pasted.to_lowercase().contains(&wanted) {
+        bail!("{wanted:?} is missing from the pasted text: {pasted:?}");
+    }
+    Ok(())
+}
+
 #[then(expr = "the pasted text does not contain {string}")]
 pub(super) fn pasted_without(world: &mut IntegrationWorld, unwanted: String) -> Result<()> {
     let pasted = run(world).pasted()?;

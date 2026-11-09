@@ -148,6 +148,7 @@ Feature: voice-control
       Given a dictation runs
       When the user says "please stop the software from crashing" without pausing
       Then the stop sound plays before the sentence ends
+      And the pasted text contains "please"
       And the pasted text does not contain "stop"
       And the pasted text does not contain "software"
 
