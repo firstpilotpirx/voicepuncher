@@ -148,3 +148,10 @@ Feature: visual-feedback
       And its windows are no longer on the current desktop
       When a recording starts on the hidden overlay
       Then the windows are built again and show the recording sign on the current desktop
+
+    Scenario: A desktop switch during a recording brings the overlay along
+      Given the overlay is ready
+      And a recording shows on the overlay
+      And its windows are no longer on the current desktop
+      When the user switches desktop
+      Then the windows are built again and show the recording sign on the current desktop

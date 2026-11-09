@@ -206,6 +206,9 @@ impl MacosVisualIndicator {
         }
     }
 
+    /// What the overlay does when the user switched to another desktop.
+    pub fn desktop_switched(&self, _mtm: MainThreadMarker) {}
+
     /// Whether the pill of the first screen shows on the desktop the user is on.
     pub fn is_pill_on_the_current_desktop(&self) -> bool {
         self.first_window()

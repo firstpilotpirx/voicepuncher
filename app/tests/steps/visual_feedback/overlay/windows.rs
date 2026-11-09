@@ -52,6 +52,25 @@ fn off_the_current_desktop(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
+#[given("a recording shows on the overlay")]
+fn recording_shows(world: &mut IntegrationWorld) -> Result<()> {
+    overlay(world)?.show_recording();
+    pump(DRAWN_SECS);
+    Ok(())
+}
+
+#[when("the user switches desktop")]
+fn desktop_switched(world: &mut IntegrationWorld) -> Result<()> {
+    let mtm = MainThreadMarker::new().context("the harness runs its steps on the main thread")?;
+    let overlay = overlay(world)?;
+    let builds_before = overlay.window_builds();
+    overlay.desktop_switched(mtm);
+    pump(DRAWN_SECS);
+    let builds_after = overlay.window_builds();
+    run(world).showing = Showing { drawn_after: None, builds_before, builds_after };
+    Ok(())
+}
+
 #[when("a recording starts on the hidden overlay")]
 fn recording_starts(world: &mut IntegrationWorld) -> Result<()> {
     let overlay = overlay(world)?;
