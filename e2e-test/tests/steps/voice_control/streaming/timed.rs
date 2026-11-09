@@ -7,11 +7,12 @@ use cucumber::{then, when};
 use voicepuncher::test_doubles::prelude::*;
 
 use voicepuncher_command_spotting::protocol::{PhraseSelection, ServerEvent};
+use voicepuncher_e2e_test::machine_load::{self, LoadAllowance};
 use voicepuncher_e2e_test::voice_commands::{
     silence, spoken_with_pauses, without_trailing_silence,
 };
 
-use super::{every_phrase, run, shared, ENGINE_RUNS, SAMPLE_RATE};
+use super::{busy, every_phrase, run, shared, ENGINE_RUNS, SAMPLE_RATE};
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
@@ -78,10 +79,20 @@ async fn streams_in_real_time(world: &mut E2eWorld, words: String) -> Result<()>
     expr = "the streaming recognizer reports {string} within {float} s of the end of the words by the wall clock"
 )]
 fn reported_within(world: &mut E2eWorld, command: String, bound: f32) -> Result<()> {
-    let timed = &run(world).timed;
+    let run = run(world);
+    let own_threads = run.busy.as_ref().map_or(0, busy::BusyCores::threads);
+    let allowance = LoadAllowance::now(own_threads);
+    let stretched = allowance
+        .stretch(Duration::from_secs_f32(bound))
+        .as_secs_f32();
+    let timed = &run.timed;
     match timed.delay_of(&command) {
-        Some(delay) if delay <= bound => Ok(()),
-        Some(delay) => bail!("{command:?} came {delay:.3} s after the words, over {bound} s"),
+        Some(delay) if delay <= stretched => Ok(()),
+        Some(delay) => bail!(
+            "{command:?} came {delay:.3} s after the words, over {bound} s; {}\n{}",
+            allowance.describe(Duration::from_secs_f32(bound)),
+            machine_load::report()
+        ),
         None => bail!("{command:?} was not reported: {:?}", timed.reports),
     }
 }

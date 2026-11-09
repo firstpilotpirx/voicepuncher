@@ -7,7 +7,7 @@ use voicepuncher::test_doubles::prelude::*;
 
 use cucumber::{given, then, when};
 
-use voicepuncher_e2e_test::machine_load;
+use voicepuncher_e2e_test::machine_load::{self, LoadAllowance};
 use voicepuncher_e2e_test::voice_commands::{
     from_first_sound, silence, spoken_by, spoken_with_pauses, without_trailing_silence,
 };
@@ -230,12 +230,16 @@ pub(super) fn sentence_at_once() -> Result<Vec<f32>> {
 }
 
 /// A cue over its bound fails naming what ran beside it: the spec bounds the cue on an
-/// idle machine, so the load at the failure tells a slow recognizer from a loaded machine.
+/// idle machine, so the bound stretches by the load of other programs (`LoadAllowance`), and
+/// the load at the failure tells a slow recognizer from a loaded machine.
 fn check_within(start: &MeasuredStart, bound_secs: f32) -> Result<()> {
-    if !start.within(Duration::from_secs_f32(bound_secs)) {
+    let bound = Duration::from_secs_f32(bound_secs);
+    let allowance = LoadAllowance::now(0);
+    if !start.within(allowance.stretch(bound)) {
         bail!(
-            "expected the start cue within {bound_secs} s of the end of the command's words; {}\n{}",
+            "expected the start cue within {bound_secs} s of the end of the command's words; {}\n{}\n{}",
             start.report(),
+            allowance.describe(bound),
             machine_load::report()
         );
     }
@@ -310,16 +314,18 @@ fn restart_cue_within(world: &mut E2eWorld, bound_secs: f32, said: String) -> Re
 )]
 fn most_recorded_within(world: &mut E2eWorld, wanted: usize, of: usize) -> Result<()> {
     let starts = session_of(world)?.starts.lock().unwrap().clone();
+    let allowance = LoadAllowance::now(0);
     let in_time = starts
         .iter()
-        .filter(|start| start.within(start.bound()))
+        .filter(|start| start.within(allowance.stretch(start.bound())))
         .count();
     if in_time * of < wanted * starts.len() {
         let reports: Vec<String> = starts.iter().map(MeasuredStart::report).collect();
         bail!(
-            "{in_time} of {} recorded starts gave the cue within their bound:\n{}\n{}",
+            "{in_time} of {} recorded starts gave the cue within their bound:\n{}\n{}\n{}",
             starts.len(),
             reports.join("\n"),
+            allowance.describe(CUE_BOUND),
             machine_load::report()
         );
     }
