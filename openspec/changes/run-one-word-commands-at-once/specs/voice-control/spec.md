@@ -66,7 +66,7 @@ The system SHALL start a dictation when "start" opens an utterance and speech fo
 - **THEN** the Return key is pressed in the focused app
 
 ### Requirement: Every command is said by its one word
-The system SHALL take each command only from its one word or that word said twice in a row: "start" for "start dictation", "stop" for "stop dictation", "cancel" for "cancel dictation", "restart" for "restart dictation", "enter" for "press enter", "clear" for "clear all text" and "paste" for "paste text", in the state that accepts the command. The longer phrases "start dictation", "stop dictation", "cancel dictation", "restart dictation", "press enter", "clear all text", "clear text" and "paste text" SHALL never be a command of their own: each counts only by its command word, like any speech that holds it; the command names stay only as names.
+The system SHALL take each command only from its one word or that word said twice in a row ("start", "stop", "cancel", "restart", "enter", "clear", "paste"), in the state that accepts the command. A longer phrase ("stop dictation", "press enter", "clear all text", "paste text") SHALL never be a command of its own: it counts only by its command word, like any speech that holds it.
 
 #### Scenario: A short form is recognized as its command
 - **GIVEN** listening is on
@@ -92,7 +92,7 @@ The system SHALL take each command only from its one word or that word said twic
 - **THEN** the Return key is pressed, as for any utterance ending in "enter"
 
 ### Requirement: "paste" pastes the clipboard at once
-While listening, with or without a dictation running, the system SHALL press Cmd+V in the focused app when the user says "paste", so the focused app pastes whatever the clipboard holds at its cursor: what the user copied, before the dictation or during it, never the dictated text. During a dictation the command SHALL NOT end, pause or restart the dictation: it keeps recording, and on its end pastes its own text, without the words of the command, where the cursor then is. The command SHALL leave the clipboard as it is. It SHALL then play the paste sound and show the paste sign on the overlay. With an empty clipboard the focused app pastes nothing, and the command still confirms itself.
+While listening, with or without a dictation running, the system SHALL press Cmd+V in the focused app as soon as the user says "paste", wherever in an utterance, then play the paste sound and show the paste sign; the clipboard stays as it was. During a dictation the command SHALL NOT end it: the dictation keeps recording and pastes its own text, without the command's words, when it ends.
 
 #### Scenario: Saying paste text pastes the clipboard at the cursor
 - **GIVEN** listening is on
@@ -133,7 +133,7 @@ While listening, with or without a dictation running, the system SHALL press Cmd
 - **AND** the pasted text does not contain "paste"
 
 ### Requirement: Streaming commands are reported as soon as their words are decoded
-With the streaming recognizer on an idle machine, the command spotting service SHALL report "start" and "stop" within 0.3 s of the end of their words (wall clock) for at least half of them and within 0.6 s for 9 of 10. A command word SHALL count as soon as a recognizer has decoded it, wherever it sits, without waiting for the gate's pause or for the words after it, unless it may still be the start of a longer command word the state listens for ("start" before "restart" is decoded whole), which counts once decoded past it. A one-word command only the English recognizer hears, where the Russian recognizer heard another word, SHALL count only at the gate's pause right after it, and not at the head of a sentence that goes on: a Russian word the English recognizer hears as "stop" is no command.
+On an idle machine the service SHALL report "start" and "stop" within 0.3 s of their words' end (wall clock) for half and within 0.6 s for 9 of 10. A command word SHALL count once a recognizer decoded it, wherever it sits, without a pause, unless it may grow into a longer command word ("start" of "restart"). A one-word command only the English recognizer hears, where the Russian one heard another word, SHALL count only at the pause right after it.
 
 #### Scenario: Start said alone is reported within its bound
 - **GIVEN** the command spotting service runs with the streaming recognizer on an otherwise idle machine
