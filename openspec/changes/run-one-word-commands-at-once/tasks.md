@@ -1,7 +1,7 @@
 ## 1. Baseline
 
-- [ ] 1.1 Run `just streaming-bench --recorded` on `main`'s code in real time and record the recognized count and the delay median/p90 of commands said right after speech in design.md § D4
-- [ ] 1.2 Commit
+- [x] 1.1 Run `just streaming-bench --recorded` on `main`'s code in real time and record the recognized count and the delay median/p90 of commands said right after speech in design.md § D4
+- [x] 1.2 Commit
 
 ## 2. A command word counts anywhere at once (D1, D3)
 

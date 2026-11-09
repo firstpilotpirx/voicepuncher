@@ -20,6 +20,10 @@ With the first word reported at once, the second word of a doubled form arrives 
 
 `just streaming-bench --recorded` before and after, real time: every recorded command still recognized once, and the median delay of commands said right after speech at most 0.4 s.
 
+| Run (6 sessions, real time) | right | false alarms | delay median | p90 | start median | stop median |
+|---|---|---|---|---|---|---|
+| before (`main` at 3f2c0a2) | 51/53 | 4/9 | 485 ms | 5154 ms | 445 ms | 436 ms |
+
 ## Risks
 
 - Command words inside dictated speech now trigger: accepted by the user, who keeps them out of dictation.
