@@ -46,11 +46,12 @@ impl Utterance {
         moment: Moment,
         now: f32,
     ) -> Option<ServerEvent> {
-        if !self.respelled[r] || moment == Moment::Closing || !matcher.listens_while_dictating() {
+        if !self.respelled[r] || !matcher.listens_while_dictating() {
             return None;
         }
         for e in 0..self.last.len() {
-            if self.respelled[e] {
+            // WHY: the English words count as closed only once the English recognizer closed.
+            if self.respelled[e] || (moment == Moment::Closing && !self.decoders[e].finished()) {
                 continue;
             }
             if let Some(event) = self.decided(matcher, e, moment, now) {
@@ -63,12 +64,48 @@ impl Utterance {
     /// Whether `found`, one command recognizer `r` heard, waits for the pause because of the
     /// Russian recognizer's words over its span, when `r` is the English one (`doubted_by`).
     pub(super) fn doubted(&self, r: usize, found: &Finding, moment: Moment) -> bool {
-        if self.respelled[r] || found.commands.len() != 1 {
+        if self.respelled[r] || found.commands.len() != 1 || self.said_long(r, found) {
             return false;
         }
         (0..self.last.len())
             .filter(|&other| self.respelled[other])
-            .any(|ru| doubted_by(&self.words(ru, &self.last[ru]), found, moment))
+            .any(|ru| {
+                doubted_by(
+                    &self.words(ru, &self.last[ru]),
+                    found,
+                    self.as_seen_by(ru, moment),
+                )
+            })
+    }
+
+    /// `moment` as respelled recognizer `ru` saw it: the utterance closed only once `ru` closed
+    /// too, as it may still be decoding the words over the command; until then, at the pause.
+    fn as_seen_by(&self, ru: usize, moment: Moment) -> Moment {
+        if moment != Moment::Closing || self.decoders[ru].finished() {
+            return moment;
+        }
+        Moment::Decoding { now: f32::INFINITY, pause: Some(self.trace.speech_end), synced: false }
+    }
+
+    /// Whether recognizer `r` heard the rest of `found`'s long form right after its command
+    /// word ("dictation" after "stop"): no Russian word is heard as a whole English phrase.
+    fn said_long(&self, r: usize, found: &Finding) -> bool {
+        let Some(phrase) = found.commands.first() else {
+            return false;
+        };
+        let rest: Vec<String> = phrase
+            .split_whitespace()
+            .skip(1)
+            .map(str::to_owned)
+            .collect();
+        let after: Vec<String> = self
+            .words(r, &self.last[r])
+            .into_iter()
+            .filter(|w| w.start >= found.end)
+            .map(|w| w.text.to_lowercase())
+            .take(rest.len())
+            .collect();
+        !rest.is_empty() && after == rest
     }
 
     /// `found` starting at the gate's onset when it opens the utterance: a recognizer times a
