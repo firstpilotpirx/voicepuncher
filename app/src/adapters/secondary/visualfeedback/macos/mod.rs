@@ -13,7 +13,7 @@ mod transcript_window;
 mod waveform;
 mod window_set;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -99,6 +99,7 @@ impl MacosVisualIndicator {
         let main = MainState {
             windows: RefCell::new(build_windows(mtm)),
             topology: RefCell::new(collect_topology(mtm)),
+            off_desktop_pretended: Cell::new(false),
         };
         let main = MainOnly::new(mtm, main);
 
@@ -195,6 +196,20 @@ impl MacosVisualIndicator {
         if let Some(main) = self.main.get(mtm) {
             main.topology.replace(ScreenTopology { frames: Vec::new() });
         }
+    }
+
+    /// Makes the next check of the pill against the current desktop find it off, as when the
+    /// window server dropped the overlay's windows from that desktop.
+    pub fn pretend_off_the_current_desktop(&self, mtm: MainThreadMarker) {
+        if let Some(main) = self.main.get(mtm) {
+            main.off_desktop_pretended.set(true);
+        }
+    }
+
+    /// Whether the pill of the first screen shows on the desktop the user is on.
+    pub fn is_pill_on_the_current_desktop(&self) -> bool {
+        self.first_window()
+            .is_some_and(|ws| ws.window().isVisible() && ws.window().isOnActiveSpace())
     }
 
     /// The text the window under the pill of the first screen shows; `None` while it is hidden.

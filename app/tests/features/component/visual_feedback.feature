@@ -142,3 +142,9 @@ Feature: visual-feedback
       And the screens changed since, unnoticed
       When a recording starts on the hidden overlay
       Then the windows are built again for the screens of the moment and show the recording sign
+
+    Scenario: Windows dropped from the current desktop are built again on show
+      Given the overlay has shown once and is hidden
+      And its windows are no longer on the current desktop
+      When a recording starts on the hidden overlay
+      Then the windows are built again and show the recording sign on the current desktop

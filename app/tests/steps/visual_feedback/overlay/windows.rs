@@ -45,6 +45,13 @@ fn screens_changed(world: &mut IntegrationWorld) -> Result<()> {
     Ok(())
 }
 
+#[given("its windows are no longer on the current desktop")]
+fn off_the_current_desktop(world: &mut IntegrationWorld) -> Result<()> {
+    let mtm = MainThreadMarker::new().context("the harness runs its steps on the main thread")?;
+    overlay(world)?.pretend_off_the_current_desktop(mtm);
+    Ok(())
+}
+
 #[when("a recording starts on the hidden overlay")]
 fn recording_starts(world: &mut IntegrationWorld) -> Result<()> {
     let overlay = overlay(world)?;
@@ -86,6 +93,25 @@ fn built_again(world: &mut IntegrationWorld) -> Result<()> {
     ensure!(
         showing.builds_after > showing.builds_before,
         "the windows were kept: {showing:?}"
+    );
+    Ok(())
+}
+
+#[then("the windows are built again and show the recording sign on the current desktop")]
+fn built_again_on_this_desktop(world: &mut IntegrationWorld) -> Result<()> {
+    let showing = &run(world).showing;
+    ensure!(
+        showing.builds_after > showing.builds_before,
+        "the windows were kept off the current desktop: {showing:?}"
+    );
+    let overlay = overlay(world)?;
+    ensure!(
+        overlay.first_shows_recording(),
+        "the recording sign is not shown"
+    );
+    ensure!(
+        overlay.is_pill_on_the_current_desktop(),
+        "the pill is not on the current desktop"
     );
     Ok(())
 }
