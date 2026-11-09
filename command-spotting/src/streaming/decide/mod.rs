@@ -86,25 +86,47 @@ pub fn decide(
     moment: Moment,
     reported: &Reported,
 ) -> Option<Finding> {
+    decide_how(matcher, words, moment, reported).map(|(found, _)| found)
+}
+
+/// What `decide` finds, and whether only the at-once rule found it: the rules that counted a
+/// command before (chains, doubled forms, a start opening speech, a command at the pause) go
+/// first; a command word anywhere else counts at once (`at_once`), which the session may still
+/// doubt (`doubted_by`).
+pub fn decide_how(
+    matcher: &PhraseMatcher,
+    words: &[TimedWord],
+    moment: Moment,
+    reported: &Reported,
+) -> Option<(Finding, bool)> {
     let all: Vec<&str> = words.iter().map(|w| w.text.as_str()).collect();
     let from = after_reported(&commands_said(&all), &reported.commands);
     if let Some(found) = chain_tail(matcher, words, from) {
-        return Some(found);
+        return Some((found, false));
     }
     let fresh: Vec<&TimedWord> = words[from..]
         .iter()
         .filter(|w| w.start >= reported.until)
         .collect();
     let texts: Vec<&str> = fresh.iter().map(|w| w.text.as_str()).collect();
-    if let Some(found) = before_a_pause(matcher, &fresh) {
-        return Some(found);
+    match by_earlier_rules(matcher, &fresh, &texts, moment) {
+        Some(found) => Some((found, false)),
+        None => at_once(matcher, &fresh, &texts, moment).map(|found| (found, true)),
     }
-    if let Some(found) = placed(matcher, &texts) {
-        return Some(finding(&fresh, &found));
-    }
-    at_once(matcher, &fresh, &texts, moment)
-        .or_else(|| alone(matcher, &fresh, moment))
-        .or_else(|| ending(matcher, &fresh, &texts, moment))
+}
+
+/// A command the rules before the at-once one count among the fresh words: said before a
+/// pause, in its set places, alone, or ending the words at the pause.
+fn by_earlier_rules(
+    matcher: &PhraseMatcher,
+    fresh: &[&TimedWord],
+    texts: &[&str],
+    moment: Moment,
+) -> Option<Finding> {
+    before_a_pause(matcher, fresh)
+        .or_else(|| placed(matcher, texts).map(|found| finding(fresh, &found)))
+        .or_else(|| alone(matcher, fresh, moment))
+        .or_else(|| ending(matcher, fresh, texts, moment))
 }
 
 /// A command said anywhere among the fresh words, reported as soon as the recognizer decoded

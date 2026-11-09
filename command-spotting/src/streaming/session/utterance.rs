@@ -4,7 +4,7 @@
 use crate::matcher::PhraseMatcher;
 use crate::protocol::ServerEvent;
 
-use super::super::decide::{decide, Finding, Moment, Reported};
+use super::super::decide::{decide, decide_how, Finding, Moment, Reported};
 use super::super::ports::{Decoded, StreamingModel};
 use super::super::trace::Trace;
 use super::decoder::{Decoder, Decoding, Update};
@@ -277,8 +277,8 @@ impl Utterance {
                 synced: self.synced,
             }
         };
-        let found = decide(matcher, &words, moment, &self.reported())?;
-        if self.doubted(r, &found, moment) {
+        let (found, at_once) = decide_how(matcher, &words, moment, &self.reported())?;
+        if at_once && self.doubted(r, &found, moment) {
             return None;
         }
         if self
