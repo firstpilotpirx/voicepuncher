@@ -59,3 +59,11 @@ With the first word reported at once, the second word of a doubled form arrives 
 | Stop stop in running speech stops at once | E2E `.feature` (existing) |
 | Start start inside a sentence starts at once | E2E `.feature` (existing) |
 | Enter enter presses Return once | unit (decide, doubles) + E2E `.feature` |
+| A chain the states do not allow carries out what the state accepts | E2E `.feature` |
+| Stop enter pastes and sends | E2E `.feature` (existing) |
+| Stop enter start sends and starts the next dictation | E2E `.feature` (existing) |
+| Cancel clear discards and clears | E2E `.feature` (existing) |
+| The end of a chain heard only when the utterance ends still counts | unit (decide, existing) |
+| The last command of a chain decoded after the first ones were carried out still counts | session test (existing) |
+| The other recognizer's words of a chain carried out are not carried out again | session test (existing) |
+| The user's recorded chains keep their last command | E2E `@voice_samples` (existing) |

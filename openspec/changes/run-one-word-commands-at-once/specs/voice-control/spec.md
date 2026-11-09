@@ -51,7 +51,7 @@ The system SHALL carry out a command whose word ends an utterance, even with spe
 - **THEN** the stop sound plays within 0.6 s of the end of "stop"
 
 ### Requirement: "start" opening speech starts the dictation with it
-The system SHALL start a dictation when "start" opens an utterance and speech follows it without a pause, while no dictation runs; the speech after the command SHALL be part of the dictation and the command words SHALL NOT be pasted. Another command that opens an utterance followed by speech SHALL take effect at once like any command word; "start" followed at once by another command word ("start stop") SHALL have no effect.
+The system SHALL start a dictation when "start" opens an utterance and speech follows it without a pause, while no dictation runs; the speech after the command SHALL be part of the dictation and the command words SHALL NOT be pasted. Another command that opens an utterance followed by speech SHALL take effect at once like any command word; "start" followed at once by "stop" starts and at once ends a dictation that pastes nothing.
 
 #### Scenario: Start followed by the dictation at once
 - **GIVEN** listening is on
@@ -170,6 +170,64 @@ On an idle machine the service SHALL report "start" and "stop" within 0.3 s of t
 - **GIVEN** the user's own recordings exist on the machine, among them commands said right after speech
 - **WHEN** each is streamed to the service in real time
 - **THEN** the median delay of those commands after the end of their words is at most 0.4 s
+### Requirement: A chain of commands is carried out in order, each command at once
+The system SHALL carry out a chain of two or three different commands said one right after the other, in the order said, when each is accepted in the state the one before it leads to and "start" comes last; a chain counts anywhere, with no pause around it. Each command is carried out as soon as its word is heard; one heard only after the commands before it were carried out is still carried out once, after them: the chain's tail is never lost.
+
+#### Scenario: Stop enter pastes and sends
+- **GIVEN** a dictation runs
+- **AND** the user has said a sentence in it
+- **WHEN** the user says "stop enter"
+- **THEN** the sentence is pasted into the focused app
+- **AND** the Return key is pressed after it
+
+#### Scenario: Stop enter start sends and starts the next dictation
+- **GIVEN** a dictation runs
+- **AND** the user has said a sentence in it
+- **WHEN** the user says "stop enter start"
+- **THEN** the sentence is pasted into the focused app
+- **AND** the Return key is pressed after it
+- **AND** a new dictation starts
+
+#### Scenario: Cancel clear discards and clears
+- **GIVEN** a dictation runs
+- **WHEN** the user says "cancel clear"
+- **THEN** no text is pasted
+- **AND** select all and delete are pressed in the focused app
+
+#### Scenario: A chain the states do not allow carries out what the state accepts
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** the user says "enter stop"
+- **THEN** the Return key is pressed
+- **AND** nothing else takes effect
+#### Scenario: The end of a chain heard only when the utterance ends still counts
+- **GIVEN** a dictation runs
+- **AND** while the user speaks, the system has heard only the first two commands of "never mind cancel enter start" and carried them out
+- **WHEN** the utterance ends and the system hears all of it
+- **THEN** "start dictation" is carried out after them
+- **AND** "cancel dictation" and "press enter" are not carried out again
+
+#### Scenario: The last command of a chain decoded after the first ones were carried out still counts
+- **GIVEN** a dictation runs
+- **AND** the user says "that is all stop enter start" in one breath
+- **AND** a recognizer hears "stop enter" and the system carries them out before any recognizer has heard "start"
+- **WHEN** a recognizer hears the "start" said right after them, while the user still speaks or at the close
+- **THEN** "start dictation" is carried out once, after them
+- **AND** "stop dictation" and "press enter" are not carried out again
+
+#### Scenario: The other recognizer's words of a chain carried out are not carried out again
+- **GIVEN** a dictation runs
+- **AND** the user says "that is all stop enter start" in one breath
+- **AND** one recognizer hears "stop enter" and the system carries them out
+- **WHEN** the other recognizer hears its own "enter", stamped later than the first one's, before it hears "start", whether or not the app has switched state meanwhile
+- **THEN** "press enter" is not carried out again
+- **AND** "start dictation" is carried out once, after them, when a recognizer hears it
+
+#### Scenario: The user's recorded chains keep their last command
+- **GIVEN** a dictation runs
+- **WHEN** each of the user's recorded chains whose last command counts only after the one before it ("start" or "clear" while dictating) is played
+- **THEN** every command of the chain is carried out, in the order said, each once
+
 ## MODIFIED Requirements
 
 ### Requirement: A doubled command needs no pause
@@ -223,3 +281,7 @@ The system SHALL carry out a doubled short form ("start start", "restart restart
 ### Requirement: Streaming commands are reported within 0.3 s of their words
 **Reason**: a command now counts as soon as its word is heard, wherever it is said; replaced by "Streaming commands are reported as soon as their words are decoded".
 **Migration**: none; the user keeps command words out of dictation.
+
+### Requirement: A chain of commands is carried out in order
+**Reason**: each command of a chain now counts as soon as its word is heard; replaced by "A chain of commands is carried out in order, each command at once".
+**Migration**: none.
