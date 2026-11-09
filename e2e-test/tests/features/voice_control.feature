@@ -125,7 +125,8 @@ Feature: voice-control
     @regression
     Scenario: A long form counts by its command word
       Given the command spotting service is running
-      When someone says "stop dictation" in one breath while dictating
+      # The English recognizer hears this voice's unbroken "stop dictation" as one word, "Optation".
+      When someone says "Stop, dictation." in one breath while dictating
       Then the commands "stop dictation" take effect in order
 
     @regression

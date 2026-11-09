@@ -147,6 +147,21 @@ mod needs_streaming_models {
     }
 
     #[test]
+    fn should_report_the_long_form_stop_dictation_said_while_dictating() {
+        let engine = engine();
+        // WHY: the default voice; the E2E voice glues "stop dictation" into one word, "Optation".
+        let audio = common::spoken_by(None, "stop dictation");
+        // When
+        let events = events_with_sync(&engine, &PHRASES, &paused(&audio), 0);
+        // Then
+        assert_eq!(
+            commands_of(events.clone()),
+            ["stop dictation"],
+            "{events:?}"
+        );
+    }
+
+    #[test]
     fn should_report_a_command_said_right_before_a_sync_before_answering_it() {
         let engine = engine();
         let pause = vec![0.0f32; saturating_usize(PAUSE_SECS * SAMPLE_RATE as f32)];
