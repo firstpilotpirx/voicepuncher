@@ -93,15 +93,6 @@ branch = "feat/faster-stop-to-paste"
 
 
 [[frozen]]
-test = "scenario: Press enter after a sentence is reported soon after the pause"
-frozen = "2026-11-01"
-recipe = "full-check"
-stage = "e2e-cues"
-beside = "agent-kit Go tests beside it (load average 13.7); 1.736 s against 0.6 s"
-branch = "feat/faster-stop-to-paste"
-
-
-[[frozen]]
 test = "scenario: The pinned engines are staged"
 frozen = "2026-11-02"
 recipe = "full-check"
@@ -235,40 +226,14 @@ beside = "the test stage of full-check under load (136 s against its 60 s budget
 branch = "chore/fast-bench-reproduces-app-timing"
 
 
-[[frozen]]
-test = "scenario: Start start then silence starts at once"
-frozen = "2026-11-09"
-recipe = "full-check"
-stage = "e2e-cues"
-beside = "busiest processes during the cue: see full-check log of fix/show-overlay-on-every-space 2026-11-09"
-branch = "fix/show-overlay-on-every-space"
-
 
 [[frozen]]
-test = "scenario: Enter after a sentence is reported in time with every core busy"
+test = "scenario: Requests wait their turn when every copy is busy"
 frozen = "2026-11-09"
-recipe = "full-check"
-stage = "e2e-cues"
-beside = "e2e-cues on fix/show-overlay-on-every-space 2026-11-09: 1.211 s over the 1.2 s bound"
-branch = "fix/show-overlay-on-every-space"
-
-
-[[frozen]]
-test = "scenario: Stop stop in running speech stops at once"
-frozen = "2026-11-09"
-recipe = "full-check"
-stage = "e2e-cues"
-beside = "e2e-cues on fix/show-overlay-on-every-space 2026-11-09: another project build (rustc) loading the machine"
-branch = "fix/show-overlay-on-every-space"
-
-
-[[frozen]]
-test = "scenario: Start start inside a sentence starts at once"
-frozen = "2026-11-09"
-recipe = "full-check"
-stage = "e2e-cues"
-beside = "e2e-cues on fix/show-overlay-on-every-space 2026-11-09: another project build (rustc) loading the machine"
-branch = "fix/show-overlay-on-every-space"
+recipe = "e2e-regression"
+stage = "e2e-regression"
+beside = "e2e-regression of fix/run-one-word-commands-at-once alone on the machine lock"
+branch = "fix/run-one-word-commands-at-once"
 
 
 [[frozen]]

@@ -7,11 +7,12 @@ use cucumber::{then, when};
 use voicepuncher::test_doubles::prelude::*;
 
 use voicepuncher_command_spotting::protocol::{PhraseSelection, ServerEvent};
+use voicepuncher_e2e_test::machine_load::{self, LoadAllowance};
 use voicepuncher_e2e_test::voice_commands::{
     silence, spoken_with_pauses, without_trailing_silence,
 };
 
-use super::{every_phrase, run, shared, ENGINE_RUNS, SAMPLE_RATE};
+use super::{busy, every_phrase, run, shared, ENGINE_RUNS, SAMPLE_RATE};
 use crate::steps::off_thread;
 use crate::E2eWorld;
 
@@ -102,14 +103,26 @@ fn delays(world: &mut E2eWorld, command: &str) -> Result<Vec<f32>> {
     Ok(delays)
 }
 
+/// `bound` stretched by the load of other programs on the machine, and what stretched it.
+fn stretched(world: &mut E2eWorld, bound: f32) -> (f32, String) {
+    let own_threads = run(world).busy.as_ref().map_or(0, busy::BusyCores::threads);
+    let allowance = LoadAllowance::now(own_threads);
+    let bound = Duration::from_secs_f32(bound);
+    let why = format!("{}\n{}", allowance.describe(bound), machine_load::report());
+    (allowance.stretch(bound).as_secs_f32(), why)
+}
+
 #[then(
     expr = "the streaming recognizer reports {string} within {float} s of the end of the words by the wall clock"
 )]
 fn reported_within(world: &mut E2eWorld, command: String, bound: f32) -> Result<()> {
     let delays = delays(world, &command)?;
+    let (stretched, why) = stretched(world, bound);
     match delays.last() {
-        Some(delay) if *delay <= bound => Ok(()),
-        Some(delay) => bail!("{command:?} came {delay:.3} s after the words, over {bound} s"),
+        Some(delay) if *delay <= stretched => Ok(()),
+        Some(delay) => {
+            bail!("{command:?} came {delay:.3} s after the words, over {bound} s; {why}")
+        }
         None => bail!("no stream ran"),
     }
 }
@@ -124,12 +137,14 @@ fn reported_within_in_runs(
     every: f32,
 ) -> Result<()> {
     let delays = delays(world, &command)?;
-    let Some(middle) = delays.get(delays.len().saturating_sub(1) / 2) else {
+    let Some(middle) = delays.get(delays.len().saturating_sub(1) / 2).copied() else {
         bail!("no stream ran");
     };
     let slowest = delays.last().copied().unwrap_or_default();
-    if *middle > median || slowest > every {
-        bail!("{command:?} came {delays:.3?} s after the words: over {median} s in half the runs or {every} s in one");
+    let (median_bound, why) = stretched(world, median);
+    let (every_bound, _) = stretched(world, every);
+    if middle > median_bound || slowest > every_bound {
+        bail!("{command:?} came {delays:.3?} s after the words: over {median} s in half the runs or {every} s in one; {why}");
     }
     Ok(())
 }

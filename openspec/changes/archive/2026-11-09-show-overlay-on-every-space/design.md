@@ -10,7 +10,7 @@ The overlay's windows (`glass/build.rs`) join every desktop (`CanJoinAllSpaces |
 
 **D3. A test seam stands in for the window server.** As `forget_the_screens` stands in for an unnoticed screen change, `pretend_off_the_current_desktop` makes the next check of D1 report the pill off the desktop; the component steps use it, and a desktop switch is driven through the same handler the notification calls (`desktop_switched`). The real switch is covered by the manual run.
 
-**D4. A rebuild closes the old windows.** `WindowSet`'s drop hid its windows but never closed them, and AppKit keeps an unclosed window alive in the window server (the running app held its first pill and text windows next to the rebuilt ones). Drop now closes the pill, text window and their panels after hiding them (`setReleasedWhenClosed(false)` keeps the Rust ownership sound).
+**D4. Old windows after a rebuild stay out of scope.** A rebuilt set's old windows stay in the window server: closing them (`NSWindow.close`) frees nothing, since AppKit itself holds each closed overlay window (about 60 retains, measured in the component harness). Rebuilds are rare (a screen change, a pill dropped from the desktop), so the leak is a few hidden windows per rebuild; finding what holds them is its own change.
 
 ## Test levels
 
@@ -21,4 +21,3 @@ The overlay's windows (`glass/build.rs`) join every desktop (`CanJoinAllSpaces |
 | The overlay shows on the desktop the user switched to | manual run |
 | Windows dropped from the current desktop are built again on show | component |
 | A desktop switch during a recording brings the overlay along | component |
-| A rebuild leaves no old overlay windows | component |

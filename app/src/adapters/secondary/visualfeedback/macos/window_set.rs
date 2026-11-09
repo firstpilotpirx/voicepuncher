@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use objc2::MainThreadMarker;
@@ -136,6 +136,8 @@ impl Drop for WindowSet {
 pub(super) struct MainState {
     pub(super) windows: RefCell<Windows>,
     pub(super) topology: RefCell<ScreenTopology>,
+    /// Set by a test: the next check finds the pill off the current desktop.
+    pub(super) off_desktop_pretended: Cell<bool>,
 }
 
 const _: () = crate::assert_not_send!(WindowSet);
