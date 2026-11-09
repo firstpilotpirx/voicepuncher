@@ -35,8 +35,6 @@ pub struct Utterance {
     respelled: Vec<bool>,
     /// What each recognizer held after its last decode.
     last: Vec<Decoded>,
-    /// How far into the stream each recognizer's last decode reached, flushed silence left out.
-    decoded_to: Vec<f32>,
     audio: Vec<f32>,
     /// Samples fed to the recognizers, the flushed silence too.
     streamed: usize,
@@ -86,7 +84,6 @@ impl Utterance {
             decoders,
             respelled: models.iter().map(|m| m.respelled()).collect(),
             last: vec![Decoded::default(); models.len()],
-            decoded_to: vec![0.0; models.len()],
             audio: Vec::new(),
             streamed: 0,
             flushes: Vec::new(),
@@ -270,7 +267,6 @@ impl Utterance {
         self.trace.decoded(r, update.took);
         self.trace.heard(r, now, &text_of(&update.decoded));
         self.last[r] = update.decoded;
-        self.decoded_to[r] = self.unflushed(self.start + seconds(update.fed));
         let moment = if update.finished {
             Moment::Closing
         } else {
