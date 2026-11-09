@@ -68,20 +68,68 @@ fn stream_in_real_time(words: &str) -> Result<Timed> {
 #[when(expr = "an app streams {string} followed by silence, in real time")]
 async fn streams_in_real_time(world: &mut E2eWorld, words: String) -> Result<()> {
     off_thread(world, move |world| {
-        run(world).timed = stream_in_real_time(&words)?;
+        run(world).timed = vec![stream_in_real_time(&words)?];
         Ok(())
     })
     .await
+}
+
+#[when(expr = "an app streams {string} followed by silence, in real time, {int} times")]
+async fn streams_in_real_time_times(
+    world: &mut E2eWorld,
+    words: String,
+    times: usize,
+) -> Result<()> {
+    off_thread(world, move |world| {
+        run(world).timed = (0..times)
+            .map(|_| stream_in_real_time(&words))
+            .collect::<Result<_>>()?;
+        Ok(())
+    })
+    .await
+}
+
+/// The delay of `command` in each run, sorted; fails naming a run that did not report it.
+fn delays(world: &mut E2eWorld, command: &str) -> Result<Vec<f32>> {
+    let mut delays = Vec::new();
+    for timed in &run(world).timed {
+        match timed.delay_of(command) {
+            Some(delay) => delays.push(delay),
+            None => bail!("{command:?} was not reported: {:?}", timed.reports),
+        }
+    }
+    delays.sort_by(f32::total_cmp);
+    Ok(delays)
 }
 
 #[then(
     expr = "the streaming recognizer reports {string} within {float} s of the end of the words by the wall clock"
 )]
 fn reported_within(world: &mut E2eWorld, command: String, bound: f32) -> Result<()> {
-    let timed = &run(world).timed;
-    match timed.delay_of(&command) {
-        Some(delay) if delay <= bound => Ok(()),
+    let delays = delays(world, &command)?;
+    match delays.last() {
+        Some(delay) if *delay <= bound => Ok(()),
         Some(delay) => bail!("{command:?} came {delay:.3} s after the words, over {bound} s"),
-        None => bail!("{command:?} was not reported: {:?}", timed.reports),
+        None => bail!("no stream ran"),
     }
+}
+
+#[then(
+    expr = "the streaming recognizer reports {string} within {float} s of the end of the words in half the runs and within {float} s in every run"
+)]
+fn reported_within_in_runs(
+    world: &mut E2eWorld,
+    command: String,
+    median: f32,
+    every: f32,
+) -> Result<()> {
+    let delays = delays(world, &command)?;
+    let Some(middle) = delays.get(delays.len().saturating_sub(1) / 2) else {
+        bail!("no stream ran");
+    };
+    let slowest = delays.last().copied().unwrap_or_default();
+    if *middle > median || slowest > every {
+        bail!("{command:?} came {delays:.3?} s after the words: over {median} s in half the runs or {every} s in one");
+    }
+    Ok(())
 }

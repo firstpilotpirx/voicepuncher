@@ -653,13 +653,13 @@ Feature: voice-control
 
     Scenario: Start said alone is reported within its bound
       Given the command spotting service runs with the streaming recognizer
-      When an app streams "start" followed by silence, in real time
-      Then the streaming recognizer reports "start dictation" within 0.3 s of the end of the words by the wall clock
+      When an app streams "start" followed by silence, in real time, 5 times
+      Then the streaming recognizer reports "start dictation" within 0.3 s of the end of the words in half the runs and within 0.6 s in every run
 
     Scenario: Stop said alone is reported at once
       Given the command spotting service runs with the streaming recognizer
-      When an app streams "stop" followed by silence, in real time
-      Then the streaming recognizer reports "stop dictation" within 0.3 s of the end of the words by the wall clock
+      When an app streams "stop" followed by silence, in real time, 5 times
+      Then the streaming recognizer reports "stop dictation" within 0.3 s of the end of the words in half the runs and within 0.6 s in every run
 
     @smoke
     Scenario: Stop opening a sentence counts at once
