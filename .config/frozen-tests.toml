@@ -261,3 +261,12 @@ stage = "e2e-cues"
 beside = "e2e-cues on fix/show-overlay-on-every-space 2026-11-09: another project build (rustc) loading the machine"
 branch = "fix/show-overlay-on-every-space"
 
+
+[[frozen]]
+test = "scenario: Start start inside a sentence starts at once"
+frozen = "2026-11-09"
+recipe = "full-check"
+stage = "e2e-cues"
+beside = "e2e-cues on fix/show-overlay-on-every-space 2026-11-09: another project build (rustc) loading the machine"
+branch = "fix/show-overlay-on-every-space"
+
