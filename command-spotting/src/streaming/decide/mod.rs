@@ -89,10 +89,11 @@ pub fn decide(
     decide_how(matcher, words, moment, reported).map(|(found, _)| found)
 }
 
-/// What `decide` finds, and whether only the at-once rule found it: the rules that counted a
-/// command before (chains, doubled forms, a start opening speech, a command at the pause) go
-/// first; a command word anywhere else counts at once (`at_once`), which the session may still
-/// doubt (`doubted_by`).
+/// What `decide` finds, and whether only the at-once rule found it.
+///
+/// The rules that counted a command before (chains, doubled forms, a start opening speech, a
+/// command at the pause) go first; a command word anywhere else counts at once (`at_once`),
+/// which the session may still doubt (`doubted_by`).
 pub fn decide_how(
     matcher: &PhraseMatcher,
     words: &[TimedWord],
@@ -251,9 +252,10 @@ fn alone(matcher: &PhraseMatcher, fresh: &[&TimedWord], moment: Moment) -> Optio
     })
 }
 
-/// Whether `found`, a command the English recognizer heard, waits for the pause because of
-/// `russian`, the Russian recognizer's words: the English one hears Russian speech as English
-/// words ("чтобы" → "stop"). A command the Russian recognizer heard over the span counts at
+/// Whether `found`, a command the English recognizer heard, waits for the pause.
+///
+/// `russian` holds the Russian recognizer's words: the English one hears Russian speech as
+/// English words ("чтобы" → "stop"). A command the Russian recognizer heard over the span counts at
 /// once; one where it heard other words, or has not decoded past the span yet (no later word,
 /// the utterance not closed), counts only when it ends the words and the gate's pause began
 /// right after it, as before commands counted at once.
