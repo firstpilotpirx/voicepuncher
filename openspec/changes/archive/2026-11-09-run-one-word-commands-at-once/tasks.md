@@ -32,5 +32,5 @@
 ## 6. Release
 
 - [x] 6.1 Bump `version` in `app/Cargo.toml` to 0.48.0
-- [ ] 6.2 `just check`, commit
+- [x] 6.2 `just check`, commit
 - [x] 6.3 Manual checks: none (the change is inside the command spotting service; hotkey, recording, overlay, paste and permissions are unchanged)
