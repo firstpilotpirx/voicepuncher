@@ -17,6 +17,14 @@ pub(super) fn screen_change_handler(redraw: Redraw) -> Arc<dyn Fn() + Send + Syn
     })
 }
 
+/// Checks, on a desktop switch, that a shown state is on the new desktop.
+pub(super) fn desktop_switch_handler(redraw: Redraw) -> Arc<dyn Fn() + Send + Sync + 'static> {
+    Arc::new(move || {
+        let redraw = redraw.clone();
+        on_main(move |mtm| redraw.desktop_switched(mtm));
+    })
+}
+
 /// How many times the windows were built, in this process.
 pub(super) static WINDOW_BUILDS: AtomicU64 = AtomicU64::new(0);
 
@@ -73,6 +81,12 @@ impl Redraw {
         do_rebuild(mtm, &self.main);
         let current_state = lock(&self.timer.state).clone();
         self.draw_state(mtm, &current_state, turn);
+    }
+
+    /// Brings the current state onto the desktop the user switched to.
+    pub(crate) fn desktop_switched(&self, mtm: MainThreadMarker) {
+        let current_state = lock(&self.timer.state).clone();
+        self.keep_on_the_current_desktop(mtm, &current_state);
     }
 
     /// Draws `state`, then builds the windows again and draws it once more when a pill it

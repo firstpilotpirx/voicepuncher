@@ -6,9 +6,9 @@
 
 ## 2. A desktop switch (D2)
 
-- [ ] 2.1 Red: scenario "A desktop switch during a recording brings the overlay along", driven through `desktop_switched`; `just test-one` fails
-- [ ] 2.2 Green: the screen watcher observes `NSWorkspaceActiveSpaceDidChangeNotification` and calls the handler that runs the check of D1 while a state shows; `just test-one` green, `just static`
-- [ ] 2.3 `just test`; `kit ship -m "fix(overlay): bring the overlay along on a desktop switch"`
+- [x] 2.1 Red: scenario "A desktop switch during a recording brings the overlay along", driven through `desktop_switched`; `just test-one` fails
+- [x] 2.2 Green: the screen watcher observes `NSWorkspaceActiveSpaceDidChangeNotification` and calls the handler that runs the check of D1 while a state shows; `just test-one` green, `just static`
+- [x] 2.3 `just test`; `kit ship -m "fix(overlay): bring the overlay along on a desktop switch"`
 
 ## 3. No old windows left (D4)
 

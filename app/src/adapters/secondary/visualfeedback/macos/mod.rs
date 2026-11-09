@@ -28,7 +28,7 @@ use crate::core::domain::{AudioLevel, FailureNotice, VoiceCommand};
 
 use crate::adapters::locking::lock;
 use crate::adapters::main_queue::{on_main, on_main_after, MainOnly};
-use crate::adapters::screen_watcher::ScreenWatcher;
+use crate::adapters::screen_watcher::{ScreenWatcher, WatchHandlers};
 use failure_notice::{show_notice, NoticeTimer};
 use live_text::LiveTranscriptText;
 use pill_content::{command_sign, state_after_sign};
@@ -47,7 +47,8 @@ use super::pointer_sign::{FAILURE_NOTICE_LIFETIME, PASTED_SIGN_MS};
 
 mod redraw;
 use redraw::{
-    build_windows, collect_topology, rebuild_if_screens_changed, screen_change_handler, Redraw,
+    build_windows, collect_topology, desktop_switch_handler, rebuild_if_screens_changed,
+    screen_change_handler, Redraw,
 };
 mod indicator;
 mod live_view;
@@ -123,7 +124,10 @@ impl MacosVisualIndicator {
                 commands_unavailable: Arc::clone(&commands_unavailable),
             },
         };
-        let watcher = ScreenWatcher::install(screen_change_handler(redraw.clone()));
+        let watcher = ScreenWatcher::install(WatchHandlers {
+            screens: screen_change_handler(redraw.clone()),
+            desktop: desktop_switch_handler(redraw.clone()),
+        });
         Self {
             state,
             commands_unavailable,
@@ -207,7 +211,9 @@ impl MacosVisualIndicator {
     }
 
     /// What the overlay does when the user switched to another desktop.
-    pub fn desktop_switched(&self, _mtm: MainThreadMarker) {}
+    pub fn desktop_switched(&self, mtm: MainThreadMarker) {
+        self.redraw().desktop_switched(mtm);
+    }
 
     /// Whether the pill of the first screen shows on the desktop the user is on.
     pub fn is_pill_on_the_current_desktop(&self) -> bool {
