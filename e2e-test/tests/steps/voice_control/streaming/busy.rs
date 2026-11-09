@@ -29,6 +29,11 @@ impl BusyCores {
             .collect();
         Self { stop, threads }
     }
+
+    /// How many threads spin, left out of the load of other programs.
+    pub(crate) fn threads(&self) -> usize {
+        self.threads.len()
+    }
 }
 
 fn spin_until(stop: &AtomicBool) {

@@ -1,11 +1,13 @@
 //! What ran beside a timed scenario: the busiest processes on the machine and every live
 //! holder of a machine-wide test lock, for the failure of a start cue over its bound.
 
+mod allowance;
 mod holders;
 mod processes;
 #[cfg(test)]
 mod tests;
 
+pub use allowance::{parse_loadavg, LoadAllowance};
 pub use holders::{live_holders, lock_dirs, LockHolder};
 pub use processes::busiest_processes;
 use processes::ps;
