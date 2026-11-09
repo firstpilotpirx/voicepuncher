@@ -243,3 +243,21 @@ stage = "e2e-cues"
 beside = "busiest processes during the cue: see full-check log of fix/show-overlay-on-every-space 2026-11-09"
 branch = "fix/show-overlay-on-every-space"
 
+
+[[frozen]]
+test = "scenario: Enter after a sentence is reported in time with every core busy"
+frozen = "2026-11-09"
+recipe = "full-check"
+stage = "e2e-cues"
+beside = "e2e-cues on fix/show-overlay-on-every-space 2026-11-09: 1.211 s over the 1.2 s bound"
+branch = "fix/show-overlay-on-every-space"
+
+
+[[frozen]]
+test = "scenario: Stop stop in running speech stops at once"
+frozen = "2026-11-09"
+recipe = "full-check"
+stage = "e2e-cues"
+beside = "e2e-cues on fix/show-overlay-on-every-space 2026-11-09: another project build (rustc) loading the machine"
+branch = "fix/show-overlay-on-every-space"
+
