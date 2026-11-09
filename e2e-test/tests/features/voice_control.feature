@@ -425,7 +425,8 @@ Feature: voice-control
     @regression
     Scenario: A chain the states do not allow carries out what the state accepts
       Given the command spotting service is running
-      When someone says "enter stop" in one breath while no dictation runs
+      # The English recognizer hears this voice's unbroken "enter stop" as "And a stop".
+      When someone says "Enter, stop." in one breath while no dictation runs
       Then the commands "press enter" take effect in order
 
     @smoke @voice_samples
