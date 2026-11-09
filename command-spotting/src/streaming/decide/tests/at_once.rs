@@ -132,8 +132,8 @@ fn should_doubt_an_english_stop_where_the_russian_recognizer_heard_another_word(
     let other = said(1.0, "чтобы зайти");
     let respelled = said(1.0, "stop");
     // When / Then: another word doubts it while speech goes on; the Russian "stop" does not
-    assert!(doubted_by(&other, &found, decoding(1.6)));
-    assert!(!doubted_by(&respelled, &found, decoding(1.6)));
+    assert!(doubted_by(&other, 0.0, &found, decoding(1.6)));
+    assert!(!doubted_by(&respelled, 0.0, &found, decoding(1.6)));
 }
 
 #[test]
@@ -149,8 +149,23 @@ fn should_take_a_doubted_stop_ending_the_words_at_the_pause_right_after_it() {
     .expect("an English stop");
     let other = said(1.0, "стопка");
     // When / Then
-    assert!(doubted_by(&other, &found, decoding(1.5)));
-    assert!(!doubted_by(&other, &found, paused_at(1.5, 1.3)));
-    assert!(doubted_by(&[], &found, decoding(1.5)));
-    assert!(!doubted_by(&[], &found, paused_at(1.5, 1.3)));
+    assert!(doubted_by(&other, 0.0, &found, decoding(1.5)));
+    assert!(!doubted_by(&other, 0.0, &found, paused_at(1.5, 1.3)));
+    assert!(doubted_by(&[], 1.3, &found, decoding(1.5)));
+    assert!(!doubted_by(&[], 1.3, &found, paused_at(1.5, 1.3)));
+}
+
+#[test]
+fn should_take_an_english_stop_at_once_once_the_russian_recognizer_decoded_past_it_hearing_nothing()
+{
+    // Given an English "stop" ending at 1.25 s, the Russian recognizer hearing nothing over it
+    let found = decide(
+        &dictating(),
+        &said(1.0, "stop"),
+        decoding(1.5),
+        &Reported::default(),
+    )
+    .expect("an English stop");
+    // When / Then
+    assert!(!doubted_by(&[], found.end + 0.2, &found, decoding(1.5)));
 }

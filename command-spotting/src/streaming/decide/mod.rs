@@ -252,14 +252,19 @@ fn alone(matcher: &PhraseMatcher, fresh: &[&TimedWord], moment: Moment) -> Optio
     })
 }
 
+/// How far past a word the Russian recognizer decodes before a word it heard over it shows:
+/// past that, nothing over the word means it heard nothing there.
+const RUSSIAN_WORD_LAG_SECS: f32 = 0.15;
+
 /// Whether `found`, a command the English recognizer heard, waits for the pause.
 ///
-/// `russian` holds the Russian recognizer's words: the English one hears Russian speech as
-/// English words ("чтобы" → "stop"). A command the Russian recognizer heard over the span counts at
-/// once; one where it heard other words, or has not decoded past the span yet (no later word,
-/// the utterance not closed), counts only when it ends the words and the gate's pause began
-/// right after it, as before commands counted at once.
-pub fn doubted_by(russian: &[TimedWord], found: &Finding, moment: Moment) -> bool {
+/// `russian` holds the Russian recognizer's words, decoded up to `decoded_to` in the stream:
+/// the English one hears Russian speech as English words ("чтобы" → "stop"). A command the
+/// Russian recognizer heard over the span counts at once; one where it heard other words, or
+/// has not decoded far enough past the span to tell (no later word, the utterance not closed),
+/// counts only when it ends the words and the gate's pause began right after it, as before
+/// commands counted at once.
+pub fn doubted_by(russian: &[TimedWord], decoded_to: f32, found: &Finding, moment: Moment) -> bool {
     let over: Vec<&str> = russian
         .iter()
         .filter(|w| w.end >= found.start && w.start <= found.end)
@@ -268,9 +273,16 @@ pub fn doubted_by(russian: &[TimedWord], found: &Finding, moment: Moment) -> boo
     if !commands_said(&over).is_empty() {
         return false;
     }
-    let decoded_past = moment == Moment::Closing || russian.iter().any(|w| w.start >= found.end);
-    let unsure = !over.is_empty() || !decoded_past;
+    let unsure = !over.is_empty() || !russian_past(russian, decoded_to, found.end, moment);
     unsure && (found.placement != Placement::Tail || !settled(moment, found.end))
+}
+
+/// Whether the Russian recognizer decoded far enough past `end` to have shown a word it heard
+/// there: a later word, a decode `RUSSIAN_WORD_LAG_SECS` past it, or the utterance closed.
+fn russian_past(russian: &[TimedWord], decoded_to: f32, end: f32, moment: Moment) -> bool {
+    moment == Moment::Closing
+        || russian.iter().any(|w| w.start >= end)
+        || decoded_to >= end + RUSSIAN_WORD_LAG_SECS
 }
 
 /// Whether a one-word command ending at `end` is said alone at `moment`: the utterance

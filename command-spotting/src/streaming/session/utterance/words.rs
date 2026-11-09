@@ -68,7 +68,10 @@ impl Utterance {
         }
         (0..self.last.len())
             .filter(|&other| self.respelled[other])
-            .any(|ru| doubted_by(&self.words(ru, &self.last[ru]), found, moment))
+            .any(|ru| {
+                let russian = self.words(ru, &self.last[ru]);
+                doubted_by(&russian, self.decoded_to[ru], found, moment)
+            })
     }
 
     /// `found` starting at the gate's onset when it opens the utterance: a recognizer times a
