@@ -130,6 +130,23 @@ mod needs_streaming_models {
     }
 
     #[test]
+    fn should_report_enter_followed_by_speech_while_no_dictation_runs() {
+        let engine = engine();
+        let standby = [
+            "start dictation",
+            "press enter",
+            "clear all text",
+            "paste text",
+        ];
+        // WHY: the E2E voice; the English recognizer hears its "Enter" of "Enter the building" as "And".
+        let audio = common::spoken_by(Some("Eddy"), "Enter the meeting room now");
+        // When
+        let events = events_with_sync(&engine, &standby, &paused(&audio), 0);
+        // Then
+        assert_eq!(commands_of(events.clone()), ["press enter"], "{events:?}");
+    }
+
+    #[test]
     fn should_report_a_command_said_right_before_a_sync_before_answering_it() {
         let engine = engine();
         let pause = vec![0.0f32; saturating_usize(PAUSE_SECS * SAMPLE_RATE as f32)];

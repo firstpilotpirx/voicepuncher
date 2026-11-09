@@ -253,7 +253,7 @@ Feature: voice-control
     @smoke
     Scenario: Enter followed by speech presses Return
       Given the command spotting service is running
-      When someone says "Enter the building on the left" in one breath while no dictation runs
+      When someone says "Enter the meeting room now" in one breath while no dictation runs
       Then the commands "press enter" take effect in order
 
   # Real-time sessions, like the hands-free ones below: @serial keeps the other scenarios'
