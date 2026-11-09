@@ -6,6 +6,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 use voicepuncher_command_spotting::conversions::saturating_usize;
 use voicepuncher_command_spotting::protocol::{PhraseSelection, ServerEvent};
 use voicepuncher_command_spotting::streaming::engine::{StreamingCfg, StreamingEngine};
+use voicepuncher_command_spotting::streaming::session::Session;
 use voicepuncher_test_steps::required_env;
 
 use crate::common;
@@ -81,7 +82,33 @@ fn events_with_sync(
     audio: &[f32],
     id: u64,
 ) -> Vec<ServerEvent> {
-    let mut session = engine.session_for(1).expect("a session");
+    events_of(
+        engine.session_for(1).expect("a session"),
+        phrases,
+        audio,
+        id,
+    )
+}
+
+/// The events `events_with_sync` reports, each decode seen when it would have ended fed in
+/// real time: the same on a loaded machine as on an idle one.
+fn events_replayed(engine: &StreamingEngine, phrases: &[&str], audio: &[f32]) -> Vec<ServerEvent> {
+    events_of(
+        engine.session_replaying(1).expect("a session"),
+        phrases,
+        audio,
+        0,
+    )
+}
+
+/// The events `session`, listening for `phrases`, reports in `audio`, followed by the answer
+/// to a sync of `id`.
+fn events_of(
+    mut session: Session<'_>,
+    phrases: &[&str],
+    audio: &[f32],
+    id: u64,
+) -> Vec<ServerEvent> {
     let phrases = phrases.iter().map(|p| (*p).to_owned()).collect();
     session
         .select(&PhraseSelection { phrases, ..PhraseSelection::default() })
@@ -152,7 +179,9 @@ mod needs_streaming_models {
         // WHY: the default voice; the E2E voice glues "stop dictation" into one word, "Optation".
         let audio = common::spoken_by(None, "stop dictation");
         // When
-        let events = events_with_sync(&engine, &PHRASES, &paused(&audio), 0);
+        // WHY: as decoded, the Russian recognizer falls behind on a loaded machine and the
+        // English "stop" counts before "dictation" shows.
+        let events = events_replayed(&engine, &PHRASES, &paused(&audio));
         // Then
         assert_eq!(
             commands_of(events.clone()),
