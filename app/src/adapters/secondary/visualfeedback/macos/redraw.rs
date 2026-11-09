@@ -72,10 +72,44 @@ impl Redraw {
         let turn = Turn::next(&self.timer.pulse_generation);
         do_rebuild(mtm, &self.main);
         let current_state = lock(&self.timer.state).clone();
-        self.draw(mtm, &current_state, turn);
+        self.draw_state(mtm, &current_state, turn);
     }
 
+    /// Draws `state`, then builds the windows again and draws it once more when a pill it
+    /// shows is not on the desktop the user is on.
     pub(crate) fn draw(&self, mtm: MainThreadMarker, state: &OverlayState, turn: Turn) {
+        self.draw_state(mtm, state, turn);
+        self.keep_on_the_current_desktop(mtm, state);
+    }
+
+    /// Brings a shown `state` onto the current desktop: fresh windows join every desktop, so
+    /// windows the window server dropped from this one are built again.
+    pub(crate) fn keep_on_the_current_desktop(&self, mtm: MainThreadMarker, state: &OverlayState) {
+        if *state == OverlayState::Hidden || !self.pill_off_the_current_desktop(mtm) {
+            return;
+        }
+        log::warn!("overlay: pill not on the current desktop, windows built again");
+        let turn = Turn::next(&self.timer.pulse_generation);
+        do_rebuild(mtm, &self.main);
+        self.draw_state(mtm, state, turn);
+        if self.pill_off_the_current_desktop(mtm) {
+            log::warn!("overlay: pill still not on the current desktop after a rebuild");
+        }
+    }
+
+    fn pill_off_the_current_desktop(&self, mtm: MainThreadMarker) -> bool {
+        let pretended = self
+            .main
+            .get(mtm)
+            .is_some_and(|main| main.off_desktop_pretended.replace(false));
+        pretended
+            || self.main.windows(mtm).iter().any(|ws| {
+                let window = ws.window();
+                window.isVisible() && !window.isOnActiveSpace()
+            })
+    }
+
+    fn draw_state(&self, mtm: MainThreadMarker, state: &OverlayState, turn: Turn) {
         let commands_unavailable = self.timer.commands_unavailable.load(Ordering::SeqCst);
         let main = (&self.main, mtm);
         let ws_vec = self.main.windows(mtm);
