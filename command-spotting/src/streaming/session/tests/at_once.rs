@@ -77,7 +77,7 @@ fn should_report_an_english_enter_over_another_russian_word_at_once_while_no_dic
     );
     let ru = Scripted::new(
         "ru",
-        &[("энтер", 0.6), ("зе", 0.9), ("рум", 1.2), ("нау", 1.5)],
+        &[("этот", 0.6), ("зе", 0.9), ("рум", 1.2), ("нау", 1.5)],
     );
     let mut session = replayed(&[&en, &ru], &["press enter", "start dictation"]);
     // When
@@ -97,7 +97,7 @@ fn should_report_a_doubled_english_stop_over_other_russian_words_at_once_during_
     );
     let ru = Scripted::new(
         "ru",
-        &[("стоп", 0.6), ("стопка", 0.9), ("зе", 1.2), ("кар", 1.5)],
+        &[("стопка", 0.6), ("стопка", 0.9), ("зе", 1.2), ("кар", 1.5)],
     );
     let mut session = replayed(&[&en, &ru], &["stop dictation"]);
     // When
