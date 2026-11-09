@@ -1,5 +1,6 @@
 use super::*;
 
+mod at_once;
 mod chain_tail;
 mod reported;
 
@@ -43,10 +44,7 @@ fn should_report_a_doubled_command_at_once_ending_at_its_first_word() {
     let found = decide(&dictating(), &words, decoding(1.6), &Reported::default());
     // Then the command ends with its first word: a recognizer that emits late times the
     // second word inside the speech after it
-    let found = found.expect("a doubled stop");
-    assert_eq!(found.commands, ["stop dictation"]);
-    assert_eq!(found.placement, Placement::Anywhere);
-    assert!((found.end - 1.25).abs() < 1e-4, "{}", found.end);
+    assert_stop_with_speech_after(&found.expect("a doubled stop"));
 }
 
 #[test]
@@ -78,70 +76,6 @@ fn should_wait_for_a_one_word_form_to_settle() {
         settled.expect("a settled stop").commands,
         ["stop dictation"]
     );
-}
-
-#[test]
-fn should_not_settle_a_lone_word_while_the_gate_hears_speech() {
-    // Given "stop" (the user's "чтобы" of history entry 684) ending at 0.918 s, decoded 0.2 s
-    // past it
-    let words = vec![TimedWord { text: "stop".into(), start: 0.818, end: 0.918 }];
-    // When the gate still hears speech, and when its pause began right after the word
-    let speech_goes_on = Moment::Decoding { now: 1.118, pause: None, synced: false };
-    let paused = Moment::Decoding { now: 1.118, pause: Some(1.0), synced: false };
-    let unsettled = decide(&dictating(), &words, speech_goes_on, &Reported::default());
-    let settled = decide(&dictating(), &words, paused, &Reported::default());
-    // Then
-    assert_eq!(unsettled, None);
-    assert_eq!(
-        settled.expect("a settled stop").commands,
-        ["stop dictation"]
-    );
-}
-
-#[test]
-fn should_take_a_sync_for_a_pause_only_after_a_lone_word() {
-    // Given "we should stop" decoded up to the app's sync, 0.3 s past "stop", while the gate
-    // hears the sentence go on
-    let partial = said(1.0, "we should stop");
-    let synced = |now| Moment::Decoding { now, pause: None, synced: true };
-    // When
-    let in_a_sentence = decide(&dictating(), &partial, synced(2.15), &Reported::default());
-    let alone = decide(
-        &dictating(),
-        &said(1.0, "enter"),
-        synced(1.55),
-        &Reported::default(),
-    );
-    // Then the sync settles the lone word, never a command ending the words so far
-    assert_eq!(in_a_sentence, None);
-    assert_eq!(alone.expect("a settled enter").commands, ["press enter"]);
-}
-
-#[test]
-fn should_not_take_the_first_word_of_a_sentence_for_a_command() {
-    // When
-    let found = decide(
-        &dictating(),
-        &said(1.0, "stop the car"),
-        decoding(2.0),
-        &Reported::default(),
-    );
-    // Then
-    assert_eq!(found, None);
-}
-
-#[test]
-fn should_report_a_command_ending_speech_only_when_the_utterance_closes() {
-    // Given
-    let words = said(1.0, "this is done stop");
-    // When
-    let running = decide(&dictating(), &words, decoding(3.0), &Reported::default());
-    let closing = decide(&dictating(), &words, Moment::Closing, &Reported::default());
-    // Then
-    assert_eq!(running, None);
-    let found = closing.expect("a stop ending the utterance");
-    assert_eq!(found.commands, ["stop dictation"]);
-    assert_eq!(found.placement, Placement::Tail);
 }
 
 #[test]
@@ -200,16 +134,6 @@ fn should_report_an_early_start_before_speech_follows() {
 fn should_report_nothing_without_words() {
     // When
     let found = decide(&standby(), &[], Moment::Closing, &Reported::default());
-    // Then
-    assert_eq!(found, None);
-}
-
-#[test]
-fn should_wait_for_a_command_heard_with_a_word_after_it_to_settle() {
-    // Given "stop the" heard so far of "stop the car"
-    let words = said(1.0, "stop the");
-    // When
-    let found = decide(&dictating(), &words, decoding(1.6), &Reported::default());
     // Then
     assert_eq!(found, None);
 }
@@ -280,19 +204,6 @@ fn should_wait_for_the_recognizer_to_decode_up_to_the_pause() {
 }
 
 #[test]
-fn should_not_settle_a_lone_stop_while_the_gate_hears_speech() {
-    // When "stop" is decoded but speech goes on
-    let found = decide(
-        &dictating(),
-        &said(1.0, "stop"),
-        decoding(1.35),
-        &Reported::default(),
-    );
-    // Then
-    assert_eq!(found, None);
-}
-
-#[test]
 fn should_wait_for_a_command_ending_a_sentence_to_settle_past_the_pause() {
     // Given "let's start" heard so far, its "start" ending at 1.55 s, the gate silent from
     // 1.55 s: the recognizer may still revise it to "restart"
@@ -326,36 +237,6 @@ fn should_wait_for_the_close_when_a_sentence_ends_in_the_end_of_another_command(
 }
 
 #[test]
-fn should_wait_longer_for_a_one_word_form_when_the_gate_heard_speech_go_on_after_it() {
-    // Given "stop" ending at 1.25 s, the gate's pause beginning only at 1.91 s ("stop the car")
-    let words = said(1.0, "stop");
-    // When
-    let early = decide(
-        &dictating(),
-        &words,
-        paused_at(1.55, 1.91),
-        &Reported::default(),
-    );
-    // Then
-    assert_eq!(early, None);
-}
-
-#[test]
-fn should_wait_for_the_pause_when_the_gate_heard_speech_go_on_after_a_one_word_form() {
-    // Given "stop" ending at 1.25 s, decoded to 1.75 s, the gate's pause beginning at 2.1 s
-    let words = said(1.0, "stop");
-    // When
-    let found = decide(
-        &dictating(),
-        &words,
-        paused_at(1.75, 2.1),
-        &Reported::default(),
-    );
-    // Then
-    assert_eq!(found, None);
-}
-
-#[test]
 fn should_take_each_command_of_an_utterance_said_with_a_pause_between_them() {
     // Given "press enter", a 0.75 s pause the gate missed, and "press enter" again
     let words = [said(1.0, "press enter"), said(2.3, "press enter")].concat();
@@ -369,15 +250,9 @@ fn should_take_each_command_of_an_utterance_said_with_a_pause_between_them() {
     assert!((second.end - 2.85).abs() < 1e-6, "{}", second.end);
 }
 
-#[test]
-fn should_take_no_command_followed_by_speech_without_a_pause() {
-    // When
-    let found = decide(
-        &standby(),
-        &said(1.0, "press enter the door"),
-        Moment::Closing,
-        &Reported::default(),
-    );
-    // Then
-    assert_eq!(found, None);
+/// Asserts `found` is a stop with speech after it, ending at 1.25 s.
+fn assert_stop_with_speech_after(found: &Finding) {
+    assert_eq!(found.commands, ["stop dictation"]);
+    assert_eq!(found.placement, Placement::Anywhere);
+    assert!((found.end - 1.25).abs() < 1e-4, "{}", found.end);
 }

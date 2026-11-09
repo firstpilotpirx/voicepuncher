@@ -10,7 +10,7 @@ A one-word form (or a phrase ending in one) found anywhere among the fresh words
 
 ### D2: an English-only command where Russian heard another word keeps the old rule
 
-The English recognizer hears Russian speech as English words ("чтобы" → "stop", user's recording). When the English recognizer finds a one-word command and the Russian recognizer, decoded past the same span, holds no command word there, the finding waits for the gate's pause as today and is no command at the head of a sentence that goes on. The Russian recognizer's last words are already kept per utterance (`last`), so this needs no new state. A command the Russian recognizer hears (respelled "стоп", "энтер") goes out at once by D1: it decides most reports today (246 of 294 in the log).
+The English recognizer hears Russian speech as English words ("чтобы" → "stop", user's recording). While a dictation runs ("stop dictation" is listened for), when only the at-once rule of D1 finds an English one-word command and the Russian recognizer holds no command word over the same span (another word, or nothing decoded past it yet while the utterance is open), the finding waits for the gate's pause as before and is no command at the head of a sentence that goes on. The rules that counted a command before (chains, doubled forms, a start opening speech, a command at the pause) go first and are never doubted; outside a dictation the user speaks commands, not Russian sentences, so nothing is doubted there ("Enter the building on the left" presses Return). The Russian recognizer's last words are already kept per utterance (`last`), so this needs no new state. A command the Russian recognizer hears (respelled "стоп", "энтер") goes out at once by D1: it decides most reports today (246 of 294 in the log).
 
 ### D3: a repeat within 0.6 s is the same command
 
@@ -19,6 +19,13 @@ With the first word reported at once, the second word of a doubled form arrives 
 ### D4: measured on the user's recordings
 
 `just streaming-bench --recorded` before and after, real time: every recorded command still recognized once, and the median delay of commands said right after speech at most 0.4 s.
+
+| Run (6 sessions, real time) | right | false alarms | delay median | p90 | start median | stop median |
+|---|---|---|---|---|---|---|
+| before (`main` at 3f2c0a2) | 51/53 | 4/9 | 485 ms | 5154 ms | 445 ms | 436 ms |
+| after (this branch at 62b2071) | 51/53 | 5/9 | 396 ms | 728 ms | 427 ms | 415 ms |
+
+Every recorded command is still recognized as before (the same two misses), the median delay is under 0.4 s and the p90 drops from 5.2 s to 0.7 s; one more false alarm in the sessions without commands ("start" in session 4), the risk the user accepted.
 
 ## Risks
 

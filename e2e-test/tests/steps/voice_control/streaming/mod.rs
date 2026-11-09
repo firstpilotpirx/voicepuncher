@@ -46,7 +46,8 @@ pub struct StreamingRun {
     history: history::StreamingHistory,
     /// Spinning threads that keep every core busy while the scenario runs.
     busy: Option<busy::BusyCores>,
-    timed: timed::Timed,
+    /// Each real-time stream of the scenario, timed by the wall clock.
+    timed: Vec<timed::Timed>,
     recorded: Vec<voicepuncher_command_spotting::bench::Outcome>,
     /// Each clip's outcome in real time and then as fast as it decodes.
     paced: Vec<(

@@ -6,6 +6,7 @@ use super::*;
 use crate::history::HistoryCfg;
 use crate::streaming::ports::{Decoded, RecognizerStream};
 
+mod at_once;
 mod chain_tail;
 mod close_order;
 mod doubled_reports;
@@ -350,7 +351,7 @@ fn should_close_without_waiting_for_the_tail_of_silence_to_be_decoded() {
 #[test]
 fn should_report_no_command_for_speech_without_one() {
     // Given
-    let en = Scripted::new("en", &[("stop", 0.6), ("the", 0.75), ("car", 0.9)]);
+    let en = Scripted::new("en", &[("the", 0.6), ("red", 0.75), ("car", 0.9)]);
     // When
     let events = utterance_events(&[&en], 1.0);
     // Then

@@ -6,6 +6,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 use voicepuncher_command_spotting::conversions::saturating_usize;
 use voicepuncher_command_spotting::protocol::{PhraseSelection, ServerEvent};
 use voicepuncher_command_spotting::streaming::engine::{StreamingCfg, StreamingEngine};
+use voicepuncher_command_spotting::streaming::session::Session;
 use voicepuncher_test_steps::required_env;
 
 use crate::common;
@@ -81,7 +82,33 @@ fn events_with_sync(
     audio: &[f32],
     id: u64,
 ) -> Vec<ServerEvent> {
-    let mut session = engine.session_for(1).expect("a session");
+    events_of(
+        engine.session_for(1).expect("a session"),
+        phrases,
+        audio,
+        id,
+    )
+}
+
+/// The events `events_with_sync` reports, each decode seen when it would have ended fed in
+/// real time: the same on a loaded machine as on an idle one.
+fn events_replayed(engine: &StreamingEngine, phrases: &[&str], audio: &[f32]) -> Vec<ServerEvent> {
+    events_of(
+        engine.session_replaying(1).expect("a session"),
+        phrases,
+        audio,
+        0,
+    )
+}
+
+/// The events `session`, listening for `phrases`, reports in `audio`, followed by the answer
+/// to a sync of `id`.
+fn events_of(
+    mut session: Session<'_>,
+    phrases: &[&str],
+    audio: &[f32],
+    id: u64,
+) -> Vec<ServerEvent> {
     let phrases = phrases.iter().map(|p| (*p).to_owned()).collect();
     session
         .select(&PhraseSelection { phrases, ..PhraseSelection::default() })
@@ -130,6 +157,40 @@ mod needs_streaming_models {
     }
 
     #[test]
+    fn should_report_enter_followed_by_speech_while_no_dictation_runs() {
+        let engine = engine();
+        let standby = [
+            "start dictation",
+            "press enter",
+            "clear all text",
+            "paste text",
+        ];
+        // WHY: the E2E voice; the English recognizer hears its "Enter" of "Enter the building" as "And".
+        let audio = common::spoken_by(Some("Eddy"), "Enter the meeting room now");
+        // When
+        let events = events_with_sync(&engine, &standby, &paused(&audio), 0);
+        // Then
+        assert_eq!(commands_of(events.clone()), ["press enter"], "{events:?}");
+    }
+
+    #[test]
+    fn should_report_the_long_form_stop_dictation_said_while_dictating() {
+        let engine = engine();
+        // WHY: the default voice; the E2E voice glues "stop dictation" into one word, "Optation".
+        let audio = common::spoken_by(None, "stop dictation");
+        // When
+        // WHY: as decoded, the Russian recognizer falls behind on a loaded machine and the
+        // English "stop" counts before "dictation" shows.
+        let events = events_replayed(&engine, &PHRASES, &paused(&audio));
+        // Then
+        assert_eq!(
+            commands_of(events.clone()),
+            ["stop dictation"],
+            "{events:?}"
+        );
+    }
+
+    #[test]
     fn should_report_a_command_said_right_before_a_sync_before_answering_it() {
         let engine = engine();
         let pause = vec![0.0f32; saturating_usize(PAUSE_SECS * SAMPLE_RATE as f32)];
@@ -150,7 +211,6 @@ mod needs_streaming_models {
     fn should_start_nothing_for_speech_that_is_no_start() {
         let engine = engine();
         let speech = [
-            (None, "we should start the meeting a bit later today"),
             (None, "the weather is nice and the coffee is hot"),
             (Some("Milena"), "давай встретимся завтра утром"),
         ];

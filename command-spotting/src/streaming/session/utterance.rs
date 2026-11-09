@@ -3,15 +3,15 @@
 
 use crate::matcher::PhraseMatcher;
 use crate::protocol::ServerEvent;
-use crate::streaming::words::TimedWord;
 
 use super::super::decide::{decide, Finding, Moment, Reported};
 use super::super::ports::{Decoded, StreamingModel};
 use super::super::trace::Trace;
-use super::super::words::timed_words;
 use super::decoder::{Decoder, Decoding, Update};
 use super::reports::Reports;
 use super::{samples_in, seconds};
+
+mod words;
 
 /// The longest audio an entry of the command history keeps.
 const MAX_AUDIO_SECS: f32 = 30.0;
@@ -266,7 +266,6 @@ impl Utterance {
     ) -> Option<ServerEvent> {
         self.trace.decoded(r, update.took);
         self.trace.heard(r, now, &text_of(&update.decoded));
-        let words = self.words(r, &update.decoded);
         self.last[r] = update.decoded;
         let moment = if update.finished {
             Moment::Closing
@@ -277,27 +276,8 @@ impl Utterance {
                 synced: self.synced,
             }
         };
-        let found = decide(matcher, &words, moment, &self.reported())?;
-        if self
-            .reports
-            .handover
-            .is_some_and(|from| found.start >= from)
-        {
-            return None;
-        }
-        let found = self.started_at_onset(found, &words);
-        self.report(r, found, now)
-    }
-
-    /// `found` starting at the gate's onset when it opens the utterance: a recognizer times a
-    /// first word later than it is said, and the dictation it ends would keep its first sounds.
-    fn started_at_onset(&self, mut found: Finding, words: &[TimedWord]) -> Finding {
-        let onset = self.trace.onset;
-        let opens = words.first().is_some_and(|w| w.start >= found.start);
-        if opens && found.start - onset <= OPENING_SLACK_SECS {
-            found.start = found.start.min(onset);
-        }
-        found
+        self.decided(matcher, r, moment, now)
+            .or_else(|| self.recheck_doubted(matcher, r, moment, now))
     }
 
     /// What it reported so far: the end of the last report, and the commands sent in order.
@@ -348,20 +328,6 @@ impl Utterance {
             })
             .collect();
         Closed { trace: self.trace, heard, audio: self.audio }
-    }
-
-    fn words(&self, r: usize, decoded: &Decoded) -> Vec<TimedWord> {
-        let mut words = timed_words(
-            &decoded.tokens,
-            &decoded.times,
-            self.start,
-            self.respelled[r],
-        );
-        for word in &mut words {
-            word.start = self.unflushed(word.start);
-            word.end = self.unflushed(word.end);
-        }
-        words
     }
 }
 

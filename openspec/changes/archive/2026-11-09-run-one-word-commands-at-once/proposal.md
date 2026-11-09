@@ -5,7 +5,7 @@ A one-word command said after speech ("…commit it, enter") waits for the voice
 ## What Changes
 
 - **BREAKING** A command's one-word form (and its full phrase) is carried out as soon as a recognizer has decoded it, anywhere in an utterance: after silence, after speech, or followed by more speech. No pause after it is awaited. The words of a command inside a sentence ("we should stop the server") now trigger it: accepted by the user.
-- A word that may still grow into a longer command word ("start" of "restart") waits only until the recognizer decodes past it, as today.
+- A last word that may still grow into a longer command word ("start" of "restart") waits for the utterance to close, as today.
 - When "stop" or "cancel" ends a dictation with speech after it, the words after it are not pasted, as with "stop stop" today.
 
 Current stage: PoC. Target stage: PoC.

@@ -224,36 +224,6 @@ With voice control on, the system SHALL start listening as soon as the app start
 - **THEN** listening is on
 - **AND** saying "enter" presses Return
 
-### Requirement: A command counts on its own or in its set places
-The system SHALL carry out a command when its phrase is the whole utterance, with a pause before and after it, and in the places the requirements on commands said without a pause allow: at the end of an utterance, "start" at its start, a doubled short form or a chain anywhere. The same words inside a sentence — with speech after them in the same utterance, not doubled and not in a chain — SHALL NOT be taken as a command; a single short word right after a command ("enter now") is within the spotter's timing error and may still count.
-
-#### Scenario: A command phrase spoken on its own is recognized
-- **GIVEN** listening is on
-- **WHEN** the user says a command phrase with a pause before and after it
-- **THEN** that command takes effect
-
-#### Scenario: A command said after a long time of listening is recognized
-- **GIVEN** listening has been on for a long time with nothing said
-- **WHEN** the user says a command phrase with a pause before and after it
-- **THEN** that command takes effect
-
-#### Scenario: A command phrase inside a sentence is ignored while listening
-- **GIVEN** listening is on
-- **AND** no dictation runs
-- **WHEN** someone says "I will enter the code when I am done" without pausing
-- **THEN** no key is pressed
-- **AND** no dictation starts
-
-#### Scenario: Ordinary speech triggers no command
-- **GIVEN** listening is on
-- **WHEN** someone speaks ordinary Russian and English sentences that hold no command phrase
-- **THEN** no command takes effect
-
-#### Scenario: A stop phrase inside a dictated sentence does not end the dictation
-- **GIVEN** a dictation runs
-- **WHEN** the user says "please stop the software from crashing" without pausing
-- **THEN** the dictation keeps running
-
 ### Requirement: "press enter" during a dictation pastes and sends
 During a dictation, the system SHALL take "enter", in any of its forms, as "stop dictation" followed by "press enter": it ends the dictation, pastes its text without the command, and then presses Return, with the enter sound and sign once Return is pressed.
 
@@ -264,31 +234,6 @@ During a dictation, the system SHALL take "enter", in any of its forms, as "stop
 - **THEN** the sentence is pasted into the focused app
 - **AND** the Return key is pressed after it
 - **AND** the enter sound plays and the overlay shows the enter sign after the paste
-
-### Requirement: Every command has a one-word short form
-The system SHALL take each command only from its one word or that word said twice in a row: "start" for "start dictation", "stop" for "stop dictation", "cancel" for "cancel dictation", "restart" for "restart dictation", "enter" for "press enter", "clear" for "clear all text" and "paste" for "paste text", in the state that accepts the command. The longer phrases "start dictation", "stop dictation", "cancel dictation", "restart dictation", "press enter", "clear all text", "clear text" and "paste text" SHALL be ordinary speech, never a command of their own; the command names stay only as names.
-
-#### Scenario: A short form is recognized as its command
-- **GIVEN** listening is on
-- **WHEN** the user says "start", "stop", "cancel", "restart", "enter", "clear" or "paste" on its own, in the state that accepts its command
-- **THEN** "start dictation", "stop dictation", "cancel dictation", "restart dictation", "press enter", "clear all text" or "paste text" takes effect
-
-#### Scenario: Cancel alone discards a dictation
-- **GIVEN** a dictation runs
-- **AND** the user has said a sentence in it
-- **WHEN** the user says "cancel"
-- **THEN** no text is pasted
-
-#### Scenario: A long form said alone takes no effect
-- **GIVEN** listening is on
-- **WHEN** the user says "stop dictation" during a dictation, on its own with a pause before and after it
-- **THEN** no command takes effect
-
-#### Scenario: A long form ending in a command word counts by that word
-- **GIVEN** listening is on
-- **AND** no dictation runs
-- **WHEN** the user says "press enter" on its own
-- **THEN** the Return key is pressed, as for any utterance ending in "enter"
 
 ### Requirement: "restart dictation" starts the dictation over
 During a dictation, the system SHALL discard what was dictated so far, paste nothing, and start a new dictation at once when the user says "restart". It plays the restart sound alone, neither the cancel sound nor the start sound, and the overlay shows the restart sign for about a second, then the recording again. "restart restart" counts anywhere, like the other doubled short forms, and "restart" may end an utterance. It is in no chain: it only follows a running dictation, and nothing follows it in one breath.
@@ -312,40 +257,6 @@ During a dictation, the system SHALL discard what was dictated so far, paste not
 - **WHEN** someone says a sentence and "restart restart" without a pause
 - **THEN** the dictation starts over
 
-### Requirement: A command may end an utterance
-The system SHALL carry out a command whose phrase (full or short) ends an utterance, even with speech right before it in the same utterance, when the state accepts the command. The utterance ends with a pause of at least 0.3 s after the command. When the command ends a dictation, the pasted text SHALL hold the speech before the command and SHALL NOT hold the command words.
-
-#### Scenario: Stop right after the last dictated word
-- **GIVEN** a dictation runs
-- **WHEN** the user says a sentence and then "stop" without a pause, then pauses
-- **THEN** the sentence is pasted into the focused app without "stop"
-
-#### Scenario: Enter right after other speech
-- **GIVEN** listening is on
-- **AND** no dictation runs
-- **WHEN** the user says "okay, enter" without a pause, then pauses
-- **THEN** the Return key is pressed in the focused app
-
-#### Scenario: A command word inside a sentence is still no command
-- **GIVEN** a dictation runs
-- **WHEN** the user says "we should stop the server tonight" and pauses
-- **THEN** the dictation keeps running
-
-### Requirement: "start" may open an utterance
-The system SHALL start a dictation when "start" opens an utterance and speech follows it without a pause, while no dictation runs; the speech after the command SHALL be part of the dictation and the command words SHALL NOT be pasted. Other commands that open an utterance followed by speech SHALL have no effect, and so SHALL "start" followed at once by another command word ("start stop").
-
-#### Scenario: Start followed by the dictation at once
-- **GIVEN** listening is on
-- **AND** no dictation runs
-- **WHEN** the user says "start" and a sentence without a pause, and later ends the dictation
-- **THEN** the sentence is pasted into the focused app without "start"
-
-#### Scenario: Enter followed by speech is no command
-- **GIVEN** listening is on
-- **AND** no dictation runs
-- **WHEN** the user says "enter the building on the left" and pauses
-- **THEN** no key is pressed
-
 ### Requirement: A doubled short form counts anywhere
 The system SHALL carry out a command at once when its short form is said twice in a row — "start start", "stop stop", "cancel cancel", "enter enter", "clear clear", "paste paste" — anywhere in an utterance, with no pause around it, in a state that accepts the command. When "stop stop" or "cancel cancel" ends a dictation, the words after it in the same utterance SHALL NOT be pasted; with "stop stop" the words before it SHALL be pasted.
 
@@ -365,64 +276,6 @@ The system SHALL carry out a command at once when its short form is said twice i
 - **GIVEN** a dictation runs
 - **WHEN** the user says a sentence and "cancel cancel" without a pause
 - **THEN** no text is pasted
-
-### Requirement: A chain of commands is carried out in order
-The system SHALL carry out a chain of two or three different commands said one right after the other — full phrases or short forms — in the order said, when each command is accepted in the state the one before it leads to and "start" comes last. A chain SHALL count anywhere in an utterance, with no pause around it. A command of the chain heard only after the commands before it were carried out SHALL still be carried out, once, after them, whichever recognizer hears it: the chain's tail is never lost.
-
-#### Scenario: Stop enter pastes and sends
-- **GIVEN** a dictation runs
-- **AND** the user has said a sentence in it
-- **WHEN** the user says "stop enter"
-- **THEN** the sentence is pasted into the focused app
-- **AND** the Return key is pressed after it
-
-#### Scenario: Stop enter start sends and starts the next dictation
-- **GIVEN** a dictation runs
-- **AND** the user has said a sentence in it
-- **WHEN** the user says "stop enter start"
-- **THEN** the sentence is pasted into the focused app
-- **AND** the Return key is pressed after it
-- **AND** a new dictation starts
-
-#### Scenario: Cancel clear discards and clears
-- **GIVEN** a dictation runs
-- **WHEN** the user says "cancel clear"
-- **THEN** no text is pasted
-- **AND** select all and delete are pressed in the focused app
-
-#### Scenario: A chain the states do not allow is no command
-- **GIVEN** listening is on
-- **AND** no dictation runs
-- **WHEN** the user says "enter stop" or "start stop"
-- **THEN** no command takes effect
-
-#### Scenario: The end of a chain heard only when the utterance ends still counts
-- **GIVEN** a dictation runs
-- **AND** while the user speaks, the system has heard only the first two commands of "never mind cancel enter start" and carried them out
-- **WHEN** the utterance ends and the system hears all of it
-- **THEN** "start dictation" is carried out after them
-- **AND** "cancel dictation" and "press enter" are not carried out again
-
-#### Scenario: The last command of a chain decoded after the first ones were carried out still counts
-- **GIVEN** a dictation runs
-- **AND** the user says "that is all stop enter start" in one breath
-- **AND** a recognizer hears "stop enter" and the system carries them out before any recognizer has heard "start"
-- **WHEN** a recognizer hears the "start" said right after them, while the user still speaks or at the close
-- **THEN** "start dictation" is carried out once, after them
-- **AND** "stop dictation" and "press enter" are not carried out again
-
-#### Scenario: The other recognizer's words of a chain carried out are not carried out again
-- **GIVEN** a dictation runs
-- **AND** the user says "that is all stop enter start" in one breath
-- **AND** one recognizer hears "stop enter" and the system carries them out
-- **WHEN** the other recognizer hears its own "enter", stamped later than the first one's, before it hears "start", whether or not the app has switched state meanwhile
-- **THEN** "press enter" is not carried out again
-- **AND** "start dictation" is carried out once, after them, when a recognizer hears it
-
-#### Scenario: The user's recorded chains keep their last command
-- **GIVEN** a dictation runs
-- **WHEN** each of the user's recorded chains whose last command counts only after the one before it ("start" or "clear" while dictating) is played
-- **THEN** every command of the chain is carried out, in the order said, each once
 
 ### Requirement: Which chains exist
 Since "start dictation" leads to dictating and "stop dictation" or "cancel dictation" lead back to standby, the chains SHALL be exactly those where "start" comes last: during a dictation, "stop" or "cancel" followed by one or two of "enter", "clear", "paste", "start" (each once, "start" last), or "enter" followed by one or two of "clear", "paste", "start" ("enter" ends the dictation and pastes first); with no dictation, two or three of "enter", "clear", "paste", "start" (each once, "start" last).
@@ -652,47 +505,6 @@ When the command spotting service has been away for 5 seconds while listening, t
 - **THEN** the overlay still shows that voice commands do not work
 - **AND** once the service is back, the overlay hides
 
-### Requirement: "paste text" pastes the clipboard
-While listening, with or without a dictation running, the system SHALL press Cmd+V in the focused app when the user says "paste", so the focused app pastes whatever the clipboard holds at its cursor: what the user copied, before the dictation or during it, never the dictated text. During a dictation the command SHALL NOT end, pause or restart the dictation: it keeps recording, and on its end pastes its own text, without the words of the command, where the cursor then is. The command SHALL leave the clipboard as it is. It SHALL then play the paste sound and show the paste sign on the overlay. With an empty clipboard the focused app pastes nothing, and the command still confirms itself.
-
-#### Scenario: Saying paste text pastes the clipboard at the cursor
-- **GIVEN** listening is on
-- **AND** no dictation runs
-- **AND** the clipboard holds a sentence
-- **WHEN** the user says "paste"
-- **THEN** Cmd+V is pressed in the focused app
-- **AND** the paste sound plays
-- **AND** the overlay shows the paste sign for about a second, then hides
-
-#### Scenario: Paste leaves the clipboard as it was
-- **GIVEN** listening is on
-- **AND** no dictation runs
-- **AND** the clipboard holds a sentence
-- **WHEN** the user says "paste"
-- **THEN** the clipboard still holds the same sentence
-
-#### Scenario: A paste phrase inside a sentence is ignored
-- **GIVEN** listening is on
-- **AND** no dictation runs
-- **WHEN** someone says "I will paste the link later" without pausing
-- **THEN** no key is pressed
-
-#### Scenario: Saying paste during a dictation pastes the clipboard and the dictation goes on
-- **GIVEN** a dictation runs
-- **AND** the user has said a sentence in it
-- **AND** the clipboard holds another sentence the user copied
-- **WHEN** the user says "paste" with a pause before and after it
-- **THEN** Cmd+V is pressed in the focused app
-- **AND** the paste sound plays
-- **AND** the dictation keeps running
-
-#### Scenario: A dictation with a paste in it pastes its text without the command
-- **GIVEN** a dictation runs
-- **AND** the user has said a sentence, then "paste" on its own, then another sentence
-- **WHEN** the user says "stop"
-- **THEN** both dictated sentences are pasted into the focused app
-- **AND** the pasted text does not contain "paste"
-
 ### Requirement: Listening moves to another copy of the command spotting service
 When the copy of the command spotting service the app streams to goes away while another copy answers, the system SHALL connect to that other copy at its first attempt to reach the service again and replay the speech the lost copy may have missed, so a command said meanwhile still counts and the overlay never shows that voice commands do not work.
 
@@ -798,7 +610,7 @@ The command spotting service SHALL report every command as it does with the comm
 - **THEN** Return is pressed as usual and the service log warns that the utterance was not kept
 
 ### Requirement: A doubled command needs no pause
-The system SHALL carry out a doubled short form ("start start", "restart restart", "stop stop", "cancel cancel", "enter enter", "clear clear", "paste paste") as soon as its second word is heard, without waiting for a pause after it or for the next word, whether silence or speech follows. Inside running speech the second word is heard once the recognizer emits it, which takes the speech past it (the first word alone fires nothing while the gate hears speech): a doubled form said inside a sentence SHALL take effect within 1 s of its end, before the sentence ends. A doubled one-word form SHALL end with its first word: a recognizer that emits late times the second word inside the speech said after it, so the dictation a doubled start or restart begins runs from the end of the first word and the second word is removed from its text.
+The system SHALL carry out a doubled short form ("start start", "restart restart", "stop stop", "cancel cancel", "enter enter", "clear clear", "paste paste") as one command, at once, whether silence or speech follows: its first word already counts, and the second, said within 0.6 s of the first, is the same command — never carried out again and never part of a dictation's text. A doubled form said inside a sentence SHALL take effect within 1 s of its end, before the sentence ends. A dictation a doubled start or restart begins runs from the end of the first word, and the second word is removed from its text.
 
 #### Scenario: Start start then silence starts at once
 - **GIVEN** listening is on
@@ -816,6 +628,12 @@ The system SHALL carry out a doubled short form ("start start", "restart restart
 - **AND** no dictation runs
 - **WHEN** someone says "fine start start" and goes on with a sentence without a pause
 - **THEN** the start cue comes within 1 s of the end of "start start", while the sentence is still being said
+
+#### Scenario: Enter enter presses Return once
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** the user says "enter enter" and pauses
+- **THEN** the Return key is pressed once
 
 ### Requirement: Each state accepts its own commands, paste in both
 The system SHALL accept "start dictation" and "clear all text" only with no dictation running, "stop dictation", "cancel dictation" and "restart dictation" only during a dictation, and "press enter" and "paste text" in both. A command spoken in a state that does not accept it SHALL have no effect. "start" said during a dictation, however and wherever said, SHALL neither be taken for "restart" nor end the dictation.
@@ -961,40 +779,6 @@ With the streaming recognizer and a command history, the service SHALL keep ever
 - **WHEN** an app streams the sentence "the weather is nice today" followed by silence
 - **THEN** the command history holds an entry with the utterance's audio and each recognizer's texts
 - **AND** the entry names no command
-
-### Requirement: Streaming commands are reported within 0.3 s of their words
-With the streaming recognizer on an idle machine, the command spotting service SHALL report "start" and "stop" within 0.3 s of the end of their words (wall clock) for at least half of them and within 0.6 s for 9 of 10; a command said alone or ending a sentence SHALL count at the pause the gate hears after it, without waiting for the utterance to close, unless its last word is also the end of a longer command word the state listens for ("start" in "restart"), which counts at the close. A one-word command a recognizer heard while the gate still hears the speech going on SHALL NOT count yet, however much audio the recognizer decoded past it: it counts once the gate hears a pause begin right after it, at a sync the app asks for after it (for a command said alone the sync stands for the pause, so the command is reported before the sync is answered; a command word ending the words heard so far does not count at a sync, which the app asks for inside a sentence too), or at the close of the utterance; a Russian word a recognizer hears as "stop" at the head of a sentence that goes on is no command.
-
-#### Scenario: Start said alone is reported within its bound
-- **GIVEN** the command spotting service runs with the streaming recognizer on an otherwise idle machine
-- **WHEN** an app streams "start" followed by silence, in real time
-- **THEN** the service reports "start dictation" within 0.3 s of the end of "start" by the wall clock
-
-#### Scenario: Stop said alone is reported at the pause after it
-- **GIVEN** the command spotting service runs with the streaming recognizer on an otherwise idle machine
-- **WHEN** an app streams "stop" followed by silence, in real time
-- **THEN** the service reports "stop dictation" within 0.3 s of the end of "stop" by the wall clock
-
-#### Scenario: Stop opening a sentence is still no command
-- **GIVEN** the command spotting service runs with the streaming recognizer
-- **WHEN** an app streams "stop the car" without a pause
-- **THEN** the service reports no command
-
-#### Scenario: A Russian sentence heard as opening with stop is no command
-- **GIVEN** the command spotting service runs with the streaming recognizer
-- **AND** the user's own recordings exist on the machine, among them "чтобы зайти в гетлаб" said while dictating, whose first word the recognizer hears as "stop"
-- **WHEN** an app streams that recording in real time, listening for the commands of a dictation
-- **THEN** the service reports no command
-
-#### Scenario: Press enter after a sentence is reported soon after the pause
-- **GIVEN** the command spotting service runs with the streaming recognizer on an otherwise idle machine
-- **WHEN** an app streams a sentence ending with "enter", followed by silence, in real time
-- **THEN** the service reports "press enter" within 0.6 s of the end of "enter" by the wall clock
-
-#### Scenario: The user's recorded commands are reported within their bound
-- **GIVEN** the user's own recordings of the commands exist on the machine
-- **WHEN** each recorded "start" and "stop" is streamed to the service in real time
-- **THEN** at least half are reported within 0.3 s and at least 9 of 10 within 0.6 s of the end of their words
 
 ### Requirement: Streaming commands are heard in the user's own voice
 With the streaming recognizer, the command spotting service SHALL report at least 89 of 100 commands in the user's own recordings as the command said, each listened for as the app listens in the state it was said in (measured: 104 of 114), counting a doubled command once, and SHALL take the mishearings found in the user's command history as forms of the command they mishear.
@@ -1151,3 +935,231 @@ In its fast pace the streaming bench SHALL replay the service's clock: each reco
 #### Scenario: The fast report names what it does not replay
 - **WHEN** the bench runs in the fast pace
 - **THEN** its report ends with one line naming what the replay does not reproduce: a load other than its own, the service's poll and wake, the app's audio path and its syncs, and the granularity of a frame
+
+### Requirement: A command counts wherever its word is said
+The system SHALL carry out a command as soon as its word is heard, wherever it is said in an utterance — on its own, at the end of other speech, at its start, or inside a sentence with speech after it — when the state accepts the command; no pause before or after it is needed. The user keeps the command words out of dictation, so a command word inside a sentence counts as the command. Ordinary speech without a command word triggers nothing.
+
+#### Scenario: A command phrase spoken on its own is recognized
+- **GIVEN** listening is on
+- **WHEN** the user says a command phrase with a pause before and after it
+- **THEN** that command takes effect
+
+#### Scenario: A command said after a long time of listening is recognized
+- **GIVEN** listening has been on for a long time with nothing said
+- **WHEN** the user says a command phrase with a pause before and after it
+- **THEN** that command takes effect
+
+#### Scenario: A command word inside a sentence counts while listening
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** someone says "I will enter the code when I am done" without pausing
+- **THEN** the Return key is pressed in the focused app
+
+#### Scenario: Ordinary speech triggers no command
+- **GIVEN** listening is on
+- **WHEN** someone speaks ordinary Russian and English sentences that hold no command phrase
+- **THEN** no command takes effect
+
+#### Scenario: A stop word inside a dictated sentence ends the dictation at once
+- **GIVEN** a dictation runs
+- **WHEN** the user says "please stop the software from crashing" without pausing
+- **THEN** the stop sound plays before the sentence ends
+- **AND** "please" is pasted into the focused app, without "stop" and the words after it
+
+### Requirement: A command ending speech counts without a pause
+The system SHALL carry out a command whose word ends an utterance, even with speech right before it in the same utterance, when the state accepts the command, as soon as the word is heard: no pause after it is awaited. When the command ends a dictation, the pasted text SHALL hold the speech before the command and SHALL NOT hold the command words.
+
+#### Scenario: Stop right after the last dictated word
+- **GIVEN** a dictation runs
+- **WHEN** the user says a sentence and then "stop" without a pause, then pauses
+- **THEN** the sentence is pasted into the focused app without "stop"
+
+#### Scenario: Enter right after other speech
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** the user says "okay, enter" without a pause, then pauses
+- **THEN** the Return key is pressed in the focused app
+
+#### Scenario: Stop after a long dictation counts without waiting for a pause
+- **GIVEN** a dictation runs
+- **AND** the user has spoken in it for more than 10 s without a pause
+- **WHEN** the user says "stop" right after the last word
+- **THEN** the stop sound plays within 0.6 s of the end of "stop"
+
+### Requirement: "start" opening speech starts the dictation with it
+The system SHALL start a dictation when "start" opens an utterance and speech follows it without a pause, while no dictation runs; the speech after the command SHALL be part of the dictation and the command words SHALL NOT be pasted. Another command that opens an utterance followed by speech SHALL take effect at once like any command word; "start" followed at once by "stop" starts and at once ends a dictation that pastes nothing.
+
+#### Scenario: Start followed by the dictation at once
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** the user says "start" and a sentence without a pause, and later ends the dictation
+- **THEN** the sentence is pasted into the focused app without "start"
+
+#### Scenario: Enter followed by speech presses Return
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** the user says "enter the building on the left" and pauses
+- **THEN** the Return key is pressed in the focused app
+
+### Requirement: Every command is said by its one word
+The system SHALL take each command only from its one word or that word said twice in a row ("start", "stop", "cancel", "restart", "enter", "clear", "paste"), in the state that accepts the command. A longer phrase ("stop dictation", "press enter", "clear all text", "paste text") SHALL never be a command of its own: it counts only by its command word, like any speech that holds it.
+
+#### Scenario: A short form is recognized as its command
+- **GIVEN** listening is on
+- **WHEN** the user says "start", "stop", "cancel", "restart", "enter", "clear" or "paste" on its own, in the state that accepts its command
+- **THEN** "start dictation", "stop dictation", "cancel dictation", "restart dictation", "press enter", "clear all text" or "paste text" takes effect
+
+#### Scenario: Cancel alone discards a dictation
+- **GIVEN** a dictation runs
+- **AND** the user has said a sentence in it
+- **WHEN** the user says "cancel"
+- **THEN** no text is pasted
+
+#### Scenario: A long form counts by its command word
+- **GIVEN** a dictation runs
+- **WHEN** the user says "stop dictation" on its own with a pause before and after it
+- **THEN** the dictation ends, as for any speech holding "stop"
+
+#### Scenario: A long form ending in a command word counts by that word
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** the user says "press enter" on its own
+- **THEN** the Return key is pressed, as for any utterance ending in "enter"
+
+### Requirement: "paste" pastes the clipboard at once
+While listening, with or without a dictation running, the system SHALL press Cmd+V in the focused app as soon as the user says "paste", wherever in an utterance, then play the paste sound and show the paste sign; the clipboard stays as it was. During a dictation the command SHALL NOT end it: the dictation keeps recording and pastes its own text, without the command's words, when it ends.
+
+#### Scenario: Saying paste text pastes the clipboard at the cursor
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **AND** the clipboard holds a sentence
+- **WHEN** the user says "paste"
+- **THEN** Cmd+V is pressed in the focused app
+- **AND** the paste sound plays
+- **AND** the overlay shows the paste sign for about a second, then hides
+
+#### Scenario: Paste leaves the clipboard as it was
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **AND** the clipboard holds a sentence
+- **WHEN** the user says "paste"
+- **THEN** the clipboard still holds the same sentence
+
+#### Scenario: A paste word inside a sentence pastes at once
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** someone says "I will paste the link later" without pausing
+- **THEN** Cmd+V is pressed in the focused app
+
+#### Scenario: Saying paste during a dictation pastes the clipboard and the dictation goes on
+- **GIVEN** a dictation runs
+- **AND** the user has said a sentence in it
+- **AND** the clipboard holds another sentence the user copied
+- **WHEN** the user says "paste" with a pause before and after it
+- **THEN** Cmd+V is pressed in the focused app
+- **AND** the paste sound plays
+- **AND** the dictation keeps running
+
+#### Scenario: A dictation with a paste in it pastes its text without the command
+- **GIVEN** a dictation runs
+- **AND** the user has said a sentence, then "paste" on its own, then another sentence
+- **WHEN** the user says "stop"
+- **THEN** both dictated sentences are pasted into the focused app
+- **AND** the pasted text does not contain "paste"
+
+### Requirement: Streaming commands are reported as soon as their words are decoded
+On an idle machine the service SHALL report "start" and "stop" within 0.3 s of their words' end (wall clock) for half and within 0.6 s for 9 of 10. A command word SHALL count once a recognizer decoded it, wherever it sits, without a pause, unless it may grow into a longer command word ("start" of "restart"). During a dictation, a one-word command only the English recognizer hears, where the Russian one heard another word, SHALL count only at the pause after it; doubled forms never wait.
+
+#### Scenario: Start said alone is reported within its bound
+- **GIVEN** the command spotting service runs with the streaming recognizer on an otherwise idle machine
+- **WHEN** an app streams "start" followed by silence, in real time, five times
+- **THEN** the service reports "start dictation" within 0.3 s of the end of "start" by the wall clock in at least three of them, and within 0.6 s in all five
+
+#### Scenario: Stop said alone is reported at once
+- **GIVEN** the command spotting service runs with the streaming recognizer on an otherwise idle machine
+- **WHEN** an app streams "stop" followed by silence, in real time, five times
+- **THEN** the service reports "stop dictation" within 0.4 s of the end of "stop" by the wall clock in at least three of them, and within 0.6 s in all five
+
+#### Scenario: Stop opening a sentence counts at once
+- **GIVEN** the command spotting service runs with the streaming recognizer
+- **WHEN** an app streams "stop the car" without a pause
+- **THEN** the service reports "stop dictation" before the end of "car"
+
+#### Scenario: A Russian sentence heard as opening with stop is no command
+- **GIVEN** the command spotting service runs with the streaming recognizer
+- **AND** the user's own recordings exist on the machine, among them "чтобы зайти в гетлаб" said while dictating, whose first word the English recognizer hears as "stop"
+- **WHEN** an app streams that recording in real time, listening for the commands of a dictation
+- **THEN** the service reports no command
+
+#### Scenario: Press enter after a sentence is reported without waiting for the pause
+- **GIVEN** the command spotting service runs with the streaming recognizer on an otherwise idle machine
+- **WHEN** an app streams a sentence ending with "enter", followed by silence, in real time
+- **THEN** the service reports "press enter" within 0.6 s of the end of "enter" by the wall clock
+
+#### Scenario: The user's recorded commands are reported within their bound
+- **GIVEN** the user's own recordings of the commands exist on the machine
+- **WHEN** each recorded "start" and "stop" is streamed to the service in real time
+- **THEN** at least half are reported within 0.3 s and at least 9 of 10 within 0.6 s of the end of their words
+
+#### Scenario: A command after speech in the user's recordings is reported soon after its word
+- **GIVEN** the user's own recordings exist on the machine, among them commands said right after speech
+- **WHEN** each is streamed to the service in real time
+- **THEN** the median delay of those commands after the end of their words is at most 0.4 s
+
+### Requirement: A chain of commands is carried out in order, each command at once
+The system SHALL carry out a chain of two or three different commands said one right after the other, in the order said, when each is accepted in the state the one before it leads to and "start" comes last; a chain counts anywhere, with no pause around it. Each command is carried out as soon as its word is heard; one heard only after the commands before it were carried out is still carried out once, after them: the chain's tail is never lost.
+
+#### Scenario: Stop enter pastes and sends
+- **GIVEN** a dictation runs
+- **AND** the user has said a sentence in it
+- **WHEN** the user says "stop enter"
+- **THEN** the sentence is pasted into the focused app
+- **AND** the Return key is pressed after it
+
+#### Scenario: Stop enter start sends and starts the next dictation
+- **GIVEN** a dictation runs
+- **AND** the user has said a sentence in it
+- **WHEN** the user says "stop enter start"
+- **THEN** the sentence is pasted into the focused app
+- **AND** the Return key is pressed after it
+- **AND** a new dictation starts
+
+#### Scenario: Cancel clear discards and clears
+- **GIVEN** a dictation runs
+- **WHEN** the user says "cancel clear"
+- **THEN** no text is pasted
+- **AND** select all and delete are pressed in the focused app
+
+#### Scenario: A chain the states do not allow carries out what the state accepts
+- **GIVEN** listening is on
+- **AND** no dictation runs
+- **WHEN** the user says "enter stop"
+- **THEN** the Return key is pressed
+- **AND** nothing else takes effect
+#### Scenario: The end of a chain heard only when the utterance ends still counts
+- **GIVEN** a dictation runs
+- **AND** while the user speaks, the system has heard only the first two commands of "never mind cancel enter start" and carried them out
+- **WHEN** the utterance ends and the system hears all of it
+- **THEN** "start dictation" is carried out after them
+- **AND** "cancel dictation" and "press enter" are not carried out again
+
+#### Scenario: The last command of a chain decoded after the first ones were carried out still counts
+- **GIVEN** a dictation runs
+- **AND** the user says "that is all stop enter start" in one breath
+- **AND** a recognizer hears "stop enter" and the system carries them out before any recognizer has heard "start"
+- **WHEN** a recognizer hears the "start" said right after them, while the user still speaks or at the close
+- **THEN** "start dictation" is carried out once, after them
+- **AND** "stop dictation" and "press enter" are not carried out again
+
+#### Scenario: The other recognizer's words of a chain carried out are not carried out again
+- **GIVEN** a dictation runs
+- **AND** the user says "that is all stop enter start" in one breath
+- **AND** one recognizer hears "stop enter" and the system carries them out
+- **WHEN** the other recognizer hears its own "enter", stamped later than the first one's, before it hears "start", whether or not the app has switched state meanwhile
+- **THEN** "press enter" is not carried out again
+- **AND** "start dictation" is carried out once, after them, when a recognizer hears it
+
+#### Scenario: The user's recorded chains keep their last command
+- **GIVEN** a dictation runs
+- **WHEN** each of the user's recorded chains whose last command counts only after the one before it ("start" or "clear" while dictating) is played
+- **THEN** every command of the chain is carried out, in the order said, each once

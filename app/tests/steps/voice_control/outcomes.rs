@@ -88,6 +88,12 @@ pub(super) fn sound_plays(world: &mut IntegrationWorld, sound: String) -> Result
     run(world).wait_since_mark(|e| *e == Event::Sound(name))
 }
 
+/// The sentence is still running: the step that said it reports no end of its speech.
+#[then(expr = "the {word} sound plays before the sentence ends")]
+pub(super) fn sound_plays_in_sentence(world: &mut IntegrationWorld, sound: String) -> Result<()> {
+    sound_plays(world, sound)
+}
+
 /// Each sound as a scenario names it, with its event name.
 const SOUNDS: [(&str, &str); 9] = [
     ("listening-on", "listening on"),
@@ -119,6 +125,15 @@ pub(crate) fn sentence_pasted(world: &mut IntegrationWorld) -> Result<()> {
     let pasted = run(world).pasted()?;
     if !pasted.contains(SENTENCE) {
         bail!("pasted {pasted:?}, expected the sentence {SENTENCE:?}");
+    }
+    Ok(())
+}
+
+#[then(expr = "the pasted text contains {string}")]
+pub(super) fn pasted_with(world: &mut IntegrationWorld, wanted: String) -> Result<()> {
+    let pasted = run(world).pasted()?;
+    if !pasted.to_lowercase().contains(&wanted) {
+        bail!("{wanted:?} is missing from the pasted text: {pasted:?}");
     }
     Ok(())
 }

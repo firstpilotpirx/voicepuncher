@@ -83,7 +83,6 @@ The system SHALL take each command only from its one word or that word said twic
 - **GIVEN** a dictation runs
 - **WHEN** the user says "stop dictation" on its own with a pause before and after it
 - **THEN** the dictation ends, as for any speech holding "stop"
-- **AND** "dictation" is not pasted
 
 #### Scenario: A long form ending in a command word counts by that word
 - **GIVEN** listening is on
@@ -133,7 +132,7 @@ While listening, with or without a dictation running, the system SHALL press Cmd
 - **AND** the pasted text does not contain "paste"
 
 ### Requirement: Streaming commands are reported as soon as their words are decoded
-On an idle machine the service SHALL report "start" and "stop" within 0.3 s of their words' end (wall clock) for half and within 0.6 s for 9 of 10. A command word SHALL count once a recognizer decoded it, wherever it sits, without a pause, unless it may grow into a longer command word ("start" of "restart"). A one-word command only the English recognizer hears, where the Russian one heard another word, SHALL count only at the pause right after it.
+On an idle machine the service SHALL report "start" and "stop" within 0.3 s of their words' end (wall clock) for half and within 0.6 s for 9 of 10. A command word SHALL count once a recognizer decoded it, wherever it sits, without a pause, unless it may grow into a longer command word ("start" of "restart"). During a dictation, a one-word command only the English recognizer hears, where the Russian one heard another word, SHALL count only at the pause after it; doubled forms never wait.
 
 #### Scenario: Start said alone is reported within its bound
 - **GIVEN** the command spotting service runs with the streaming recognizer on an otherwise idle machine

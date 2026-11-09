@@ -162,11 +162,25 @@ pub(super) fn doubled(said: &str) -> Option<Vec<VoiceCommand>> {
     }
 }
 
+/// A sentence holding a command word, said without a pause and going on after it: the
+/// service reports the command as soon as its word is heard, the sentence still running.
 #[when(expr = "the user says {string} without pausing")]
 pub(super) fn says_in_sentence(world: &mut IntegrationWorld, sentence: String) -> Result<()> {
     let run = run(world);
     run.start_when();
-    run.say_in_sentence(&sentence)
+    let words: Vec<&str> = sentence.split_whitespace().collect();
+    let at = words
+        .iter()
+        .position(|w| short_form(w).is_some())
+        .context("no command word in the sentence")?;
+    let command = command_word(words[at])?;
+    let start = Instant::now();
+    let command_at = start + COMMAND_AFTER;
+    let end = command_at + COMMAND_LENGTH;
+    run.speak(&words[..at].join(" "), start);
+    run.speak(&words[at + 1..].join(" "), end);
+    run.send(PipelineInput::Spotting(SpottingEvent::SpeechStarted(start)))?;
+    run.say_commands(&[command], command_at, end, CommandPlacement::Anywhere)
 }
 
 #[when("the command spotting service stops answering")]
