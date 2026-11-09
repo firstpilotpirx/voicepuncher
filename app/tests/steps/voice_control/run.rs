@@ -6,8 +6,7 @@ use super::{
     NotingRecorder, OnceLock, Phrases, Pipeline, PipelineConfig, PipelineInput, PipelineLog,
     PipelineParts, PttSignal, RecordingKeyPresser, RecordingOverlay, RecordingPaster,
     RecordingSounds, Result, ScriptedSpotter, Sender, Speech, SpeechBeforeCut, SpottingEvent,
-    ThreadId, VoiceCommand, PHRASE_LEAD, PHRASE_LENGTH, REACTION, SEGMENT_TAIL, SENTENCE,
-    SENTENCE_AROUND_PHRASE, SETTLE,
+    ThreadId, VoiceCommand, PHRASE_LEAD, PHRASE_LENGTH, REACTION, SEGMENT_TAIL, SENTENCE, SETTLE,
 };
 use voicepuncher::test_doubles::StartedOnDemand;
 
@@ -101,20 +100,6 @@ impl VoiceRun {
             segment_start..phrase_end + SEGMENT_TAIL,
             phrase_start..phrase_end,
         )
-    }
-
-    /// Says `sentence`, which holds a command word, without pausing around the word: the
-    /// service reports the speech and no command.
-    pub(crate) fn say_in_sentence(&mut self, sentence: &str) -> Result<()> {
-        let segment_start = Instant::now();
-        self.speak(sentence, segment_start);
-        let segment_end = segment_start + SENTENCE_AROUND_PHRASE * 2 + PHRASE_LENGTH;
-        self.send(PipelineInput::Spotting(SpottingEvent::SpeechStarted(
-            segment_start,
-        )))?;
-        self.send(PipelineInput::Spotting(SpottingEvent::SpeechEnded(
-            segment_end,
-        )))
     }
 
     /// Reports `commands` said without a pause at `start..end`, as the service does.

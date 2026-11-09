@@ -88,6 +88,12 @@ pub(super) fn sound_plays(world: &mut IntegrationWorld, sound: String) -> Result
     run(world).wait_since_mark(|e| *e == Event::Sound(name))
 }
 
+/// The sentence is still running: the step that said it reports no end of its speech.
+#[then(expr = "the {word} sound plays before the sentence ends")]
+pub(super) fn sound_plays_in_sentence(world: &mut IntegrationWorld, sound: String) -> Result<()> {
+    sound_plays(world, sound)
+}
+
 /// Each sound as a scenario names it, with its event name.
 const SOUNDS: [(&str, &str); 9] = [
     ("listening-on", "listening on"),

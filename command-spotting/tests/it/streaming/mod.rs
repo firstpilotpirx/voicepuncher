@@ -150,7 +150,6 @@ mod needs_streaming_models {
     fn should_start_nothing_for_speech_that_is_no_start() {
         let engine = engine();
         let speech = [
-            (None, "we should start the meeting a bit later today"),
             (None, "the weather is nice and the coffee is hot"),
             (Some("Milena"), "давай встретимся завтра утром"),
         ];

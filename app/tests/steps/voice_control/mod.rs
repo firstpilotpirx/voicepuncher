@@ -52,8 +52,6 @@ const SETTLE: Duration = Duration::from_millis(300);
 const PHRASE_LEAD: Duration = Duration::from_millis(100);
 const PHRASE_LENGTH: Duration = Duration::from_millis(800);
 const SEGMENT_TAIL: Duration = Duration::from_millis(100);
-/// How much speech surrounds a phrase said inside a sentence.
-const SENTENCE_AROUND_PHRASE: Duration = Duration::from_secs(1);
 
 /// The overlay event of the Pasted sign.
 pub(crate) const PASTED_SIGN: &str = "pasted sign";

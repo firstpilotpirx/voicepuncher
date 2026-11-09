@@ -5,17 +5,17 @@
 
 ## 2. A command word counts anywhere at once (D1, D3)
 
-- [ ] 2.1 Red: unit tests in `command-spotting/src/streaming/decide/tests.rs` — a one-word command ending the words is reported once decoded 0.2 s past it while the gate still hears speech; one with speech after it is reported the same way; "stop the car" reports "stop"; "start" that may grow into "restart" still waits; a repeat within 0.6 s is not reported again
-- [ ] 2.2 Green: fold `alone` and `ending` into one at-once path in `command-spotting/src/streaming/decide/mod.rs`, drop the pause clause of `settled`
-- [ ] 2.3 Red: session test in `command-spotting/src/streaming/session/tests/` — "stop" after more than 10 s of speech, the gate still hearing speech, is reported within 0.6 s of its end
-- [ ] 2.4 Green: whatever the session test still needs in `command-spotting/src/streaming/session/utterance.rs`
-- [ ] 2.5 `just test`, commit
+- [x] 2.1 Red: unit tests in `command-spotting/src/streaming/decide/tests.rs` — a one-word command ending the words is reported once decoded 0.2 s past it while the gate still hears speech; one with speech after it is reported the same way; "stop the car" reports "stop"; "start" that may grow into "restart" still waits; a repeat within 0.6 s is not reported again
+- [x] 2.2 Green: fold `alone` and `ending` into one at-once path in `command-spotting/src/streaming/decide/mod.rs`, drop the pause clause of `settled`
+- [x] 2.3 Red: session test in `command-spotting/src/streaming/session/tests/` — "stop" after more than 10 s of speech, the gate still hearing speech, is reported within 0.6 s of its end
+- [x] 2.4 Green: whatever the session test still needs in `command-spotting/src/streaming/session/utterance.rs`
+- [x] 2.5 `just test`, commit
 
 ## 3. An English-only command where Russian heard another word keeps the old rule (D2)
 
-- [ ] 3.1 Red: unit test — the English recognizer's "stop" heading a sentence that goes on, while the Russian recognizer holds another word over its span, is no command; at the gate's pause right after it, it counts
-- [ ] 3.2 Green: pass the Russian recognizer's last words over the finding's span to the decision for the English recognizer in `command-spotting/src/streaming/session/utterance.rs` and `decide/mod.rs`
-- [ ] 3.3 `just test`, commit
+- [x] 3.1 Red: unit test — the English recognizer's "stop" heading a sentence that goes on, while the Russian recognizer holds another word over its span, is no command; at the gate's pause right after it, it counts
+- [x] 3.2 Green: pass the Russian recognizer's last words over the finding's span to the decision for the English recognizer in `command-spotting/src/streaming/session/utterance.rs` and `decide/mod.rs`
+- [x] 3.3 `just test`, commit
 
 ## 4. Scenarios mirror the new requirements
 

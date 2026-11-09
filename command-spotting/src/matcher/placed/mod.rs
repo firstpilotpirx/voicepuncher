@@ -174,6 +174,29 @@ impl PhraseMatcher {
             .then(|| start_opening(&tokens, used))
     }
 
+    /// The first command of the selected set said anywhere in `words`, speech before or
+    /// after it: `Tail` when it ends them, `Anywhere` otherwise.
+    pub fn said_anywhere(&self, words: &[&str]) -> Option<Found> {
+        let tokens = tokens(words);
+        let accepted = self.accepted();
+        (0..tokens.len()).find_map(|from| {
+            let (phrase, used) = command_at(&tokens, from)?;
+            let last = tokens[from + used - 1].at;
+            let ends = from + used == tokens.len();
+            accepted.contains(&phrase).then(|| Found {
+                commands: vec![phrase.to_owned()],
+                spans: vec![(tokens[from].at, last)],
+                first: tokens[from].at,
+                last,
+                placement: if ends {
+                    Placement::Tail
+                } else {
+                    Placement::Anywhere
+                },
+            })
+        })
+    }
+
     /// A doubled short form or a chain of two or three commands anywhere in `words`.
     pub fn anywhere(&self, words: &[&str]) -> Option<Found> {
         let tokens = tokens(words);

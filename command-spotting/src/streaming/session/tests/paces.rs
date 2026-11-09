@@ -6,7 +6,7 @@ use super::*;
 /// 20 ms: the frames the bench feeds.
 const FRAME: usize = 320;
 
-fn session_delivering<'a>(models: &[&'a Scripted], delivery: Delivery) -> Session<'a> {
+pub(super) fn session_delivering<'a>(models: &[&'a Scripted], delivery: Delivery) -> Session<'a> {
     let models = models.iter().map(|m| *m as &dyn StreamingModel).collect();
     let cfg = SessionCfg { conn: 1, min_silence_secs: 0.3, history: None, wake: None, delivery };
     let mut session = Session::new(models, Box::new(LoudGate), &cfg);

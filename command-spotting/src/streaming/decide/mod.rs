@@ -102,7 +102,29 @@ pub fn decide(
     if let Some(found) = placed(matcher, &texts) {
         return Some(finding(&fresh, &found));
     }
-    alone(matcher, &fresh, moment).or_else(|| ending(matcher, &fresh, &texts, moment))
+    at_once(matcher, &fresh, &texts, moment)
+        .or_else(|| alone(matcher, &fresh, moment))
+        .or_else(|| ending(matcher, &fresh, &texts, moment))
+}
+
+/// A command said anywhere among the fresh words, reported as soon as the recognizer decoded
+/// past it: a word after it, or `SETTLE_SECS` of audio, as a draft of the last word may still
+/// grow ("stop" → "stopped"). No pause after it is awaited. A last word that may still grow
+/// into a longer command word ("start" of "restart") is left to `alone` and `ending`.
+fn at_once(
+    matcher: &PhraseMatcher,
+    fresh: &[&TimedWord],
+    texts: &[&str],
+    moment: Moment,
+) -> Option<Finding> {
+    let found = matcher.said_anywhere(texts)?;
+    let found_last = found.last + 1 == fresh.len();
+    let finding = finding(fresh, &found);
+    if !found_last {
+        return Some(finding);
+    }
+    let grows = moment != Moment::Closing && ends_a_longer_word(matcher, texts);
+    (!grows && decoded_past(moment, finding.end)).then_some(finding)
 }
 
 /// The index of the first word after the reported commands in `said`, the commands the
@@ -205,6 +227,26 @@ fn alone(matcher: &PhraseMatcher, fresh: &[&TimedWord], moment: Moment) -> Optio
         end: last.end,
         placement: Placement::Tail,
     })
+}
+
+/// Whether `found`, a command the English recognizer heard, waits for the pause because of
+/// `russian`, the Russian recognizer's words: the English one hears Russian speech as English
+/// words ("чтобы" → "stop"). A command the Russian recognizer heard over the span counts at
+/// once; one where it heard other words, or has not decoded past the span yet (no later word,
+/// the utterance not closed), counts only when it ends the words and the gate's pause began
+/// right after it, as before commands counted at once.
+pub fn doubted_by(russian: &[TimedWord], found: &Finding, moment: Moment) -> bool {
+    let over: Vec<&str> = russian
+        .iter()
+        .filter(|w| w.end >= found.start && w.start <= found.end)
+        .map(|w| w.text.as_str())
+        .collect();
+    if !commands_said(&over).is_empty() {
+        return false;
+    }
+    let decoded_past = moment == Moment::Closing || russian.iter().any(|w| w.start >= found.end);
+    let unsure = !over.is_empty() || !decoded_past;
+    unsure && (found.placement != Placement::Tail || !settled(moment, found.end))
 }
 
 /// Whether a one-word command ending at `end` is said alone at `moment`: the utterance

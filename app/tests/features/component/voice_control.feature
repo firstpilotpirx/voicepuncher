@@ -108,7 +108,7 @@ Feature: voice-control
       And the clear sound plays
       And the overlay shows the clear sign for about a second, then hides
 
-  Rule: "paste text" pastes the clipboard
+  Rule: "paste" pastes the clipboard at once
 
     Scenario: Saying paste pastes the clipboard at the cursor
       Given listening is on
@@ -142,12 +142,14 @@ Feature: voice-control
       Then both dictated sentences are pasted into the focused app
       And the pasted text does not contain "paste"
 
-  Rule: A command counts on its own or in its set places
+  Rule: A command counts wherever its word is said
 
-    Scenario: The word stop inside a dictated sentence does not end the dictation
+    Scenario: A stop word inside a dictated sentence ends the dictation at once
       Given a dictation runs
       When the user says "please stop the software from crashing" without pausing
-      Then the dictation keeps running
+      Then the stop sound plays before the sentence ends
+      And the pasted text does not contain "stop"
+      And the pasted text does not contain "software"
 
   Rule: "press enter" during a dictation pastes and sends
 
@@ -231,7 +233,7 @@ Feature: voice-control
       When the user says "stop"
       Then only the other sentence is pasted
 
-  Rule: A command may end an utterance
+  Rule: A command ending speech counts without a pause
 
     Scenario: Stop right after the last dictated word
       Given a dictation runs
@@ -239,7 +241,7 @@ Feature: voice-control
       Then the sentence is pasted into the focused app
       And the pasted text does not contain "stop"
 
-  Rule: "start" may open an utterance
+  Rule: "start" opening speech starts the dictation with it
 
     Scenario: Start followed by the dictation at once
       Given listening is on
@@ -291,7 +293,7 @@ Feature: voice-control
       Then no text is pasted
       And the cancel sound plays
 
-  Rule: A chain of commands is carried out in order
+  Rule: A chain of commands is carried out in order, each command at once
 
     Scenario: Stop enter pastes and sends
       Given a dictation runs

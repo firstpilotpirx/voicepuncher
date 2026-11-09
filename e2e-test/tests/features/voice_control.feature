@@ -6,7 +6,7 @@
 @voice_control @e2e
 Feature: voice-control
 
-  Rule: A command counts on its own or in its set places
+  Rule: A command counts wherever its word is said
 
     @smoke
     Scenario Outline: A command phrase spoken on its own is recognized
@@ -39,10 +39,16 @@ Feature: voice-control
         | paste  | paste text       |
 
     @smoke
-    Scenario: A command phrase inside a sentence is ignored while listening
+    Scenario: A command word inside a sentence counts while listening
       Given the command spotting service is running
       When someone says "I will enter the code when I am done" without pausing
-      Then no command takes effect
+      Then the commands "press enter" take effect in order
+
+    @smoke
+    Scenario: A stop word inside a dictated sentence ends the dictation at once
+      Given the command spotting service is running
+      When someone says "Please stop the software from crashing" in one breath while dictating
+      Then the commands "stop dictation" take effect in order
 
     @accuracy
     Scenario: Ordinary speech triggers no command
@@ -96,7 +102,7 @@ Feature: voice-control
       When someone says short Russian phrases, each on its own with a pause around it
       Then no command takes effect
 
-  Rule: Every command has a one-word short form
+  Rule: Every command is said by its one word
 
     Scenario Outline: A short form is recognized as its command
       Given the command spotting service is running
@@ -117,14 +123,10 @@ Feature: voice-control
         | clear          | clear all text    |
 
     @regression
-    Scenario Outline: A long form said alone takes no effect
+    Scenario: A long form counts by its command word
       Given the command spotting service is running
-      When someone says "<said>" in one breath while <state>
-      Then no command takes effect
-
-      Examples:
-        | said           | state             |
-        | stop dictation | dictating         |
+      When someone says "stop dictation" in one breath while dictating
+      Then the commands "stop dictation" take effect in order
 
     @regression
     Scenario: A long form ending in a command word counts by that word
@@ -132,13 +134,13 @@ Feature: voice-control
       When someone says "press enter" in one breath while no dictation runs
       Then the "press enter" command takes effect
 
-  Rule: "paste text" pastes the clipboard
+  Rule: "paste" pastes the clipboard at once
 
     @smoke
-    Scenario: A paste phrase inside a sentence is ignored
+    Scenario: A paste word inside a sentence pastes at once
       Given the command spotting service is running
       When someone says "I will paste the link later" without pausing
-      Then no command takes effect
+      Then the commands "paste text" take effect in order
 
   Rule: Commands are carried out in the order spoken
 
@@ -209,7 +211,7 @@ Feature: voice-control
       When someone says "stop" in one breath while no dictation runs
       Then no command takes effect
 
-  Rule: A command may end an utterance
+  Rule: A command ending speech counts without a pause
 
     Scenario Outline: A command right after other speech takes effect
       Given the command spotting service is running
@@ -230,13 +232,8 @@ Feature: voice-control
         | Let me try once more, restart            | dictating         | restart dictation |
         | Okay, paste                              | no dictation runs | paste text        |
 
-    @smoke
-    Scenario: A command word inside a sentence is still no command
-      Given the command spotting service is running
-      When someone says "We should stop the server tonight" in one breath while dictating
-      Then no command takes effect
 
-  Rule: "start" may open an utterance
+  Rule: "start" opening speech starts the dictation with it
 
     Scenario Outline: Start followed by the dictation at once
       Given the command spotting service is running
@@ -254,10 +251,10 @@ Feature: voice-control
         | Start, the build is green again               |
 
     @smoke
-    Scenario: Enter followed by speech is no command
+    Scenario: Enter followed by speech presses Return
       Given the command spotting service is running
       When someone says "Enter the building on the left" in one breath while no dictation runs
-      Then no command takes effect
+      Then the commands "press enter" take effect in order
 
   # Real-time sessions, like the hands-free ones below: @serial keeps the other scenarios'
   # requests from queuing ahead of their answers.
@@ -325,6 +322,11 @@ Feature: voice-control
       And listening is on for a whole session
       When someone says "fine start start" and a sentence without a pause
       Then the start cue comes within 1 s of the end of "start start", while the sentence is still being said
+
+    Scenario: Enter enter presses Return once
+      Given the command spotting service is running
+      When someone says "enter enter" in one breath while no dictation runs
+      Then the commands "press enter" take effect in order
 
   # Real-time sessions timed from the end of the command's words; @cues runs them in
   # full-check's e2e-cues stage with the machine otherwise idle, @serial keeps the other
@@ -397,7 +399,7 @@ Feature: voice-control
         | Okay, start start                                               | no dictation runs | start dictation   |
         | Fine, paste paste                                               | no dictation runs | paste text        |
 
-  Rule: A chain of commands is carried out in order
+  Rule: A chain of commands is carried out in order, each command at once
 
     Scenario Outline: A chain of commands takes effect in order
       Given the command spotting service is running
@@ -417,6 +419,12 @@ Feature: voice-control
         | Forget it, cancel, enter        | dictating         | cancel dictation, press enter                |
         | Okay, paste, enter              | no dictation runs | paste text, press enter                      |
         | Okay, enter, clear              | no dictation runs | press enter, clear all text                  |
+
+    @regression
+    Scenario: A chain the states do not allow carries out what the state accepts
+      Given the command spotting service is running
+      When someone says "enter stop" in one breath while no dictation runs
+      Then the commands "press enter" take effect in order
 
     @smoke @voice_samples
     Scenario: The user's recorded chains keep their last command
@@ -637,28 +645,28 @@ Feature: voice-control
       Then the streaming recognizer reports no command
 
     @smoke
-    Scenario: Stop opening a sentence is still no command
+    Scenario: Stop opening a sentence counts at once
       Given the command spotting service runs with the streaming recognizer
       When an app streams the sentence "stop the car"
-      Then the streaming recognizer reports no command
+      Then the streaming recognizer reports "stop dictation" exactly once
 
   # Real-time streams timed by the wall clock; @cues runs them with the machine otherwise idle.
   @serial @cues
-  Rule: Streaming commands are reported within 0.3 s of their words
+  Rule: Streaming commands are reported as soon as their words are decoded
 
     Scenario: Start said alone is reported within its bound
       Given the command spotting service runs with the streaming recognizer
       When an app streams "start" followed by silence, in real time
       Then the streaming recognizer reports "start dictation" within 0.3 s of the end of the words by the wall clock
 
-    Scenario: Stop said alone is reported at the pause after it
+    Scenario: Stop said alone is reported at once
       Given the command spotting service runs with the streaming recognizer
       When an app streams "stop" followed by silence, in real time
       Then the streaming recognizer reports "stop dictation" within 0.3 s of the end of the words by the wall clock
 
-    Scenario: Enter after a sentence is reported soon after the pause
+    Scenario: Press enter after a sentence is reported without waiting for the pause
       Given the command spotting service runs with the streaming recognizer
-      When an app streams "we meet at ten enter" followed by silence, in real time
+      When an app streams "we meet at ten press enter" followed by silence, in real time
       Then the streaming recognizer reports "press enter" within 0.6 s of the end of the words by the wall clock
 
     # The English recognizer hears the first word as "stop"; the gate still hears the sentence.
