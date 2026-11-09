@@ -4,7 +4,7 @@
 use crate::matcher::PhraseMatcher;
 use crate::protocol::ServerEvent;
 
-use super::super::decide::{decide, decide_how, Finding, Moment, Reported};
+use super::super::decide::{decide, Finding, Moment, Reported};
 use super::super::ports::{Decoded, StreamingModel};
 use super::super::trace::Trace;
 use super::decoder::{Decoder, Decoding, Update};
@@ -266,7 +266,6 @@ impl Utterance {
     ) -> Option<ServerEvent> {
         self.trace.decoded(r, update.took);
         self.trace.heard(r, now, &text_of(&update.decoded));
-        let words = self.words(r, &update.decoded);
         self.last[r] = update.decoded;
         let moment = if update.finished {
             Moment::Closing
@@ -277,20 +276,8 @@ impl Utterance {
                 synced: self.synced,
             }
         };
-        let (found, at_once) = decide_how(matcher, &words, moment, &self.reported())?;
-        // WHY: Russian dictation is what the English recognizer mishears as a command word.
-        if at_once && matcher.listens_while_dictating() && self.doubted(r, &found, moment) {
-            return None;
-        }
-        if self
-            .reports
-            .handover
-            .is_some_and(|from| found.start >= from)
-        {
-            return None;
-        }
-        let found = self.started_at_onset(found, &words);
-        self.report(r, found, now)
+        self.decided(matcher, r, moment, now)
+            .or_else(|| self.recheck_doubted(matcher, r, moment, now))
     }
 
     /// What it reported so far: the end of the last report, and the commands sent in order.
