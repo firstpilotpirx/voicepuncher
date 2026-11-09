@@ -49,12 +49,15 @@ impl Utterance {
         if !self.respelled[r] || moment == Moment::Closing || !matcher.listens_while_dictating() {
             return None;
         }
-        let english: Vec<usize> = (0..self.last.len())
-            .filter(|&e| !self.respelled[e])
-            .collect();
-        english
-            .into_iter()
-            .find_map(|e| self.decided(matcher, e, moment, now))
+        for e in 0..self.last.len() {
+            if self.respelled[e] {
+                continue;
+            }
+            if let Some(event) = self.decided(matcher, e, moment, now) {
+                return Some(event);
+            }
+        }
+        None
     }
 
     /// Whether `found`, one command recognizer `r` heard, waits for the pause because of the
