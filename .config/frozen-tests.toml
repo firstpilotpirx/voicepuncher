@@ -226,3 +226,12 @@ beside = "the test stage of full-check under load (136 s against its 60 s budget
 branch = "chore/fast-bench-reproduces-app-timing"
 
 
+
+[[frozen]]
+test = "scenario: Requests wait their turn when every copy is busy"
+frozen = "2026-11-09"
+recipe = "e2e-regression"
+stage = "e2e-regression"
+beside = "e2e-regression of fix/run-one-word-commands-at-once alone on the machine lock"
+branch = "fix/run-one-word-commands-at-once"
+
