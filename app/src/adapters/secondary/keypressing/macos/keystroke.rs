@@ -1,4 +1,5 @@
-//! One key press in the focused app, posted as `CGEvent`s: the paster's Cmd+V and the voice
+//! One key press in the focused app, posted as `CGEvent`s at the HID level, where keyboard tools
+//! such as BetterTouchTool listen: the paster's Cmd+V and the voice
 //! commands' keys go through it.
 
 use std::time::Duration;
@@ -10,13 +11,11 @@ use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 /// The pause after every key event.
 pub const EVENT_GAP: Duration = Duration::from_millis(10);
 
-/// The modifier keys a press holds as keys of their own, in the order they go down.
-const MODIFIERS: [(CGKeyCode, CGEventFlags); 4] = [
-    (KeyCode::CONTROL, CGEventFlags::CGEventFlagControl),
-    (KeyCode::OPTION, CGEventFlags::CGEventFlagAlternate),
-    (KeyCode::SHIFT, CGEventFlags::CGEventFlagShift),
-    (KeyCode::COMMAND, CGEventFlags::CGEventFlagCommand),
-];
+/// The modifier keys a press holds as keys of their own, in the order they go down. Only the
+/// Command key: no press needs another, and left Option and left Control can be the hotkey,
+/// which hears these presses too.
+const MODIFIERS: [(CGKeyCode, CGEventFlags); 1] =
+    [(KeyCode::COMMAND, CGEventFlags::CGEventFlagCommand)];
 
 /// One key going down or up, with the modifier flags held at that moment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,6 +69,6 @@ fn post(event: KeyEvent) -> Result<()> {
     let posted = CGEvent::new_keyboard_event(source, event.key, event.down)
         .map_err(|()| anyhow!("failed to create key event {}", event.key))?;
     posted.set_flags(event.flags);
-    posted.post(CGEventTapLocation::Session);
+    posted.post(CGEventTapLocation::HID);
     Ok(())
 }
