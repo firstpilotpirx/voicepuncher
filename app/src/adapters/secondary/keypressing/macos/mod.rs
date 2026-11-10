@@ -4,6 +4,8 @@ use anyhow::{anyhow, Result};
 use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation, CGKeyCode, KeyCode};
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 
+pub mod keystroke;
+
 use crate::adapters::secondary::permissions::macos::process_is_trusted_for_accessibility;
 use crate::core::application::KeyPresser;
 use crate::core::domain::AccessibilityMissing;

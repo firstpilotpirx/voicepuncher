@@ -15,6 +15,7 @@ use crate::steps::settings_window::panels::launch::FirstLaunchRun;
 use crate::steps::settings_window::panels::PanelsRun;
 use crate::steps::text_insertion::clipboard::ClipboardRun;
 use crate::steps::text_insertion::filler_sounds::FillerRun;
+use crate::steps::text_insertion::keystrokes::KeystrokeRun;
 use crate::steps::visual_feedback::{limit::LimitRun, overlay::OverlayRun, pointer::PointerRun};
 
 #[derive(Debug, Default)]
@@ -75,6 +76,8 @@ pub struct InsertionRuns {
     pub filler: Option<FillerRun>,
     /// The command line run.
     pub command_line: Option<CommandLineRun>,
+    /// The key events of one key press and when each was posted.
+    pub keystrokes: Option<KeystrokeRun>,
 }
 
 /// The menu bar, permissions, settings and model download scenarios' runs.

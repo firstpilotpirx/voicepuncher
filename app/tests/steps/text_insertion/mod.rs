@@ -10,6 +10,7 @@ use crate::IntegrationWorld;
 pub(crate) mod clipboard;
 pub(crate) mod doubles;
 pub(crate) mod filler_sounds;
+pub(crate) mod keystrokes;
 mod focus_log;
 use doubles::{
     is_left_in_clipboard, is_pasted, is_pasted_sign, FixedTranscript, OneSecondRecorder,
