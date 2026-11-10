@@ -1,6 +1,5 @@
-//! One key press in the focused app, posted as `CGEvent`s at the HID level, where keyboard tools
-//! such as BetterTouchTool listen: the paster's Cmd+V and the voice
-//! commands' keys go through it.
+//! One key press in the focused app, posted as `CGEvent`s: the voice commands' keys and the
+//! paster's Cmd+V go through it.
 
 use std::time::Duration;
 
@@ -25,9 +24,23 @@ pub struct KeyEvent {
     pub flags: CGEventFlags,
 }
 
-/// Presses `key` with the modifiers of `flags` in the focused app.
-pub fn press(key: CGKeyCode, flags: CGEventFlags) -> Result<()> {
-    press_with(key, flags, post)
+/// Where a press is posted, which decides who hears it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Level {
+    /// Where a keyboard posts: the focused app and the keyboard tools that listen to the keys
+    /// (`BetterTouchTool`) hear the press, as the user's own.
+    Keyboard,
+    /// Past the keyboard tools: only the focused app hears the press.
+    App,
+}
+
+/// Presses `key` with the modifiers of `flags` in the focused app, posted at `level`.
+pub fn press(key: CGKeyCode, flags: CGEventFlags, level: Level) -> Result<()> {
+    let location = match level {
+        Level::Keyboard => CGEventTapLocation::HID,
+        Level::App => CGEventTapLocation::Session,
+    };
+    press_with(key, flags, |event| post(event, location))
 }
 
 /// Presses `key` with the modifiers of `flags` as a keyboard does.
@@ -63,12 +76,12 @@ pub fn press_with(
     Ok(())
 }
 
-fn post(event: KeyEvent) -> Result<()> {
+fn post(event: KeyEvent, location: CGEventTapLocation) -> Result<()> {
     let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
         .map_err(|()| anyhow!("failed to create CGEventSource"))?;
     let posted = CGEvent::new_keyboard_event(source, event.key, event.down)
         .map_err(|()| anyhow!("failed to create key event {}", event.key))?;
     posted.set_flags(event.flags);
-    posted.post(CGEventTapLocation::HID);
+    posted.post(location);
     Ok(())
 }

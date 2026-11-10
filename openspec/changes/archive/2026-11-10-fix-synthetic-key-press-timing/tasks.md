@@ -9,7 +9,7 @@
 
 ## 2. Release
 
-- [x] 2.0 Post the keystroke at the HID level and hold only Command as a key of its own, after the manual run showed BetterTouchTool misses session-level events
+- [x] 2.0 Post the voice commands' keys at the HID level and a dictation's paste at the session level, and hold only Command as a key of its own, after the manual run
 
 - [x] 2.1 Bump `version` in `app/Cargo.toml` to 0.48.1; `just check` once
 - [ ] 2.2 Manual run: the user says "paste text" in Ghostty and sees the BetterTouchTool Cmd+V trigger fire; a hotkey dictation still pastes

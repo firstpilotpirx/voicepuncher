@@ -38,7 +38,8 @@ impl MacOsKeyPresser {
     }
 
     fn press((key, flags): Press) -> Result<()> {
-        keystroke::press(key, flags)
+        // a voice command presses keys for the user, so keyboard tools hear them as the user's
+        keystroke::press(key, flags, keystroke::Level::Keyboard)
     }
 }
 

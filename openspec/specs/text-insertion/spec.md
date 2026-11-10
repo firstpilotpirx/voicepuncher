@@ -171,7 +171,7 @@ The system SHALL paste the transcript speech recognition returned, with only its
 - **THEN** the pasted text equals the transcript
 
 ### Requirement: Keys pressed in the focused app arrive as a keyboard's
-The system SHALL press every key it sends to the focused app — Cmd+V of a paste and the keys of the voice commands — as a keyboard does: each modifier as a key of its own, pressed before the key and released after it, with a pause of at least 10 milliseconds after every key event, so the focused app and the keyboard tools that watch the keys see the press.
+The system SHALL press every key it sends to the focused app — Cmd+V of a paste and the keys of the voice commands — as a keyboard does: each modifier as a key of its own, pressed before the key and released after it, with a pause of at least 10 milliseconds after every key event, The keys of the voice commands, "paste text" included, SHALL reach the keyboard tools that watch the keys as the user's own press; the Cmd+V that pastes a dictation SHALL reach only the focused app, so no keyboard tool reacts to it.
 
 #### Scenario: Cmd+V presses Command as a key of its own
 - **WHEN** the system presses Cmd+V in the focused app

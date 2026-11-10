@@ -67,7 +67,12 @@ impl MacOsTextPaster {
     }
 
     fn post_cmd_v() -> Result<()> {
-        keystroke::press(KeyCode::ANSI_V, CGEventFlags::CGEventFlagCommand)
+        // the paste delivers a dictation, no Cmd+V of the user's: keyboard tools must not react
+        keystroke::press(
+            KeyCode::ANSI_V,
+            CGEventFlags::CGEventFlagCommand,
+            keystroke::Level::App,
+        )
     }
 }
 
