@@ -9,5 +9,5 @@
 
 ## 2. Release
 
-- [ ] 2.1 Bump `version` in `app/Cargo.toml` to 0.48.1; `just check` once
+- [x] 2.1 Bump `version` in `app/Cargo.toml` to 0.48.1; `just check` once
 - [ ] 2.2 Manual run: the user says "paste text" in Ghostty and sees the BetterTouchTool Cmd+V trigger fire; a hotkey dictation still pastes
