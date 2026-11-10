@@ -280,3 +280,12 @@ stage = "e2e-regression"
 beside = "full-check of fix-synthetic-key-press-timing beside go tests of another session; command spotting paces disagreed by more than 0.1 s"
 branch = "fix/fix-synthetic-key-press-timing"
 
+
+[[frozen]]
+test = "scenario: Start said on its own gives its cue at once"
+frozen = "2026-11-10"
+recipe = "full-check"
+stage = "e2e-cues"
+beside = "full-check of fix-synthetic-key-press-timing beside go tests of another session; start cue 909 ms after the word, bound 0.7 s"
+branch = "fix/fix-synthetic-key-press-timing"
+
