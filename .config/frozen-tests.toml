@@ -244,3 +244,12 @@ stage = "e2e-regression"
 beside = "e2e-regression of fix/run-one-word-commands-at-once alone on the machine lock"
 branch = "fix/run-one-word-commands-at-once"
 
+
+[[frozen]]
+test = "voicepuncher::main_thread menubar_macos::should_put_the_status_item_in_the_menu_bar_and_take_it_away"
+frozen = "2026-11-10"
+recipe = "full-check"
+stage = "test"
+beside = "full-check of fix-synthetic-key-press-timing beside other sessions builds; status item not seen in the menu bar"
+branch = "fix/fix-synthetic-key-press-timing"
+
