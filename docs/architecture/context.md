@@ -52,7 +52,7 @@ voicepuncher is a single OS process with no server side of its own: a menu bar a
 | Dictation archive (`~/.voicepuncher/history/` by default) | voicepuncher → file system | With archiving on: each dictation as a folder with `audio.wav` and `entry.json` (the transcript, timings) |
 | `afplay` | voicepuncher → macOS | One child process per start or stop cue |
 | NSPasteboard (macOS clipboard) | voicepuncher → macOS | `CleanedText` written as a plain-text clipboard entry via `arboard` |
-| CGEventPost (macOS event injection) | voicepuncher → macOS | Synthetic Cmd+V key-down/key-up pair injected into the global event stream to paste in the frontmost application; Enter and Cmd+A for the voice commands |
+| CGEventPost (macOS event injection) | voicepuncher → macOS | Synthetic keystrokes pressed as a keyboard does (each modifier a key of its own, 10 ms after every event): Cmd+V to paste in the frontmost application; Return, Cmd+A and Delete for the voice commands |
 | Accessibility API (`AXUIElement`) | voicepuncher → macOS | Whether a text input has the focus, before a command that types |
 | Target application (editor, browser, etc.) | macOS → target app | Receives the synthetic keystrokes and reads the clipboard; voicepuncher has no direct channel to the target application |
 

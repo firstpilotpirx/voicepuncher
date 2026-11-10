@@ -1,9 +1,9 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation, KeyCode};
-use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+use core_graphics::event::{CGEventFlags, KeyCode};
 
+use crate::adapters::secondary::keypressing::macos::keystroke;
 use crate::adapters::secondary::permissions::macos::process_is_trusted_for_accessibility;
 use crate::core::application::text_paster::TextPaster;
 use crate::core::domain::{AccessibilityMissing, CleanedText};
@@ -67,20 +67,12 @@ impl MacOsTextPaster {
     }
 
     fn post_cmd_v() -> Result<()> {
-        let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
-            .map_err(|()| anyhow::anyhow!("failed to create CGEventSource"))?;
-
-        let down = CGEvent::new_keyboard_event(source.clone(), KeyCode::ANSI_V, true)
-            .map_err(|()| anyhow::anyhow!("failed to create Cmd+V key-down event"))?;
-        down.set_flags(CGEventFlags::CGEventFlagCommand);
-        down.post(CGEventTapLocation::Session);
-
-        let up = CGEvent::new_keyboard_event(source, KeyCode::ANSI_V, false)
-            .map_err(|()| anyhow::anyhow!("failed to create Cmd+V key-up event"))?;
-        up.set_flags(CGEventFlags::CGEventFlagCommand);
-        up.post(CGEventTapLocation::Session);
-
-        Ok(())
+        // the paste delivers a dictation, no Cmd+V of the user's: keyboard tools must not react
+        keystroke::press(
+            KeyCode::ANSI_V,
+            CGEventFlags::CGEventFlagCommand,
+            keystroke::Level::App,
+        )
     }
 }
 

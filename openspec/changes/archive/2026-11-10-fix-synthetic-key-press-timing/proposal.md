@@ -6,11 +6,12 @@ The keys VoicePuncher presses in the focused app — Cmd+V of every paste (dicta
 
 - Every key VoicePuncher presses in the focused app is pressed as a keyboard does: each modifier as a key of its own (Command down, V down, V up, Command up), with a pause of 10 ms after every key event.
 - The paste of a dictation and the voice commands' key presses share one way to press keys.
+- The voice commands' keys are posted at the HID level, where keyboard tools such as BetterTouchTool listen; a dictation's paste stays at the session level, so those tools do not react to it.
 
 Current stage: PoC. Target stage: PoC.
 Scope: the macOS key presser and paster adapters (`app/src/adapters/secondary/keypressing/macos/`, `app/src/adapters/secondary/textpasting/macos/`), a text-insertion requirement and its slice scenarios.
 Acceptance bar: the slice scenarios show the order and the pauses of the events; `just check` passes; in the user's manual run the BetterTouchTool trigger on Cmd+V fires on a voice "paste text" in Ghostty.
-Out of scope: posting the events at the HID level instead of the session level (only if the manual run shows it is still needed), the hotkey listener, the clipboard handling.
+Out of scope: the hotkey listener, the clipboard handling.
 Interface: none.
 
 ## Capabilities

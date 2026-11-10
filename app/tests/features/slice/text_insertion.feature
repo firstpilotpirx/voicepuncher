@@ -158,3 +158,14 @@ Feature: text-insertion
       Given speech recognition returns a transcript without filler sounds
       When the user dictates and the dictation is pasted
       Then the pasted text equals the transcript
+
+  Rule: Keys pressed in the focused app arrive as a keyboard's
+
+    Scenario: Cmd+V presses Command as a key of its own
+      When the system presses Cmd+V in the focused app
+      Then Command goes down, V goes down, V goes up, then Command goes up
+      And each event comes at least 10 milliseconds after the one before
+
+    Scenario: Return goes down and up with a pause between
+      When the system presses Return in the focused app
+      Then Return goes down, then up at least 10 milliseconds later, with no modifier key
