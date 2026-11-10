@@ -31,9 +31,11 @@ pub fn press(key: CGKeyCode, flags: CGEventFlags) -> Result<()> {
     press_with(key, flags, post)
 }
 
-/// Presses `key` with the modifiers of `flags` as a keyboard does, handing every event to
-/// `post` and pausing `EVENT_GAP` after it: each modifier goes down as a key of its own before
-/// the key and up after it, in reverse, and every event carries the modifiers held then.
+/// Presses `key` with the modifiers of `flags` as a keyboard does.
+///
+/// Every event goes to `post`, followed by a pause of `EVENT_GAP`. Each modifier goes down as a
+/// key of its own before the key and up after it, in reverse; every event carries the modifiers
+/// held then.
 pub fn press_with(
     key: CGKeyCode,
     flags: CGEventFlags,
