@@ -1,8 +1,7 @@
 use std::time::Duration;
 
-use anyhow::{anyhow, Result};
-use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation, CGKeyCode, KeyCode};
-use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+use anyhow::Result;
+use core_graphics::event::{CGEventFlags, CGKeyCode, KeyCode};
 
 pub mod keystroke;
 
@@ -20,7 +19,7 @@ const SELECT_ALL: Press = (KeyCode::ANSI_A, CGEventFlags::CGEventFlagCommand);
 const DELETE: Press = (KeyCode::DELETE, CGEventFlags::CGEventFlagNull);
 const PASTE: Press = (KeyCode::ANSI_V, CGEventFlags::CGEventFlagCommand);
 
-/// Posts key presses with `CGEvent`, as the paster posts Cmd+V.
+/// Presses keys in the focused app as a keyboard does (`keystroke`), as the paster presses Cmd+V.
 pub struct MacOsKeyPresser {
     /// Whether macOS trusts the process for accessibility; without it key presses are dropped.
     trusted: fn() -> bool,
@@ -39,15 +38,7 @@ impl MacOsKeyPresser {
     }
 
     fn press((key, flags): Press) -> Result<()> {
-        let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
-            .map_err(|()| anyhow!("failed to create CGEventSource"))?;
-        for down in [true, false] {
-            let event = CGEvent::new_keyboard_event(source.clone(), key, down)
-                .map_err(|()| anyhow!("failed to create key event {key}"))?;
-            event.set_flags(flags);
-            event.post(CGEventTapLocation::Session);
-        }
-        Ok(())
+        keystroke::press(key, flags)
     }
 }
 

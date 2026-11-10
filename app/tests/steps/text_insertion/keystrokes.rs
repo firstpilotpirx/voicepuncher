@@ -27,13 +27,21 @@ fn press(world: &mut IntegrationWorld, key: u16, flags: CGEventFlags) -> Result<
 }
 
 fn posted(world: &IntegrationWorld) -> Result<&[(KeyEvent, Instant)]> {
-    let run = world.extra.insertion.keystrokes.as_ref().context("no key was pressed")?;
+    let run = world
+        .extra
+        .insertion
+        .keystrokes
+        .as_ref()
+        .context("no key was pressed")?;
     Ok(&run.posted)
 }
 
 /// The keys and directions posted, in order: `("V", true)` is V going down.
 fn sequence(world: &IntegrationWorld) -> Result<Vec<(&'static str, bool)>> {
-    Ok(posted(world)?.iter().map(|(event, _)| (key_name(event.key), event.down)).collect())
+    Ok(posted(world)?
+        .iter()
+        .map(|(event, _)| (key_name(event.key), event.down))
+        .collect())
 }
 
 fn key_name(key: u16) -> &'static str {
@@ -49,7 +57,12 @@ fn key_name(key: u16) -> &'static str {
 fn ensure_paused(world: &IntegrationWorld) -> Result<()> {
     for pair in posted(world)?.windows(2) {
         let gap = pair[1].1.duration_since(pair[0].1);
-        ensure!(gap >= EVENT_GAP, "{:?} came {gap:?} after {:?}", pair[1].0, pair[0].0);
+        ensure!(
+            gap >= EVENT_GAP,
+            "{:?} came {gap:?} after {:?}",
+            pair[1].0,
+            pair[0].0
+        );
     }
     Ok(())
 }
@@ -66,7 +79,12 @@ fn presses_return(world: &mut IntegrationWorld) -> Result<()> {
 
 #[then("Command goes down, V goes down, V goes up, then Command goes up")]
 fn command_around_v(world: &mut IntegrationWorld) -> Result<()> {
-    let wanted = [("Command", true), ("V", true), ("V", false), ("Command", false)];
+    let wanted = [
+        ("Command", true),
+        ("V", true),
+        ("V", false),
+        ("Command", false),
+    ];
     let seen = sequence(world)?;
     ensure!(seen == wanted, "key events {seen:?}, wanted {wanted:?}");
     Ok(())
@@ -80,6 +98,9 @@ fn events_paused(world: &mut IntegrationWorld) -> Result<()> {
 #[then("Return goes down, then up at least 10 milliseconds later, with no modifier key")]
 fn return_down_up(world: &mut IntegrationWorld) -> Result<()> {
     let seen = sequence(world)?;
-    ensure!(seen == [("Return", true), ("Return", false)], "key events {seen:?}");
+    ensure!(
+        seen == [("Return", true), ("Return", false)],
+        "key events {seen:?}"
+    );
     ensure_paused(world)
 }
