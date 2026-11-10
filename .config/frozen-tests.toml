@@ -253,3 +253,12 @@ stage = "test"
 beside = "full-check of fix-synthetic-key-press-timing beside other sessions builds; status item not seen in the menu bar"
 branch = "fix/fix-synthetic-key-press-timing"
 
+
+[[frozen]]
+test = "scenario: Stop after a short breath"
+frozen = "2026-11-10"
+recipe = "full-check"
+stage = "e2e-smoke-voice"
+beside = "full-check of fix-synthetic-key-press-timing; E2E uses a stand-in paster, so the change cannot reach it; nothing pasted after stop stop"
+branch = "fix/fix-synthetic-key-press-timing"
+
