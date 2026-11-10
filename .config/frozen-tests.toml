@@ -271,3 +271,12 @@ stage = "e2e-regression"
 beside = "full-check of fix-synthetic-key-press-timing beside go tests of another session; command spotting paces disagreed by more than 0.1 s"
 branch = "fix/fix-synthetic-key-press-timing"
 
+
+[[frozen]]
+test = "scenario: The user's recordings give the same delays in both paces"
+frozen = "2026-11-10"
+recipe = "full-check"
+stage = "e2e-regression"
+beside = "full-check of fix-synthetic-key-press-timing beside go tests of another session; command spotting paces disagreed by more than 0.1 s"
+branch = "fix/fix-synthetic-key-press-timing"
+
