@@ -262,3 +262,12 @@ stage = "e2e-smoke-voice"
 beside = "full-check of fix-synthetic-key-press-timing; E2E uses a stand-in paster, so the change cannot reach it; nothing pasted after stop stop"
 branch = "fix/fix-synthetic-key-press-timing"
 
+
+[[frozen]]
+test = "scenario: A lone restart gives the same delay in both paces"
+frozen = "2026-11-10"
+recipe = "full-check"
+stage = "e2e-regression"
+beside = "full-check of fix-synthetic-key-press-timing beside go tests of another session; command spotting paces disagreed by more than 0.1 s"
+branch = "fix/fix-synthetic-key-press-timing"
+
