@@ -105,7 +105,7 @@ def kws_factory():
     import sherpa_onnx
     p = os.path.expanduser("~/.voicepuncher/models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01")
     tag = "epoch-12-avg-2-chunk-16-left-64"
-    kw = "/Users/pirx/Workspaces/my/voicepuncher/command-spotting/keywords.txt"
+    kw = os.path.join(os.path.dirname(os.path.abspath(__file__)), *[".."] * 6, "command-spotting", "keywords.txt")
     lines = [l for l in open(kw) if l.strip() and not l.startswith("#")]
     path = os.path.abspath("kws_keywords.txt")
     open(path, "w").write("".join(lines))

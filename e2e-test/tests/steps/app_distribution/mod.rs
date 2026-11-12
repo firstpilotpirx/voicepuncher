@@ -14,6 +14,7 @@ use crate::E2eWorld;
 mod bundle_launch;
 mod bundled;
 mod engines;
+mod own_license;
 
 mod tools;
 use tools::{
@@ -65,6 +66,8 @@ pub struct DistributionRun {
     engines: engines::EngineRun,
     bundled: bundled::BundledRead,
     launch: bundle_launch::BundleLaunch,
+    /// The names in the bundle's resources folder.
+    resources: Vec<String>,
 }
 
 /// What a scenario read of a bundle's information and signature.

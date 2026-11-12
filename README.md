@@ -244,7 +244,7 @@ Prerequisites: Rust ≥ 1.88, [`just`](https://github.com/casey/just), Homebrew 
 For the tests, also [cargo-nextest](https://nexte.st) 0.9.146: `cargo +stable install --locked cargo-nextest@0.9.146`. For the bundle and the disk image (`just bundle`, `just dmg`, the `bundle` stage of `full-check`), also `brew install create-dmg`.
 
 ```bash
-git clone https://github.com/pirx/voicepuncher
+git clone https://github.com/firstpilotpirx/voicepuncher
 cd voicepuncher
 cargo build --release
 ```
