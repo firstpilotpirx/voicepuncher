@@ -3,6 +3,7 @@ name = "voicepuncher-copy-pool"
 version = "0.4.0"
 edition = "2021"
 rust-version = "1.88"
+license = "MIT OR Apache-2.0"
 description = "Routes requests to the copies of a local speech recognition service: one request per copy, first come first served"
 publish = false
 

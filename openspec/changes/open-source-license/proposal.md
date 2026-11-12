@@ -5,7 +5,7 @@ The owner publishes VoicePuncher as public open source. The repository carries n
 ## What Changes
 
 - The root holds `LICENSE-MIT` (2026, firstpilotpirx) and the unchanged official `LICENSE-APACHE`.
-- Every workspace crate states `license = "MIT OR Apache-2.0"` (once, in `[workspace.package]`).
+- Every workspace crate states `license = "MIT OR Apache-2.0"`.
 - The README ends with a `## License` section with the standard contribution clause.
 - The bundle build copies both texts unchanged into `voicepuncher.app/Contents/Resources`, so every disk image carries the application's own license beside the engines' licenses.
 - `.gitignore` is grouped and commented and ignores `.claude/worktrees/`.
@@ -24,7 +24,7 @@ Interface: none.
 
 ## Impact
 
-- `LICENSE-MIT`, `LICENSE-APACHE`, `Cargo.toml` and every member's `Cargo.toml`, `README.md`, `.gitignore`, `justfile` (`bundle`), `e2e-test/tests/features/app_distribution.feature`, `e2e-test/tests/steps/app_distribution/`.
+- `LICENSE-MIT`, `LICENSE-APACHE`, every member's `Cargo.toml`, `README.md`, `.gitignore`, `justfile` (`bundle`), `e2e-test/tests/features/app_distribution.feature`, `e2e-test/tests/steps/app_distribution/`.
 
 ## Release
 

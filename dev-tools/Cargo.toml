@@ -3,6 +3,7 @@ name = "voicepuncher-dev-tools"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.88"
+license = "MIT OR Apache-2.0"
 description = "What the justfile's recipes call: the stage runner (keys, reuse, locks, the journal), the frozen tests, the named runs, the engines and the local services"
 publish = false
 
