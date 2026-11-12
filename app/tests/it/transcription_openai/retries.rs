@@ -32,9 +32,8 @@ pub(super) const SHORT_TIMEOUT_SECS: u64 = 2;
 pub(super) fn should_transcribe_by_a_new_attempt_when_the_first_request_hangs() {
     // Given
     capturing_logger();
-    let (cfg, hung, other) = one_hung_copy_of_two();
     // When
-    let transcript = transcribe(cfg).unwrap();
+    let (transcript, hung, other) = transcribe_past_one_hung_copy();
     // Then
     assert_eq!(transcript.as_deref(), Some("hello"));
     assert_eq!(hung.requests() + other.requests(), 2);

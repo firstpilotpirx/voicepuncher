@@ -7,6 +7,7 @@ use super::{
     ScriptedTranscriber, Sender, Shown, Silent, VoiceCommand, LONG_DICTATION_THRESHOLD_SECS,
     REACTION, SETTLE,
 };
+use crate::steps::waiting::wait_for_event;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Recognition {
@@ -122,14 +123,7 @@ impl NoticesRun {
     }
 
     pub(crate) fn wait_for_after(&self, from: usize, wanted: &Event) -> Result<()> {
-        let deadline = Instant::now() + REACTION;
-        while !self.events()[from..].contains(wanted) {
-            if Instant::now() >= deadline {
-                bail!("{wanted:?} not seen; events: {:?}", self.events());
-            }
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        Ok(())
+        wait_for_event(|| self.events(), from, wanted, REACTION)
     }
 
     /// Waits until the dictation is over: the overlay hides, or shows a notice or the Pasted

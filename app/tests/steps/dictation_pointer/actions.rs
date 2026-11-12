@@ -64,7 +64,8 @@ pub(super) fn starts_with_hotkey(world: &mut IntegrationWorld) -> Result<()> {
 }
 
 #[when(expr = "the user says {string} to start a dictation")]
-pub(super) fn says_to_start(world: &mut IntegrationWorld, phrase: String) -> Result<()> {
+#[when(expr = "the user says {string} during the recording")]
+pub(super) fn says_command(world: &mut IntegrationWorld, phrase: String) -> Result<()> {
     let command = voice_command(&phrase)?;
     let run = run(world);
     run.mark_action();
@@ -89,14 +90,6 @@ pub(super) fn ends_with_hotkey(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     run.mark_action();
     run.press_hotkey()
-}
-
-#[when(expr = "the user says {string} during the recording")]
-pub(super) fn says_during_recording(world: &mut IntegrationWorld, phrase: String) -> Result<()> {
-    let command = voice_command(&phrase)?;
-    let run = run(world);
-    run.mark_action();
-    run.say(command)
 }
 
 #[when("the user cancels the dictation")]

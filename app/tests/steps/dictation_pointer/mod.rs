@@ -10,7 +10,6 @@ use voicepuncher::adapters::secondary::visualfeedback::pointer_sign::{
     DictationSignState, PointerSignIndicator, PointerSignView, SignLifetimes,
 };
 
-use crate::steps::quiet_voice_control::{NoKeys, QuietSpotter};
 use crate::IntegrationWorld;
 mod doubles;
 use doubles::{

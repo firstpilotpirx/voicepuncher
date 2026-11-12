@@ -1,12 +1,12 @@
 //! The stand-in pipeline parts the runtime assembles.
 
 use super::{
-    bail, failures, pipeline_config, push, Arc, AudioBuffer16k, AudioRecorder, Config, Duration,
-    Event, Events, FocusWaitCfg, Generation, Mutex, NoKeys, NoticeOverlay, Pipeline,
-    PipelineAssembler, PipelineInput, PipelineParts, RawTranscript, Result, ScriptedFocus, Sender,
-    StandInPaster, StandInSounds, StandInSpotter, Transcriber, DICTATED, FOCUS_POLL,
-    SILENT_SERVICE_ERROR,
+    bail, failures, pipeline_config, push, Arc, AudioRecorder, Config, Duration, Event, Events,
+    FocusWaitCfg, Generation, Mutex, NoKeys, NoticeOverlay, Pipeline, PipelineAssembler,
+    PipelineInput, PipelineParts, Result, ScriptedFocus, Sender, StandInPaster, StandInSounds,
+    StandInSpotter, FOCUS_POLL, SILENT_SERVICE_ERROR,
 };
+use crate::steps::text_insertion::doubles::FixedTranscript;
 
 /// Builds every pipeline from stand-ins that log under the pipeline's generation.
 pub(super) struct StandInAssembler {
@@ -88,13 +88,5 @@ impl AudioRecorder for StandInRecorder {
 impl Drop for StandInRecorder {
     fn drop(&mut self) {
         self.0.log(Event::PipelineDropped);
-    }
-}
-
-pub(super) struct FixedTranscript;
-
-impl Transcriber for FixedTranscript {
-    fn transcribe(&mut self, _audio: &AudioBuffer16k) -> Result<Option<RawTranscript>> {
-        Ok(Some(RawTranscript::new(DICTATED.to_owned())?))
     }
 }

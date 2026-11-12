@@ -1,11 +1,13 @@
 //! The stages run: the pipeline with the overlay's stage log.
 
 use super::{
-    bail, mpsc, Arc, ChunkingCfg, Context, Duration, Event, FocusOnButton, FocusWaitCfg, Instant,
-    IntegrationWorld, Mutex, NoKeys, NotingOverlay, NotingPaster, NotingTranscriber, Overlay,
-    PartsRecorder, Pipeline, PipelineConfig, PipelineInput, PipelineParts, PttSignal, QuietSpotter,
-    Result, Sender, Silent, VoiceCommand, FOCUS_WAIT, REACTION, SETTLE,
+    bail, Arc, ChunkingCfg, Context, Duration, Event, FocusOnButton, FocusWaitCfg, Instant,
+    IntegrationWorld, Mutex, NotingOverlay, NotingPaster, NotingTranscriber, Overlay,
+    PartsRecorder, Pipeline, PipelineConfig, PipelineInput, PipelineParts, PttSignal, Result,
+    Sender, Silent, VoiceCommand, FOCUS_WAIT, REACTION, SETTLE,
 };
+use crate::steps::quiet_voice_control::spawn_pipeline;
+use crate::steps::waiting::wait_for_event;
 
 pub(super) type Events = Arc<Mutex<Vec<Event>>>;
 
@@ -84,7 +86,6 @@ impl StagesRun {
     }
 
     fn start_pipeline(&self) -> Sender<PipelineInput> {
-        let (tx, rx) = mpsc::channel();
         let mut pipeline = Pipeline::new(
             self.parts(),
             PipelineConfig {
@@ -105,11 +106,7 @@ impl StagesRun {
                 FocusWaitCfg { timeout: FOCUS_WAIT, poll_interval: Duration::from_millis(20) },
             );
         }
-        if self.voice_control {
-            pipeline = pipeline.with_voice_control(Box::new(QuietSpotter), Box::new(NoKeys));
-        }
-        std::thread::spawn(move || pipeline.run(rx));
-        tx
+        spawn_pipeline(pipeline, self.voice_control)
     }
 
     /// Starts a recording with the hotkey and waits until it runs.
@@ -139,14 +136,7 @@ impl StagesRun {
     }
 
     fn wait_for(&self, wanted: Event) -> Result<()> {
-        let deadline = Instant::now() + REACTION;
-        while !self.events().contains(&wanted) {
-            if Instant::now() >= deadline {
-                bail!("{wanted:?} not seen; events: {:?}", self.events());
-            }
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        Ok(())
+        wait_for_event(|| self.events(), 0, &wanted, REACTION)
     }
 
     /// Waits until the dictation is over: the overlay hides, or shows the Pasted sign that

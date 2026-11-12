@@ -1,6 +1,8 @@
 //! Voice control stand-ins of the scenarios that drive the pipeline by its input channel:
 //! a spotter that hears nothing and a key presser that presses nothing.
 
+use std::sync::mpsc::Sender;
+
 use voicepuncher::test_doubles::prelude::*;
 
 /// The command spotting service as the pipeline sees it; the scenario feeds the phrases it
@@ -37,4 +39,15 @@ impl KeyPresser for NoKeys {
     fn paste(&mut self) -> Result<()> {
         Ok(())
     }
+}
+
+/// Runs the pipeline on a thread of its own, with the quiet voice control stand-ins when the
+/// scenario turns voice control on; the sender of the pipeline's input.
+pub fn spawn_pipeline(mut pipeline: Pipeline, voice_control: bool) -> Sender<PipelineInput> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    if voice_control {
+        pipeline = pipeline.with_voice_control(Box::new(QuietSpotter), Box::new(NoKeys));
+    }
+    std::thread::spawn(move || pipeline.run(rx));
+    tx
 }

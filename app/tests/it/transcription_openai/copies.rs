@@ -182,15 +182,12 @@ pub(super) fn should_skip_a_copy_closed_before_a_request() {
     assert_eq!(logged_by_any_thread(&skipped).len(), 1, "{skipped}");
 }
 
-/// Two copies under the short time limit: the one tried first hangs on its request, the other
-/// answers; the settings, the hung copy and the other one.
-pub(super) fn one_hung_copy_of_two() -> (TranscriptionCfg, FakeCopy, FakeCopy) {
+/// Transcribes over two copies under the short time limit: the one tried first hangs on its request,
+/// the other answers; the transcript, the hung copy and the other one.
+pub(super) fn transcribe_past_one_hung_copy() -> (Option<String>, FakeCopy, FakeCopy) {
     let (cfg, mut listeners) = free_copies(2);
     let other = spawn_copy(listeners.remove(1 - first_tried(2)), vec![CopyTurn::Answer]);
     let hung = spawn_copy(listeners.remove(0), vec![CopyTurn::Hang]);
-    (
-        TranscriptionCfg { timeout_secs: SHORT_TIMEOUT_SECS, ..cfg },
-        hung,
-        other,
-    )
+    let cfg = TranscriptionCfg { timeout_secs: SHORT_TIMEOUT_SECS, ..cfg };
+    (transcribe(cfg).unwrap(), hung, other)
 }

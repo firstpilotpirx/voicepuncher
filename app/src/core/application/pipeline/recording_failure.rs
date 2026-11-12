@@ -48,7 +48,7 @@ impl Pipeline {
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::doubles::transcribing;
+    use super::super::tests::doubles::{allow_progress, transcribing};
     use super::super::tests::PipelineUnderTest;
     use super::super::Pipeline;
     use crate::core::application::audio_recorder::MockAudioRecorder;
@@ -94,16 +94,11 @@ mod tests {
                 .return_const(()),
             None => overlay.expect_show_failure_notice().never(),
         };
-        overlay.expect_show_recording().times(..).return_const(());
+        allow_progress(&mut overlay);
         overlay
             .expect_show_waiting_for_focus()
             .times(..)
             .return_const(());
-        overlay
-            .expect_show_recognizing_speech()
-            .times(..)
-            .return_const(());
-        overlay.expect_show_pasted().times(..).return_const(());
         overlay
     }
 

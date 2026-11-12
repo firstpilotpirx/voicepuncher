@@ -21,3 +21,4 @@ pub mod speech_recognition;
 pub mod text_insertion;
 pub mod visual_feedback;
 pub mod voice_control;
+pub mod waiting;
