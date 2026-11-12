@@ -1,11 +1,27 @@
+# Rust build output
 target/
-.DS_Store
-*.swp
-.ai
-.env
-e2e-test/corpus/
-.idea
-.worktrees/
-__pycache__/
+
+# Release builds (just bundle, just dmg) and the staged engines (just engines)
 dist/
 app/packaging/engines/
+
+# The accuracy corpus (downloaded by e2e-test/scripts/download_corpus.py)
+e2e-test/corpus/
+
+# Local settings and secrets
+.env
+
+# Agent worktrees and local agent files
+.worktrees/
+.claude/worktrees/
+.ai
+
+# Editors
+.idea
+*.swp
+
+# Python
+__pycache__/
+
+# macOS
+.DS_Store

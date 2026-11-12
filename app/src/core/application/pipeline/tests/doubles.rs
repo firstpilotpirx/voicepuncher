@@ -110,14 +110,19 @@ pub(super) fn quiet_sounds() -> MockSoundPlayer {
     sounds
 }
 
-pub(super) fn quiet_overlay() -> MockVisualIndicator {
-    let mut overlay = MockVisualIndicator::new();
+/// Lets the overlay show a dictation's progress — recording, recognizing, pasted — any number of times.
+pub(crate) fn allow_progress(overlay: &mut MockVisualIndicator) {
     overlay.expect_show_recording().times(..).return_const(());
     overlay
         .expect_show_recognizing_speech()
         .times(..)
         .return_const(());
     overlay.expect_show_pasted().times(..).return_const(());
+}
+
+pub(super) fn quiet_overlay() -> MockVisualIndicator {
+    let mut overlay = MockVisualIndicator::new();
+    allow_progress(&mut overlay);
     overlay.expect_hide().times(..).return_const(());
     overlay
         .expect_show_failure_notice()

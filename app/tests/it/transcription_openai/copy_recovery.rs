@@ -77,10 +77,8 @@ pub(super) fn should_fail_naming_the_copies_when_every_copy_refuses() {
 
 #[test]
 pub(super) fn should_send_the_attempt_after_a_hung_one_to_another_copy() {
-    // Given
-    let (cfg, hung, other) = one_hung_copy_of_two();
     // When
-    let transcript = transcribe(cfg).unwrap();
+    let (transcript, hung, other) = transcribe_past_one_hung_copy();
     // Then
     assert_eq!(transcript.as_deref(), Some("hello"));
     assert_eq!(hung.requests(), 1, "the hung copy got a second attempt");

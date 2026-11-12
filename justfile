@@ -163,7 +163,7 @@ deny_version := "0.20.2"
 semver_checks_version := "0.51.0"
 typos_version := "1.51.1"
 rca_version := "0.0.25"
-jscpd_version := "4.0.5"
+jscpd_version := "5.4.2"
 shellcheck_version := "0.11.0"
 gitleaks_version := "8.30.1"
 trufflehog_version := "3.99.8"
@@ -542,7 +542,7 @@ app_version := shell("grep -m1 '^version = ' \"$1\" | cut -d '\"' -f2", justfile
 # The self-signed code-signing certificate of README § Release checklist; empty signs ad-hoc (no stable identity)
 signing_identity := env_var_or_default("VOICEPUNCHER_SIGNING_IDENTITY", "")
 
-# Build the signed dist/voicepuncher.app (release build, no `cargo clean`) with the pinned engines and their licenses
+# Build the signed dist/voicepuncher.app (release build, no `cargo clean`) with the pinned engines, their licenses and the app's own
 bundle: _require-signing-identity engines
     #!/usr/bin/env bash
     set -euo pipefail
@@ -552,7 +552,7 @@ bundle: _require-signing-identity engines
     rm -rf "$app" && mkdir -p "$app/Contents/MacOS/engines" "$app/Contents/Resources"
     cp target/release/voicepuncher "$app/Contents/MacOS/voicepuncher"
     for engine in whisper command-spotting; do cp -R "$engines/$engine" "$app/Contents/MacOS/engines/"; done
-    cp -R "$engines/licenses" "$app/Contents/Resources/licenses"
+    cp -R "$engines/licenses" "$app/Contents/Resources/licenses" && cp {{quote(justfile_directory() / "LICENSE-MIT")}} {{quote(justfile_directory() / "LICENSE-APACHE")}} "$app/Contents/Resources/"
     iconutil -c icns {{quote(packaging_dir / "icons/voicepuncher.iconset")}} -o "$app/Contents/Resources/voicepuncher.icns"
     cp {{quote(packaging_dir / "Info.plist")}} "$app/Contents/Info.plist"
     for key in CFBundleShortVersionString CFBundleVersion; do plutil -replace "$key" -string {{quote(app_version)}} "$app/Contents/Info.plist"; done

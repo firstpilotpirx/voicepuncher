@@ -50,6 +50,14 @@ mod tests {
         ScreenTopology { frames: rects }
     }
 
+    /// A 1920×1080 screen with a 2560×1440 one to its right.
+    fn two_screens() -> ScreenTopology {
+        topology(vec![
+            make_rect(0.0, 0.0, 1920.0, 1080.0),
+            make_rect(1920.0, 0.0, 2560.0, 1440.0),
+        ])
+    }
+
     #[test]
     fn should_report_identical_for_two_empty_topologies() {
         let old = topology(vec![]);
@@ -67,24 +75,15 @@ mod tests {
 
     #[test]
     fn should_report_identical_for_two_matching_multi_screen_topologies() {
-        let old = topology(vec![
-            make_rect(0.0, 0.0, 1920.0, 1080.0),
-            make_rect(1920.0, 0.0, 2560.0, 1440.0),
-        ]);
-        let new = topology(vec![
-            make_rect(0.0, 0.0, 1920.0, 1080.0),
-            make_rect(1920.0, 0.0, 2560.0, 1440.0),
-        ]);
+        let old = two_screens();
+        let new = two_screens();
         assert_eq!(old.diff(&new), ScreenChange::Identical);
     }
 
     #[test]
     fn should_report_differs_when_lengths_mismatch() {
         let old = topology(vec![make_rect(0.0, 0.0, 1920.0, 1080.0)]);
-        let new = topology(vec![
-            make_rect(0.0, 0.0, 1920.0, 1080.0),
-            make_rect(1920.0, 0.0, 2560.0, 1440.0),
-        ]);
+        let new = two_screens();
         assert_eq!(old.diff(&new), ScreenChange::Differs);
     }
 

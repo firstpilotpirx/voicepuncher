@@ -12,6 +12,13 @@ fn adopted() -> Harness {
     harness
 }
 
+/// The service is adopted, not owned, and only the one failed start was spawned.
+fn assert_adopted_after_one_start(harness: &Harness) {
+    assert_eq!(harness.state(), ServiceState::Adopted);
+    assert!(!harness.unit.status().owned);
+    assert_eq!(harness.spawns.count(), 1);
+}
+
 #[test]
 fn should_start_its_own_service_when_an_adopted_one_stops() {
     // Given
@@ -55,9 +62,7 @@ fn should_adopt_a_service_that_answers_when_its_restart_is_due() {
     harness.answers(ProbeAnswer::Ready);
     harness.after(1.0);
     // Then
-    assert_eq!(harness.state(), ServiceState::Adopted);
-    assert!(!harness.unit.status().owned);
-    assert_eq!(harness.spawns.count(), 1);
+    assert_adopted_after_one_start(&harness);
 }
 
 #[test]
@@ -70,9 +75,7 @@ fn should_adopt_without_a_failed_start_a_service_whose_start_exits_while_its_por
     harness.spawns.exit_last("code 1");
     harness.tick();
     // Then
-    assert_eq!(harness.state(), ServiceState::Adopted);
-    assert!(!harness.unit.status().owned);
-    assert_eq!(harness.spawns.count(), 1);
+    assert_adopted_after_one_start(&harness);
 }
 
 #[test]

@@ -3,6 +3,7 @@ name = "voicepuncher-test-steps"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.88"
+license = "MIT OR Apache-2.0"
 description = "What the test harnesses share: the needs a test states and the Gherkin steps both harnesses use"
 publish = false
 

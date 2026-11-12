@@ -38,7 +38,6 @@ mod permissions;
 mod stand_ins;
 use stand_ins::{Part, StandInAssembler};
 
-const DICTATED: &str = "Meeting moved to Friday.";
 const FIRST_HOTKEY: HotKey = HotKey::RightOption;
 const SECOND_HOTKEY: HotKey = HotKey::F19;
 const THIRD_HOTKEY: HotKey = HotKey::F18;

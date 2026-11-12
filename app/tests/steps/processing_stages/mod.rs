@@ -4,7 +4,6 @@
 use cucumber::{given, then, when};
 use voicepuncher::test_doubles::prelude::*;
 
-use crate::steps::quiet_voice_control::{NoKeys, QuietSpotter};
 use crate::IntegrationWorld;
 mod doubles;
 use doubles::{

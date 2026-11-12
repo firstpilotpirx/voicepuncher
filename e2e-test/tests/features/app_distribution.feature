@@ -156,6 +156,11 @@ Feature: app-distribution
       Then it holds the licenses of whisper.cpp, ggml, the OpenMP runtime, sherpa-onnx and ONNX Runtime
       And it holds no license of llama.cpp
 
+    Scenario: The bundle holds the application's own license
+      Given the bundle the bundle build made
+      When its resources are listed
+      Then they hold "LICENSE-MIT" and "LICENSE-APACHE" equal to the repository's files
+
   Rule: The first launch is documented
 
     # Manual: following the README needs a person, a downloaded release and Gatekeeper's first refusal

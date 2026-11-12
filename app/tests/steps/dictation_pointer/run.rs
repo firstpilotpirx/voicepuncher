@@ -1,13 +1,13 @@
 //! The pointer run: the pipeline with the dictation sign's log.
 
 use super::{
-    bail, mpsc, Arc, AtomicBool, DictationSignState, Duration, Event, FocusWaitCfg, Instant,
-    IntegrationWorld, Mutex, NoKeys, NotingOverlay, NotingSign, OneSecondRecorder, Pipeline,
+    bail, Arc, AtomicBool, DictationSignState, Duration, Event, FocusWaitCfg, Instant,
+    IntegrationWorld, Mutex, NotingOverlay, NotingSign, OneSecondRecorder, Pipeline,
     PipelineConfig, PipelineInput, PipelineParts, PointerSignIndicator, PttSignal, QuietPaster,
-    QuietSpotter, RecordingMode, Result, Sender, Sign, SignLifetimes, Silent, SlowTranscriber,
-    SwitchableFocus, VoiceCommand, FAILURE_NOTICE_TIME, FOCUS_WAIT, REACTION, SETTLE,
-    TOO_SHORT_TO_KEEP_MS,
+    RecordingMode, Result, Sender, Sign, SignLifetimes, Silent, SlowTranscriber, SwitchableFocus,
+    VoiceCommand, FAILURE_NOTICE_TIME, FOCUS_WAIT, REACTION, SETTLE, TOO_SHORT_TO_KEEP_MS,
 };
+use crate::steps::quiet_voice_control::spawn_pipeline;
 use voicepuncher::test_doubles::StartedOnDemand;
 
 pub(super) type Events = Arc<Mutex<Vec<Event>>>;
@@ -139,8 +139,7 @@ impl StartedOnDemand for PointerRun {
         &mut self.inputs
     }
     fn start_pipeline(&mut self) -> Sender<PipelineInput> {
-        let (tx, rx) = mpsc::channel();
-        let mut pipeline = Pipeline::new(
+        let pipeline = Pipeline::new(
             PipelineParts {
                 recorder: Box::new(OneSecondRecorder::new(
                     &self.events,
@@ -157,10 +156,6 @@ impl StartedOnDemand for PointerRun {
             Box::new(SwitchableFocus(Arc::clone(&self.button_focused))),
             FocusWaitCfg { timeout: FOCUS_WAIT, poll_interval: Duration::from_millis(20) },
         );
-        if self.voice_control {
-            pipeline = pipeline.with_voice_control(Box::new(QuietSpotter), Box::new(NoKeys));
-        }
-        std::thread::spawn(move || pipeline.run(rx));
-        tx
+        spawn_pipeline(pipeline, self.voice_control)
     }
 }

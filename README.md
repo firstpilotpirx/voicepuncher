@@ -244,7 +244,7 @@ Prerequisites: Rust ≥ 1.88, [`just`](https://github.com/casey/just), Homebrew 
 For the tests, also [cargo-nextest](https://nexte.st) 0.9.146: `cargo +stable install --locked cargo-nextest@0.9.146`. For the bundle and the disk image (`just bundle`, `just dmg`, the `bundle` stage of `full-check`), also `brew install create-dmg`.
 
 ```bash
-git clone https://github.com/pirx/voicepuncher
+git clone https://github.com/firstpilotpirx/voicepuncher
 cd voicepuncher
 cargo build --release
 ```
@@ -502,3 +502,14 @@ Example output (the layout; the numbers are illustrative):
 ```
 
 To add a model to the matrix, add an entry to `WHISPER_MODELS` in `e2e-test/scripts/bench.py`.
+
+## License
+
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <https://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or <https://opensource.org/licenses/MIT>)
+
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.

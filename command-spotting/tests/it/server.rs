@@ -79,11 +79,8 @@ fn closed_after(sent: &[Message]) -> (CloseCode, String) {
 mod needs_streaming_models {
     use super::*;
 
-    #[test]
-    fn should_refuse_an_app_of_another_protocol_version() {
-        // When
-        let (code, reason) = closed_after(&[Message::text(r#"{"type":"hello","version":1}"#)]);
-        // Then
+    /// The service closed the connection by policy, naming the version it got and the one it speaks.
+    fn assert_refused_for_its_version(code: CloseCode, reason: &str) {
         assert_eq!(code, CloseCode::Policy);
         let speaks = format!("version {PROTOCOL_VERSION}");
         assert!(
@@ -93,16 +90,19 @@ mod needs_streaming_models {
     }
 
     #[test]
+    fn should_refuse_an_app_of_another_protocol_version() {
+        // When
+        let (code, reason) = closed_after(&[Message::text(r#"{"type":"hello","version":1}"#)]);
+        // Then
+        assert_refused_for_its_version(code, &reason);
+    }
+
+    #[test]
     fn should_refuse_an_app_that_does_not_say_its_protocol_version_first() {
         // When
         let (code, reason) = closed_after(&[Message::text(r#"{"phrases":["press enter"]}"#)]);
         // Then
-        assert_eq!(code, CloseCode::Policy);
-        let speaks = format!("version {PROTOCOL_VERSION}");
-        assert!(
-            reason.contains("version 1") && reason.contains(&speaks),
-            "{reason}"
-        );
+        assert_refused_for_its_version(code, &reason);
     }
 
     #[test]

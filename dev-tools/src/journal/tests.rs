@@ -128,9 +128,17 @@ fn should_record_a_lock_that_was_never_taken_without_a_hold() {
 }
 
 fn journal_run(started: &str, branch: &str, locked: &str, held: u32) -> String {
-    format!(
-        r#"{{"started":"{started}","branch":"{branch}","recipe":"check","result":"passed","seconds":700,"stages":[],"failed_tests":[],"locks":[{{"class":"e2e","locked":"{locked}","held":{held},"wait":1}}]}}"#
-    )
+    serde_json::json!({
+        "started": started,
+        "branch": branch,
+        "recipe": "check",
+        "result": "passed",
+        "seconds": 700,
+        "stages": [],
+        "failed_tests": [],
+        "locks": [{ "class": "e2e", "locked": locked, "held": held, "wait": 1 }],
+    })
+    .to_string()
 }
 
 #[test]

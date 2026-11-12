@@ -3,6 +3,7 @@ name = "voicepuncher-entry-folders"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.88"
+license = "MIT OR Apache-2.0"
 description = "Folders of entries named by time and kept under a size limit, shared by the dictation archive and the command history"
 publish = false
 
