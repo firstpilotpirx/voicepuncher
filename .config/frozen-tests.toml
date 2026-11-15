@@ -307,3 +307,12 @@ stage = "e2e-smoke-voice"
 beside = "full-check of fix-glued-enter-at-utterance-end; service sync timeout 20s; failed before on 9 branches"
 branch = "fix/fix-glued-enter-at-utterance-end"
 
+
+[[frozen]]
+test = "scenario: The user's recorded restart restart followed by the new dictation at once"
+frozen = "2026-11-15"
+recipe = "full-check"
+stage = "e2e-smoke-voice"
+beside = "full-check of fix-glued-enter-at-utterance-end; load average 147 from go tests of another session"
+branch = "fix/fix-glued-enter-at-utterance-end"
+
