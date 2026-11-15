@@ -119,6 +119,11 @@ pub const MISHEARINGS: &[Mishearing] = &[
         &[ENTER, ENTER],
         MishearingKind::Alias,
     ),
+    // Glued doubles of the command history 2026-11-13..15; "китрентор" came after "кит".
+    mishearing(&["энтеррендер"], &[ENTER, ENTER], MishearingKind::Alias),
+    mishearing(&["интернтор"], &[ENTER, ENTER], MishearingKind::Alias),
+    mishearing(&["антернтер"], &[ENTER, ENTER], MishearingKind::Alias),
+    mishearing(&["китрентор"], &[ENTER, ENTER], MishearingKind::Alias),
     // One "enter" the Russian recognizer mangles past its command sounds.
     mishearing(&["нтр"], &[ENTER], MishearingKind::Alias),
     mishearing(&["энтро"], &[ENTER], MishearingKind::Alias),
@@ -126,6 +131,8 @@ pub const MISHEARINGS: &[Mishearing] = &[
     mishearing(&["нтэр"], &[ENTER], MishearingKind::Alias),
     mishearing(&["тентер"], &[ENTER], MishearingKind::Alias),
     mishearing(&["рентра"], &[ENTER], MishearingKind::Alias),
+    // A lone "enter" cut short (2026-11-13).
+    mishearing(&["энт"], &[ENTER], MishearingKind::Alias),
 ];
 
 #[cfg(test)]
