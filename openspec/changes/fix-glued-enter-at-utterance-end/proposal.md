@@ -20,31 +20,29 @@ The rest of the pipeline is sound: every command a recognizer reported was acted
 
 ## What Changes
 
-- An "enter" that the Russian recognizer glues or cuts at the end of an utterance during a dictation presses Enter: the match goes by sound shape (for example a last word close by edit distance to "энтер" or "энтер энтер", or starting with энт/инт/ант), not by an exact list.
-- An English "enter" followed by a short filler word ("and", "uh") at the end of an utterance still counts as enter.
-- The seven tails above become test cases, from the user's own recordings in the command history.
+- Each glued or cut "enter" the Russian recognizer wrote in the user's recent command history becomes an alias row of the voice commands, so it presses Enter: `энтеррендер`, `интернтор`, `антернтер`, `китрентор` read as "enter enter"; `энт` reads as one "enter".
+- The user chose aliases over a fuzzy sound match: whatever word the recognizer glues is the command (2026-11-15).
+- The new words join the test of every glued or mangled enter from the history.
 
 Current stage: PoC. Target stage: PoC.
-Scope: spotting of "press enter" at the end of an utterance during a dictation (Russian and English recognizers).
-Acceptance bar: the seven recorded misses above press Enter; no new false Enter across the user's recordings of ordinary dictation in the command history.
-Out of scope: other commands; the speed of the English recognizer; false triggers outside the end of an utterance.
+Scope: the alias rows of "press enter" in the voice commands.
+Acceptance bar: the five words read as their enters; the ordinary words test stays green; `just check` passes.
+Out of scope: `интернета` (an ordinary Russian word: an alias would press Enter in plain speech about the internet); "правильно интер" (the word already reads as enter, and a short sentence ending in it stays speech by the placement rules); the English "enter and" (a trailing filler); a fuzzy sound match; other commands; the English recognizer's speed.
 Interface: none.
 
 ## Capabilities
 
 ### Modified Capabilities
 
-- `voice-control`: "press enter" at the end of an utterance matches glued and cut forms by sound shape and tolerates a short trailing filler in English.
+- `voice-control`: five more glued or cut enters from the user's history count as the command.
 
 ## Impact
 
-- `voice-commands/src/lib.rs` (forms and mishearings), the matching in `command-spotting/`
-- tests over the user's recordings (`needs_voice_samples`) and voice control scenarios
+- `voice-commands/src/lib.rs` (alias rows), `command-spotting/src/streaming/respell/tests.rs` (the history words test)
 
 ## Open points
 
-- How loose the sound-shape match may be: the user says misses matter more than false triggers inside dictation; proposed: tune on the command history until the seven misses pass and ordinary dictation tails ("интересно", "интернет" mid-sentence, "агент") stay unmatched.
-- Whether "интернета" at the very end should count; proposed: yes, only as the last word of an utterance during a dictation.
+- none: scope settled at explore (no gates picked).
 
 ## Release
 
