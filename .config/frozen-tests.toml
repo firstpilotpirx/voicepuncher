@@ -298,3 +298,12 @@ stage = "e2e-smoke-voice"
 beside = "full-check of fix-glued-enter-at-utterance-end; failed before on 4 branches since 2026-10-23"
 branch = "fix/fix-glued-enter-at-utterance-end"
 
+
+[[frozen]]
+test = "voicepuncher::it voice_samples::needs_kws::needs_voice_samples::should_recognize_every_recorded_command_of_the_user"
+frozen = "2026-11-15"
+recipe = "full-check"
+stage = "e2e-smoke-voice"
+beside = "full-check of fix-glued-enter-at-utterance-end; service sync timeout 20s; failed before on 9 branches"
+branch = "fix/fix-glued-enter-at-utterance-end"
+
