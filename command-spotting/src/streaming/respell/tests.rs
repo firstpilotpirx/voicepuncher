@@ -126,6 +126,10 @@ fn should_read_each_glued_or_mangled_enter_from_the_history() {
         "интеринтер",
         "энтер-энтер",
         "энтеренторендрента",
+        "энтеррендер",
+        "интернтор",
+        "антернтер",
+        "китрентор",
     ];
     let singles = [
         "нтр",
@@ -136,6 +140,7 @@ fn should_read_each_glued_or_mangled_enter_from_the_history() {
         "нтэр",
         "тентер",
         "рентра",
+        "энт",
     ];
     for word in doubles {
         // When
@@ -151,7 +156,7 @@ fn should_read_each_glued_or_mangled_enter_from_the_history() {
 #[test]
 fn should_leave_ordinary_words_with_the_letters_of_enter() {
     // Given ordinary Russian words that hold the letters of "enter"
-    let text = "интересно интересная интерфейса интервью центр контракт контроллер линтры интернет";
+    let text = "интересно интересная интерфейса интервью центр контракт контроллер линтры интернет интернета";
     // When
     let respelled = respell(text);
     // Then
