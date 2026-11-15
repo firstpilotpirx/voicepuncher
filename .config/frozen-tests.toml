@@ -316,3 +316,12 @@ stage = "e2e-smoke-voice"
 beside = "full-check of fix-glued-enter-at-utterance-end; load average 147 from go tests of another session"
 branch = "fix/fix-glued-enter-at-utterance-end"
 
+
+[[frozen]]
+test = "scenario: English speech with a short pause after every word keeps every phrase"
+frozen = "2026-11-15"
+recipe = "full-check"
+stage = "e2e-seams-sample"
+beside = "full-check of fix-glued-enter-at-utterance-end; load average up to 180 from another session"
+branch = "fix/fix-glued-enter-at-utterance-end"
+
