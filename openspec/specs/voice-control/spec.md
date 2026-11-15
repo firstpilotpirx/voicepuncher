@@ -706,7 +706,7 @@ The command spotting service SHALL run a voice gate over the audio and, from the
 - **THEN** the service reports "start dictation"
 
 ### Requirement: A command said in Russian sounds counts as the command
-With the streaming recognizer, a command word the Russian recognizer hears in Cyrillic ("стоп", "энтер", "клиар", "старт") SHALL count as the English command it sounds like. A word the Russian recognizer writes for "enter" said twice, glued into one word ("интернтер"), SHALL count as "enter enter": a doubled command, anywhere in an utterance, with no pause needed; a mangled word it writes for one "enter" ("нтр") SHALL count as "enter", in the places "enter" counts. These words are a fixed list from the user's command history, each a whole word, so an ordinary Russian word that holds the same letters ("интересно", "центр") SHALL stay speech.
+With the streaming recognizer, a command word the Russian recognizer hears in Cyrillic ("стоп", "энтер", "клиар", "старт") SHALL count as the English command it sounds like. A word the Russian recognizer writes for "enter" said twice, glued into one word ("интернтер"), SHALL count as "enter enter": a doubled command, anywhere in an utterance, with no pause needed; a mangled word it writes for one "enter" ("нтр") SHALL count as "enter", in the places "enter" counts. These words are a fixed list from the user's command history, each a whole word, so an ordinary Russian word that holds the same letters ("интересно", "центр") SHALL stay speech. A glued or cut word for "enter" found in the history is added to the list, unless it is an ordinary Russian word ("интернета").
 
 #### Scenario: A Russian-accented stop is heard as stop
 - **GIVEN** the command spotting service runs with the streaming recognizer
@@ -731,12 +731,12 @@ With the streaming recognizer, a command word the Russian recognizer hears in Cy
 - **THEN** the service reports "press enter" exactly once
 
 #### Scenario: Every glued or mangled enter from the history reads as the command
-- **GIVEN** the words the Russian recognizer wrote for "enter" and "enter enter" in the user's command history
+- **GIVEN** the words the Russian recognizer wrote for "enter" and "enter enter" in the user's command history, those of 2026-11-13 to 2026-11-15 included ("энтеррендер", "интернтор", "антернтер", "китрентор", "энт")
 - **WHEN** each word is read as the Russian recognizer's
 - **THEN** each glued double reads as "enter enter", the glued triple too, and each mangled single reads as "enter"
 
 #### Scenario: An ordinary Russian word with the letters of enter stays speech
-- **GIVEN** the ordinary Russian words that hold the letters of "enter" ("интересно", "интерфейса", "интервью", "центр", "контракт", "контроллер", "линтры")
+- **GIVEN** the ordinary Russian words that hold the letters of "enter" ("интересно", "интерфейса", "интервью", "центр", "контракт", "контроллер", "линтры", "интернета")
 - **WHEN** each word is read as the Russian recognizer's
 - **THEN** each stays the word it is and is no command
 
