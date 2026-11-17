@@ -15,11 +15,11 @@ use super::super::decoder::{Decoder, Decoding};
 use super::super::{samples_in, Recognizers};
 use super::{text_of, Utterance, Wait, CLOSE_SILENCE_SECS, LEAD_SECS};
 
-/// How much speech before its end each second look decodes. Of the five fast enters the
-/// running decode missed or nearly missed (2026-11-16..17), 0.8 s hears all, 1.0 s four, 0.6 s three and
-/// 0.9 s four: a longer window lets the words before "enter" pull the models off it, a shorter
-/// one cuts the word before it. Both windows are looked at, so one heard is enough.
-const WINDOWS_SECS: [f32; 2] = [0.8, 1.0];
+/// How much speech before its end the second look decodes. Of the five fast enters of
+/// 2026-11-16..17, 0.8 s hears all, 1.0 s and 0.9 s four, 0.6 s three: a longer window lets
+/// the words before "enter" pull the models off it, a shorter one cuts the word before it.
+/// One window: each one more is another decode of every utterance without a command.
+const WINDOWS_SECS: [f32; 1] = [0.8];
 /// How much past the gate's speech end the second look still takes: the gate stops hearing a
 /// quiet word before its last sound.
 const PAST_END_SECS: f32 = 0.1;

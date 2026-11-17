@@ -293,9 +293,9 @@ fn should_continue_the_utterance_when_speech_returns_within_the_tail() {
     let events = session.accept(&audio);
     // Then
     assert_eq!((count(&events, true), count(&events, false)), (1, 1));
-    // One utterance: its stream, and one per window of its second look once it closed.
+    // One utterance: its stream, and its second look's once it closed.
     let streams = en.streams.load(Ordering::SeqCst);
-    assert!(matches!(streams, 1 | 3), "{streams} streams");
+    assert!(matches!(streams, 1 | 2), "{streams} streams");
 }
 
 #[test]
