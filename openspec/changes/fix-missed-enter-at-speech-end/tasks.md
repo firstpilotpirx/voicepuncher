@@ -1,8 +1,8 @@
 ## 1. A last "энтер…" word counts
 
-- [ ] 1.1 Red: unit tests in `command-spotting/src/streaming/words.rs`: the Russian text "там отмечать энтерф" reads its last word as "enter"; "энтерф там отмечать", "интересно" and "интерфейс" at the end stay speech; `just test-one` fails
-- [ ] 1.2 Green: `respell_last_word` in `command-spotting/src/streaming/respell/`, used by `timed_words` for the last word of a respelled recognizer; the same `just test-one` passes
-- [ ] 1.3 `just test` and commit
+- [x] 1.1 Red: unit tests in `command-spotting/src/streaming/words.rs`: the Russian text "там отмечать энтерф" reads its last word as "enter"; "энтерф там отмечать", "интересно" and "интерфейс" at the end stay speech; `just test-one` fails
+- [x] 1.2 Green: `respell_last_word` in `command-spotting/src/streaming/respell/`, used by `timed_words` for the last word of a respelled recognizer; the same `just test-one` passes
+- [x] 1.3 `just test` and commit
 
 ## 2. A trailing command with a repeated word after it is not pasted
 
