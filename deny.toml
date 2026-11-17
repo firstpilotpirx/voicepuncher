@@ -7,6 +7,11 @@ all-features = true
 
 [advisories]
 version = 2
+ignore = [
+    # humantime: unmaintained since chrono is (2026-11); no safe upgrade exists, and it reaches
+    # only the test harness through cucumber, never the app or a service (the user's decision)
+    { id = "RUSTSEC-2026-0542", reason = "test-only via cucumber; no upgrade available" },
+]
 
 [licenses]
 version = 2
