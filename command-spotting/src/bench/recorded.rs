@@ -143,9 +143,9 @@ pub fn recorded_clips(voice_samples: &Path) -> Result<Vec<Clip>> {
     Ok(clips)
 }
 
-/// The utterances of the user's command history whose fast "enter", glued to the last word,
-/// the running decode missed (`glued-enters/*.wav` in `voice_samples`), each labelled "enter"
-/// and listening as a session without a dictation; named by the file's stem, in its order.
+/// The user's utterances whose fast glued "enter" the running decode missed.
+///
+/// Read from `glued-enters/*.wav` in `voice_samples`, each labelled "enter" and listening as a session without a dictation; named by the file's stem, in its order.
 pub fn glued_enter_clips(voice_samples: &Path) -> Result<Vec<Clip>> {
     let dir = voice_samples.join("glued-enters");
     let entries =

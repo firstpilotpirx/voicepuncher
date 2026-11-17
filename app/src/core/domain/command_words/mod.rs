@@ -60,8 +60,9 @@ fn says(words: &[Word], form: &[&str]) -> bool {
     words.len() == form.len() && words.iter().zip(form).all(|(w, f)| w.text == *f)
 }
 
-/// Removes command words that end `text` ("…on Friday. Stop." → "…on Friday."): one
-/// command, a doubled one or a chain; also when a repeat of the words before the command
+/// Removes command words that end `text` ("…on Friday. Stop." → "…on Friday.").
+///
+/// One command, a doubled one or a chain; also when a repeat of the words before the command
 /// follows it ("…вообще? Enter! вообще."), as the last chunk heard them again.
 pub fn without_trailing_command(text: &str) -> String {
     let words = words(text);

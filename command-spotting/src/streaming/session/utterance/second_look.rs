@@ -16,7 +16,7 @@ use super::super::{samples_in, Recognizers};
 use super::{text_of, Utterance, Wait, CLOSE_SILENCE_SECS, LEAD_SECS};
 
 /// How much speech before its end each second look decodes. Of the five fast enters the
-/// running decode missed (2026-11-16..17), 0.8 s hears all, 1.0 s four, 0.6 s three and
+/// running decode missed or nearly missed (2026-11-16..17), 0.8 s hears all, 1.0 s four, 0.6 s three and
 /// 0.9 s four: a longer window lets the words before "enter" pull the models off it, a shorter
 /// one cuts the word before it. Both windows are looked at, so one heard is enough.
 const WINDOWS_SECS: [f32; 2] = [0.8, 1.0];
@@ -197,7 +197,7 @@ impl Look {
     /// `self`, unless `look` already ended.
     fn or(self, look: Self) -> Self {
         match look {
-            Look::Found(..) => look,
+            Self::Found(..) => look,
             _ => self,
         }
     }

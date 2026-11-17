@@ -168,8 +168,9 @@ const ENTER_OPENING: &[Letter] = &[
     ("р", Once),
 ];
 
-/// The English words the last word of an utterance sounds like: as `respell_word`, and "enter"
-/// for a word that opens with the sounds of "энтер" and goes on with letters no command reads
+/// The English words the last word of an utterance sounds like.
+///
+/// As `respell_word`, and "enter" for a word that opens with the sounds of "энтер" and goes on with letters no command reads
 /// ("энтерф"): the Russian recognizer's fragment of a fast "enter" ending the speech.
 pub fn respell_last_word(word: &str) -> Option<Vec<&'static str>> {
     respell_word(word).or_else(|| {
