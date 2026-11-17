@@ -18,7 +18,11 @@ pub fn spoken_by(voice: Option<&str>, words: &str) -> Vec<f32> {
 
 /// The user's recorded session `session` of `voice_samples`, 16 kHz mono.
 pub fn recorded_session(voice_samples: &str, session: &str) -> Vec<f32> {
-    let path = Path::new(voice_samples).join(format!("{session}.wav"));
+    recorded_wav(&Path::new(voice_samples).join(format!("{session}.wav")))
+}
+
+/// The samples of the 16 kHz recording at `path`.
+pub fn recorded_wav(path: &Path) -> Vec<f32> {
     hound::WavReader::open(path)
         .expect("the recording opens")
         .samples::<i16>()

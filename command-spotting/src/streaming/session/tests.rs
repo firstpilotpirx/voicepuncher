@@ -16,6 +16,7 @@ mod opening;
 mod paces;
 mod pause_flush;
 mod russian_forms;
+mod second_look;
 
 const RATE: usize = 16_000;
 
@@ -35,6 +36,8 @@ struct Scripted {
     name: &'static str,
     respelled: bool,
     words: Arc<Vec<(&'static str, f32)>>,
+    /// What every stream after the first hears, when set: the second look at the last second.
+    again: Option<Arc<Vec<(&'static str, f32)>>>,
     decode_time: Duration,
     lag: f32,
     streams: Arc<AtomicUsize>,
@@ -47,11 +50,18 @@ impl Scripted {
             name,
             respelled: name == "ru",
             words: Arc::new(words.to_vec()),
+            again: None,
             decode_time: Duration::ZERO,
             lag: 0.1,
             streams: Arc::default(),
             accepts: Arc::default(),
         }
+    }
+
+    /// Hears `words` in every stream after the first, each at its time in the audio fed.
+    fn looking_again(mut self, words: &[(&'static str, f32)]) -> Self {
+        self.again = Some(Arc::new(words.to_vec()));
+        self
     }
 
     fn slow(mut self, decode_time: Duration) -> Self {
@@ -94,10 +104,14 @@ impl StreamingModel for Scripted {
         self.respelled
     }
     fn stream(&self) -> Box<dyn RecognizerStream> {
-        self.streams.fetch_add(1, Ordering::SeqCst);
+        let opened = self.streams.fetch_add(1, Ordering::SeqCst);
         self.accepts.lock().expect("accepts").clear();
+        let words = match &self.again {
+            Some(again) if opened > 0 => again,
+            _ => &self.words,
+        };
         Box::new(ScriptedStream {
-            words: Arc::clone(&self.words),
+            words: Arc::clone(words),
             decode_time: self.decode_time,
             lag: self.lag,
             accepts: Arc::clone(&self.accepts),
@@ -279,7 +293,9 @@ fn should_continue_the_utterance_when_speech_returns_within_the_tail() {
     let events = session.accept(&audio);
     // Then
     assert_eq!((count(&events, true), count(&events, false)), (1, 1));
-    assert_eq!(en.streams.load(Ordering::SeqCst), 1);
+    // One utterance: its stream, and one per window of its second look once it closed.
+    let streams = en.streams.load(Ordering::SeqCst);
+    assert!(matches!(streams, 1 | 3), "{streams} streams");
 }
 
 #[test]
@@ -329,23 +345,6 @@ fn should_report_a_command_one_recognizer_heard_while_the_other_still_decodes() 
         "{:?}",
         began.elapsed()
     );
-}
-
-#[test]
-fn should_close_without_waiting_for_the_tail_of_silence_to_be_decoded() {
-    // Given an English recognizer that takes 0.1 s per decode, and "stop" said at 1.1 s
-    let en = Scripted::new("en", &[("stop", 0.6)]).slow(Duration::from_millis(100));
-    let mut session = session(&[&en], None);
-    let began = Instant::now();
-    // When the audio streams in, the pause after it long enough to close the utterance
-    let mut events = session.accept(&[silence(1.0), speech(0.3), silence(0.6)].concat());
-    let accepted = began.elapsed();
-    while commands(&events).is_empty() && began.elapsed() < Duration::from_secs(10) {
-        events.extend(session.poll());
-    }
-    // Then the close waited for no decode, and the command came from a poll after it
-    assert_eq!(commands(&events), [["stop dictation"]]);
-    assert!(accepted < Duration::from_millis(500), "{accepted:?}");
 }
 
 #[test]

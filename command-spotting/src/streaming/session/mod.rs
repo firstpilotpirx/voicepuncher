@@ -47,7 +47,7 @@ pub struct SessionCfg<'a> {
 }
 
 /// The recognizers an utterance opens in, and how their threads decode.
-struct Recognizers<'a> {
+pub(super) struct Recognizers<'a> {
     models: Vec<&'a dyn StreamingModel>,
     decoding: Decoding,
 }
@@ -156,6 +156,7 @@ impl<'a> Session<'a> {
         let mut events = Vec::new();
         for utterance in &mut self.closing {
             events.extend(utterance.collect(&self.matcher, now, wait));
+            events.extend(utterance.look_again(&self.matcher, &self.recognizers, now, wait));
         }
         let (finished, closing): (Vec<Utterance>, Vec<Utterance>) =
             self.closing.drain(..).partition(Utterance::finished);

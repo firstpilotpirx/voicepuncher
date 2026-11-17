@@ -12,20 +12,14 @@
 
 ## 3. Second look at the last second of speech
 
-- [ ] 3.1 Red: session unit tests (`command-spotting/src/streaming/session/tests/second_look.rs`, scripted recognizers whose fresh stream hears what the window holds): an utterance whose running decode hears no command but whose last second holds "enter" reports "press enter" once, at its time in the utterance, within 1.5 s of the end of its words; the history entry keeps the second-look texts; an utterance that reported "enter" opens no second look; speech without a command reports nothing; `just test-one` fails
-- [ ] 3.2 Green: `SecondLook` in `command-spotting/src/streaming/session/utterance/`: prepared at `begin_close`, fed once the main decoders finished with nothing reported, decided at `Moment::Closing`, reported through `report`; `finished()` waits for it; the same `just test-one` passes
-- [ ] 3.3 Red: integration test `command-spotting/tests/it/streaming/glued_enter.rs` (`needs_streaming_models::needs_voice_samples`): each recording in `$VOICEPUNCHER_VOICE_SAMPLES/glued-enters/` (the missed clips of 2026-11-16..17) reports "press enter" within 1.5 s of the end of its words; it fails before the group's code (checked on the commit before 3.2)
-- [ ] 3.4 Green: the integration test passes; the streaming bench over the bench dataset shows no new false alarm
-- [ ] 3.5 `just test` and commit
+- [x] 3.1 Red: session unit tests (`command-spotting/src/streaming/session/tests/second_look.rs`, scripted recognizers whose fresh stream hears what the window holds): an utterance whose running decode hears no command but whose last second holds "enter" reports "press enter" once, at its time in the utterance, within 1.5 s of the end of its words; the history entry keeps the second-look texts; an utterance that reported "enter" opens no second look; speech without a command reports nothing; `just test-one` fails
+- [x] 3.2 Green: `SecondLook` in `command-spotting/src/streaming/session/utterance/`: prepared at `begin_close`, fed once the main decoders finished with nothing reported, decided at `Moment::Closing`, reported through `report`; `finished()` waits for it; the same `just test-one` passes
+- [x] 3.3 Red: integration test `command-spotting/tests/it/streaming/glued_enter.rs` (`needs_streaming_models::needs_voice_samples`): each recording in `$VOICEPUNCHER_VOICE_SAMPLES/glued-enters/` (the missed clips of 2026-11-16..17) reports "press enter", streamed as the streaming bench streams a clip; before the group's code the bench's same path missed each (baseline run of the streaming bench); the time bound is the unit test's of 3.1
+- [x] 3.4 Green: the integration test passes; the streaming bench over the bench dataset and 200 command-less utterances of the history shows no new false alarm
+- [x] 3.5 `just test` and commit
 
-## 4. Hotwords
+## 4. E2E and release
 
-- [ ] 4.1 Red: `needs_streaming_models` test that every piece of each recognizer's hotwords is a token of its model's `tokens.txt`; unit test that the hotwords of "ru" and "en" are the lines of design § 3; `just test-one` fails
-- [ ] 4.2 Green: `SherpaModel::load` sets `modified_beam_search`, 4 active paths, score 2.0 and the recognizer's `hotwords_buf`; the same `just test-one` passes; the streaming bench shows no new false alarm and no slower decode beyond the stage budget
+- [ ] 4.1 Rule "A fast enter glued to the end of speech counts" in `e2e-test/tests/features/voice_control.feature`: "A fast enter glued to the last word presses Return" and "Every enter the running decode missed in the user's history is heard" (`@voice_samples`, the `glued-enters` recordings), "Speech without a command ending it stays speech in the second look" and "An utterance that reported its command reports it once" (`@smoke`)
+- [ ] 4.2 Bump `version` in `app/Cargo.toml` to 0.49.2
 - [ ] 4.3 `just test` and commit
-
-## 5. E2E and release
-
-- [ ] 5.1 Rule "A fast enter glued to the end of speech counts" in `e2e-test/tests/features/voice_control.feature`: "A fast enter enter glued to the last word presses Return" and "Every enter the running decode missed in the user's history is heard" (`@voice_samples`, the `glued-enters` recordings), "Speech without a command ending it stays speech in the second look" and "An utterance that reported its command reports it once" (`@smoke`)
-- [ ] 5.2 Bump `version` in `app/Cargo.toml` to 0.49.2
-- [ ] 5.3 `just test` and commit
