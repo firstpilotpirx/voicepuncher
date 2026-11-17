@@ -1,6 +1,6 @@
 ## Why
 
-The user still has to say "энтер" twice too often (app 0.49.1, after `fix-glued-enter-at-utterance-end`). In the command history of 2026-11-16..17 about 190 enters worked, and in 5 utterances Whisper hears an "enter" at the very end that command spotting never reported:
+The user still has to say "энтер" twice too often (app 0.49.1, after `fix-glued-enter-at-utterance-end`). In the command history of 2026-11-16..17 about 190 enters worked, and in 4 utterances Whisper hears an "enter" at the very end that command spotting never reported:
 
 | Clip (`~/.voicepuncher/command-history/`) | Whisper hears | Russian recognizer | English recognizer |
 |---|---|---|---|
@@ -19,7 +19,7 @@ Each "enter" is fast (0.3–0.45 s) and glued to the last word. The Russian mode
 
 Current stage: PoC. Target stage: PoC.
 Scope: command spotting at the end of an utterance; the trailing command words of a dictation's text.
-Acceptance bar: the five clips above report "press enter" in the streaming bench (or the merged text has no "Enter"); the ordinary-words tests stay green; `just check` passes.
+Acceptance bar: the four clips above, and one fast glued "enter" of the same days that worked live (five clips), report "press enter" in the streaming bench (or the merged text has no "Enter"); the ordinary-words tests stay green; `just check` passes.
 Out of scope: hotwords (decoder biasing towards "enter": measured, it heard no more of the bench's commands, broke two command chains and cost 18 % more decode time; design § 3); other commands' accuracy; the cut point of a stopped dictation (`fix-lost-words-before-voice-commands`); "интер…" prefixes ("интересно", "интернет" are ordinary words); a Whisper fallback.
 Interface: none.
 

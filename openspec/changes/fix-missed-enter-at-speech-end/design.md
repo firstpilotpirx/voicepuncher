@@ -1,8 +1,8 @@
 ## Context
 
-Command spotting runs two streaming recognizers (English Nemotron 0.6B, Russian small zipformer) per utterance behind a Silero gate (`command-spotting/src/streaming/session/`). An utterance closes after 0.3 s of silence; both streams then get 1 s of silence and `input_finished`, and the last decode is decided at `Moment::Closing`. The five misses of 2026-11-16..17 (proposal) share one shape: a fast "enter" glued to the last word, at the end of the utterance. Replaying them through `streaming-bench`:
+Command spotting runs two streaming recognizers (English Nemotron 0.6B, Russian small zipformer) per utterance behind a Silero gate (`command-spotting/src/streaming/session/`). An utterance closes after 0.3 s of silence; both streams then get 1 s of silence and `input_finished`, and the last decode is decided at `Moment::Closing`. The four misses of 2026-11-16..17 (proposal) and one fast enter of the same days that worked live share one shape: a fast "enter" glued to the last word, at the end of the utterance. Replaying them through `streaming-bench`:
 
-| Experiment | Misses heard (of 5) |
+| Experiment | Clips heard (of 5: 4 misses, 1 that worked live) |
 |---|---|
 | as today | 1 (only the clip that worked live) |
 | hotwords, `modified_beam_search`, score 1.5–5 | 2 more |
@@ -11,7 +11,7 @@ Command spotting runs two streaming recognizers (English Nemotron 0.6B, Russian 
 
 ## Goals / Non-Goals
 
-**Goals:** report the fast trailing "enter" in each of the five clips; keep every ordinary-word test green; keep the delay of a command the running decode hears unchanged.
+**Goals:** report the fast trailing "enter" in each of the five clips (4 misses, 1 that worked live); keep every ordinary-word test green; keep the delay of a command the running decode hears unchanged.
 
 **Non-Goals:** a Whisper fallback (the user rejected it for command spotting); the cut point of a stopped dictation (`fix-lost-words-before-voice-commands`); a bigger Russian model.
 
@@ -19,7 +19,7 @@ Command spotting runs two streaming recognizers (English Nemotron 0.6B, Russian 
 
 ### 1. Second look at the last second of speech
 
-Once every main decoder of a closing utterance finished and the utterance sent no report, the session's `collect_closing` starts its second look (`Utterance::look_again`, `session/utterance/second_look.rs`): per window and per recognizer a fresh stream on its own `Decoder` thread, fed lead silence (`LEAD_SECS`), the utterance's own audio from `speech_end - window` (not before its start) to `speech_end + 0.1 s`, `CLOSE_SILENCE_SECS` of silence, then `finish`. Two windows, 0.8 s and 1.0 s: of the five missed enters 0.8 s hears all, 1.0 s four, 0.6 s three, 0.9 s four, so one alone is fragile. When every glance finished, each one's words (times mapped back to the stream: window start + time − lead) are decided at `Moment::Closing`; the first finding that is "press enter" alone goes out through the utterance's `report`, unless the next utterance owns it (`handover`). Only "enter": the bug is about it, and a "stop" a window of Russian speech is misheard as would end a dictation. `finished()` waits for the second look; an utterance that sent a report drops it at once. The command history entry keeps each recognizer's second-look text beside its own (named `<recognizer> second look <window> s`), so an entry whose command only the second look heard is not counted as missed.
+Once every main decoder of a closing utterance finished and the utterance sent no report, the session's `collect_closing` starts its second look (`Utterance::look_again`, `session/utterance/second_look.rs`): per window and per recognizer a fresh stream on its own `Decoder` thread, fed lead silence (`LEAD_SECS`), the utterance's own audio from `speech_end - window` (not before its start) to `speech_end + 0.1 s`, `CLOSE_SILENCE_SECS` of silence, then `finish`. Two windows, 0.8 s and 1.0 s: of the five clips 0.8 s hears all, 1.0 s four, 0.6 s three, 0.9 s four, so one alone is fragile. When every glance finished, each one's words (times mapped back to the stream: window start + time − lead) are decided at `Moment::Closing`; the first finding that is "press enter" alone goes out through the utterance's `report`, unless the next utterance owns it (`handover`). Only "enter": the bug is about it, and a "stop" a window of Russian speech is misheard as would end a dictation. `finished()` waits for the second look; an utterance that sent a report drops it at once. The command history entry keeps each recognizer's second-look text beside its own (named `<recognizer> second look <window> s`), so an entry whose command only the second look heard is not counted as missed.
 
 *Why lazy:* a command the running decode heard keeps its delay and costs no extra decode; only an utterance without a command pays about 0.1–0.4 s more before it is done. *Why short windows:* 1.5 s and 2.0 s heard 2 of 5: a longer window lets the preceding words pull the model off again. *Alternative rejected:* decoding the window at every close in parallel — lower delay for a miss, but an extra decode of every utterance, all day.
 
@@ -29,7 +29,7 @@ Once every main decoder of a closing utterance finished and the utterance sent n
 
 ### 3. No hotwords
 
-The user asked for hotwords too (sherpa's contextual biasing: `modified_beam_search`, 4 active paths, score 2.0, `▁э н тер` for Russian, `▁E n ter` and `▁ent er` for English). Measured on the bench dataset at the fast pace, they heard 109 of 121 clips against 110 without, broke two command chains of session 4 ("stop enter start" heard with two extra commands, "cancel enter start" without its enter), and decoded 18 % slower (0.773 against 0.654 s per second of audio). Alone they heard 2 of the 5 missed enters; the second look hears all 5 without them. So they are left out: the decoding stays `greedy_search`.
+The user asked for hotwords too (sherpa's contextual biasing: `modified_beam_search`, 4 active paths, score 2.0, `▁э н тер` for Russian, `▁E n ter` and `▁ent er` for English). Measured on the bench dataset at the fast pace, they heard 109 of 121 clips against 110 without, broke two command chains of session 4 ("stop enter start" heard with two extra commands, "cancel enter start" without its enter), and decoded 18 % slower (0.773 against 0.654 s per second of audio). Alone they heard 2 of the 4 missed enters; the second look hears all 5 clips without them. So they are left out: the decoding stays `greedy_search`.
 
 ### 4. A command word with a repeated word after it
 
@@ -62,7 +62,7 @@ macOS `say` cannot be made to glue a fast "enter" to a word as the user does; th
 
 - [The second look reports a command in speech that has none] → it decides with the same placement rules at `Moment::Closing`, only when nothing was reported; the ordinary-words scenarios and the bench's false alarms are checked.
 - [The second look decodes up to 1.4 s of audio four times after every utterance without a command] → only after the close, on the recognizers' threads; the streaming bench's processing time and the stage budgets of `check` show its cost.
-- [A missed enter now comes about 0.1–0.4 s after the close, 0.3 s after the speech] → acceptable: before, it never came; the spec bounds it at 1.5 s from the end of its words on an idle machine, which the unit test of 3.1 and the integration test of 3.3 check. The bounds of the running decode (0.6 s idle, 1.2 s busy) stay for every command it hears.
+- [A missed enter now comes about 0.1–0.4 s after the close, 0.3 s after the speech] → acceptable: before, it never came; the spec bounds it at 1.5 s from the end of its words on an idle machine, which the unit test of 3.1 checks. The bounds of the running decode (0.6 s idle, 1.2 s busy) stay for every command it hears.
 
 ## Migration Plan
 
