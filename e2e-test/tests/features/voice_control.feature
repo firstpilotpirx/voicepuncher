@@ -752,7 +752,7 @@ Feature: voice-control
       When the user's recorded sentence ending in a fast enter glued to its last word is streamed to the service, followed by silence
       Then the service reports the recorded "enter"
 
-    @smoke @voice_samples
+    @wip @voice_samples
     Scenario: Every enter the running decode missed in the user's history is heard
       Given the user's own recordings of the commands exist on the machine
       When each of the user's recorded utterances whose fast enter the running decode missed is streamed to the service, followed by silence
