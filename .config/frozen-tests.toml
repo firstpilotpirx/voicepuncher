@@ -334,3 +334,12 @@ stage = "e2e-smoke-voice"
 beside = "full-check model phase alone; failed before on 6 other branches (2026-10-27..11-09)"
 branch = "fix/fix-missed-enter-at-speech-end"
 
+
+[[frozen]]
+test = "voicepuncher::it chunked_transcription::needs_stt::should_merge_chunked_speech_without_repeating_or_dropping_a_phrase"
+frozen = "2026-11-17"
+recipe = "full-check"
+stage = "e2e-seams-sample"
+beside = "full-check model phase on fix-missed-enter-at-speech-end; whisper copy 38084 sent no answer in 9094 ms; the branch touches no speech recognition code"
+branch = "fix/fix-missed-enter-at-speech-end"
+
