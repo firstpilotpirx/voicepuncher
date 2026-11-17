@@ -38,3 +38,15 @@ fn should_report_a_mangled_enter_the_russian_recognizer_writes_alone() {
     // Then
     assert_eq!(commands(&events), [["press enter"]]);
 }
+
+#[test]
+fn should_report_a_last_word_opening_with_the_sounds_of_enter_as_enter() {
+    // Given a sentence whose last word the Russian recognizer writes "энтерф", while the
+    // English recognizer hears nothing
+    let en = Scripted::new("en", &[]);
+    let ru = Scripted::new("ru", &[("там", 0.6), ("отмечать", 0.9), ("энтерф", 1.2)]);
+    // When
+    let events = utterance_events(&[&en, &ru], 1.4);
+    // Then
+    assert_eq!(commands(&events), [["press enter"]]);
+}

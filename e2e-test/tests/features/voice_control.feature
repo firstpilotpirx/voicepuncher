@@ -744,6 +744,32 @@ Feature: voice-control
       When an app streams "привет" said by a Russian voice followed by silence
       Then the streaming recognizer reports no command
 
+  Rule: A fast enter glued to the end of speech counts
+
+    @smoke @voice_samples
+    Scenario: A fast enter glued to the last word presses Return
+      Given the user's own recordings of the commands exist on the machine
+      When the user's recorded sentence ending in a fast enter glued to its last word is streamed to the service, followed by silence
+      Then the service reports the recorded "enter"
+
+    @wip @voice_samples
+    Scenario: Every enter the running decode missed in the user's history is heard
+      Given the user's own recordings of the commands exist on the machine
+      When each of the user's recorded utterances whose fast enter the running decode missed is streamed to the service, followed by silence
+      Then the service reports the recorded "enter"
+
+    @smoke
+    Scenario: Speech without a command ending it stays speech in the second look
+      Given the command spotting service runs with the streaming recognizer
+      When an app streams "это очень интересно" said by a Russian voice followed by silence
+      Then the streaming recognizer reports no command
+
+    @smoke
+    Scenario: An utterance that reported its command reports it once
+      Given the command spotting service runs with the streaming recognizer
+      When an app streams "okay, enter" followed by silence
+      Then the streaming recognizer reports "press enter" exactly once
+
   Rule: The first recognizer to hear a command reports it once
 
     @smoke

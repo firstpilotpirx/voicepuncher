@@ -143,6 +143,38 @@ pub fn recorded_clips(voice_samples: &Path) -> Result<Vec<Clip>> {
     Ok(clips)
 }
 
+/// The user's utterances whose fast glued "enter" the running decode missed.
+///
+/// Read from `glued-enters/*.wav` in `voice_samples`, each labelled "enter" and listening as a session without a dictation; named by the file's stem, in its order.
+pub fn glued_enter_clips(voice_samples: &Path) -> Result<Vec<Clip>> {
+    let dir = voice_samples.join("glued-enters");
+    let entries =
+        std::fs::read_dir(&dir).with_context(|| format!("cannot read {}", dir.display()))?;
+    let mut paths: Vec<_> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "wav"))
+        .collect();
+    paths.sort();
+    paths
+        .iter()
+        .map(|path| {
+            Ok(Clip {
+                id: path
+                    .file_stem()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned(),
+                audio: read_wav(path)?,
+                label: vec!["enter".to_owned()],
+                listening: STANDBY.iter().map(|p| (*p).to_owned()).collect(),
+                word_end: None,
+                words: String::new(),
+            })
+        })
+        .collect()
+}
+
 /// The rows of a session folder: `forms.jsonl`, else `manifest.jsonl`.
 fn rows(folder: &Path) -> Result<Vec<Row>> {
     let forms = folder.join("forms.jsonl");

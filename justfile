@@ -438,7 +438,7 @@ _e2e-seams profile="e2e-seams": _require-nextest _require-models _build _dev-too
     {{just_executable()}} _start-model-servers-for-e2e
     export VOICEPUNCHER_TRANSCRIPTION_URL="{{stt_url}}"
     filter=$({{dev_tools}} filter it "{{e2e_seams_modules}}")
-    cargo nextest run --profile {{profile}} {{e2e_seams_tests}} -E "$filter" ${VOICEPUNCHER_RERUN_FILTER:+--no-tests=pass} {{fail_fast}}
+    cargo nextest run --profile {{profile}} {{e2e_seams_tests}} -E "$filter" --no-tests=pass {{fail_fast}} # the frozen list may leave out every seam test
     cargo nextest run --profile {{profile}} {{cucumber_e2e_tests}} --no-capture {{rerun_filter}} {{fail_fast}}
 
 _e2e-seams-sample:

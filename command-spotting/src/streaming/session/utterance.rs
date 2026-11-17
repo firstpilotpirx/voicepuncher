@@ -11,7 +11,10 @@ use super::decoder::{Decoder, Decoding, Update};
 use super::reports::Reports;
 use super::{samples_in, seconds};
 
+mod second_look;
 mod words;
+
+use second_look::Look;
 
 /// The longest audio an entry of the command history keeps.
 const MAX_AUDIO_SECS: f32 = 30.0;
@@ -47,6 +50,7 @@ pub struct Utterance {
     synced: bool,
     reports: Reports,
     trace: Trace,
+    look: Look,
 }
 
 /// What an utterance left once every recognizer finished it.
@@ -91,6 +95,7 @@ impl Utterance {
             synced: false,
             reports: Reports::default(),
             trace: Trace::new(start, onset, &names),
+            look: Look::default(),
         };
         utterance.silence(LEAD_SECS, onset);
         utterance.feed(replay, onset);
@@ -313,9 +318,10 @@ impl Utterance {
         self.decoders.iter().all(Decoder::finished)
     }
 
-    /// Whether every recognizer decoded all of it and everything decoded is reported.
+    /// Whether every recognizer decoded all of it, everything decoded is reported and its
+    /// second look ended.
     pub fn finished(&self) -> bool {
-        self.decoded_all() && self.reports.held.is_empty()
+        self.decoded_all() && self.reports.held.is_empty() && self.looked()
     }
 
     /// What it left, once every recognizer finished it.
@@ -326,6 +332,7 @@ impl Utterance {
                 decide(matcher, &words, Moment::Closing, &Reported::default())
                     .map(|found| (r, found))
             })
+            .chain(self.found_again())
             .collect();
         Closed { trace: self.trace, heard, audio: self.audio }
     }

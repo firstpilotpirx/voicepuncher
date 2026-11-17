@@ -159,6 +159,33 @@ pub fn respell_word(word: &str) -> Option<Vec<&'static str>> {
     alias(&letters.iter().collect::<String>()).or_else(|| split(&letters))
 }
 
+/// The sounds of "энтер" opening a word: only with "э", as "интер…" opens many ordinary words.
+const ENTER_OPENING: &[Letter] = &[
+    ("э", Once),
+    ("н", Once),
+    ("тд", Once),
+    ("еэоа", Maybe),
+    ("р", Once),
+];
+
+/// The English words the last word of an utterance sounds like.
+///
+/// As `respell_word`, and "enter" for a word that opens with the sounds of "энтер" and goes on with letters no command reads
+/// ("энтерф"): the Russian recognizer's fragment of a fast "enter" ending the speech.
+pub fn respell_last_word(word: &str) -> Option<Vec<&'static str>> {
+    respell_word(word).or_else(|| {
+        let letters: Vec<char> = word
+            .to_lowercase()
+            .chars()
+            .filter(|c| c.is_alphabetic())
+            .collect();
+        said(ENTER_OPENING, &letters)
+            .iter()
+            .any(|&end| end < letters.len())
+            .then(|| vec!["enter"])
+    })
+}
+
 /// The short forms the alias row for `word` reads it as: a word the Russian recognizer writes
 /// for a command said once or twice, listed whole in the voice commands' mishearings.
 fn alias(word: &str) -> Option<Vec<&'static str>> {

@@ -1,7 +1,7 @@
 //! The words a streaming recognizer heard so far, each with its times, from the tokens it
 //! decoded and the time it decoded each.
 
-use super::respell::respell_word;
+use super::respell::{respell_last_word, respell_word};
 
 /// A word heard, with its times in the audio.
 #[derive(Debug, Clone, PartialEq)]
@@ -17,7 +17,8 @@ const TOKEN_SECS: f32 = 0.1;
 /// The words of `tokens`, decoded at `times` seconds after `offset`.
 ///
 /// A token opening with a word boundary (`▁` or a space) starts a word. With `respelled`, a Cyrillic word of command
-/// sounds becomes its English words, sharing its time evenly.
+/// sounds becomes its English words, sharing its time evenly; the last word also reads as "enter"
+/// when it opens with the sounds of "энтер" (`respell_last_word`).
 pub fn timed_words(
     tokens: &[String],
     times: &[f32],
@@ -39,13 +40,24 @@ pub fn timed_words(
     }
     words.retain(|w| !w.text.is_empty());
     if respelled {
-        words = words.into_iter().flat_map(respell_timed).collect();
+        let last = words.pop();
+        words = words
+            .into_iter()
+            .flat_map(|w| respell_timed(w, respell_word))
+            .collect();
+        words.extend(
+            last.into_iter()
+                .flat_map(|w| respell_timed(w, respell_last_word)),
+        );
     }
     words
 }
 
-fn respell_timed(word: TimedWord) -> Vec<TimedWord> {
-    let Some(english) = respell_word(&word.text) else {
+fn respell_timed(
+    word: TimedWord,
+    respell: fn(&str) -> Option<Vec<&'static str>>,
+) -> Vec<TimedWord> {
+    let Some(english) = respell(&word.text) else {
         return vec![word];
     };
     let share = (word.end - word.start) / english.len() as f32;
@@ -123,5 +135,54 @@ mod tests {
         let words = timed_words(&tokens(&["▁сто", "▁рублей"]), &[1.0, 1.3], 0.0, true);
         // Then
         assert_eq!(texts(&words), ["сто", "рублей"]);
+    }
+
+    #[test]
+    fn should_read_a_last_russian_word_opening_with_the_sounds_of_enter_as_enter() {
+        // When
+        let words = timed_words(
+            &tokens(&["▁там", "▁отмеча", "ть", "▁эн", "тер", "ф"]),
+            &[1.0, 1.3, 1.5, 1.8, 1.9, 2.0],
+            0.0,
+            true,
+        );
+        // Then
+        assert_eq!(texts(&words), ["там", "отмечать", "enter"]);
+    }
+
+    #[test]
+    fn should_keep_a_word_opening_with_the_sounds_of_enter_inside_speech() {
+        // When
+        let words = timed_words(
+            &tokens(&["▁эн", "тер", "ф", "▁там", "▁отмечать"]),
+            &[1.0, 1.1, 1.2, 1.5, 1.8],
+            0.0,
+            true,
+        );
+        // Then
+        assert_eq!(texts(&words), ["энтерф", "там", "отмечать"]);
+    }
+
+    #[test]
+    fn should_keep_a_last_word_opening_with_inter() {
+        for word in ["интересно", "интерфейс", "интернет"] {
+            // When
+            let words = timed_words(
+                &tokens(&["▁это", &format!("▁{word}")]),
+                &[1.0, 1.3],
+                0.0,
+                true,
+            );
+            // Then
+            assert_eq!(texts(&words), ["это", word]);
+        }
+    }
+
+    #[test]
+    fn should_keep_a_last_english_word_opening_with_enter() {
+        // When
+        let words = timed_words(&tokens(&["▁the", "▁enterprise"]), &[1.0, 1.3], 0.0, false);
+        // Then
+        assert_eq!(texts(&words), ["the", "enterprise"]);
     }
 }

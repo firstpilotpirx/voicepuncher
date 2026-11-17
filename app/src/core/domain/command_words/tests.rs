@@ -134,3 +134,28 @@ fn should_remove_no_more_pastes_than_were_carried_out() {
         "One. Two."
     );
 }
+
+#[test]
+fn should_remove_a_trailing_command_followed_by_a_repeat_of_the_words_before_it() {
+    for (text, kept) in [
+        (
+            "Ее типа нет, что ли, вообще? Enter! вообще.",
+            "Ее типа нет, что ли, вообще?",
+        ),
+        ("We meet on Friday. Stop. on Friday.", "We meet on Friday."),
+        ("Встреча в пятницу энтер в пятницу", "Встреча в пятницу"),
+    ] {
+        assert_eq!(without_trailing_command(text), kept, "{text}");
+    }
+}
+
+#[test]
+fn should_keep_words_after_a_command_word_that_repeat_nothing() {
+    for text in [
+        "Press enter to continue.",
+        "We stop here. Then we go home.",
+        "Ее типа нет, что ли? Enter! Дальше.",
+    ] {
+        assert_eq!(without_trailing_command(text), text, "{text}");
+    }
+}

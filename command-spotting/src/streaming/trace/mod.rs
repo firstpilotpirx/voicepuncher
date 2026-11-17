@@ -70,6 +70,17 @@ impl Trace {
         }
     }
 
+    /// Adds a recognizer named `name`: the index its texts and reports go by.
+    pub fn add(&mut self, name: &str) -> usize {
+        self.recognizers.push(RecognizerTrace {
+            name: name.to_owned(),
+            texts: Vec::new(),
+            decode_ms: 0,
+            slowest_frame_ms: 0,
+        });
+        self.recognizers.len() - 1
+    }
+
     /// Recognizer `r` holds `text` at `at`; kept only when it changed.
     pub fn heard(&mut self, r: usize, at: f32, text: &str) {
         let texts = &mut self.recognizers[r].texts;

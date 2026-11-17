@@ -44,8 +44,11 @@ fn should_take_no_english_stop_heading_a_russian_sentence_that_goes_on() {
         "ru",
         &[("чтобы", 0.6), ("зайти", 0.9), ("в", 1.1), ("гетлаб", 1.3)],
     );
+    // WHY: replayed, so neither recognizer runs ahead of the other on a loaded machine.
+    let mut session = session_delivering(&[&en, &ru], Delivery::Replayed);
     // When
-    let events = utterance_events(&[&en, &ru], 1.5);
+    let mut events = session.accept(&[silence(1.0), speech(1.5), silence(1.0)].concat());
+    events.extend(session.sync(0));
     // Then
     assert_eq!(commands(&events), Vec::<Vec<String>>::new(), "{events:?}");
 }

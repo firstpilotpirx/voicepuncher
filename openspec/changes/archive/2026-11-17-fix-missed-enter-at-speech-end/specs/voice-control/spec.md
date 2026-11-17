@@ -1,12 +1,12 @@
 ## ADDED Requirements
 
 ### Requirement: A fast enter glued to the end of speech counts
-With the streaming recognizer, a fast "enter" glued to the last word of an utterance SHALL be reported as "press enter", also when the running decode missed it. An utterance that closes with no reported command SHALL have its last second of speech decoded again, alone; a command heard there SHALL be reported after the close, within 1.5 s of the end of its words on an idle machine. An utterance that reported a command SHALL report nothing more. Both recognizers SHALL be biased towards "enter".
+With the streaming recognizer, a fast "enter" glued to the last word of an utterance SHALL be reported as "press enter", also when the running decode missed it. An utterance that closes with no reported command SHALL have its last second of speech decoded again, alone; an "enter" heard there SHALL be reported after the close, within 1.5 s of the end of its words on an idle machine. An utterance that reported a command SHALL report nothing more.
 
-#### Scenario: A fast enter enter glued to the last word presses Return
+#### Scenario: A fast enter glued to the last word presses Return
 - **GIVEN** the command spotting service runs with the streaming recognizer
 - **AND** no dictation runs
-- **WHEN** the app streams the user's recorded sentence that ends in "enter, enter" said within half a second, glued to its last word, followed by silence
+- **WHEN** the app streams the user's recorded sentence whose last word is a fast "enter" glued to it ("там отмечать энтерф" to the Russian recognizer), followed by silence
 - **THEN** the service reports "press enter" exactly once
 
 #### Scenario: Every enter the running decode missed in the user's history is heard

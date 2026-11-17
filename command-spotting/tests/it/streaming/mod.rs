@@ -11,6 +11,7 @@ use voicepuncher_test_steps::required_env;
 
 use crate::common;
 
+mod glued_enter;
 mod long_dictation;
 mod quiet_start;
 

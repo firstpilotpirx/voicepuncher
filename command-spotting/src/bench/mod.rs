@@ -9,7 +9,7 @@ use serde::Deserialize;
 mod recorded;
 mod run;
 mod summary;
-pub use recorded::{recorded_clips, spans, Row, Span};
+pub use recorded::{glued_enter_clips, recorded_clips, spans, Row, Span};
 pub use run::{run_clip, Pace};
 pub use summary::{not_replayed, processing_per_second, report_tail, Outcome, Summary};
 
