@@ -15,13 +15,12 @@ Each "enter" is fast (0.3–0.45 s) and glued to the last word. The Russian mode
 
 - **Second look:** when an utterance closes, both recognizers also decode its last second of speech in fresh streams; when the utterance itself reported no command, a command heard there is reported.
 - **Any "энтер…" ending an utterance** is "enter": a last word that starts with the sounds of "энтер" ("энтерф", "энтервь") counts, not only the listed aliases.
-- **Hotwords:** both recognizers are biased towards "enter"/"энтер" (contextual biasing of the decoder).
 - **No "Enter" in the pasted text:** a dictation ended by a command drops the command words at its end even when a repeated word follows them.
 
 Current stage: PoC. Target stage: PoC.
 Scope: command spotting at the end of an utterance; the trailing command words of a dictation's text.
 Acceptance bar: the five clips above report "press enter" in the streaming bench (or the merged text has no "Enter"); the ordinary-words tests stay green; `just check` passes.
-Out of scope: other commands' accuracy; the cut point of a stopped dictation (`fix-lost-words-before-voice-commands`); "интер…" prefixes ("интересно", "интернет" are ordinary words); a Whisper fallback.
+Out of scope: hotwords (decoder biasing towards "enter": measured, it heard no more of the bench's commands, broke two command chains and cost 18 % more decode time; design § 3); other commands' accuracy; the cut point of a stopped dictation (`fix-lost-words-before-voice-commands`); "интер…" prefixes ("интересно", "интернет" are ordinary words); a Whisper fallback.
 Interface: none.
 
 ## Capabilities
@@ -32,7 +31,7 @@ Interface: none.
 
 ## Impact
 
-- `command-spotting/src/streaming/session/` (second look), `command-spotting/src/streaming/respell/` (prefix), `command-spotting/src/streaming/sherpa/` (hotwords), `app/src/core/domain/command_words/` (trailing words)
+- `command-spotting/src/streaming/session/` (second look), `command-spotting/src/streaming/respell/` (prefix), `app/src/core/domain/command_words/` (trailing words)
 
 ## Release
 

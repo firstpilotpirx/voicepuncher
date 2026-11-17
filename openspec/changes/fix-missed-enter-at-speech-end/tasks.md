@@ -20,6 +20,6 @@
 
 ## 4. E2E and release
 
-- [ ] 4.1 Rule "A fast enter glued to the end of speech counts" in `e2e-test/tests/features/voice_control.feature`: "A fast enter glued to the last word presses Return" and "Every enter the running decode missed in the user's history is heard" (`@voice_samples`, the `glued-enters` recordings), "Speech without a command ending it stays speech in the second look" and "An utterance that reported its command reports it once" (`@smoke`)
-- [ ] 4.2 Bump `version` in `app/Cargo.toml` to 0.49.2
-- [ ] 4.3 `just test` and commit
+- [x] 4.1 Rule "A fast enter glued to the end of speech counts" in `e2e-test/tests/features/voice_control.feature`: "A fast enter glued to the last word presses Return" and "Every enter the running decode missed in the user's history is heard" (`@voice_samples`, the `glued-enters` recordings), "Speech without a command ending it stays speech in the second look" and "An utterance that reported its command reports it once" (`@smoke`)
+- [x] 4.2 Bump `version` in `app/Cargo.toml` to 0.49.2
+- [x] 4.3 `just test` and commit

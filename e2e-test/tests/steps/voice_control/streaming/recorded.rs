@@ -6,7 +6,9 @@ use std::path::Path;
 use cucumber::{then, when};
 use voicepuncher::test_doubles::prelude::*;
 
-use voicepuncher_command_spotting::bench::{recorded_clips, run_clip, Clip, Outcome, Pace};
+use voicepuncher_command_spotting::bench::{
+    glued_enter_clips, recorded_clips, run_clip, Clip, Outcome, Pace,
+};
 
 use super::{run, shared, ENGINE_RUNS};
 use crate::steps::file_transcription::env;
@@ -167,4 +169,38 @@ fn reports_the_recorded(world: &mut E2eWorld, command: String) -> Result<()> {
         listed(outcomes)
     );
     Ok(())
+}
+
+/// The user's utterance whose last word, "энтерф" to the Russian recognizer, was a fast
+/// "enter" glued to it (command history, 2026-11-16).
+const GLUED_ENTER: &str = "2026-11-16T08-13-55.930Z-53022-6-227";
+
+/// The glued-enters recordings of the voice samples, or only the one named `id`.
+fn glued_enters(id: Option<&str>) -> Result<Vec<Clip>> {
+    let clips: Vec<Clip> = glued_enter_clips(Path::new(&env("VOICEPUNCHER_VOICE_SAMPLES")?))?
+        .into_iter()
+        .filter(|c| id.is_none_or(|id| c.id == id))
+        .collect();
+    ensure!(!clips.is_empty(), "no glued-enters recording {id:?}");
+    Ok(clips)
+}
+
+#[when("the user's recorded sentence ending in a fast enter glued to its last word is streamed to the service, followed by silence")]
+async fn recorded_glued_enter(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, |world| {
+        run(world).recorded = streamed(&glued_enters(Some(GLUED_ENTER))?, Pace::Fast)?;
+        Ok(())
+    })
+    .await
+}
+
+#[when("each of the user's recorded utterances whose fast enter the running decode missed is streamed to the service, followed by silence")]
+async fn recorded_missed_enters(world: &mut E2eWorld) -> Result<()> {
+    off_thread(world, |world| {
+        let clips = glued_enters(None)?;
+        ensure!(clips.len() >= 4, "{} glued-enters recordings", clips.len());
+        run(world).recorded = streamed(&clips, Pace::Fast)?;
+        Ok(())
+    })
+    .await
 }
