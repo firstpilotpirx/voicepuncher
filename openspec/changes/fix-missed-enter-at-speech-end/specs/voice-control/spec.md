@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: A fast enter glued to the end of speech counts
-With the streaming recognizer, an "enter" said fast and glued to the last word of an utterance SHALL be reported as "press enter", also when the recognizers' running decode of the utterance missed it. An utterance that closes without a reported command SHALL have the last second of its speech decoded again, alone, and a command heard there SHALL be reported after the utterance closes, within 1.5 s of the end of its words on an idle machine (the bounds of a command the running decode hears do not apply to it); an utterance that reported a command SHALL report nothing more. Both recognizers SHALL be biased towards "enter".
+With the streaming recognizer, a fast "enter" glued to the last word of an utterance SHALL be reported as "press enter", also when the running decode missed it. An utterance that closes with no reported command SHALL have its last second of speech decoded again, alone; a command heard there SHALL be reported after the close, within 1.5 s of the end of its words on an idle machine. An utterance that reported a command SHALL report nothing more. Both recognizers SHALL be biased towards "enter".
 
 #### Scenario: A fast enter enter glued to the last word presses Return
 - **GIVEN** the command spotting service runs with the streaming recognizer
