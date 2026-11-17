@@ -223,7 +223,18 @@ fn texts_timed(trace: &serde_json::Value) -> bool {
             .as_array()
             .is_some_and(|t| !t.is_empty() && t.iter().all(|t| t["at"].is_f64()))
     };
-    recognizers.len() == 2
+    // WHY: an utterance without a command also keeps its second look's texts, one per
+    // recognizer, beside the two running recognizers'.
+    let running = recognizers
+        .iter()
+        .filter(|r| {
+            !r["name"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("second look")
+        })
+        .count();
+    running == 2
         && recognizers.iter().all(|r| r["decode_ms"].is_u64())
         && recognizers.iter().any(timed)
 }
