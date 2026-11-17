@@ -61,9 +61,13 @@ fn says(words: &[Word], form: &[&str]) -> bool {
 }
 
 /// Removes command words that end `text` ("…on Friday. Stop." → "…on Friday."): one
-/// command, a doubled one or a chain.
+/// command, a doubled one or a chain; also when a repeat of the words before the command
+/// follows it ("…вообще? Enter! вообще."), as the last chunk heard them again.
 pub fn without_trailing_command(text: &str) -> String {
     let words = words(text);
+    if let Some(repeat) = repeat_after_command(&words) {
+        return without_trailing_command(&text[..words[repeat].start]);
+    }
     let kept = trailing_commands_start(&words);
     if kept == words.len() {
         return text.to_owned();
@@ -82,6 +86,24 @@ pub fn without_trailing_command(text: &str) -> String {
         Some(end) if !head.ends_with(SENTENCE_ENDS) && !head.is_empty() => format!("{head}{end}"),
         _ => head.to_owned(),
     }
+}
+
+/// The most words a repeat after a trailing command holds.
+const MAX_REPEAT: usize = 3;
+
+/// Where the repeat that ends `words` begins: 1 to `MAX_REPEAT` words that say again the words
+/// right before the command words they follow.
+fn repeat_after_command(words: &[Word]) -> Option<usize> {
+    (1..=MAX_REPEAT).find_map(|count| {
+        let repeat = words.len().checked_sub(count)?;
+        let commands = trailing_commands_start(&words[..repeat]);
+        let before = commands.checked_sub(count)?;
+        let same = words[before..commands]
+            .iter()
+            .zip(&words[repeat..])
+            .all(|(a, b)| a.text == b.text);
+        (commands < repeat && same).then_some(repeat)
+    })
 }
 
 /// Where the command words that end `words` begin: past the last word when none do.

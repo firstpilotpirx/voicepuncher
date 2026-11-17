@@ -6,9 +6,9 @@
 
 ## 2. A trailing command with a repeated word after it is not pasted
 
-- [ ] 2.1 Red: unit test in `app/src/core/domain/command_words/`: "Ее типа нет, что ли, вообще? Enter! вообще." without its trailing command is "Ее типа нет, что ли, вообще?"; a sentence whose words after a command word repeat nothing keeps them; `just test-one` fails
-- [ ] 2.2 Green: `without_trailing_command` also cuts at a command followed by a repeat (1–3 words) of the words right before it; the same `just test-one` passes
-- [ ] 2.3 `just test` and commit
+- [x] 2.1 Red: unit test in `app/src/core/domain/command_words/`: "Ее типа нет, что ли, вообще? Enter! вообще." without its trailing command is "Ее типа нет, что ли, вообще?"; a sentence whose words after a command word repeat nothing keeps them; `just test-one` fails
+- [x] 2.2 Green: `without_trailing_command` also cuts at a command followed by a repeat (1–3 words) of the words right before it; the same `just test-one` passes
+- [x] 2.3 `just test` and commit
 
 ## 3. Second look at the last second of speech
 
