@@ -14,7 +14,7 @@
 
 - [ ] 3.1 Red: session unit tests (`command-spotting/src/streaming/session/tests/second_look.rs`, scripted recognizers whose fresh stream hears what the window holds): an utterance whose running decode hears no command but whose last second holds "enter" reports "press enter" once, at its time in the utterance, within 1.5 s of the end of its words; the history entry keeps the second-look texts; an utterance that reported "enter" opens no second look; speech without a command reports nothing; `just test-one` fails
 - [ ] 3.2 Green: `SecondLook` in `command-spotting/src/streaming/session/utterance/`: prepared at `begin_close`, fed once the main decoders finished with nothing reported, decided at `Moment::Closing`, reported through `report`; `finished()` waits for it; the same `just test-one` passes
-- [ ] 3.3 Red: integration test `command-spotting/tests/it/streaming/glued_enter.rs` (`needs_streaming_models::needs_voice_samples`): each recording in `$VOICEPUNCHER_VOICE_SAMPLES/glued-enters/` (the missed clips of 2026-11-16..17) reports "press enter" within 1.5 s of the end of the speech; it fails before the group's code (checked on the commit before 3.2)
+- [ ] 3.3 Red: integration test `command-spotting/tests/it/streaming/glued_enter.rs` (`needs_streaming_models::needs_voice_samples`): each recording in `$VOICEPUNCHER_VOICE_SAMPLES/glued-enters/` (the missed clips of 2026-11-16..17) reports "press enter" within 1.5 s of the end of its words; it fails before the group's code (checked on the commit before 3.2)
 - [ ] 3.4 Green: the integration test passes; the streaming bench over the bench dataset shows no new false alarm
 - [ ] 3.5 `just test` and commit
 
