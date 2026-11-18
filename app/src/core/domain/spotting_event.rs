@@ -9,7 +9,8 @@ pub enum SpottingEvent {
     SpeechStarted(Instant),
     SpeechEnded(Instant),
     /// Commands said without a pause around them, to carry out at once and in order:
-    /// `start..end` spans their words.
+    /// `start..end` spans their words; `start` is the moment its audio was captured, by the
+    /// clock, `end` its stream position, which runs behind the clock once audio was lost.
     CommandsSaid {
         commands: Vec<VoiceCommand>,
         start: Instant,

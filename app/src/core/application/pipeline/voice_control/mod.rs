@@ -235,8 +235,9 @@ impl Pipeline {
         Ok(())
     }
 
-    /// Ends the running dictation where `spoken` began: the command's words are no part of
-    /// it, unless it was said in one breath with the last words.
+    /// Ends the running dictation where `spoken` began, by the clock its audio was captured
+    /// at, as the recorder keeps time: the command's words are no part of it, unless it was
+    /// said in one breath with the last words.
     fn close_dictation(&mut self, spoken: SpokenCommand) -> anyhow::Result<()> {
         if let Some(dictation) = self.dictation.as_mut() {
             dictation.command_words.closing = spoken.placement != CommandPlacement::Alone;

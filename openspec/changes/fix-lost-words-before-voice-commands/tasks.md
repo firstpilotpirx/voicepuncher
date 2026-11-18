@@ -1,8 +1,8 @@
 ## 1. The cut falls at the command's capture time
 
-- [ ] 1.1 Red: add `app/tests/it/commandspotting_command_times.rs` (listed in `app/tests/it/main.rs`): a stream 0.8 s behind the clock reports "press enter" at 1.78 s and at 3.97 s; its start must be the capture time of that sample; run it with `just test-one`, see it fail; commit it alone as intentionally red
-- [ ] 1.2 Green: map the command's start to its capture time in `to_capture_times` (`app/src/adapters/secondary/commandspotting/websocket/stream.rs`), keeping the end as is; update the doc comments of `SpottingEvent::CommandsSaid` and `close_dictation`
-- [ ] 1.3 `just test`, commit
+- [x] 1.1 Red: add `app/tests/it/commandspotting_command_times.rs` (listed in `app/tests/it/main.rs`): a stream 0.8 s behind the clock reports "press enter" at 1.78 s and at 3.97 s; its start must be the capture time of that sample; run it with `just test-one`, see it fail; commit it alone as intentionally red
+- [x] 1.2 Green: map the command's start to its capture time in `to_capture_times` (`app/src/adapters/secondary/commandspotting/websocket/stream.rs`), keeping the end as is; update the doc comments of `SpottingEvent::CommandsSaid` and `close_dictation`
+- [x] 1.3 `just test`, commit
 
 ## 2. Whole-word "enter" in the Russian recognizer's words
 

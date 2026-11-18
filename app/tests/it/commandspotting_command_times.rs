@@ -66,23 +66,11 @@ fn report_enter(socket: &mut WebSocket<TcpStream>, start: f32) {
     socket.send(Message::text(json)).unwrap();
 }
 
-/// A stream whose first sample is dated `STREAM_BEHIND` before it is fed, as a microphone that
-/// started late or lost audio leaves it.
-fn stream_behind_the_clock(url: &str) -> (AudioStream, Sender<Vec<f32>>, Receiver<PipelineInput>) {
-    let (audio_tx, audio_rx) = mpsc::channel();
-    let (inputs_tx, inputs_rx) = mpsc::channel();
-    let stream = AudioStream::start(
-        url,
-        &VoiceCommand::DICTATING,
-        MicrophoneAudio {
-            audio: audio_rx,
-            native_rate: MIC_RATE_HZ,
-            captured_from: Instant::now() - STREAM_BEHIND,
-        },
-        inputs_tx,
-    )
-    .unwrap();
-    (stream, audio_tx, inputs_rx)
+/// A microphone whose first sample is dated `STREAM_BEHIND` before it is fed, as one that
+/// started late or lost audio leaves the stream.
+fn microphone_behind_the_clock(audio: Receiver<Vec<f32>>) -> MicrophoneAudio<Receiver<Vec<f32>>> {
+    let captured_from = Instant::now() - STREAM_BEHIND;
+    MicrophoneAudio { audio, native_rate: MIC_RATE_HZ, captured_from }
 }
 
 /// Feeds the microphone in real time until the command arrives; its start.
@@ -107,7 +95,10 @@ fn command_start(audio: &Sender<Vec<f32>>, inputs: &Receiver<PipelineInput>) -> 
 /// first sample, on a stream behind the clock.
 fn start_error(start: f32) -> Duration {
     let url = service_reporting_enter_at(start);
-    let (_stream, audio, inputs) = stream_behind_the_clock(&url);
+    let (audio, microphone) = mpsc::channel();
+    let (inputs_tx, inputs) = mpsc::channel();
+    let mic = microphone_behind_the_clock(microphone);
+    let _stream = AudioStream::start(&url, &VoiceCommand::DICTATING, mic, inputs_tx).unwrap();
     let fed_from = Instant::now();
     let reported = command_start(&audio, &inputs).expect("the command is reported");
     let captured = fed_from + Duration::from_secs_f32(start);
