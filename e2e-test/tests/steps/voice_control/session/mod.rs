@@ -44,6 +44,9 @@ use voicepuncher_e2e_test::conversions::saturating_u32;
 
 const SAMPLE_RATE_HZ: f32 = 16_000.0;
 const FRAME_SAMPLES: usize = 1_600;
+
+/// The samples a real-time feed sends at once: 20 ms, as a microphone delivers them.
+const REAL_TIME_FRAME_SAMPLES: usize = 320;
 /// How long one frame of the microphone lasts.
 const FRAME_TIME: Duration = Duration::from_millis(100);
 /// How long the recorder takes to open the microphone, as macOS takes up to 0.3 s: nothing
@@ -226,7 +229,22 @@ impl HandsFreeSession {
         self.events.lock().unwrap().clone()
     }
 
+    /// Streams `samples` as a microphone captures them: a few milliseconds at a time, in real
+    /// time, so the moment each sample was captured is the moment the app's stream took it.
     fn hear(&self, samples: &[f32]) -> Result<()> {
+        let frame_time = Duration::from_secs_f32(REAL_TIME_FRAME_SAMPLES as f32 / SAMPLE_RATE_HZ);
+        // WHY: on a fixed schedule, so a slow send does not stretch the speech.
+        let mut frame_due = Instant::now();
+        for frame in samples.chunks(REAL_TIME_FRAME_SAMPLES) {
+            self.feed(frame)?;
+            frame_due += frame_time;
+            std::thread::sleep(frame_due.saturating_duration_since(Instant::now()));
+        }
+        Ok(())
+    }
+
+    /// Captures `samples` at once, for a caller that keeps its own schedule.
+    fn feed(&self, samples: &[f32]) -> Result<()> {
         for frame in samples.chunks(FRAME_SAMPLES) {
             self.microphone.capture(frame);
             self.to_spotter.send(frame.to_vec())?;
@@ -249,7 +267,7 @@ impl HandsFreeSession {
             if Instant::now() >= deadline {
                 return Ok(false);
             }
-            self.hear(frame)?;
+            self.feed(frame)?;
             // WHY: on a fixed schedule, so a slow send does not stretch the room's sound; ten
             // times faster than real time unless the scenario is timed (Pace).
             frame_due += self.pace.frame_interval(FRAME_TIME);
