@@ -154,3 +154,75 @@ fn should_take_a_doubted_stop_ending_the_words_at_the_pause_right_after_it() {
     assert!(doubted_by(&[], &found, decoding(1.5)));
     assert!(!doubted_by(&[], &found, paused_at(1.5, 1.3)));
 }
+
+/// The Russian recognizer's words, one token each, 0.3 s apart from 1.0 s, respelled as the
+/// session respells them.
+fn russian(text: &str) -> Vec<TimedWord> {
+    let tokens: Vec<String> = text.split(' ').map(|w| format!("▁{w}")).collect();
+    let times: Vec<f32> = (0..tokens.len()).map(|i| 1.0 + 0.3 * i as f32).collect();
+    crate::streaming::words::timed_words(&tokens, &times, 0.0, true)
+}
+
+#[test]
+fn should_not_report_inter_while_it_may_grow_into_internet() {
+    // Given the words of 2026-11-13 16:31: «интер», then «интернет», ending at 2.0 s
+    for text in ["откуда её возьму интер", "откуда её возьму интернет"]
+    {
+        // When decoded 0.4 s past it, the gate hearing speech
+        let found = decide(
+            &dictating(),
+            &russian(text),
+            decoding(2.4),
+            &Reported::default(),
+        );
+        // Then
+        assert_eq!(found, None, "{text}");
+    }
+}
+
+#[test]
+fn should_not_report_linter_inside_a_sentence() {
+    // When the words of 2026-11-12 20:17 are decoded past
+    let found = decide(
+        &dictating(),
+        &russian("должен линтр проверять"),
+        decoding(2.2),
+        &Reported::default(),
+    );
+    // Then
+    assert_eq!(found, None);
+}
+
+#[test]
+fn should_report_inter_ending_speech_at_the_pause_and_at_the_close() {
+    // Given «тоже учесть интер», its last word ending at 1.7 s
+    let words = russian("тоже учесть интер");
+    let paused = Moment::Decoding { now: 2.0, pause: Some(1.8), synced: false };
+    // When
+    let early = decide(&dictating(), &words, decoding(2.0), &Reported::default());
+    let at_pause = decide(&dictating(), &words, paused, &Reported::default());
+    let at_close = decide(&dictating(), &words, Moment::Closing, &Reported::default());
+    // Then
+    assert_eq!(early, None);
+    assert_eq!(
+        at_pause.expect("enter at the pause").commands,
+        ["press enter"]
+    );
+    assert_eq!(
+        at_close.expect("enter at the close").commands,
+        ["press enter"]
+    );
+}
+
+#[test]
+fn should_still_report_enter_written_with_e_at_once() {
+    // When «ну что читать энтер», its last word ending at 2.0 s, is decoded 0.25 s past it
+    let found = decide(
+        &dictating(),
+        &russian("ну что читать энтер"),
+        decoding(2.25),
+        &Reported::default(),
+    );
+    // Then
+    assert_eq!(found.expect("enter at once").commands, ["press enter"]);
+}
