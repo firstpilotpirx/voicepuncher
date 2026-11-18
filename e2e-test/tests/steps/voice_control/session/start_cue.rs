@@ -19,7 +19,6 @@ use super::{
 };
 use crate::E2eWorld;
 
-/// 20 ms per message: a real microphone delivers audio about this often.
 /// Longest a start cue is waited for: one this late fails the scenario anyway.
 const CUE_WAIT: Duration = Duration::from_secs(5);
 /// The voices "cancel cancel" is said in, one per try, before the scenario gives up: the
