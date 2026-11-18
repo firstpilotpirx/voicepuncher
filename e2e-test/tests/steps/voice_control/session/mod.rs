@@ -233,8 +233,8 @@ impl HandsFreeSession {
     /// moment each sample was captured is close to the moment the app's stream took it.
     fn hear(&self, samples: &[f32]) -> Result<()> {
         let frame_time = Duration::from_secs_f32(REAL_TIME_FRAME_SAMPLES as f32 / SAMPLE_RATE_HZ);
-        // WHY: on a fixed schedule, so a slow send does not stretch the speech; ten times
-        // faster than real time unless the scenario is timed (Pace).
+        // WHY: on a fixed schedule, so a slow send does not stretch the speech; twenty
+        // times faster than real time unless the scenario is timed (Pace).
         let mut frame_due = Instant::now();
         for frame in samples.chunks(REAL_TIME_FRAME_SAMPLES) {
             self.feed(frame)?;
