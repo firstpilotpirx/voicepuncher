@@ -165,7 +165,9 @@ fn dictation_with_sentence(world: &mut E2eWorld) -> Result<()> {
 fn dictation_by_voice(world: &mut E2eWorld) -> Result<()> {
     let session = session_of(world)?;
     let seen = session.events().len();
-    session.hear(&command_audio(CommandVoice::Synthesized, "start")?)?;
+    // WHY: at once, as the timed scenarios after it were measured with: the stream offset of
+    // their speech moves with the feed, and the recognizer's reading of it with that offset.
+    session.feed(&command_audio(CommandVoice::Synthesized, "start")?)?;
     if !session.reacted(seen, &Expected::RecordingStarted, &silence(0.1))? {
         bail!("no dictation started; events: {:?}", session.events());
     }
