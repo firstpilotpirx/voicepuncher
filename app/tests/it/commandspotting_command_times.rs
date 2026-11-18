@@ -69,7 +69,7 @@ fn report_enter(socket: &mut WebSocket<TcpStream>, start: f32) {
 /// A microphone whose first sample is dated `STREAM_BEHIND` before it is fed, as one that
 /// started late or lost audio leaves the stream.
 fn microphone_behind_the_clock(audio: Receiver<Vec<f32>>) -> MicrophoneAudio<Receiver<Vec<f32>>> {
-    let captured_from = Instant::now() - STREAM_BEHIND;
+    let captured_from = Instant::now().checked_sub(STREAM_BEHIND).unwrap();
     MicrophoneAudio { audio, native_rate: MIC_RATE_HZ, captured_from }
 }
 
