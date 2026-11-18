@@ -15,6 +15,6 @@
 
 ## 3. Version and checks
 
-- [ ] 3.1 Bump `version` in `app/Cargo.toml` to 0.49.3
-- [ ] 3.2 `just test`, commit; `just check` once
-- [ ] 3.3 Manual checks: none (no hotkey, recording, overlay, paste or permission change)
+- [x] 3.1 Bump `version` in `app/Cargo.toml` to 0.49.3
+- [x] 3.2 `just test`, commit; `just check` once
+- [x] 3.3 Manual checks: none (no hotkey, recording, overlay, paste or permission change)
