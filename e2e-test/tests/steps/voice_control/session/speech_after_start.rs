@@ -29,7 +29,6 @@ pub(super) const BEFORE_RESTART: &str = "Weather is sunny in Berlin today";
 /// The silence `say` speech starts and ends with.
 const SAY_PAUSE_SECS: f32 = 1.0;
 /// 20 ms per message: a real microphone delivers audio about this often.
-const REAL_TIME_FRAME_SAMPLES: usize = 320;
 /// Recording kept before and after a labelled stretch, so its first and last sounds are
 /// whole: the release of a final "t" comes up to 0.15 s after the labelled end.
 const LEAD_MARGIN_SECS: f32 = 0.3;
@@ -121,25 +120,12 @@ pub(in crate::steps::voice_control) fn users_quiet_restart() -> Result<Vec<f32>>
 }
 
 impl HandsFreeSession {
-    /// Streams `samples` as a microphone captures them: a few milliseconds at a time.
-    fn hear_in_real_time(&self, samples: &[f32]) -> Result<()> {
-        let frame_time = Duration::from_secs_f32(REAL_TIME_FRAME_SAMPLES as f32 / SAMPLE_RATE_HZ);
-        // WHY: on a fixed schedule, so a slow send does not stretch the speech.
-        let mut frame_due = Instant::now();
-        for frame in samples.chunks(REAL_TIME_FRAME_SAMPLES) {
-            self.hear(frame)?;
-            frame_due += frame_time;
-            std::thread::sleep(frame_due.saturating_duration_since(Instant::now()));
-        }
-        Ok(())
-    }
-
     /// Says `audio`, which starts a dictation, waits for the dictation to start and ends
     /// it with "stop stop": a lone synthesized "stop" is too short for the voice gate.
     fn dictate_by_voice(&self, audio: &[f32]) -> Result<()> {
         let room = silence(0.1);
         let seen = self.events().len();
-        self.hear_in_real_time(audio)?;
+        self.hear(audio)?;
         if !self.reacted(seen, &Expected::RecordingStarted, &room)? {
             bail!("no dictation started; events: {:?}", self.events());
         }
@@ -172,14 +158,16 @@ fn dictation_with_sentence(world: &mut E2eWorld) -> Result<()> {
     if !session.reacted(seen, &Expected::RecordingStarted, &room)? {
         bail!("no dictation started; events: {:?}", session.events());
     }
-    session.hear_in_real_time(&spoken_by(ENGLISH_VOICE, BEFORE_RESTART)?)
+    session.hear(&spoken_by(ENGLISH_VOICE, BEFORE_RESTART)?)
 }
 
 #[given("a dictation started by voice runs")]
 fn dictation_by_voice(world: &mut E2eWorld) -> Result<()> {
     let session = session_of(world)?;
     let seen = session.events().len();
-    session.hear(&command_audio(CommandVoice::Synthesized, "start")?)?;
+    // WHY: at once, as the timed scenarios after it were measured with: the stream offset of
+    // their speech moves with the feed, and the recognizer's reading of it with that offset.
+    session.feed(&command_audio(CommandVoice::Synthesized, "start")?)?;
     if !session.reacted(seen, &Expected::RecordingStarted, &silence(0.1))? {
         bail!("no dictation started; events: {:?}", session.events());
     }
@@ -197,7 +185,7 @@ fn says_sentence_breath_stop(world: &mut E2eWorld) -> Result<()> {
         "stop stop",
     )?));
     let seen = session.events().len();
-    session.hear_in_real_time(&audio)?;
+    session.hear(&audio)?;
     // The Then step checks what was pasted; this only waits for the paste.
     session.reacted(seen, &Expected::Pasted(SENTENCE), &silence(0.1))?;
     Ok(())

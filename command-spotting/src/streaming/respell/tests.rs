@@ -162,3 +162,29 @@ fn should_leave_ordinary_words_with_the_letters_of_enter() {
     // Then
     assert_eq!(respelled, text);
 }
+
+#[test]
+fn should_read_no_enter_in_linter() {
+    // Given "linter" as the Russian recognizer wrote it (2026-11-12 20:17)
+    for word in ["линтр", "линтер"] {
+        // When
+        let respelled = respell_last_word(word);
+        // Then
+        assert_eq!(respelled, None, "{word}");
+    }
+}
+
+#[test]
+fn should_still_read_enter_opened_with_l() {
+    // Given "enter" with an "л" before it, from the command history
+    let heard = [
+        ("лентер", vec!["enter"]),
+        ("лентарентор", vec!["enter", "enter"]),
+    ];
+    for (cyrillic, english) in heard {
+        // When
+        let respelled = respell_word(cyrillic);
+        // Then
+        assert_eq!(respelled, Some(english), "{cyrillic}");
+    }
+}

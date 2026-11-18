@@ -948,7 +948,25 @@ In its fast pace the streaming bench SHALL replay the service's clock: each reco
 - **THEN** its report ends with one line naming what the replay does not reproduce: a load other than its own, the service's poll and wake, the app's audio path and its syncs, and the granularity of a frame
 
 ### Requirement: A command counts wherever its word is said
-The system SHALL carry out a command as soon as its word is heard, wherever it is said in an utterance — on its own, at the end of other speech, at its start, or inside a sentence with speech after it — when the state accepts the command; no pause before or after it is needed. The user keeps the command words out of dictation, so a command word inside a sentence counts as the command. Ordinary speech without a command word triggers nothing.
+The system SHALL carry out a command as soon as its word is heard, wherever it is said in an utterance — on its own, at the end of other speech, at its start, or inside a sentence with speech after it — when the state accepts the command; no pause before or after it is needed. The user keeps the command words out of dictation, so a command word inside a sentence counts as the command. Ordinary speech without a command word triggers nothing. A command word counts only when it is said as a whole word: a longer word that holds its sounds or opens with them («интернет», «линтер», «интервью» for "enter") is ordinary speech, also while the recognizer has heard only its opening so far.
+
+#### Scenario: A longer word opening with the sounds of enter is no command
+- **GIVEN** a dictation runs
+- **WHEN** the user says «откуда её возьму интернет» without pausing, the recognizer first writing the last word as «интер»
+- **THEN** the Return key is not pressed
+- **AND** the dictation goes on
+
+#### Scenario: A word holding the sounds of enter inside it is no command
+- **GIVEN** a dictation runs
+- **WHEN** the user says «должен линтер проверять» without pausing
+- **THEN** the Return key is not pressed
+- **AND** the dictation goes on
+
+#### Scenario: Enter written as the opening of longer words still counts at the end of speech
+- **GIVEN** a dictation runs
+- **WHEN** the user says «тоже учесть энтер» and the recognizer writes the last word as «интер», then the user pauses
+- **THEN** the dictation ends and «тоже учесть» is pasted
+- **AND** the Return key is pressed
 
 #### Scenario: A command phrase spoken on its own is recognized
 - **GIVEN** listening is on
@@ -978,7 +996,19 @@ The system SHALL carry out a command as soon as its word is heard, wherever it i
 - **AND** "please" is pasted into the focused app, without "stop" and the words after it
 
 ### Requirement: A command ending speech counts without a pause
-The system SHALL carry out a command whose word ends an utterance, even with speech right before it in the same utterance, when the state accepts the command, as soon as the word is heard: no pause after it is awaited (a command only the second look at the end of the utterance hears comes after the close, as "A fast enter glued to the end of speech counts" states). When the command ends a dictation, the pasted text SHALL hold the speech before the command and SHALL NOT hold the command words, also when the dictation's text repeats the last words before the command after them (the last chunk heard them again).
+The system SHALL carry out a command whose word ends an utterance, even with speech right before it in the same utterance, when the state accepts the command, as soon as the word is heard: no pause after it is awaited, except for "enter" written as «интер» at the end of speech, which counts at the pause after it ("Streaming commands are reported as soon as their words are decoded") (a command only the second look at the end of the utterance hears comes after the close, as "A fast enter glued to the end of speech counts" states). When the command ends a dictation, the pasted text SHALL hold the speech before the command and SHALL NOT hold the command words, also when the dictation's text repeats the last words before the command after them (the last chunk heard them again). The dictation SHALL keep every word said before the command's first word, also when the audio the command spotting service hears runs behind the clock (its microphone started late, lost audio or drifted).
+
+#### Scenario: A short phrase right before enter is pasted
+- **GIVEN** a dictation runs
+- **AND** the audio the command spotting service hears runs 0.8 s behind the clock
+- **WHEN** the user says «да, идём дальше» and then "enter" without a pause
+- **THEN** «да, идём дальше» is pasted into the focused app, not only «да»
+
+#### Scenario: The words right before enter are kept after a long dictation
+- **GIVEN** a dictation runs
+- **AND** the audio the command spotting service hears runs 0.8 s behind the clock
+- **WHEN** the user says a long sentence ending in «ну что нам мне это читать» and then "enter" without a pause
+- **THEN** the pasted text ends with «ну что нам мне это читать»
 
 #### Scenario: Stop right after the last dictated word
 - **GIVEN** a dictation runs
@@ -1085,7 +1115,7 @@ While listening, with or without a dictation running, the system SHALL press Cmd
 - **AND** the pasted text does not contain "paste"
 
 ### Requirement: Streaming commands are reported as soon as their words are decoded
-On an idle machine the service SHALL report "start" and "stop" within 0.3 s of their words' end (wall clock) for half and within 0.6 s for 9 of 10. A command word SHALL count once a recognizer decoded it, wherever it sits, without a pause, unless it may grow into a longer command word ("start" of "restart"). During a dictation, a one-word command only the English recognizer hears, where the Russian one heard another word, SHALL count only at the pause after it; doubled forms never wait.
+On an idle machine the service SHALL report "start" and "stop" within 0.3 s of their words' end (wall clock) for half and within 0.6 s for 9 of 10. A command word SHALL count once a recognizer decoded it, wherever it sits, without a pause, unless it may grow into a longer command word ("start" of "restart") or it is the last word heard so far and the Russian recognizer wrote "enter" as «интер», the opening of many ordinary words («интернет», «интервью»): such a word counts once a next word follows it, at the gate's pause after it, or when the utterance closes. During a dictation, a one-word command only the English recognizer hears, where the Russian one heard another word, SHALL count only at the pause after it; doubled forms never wait.
 
 #### Scenario: Start said alone is reported within its bound
 - **GIVEN** the command spotting service runs with the streaming recognizer on an otherwise idle machine
@@ -1122,6 +1152,11 @@ On an idle machine the service SHALL report "start" and "stop" within 0.3 s of t
 - **GIVEN** the user's own recordings exist on the machine, among them commands said right after speech
 - **WHEN** each is streamed to the service in real time
 - **THEN** the median delay of those commands after the end of their words is at most 0.4 s
+
+#### Scenario: Enter written as «интер» at the end of speech counts at the pause
+- **GIVEN** a dictation runs
+- **WHEN** the Russian recognizer writes the last word of the user's speech as «интер» and the gate hears a pause right after it
+- **THEN** "press enter" is reported once the recognizer decoded up to that pause, within 0.6 s of the end of the word
 
 ### Requirement: A chain of commands is carried out in order, each command at once
 The system SHALL carry out a chain of two or three different commands said one right after the other, in the order said, when each is accepted in the state the one before it leads to and "start" comes last; a chain counts anywhere, with no pause around it. Each command is carried out as soon as its word is heard; one heard only after the commands before it were carried out is still carried out once, after them: the chain's tail is never lost.

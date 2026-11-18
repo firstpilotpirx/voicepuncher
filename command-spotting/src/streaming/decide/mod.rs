@@ -133,7 +133,8 @@ fn by_earlier_rules(
 /// A command said anywhere among the fresh words, reported as soon as the recognizer decoded
 /// past it: a word after it, or `SETTLE_SECS` of audio, as a draft of the last word may still
 /// grow ("stop" → "stopped"). No pause after it is awaited. A last word that may still grow
-/// into a longer command word ("start" of "restart") is left to `alone` and `ending`.
+/// into a longer command word ("start" of "restart") is left to `alone` and `ending`; one that
+/// may grow into a longer ordinary word («интер» of «интернет») waits for the pause.
 fn at_once(
     matcher: &PhraseMatcher,
     fresh: &[&TimedWord],
@@ -146,7 +147,8 @@ fn at_once(
     if !found_last {
         return Some(finding);
     }
-    let grows = moment != Moment::Closing && ends_a_longer_word(matcher, texts);
+    let grows = (moment != Moment::Closing && ends_a_longer_word(matcher, texts))
+        || (fresh[found.last].may_grow && !ended(moment));
     (!grows && decoded_past(moment, finding.end)).then_some(finding)
 }
 

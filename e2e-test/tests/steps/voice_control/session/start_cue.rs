@@ -13,11 +13,12 @@ use voicepuncher_e2e_test::voice_commands::{
 };
 
 use super::speech_after_start::{BEFORE_RESTART, SENTENCE};
-use super::{session_of, Cues, Expected, HandsFreeSession, ENGLISH_VOICE, SAMPLE_RATE_HZ};
+use super::{
+    session_of, Cues, Expected, HandsFreeSession, ENGLISH_VOICE, REAL_TIME_FRAME_SAMPLES,
+    SAMPLE_RATE_HZ,
+};
 use crate::E2eWorld;
 
-/// 20 ms per message: a real microphone delivers audio about this often.
-const REAL_TIME_FRAME_SAMPLES: usize = 320;
 /// Longest a start cue is waited for: one this late fails the scenario anyway.
 const CUE_WAIT: Duration = Duration::from_secs(5);
 /// The voices "cancel cancel" is said in, one per try, before the scenario gives up: the
@@ -101,7 +102,7 @@ impl HandsFreeSession {
         for (n, frame) in samples.chunks(REAL_TIME_FRAME_SAMPLES).enumerate() {
             let due = began + frame_time * u32::try_from(n).unwrap();
             std::thread::sleep(due.saturating_duration_since(Instant::now()));
-            self.hear(frame)?;
+            self.feed(frame)?;
             if words_ended.is_none() && (n + 1) * REAL_TIME_FRAME_SAMPLES >= words_end {
                 words_ended = Some(Instant::now());
             }
@@ -172,7 +173,7 @@ impl HandsFreeSession {
             // pause after a command would reach the service later than it was said.
             let due = last_fed + frame_time * (u32::try_from(n).unwrap() + 1);
             std::thread::sleep(due.saturating_duration_since(Instant::now()));
-            self.hear(frame)?;
+            self.feed(frame)?;
         }
         Ok(None)
     }

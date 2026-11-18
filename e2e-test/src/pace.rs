@@ -1,12 +1,13 @@
-//! How fast a scenario feeds the room between its utterances.
+//! How fast a scenario feeds the microphone: its speech and the room between its utterances.
 //!
-//! A scenario under timing (`@cues`) runs in real time, every other ten times faster, so the check waits
-//! on the app, not on the clock. Speech is fed at once either way.
+//! A scenario under timing (`@cues`) runs in real time, every other twenty times faster, so the
+//! check waits on the app, not on the clock. Either way the audio goes in small frames, so the
+//! moment each was captured stays close to the moment the app's stream took it.
 
 use std::time::Duration;
 
 /// How many times faster than real time the fast pace feeds the room.
-const FAST_FACTOR: u32 = 10;
+const FAST_FACTOR: u32 = 20;
 
 /// The tag of the scenarios timed on an idle machine, which keep real time.
 const TIMED_TAG: &str = "cues";
@@ -49,9 +50,9 @@ mod tests {
     }
 
     #[test]
-    fn should_feed_a_frame_ten_times_sooner_at_the_fast_pace() {
+    fn should_feed_a_frame_twenty_times_sooner_at_the_fast_pace() {
         let frame = Duration::from_millis(100);
         assert_eq!(Pace::RealTime.frame_interval(frame), frame);
-        assert_eq!(Pace::Fast.frame_interval(frame), Duration::from_millis(10));
+        assert_eq!(Pace::Fast.frame_interval(frame), Duration::from_millis(5));
     }
 }

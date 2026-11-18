@@ -36,7 +36,7 @@ A flag on `TimedWord`, set by `timed_words`, carries the wait to the at-once rul
 | A stop word inside a dictated sentence ends the dictation at once | component .feature (unchanged) |
 | Stop right after the last dictated word | component .feature (unchanged) |
 | Enter right after other speech | E2E (unchanged) |
-| Stop after a long dictation counts without waiting for a pause | E2E (unchanged) |
+| Stop after a long dictation counts without waiting for a pause | no test yet (gap already on main, behavior unchanged here) |
 | A command word followed by a repeat of the words before it is not pasted | unit (unchanged) |
 | Start said alone is reported within its bound | E2E (unchanged) |
 | Stop said alone is reported at once | E2E (unchanged) |
@@ -44,4 +44,4 @@ A flag on `TimedWord`, set by `timed_words`, carries the wait to the at-once rul
 | A Russian sentence heard as opening with stop is no command | E2E (unchanged) |
 | Press enter after a sentence is reported without waiting for the pause | E2E (unchanged) |
 | The user's recorded commands are reported within their bound | E2E (unchanged) |
-| A command after speech in the user's recordings is reported soon after its word | E2E (unchanged) |
+| A command after speech in the user's recordings is reported soon after its word | no test yet (gap already on main, behavior unchanged here) |

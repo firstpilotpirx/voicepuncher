@@ -27,7 +27,7 @@ fn said(from: f32, text: &str) -> Vec<TimedWord> {
         .enumerate()
         .map(|(i, w)| {
             let start = from + 0.3 * i as f32;
-            TimedWord { text: w.into(), start, end: start + 0.25 }
+            TimedWord { text: w.into(), start, end: start + 0.25, may_grow: false }
         })
         .collect()
 }

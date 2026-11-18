@@ -7,6 +7,7 @@ mod capture_allocations;
 mod chunk_cuts;
 mod chunked_transcription;
 mod commandspotting_client;
+mod commandspotting_command_times;
 mod commandspotting_reconnect;
 mod commandspotting_stall;
 mod commandspotting_websocket;

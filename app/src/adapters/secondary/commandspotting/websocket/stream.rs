@@ -91,17 +91,21 @@ impl Stream {
         }
     }
 
-    /// The report times of `event`, dated by stream position, as the moments that audio was
-    /// captured: they fall behind the clock once audio was lost. Its own times stay, as the
-    /// lead-in is taken by them.
+    /// The command's start and its report times, dated by stream position, as the moments
+    /// that audio was captured: stream positions run behind the clock once the microphone
+    /// started late, lost audio or drifted, and the recorder cuts a dictation by the clock at
+    /// the start. The end stays dated by stream position, as the lead-in and the replay read it.
     fn to_capture_times(&self, event: &mut SpottingEvent) {
-        let SpottingEvent::CommandsSaid { timing: Some(report), .. } = event else {
+        let SpottingEvent::CommandsSaid { start, timing, .. } = event else {
             return;
         };
         let Ok(heard) = self.heard.lock() else {
             return;
         };
-        report.words_ended = heard.captured_at(report.words_ended);
+        *start = heard.captured_at(*start);
+        if let Some(report) = timing {
+            report.words_ended = heard.captured_at(report.words_ended);
+        }
     }
 
     fn note_command_end(&mut self, event: &SpottingEvent) {

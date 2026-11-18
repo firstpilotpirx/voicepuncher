@@ -342,13 +342,3 @@ recipe = "full-check"
 stage = "e2e-seams-sample"
 beside = "full-check model phase on fix-missed-enter-at-speech-end; whisper copy 38084 sent no answer in 9094 ms; the branch touches no speech recognition code"
 branch = "fix/fix-missed-enter-at-speech-end"
-
-
-[[frozen]]
-test = "scenario: Restart, a short pause, then the new dictation"
-frozen = "2026-11-18"
-recipe = "full-check"
-stage = "e2e-smoke-voice"
-beside = "full-check of fix-lost-words-before-voice-commands alone on the e2e lock; stop stop after the restart was never reported (events: Listening, RecordingStarted, RecordingStarted); failed before on 6 other branches"
-branch = "fix/fix-lost-words-before-voice-commands"
-
