@@ -12,6 +12,9 @@ const SAMPLE_RATE: f32 = AudioBuffer16k::SAMPLE_RATE_HZ as f32;
 /// How much audio is held: more than the time from a "start" or "restart" to its report,
 /// which waits behind a dictation's own requests at the speech recognition service.
 const HELD_SECS: f32 = 10.0;
+/// How much audio before the held samples still has its capture times: a command's start
+/// is mapped to the clock however late the service reports it.
+const BLOCKS_HELD_SECS: f32 = 120.0;
 /// How long one 16 kHz sample lasts.
 const SAMPLE_NANOS: u64 = 1_000_000_000 / AudioBuffer16k::SAMPLE_RATE_HZ as u64;
 
@@ -28,8 +31,8 @@ pub struct HeardAudio {
     /// Position in the stream of the first sample held.
     first: usize,
     samples: VecDeque<f32>,
-    /// The blocks of the samples held, oldest first: audio lost before a block leaves its
-    /// stream position behind the clock.
+    /// The blocks of the samples held and of those heard up to `BLOCKS_HELD_SECS` before,
+    /// oldest first: audio lost before a block leaves its stream position behind the clock.
     blocks: VecDeque<Block>,
 }
 
@@ -50,7 +53,10 @@ impl HeardAudio {
             .saturating_sub(saturating_usize(HELD_SECS * SAMPLE_RATE));
         self.samples.drain(..excess);
         self.first += excess;
-        while self.blocks.front().is_some_and(|b| b.end <= self.first) {
+        let blocks_from = self
+            .first
+            .saturating_sub(saturating_usize(BLOCKS_HELD_SECS * SAMPLE_RATE));
+        while self.blocks.front().is_some_and(|b| b.end <= blocks_from) {
             self.blocks.pop_front();
         }
     }
@@ -194,6 +200,18 @@ mod tests {
         let captured = heard.captured_at(start + Duration::from_secs(1));
         // Then it was captured no earlier than the end of the first second
         assert_eq!(captured, start + Duration::from_secs(1));
+    }
+
+    #[test]
+    fn should_map_a_stream_position_whose_samples_are_no_longer_held_after_audio_was_lost() {
+        // Given one second heard, three seconds that never arrived, then twelve more seconds
+        let start = Instant::now();
+        let later: Vec<(usize, u64)> = (5..17).map(|at| (1, at)).collect();
+        let heard = heard_at(start, &[&[(1, 1)], later.as_slice()].concat());
+        // When the middle of the first second, long dropped from the held audio, is mapped
+        let captured = heard.captured_at(start + Duration::from_millis(500));
+        // Then it was captured before the lost seconds
+        assert_eq!(captured, start + Duration::from_millis(500));
     }
 
     #[test]
