@@ -56,14 +56,20 @@ impl HeardAudio {
     }
 
     /// When the sample at the stream position `dated` stands for — the moment it would have
-    /// been captured had no audio been lost — was really captured.
+    /// been captured had no audio been lost — was really captured: never before the block
+    /// ahead of it was, as audio that came faster than real time was not captured earlier.
     pub fn captured_at(&self, dated: Instant) -> Instant {
         let position = Self::position(dated.saturating_duration_since(self.audio_start));
-        match self.blocks.iter().find(|b| b.end > position) {
-            Some(block) => block
-                .captured_at
-                .checked_sub(Self::span(block.end - position))
-                .unwrap_or(block.captured_at),
+        match self.blocks.iter().position(|b| b.end > position) {
+            Some(at) => {
+                let block = self.blocks[at];
+                let back = block
+                    .captured_at
+                    .checked_sub(Self::span(block.end - position))
+                    .unwrap_or(block.captured_at);
+                at.checked_sub(1)
+                    .map_or(back, |before| back.max(self.blocks[before].captured_at))
+            }
             None => self.blocks.back().map_or(dated, |last| {
                 last.captured_at + Self::span(position - last.end)
             }),
@@ -166,6 +172,17 @@ mod tests {
     }
 
     #[test]
+    fn should_map_no_stream_position_before_the_block_ahead_of_it_was_captured() {
+        // Given one second heard, then two seconds that came at once, a tenth of a second later
+        let start = Instant::now();
+        let heard = heard_at_millis(start, &[(1_000, 1_000), (2_000, 1_100)]);
+        // When the first sample of the burst is mapped
+        let captured = heard.captured_at(start + Duration::from_secs(1));
+        // Then it was captured no earlier than the second before it
+        assert_eq!(captured, start + Duration::from_secs(1));
+    }
+
+    #[test]
     fn should_map_a_stream_position_to_its_own_moment_when_no_audio_was_lost() {
         // Given two seconds heard as they were captured
         let start = Instant::now();
@@ -264,6 +281,18 @@ mod tests {
             heard.push(
                 &vec![0.0; seconds * SECOND],
                 start + Duration::from_secs(at),
+            );
+        }
+        heard
+    }
+
+    /// Audio pushed as (milliseconds of it, milliseconds after `start` it came at).
+    fn heard_at_millis(start: Instant, pushes: &[(usize, u64)]) -> HeardAudio {
+        let mut heard = HeardAudio::new(start);
+        for &(millis, at) in pushes {
+            heard.push(
+                &vec![0.0; millis * SECOND / 1_000],
+                start + Duration::from_millis(at),
             );
         }
         heard

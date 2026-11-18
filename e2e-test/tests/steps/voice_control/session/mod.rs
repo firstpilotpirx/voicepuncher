@@ -40,7 +40,7 @@ mod audio;
 use audio::{command_audio, room_noise, session, session_form, to_f32};
 mod session_steps;
 use session_steps::session_of;
-use voicepuncher_e2e_test::conversions::{saturating_u32, saturating_usize};
+use voicepuncher_e2e_test::conversions::saturating_u32;
 
 const SAMPLE_RATE_HZ: f32 = 16_000.0;
 const FRAME_SAMPLES: usize = 1_600;
@@ -99,17 +99,33 @@ const CANCELLED_EN: &str = "Please review the pull request before lunch";
 const CLEARED_EN: &str = "The build is green again";
 const SENT_AGAIN_RU: &str = "Купи молоко и хлеб по дороге домой";
 
-/// Everything the microphone captured, and when its first sample was captured.
+/// Everything the microphone captured, and how much of it it had captured at each moment.
 #[derive(Default)]
 struct Microphone {
     captured: Mutex<Vec<f32>>,
-    started_at: Mutex<Option<Instant>>,
+    /// The number of samples captured at the end of each frame, and when.
+    frames: Mutex<Vec<(usize, Instant)>>,
 }
 
 impl Microphone {
+    /// Captures `frame` now.
+    fn capture(&self, frame: &[f32]) {
+        let mut captured = self.captured.lock().unwrap();
+        captured.extend_from_slice(frame);
+        self.frames
+            .lock()
+            .unwrap()
+            .push((captured.len(), Instant::now()));
+    }
+
+    /// The number of samples captured by `at`, by the clock, as a real recorder counts them.
     fn index_at(&self, at: Instant) -> usize {
-        let started = self.started_at.lock().unwrap().unwrap_or(at);
-        saturating_usize(at.saturating_duration_since(started).as_secs_f32() * SAMPLE_RATE_HZ)
+        let frames = self.frames.lock().unwrap();
+        frames
+            .iter()
+            .rev()
+            .find(|(_, captured_at)| *captured_at <= at)
+            .map_or(0, |(end, _)| *end)
     }
 }
 
@@ -191,12 +207,7 @@ impl HandsFreeSession {
         let mut spotter = StreamingSpotter::new(service.url, inputs_tx, &events);
         spotter.heard = Some(heard);
         spotter.keeps_heard = true;
-        let heard_by = Arc::clone(&microphone);
-        spotter.source = Box::new(move || {
-            let started_at = Instant::now();
-            *heard_by.started_at.lock().unwrap() = Some(started_at);
-            (saturating_u32(SAMPLE_RATE_HZ), started_at)
-        });
+        spotter.source = Box::new(|| (saturating_u32(SAMPLE_RATE_HZ), Instant::now()));
         let parts = stand_in_parts(&microphone, &events, &cues, &stops, transcriber);
         run_with_voice_control(parts, spotter, &events, inputs_rx);
         Ok(Self {
@@ -217,11 +228,7 @@ impl HandsFreeSession {
 
     fn hear(&self, samples: &[f32]) -> Result<()> {
         for frame in samples.chunks(FRAME_SAMPLES) {
-            self.microphone
-                .captured
-                .lock()
-                .unwrap()
-                .extend_from_slice(frame);
+            self.microphone.capture(frame);
             self.to_spotter.send(frame.to_vec())?;
         }
         Ok(())
