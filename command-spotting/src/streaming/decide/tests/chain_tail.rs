@@ -13,7 +13,7 @@ fn that_is_all_stop_enter_start() -> Vec<TimedWord> {
         ("enter", 2.88, 3.06),
         ("start", 3.20, 3.24),
     ]
-    .map(|(text, start, end)| TimedWord { text: text.into(), start, end })
+    .map(|(text, start, end)| TimedWord { text: text.into(), start, end, may_grow: false })
     .to_vec()
 }
 
@@ -83,7 +83,7 @@ fn should_report_nothing_of_the_english_enter_of_a_chain_reported_before_the_sta
         ("stop", 2.84, 2.94),
         ("enter", 3.16, 3.42),
     ]
-    .map(|(text, start, end)| TimedWord { text: text.into(), start, end })
+    .map(|(text, start, end)| TimedWord { text: text.into(), start, end, may_grow: false })
     .to_vec();
     let reported = reported(2.94, &["stop dictation", "press enter"]);
     // When, at the app's sync

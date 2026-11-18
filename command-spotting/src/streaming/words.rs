@@ -9,6 +9,10 @@ pub struct TimedWord {
     pub text: String,
     pub start: f32,
     pub end: f32,
+    /// The last word heard so far, read as "enter" from a Russian word that opens many longer
+    /// ordinary words («интер» of «интернет»): it counts only once a word follows it, at a
+    /// pause or at the close.
+    pub may_grow: bool,
 }
 
 /// How long the last token of a word lasts after the time it was decoded at.
@@ -35,7 +39,12 @@ pub fn timed_words(
                 word.text.push_str(text);
                 word.end = at + TOKEN_SECS;
             }
-            _ => words.push(TimedWord { text: text.to_owned(), start: at, end: at + TOKEN_SECS }),
+            _ => words.push(TimedWord {
+                text: text.to_owned(),
+                start: at,
+                end: at + TOKEN_SECS,
+                may_grow: false,
+            }),
         }
     }
     words.retain(|w| !w.text.is_empty());
@@ -45,12 +54,19 @@ pub fn timed_words(
             .into_iter()
             .flat_map(|w| respell_timed(w, respell_word))
             .collect();
-        words.extend(
-            last.into_iter()
-                .flat_map(|w| respell_timed(w, respell_last_word)),
-        );
+        words.extend(last.into_iter().flat_map(respell_last_timed));
     }
     words
+}
+
+/// The last word respelled; an "enter" written as a word opening with «ин» may still grow.
+fn respell_last_timed(word: TimedWord) -> Vec<TimedWord> {
+    let opens_longer_words = word.text.to_lowercase().starts_with("ин");
+    let mut respelled = respell_timed(word, respell_last_word);
+    if let [only] = respelled.as_mut_slice() {
+        only.may_grow = opens_longer_words && only.text == "enter";
+    }
+    respelled
 }
 
 fn respell_timed(
@@ -68,6 +84,7 @@ fn respell_timed(
             text: (*text).to_owned(),
             start: word.start + share * i as f32,
             end: word.start + share * (i + 1) as f32,
+            may_grow: false,
         })
         .collect()
 }

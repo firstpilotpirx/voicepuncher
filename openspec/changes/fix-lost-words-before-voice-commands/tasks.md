@@ -6,12 +6,12 @@
 
 ## 2. Whole-word "enter" in the Russian recognizer's words
 
-- [ ] 2.1 Red: respelling tests in `command-spotting/src/streaming/respell/tests.rs`: «линтр», «линтер» are no "enter"; «лентер», «лентарентор» still are
-- [ ] 2.2 Red: `decide` tests in `command-spotting/src/streaming/decide/tests/at_once.rs` from the recognizer's words of 2026-11-13 16:31 («…возьму интер» then «…возьму интернет») and 2026-11-12 20:17 («должен линтр проверять»): no report; «тоже учесть интер» reported at the gate's pause and at the close, not before; «…читать энтер» still reported at once; run with `just test-one`, see them fail; commit as intentionally red
-- [ ] 2.3 Green: the «л»-opened form of "enter" takes only «э» or «е» (`command-spotting/src/streaming/respell/mod.rs`)
-- [ ] 2.4 Green: mark a last word respelled as one "enter" from a Russian word opening with «ин» as waiting (`TimedWord`, `timed_words` in `command-spotting/src/streaming/words.rs`); the at-once rule waits on it (`command-spotting/src/streaming/decide/mod.rs`)
-- [ ] 2.5 Qualify "reports it at once" in the "Streaming recognizer" entry of `docs/ubiquitous-language.md` with the «интер» wait
-- [ ] 2.6 `just test`, commit
+- [x] 2.1 Red: respelling tests in `command-spotting/src/streaming/respell/tests.rs`: «линтр», «линтер» are no "enter"; «лентер», «лентарентор» still are
+- [x] 2.2 Red: `decide` tests in `command-spotting/src/streaming/decide/tests/at_once.rs` from the recognizer's words of 2026-11-13 16:31 («…возьму интер» then «…возьму интернет») and 2026-11-12 20:17 («должен линтр проверять»): no report; «тоже учесть интер» reported at the gate's pause and at the close, not before; «…читать энтер» still reported at once; run with `just test-one`, see them fail; commit as intentionally red
+- [x] 2.3 Green: the «л»-opened form of "enter" takes only «э» or «е» (`command-spotting/src/streaming/respell/mod.rs`)
+- [x] 2.4 Green: mark a last word respelled as one "enter" from a Russian word opening with «ин» as waiting (`TimedWord`, `timed_words` in `command-spotting/src/streaming/words.rs`); the at-once rule waits on it (`command-spotting/src/streaming/decide/mod.rs`)
+- [x] 2.5 Qualify "reports it at once" in the "Streaming recognizer" entry of `docs/ubiquitous-language.md` with the «интер» wait
+- [x] 2.6 `just test`, commit
 
 ## 3. Version and checks
 

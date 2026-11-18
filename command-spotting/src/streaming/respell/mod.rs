@@ -54,14 +54,24 @@ const SOUNDS: &[(&str, &[&[Letter]])] = &[
     ),
     (
         "enter",
-        &[&[
-            ("л", Maybe),
-            ("эеия", Once),
-            ("н", Once),
-            ("тд", Once),
-            ("еэоа", Maybe),
-            ("р", Once),
-        ]],
+        &[
+            &[
+                ("эеия", Once),
+                ("н", Once),
+                ("тд", Once),
+                ("еэоа", Maybe),
+                ("р", Once),
+            ],
+            // "лентер" of the history; "линтр", "линтер" are "linter".
+            &[
+                ("л", Once),
+                ("эе", Once),
+                ("н", Once),
+                ("тд", Once),
+                ("еэоа", Maybe),
+                ("р", Once),
+            ],
+        ],
     ),
     (
         "clear",
