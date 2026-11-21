@@ -29,4 +29,4 @@
 - [x] 4.1 README: a "Claude dictation" section (what it does, the setting, the known limit that a spoken "stop dictation" stays in Claude's text) and a release checklist line for it; the adapter in `docs/architecture/project-architecture.html` where the secondary adapters are listed and in `docs/project-map.md`; the offline wording of `docs/architecture/overview.md` ("Nothing leaves the machine", "Fully offline") and `AGENTS.md` § Key constraints: voicepuncher sends nothing off the machine; in Claude, Claude's own dictation records by the user's choice
 - [x] 4.2 Bump `version` in `app/Cargo.toml` to 0.50.0
 - [x] 4.3 `just test`, commit; `just check` once
-- [ ] 4.4 Manual run: in the Claude app, "start", a sentence, "stop" puts Claude's own text in its composer; the hotkey does the same; in TextEdit dictation records and pastes as before
+- [x] 4.4 Manual run: in the Claude app, "start", a sentence, "stop" puts Claude's own text in its composer; the hotkey does the same; in TextEdit dictation records and pastes as before — skipped by the user on 2026-11-21
