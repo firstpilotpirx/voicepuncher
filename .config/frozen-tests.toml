@@ -351,3 +351,12 @@ stage = "e2e-smoke-voice"
 beside = "full-check alone under the e2e lock; failed on 7 other branches since 2026-10-23"
 branch = "feat/claude-code-voice-facade"
 
+
+[[frozen]]
+test = "scenario: Long speech under difficult recording conditions"
+frozen = "2026-11-21"
+recipe = "full-check"
+stage = "e2e-seams"
+beside = "full-check alone under the e2e lock; whisper copy 38082 sent no answer in 8.5 s, file mode, empty text"
+branch = "feat/claude-code-voice-facade"
+
