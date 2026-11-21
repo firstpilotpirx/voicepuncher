@@ -19,10 +19,10 @@
 
 ## 3. macOS adapter and wiring
 
-- [ ] 3.1 Red: unit tests in `app/src/adapters/secondary/claudedictation/macos/mod.rs`: a `KeyChord` maps to its key code with the Command flag; Escape is pressed with no modifier; an untrusted process fails with `AccessibilityMissing`; the bundle id `com.anthropic.claudefordesktop` counts as Claude and another does not; see them fail
-- [ ] 3.2 Green: `MacOsClaudeDictation`, reading `NSWorkspace.frontmostApplication.bundleIdentifier` (`NSWorkspace`, `NSRunningApplication` features of `objc2-app-kit`) and pressing through `keystroke::press` at keyboard level
-- [ ] 3.3 Wire it in `app/src/runtime/wiring.rs` when `claude_dictation.enabled`, logging `claude dictation: on (cmd+d)` or `claude dictation: off`
-- [ ] 3.4 `just test`, commit
+- [x] 3.1 Red: unit tests in `app/src/adapters/secondary/claudedictation/macos/mod.rs`: a `KeyChord` maps to its key code with the Command flag; Escape is pressed with no modifier; an untrusted process fails with `AccessibilityMissing`; the bundle id `com.anthropic.claudefordesktop` counts as Claude and another does not; see them fail
+- [x] 3.2 Green: `MacOsClaudeDictation`, reading `NSWorkspace.frontmostApplication.bundleIdentifier` (the `NSWorkspace` and `NSRunningApplication` features `objc2-app-kit` already has) and pressing through `keystroke::press` at keyboard level
+- [x] 3.3 Wire it in `app/src/runtime/wiring.rs` when `claude_dictation.enabled`, logging `claude dictation: on (cmd+d)` or `claude dictation: off`
+- [x] 3.4 `just test`, commit
 
 ## 4. Docs, version and checks
 
