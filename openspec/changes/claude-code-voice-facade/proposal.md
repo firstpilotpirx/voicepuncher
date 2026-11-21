@@ -4,15 +4,17 @@ Dictation in voicepuncher garbles English terms and fast speech: the same text d
 
 ## What Changes
 
-- When the focused app is Claude Code, a voice start (or the hotkey) makes voicepuncher press and hold Claude Code's own voice-record key; "stop" releases it, so Claude Code records, recognizes and inserts the text into its chat itself.
-- voicepuncher does not record, transcribe or paste in that case; in every other app dictation works as today.
-- When the facade cannot work (key not accepted, Claude Code not in focus), voicepuncher falls back to its own dictation and logs why.
+- When the frontmost app is the Claude desktop app (bundle id `com.anthropic.claudefordesktop`, where the user runs Claude Code in its Code tab), a dictation start — "start dictation" or the hotkey — presses Claude's own dictation shortcut (Cmd+D by default, a toggle) instead of recording; "stop dictation" or the hotkey presses it again, so Claude records, recognizes and inserts the text into its composer itself.
+- "cancel dictation" presses Escape (Claude drops its dictation); "restart dictation" presses Escape, then the shortcut; "press enter" during it presses the shortcut, waits for Claude's text, then presses Return.
+- The start, stop and cancel cues and the recording overlay stay as with the app's own dictation; voicepuncher does not record, transcribe, paste or archive such a dictation. In every other app dictation works as today.
+- When the shortcut cannot be pressed (no Accessibility), voicepuncher falls back to its own dictation and logs why; the decision is taken at each start, by the frontmost app.
+- A new section `[claude_dictation]` with `enabled` (on by default) and `shortcut` (`cmd+<letter or digit>`, default `cmd+d`), both on the Dictation tab of the Settings window (the shortcut under the advanced disclosure).
 
 Current stage: PoC. Target stage: PoC.
-Scope: the facade for Claude Code's voice recording, the choice between facade and own dictation by the focused app, a setting to turn the facade off.
+Scope: the facade for the Claude desktop app's own dictation, driven by voice commands and the hotkey; the choice between it and the app's own dictation by the frontmost app at each start; a setting to turn it off and one for its shortcut. Settled at explore: the terminal Claude Code CLI is not covered — its voice mode must be turned on by `/voice`, its push-to-talk key is Space with an empty input, and its hold mode needs key repeats that a synthetic held key does not produce.
 Acceptance bar: in Claude Code, voice start → speak → "stop" puts Claude Code's own transcript into the chat; in another app dictation is unchanged; the manual run shows both.
 Out of scope: changing the local recognizer; any paid or cloud recognition; other apps' voice buttons.
-Interface: desktop GUI (Claude Code chat, the recording overlay).
+Interface: desktop GUI — two new rows on the Dictation tab of the Settings window; the recording overlay and cues look as today.
 
 ## Capabilities
 
@@ -24,12 +26,13 @@ Interface: desktop GUI (Claude Code chat, the recording overlay).
 
 - Hotkey/voice start handling, the focused-app check, a key-press adapter, configuration (`[claude_code_facade]` or similar), README release checklist.
 
-## Open points
+## Decisions (settled at explore)
 
-- Which key Claude Code uses for voice recording (CLI: hold Space? desktop app: the mic button or a shortcut) and whether it is push-to-talk (hold) or toggle — proposed: find out at explore and support the one the user uses (desktop app Code tab and/or terminal CLI).
-- How to tell Claude Code is focused (bundle id of the Claude desktop app, a terminal window running `claude`) — proposed: bundle id plus window title.
-- The key is undocumented and may change with a Claude Code update — proposed: key in config, fallback to own dictation with a log line.
-- Whether the start/stop cue sounds and the overlay stay on in facade mode — proposed: keep them.
+- Claude's dictation key: the Claude desktop app's dictation shortcut, Cmd+D by default (its settings name it `dictationShortcut`, a toggle: press to start, press to stop); kept in `[claude_dictation] shortcut` in case the user or an update changes it.
+- How Claude is recognized: the frontmost app's bundle id is `com.anthropic.claudefordesktop`; no window title is needed, as the CLI in a terminal is out of scope.
+- A press that Claude ignores cannot be seen from outside; only a press that cannot be posted (no Accessibility) falls back to the app's own dictation.
+- The cues and the overlay stay on in this mode.
+- Known limit: Claude's dictation hears the user too, so a spoken "stop dictation" ends up at the end of Claude's text; the hotkey has no such words.
 
 ## Release
 
