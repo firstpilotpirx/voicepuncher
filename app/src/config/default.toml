@@ -76,6 +76,14 @@ enabled = false
 # Address of the command spotting service; it must be on this Mac.
 url = "ws://127.0.0.1:8082"
 
+[claude_dictation]
+# In the Claude desktop app, a dictation start presses Claude's own dictation
+# shortcut instead of recording, and its stop presses it again: Claude records
+# and inserts the text itself. Turn off to record there as everywhere else.
+enabled = true
+# Claude's dictation shortcut, as set in Claude: cmd+ and one letter or digit.
+shortcut = "cmd+d"
+
 [archive]
 # Keep every dictation's audio and texts.
 enabled = true

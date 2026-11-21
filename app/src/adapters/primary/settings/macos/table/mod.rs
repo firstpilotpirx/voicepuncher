@@ -107,6 +107,13 @@ pub const FIELDS: &[Field] = &[
         Control::Folder,
     ),
     field(
+        "claude_dictation",
+        "enabled",
+        Tab::Dictation,
+        "Use Claude's own dictation in Claude",
+        Control::Switch,
+    ),
+    field(
         "transcription",
         "language",
         Tab::Dictation,
@@ -179,6 +186,14 @@ pub const FIELDS: &[Field] = &[
         Tab::Dictation,
         "Service address",
         Control::Address(Scheme::Http),
+    )
+    .advanced(),
+    field(
+        "claude_dictation",
+        "shortcut",
+        Tab::Dictation,
+        "Claude dictation shortcut",
+        Control::Shortcut,
     )
     .advanced(),
     sound("start_sound", "Start"),

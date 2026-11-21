@@ -28,8 +28,18 @@ impl std::error::Error for NotAKeyChord {}
 impl KeyChord {
     /// Reads `cmd+<letter or digit>`, ignoring case and spaces around the parts.
     pub fn parse(text: &str) -> Result<Self, NotAKeyChord> {
-        let _ = text;
-        Err(NotAKeyChord(text.to_owned()))
+        let refused = || NotAKeyChord(text.to_owned());
+        let (modifier, key) = text.split_once('+').ok_or_else(refused)?;
+        if !modifier.trim().eq_ignore_ascii_case("cmd") {
+            return Err(refused());
+        }
+        let mut chars = key.trim().chars();
+        match (chars.next(), chars.next()) {
+            (Some(key), None) if key.is_ascii_alphanumeric() => {
+                Ok(Self { key: key.to_ascii_lowercase() })
+            }
+            _ => Err(refused()),
+        }
     }
 
     /// The letter or digit pressed with Command, lowercase.

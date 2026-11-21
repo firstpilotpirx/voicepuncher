@@ -1,13 +1,13 @@
 ## 1. Names, shortcut and configuration
 
-- [ ] 1.1 Add "Claude dictation" and "KeyChord" to `docs/ubiquitous-language.md`; note under "Key press" that "shortcut" names only another app's own KeyChord (the Claude dictation shortcut)
-- [ ] 1.2 Red: unit tests in `app/src/core/domain/key_chord.rs`: `cmd+d` and `cmd+5` parse (Command plus the key), `d`, `ctrl+d`, `cmd+dd`, `cmd+` and an empty text are refused naming the text; run with `just test-one`, see them fail
-- [ ] 1.3 Green: `KeyChord` in `app/src/core/domain/key_chord.rs`, exported from `core/domain`
-- [ ] 1.4 Red: config tests (`app/src/config/tests.rs`): an empty file gives `[claude_dictation]` `enabled = true`, `shortcut = "cmd+d"`; `shortcut = "d"` fails to load naming `claude_dictation.shortcut`; run with `just test-one`, see them fail
-- [ ] 1.5 Green: `ClaudeDictationCfg` in `app/src/config/mod.rs`, checked in `validate`; the `[claude_dictation]` block with its comments in `app/src/config/default.toml`
-- [ ] 1.6 Red: settings window tests: every option has a control (fails on the two new options), and the shortcut field refuses `d`; run with `just test-one`, see them fail
-- [ ] 1.7 Green: the two rows on the Dictation tab (`app/src/adapters/primary/settings/macos/table/mod.rs`), the switch and, under the advanced disclosure, a `Control::Shortcut` drawn as a text field and validated with `KeyChord::parse`, as the agreed mock shows
-- [ ] 1.8 `just test`, commit
+- [x] 1.1 Add "Claude dictation" and "KeyChord" to `docs/ubiquitous-language.md`; note under "Key press" that "shortcut" names only another app's own KeyChord (the Claude dictation shortcut)
+- [x] 1.2 Red: unit tests in `app/src/core/domain/key_chord.rs`: `cmd+d` and `cmd+5` parse (Command plus the key), `d`, `ctrl+d`, `cmd+dd`, `cmd+` and an empty text are refused naming the text; run with `just test-one`, see them fail
+- [x] 1.3 Green: `KeyChord` in `app/src/core/domain/key_chord.rs`, exported from `core/domain`
+- [x] 1.4 Red: config tests (`app/src/config/claude_dictation/tests.rs`): an empty file gives `[claude_dictation]` `enabled = true`, `shortcut = "cmd+d"`; `shortcut = "d"` fails to load naming `claude_dictation.shortcut`; run with `just test-one`, see them fail
+- [x] 1.5 Green: `ClaudeDictationCfg` in `app/src/config/mod.rs`, checked in `validate`; the `[claude_dictation]` block with its comments in `app/src/config/default.toml`
+- [x] 1.6 Red: settings window tests: every option has a control (fails on the two new options), and the shortcut field refuses `d`; run with `just test-one`, see them fail
+- [x] 1.7 Green: the two rows on the Dictation tab (`app/src/adapters/primary/settings/macos/table/mod.rs`), the switch and, under the advanced disclosure, a `Control::Shortcut` drawn as a text field and validated with `KeyChord::parse`, as the agreed mock shows
+- [x] 1.8 `just test`, commit
 
 ## 2. The pipeline drives Claude's dictation
 
