@@ -6,6 +6,7 @@ pub mod conversions;
 pub mod failure_notice;
 pub mod filler_sounds;
 pub mod hotkey;
+pub mod key_chord;
 pub mod level_history;
 pub mod local_service;
 pub mod model_catalog;
@@ -29,6 +30,7 @@ pub use failure_notice::{
 };
 pub use filler_sounds::{is_filler_sound, text_to_paste, without_filler_sounds};
 pub use hotkey::{HotKey, HotkeyBinding};
+pub use key_chord::{KeyChord, NotAKeyChord};
 pub use level_history::LevelHistory;
 pub use local_service::{ServiceKind, ServiceSpec, ServiceState, ServiceStatus, ServicesProgress};
 pub use model_catalog::{ModelFile, ModelKind, ModelNeeds, ModelUse, CATALOG};

@@ -31,11 +31,12 @@ The pipeline (`app/src/core/application/pipeline/`) starts every dictation in `s
 | Cancel and restart | Escape drops Claude's dictation; restart is Escape, then the shortcut, with the restart cue | Escape belongs to a live Claude dictation | pressing the shortcut (it would keep the text) |
 | "press enter" during it | shortcut, then Return after 1.5 s (`CLAUDE_TEXT_WAIT`) | Claude needs time to finish recognition and insert the text | Return at once (it would send before the text arrives) |
 | What "stop dictation" truncates | nothing: `close_dictation` cuts the recorder only for the app's own dictation | no recorder runs | |
-| Fallback | a press that fails (no Accessibility) logs `claude dictation: not used: <why>` and the app's own dictation starts; `enabled = false` builds no port | dictation is never lost | a failure notice only |
+| Fallback | a press that cannot be posted logs `claude dictation: not used: <why>` and the app's own dictation starts; `enabled = false` builds no port | dictation is never lost | a failure notice only |
 | Archive and history | a Claude dictation is not archived | voicepuncher holds no audio or text of it | an empty archive entry |
 | Settings window | Dictation tab: switch `Use Claude's own dictation in Claude` (`claude_dictation.enabled`), and under the advanced disclosure `Claude dictation shortcut` (`claude_dictation.shortcut`) as a text field, refused when `KeyChord::parse` fails | the Settings window shows every option | a separate tab |
+| Voice-start timing | a Claude voice start presses the shortcut, then shows the overlay and plays its cue through the same `show_recording_then` path, so it still logs `voice start: total=…ms` and keeps the 0.7 s bound | the start cue stays the user's sign, timed as before | an untimed Claude start |
 | Default | on | the user asked for it; it changes only dictations in Claude | off |
-| Offline rule | voicepuncher only presses a key; Claude's dictation is Claude's own, as when the user presses Cmd+D | the app itself still opens no connection beyond loopback | |
+| Offline rule | narrows the recorded decision "Nothing leaves the machine" / "Fully offline — Zero network I/O at runtime" (`docs/architecture/overview.md`) and "all inference is local" (`AGENTS.md` § Key constraints), by the user's own words when filing this change (2026-11-18: Claude Code's voice input is free, voicepuncher should drive it): voicepuncher itself still opens no connection beyond loopback and sends nothing; in Claude, Claude's own dictation records by the user's choice, as when the user presses Cmd+D; task 4.1 updates both texts | the user's request | keeping the old wording (it would forbid what the user asked for) |
 
 ### Names (ubiquitous language)
 
@@ -46,17 +47,42 @@ The pipeline (`app/src/core/application/pipeline/`) starts every dictation in `s
 
 | Scenario | Level |
 |---|---|
-| Saying start in Claude starts Claude's dictation | component (`voice_control.feature`, stand-in `ClaudeDictation`) |
+| Saying start in Claude starts Claude's dictation | component (`voice_control.feature`, stand-in `ClaudeDictation`; also checks the `voice start: total=…ms` log line) |
 | Saying stop in Claude stops Claude's dictation | component (`voice_control.feature`) |
 | Saying cancel in Claude drops Claude's dictation | component (`voice_control.feature`) |
 | Saying restart in Claude starts Claude's dictation over | component (`voice_control.feature`) |
 | Saying enter in Claude stops and sends | component (`voice_control.feature`) |
 | Another app keeps the app's own dictation | component (`voice_control.feature`) |
 | The Claude dictation turned off records as before | component (`voice_control.feature`) |
-| A shortcut that cannot be pressed falls back | component (`voice_control.feature`) |
+| A shortcut that cannot be posted falls back | component (`voice_control.feature`) |
 | A shortcut without Command is refused | unit (`app/src/config/tests.rs`, `KeyChord` tests) |
 | Toggle mode in Claude | component (`push_to_talk.feature`) |
 | Hold mode in Claude | component (`push_to_talk.feature`) |
+| Saying start dictation starts a dictation (modified: outside Claude, unchanged) | component (`voice_control.feature`, existing scenario) |
+| Saying stop dictation plays the stop sound and shows processing (modified: outside Claude, unchanged) | component (`voice_control.feature`, existing scenario) |
+| Saying stop dictation pastes the dictated text (modified: outside Claude, unchanged) | component (`voice_control.feature`, existing scenario) |
+| Saying enter during a dictation pastes and sends (modified: outside Claude, unchanged) | component (`voice_control.feature`, existing scenario) |
+| A hotkey press ends a voice dictation and keeps listening (modified: outside Claude, unchanged) | component (`voice_control.feature`, existing scenario) |
+| The hotkey records when voice control is off (modified: outside Claude, unchanged) | component (`voice_control.feature`, existing scenario) |
+| The hotkey records when voice control is on (modified: outside Claude, unchanged) | component (`voice_control.feature`, existing scenario) |
+| The hotkey ends its dictation when voice control is on (modified: outside Claude, unchanged) | component (`voice_control.feature`, existing scenario) |
+| Escape cancels a dictation when voice control is on (modified: outside Claude, unchanged) | component (`voice_control.feature`, existing scenario) |
+| A hotkey dictation shows no command sign (modified: outside Claude, unchanged) | component (`voice_control.feature`, existing scenario) |
+| A held hotkey records and a release pastes (modified: outside Claude, unchanged) | component (`push_to_talk.feature`, existing scenario) |
+| A short press records nothing (modified: outside Claude, unchanged) | component (`push_to_talk.feature`, existing scenario) |
+| Saying stop dictation ends a hotkey dictation (modified: outside Claude, unchanged) | existing scenario, unchanged level |
+| Saying cancel dictation discards a hotkey dictation (modified: outside Claude, unchanged) | existing scenario, unchanged level |
+| Start start followed by the dictation at once (modified: outside Claude, unchanged) | existing scenario, unchanged level |
+| Start, a short pause, then the dictation (modified: outside Claude, unchanged) | existing scenario, unchanged level |
+| Restart, a short pause, then the new dictation (modified: outside Claude, unchanged) | existing scenario, unchanged level |
+| A chain ending in start followed by the next dictation at once (modified: outside Claude, unchanged) | existing scenario, unchanged level |
+| The user's recorded restart restart followed by the new dictation at once (modified: outside Claude, unchanged) | existing scenario, unchanged level |
+| The user's recorded start start followed by the dictation at once (modified: outside Claude, unchanged) | existing scenario, unchanged level |
+| Start followed by the dictation at once (modified: outside Claude, unchanged) | existing scenario, unchanged level |
+| Enter followed by speech presses Return (modified: outside Claude, unchanged) | existing scenario, unchanged level |
+| A hands-free session in a synthesized voice (modified: outside Claude, unchanged) | existing scenario, unchanged level |
+| A hands-free session with the user's recorded commands (modified: outside Claude, unchanged) | existing scenario, unchanged level |
+| A hands-free session with long pauses between its steps (modified: outside Claude, unchanged) | existing scenario, unchanged level |
 
 The real Claude app and the real key presses are checked by the manual run (tasks 4.4): no automated test may press Cmd+D in the user's apps.
 
