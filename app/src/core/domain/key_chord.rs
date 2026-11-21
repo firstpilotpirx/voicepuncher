@@ -1,4 +1,4 @@
-//! A KeyChord: the Command key and one letter or digit, as the configuration writes it.
+//! A `KeyChord`: the Command key and one letter or digit, as the configuration writes it.
 
 use std::fmt;
 

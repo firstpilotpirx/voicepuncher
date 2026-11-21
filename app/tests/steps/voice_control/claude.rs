@@ -176,9 +176,10 @@ fn holds_in_claude(world: &mut IntegrationWorld) -> Result<()> {
     hotkey_dictation_in_claude(world, PttSignal::Released)
 }
 
-#[then("Claude's dictation shortcut is pressed once")]
+#[then("Claude's dictation shortcut is pressed once and the app's own recorder does not start")]
 fn pressed_once(world: &mut IntegrationWorld) -> Result<()> {
-    run(world).wait_for_claude_presses(1)
+    run(world).wait_for_claude_presses(1)?;
+    recorder_idle(world)
 }
 
 #[then(expr = "Claude's dictation shortcut is pressed twice")]
@@ -200,7 +201,7 @@ fn never_pressed(world: &mut IntegrationWorld) -> Result<()> {
     )
 }
 
-#[then("the app's own recorder does not start")]
+/// The app's own recorder did not start.
 fn recorder_idle(world: &mut IntegrationWorld) -> Result<()> {
     run(world).never_since_mark(
         |e| *e == Event::RecordingStarted,

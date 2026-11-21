@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: In Claude, the hotkey drives Claude's own dictation
-When the hotkey starts a recording while the Claude desktop app is the frontmost app and the Claude dictation is turned on, the system SHALL press Claude's dictation shortcut instead of recording; the hotkey press or release that ends the recording in the configured recording mode SHALL press the shortcut again, play the stop sound and hide the overlay, with nothing pasted; the user's Escape SHALL cancel it, which Claude hears itself, so the system SHALL press no second Escape. In any other frontmost app the hotkey SHALL record as before.
+When the hotkey starts a recording while the Claude desktop app is frontmost and the Claude dictation is on, the system SHALL press Claude's dictation shortcut instead of recording; the press or release that ends it in the recording mode SHALL press the shortcut again, play the stop sound and hide the overlay, pasting nothing; the user's Escape, which Claude hears itself, SHALL cancel it with no second Escape. In any other app the hotkey SHALL record as before.
 
 #### Scenario: Toggle mode in Claude
 - **GIVEN** the recording mode is Toggle and the Claude desktop app is the frontmost app

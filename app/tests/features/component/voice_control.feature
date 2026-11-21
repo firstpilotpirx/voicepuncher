@@ -530,10 +530,9 @@ Feature: voice-control
       And listening is on
       And no dictation runs
       When the user says "start"
-      Then Claude's dictation shortcut is pressed once
+      Then Claude's dictation shortcut is pressed once and the app's own recorder does not start
       And the start sound plays
       And the overlay shows the recording
-      And the app's own recorder does not start
       And the voice start is timed in the log as for the app's own dictation
 
     Scenario: Another app keeps the app's own dictation
