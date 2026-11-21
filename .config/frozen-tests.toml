@@ -342,3 +342,12 @@ recipe = "full-check"
 stage = "e2e-seams-sample"
 beside = "full-check model phase on fix-missed-enter-at-speech-end; whisper copy 38084 sent no answer in 9094 ms; the branch touches no speech recognition code"
 branch = "fix/fix-missed-enter-at-speech-end"
+
+[[frozen]]
+test = "scenario: Restart, a short pause, then the new dictation"
+frozen = "2026-11-21"
+recipe = "full-check"
+stage = "e2e-smoke-voice"
+beside = "full-check alone under the e2e lock; failed on 7 other branches since 2026-10-23"
+branch = "feat/claude-code-voice-facade"
+
