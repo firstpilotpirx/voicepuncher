@@ -92,4 +92,5 @@ The pictures of this structure — crates, layers, adapters, running services �
 | `docs/architecture/overview.md` | arc42 overview — system description, hexagonal diagram, tech choices, quality goals |
 | `docs/architecture/context.md` | arc42 context — external actors, system boundary, permission flows |
 | `docs/benchmark-datasets.md` | Benchmark corpus description and WER targets |
+| `docs/stt-model-bench-2026-11-08.md` | Russian dictation model comparison of 2026-11-08 (large-v3 chosen) |
 | `docs/e2e-benchmark-design.md` | E2E benchmark design and test strategy |

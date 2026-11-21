@@ -266,6 +266,7 @@ bench/
 | large-v3-turbo | 0.095 | 0.038 | 0.033 | 0.119 |
 
 The layout is illustrative: one row per Whisper model, one WER column per dataset.
+Measured results: [stt-model-bench-2026-11-08.md](stt-model-bench-2026-11-08.md) (Russian dictation models, 2026-11-08).
 
 ---
 
