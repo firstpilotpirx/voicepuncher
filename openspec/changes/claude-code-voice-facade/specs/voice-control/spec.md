@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
-### Requirement: In Claude, voice commands drive Claude's own dictation
-When a dictation starts by voice while the Claude desktop app is the frontmost app and the Claude dictation is turned on, the system SHALL press Claude's dictation shortcut instead of recording, and SHALL NOT record, transcribe, paste or archive that dictation; the start sound and the recording overlay SHALL be as for the app's own dictation. During such a dictation, "stop" SHALL press the shortcut again, play the stop sound and hide the overlay; "cancel" SHALL press Escape, play the cancel sound and hide the overlay; "restart" SHALL press Escape, then the shortcut, and play the restart sound; "press enter" SHALL press the shortcut, wait for Claude to insert its text, then press Return. In any other frontmost app a voice start SHALL start the app's own dictation as before. The choice SHALL be taken at each start and kept until that dictation ends.
+### Requirement: In Claude, a voice start starts Claude's own dictation
+When a dictation starts by voice while the Claude desktop app is the frontmost app and the Claude dictation is turned on, the system SHALL press Claude's dictation shortcut instead of recording, with the start sound and overlay of its own dictation, and SHALL NOT record, transcribe, paste or archive that dictation. In any other frontmost app a voice start SHALL start the app's own dictation as before. The choice SHALL be taken at each start and kept until that dictation ends.
 
 #### Scenario: Saying start in Claude starts Claude's dictation
 - **GIVEN** listening is on and the Claude dictation is turned on
@@ -10,6 +10,16 @@ When a dictation starts by voice while the Claude desktop app is the frontmost a
 - **THEN** Claude's dictation shortcut is pressed once
 - **AND** the start sound plays and the overlay shows the recording
 - **AND** the app's own recorder does not start
+
+#### Scenario: Another app keeps the app's own dictation
+- **GIVEN** listening is on and the Claude dictation is turned on
+- **AND** another app is the frontmost app
+- **WHEN** the user says "start", a sentence, then "stop"
+- **THEN** the app records and pastes the sentence as before
+- **AND** Claude's dictation shortcut is never pressed
+
+### Requirement: In Claude, voice commands end Claude's own dictation
+During a Claude dictation, "stop" SHALL press the shortcut again, play the stop sound and hide the overlay; "cancel" SHALL press Escape, play the cancel sound and hide the overlay; "restart" SHALL press Escape, then the shortcut, with the restart sound; "press enter" SHALL press the shortcut, wait for Claude to insert its text, then press Return.
 
 #### Scenario: Saying stop in Claude stops Claude's dictation
 - **GIVEN** a dictation started by voice in Claude runs
@@ -34,13 +44,6 @@ When a dictation starts by voice while the Claude desktop app is the frontmost a
 - **GIVEN** a dictation started by voice in Claude runs
 - **WHEN** the user says "enter"
 - **THEN** Claude's dictation shortcut is pressed, then Return after a pause
-
-#### Scenario: Another app keeps the app's own dictation
-- **GIVEN** listening is on and the Claude dictation is turned on
-- **AND** another app is the frontmost app
-- **WHEN** the user says "start", a sentence, then "stop"
-- **THEN** the app records and pastes the sentence as before
-- **AND** Claude's dictation shortcut is never pressed
 
 ### Requirement: The Claude dictation falls back to the app's own dictation
 The system SHALL start its own dictation, and log why, when the Claude dictation is turned off in the configuration, or when Claude's dictation shortcut cannot be pressed; a configured shortcut that is not Command with one letter or digit SHALL be refused when the configuration is loaded or saved.
