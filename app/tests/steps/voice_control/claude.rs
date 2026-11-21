@@ -16,6 +16,8 @@ pub const CLAUDE_TEXT_WAIT_IN_TESTS: Duration = Duration::from_millis(300);
 const LEAST_TEXT_WAIT: Duration = Duration::from_millis(250);
 /// The start of the line the pipeline logs when Claude's dictation is not used.
 const NOT_USED_LINE: &str = "claude dictation: not used:";
+/// Why the stand-in's press fails.
+const PRESS_FAILURE: &str = "the key press cannot be posted";
 
 /// How the Claude dictation of a scenario behaves.
 #[derive(Debug, Clone, Copy)]
@@ -42,7 +44,7 @@ impl StandInClaude {
 
     fn press(&self, event: Event) -> Result<()> {
         if self.setup.press_fails {
-            bail!("the key press cannot be posted");
+            bail!(PRESS_FAILURE);
         }
         record(&self.events, event);
         Ok(())
@@ -125,6 +127,7 @@ fn in_another_app(world: &mut IntegrationWorld) {
 
 #[given("the Claude dictation is turned off and the Claude desktop app is the frontmost app")]
 fn turned_off(world: &mut IntegrationWorld) {
+    // turned off builds no port (`ClaudeDictationCfg::port_shortcut`, config tests)
     set_claude(world, None);
 }
 
@@ -195,10 +198,15 @@ fn pressed_a_second_time(world: &mut IntegrationWorld) -> Result<()> {
 
 #[then("Claude's dictation shortcut is never pressed")]
 fn never_pressed(world: &mut IntegrationWorld) -> Result<()> {
-    run(world).never_since_mark(
-        |e| *e == Event::ClaudeShortcut,
-        "Claude's shortcut was pressed",
-    )
+    // over the whole run, the start included: Claude is told apart at the start
+    let run = run(world);
+    std::thread::sleep(SETTLE);
+    let events = run.events();
+    ensure!(
+        !events.contains(&Event::ClaudeShortcut),
+        "Claude's shortcut was pressed: {events:?}"
+    );
+    Ok(())
 }
 
 /// The app's own recorder did not start.
@@ -211,7 +219,28 @@ fn recorder_idle(world: &mut IntegrationWorld) -> Result<()> {
 
 #[then("nothing is pasted and no dictation is archived")]
 fn nothing_pasted(world: &mut IntegrationWorld) -> Result<()> {
-    run(world).never_since_mark(|e| matches!(e, Event::Pasted(_)), "a text was pasted")
+    let run = run(world);
+    run.never_since_mark(|e| matches!(e, Event::Pasted(_)), "a text was pasted")?;
+    // only the app's own recording makes an archive entry: it never started
+    let events = run.events();
+    ensure!(
+        !events.contains(&Event::RecordingStarted),
+        "the app's recorder started, so a dictation would be archived: {events:?}"
+    );
+    Ok(())
+}
+
+#[then("Claude's dictation goes on")]
+fn claude_goes_on(world: &mut IntegrationWorld) -> Result<()> {
+    run(world).never_since_mark(
+        |e| *e == Event::Overlay("hidden") || *e == Event::Sound("stop"),
+        "the dictation ended",
+    )?;
+    // a later stop still ends Claude's dictation: it runs
+    let run = run(world);
+    run.start_when();
+    run.say_alone(VoiceCommand::StopDictation.phrase())?;
+    run.wait_for_claude_presses(1)
 }
 
 #[then("Escape is pressed to drop Claude's dictation")]
@@ -276,13 +305,15 @@ fn no_escape(world: &mut IntegrationWorld) -> Result<()> {
 fn not_used_logged(world: &mut IntegrationWorld) -> Result<()> {
     let run = run(world);
     let deadline = Instant::now() + REACTION;
-    while run.not_used_lines().is_empty() {
+    loop {
+        let lines = run.not_used_lines();
+        if lines.iter().any(|line| line.contains(PRESS_FAILURE)) {
+            return Ok(());
+        }
         ensure!(
             Instant::now() < deadline,
-            "no {NOT_USED_LINE:?} line; events: {:?}",
-            run.events()
+            "no {NOT_USED_LINE:?} line naming {PRESS_FAILURE:?}: {lines:?}"
         );
         std::thread::sleep(Duration::from_millis(5));
     }
-    Ok(())
 }

@@ -108,11 +108,10 @@ impl PipelineAssembler for WiringAssembler {
 /// turns it on.
 fn with_claude_dictation(pipeline: Pipeline, config: &Config) -> Result<Pipeline> {
     let cfg = &config.claude_dictation;
-    if !cfg.enabled {
+    let Some(shortcut) = cfg.port_shortcut()? else {
         log::info!("claude dictation: off");
         return Ok(pipeline);
-    }
-    let shortcut = cfg.key_chord()?;
+    };
     log::info!("claude dictation: on ({})", cfg.shortcut);
     Ok(pipeline.with_claude_dictation(Box::new(MacOsClaudeDictation::new(shortcut))))
 }

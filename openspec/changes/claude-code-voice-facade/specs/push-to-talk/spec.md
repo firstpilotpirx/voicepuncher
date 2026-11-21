@@ -14,6 +14,12 @@ When the hotkey starts a recording while the Claude desktop app is frontmost and
 - **WHEN** the user holds the hotkey, speaks, and releases it
 - **THEN** Claude's dictation shortcut is pressed at the press and again at the release
 
+#### Scenario: Escape in Claude leaves the drop to Claude
+- **GIVEN** the Claude dictation is turned on and the Claude desktop app is the frontmost app
+- **WHEN** the user presses the hotkey once, then Escape
+- **THEN** the system presses no Escape of its own
+- **AND** the cancel sound plays
+
 ## MODIFIED Requirements
 
 ### Requirement: Holding the hotkey records and releasing it pastes

@@ -21,6 +21,15 @@ impl Default for ClaudeDictationCfg {
 }
 
 impl ClaudeDictationCfg {
+    /// The shortcut to drive Claude's dictation with; none when it is turned off.
+    pub fn port_shortcut(&self) -> Result<Option<KeyChord>> {
+        if self.enabled {
+            self.key_chord().map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
     /// The shortcut as a `KeyChord`, or an error naming `claude_dictation.shortcut`.
     pub fn key_chord(&self) -> Result<KeyChord> {
         KeyChord::parse(&self.shortcut)

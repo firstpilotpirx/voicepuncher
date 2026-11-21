@@ -55,7 +55,7 @@ The pipeline (`app/src/core/application/pipeline/`) starts every dictation in `s
 | Another app keeps the app's own dictation | component (`voice_control.feature`) |
 | The Claude dictation turned off records as before | component (`voice_control.feature`) |
 | A shortcut that cannot be posted falls back | component (`voice_control.feature`) |
-| A shortcut without Command is refused | unit (`app/src/config/tests.rs`, `KeyChord` tests) |
+| A shortcut without Command is refused | unit (`app/src/config/claude_dictation/tests.rs`, `KeyChord` tests) |
 | Toggle mode in Claude | component (`push_to_talk.feature`) |
 | Hold mode in Claude | component (`push_to_talk.feature`) |
 | Saying start dictation starts a dictation (modified: outside Claude, unchanged) | component (`voice_control.feature`, existing scenario) |
@@ -84,7 +84,7 @@ The pipeline (`app/src/core/application/pipeline/`) starts every dictation in `s
 | A hands-free session with the user's recorded commands (modified: outside Claude, unchanged) | existing scenario, unchanged level |
 | A hands-free session with long pauses between its steps (modified: outside Claude, unchanged) | existing scenario, unchanged level |
 
-The real Claude app and the real key presses are checked by the manual run (tasks 4.4): no automated test may press Cmd+D in the user's apps.
+The real Claude app and the real key presses are checked by the manual run (tasks 4.4): no test of `just test` or of the checks presses Cmd+D in the user's apps; only `just test-real-keyboard`, run by hand with the keyboard to itself, presses the shortcut and Escape to see them posted.
 
 ## Interface mock
 

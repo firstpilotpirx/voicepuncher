@@ -565,6 +565,7 @@ Feature: voice-control
       When the user says "restart"
       Then Escape is pressed, then Claude's dictation shortcut
       And the restart sound plays, and neither the cancel sound nor the start sound
+      And Claude's dictation goes on
 
     Scenario: Saying enter in Claude stops and sends
       Given a dictation started by voice in Claude runs
