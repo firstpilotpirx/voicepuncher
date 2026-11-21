@@ -172,6 +172,6 @@ All domain terms are defined in `docs/ubiquitous-language.md`. Read it before na
 ## Key constraints
 
 - macOS + Apple Silicon only (Metal GPU, CoreAudio, macOS TCC permissions).
-- No internet at runtime; loopback connections only — all inference is local, in separate local services (speech recognition, command spotting).
+- No internet at runtime; loopback connections only — all inference of voicepuncher is local, in separate local services (speech recognition, command spotting). In the Claude desktop app a dictation drives Claude's own dictation by the user's choice (`[claude_dictation]`); voicepuncher itself sends nothing.
 - Three macOS TCC permissions required: Microphone, Accessibility, Input Monitoring.
 - **Dependencies are pinned exactly:** every dependency in every `Cargo.toml` names one version, `=x.y.z` (`~/.claude/rules-custom/exact-versions.md`), with `Cargo.lock` as the second lock; a new dependency is added at the exact version Cargo resolves, and every crate states `rust-version`.
