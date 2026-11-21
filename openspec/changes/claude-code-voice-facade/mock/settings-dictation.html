@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dictation tab mock</title>
+<style>
+body{margin:0;padding:16px;font:13px -apple-system,system-ui,sans-serif;background:#e9e9ee}
+h1{font-size:16px;margin:0 0 4px} p.note{margin:0 0 16px;color:#555}
+.wrap{display:flex;flex-wrap:wrap;gap:24px}
+.win{width:520px;max-width:100%;border-radius:10px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+.light{--bg:#ececec;--card:#fff;--fg:#1d1d1f;--mut:#6e6e73;--line:#d8d8dc;--field:#fff;--acc:#0a84ff;--new:#e7f6ea}
+.dark{--bg:#2a2a2c;--card:#1e1e20;--fg:#f2f2f7;--mut:#98989d;--line:#3a3a3c;--field:#2c2c2e;--acc:#0a84ff;--new:#1f3a26}
+.win{background:var(--bg);color:var(--fg)}
+.bar{height:28px;display:flex;align-items:center;gap:6px;padding:0 10px}
+.dot{width:12px;height:12px;border-radius:50%}
+.tabs{display:flex;justify-content:center;gap:18px;padding:4px 0 10px;color:var(--mut);font-size:11px}
+.tabs b{color:var(--acc)}
+.card{background:var(--card);margin:0 14px 14px;border-radius:8px;border:1px solid var(--line)}
+.row{display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.row.new{background:var(--new)}
+.val{color:var(--mut)}
+.sw{width:30px;height:18px;border-radius:9px;background:var(--acc);position:relative}
+.sw:after{content:"";position:absolute;right:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff}
+.tf{border:1px solid var(--line);background:var(--field);border-radius:5px;padding:3px 8px;min-width:80px}
+.adv{padding:6px 12px;color:var(--mut);font-size:12px;border-top:1px solid var(--line)}
+.hint{display:block;color:var(--mut);font-size:11px}
+</style></head><body>
+<h1>Settings → Dictation tab</h1>
+<p class="note">Green rows are new. Everything else stays as today.</p>
+<div class="wrap">
+<div class="win light"><div class="bar"><span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span></div>
+<div class="tabs"><span>General</span><b>Dictation</b><span>Sounds</span><span>Paste</span><span>Archive</span><span>Services</span><span>Logging</span></div>
+<div class="card">
+<div class="row"><span>Language</span><span class="val">Russian ▾</span></div>
+<div class="row"><span>Languages to expect</span><span class="val">ru, en</span></div>
+<div class="row"><span>Prompt</span><span class="val">…</span></div>
+<div class="row new"><span>Use Claude's own dictation in Claude<span class="hint">In the Claude app, start and stop press its dictation key</span></span><span class="sw"></span></div>
+<div class="adv">▾ Show advanced</div>
+<div class="row"><span>Temperature</span><span class="val">0.0</span></div>
+<div class="row"><span>Timeout</span><span class="val">60 s</span></div>
+<div class="row new"><span>Claude dictation shortcut</span><span class="tf">cmd+d</span></div>
+</div></div>
+<div class="win dark"><div class="bar"><span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span></div>
+<div class="tabs"><span>General</span><b>Dictation</b><span>Sounds</span><span>Paste</span><span>Archive</span><span>Services</span><span>Logging</span></div>
+<div class="card">
+<div class="row"><span>Language</span><span class="val">Russian ▾</span></div>
+<div class="row"><span>Languages to expect</span><span class="val">ru, en</span></div>
+<div class="row"><span>Prompt</span><span class="val">…</span></div>
+<div class="row new"><span>Use Claude's own dictation in Claude<span class="hint">In the Claude app, start and stop press its dictation key</span></span><span class="sw"></span></div>
+<div class="adv">▾ Show advanced</div>
+<div class="row"><span>Temperature</span><span class="val">0.0</span></div>
+<div class="row"><span>Timeout</span><span class="val">60 s</span></div>
+<div class="row new"><span>Claude dictation shortcut</span><span class="tf">cmd+d</span></div>
+</div></div>
+</div></body></html>
