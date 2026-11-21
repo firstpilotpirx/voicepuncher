@@ -12,7 +12,6 @@ use super::dictation::Dictation;
 use super::live_transcript::LiveTranscript;
 use super::live_worker::run_live_worker;
 use super::processing::StageClock;
-use super::voice_control::log_voice_start;
 use super::{LiveSessionResult, LiveTranscriptionSession, Pipeline, StartCue};
 
 /// What an abandoned dictation's end waits for.
@@ -33,23 +32,14 @@ impl Pipeline {
         cue: StartCue,
         voice_start: Option<SpokenCommand>,
     ) -> anyhow::Result<()> {
+        if self.start_claude_dictation(cue, voice_start) {
+            return Ok(());
+        }
         // With voice control the dictation phrases are listened for before the recording
         // starts, so a "stop dictation" said right away is heard.
         self.voice.follow_dictation(true);
-        match cue {
-            StartCue::Start => self.sound_player.play_start(),
-            StartCue::Restart => self.sound_player.play_restart(),
-        }
-        let cue_at = Instant::now();
         // WHY: the overlay goes up with the cue, before opening the microphone can delay it.
-        match voice_start {
-            Some(spoken) => self
-                .visual_indicator
-                .show_recording_then(Box::new(move |drawn_at| {
-                    log_voice_start(&spoken, cue_at, drawn_at);
-                })),
-            None => self.visual_indicator.show_recording(),
-        }
+        self.play_start_cue(cue, voice_start);
         if let Err(e) = self.recorder.start() {
             self.voice.follow_dictation(false);
             return Err(self.recording_not_started(e));
@@ -95,6 +85,10 @@ impl Pipeline {
 
     /// Stops the running dictation and processes it: nothing when none runs.
     pub(super) fn stop_recording(&mut self) -> anyhow::Result<()> {
+        if self.claude_dictation_runs() {
+            self.stop_claude_dictation();
+            return Ok(());
+        }
         let t_user_stop = Instant::now();
         let Some(mut dictation) = self.dictation.take() else {
             return Ok(());
@@ -187,6 +181,10 @@ impl Pipeline {
 
     /// Stops the recording and drops it, with no cue: the caller gives its own.
     pub(super) fn abandon(&mut self, awaits: Awaits) -> anyhow::Result<()> {
+        if self.claude_dictation_runs() {
+            self.drop_claude_dictation(true);
+            return Ok(());
+        }
         self.voice.follow_dictation(false);
         let Some(session) = self.dictation.take().and_then(|dictation| dictation.live) else {
             self.recorder.stop()?;

@@ -30,6 +30,10 @@ pub enum Event {
     ListeningStarted,
     ListeningStopped,
     Overlay(&'static str),
+    /// Claude's dictation shortcut was pressed.
+    ClaudeShortcut,
+    /// Escape was pressed to drop Claude's dictation.
+    ClaudeEscape,
 }
 
 pub type Events = Arc<Mutex<Vec<Event>>>;

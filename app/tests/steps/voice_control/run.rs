@@ -8,7 +8,10 @@ use super::{
     RecordingSounds, Result, ScriptedSpotter, Sender, Speech, SpeechBeforeCut, SpottingEvent,
     ThreadId, VoiceCommand, PHRASE_LEAD, PHRASE_LENGTH, REACTION, SEGMENT_TAIL, SENTENCE, SETTLE,
 };
+use voicepuncher::core::domain::RecordingMode;
 use voicepuncher::test_doubles::StartedOnDemand;
+
+use super::claude::{ClaudeSetup, StandInClaude, CLAUDE_TEXT_WAIT_IN_TESTS};
 
 pub(super) static PIPELINE_LOG: OnceLock<&'static PipelineLog> = OnceLock::new();
 
@@ -41,6 +44,8 @@ pub struct VoiceRun {
     pub(crate) audio_lost: Duration,
     /// When the words of the scenario's command ended.
     pub(crate) command_end: Option<Instant>,
+    /// The Claude dictation of the scenario, none when it is turned off.
+    pub(crate) claude: Option<ClaudeSetup>,
 }
 
 impl std::fmt::Debug for VoiceRun {
@@ -236,8 +241,16 @@ impl StartedOnDemand for VoiceRun {
                 sound_player: Box::new(RecordingSounds(Arc::clone(&self.events))),
                 visual_indicator: Box::new(RecordingOverlay(Arc::clone(&self.events))),
             },
-            PipelineConfig::default(),
+            PipelineConfig {
+                recording_mode: self.claude.map_or_else(RecordingMode::default, |c| c.mode),
+                ..PipelineConfig::default()
+            },
         );
+        if let Some(claude) = self.claude {
+            pipeline = pipeline
+                .with_claude_dictation(Box::new(StandInClaude::new(claude, &self.events)))
+                .with_claude_text_wait(CLAUDE_TEXT_WAIT_IN_TESTS);
+        }
         if self.voice_control {
             pipeline = pipeline.with_voice_control(
                 Box::new(ScriptedSpotter {

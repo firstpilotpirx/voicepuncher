@@ -187,7 +187,11 @@ impl Pipeline {
             VoiceCommand::StopDictation => self.close_dictation(spoken),
             VoiceCommand::PressEnter if self.is_recording() => {
                 // "enter" during a dictation is "stop enter": paste, then send.
+                let in_claude = self.claude_dictation_runs();
                 self.close_dictation(spoken)?;
+                if in_claude {
+                    self.wait_for_claude_text();
+                }
                 self.press_keys(VoiceCommand::PressEnter);
                 Ok(())
             }
@@ -241,8 +245,8 @@ impl Pipeline {
     fn close_dictation(&mut self, spoken: SpokenCommand) -> anyhow::Result<()> {
         if let Some(dictation) = self.dictation.as_mut() {
             dictation.command_words.closing = spoken.placement != CommandPlacement::Alone;
+            self.recorder.truncate_at(spoken.started_at);
         }
-        self.recorder.truncate_at(spoken.started_at);
         self.stop_recording()
     }
 
