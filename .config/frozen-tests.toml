@@ -360,3 +360,12 @@ stage = "e2e-seams"
 beside = "full-check alone under the e2e lock; whisper copy 38082 sent no answer in 8.5 s, file mode, empty text"
 branch = "feat/claude-code-voice-facade"
 
+
+[[frozen]]
+test = "scenario: Start followed by the dictation at once gives its cue at once"
+frozen = "2026-11-21"
+recipe = "full-check"
+stage = "e2e-cues"
+beside = "load 40 on 10 cores (other sessions); no start cue at all; harness pipeline has no Claude port"
+branch = "feat/claude-code-voice-facade"
+
