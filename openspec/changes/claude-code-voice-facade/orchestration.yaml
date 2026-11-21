@@ -1,3 +1,4 @@
 depends_on:
   - change: fix-lost-words-before-voice-commands
     why: filed after it, runs after it
+priority: normal
