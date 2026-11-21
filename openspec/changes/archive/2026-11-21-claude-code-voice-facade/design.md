@@ -28,7 +28,7 @@ The pipeline (`app/src/core/application/pipeline/`) starts every dictation in `s
 | How the pipeline keeps a Claude dictation | a new module `pipeline/claude_dictation.rs`; the `Pipeline` gets one field holding the port and whether a Claude dictation runs; `is_recording` counts it | the existing `Dictation` holds a recorder session, live chunks and an archive trace, none of which apply | a variant inside `Dictation` (every recorder path would need a guard) |
 | Order at a start | press the shortcut first; only when it was posted, play the start cue, show the overlay and point the command spotting at the dictation phrases | a failed press falls back to the app's own dictation with no doubled cue | cue first (a fallback would play it twice) |
 | Stop | press the shortcut, play the stop sound, hide the overlay at once (no processing overlay: nothing is transcribed here) | voicepuncher has nothing left to wait for | showing processing until a paste that never comes |
-| Cancel and restart | Escape drops Claude's dictation; restart is Escape, then the shortcut, with the restart cue | Escape belongs to a live Claude dictation | pressing the shortcut (it would keep the text) |
+| Cancel and restart | Escape drops Claude's dictation (the user's own Escape reaches Claude through the listen-only event tap, so a hotkey cancel presses none); restart is Escape, then the shortcut, with the restart cue | Escape belongs to a live Claude dictation | pressing the shortcut (it would keep the text) |
 | "press enter" during it | shortcut, then Return after 1.5 s (`CLAUDE_TEXT_WAIT`) | Claude needs time to finish recognition and insert the text | Return at once (it would send before the text arrives) |
 | What "stop dictation" truncates | nothing: `close_dictation` cuts the recorder only for the app's own dictation | no recorder runs | |
 | Fallback | a press that cannot be posted logs `claude dictation: not used: <why>` and the app's own dictation starts; `enabled = false` builds no port | dictation is never lost | a failure notice only |
@@ -55,7 +55,7 @@ The pipeline (`app/src/core/application/pipeline/`) starts every dictation in `s
 | Another app keeps the app's own dictation | component (`voice_control.feature`) |
 | The Claude dictation turned off records as before | component (`voice_control.feature`) |
 | A shortcut that cannot be posted falls back | component (`voice_control.feature`) |
-| A shortcut without Command is refused | unit (`app/src/config/tests.rs`, `KeyChord` tests) |
+| A shortcut without Command is refused | unit (`app/src/config/claude_dictation/tests.rs`, `KeyChord` tests) |
 | Toggle mode in Claude | component (`push_to_talk.feature`) |
 | Hold mode in Claude | component (`push_to_talk.feature`) |
 | Saying start dictation starts a dictation (modified: outside Claude, unchanged) | component (`voice_control.feature`, existing scenario) |
@@ -84,7 +84,7 @@ The pipeline (`app/src/core/application/pipeline/`) starts every dictation in `s
 | A hands-free session with the user's recorded commands (modified: outside Claude, unchanged) | existing scenario, unchanged level |
 | A hands-free session with long pauses between its steps (modified: outside Claude, unchanged) | existing scenario, unchanged level |
 
-The real Claude app and the real key presses are checked by the manual run (tasks 4.4): no automated test may press Cmd+D in the user's apps.
+The real Claude app and the real key presses are checked by the manual run (tasks 4.4): no test of `just test` or of the checks presses Cmd+D in the user's apps; only `just test-real-keyboard`, run by hand with the keyboard to itself, presses the shortcut and Escape to see them posted.
 
 ## Interface mock
 

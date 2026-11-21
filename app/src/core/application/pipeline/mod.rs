@@ -1,4 +1,5 @@
 mod archiving;
+mod claude_dictation;
 mod dictation;
 mod failure_notices;
 mod live_transcript;
@@ -9,6 +10,7 @@ mod recording;
 mod recording_failure;
 mod voice_control;
 
+pub use claude_dictation::CLAUDE_TEXT_WAIT;
 pub use parts::{PipelineConfig, PipelineParts};
 
 use std::collections::VecDeque;
@@ -24,6 +26,7 @@ use crate::core::application::{
 };
 use crate::core::domain::{FailingPart, FailureNotice, Permission, PttSignal, RecordingMode};
 
+use self::claude_dictation::ClaudeDictationState;
 use self::dictation::Dictation;
 use self::voice_control::Voice;
 
@@ -74,6 +77,8 @@ pub struct Pipeline {
     inbox: Inbox,
     voice: Voice,
     sinks: Sinks,
+    /// Claude's own dictation, driven in its place in the Claude desktop app.
+    claude: Option<ClaudeDictationState>,
 }
 
 /// How a dictation's text waits for text input focus before it is pasted (see `insert_text`).
@@ -131,6 +136,7 @@ impl Pipeline {
             inbox: Inbox::default(),
             voice: Voice::Off,
             sinks: Sinks { archive: None, activity: Box::new(NoActivitySink) },
+            claude: None,
         }
     }
 
@@ -233,7 +239,13 @@ impl Pipeline {
             (false, PttSignal::Pressed, _) => past_recording_not_started(self.start_recording()),
             (true, PttSignal::Released, RecordingMode::Hold)
             | (true, PttSignal::Pressed, RecordingMode::Toggle) => self.stop_recording(),
-            (true, PttSignal::Cancel, _) => self.cancel_recording(),
+            (true, PttSignal::Cancel, _) => {
+                // the user's Escape reached Claude too: it drops Claude's dictation itself
+                if self.claude_dictation_runs() {
+                    self.drop_claude_dictation(false);
+                }
+                self.cancel_recording()
+            }
             (_, sig, _) => {
                 log::warn!("ignoring {sig:?} in state {state}");
                 Ok(())
@@ -251,7 +263,7 @@ impl Pipeline {
     }
 
     fn is_recording(&self) -> bool {
-        self.dictation.is_some()
+        self.dictation.is_some() || self.claude_dictation_runs()
     }
 }
 

@@ -6,10 +6,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::domain::{HotKey, RecordingMode};
 
+mod claude_dictation;
 pub mod document;
 mod loopback;
 mod transcription;
 
+pub use claude_dictation::ClaudeDictationCfg;
 pub use loopback::{ensure_loopback, ensure_loopback_websocket};
 pub use transcription::TranscriptionCfg;
 
@@ -22,6 +24,7 @@ pub struct Config {
     pub paste: PasteCfg,
     pub sounds: SoundsCfg,
     pub voice_control: VoiceControlCfg,
+    pub claude_dictation: ClaudeDictationCfg,
     pub archive: ArchiveCfg,
     pub logging: LoggingCfg,
     pub services: ServicesCfg,
@@ -345,7 +348,8 @@ pub fn validate(cfg: &Config) -> Result<()> {
     ensure_copies(
         "services.command_spotting_copies",
         cfg.services.command_spotting_copies,
-    )
+    )?;
+    cfg.claude_dictation.key_chord().map(|_| ())
 }
 
 fn ensure_copies(key: &str, copies: u32) -> Result<()> {

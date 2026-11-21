@@ -2,6 +2,7 @@
 //! sending the speech and phrase events the command spotting service would report, and
 //! watches the ordered log of what the stand-ins in `doubles` were asked to do.
 
+mod claude;
 mod doubles;
 pub mod listening;
 mod start;

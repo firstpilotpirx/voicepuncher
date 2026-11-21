@@ -73,9 +73,18 @@ pub enum Control {
     Switch,
     PopUp(Choices),
     Radio(Choices),
-    Number { min: i64, max: i64, unit: &'static str },
-    Slider { min: f64, max: f64 },
+    Number {
+        min: i64,
+        max: i64,
+        unit: &'static str,
+    },
+    Slider {
+        min: f64,
+        max: f64,
+    },
     Text,
+    /// Another app's own key combination (`cmd+d`), drawn as a text field.
+    Shortcut,
     Address(Scheme),
     TextArea,
     LanguageList,

@@ -2,6 +2,7 @@ pub mod audio_level_sink;
 pub mod audio_level_source;
 pub mod audio_recorder;
 pub mod chunking;
+pub mod claude_dictation;
 pub mod command_spotter;
 pub mod dictation_archive;
 pub mod dictation_history;
@@ -29,6 +30,7 @@ pub use audio_level_sink::AudioLevelSink;
 pub use audio_level_source::AudioLevelSource;
 pub use audio_recorder::AudioRecorder;
 pub use chunking::ChunkingCfg;
+pub use claude_dictation::ClaudeDictation;
 pub use command_spotter::CommandSpotter;
 pub use dictation_archive::{
     ArchiveEntry, DictationArchive, DictationOutcome, DictationStart, StageTiming,
@@ -64,6 +66,7 @@ pub use visual_indicator::{OnDrawn, VisualIndicator};
 #[cfg(test)]
 pub(crate) mod prelude {
     pub(crate) use super::audio_recorder::MockAudioRecorder;
+
     pub(crate) use super::command_spotter::MockCommandSpotter;
     pub(crate) use super::hotkey_listener::MockHotkeyListener;
     pub(crate) use super::key_presser::MockKeyPresser;

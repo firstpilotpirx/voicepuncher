@@ -6,6 +6,7 @@ use toml::Value;
 
 use super::field::{Choices, Control, Field, Scheme};
 use crate::config::{ensure_loopback, ensure_loopback_websocket, TranscriptionCfg};
+use crate::core::domain::KeyChord;
 
 /// What the window says when an address is on another machine or not a valid address.
 const NOT_LOOPBACK: &str = "Service address must be on this Mac (127.0.0.1 or localhost)";
@@ -24,6 +25,7 @@ pub fn validate(field: &Field, value: &Value, home: &Path) -> Result<(), String>
         Control::LanguageList => languages(value),
         Control::PopUp(Choices::Languages) => language(value),
         Control::Folder => folder(value, home),
+        Control::Shortcut => shortcut(value),
         _ => Ok(()),
     }
 }
@@ -80,6 +82,12 @@ fn language(value: &Value) -> Result<(), String> {
     } else {
         Err(format!("Unknown language code: {code}"))
     }
+}
+
+fn shortcut(value: &Value) -> Result<(), String> {
+    KeyChord::parse(value.as_str().unwrap_or_default())
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 /// A folder may be saved when it exists or every missing part of it can be created:

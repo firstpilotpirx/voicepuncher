@@ -51,6 +51,7 @@ The pictures of this structure — crates, layers, adapters, running services �
 | `app/src/adapters/secondary/soundplaying/macos/` | Secondary adapter | `MacosSoundPlayer` — plays start/stop sounds via macOS `afplay` |
 | `app/src/adapters/secondary/commandspotting/websocket/` | Secondary adapter | `WebSocketCommandSpotter` — streams the microphone to the command spotting service over its loopback WebSocket and feeds its spotting events into the pipeline; reconnects when the service is away |
 | `app/src/adapters/secondary/keypressing/macos/` | Secondary adapter | `MacOsKeyPresser` — the key presses of the voice commands (Enter, Cmd+A, Cmd+V) via `CGEventPost` |
+| `app/src/adapters/secondary/claudedictation/macos/` | Secondary adapter | `MacOsClaudeDictation` — Claude dictation: the frontmost app via `NSWorkspace`, Claude's dictation shortcut and Escape via `CGEventPost` |
 | `app/src/adapters/secondary/focus/macos/` | Secondary adapter | `MacOsFocusProbe` — whether a text input has the focus, through the accessibility API |
 | `app/src/adapters/secondary/visualfeedback/macos/` | Secondary adapter | `MacosVisualIndicator` — the overlay: the signs (dictation, command, pasted, failure notices), the level waveform and the live transcript near the pointer |
 | `app/src/adapters/secondary/archiving/filesystem/` | Secondary adapter | `FileSystemDictationArchive` — keeps each dictation as a folder (`audio.wav`, `entry.json`) under the archive folder |

@@ -129,3 +129,21 @@ fn should_accept_every_default_value() {
     // Then
     assert!(refused.is_empty(), "{refused:?}");
 }
+
+#[test]
+fn should_refuse_a_claude_dictation_shortcut_without_command() {
+    // When
+    let refused = check(
+        "claude_dictation",
+        "shortcut",
+        &Value::String("d".to_owned()),
+    );
+    let accepted = check(
+        "claude_dictation",
+        "shortcut",
+        &Value::String("cmd+d".to_owned()),
+    );
+    // Then
+    assert!(refused.is_err_and(|message| message.contains("\"d\"")));
+    assert_eq!(accepted, Ok(()));
+}

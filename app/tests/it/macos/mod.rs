@@ -1,5 +1,6 @@
 //! The macOS adapters, each against the real system service.
 
+mod claudedictation_macos;
 mod focus_macos;
 mod keypressing_macos;
 mod loginitem_macos;

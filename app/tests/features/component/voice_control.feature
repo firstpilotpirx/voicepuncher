@@ -522,3 +522,70 @@ Feature: voice-control
       Given voice control is on and the user turned the command history off
       When the services it needs are looked up
       Then no copy of the command spotting service is told to keep a command history
+
+  Rule: In Claude, a voice start starts Claude's own dictation
+
+    Scenario: Saying start in Claude starts Claude's dictation
+      Given the Claude dictation is turned on and the Claude desktop app is the frontmost app
+      And listening is on
+      And no dictation runs
+      When the user says "start"
+      Then Claude's dictation shortcut is pressed once and the app's own recorder does not start
+      And the start sound plays
+      And the overlay shows the recording
+      And the voice start is timed in the log as for the app's own dictation
+
+    Scenario: Another app keeps the app's own dictation
+      Given the Claude dictation is turned on and another app is the frontmost app
+      And a dictation runs
+      And the user has said a sentence in it
+      When the user says "stop"
+      Then the sentence is pasted into the focused app
+      And Claude's dictation shortcut is never pressed
+
+  Rule: In Claude, voice commands end Claude's own dictation
+
+    Scenario: Saying stop in Claude stops Claude's dictation
+      Given a dictation started by voice in Claude runs
+      When the user says "stop"
+      Then Claude's dictation shortcut is pressed a second time
+      And the stop sound plays
+      And the overlay is hidden
+      And nothing is pasted and no dictation is archived
+
+    Scenario: Saying cancel in Claude drops Claude's dictation
+      Given a dictation started by voice in Claude runs
+      When the user says "cancel"
+      Then Escape is pressed to drop Claude's dictation
+      And the cancel sound plays
+      And the overlay is hidden
+
+    Scenario: Saying restart in Claude starts Claude's dictation over
+      Given a dictation started by voice in Claude runs
+      When the user says "restart"
+      Then Escape is pressed, then Claude's dictation shortcut
+      And the restart sound plays, and neither the cancel sound nor the start sound
+      And Claude's dictation goes on
+
+    Scenario: Saying enter in Claude stops and sends
+      Given a dictation started by voice in Claude runs
+      When the user says "enter"
+      Then Claude's dictation shortcut is pressed, then Return after a pause
+
+  Rule: The Claude dictation falls back to the app's own dictation
+
+    Scenario: The Claude dictation turned off records as before
+      Given the Claude dictation is turned off and the Claude desktop app is the frontmost app
+      And listening is on
+      And no dictation runs
+      When the user says "start"
+      Then a dictation starts
+      And Claude's dictation shortcut is never pressed
+
+    Scenario: A shortcut that cannot be posted falls back
+      Given the Claude desktop app is the frontmost app and posting its dictation shortcut fails
+      And listening is on
+      And no dictation runs
+      When the user says "start"
+      Then a dictation starts
+      And the log names why the Claude dictation was not used

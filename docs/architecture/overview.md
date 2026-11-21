@@ -1,6 +1,6 @@
 # System Overview
 
-voicepuncher is an offline push-to-talk voice-to-text menu bar application for macOS Apple Silicon; its command line remains for developers and file mode. The user holds a configurable hotkey (or says a voice command), speaks, releases — the speech is transcribed by a local speech recognition service and pasted at the cursor. Nothing leaves the machine: the app opens loopback connections only, and every service runs on the Apple Silicon GPU through Metal.
+voicepuncher is an offline push-to-talk voice-to-text menu bar application for macOS Apple Silicon; its command line remains for developers and file mode. The user holds a configurable hotkey (or says a voice command), speaks, releases — the speech is transcribed by a local speech recognition service and pasted at the cursor. voicepuncher sends nothing off the machine: the app opens loopback connections only, and every service runs on the Apple Silicon GPU through Metal. In the Claude desktop app a dictation drives Claude's own dictation instead, by the user's choice (`[claude_dictation]`), as when the user presses its shortcut.
 
 The repository is a Cargo workspace of ten crates; [project-architecture.html](project-architecture.html) draws them with their dependencies, and `docs/project-map.md` lists their modules:
 
@@ -133,7 +133,7 @@ Signals received while the pipeline is in any non-Idle state other than `Recordi
 
 | Goal | Target | Notes |
 |---|---|---|
-| Fully offline | Zero network I/O at runtime | Every model runs locally through Metal; the only internet use is the model download the user starts |
+| Fully offline | Zero network I/O by voicepuncher at runtime | Every model runs locally through Metal; the only internet use is the model download the user starts; in Claude, Claude's own dictation records by the user's choice (`[claude_dictation]`) |
 | Latency | < 3 s end-to-end (release → paste) | On Apple M-series with `large-v3` (16-bit, beam search 5) |
 | Multilingual | English + Russian validated | FLEURS en/ru corpus in the benchmark suite |
 | Accuracy (WER) | < 30 % mean WER on the mixed corpus | `just e2e-quick` on 10 samples in every `check`, `just e2e-bench` on 100 in `full-check` |

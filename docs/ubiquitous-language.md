@@ -599,7 +599,19 @@
 - **Type:** Effect of a *voice command*
 - **Definition:** A synthetic keyboard event posted into the focused app: Return for `press enter`; Cmd+A then Delete for `clear all text`; Cmd+V for `paste text`, so the focused app pastes what the clipboard holds.
 - **Code:** port `app/src/core/application/key_presser.rs`
-- **Synonyms to AVOID:** "keystroke" (too generic), "shortcut"
+- **Synonyms to AVOID:** "keystroke" (too generic), "shortcut" (kept only for another app's own *KeyChord*, as the *Claude dictation* shortcut)
+
+### Claude dictation
+- **Type:** Kind of dictation (a facade over another app's own dictation)
+- **Definition:** The Claude desktop app's own dictation (bundle id `com.anthropic.claudefordesktop`, where Claude Code runs in its Code tab), which voicepuncher drives instead of recording when Claude is the frontmost app at a dictation's start and `[claude_dictation] enabled` is on: the start presses Claude's dictation shortcut (a *KeyChord*), the stop presses it again, a cancel presses Escape; voicepuncher plays its cues and shows its overlay but records, transcribes, pastes and archives nothing. A press that cannot be posted falls back to the app's own dictation.
+- **Code:** port `app/src/core/application/claude_dictation.rs`, pipeline `app/src/core/application/pipeline/claude_dictation.rs`, adapter `app/src/adapters/secondary/claudedictation/macos/`
+- **Synonyms to AVOID:** "facade" alone, "Claude Code voice mode" (the terminal CLI's own voice mode, not driven)
+
+### KeyChord
+- **Type:** Value Object
+- **Definition:** The Command key and one letter or digit, as the configuration writes it (`cmd+d`): another app's own key combination, which voicepuncher presses as a *Key press*. The configuration key and the Settings row call it the *Claude dictation* shortcut, the word Claude's own settings use (`dictationShortcut`); "shortcut" names nothing else in voicepuncher.
+- **Code:** `app/src/core/domain/key_chord.rs`
+- **Synonyms to AVOID:** "hotkey" (the key that starts voicepuncher's own recording), "binding"
 
 ## E2E / Test vocabulary
 

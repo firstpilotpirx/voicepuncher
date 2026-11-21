@@ -8,6 +8,7 @@ use std::time::Duration;
 use anyhow::Result;
 
 use crate::adapters::secondary::archiving::filesystem::{ArchiveSetup, FileSystemDictationArchive};
+use crate::adapters::secondary::claudedictation::macos::MacOsClaudeDictation;
 use crate::adapters::secondary::commandspotting::websocket::{
     RefusedCopies, WebSocketCommandSpotter,
 };
@@ -99,8 +100,20 @@ impl PipelineAssembler for WiringAssembler {
             pipeline =
                 pipeline.with_voice_control(Box::new(spotter), Box::new(MacOsKeyPresser::new()));
         }
-        Ok(pipeline)
+        with_claude_dictation(pipeline, config)
     }
+}
+
+/// In the Claude desktop app, a dictation drives Claude's own one, when the configuration
+/// turns it on.
+fn with_claude_dictation(pipeline: Pipeline, config: &Config) -> Result<Pipeline> {
+    let cfg = &config.claude_dictation;
+    let Some(shortcut) = cfg.port_shortcut()? else {
+        log::info!("claude dictation: off");
+        return Ok(pipeline);
+    };
+    log::info!("claude dictation: on ({})", cfg.shortcut);
+    Ok(pipeline.with_claude_dictation(Box::new(MacOsClaudeDictation::new(shortcut))))
 }
 
 /// The pipeline's settings from the configuration: the hotkey's and the chunking.

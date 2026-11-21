@@ -26,7 +26,7 @@ const KEY_A: i64 = 0;
 const DELETE: i64 = 51;
 
 /// The key code of every key the session sees go down from now on.
-fn watch_keys() -> mpsc::Receiver<i64> {
+pub(super) fn watch_keys() -> mpsc::Receiver<i64> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let _ = CGEventTap::with_enabled(
@@ -45,7 +45,7 @@ fn watch_keys() -> mpsc::Receiver<i64> {
     rx
 }
 
-fn keys_seen(keys: &mpsc::Receiver<i64>, count: usize) -> Vec<i64> {
+pub(super) fn keys_seen(keys: &mpsc::Receiver<i64>, count: usize) -> Vec<i64> {
     (0..count)
         .map_while(|_| keys.recv_timeout(KEY_TIMEOUT).ok())
         .collect()

@@ -52,3 +52,28 @@ Feature: push-to-talk
       Given the hotkey is right Option
       When left Option goes down and up
       Then the listener reports nothing
+
+  # The pipeline runs on its own thread with the voice-control stand-ins and a stand-in for
+  # Claude's own dictation, which records the key presses asked of it.
+  @serial
+  Rule: In Claude, the hotkey drives Claude's own dictation
+
+    Scenario: Toggle mode in Claude
+      Given the Claude dictation is turned on and the Claude desktop app is the frontmost app
+      When the user presses the hotkey, speaks, and presses it again
+      Then Claude's dictation shortcut is pressed twice
+      And the start and stop sounds play
+      And no text is pasted
+
+    Scenario: Hold mode in Claude
+      Given the recording mode is Hold and the Claude desktop app is the frontmost app
+      When the user holds the hotkey, speaks, and releases it
+      Then Claude's dictation shortcut is pressed twice
+      And no text is pasted
+
+    Scenario: Escape in Claude leaves the drop to Claude
+      Given the Claude dictation is turned on and the Claude desktop app is the frontmost app
+      When the user presses the hotkey once
+      And the user presses Escape
+      Then no Escape is pressed
+      And the cancel sound plays

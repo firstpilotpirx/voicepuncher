@@ -109,6 +109,16 @@ A command said in the other state is ignored. `press enter` said right after `st
 
 **Careful with `clear all text`:** it selects everything in the focused app before deleting — meant for a chat input, it erases a whole document in an editor.
 
+### Claude dictation
+
+In the Claude desktop app, a dictation drives Claude's own dictation instead of recording: when Claude is the frontmost app as a dictation starts, the hotkey or "start dictation" presses Claude's dictation shortcut, and the stop presses it again. Claude records and inserts its own text, which recognizes mixed Russian and English speech better. The start and stop sounds and the overlay stay as in any dictation; "cancel dictation" and Escape drop Claude's dictation, "restart dictation" drops it and starts a new one, and "press enter" during it waits 1.5 s for Claude's text before it sends. In every other app nothing changes. A Claude dictation is not archived: voicepuncher holds none of its audio or text.
+
+Settings: `[claude_dictation]` `enabled` (default `true`; the Dictation tab's switch "Use Claude's own dictation in Claude") and `shortcut` (default `"cmd+d"`, Claude's own default: `cmd+` and one letter or digit). The log shows `claude dictation: on (cmd+d)` at launch. When the shortcut cannot be pressed (no Accessibility), the log shows `claude dictation: not used: …` and the app's own dictation starts instead.
+
+**Known limit:** Claude hears everything said while its dictation runs, so a spoken "stop dictation" stays at the end of Claude's text; use the hotkey to stop when that matters.
+
+**Privacy:** voicepuncher itself still sends nothing off the machine. Claude's own dictation is Claude's: turning the setting on is the same choice as pressing Cmd+D in Claude yourself.
+
 ### Languages
 
 **Speech language:** keep `[transcription].language = "auto"` (the default) when you dictate in more than one language. A fixed language makes the speech recognition service write speech in another language as text in the fixed one: with `language = "ru"`, 29 of 40 English corpus samples came out as Russian, mostly garbled.
@@ -461,6 +471,7 @@ Each step also has its own recipe: `fmt`, `lint`, `build`, `e2e-smoke` (three st
    - [ ] Short phrase: press, speak, release → text is pasted.
    - [ ] Local services: `just stop-model-servers`, launch → the menu shows "Starting services… (N of M ready)", then Ready; Services lists each as Ready with Restart; quit → `pgrep -fl whisper-server` finds none. After `just start-model-servers`, launch → Services lists them as Adopted, and after quit they still run. Kill an owned `whisper-server` copy while the app runs → it is Restarting, then Ready, and the next dictation is pasted.
    - [ ] Permissions: remove each permission for the terminal in System Settings (`tccutil reset Microphone`, `Accessibility`, `ListenEvent` for its bundle id), launch → the Permissions window names the terminal; Request… shows the system prompt and the row shows Checking…; Open System Settings opens the right pane (Accessibility before macOS 27, Device Control and Data Access from macOS 27; for Input Monitoring it also asks again and shows the app in Finder) and the row names that pane; a switch that does not take shows the hint to remove the app with − and add it with +; while the app waits, the menu bar shows the missing-permission icon, the status line reads `Waiting for Accessibility…` and opens the Permissions window, and Settings note the wait under Voice control; the log shows `permissions: …` at each change; dictation starts once the last one is granted. Revoke Accessibility while it runs → within 5 s the window reopens with `Accessibility was revoked — dictation stopped`; grant it again → dictation works. Compare the window in light and dark with `openspec/changes/archive/*-permissions-gate-window/mockups/states/`.
+   - [ ] Claude dictation: in the Claude desktop app, "start dictation", a sentence, "stop dictation" → Claude's own text in its composer (the spoken "stop dictation" may stay at its end); the hotkey does the same; Escape drops it; in TextEdit dictation records and pastes as before.
    - [ ] Long dictation (> 30 s, crosses a chunk boundary) → no repeated or missing words at the seam.
    - [ ] Mixed Russian + English ("задеплой в Docker") → each language kept as spoken, terms in Latin script.
    - [ ] The transcript is pasted right after speech recognition; the overlay shows no "Refining text".

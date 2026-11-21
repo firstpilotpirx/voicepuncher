@@ -45,7 +45,9 @@ pub fn control(parts: &Parts, field: &'static Field, tag: isize) -> FieldControl
         Control::Radio(choices) => radio(parts, choices, tag),
         Control::Number { unit, .. } => number(parts, unit, tag),
         Control::Slider { min, max } => slider(parts, min, max, tag),
-        Control::Text | Control::Address(_) => text(parts, tag, Widget::Text, ""),
+        Control::Text | Control::Shortcut | Control::Address(_) => {
+            text(parts, tag, Widget::Text, "")
+        }
         Control::LanguageList => text(parts, tag, Widget::Languages, LANGUAGES_PLACEHOLDER),
         Control::TextArea => text_area(parts),
         Control::Folder => folder(parts, tag),
